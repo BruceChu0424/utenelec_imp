@@ -407,6 +407,9 @@ class _FinanceAssetLedgerPanelState
     final statuses = <String, String>{
       'DRAFT': '草稿',
       'PENDING_APPROVAL': '待审批',
+      'RECOGNITION_REVERSAL_PENDING': '待审核初始确认撤销',
+      'RECOGNITION_REVERSAL_APPROVED': '待执行初始确认撤销',
+      'REVERSED': '已撤销初始确认',
       'APPROVED': '已审批',
       'ACTIVE': '使用中',
       'COMPLETED': '已完成',

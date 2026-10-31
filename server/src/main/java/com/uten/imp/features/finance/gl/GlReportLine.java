@@ -135,6 +135,9 @@ public record GlReportLine(String key, String label, Source source) {
                 .flatMap(stream -> stream)
                 .filter(GlReportLine::configurable)
                 .forEach(line -> byKey.putIfAbsent(line.key(), line));
+        FinancialStatementCatalog.all().stream().filter(FinancialStatementCatalog.Line::direct)
+                .forEach(line -> byKey.putIfAbsent(line.key(), styles(line.key(),
+                        (line.sheet().equals("BALANCE") ? "资产负债表 " : "利润表 ")+line.number()+" · "+line.label())));
         return List.copyOf(byKey.values());
     }
 
@@ -161,6 +164,7 @@ public record GlReportLine(String key, String label, Source source) {
                     .filter(line -> "STYLE".equals(line.bindingKind()) && !line.key().equals(key))
                     .forEach(line -> siblings.add(line.key()));
         }
+        siblings.addAll(FinancialStatementCatalog.siblings(key));
         return siblings;
     }
 }

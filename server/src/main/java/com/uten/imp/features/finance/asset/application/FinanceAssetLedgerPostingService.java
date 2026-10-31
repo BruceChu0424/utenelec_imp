@@ -52,7 +52,7 @@ public class FinanceAssetLedgerPostingService {
             List<Entry> entries,
             UUID reversalOfVoucherId) {
         tx.bind();
-        UUID actorId = authorization.requireActorId(FinanceAssetAuthorization.POST);
+        UUID actorId = authorization.requireActorId(reversalOfVoucherId==null?FinanceAssetAuthorization.POST:FinanceAssetAuthorization.REVERSE);
         AssetPeriod.parse(period);
         validateEntries(entries);
         if (entries.isEmpty()) {
@@ -136,7 +136,7 @@ public class FinanceAssetLedgerPostingService {
             String reason) {
         tx.bind();
         PaymentStyleHierarchyLock.lock(em);
-        authorization.require(FinanceAssetAuthorization.POST);
+        authorization.require(FinanceAssetAuthorization.REVERSE);
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                 SELECT style_id, direction, amount, summary
@@ -167,7 +167,7 @@ public class FinanceAssetLedgerPostingService {
                 reason,
                 reverseEntries,
                 originalVoucherId);
-        UUID actorId = authorization.requireActorId(FinanceAssetAuthorization.POST);
+        UUID actorId = authorization.requireActorId(FinanceAssetAuthorization.REVERSE);
         em.createNativeQuery("""
                 UPDATE gl_vouchers
                 SET status=-1, reversed_by_voucher_id=:reversal,

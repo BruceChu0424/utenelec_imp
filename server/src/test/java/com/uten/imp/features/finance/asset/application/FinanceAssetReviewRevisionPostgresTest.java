@@ -54,6 +54,10 @@ class FinanceAssetReviewRevisionPostgresTest {
     @Autowired FinanceAssetWorkflowService workflow;
     @Autowired FinanceAssetPostingService posting;
     @Autowired FinanceAssetQueryService queries;
+    @Autowired FinanceAssetRecognitionReversalService recognitionReversals;
+    @Autowired com.uten.imp.features.finance.gl.GlReportService financialReports;
+    @Autowired com.uten.imp.features.finance.gl.GlReportLineBindingService reportBindings;
+    @Autowired com.uten.imp.features.finance.asset.FixedAssetService assetReports;
     @Autowired ObjectMapper json;
     @Autowired com.uten.imp.features.purchase.report.PurchaseReportService purchaseReports;
     @Autowired com.uten.imp.features.subcontract.report.SubcontractReportService subcontractReports;
@@ -311,6 +315,239 @@ class FinanceAssetReviewRevisionPostgresTest {
         assertThat(json.readTree(request.previousSnapshot()).path("reason").asText()).isEqualTo("原原因");
         assertThat(json.readTree(request.submissionSnapshot()).path("evidenceReference").asText()).isEqualTo("凭证二");
         if (!deferred) assertThat(json.readTree(request.submissionSnapshot()).path("proceedsAmount").asText()).isEqualTo("22.99");
+    }
+
+    @Test
+    void openingDepreciationReversalAndBothStatementsReconcileWithRealAmounts() {
+        Actor maker=actor("opening-maker"),reviewer=actor("opening-reviewer"),poster=actor("opening-poster"),
+                reverseMaker=actor("opening-reverse-maker"),reversePoster=actor("opening-reverse-poster");
+        UUID category=category(false);
+        var asOf=YearMonth.from(BusinessTime.today()).minusMonths(1).atEndOfMonth();
+        String period=YearMonth.from(asOf).plusMonths(1).toString();
+        var end=YearMonth.parse(period).atEndOfMonth();
+        var start=asOf.minusMonths(10);
+        login(maker,financialPermissions());
+        var draft=workflow.createFixed(new AssetWorkbenchRequests.FixedAssetDraft(null,"接续资产",category,
+                maker.department(),maker.employee(),"一楼",null,null,null,new BigDecimal("1200"),new BigDecimal("0.05"),
+                12,period,start,start,start,"MANUAL",null,"OPENING-"+UUID.randomUUID(),"HEADER",start,null,null,
+                new AssetWorkbenchRequests.OpeningBalance(asOf,new BigDecimal("540"),6,null)));
+        var submitted=workflow.submit(draft.id(),draft.version(),false);
+        login(reviewer,financialPermissions());var approved=workflow.approve(draft.id(),submitted.version(),"核对期初",false);
+        login(poster,financialPermissions());var active=workflow.activate(draft.id(),approved.version(),false);
+        assertThat(active.status()).isEqualTo("ACTIVE");
+        assertThat(queries.fixedAsset(draft.id()).books().getFirst().monthlyAmount()).isEqualByComparingTo("100");
+        assertThat(queries.fixedAsset(draft.id()).schedule().getFirst().openingBalance()).isEqualByComparingTo("660");
+        // Explicitly configure unused lines instead of manufacturing zeroes from missing mappings.
+        for(var line:reportBindings.list())if(line.sheet()!=null)reportBindings.replace(line.lineKey(),List.of(),true);
+        var styles=jdbc.queryForMap("SELECT cost_style_id,accumulated_style_id,expense_style_id,clearing_style_id FROM finance_asset_categories WHERE id=?",category);
+        reportBindings.replace("BS_18",List.of((UUID)styles.get("cost_style_id")));
+        reportBindings.replace("BS_19",List.of((UUID)styles.get("accumulated_style_id")));
+        reportBindings.replace("BS_1",List.of((UUID)styles.get("clearing_style_id")));
+        reportBindings.replace("PL_14",List.of((UUID)styles.get("expense_style_id")));
+        var posted=postNormalMonth(period,maker,reviewer,poster);
+        assertThat(posted.totalAmount()).isEqualByComparingTo("100");
+        assertStatement(financialReports.balanceSheet(end),20,"periodEnd","560");
+        assertStatement(financialReports.balanceSheet(end),19,"periodEnd","640");
+        assertStatement(financialReports.balanceSheet(end),30,"periodEnd","-100");
+        assertStatement(financialReports.balanceSheet(end),53,"periodEnd","-100");
+        assertStatement(financialReports.profitMonthly(end.getYear(),end.getMonthValue()),32,"monthAmount","-100");
+        try {
+            var directory=java.nio.file.Path.of("target","finance-statement-fixtures");java.nio.file.Files.createDirectories(directory);
+            json.writeValue(directory.resolve("balance.json").toFile(),com.uten.imp.features.finance.gl.FinancialStatementPresentation.apply("BALANCE","template",financialReports.balanceSheet(end)));
+            json.writeValue(directory.resolve("profit.json").toFile(),com.uten.imp.features.finance.gl.FinancialStatementPresentation.apply("PROFIT","template",financialReports.profitMonthly(end.getYear(),end.getMonthValue())));
+        } catch(java.io.IOException failure){throw new AssertionError(failure);}
+        var historical=assetReports.depreciationSchedule(1,50,com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE,asOf);
+        assertThat(historical.rows().stream().filter(r->"接续资产".equals(r.get("name"))).findFirst().orElseThrow().get("netValue"))
+                .isEqualTo(new BigDecimal("660.00"));
+        assertThatThrownBy(()->posting.post(posted.id(),new AssetWorkbenchRequests.PostingActionCommand(posted.version(),null)))
+                .isInstanceOf(ApiException.class);
+        login(reverseMaker,Set.of(FinanceAssetAuthorization.VIEW,FinanceAssetAuthorization.REVERSE));
+        assertThatThrownBy(()->recognitionReversals.request(draft.id(),false,
+                new AssetWorkbenchRequests.ReasonCommand(active.version(),"尚有计提"))).isInstanceOf(ApiException.class);
+        reverseMonth(posted,reviewer,reverseMaker,reversePoster);
+        login(poster,financialPermissions());
+        assertStatement(financialReports.balanceSheet(end),20,"periodEnd","660");
+        assertStatement(financialReports.profitMonthly(end.getYear(),end.getMonthValue()),32,"monthAmount","0");
+        var reposted=postNormalMonth(period,maker,reviewer,poster);
+        assertThat(reposted.totalAmount()).isEqualByComparingTo("100");
+        reverseMonth(reposted,reviewer,reverseMaker,reversePoster);
+        login(reverseMaker,Set.of(FinanceAssetAuthorization.VIEW,FinanceAssetAuthorization.REVERSE));
+        long version=queries.fixedAsset(draft.id()).summary().version();
+        var reversal=recognitionReversals.request(draft.id(),false,new AssetWorkbenchRequests.ReasonCommand(version,"撤销接续测试"));
+        assertThat(queries.fixedAsset(draft.id()).allowedActions()).doesNotContain("APPROVE_RECOGNITION_REVERSAL");
+        login(reviewer,financialPermissions());
+        var checked=recognitionReversals.approve(draft.id(),false,new AssetWorkbenchRequests.VersionCommand(reversal.version()));
+        login(reversePoster,Set.of(FinanceAssetAuthorization.VIEW,FinanceAssetAuthorization.REVERSE));
+        var done=recognitionReversals.post(draft.id(),false,new AssetWorkbenchRequests.VersionCommand(checked.version()));
+        assertThat(done.status()).isEqualTo("REVERSED");
+        login(poster,financialPermissions());
+        assertStatement(financialReports.balanceSheet(end),18,"periodEnd","0");
+        assertStatement(financialReports.balanceSheet(asOf),18,"periodEnd","1200");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM gl_vouchers WHERE source_type='FA_CAP_REV' AND source_ref LIKE 'RECOGNITION_REVERSAL:%'",Integer.class)).isPositive();
+    }
+
+    @Test
+    void linkedOpeningVoucherIsNotRepostedAndIsProtectedUntilRegistrationReversal() {
+        Actor maker=actor("linked-maker"),reviewer=actor("linked-reviewer"),poster=actor("linked-poster");
+        UUID category=category(false),voucher=UUID.randomUUID();
+        var asOf=YearMonth.from(BusinessTime.today()).minusMonths(1).atEndOfMonth();
+        var styles=jdbc.queryForMap("SELECT cost_style_id,accumulated_style_id,clearing_style_id FROM finance_asset_categories WHERE id=?",category);
+        jdbc.update("INSERT INTO gl_vouchers(id,voucher_no,period,voucher_date,source,source_type,status) VALUES(?,?,?,?,'MANUAL','MANUAL',1)",
+                voucher,"OPENING-"+voucher,YearMonth.from(asOf).toString(),asOf);
+        String[] keys={"cost_style_id","accumulated_style_id","clearing_style_id"};
+        String[] amounts={"1000","450","550"};
+        for(int i=0;i<3;i++)jdbc.update("INSERT INTO gl_entries(voucher_id,line_no,style_id,direction,amount,entry_date,period) VALUES(?,?,?,?,?,?,?)",
+                voucher,i+1,styles.get(keys[i]),i==0?1:-1,new BigDecimal(amounts[i]),asOf,YearMonth.from(asOf).toString());
+        login(maker,financialPermissions());
+        String source="LINKED-"+UUID.randomUUID();
+        var input=new AssetWorkbenchRequests.FixedAssetDraft(null,"关联旧资产",category,maker.department(),maker.employee(),"一楼",null,null,null,
+                new BigDecimal("1000"),new BigDecimal("0.05"),12,YearMonth.from(asOf).plusMonths(1).toString(),
+                asOf,asOf,asOf,"MANUAL",null,source,"HEADER",asOf,null,null,
+                new AssetWorkbenchRequests.OpeningBalance(asOf,new BigDecimal("450"),5,voucher));
+        var created=workflow.createFixed(input);
+        jdbc.update("UPDATE gl_entries SET amount=449 WHERE voucher_id=? AND style_id=?",voucher,styles.get("accumulated_style_id"));
+        assertThatThrownBy(()->workflow.submit(created.id(),created.version(),false)).isInstanceOf(ApiException.class);
+        assertThat(queries.fixedAsset(created.id()).summary().status()).isEqualTo("DRAFT");
+        jdbc.update("UPDATE gl_entries SET amount=450 WHERE voucher_id=? AND style_id=?",voucher,styles.get("accumulated_style_id"));
+        var submitted=workflow.submit(created.id(),created.version(),false);
+        assertThatThrownBy(()->jdbc.update("UPDATE gl_entries SET amount=449 WHERE voucher_id=? AND style_id=?",voucher,styles.get("accumulated_style_id")))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        login(reviewer,financialPermissions());var approved=workflow.approve(created.id(),submitted.version(),"核对已入账凭证",false);
+        login(poster,financialPermissions());var active=workflow.activate(created.id(),approved.version(),false);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM gl_entries WHERE style_id=?",Integer.class,styles.get("cost_style_id"))).isEqualTo(1);
+        assertThat(queries.fixedAsset(created.id()).summary().openingBalance().existingVoucherId()).isEqualTo(voucher);
+        var duplicate=new AssetWorkbenchRequests.FixedAssetDraft(null,"重复关联",category,maker.department(),maker.employee(),"一楼",null,null,null,
+                new BigDecimal("1000"),new BigDecimal("0.05"),12,YearMonth.from(asOf).plusMonths(1).toString(),
+                asOf,asOf,asOf,"MANUAL",null,source+"-DUPLICATE","HEADER",asOf,null,null,input.openingBalance());
+        assertThatThrownBy(()->workflow.createFixed(duplicate)).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->jdbc.update("UPDATE gl_entries SET amount=amount+1 WHERE voucher_id=?",voucher))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        UUID other=UUID.randomUUID();
+        jdbc.update("INSERT INTO gl_vouchers(id,voucher_no,period,voucher_date,source,source_type,status) VALUES(?,?,?,?,'MANUAL','MANUAL',1)",
+                other,"OTHER-"+other,YearMonth.from(asOf).toString(),asOf);
+        jdbc.update("INSERT INTO gl_entries(voucher_id,line_no,style_id,direction,amount,entry_date,period) VALUES(?,1,?,1,1,?,?)",
+                other,styles.get("cost_style_id"),asOf,YearMonth.from(asOf).toString());
+        assertThatThrownBy(()->jdbc.update("UPDATE gl_entries SET voucher_id=? WHERE voucher_id=?",voucher,other))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        jdbc.update("DELETE FROM gl_entries WHERE voucher_id=?",other);jdbc.update("DELETE FROM gl_vouchers WHERE id=?",other);
+        login(maker,financialPermissions());
+        var request=recognitionReversals.request(created.id(),false,new AssetWorkbenchRequests.ReasonCommand(active.version(),"撤销台账接续"));
+        login(reviewer,financialPermissions());
+        var checked=recognitionReversals.approve(created.id(),false,new AssetWorkbenchRequests.VersionCommand(request.version()));
+        login(poster,Set.of(FinanceAssetAuthorization.VIEW,FinanceAssetAuthorization.REVERSE));
+        recognitionReversals.post(created.id(),false,new AssetWorkbenchRequests.VersionCommand(checked.version()));
+        assertThat(jdbc.queryForObject("SELECT status FROM gl_vouchers WHERE id=?",Integer.class,voucher)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM gl_entries WHERE voucher_id=?",Integer.class,voucher)).isEqualTo(3);
+        login(maker,financialPermissions());
+        var retry=workflow.createFixed(input);
+        assertThat(retry.id()).isNotEqualTo(created.id());
+        login(maker,Set.of(FinanceAssetAuthorization.DELETE));workflow.deleteDraft(retry.id(),false,retry.version());
+        // Only this synthetic manual voucher's entries are cleaned after the preservation assertions;
+        // another company-wide report test must not inherit this test's opening balance.
+        jdbc.update("DELETE FROM gl_entries WHERE voucher_id=?",voucher);
+    }
+
+    @ParameterizedTest @ValueSource(booleans={false,true})
+    void recognitionReversalCanBeRejectedThenCompletedWithoutErasingHistory(boolean deferred) {
+        Actor maker=actor("recognition-maker"),reviewer=actor("recognition-reviewer"),poster=actor("recognition-poster");
+        UUID category=category(deferred);
+        login(maker,financialPermissions());
+        var created=create(deferred,category,maker,"RECOGNITION-"+UUID.randomUUID(),"初始确认闭环","100.00",null);
+        var submitted=workflow.submit(created.id(),created.version(),deferred);
+        login(reviewer,financialPermissions());var approved=workflow.approve(created.id(),submitted.version(),"复核",deferred);
+        login(poster,financialPermissions());var active=workflow.activate(created.id(),approved.version(),deferred);
+        login(maker,financialPermissions());
+        var request=recognitionReversals.request(created.id(),deferred,new AssetWorkbenchRequests.ReasonCommand(active.version(),"首次申请"));
+        assertThatThrownBy(()->recognitionReversals.approve(created.id(),deferred,new AssetWorkbenchRequests.VersionCommand(request.version())))
+                .isInstanceOf(ApiException.class);
+        login(reviewer,financialPermissions());
+        var rejected=recognitionReversals.reject(created.id(),deferred,new AssetWorkbenchRequests.ReasonCommand(request.version(),"暂不撤销"));
+        assertThat(rejected.status()).isEqualTo("ACTIVE");
+        login(maker,financialPermissions());
+        var again=recognitionReversals.request(created.id(),deferred,new AssetWorkbenchRequests.ReasonCommand(rejected.version(),"核对后重新申请"));
+        login(reviewer,financialPermissions());
+        var checked=recognitionReversals.approve(created.id(),deferred,new AssetWorkbenchRequests.VersionCommand(again.version()));
+        login(poster,Set.of(FinanceAssetAuthorization.VIEW,FinanceAssetAuthorization.REVERSE));
+        var reversed=recognitionReversals.post(created.id(),deferred,new AssetWorkbenchRequests.VersionCommand(checked.version()));
+        assertThat(reversed.status()).isEqualTo("REVERSED");
+        assertThat(detail(created.id(),deferred).schedule()).allSatisfy(line->assertThat(line.status()).isEqualTo("CANCELLED"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM finance_asset_recognition_reversals WHERE object_id=?",Integer.class,created.id())).isEqualTo(2);
+        assertThatThrownBy(()->jdbc.update("DELETE FROM finance_asset_recognition_reversals WHERE object_id=?",created.id()))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+    }
+
+    @Test
+    void anOlderDraftContractCannotSilentlyEraseOpeningBalances() {
+        Actor maker=actor("opening-compatibility");UUID category=category(false);
+        var asOf=YearMonth.from(BusinessTime.today()).minusMonths(1).atEndOfMonth();
+        String period=YearMonth.from(asOf).plusMonths(1).toString(),source="COMPAT-"+UUID.randomUUID();
+        login(maker,financialPermissions());
+        var draft=workflow.createFixed(new AssetWorkbenchRequests.FixedAssetDraft(null,"旧资产",category,maker.department(),maker.employee(),"一楼",null,null,null,
+                new BigDecimal("1000"),new BigDecimal("0.05"),12,period,asOf,asOf,asOf,"MANUAL",null,source,"HEADER",asOf,null,null,
+                new AssetWorkbenchRequests.OpeningBalance(asOf,new BigDecimal("450.1234"),5,null)));
+        var updated=workflow.updateFixed(draft.id(),new AssetWorkbenchRequests.FixedAssetDraft(null,"仅改名称",category,maker.department(),maker.employee(),"一楼",null,null,null,
+                new BigDecimal("1000"),new BigDecimal("0.05"),12,period,asOf,asOf,asOf,"MANUAL",null,source,"HEADER",asOf,null,draft.version()));
+        assertThat(queries.fixedAsset(draft.id()).summary().openingBalance().accumulatedAmount()).isEqualByComparingTo("450.1234");
+        var corrected=workflow.updateFixed(draft.id(),new AssetWorkbenchRequests.FixedAssetDraft(null,"同时更正原值与累计折旧",category,maker.department(),maker.employee(),"一楼",null,null,null,
+                new BigDecimal("200"),new BigDecimal("0.05"),12,period,asOf,asOf,asOf,"MANUAL",null,source,"HEADER",asOf,null,updated.version(),
+                new AssetWorkbenchRequests.OpeningBalance(asOf,new BigDecimal("100"),1,null)));
+        assertThat(queries.fixedAsset(corrected.id()).summary().originalValue()).isEqualByComparingTo("200");
+        var cleared=workflow.updateFixed(draft.id(),new AssetWorkbenchRequests.FixedAssetDraft(null,"改为新资产",category,maker.department(),maker.employee(),"一楼",null,null,null,
+                new BigDecimal("50"),new BigDecimal("0.05"),12,period,asOf,asOf,asOf,"MANUAL",null,source,"HEADER",asOf,null,corrected.version(),null,true));
+        assertThat(queries.fixedAsset(cleared.id()).summary().openingBalance()).isNull();
+    }
+
+    @Test
+    void fullyDepreciatedOpeningUsesTheSameRoundedResidualInValidationAndDatabase() {
+        Actor maker=actor("opening-rounded-maker"), reviewer=actor("opening-rounded-reviewer"), poster=actor("opening-rounded-poster");
+        UUID category=category(false);
+        var asOf=YearMonth.from(BusinessTime.today()).minusMonths(1).atEndOfMonth();
+        String period=YearMonth.from(asOf).plusMonths(1).toString(),source="ROUNDING-"+UUID.randomUUID();
+        login(maker,financialPermissions());
+        var draft=workflow.createFixed(new AssetWorkbenchRequests.FixedAssetDraft(null,"四位精度提足资产",category,maker.department(),maker.employee(),"一楼",null,null,null,
+                new BigDecimal("100.0001"),new BigDecimal("0.05"),12,period,asOf,asOf,asOf,"MANUAL",null,source,"HEADER",asOf,null,null,
+                new AssetWorkbenchRequests.OpeningBalance(asOf,new BigDecimal("95.0001"),0,null)));
+        var submitted=workflow.submit(draft.id(),draft.version(),false);
+        login(reviewer,financialPermissions());
+        var approved=workflow.approve(draft.id(),submitted.version(),"核对舍入残值",false);
+        login(poster,financialPermissions());
+        workflow.activate(draft.id(),approved.version(),false);
+        assertThat(queries.fixedAsset(draft.id()).summary().netBookValue()).isEqualByComparingTo("5.0000");
+        assertThat(jdbc.queryForObject("SELECT depreciable_amount-opening_accumulated_amount FROM finance_asset_books WHERE asset_id=?",BigDecimal.class,draft.id()))
+                .isEqualByComparingTo("0.0000");
+        // Keep the shared application fixture clear of another test's company-wide posting candidates.
+        login(maker,financialPermissions());
+        var active=queries.fixedAsset(draft.id()).summary();
+        var requested=recognitionReversals.request(draft.id(),false,new AssetWorkbenchRequests.ReasonCommand(active.version(),"回归清理"));
+        login(reviewer,financialPermissions());
+        var checked=recognitionReversals.approve(draft.id(),false,new AssetWorkbenchRequests.VersionCommand(requested.version()));
+        recognitionReversals.post(draft.id(),false,new AssetWorkbenchRequests.VersionCommand(checked.version()));
+    }
+
+    private AssetWorkbenchResponses.PostingRun postNormalMonth(String period,Actor maker,Actor reviewer,Actor poster) {
+        login(maker,financialPermissions());
+        var preview=posting.preview(new AssetWorkbenchRequests.PostingPreviewCommand("DEPRECIATION","CORPORATE",period));
+        assertThat(preview.exceptions()).noneMatch(e->"BLOCKING".equals(e.severity()));
+        var submitted=posting.submit(preview.id(),new AssetWorkbenchRequests.PostingActionCommand(preview.version(),preview.token()));
+        login(reviewer,financialPermissions());
+        var approved=posting.approve(submitted.id(),new AssetWorkbenchRequests.ApprovalCommand(submitted.version(),"金额核对"));
+        login(poster,financialPermissions());
+        return posting.post(approved.id(),new AssetWorkbenchRequests.PostingActionCommand(approved.version(),null));
+    }
+    private void reverseMonth(AssetWorkbenchResponses.PostingRun posted,Actor reviewer,Actor maker,Actor poster) {
+        login(maker,Set.of(FinanceAssetAuthorization.VIEW,FinanceAssetAuthorization.REVERSE));
+        var requested=posting.reverse(posted.id(),new AssetWorkbenchRequests.PostingReasonCommand(posted.version(),"重新核对"));
+        login(reviewer,financialPermissions());
+        var approved=posting.approve(requested.id(),new AssetWorkbenchRequests.ApprovalCommand(requested.version(),"批准红冲"));
+        login(poster,Set.of(FinanceAssetAuthorization.VIEW,FinanceAssetAuthorization.REVERSE));
+        assertThat(posting.post(approved.id(),new AssetWorkbenchRequests.PostingActionCommand(approved.version(),null)).status()).isEqualTo("POSTED");
+    }
+    private static Set<String> financialPermissions(){return Set.of("finance_asset:view","finance_asset:edit","finance_asset:approve",
+            "finance_asset:post","finance_asset:reverse","finance_asset_period:manage","finance_report:view","finance:view:all","payment_style:edit");}
+    private static void assertStatement(com.uten.imp.features.finance.report.ReportTableResponse report,int line,String column,String expected) {
+        var row=report.rows().stream().filter(r->Integer.valueOf(line).equals(r.get("lineNo"))).findFirst().orElseThrow();
+        assertThat(row.get(column)).as("%s %s (%s)",line,column,row.get("basis")).isNotNull();
+        assertThat((BigDecimal)row.get(column)).isEqualByComparingTo(expected);
     }
 
     private AssetWorkbenchResponses.Detail detail(UUID id,boolean deferred) {

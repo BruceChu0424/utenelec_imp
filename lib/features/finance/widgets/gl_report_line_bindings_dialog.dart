@@ -48,6 +48,10 @@ class GlReportLineBinding {
     required this.label,
     required this.bindingKind,
     required this.targets,
+    this.category = 'EXPENSE',
+    this.sheet,
+    this.confirmedZero = false,
+    this.defaultBasis,
   });
 
   factory GlReportLineBinding.fromJson(Map<String, dynamic> json) =>
@@ -55,6 +59,10 @@ class GlReportLineBinding {
         lineKey: json['lineKey']?.toString() ?? '',
         label: json['label']?.toString() ?? '',
         bindingKind: json['bindingKind']?.toString() ?? 'STYLE',
+        category: json['category']?.toString() ?? 'EXPENSE',
+        sheet: json['sheet']?.toString(),
+        confirmedZero: json['confirmedZero'] == true,
+        defaultBasis: json['defaultBasis']?.toString(),
         targets: [
           for (final item in (json['targets'] as List<dynamic>? ?? const []))
             if (item is Map<String, dynamic>) GlReportLineTarget.fromJson(item),
@@ -65,9 +73,15 @@ class GlReportLineBinding {
   final String label;
   final String bindingKind;
   final List<GlReportLineTarget> targets;
+  final String category;
+  final String? sheet;
+  final bool confirmedZero;
+  final String? defaultBasis;
 
   bool get department => bindingKind == 'DEPARTMENT';
-  String get notConfigured => department ? '未配置部门' : '未配置科目';
+  String get notConfigured => confirmedZero
+      ? '财务已确认本行单独取数为零'
+      : defaultBasis ?? (department ? '未配置部门' : '未配置科目');
 }
 
 /// 候选目标(拍平后的科目或部门, depth 仅用于缩进显示)。
@@ -181,8 +195,9 @@ class _GlReportLineBindingsDialogState
           : flattenExpenseLeaves(
               await _api.getList(
                 GlReportLineBindingEndpoints.expenseStyles,
-                query: const {'category': 'EXPENSE'},
+                query: {'category': line.category},
               ),
+              category: line.category,
             );
     } on ApiException catch (error) {
       if (mounted) {
@@ -199,15 +214,17 @@ class _GlReportLineBindingsDialogState
     }
     if (!mounted) return;
     setState(() => _busy = false);
-    final picked = await showDialog<Set<String>>(
+    final picked = await showDialog<_BindingSelection>(
       context: context,
       builder: (_) => _TargetPickerDialog(
         title: '「${line.label}」取数${line.department ? '部门' : '科目'}',
         hint: line.department
             ? '所选部门(含下级)已审核工资单的应发计入本行'
-            : '只列出费用类末级科目; 同一张表里一个科目只能归一行',
+            : '选择本项目对应的末级科目；同一张报表不重复归集。红字涉及的业务分类待财务确认。',
         candidates: candidates,
         initial: {for (final target in line.targets) target.id},
+        canConfirmZero: line.sheet != null,
+        confirmedZero: line.confirmedZero,
       ),
     );
     if (picked == null || !mounted) return;
@@ -216,7 +233,10 @@ class _GlReportLineBindingsDialogState
       final saved = GlReportLineBinding.fromJson(
         await _api.put(
           GlReportLineBindingEndpoints.line(line.lineKey),
-          body: {'targetIds': picked.toList()},
+          body: {
+            'targetIds': picked.ids.toList(),
+            if (line.sheet != null) 'confirmedZero': picked.zero,
+          },
         ),
       );
       if (!mounted) return;
@@ -259,7 +279,8 @@ class _GlReportLineBindingsDialogState
                     showCloseButton: true,
                     onClose: () => Navigator.pop(context, _changed),
                     trailing: const UtenFieldHintIcon(
-                      info: '总账附表与经营损益表的每一行取哪些科目或部门的数。没有设置的行在报表上标注「未配置」，不计入合计。',
+                      info:
+                          '按报表项目配置取数科目或部门。财务报表缺少配置时保留空值，并提示合计不完整；无业务项目需由财务明确确认。',
                       dense: true,
                     ),
                   ),
@@ -282,13 +303,14 @@ class _GlReportLineBindingsDialogState
                                 const Divider(height: 1),
                             itemBuilder: (_, index) {
                               final line = lines[index];
-                              final configured = line.targets.isNotEmpty;
+                              final configured =
+                                  line.targets.isNotEmpty || line.confirmedZero;
                               return ListTile(
                                 key: ValueKey('gl-line-${line.lineKey}'),
                                 dense: true,
                                 title: Text(line.label),
                                 subtitle: Text(
-                                  configured
+                                  line.targets.isNotEmpty
                                       ? line.targets
                                             .map((target) => target.display)
                                             .join('、')
@@ -347,8 +369,9 @@ class _GlReportLineBindingsDialogState
 
 /// 费用类科目树 → 末级科目(停用的也列出, 标注后可绑来统计历史发生额)。
 List<GlReportLineCandidate> flattenExpenseLeaves(
-  List<Map<String, dynamic>> roots,
-) {
+  List<Map<String, dynamic>> roots, {
+  String category = 'EXPENSE',
+}) {
   final result = <GlReportLineCandidate>[];
   void walk(List<dynamic> nodes, List<String> parents) {
     for (final node in nodes) {
@@ -356,7 +379,7 @@ List<GlReportLineCandidate> flattenExpenseLeaves(
       final children = node['children'] as List<dynamic>? ?? const [];
       final name = node['name']?.toString() ?? '';
       if (children.isEmpty) {
-        if ((node['category']?.toString() ?? 'EXPENSE') != 'EXPENSE') continue;
+        if ((node['category']?.toString() ?? category) != category) continue;
         final code = node['code']?.toString() ?? '';
         final disabled = (node['status']?.toString() ?? '使用') != '使用';
         result.add(
@@ -411,18 +434,28 @@ List<GlReportLineCandidate> flattenDepartments(
   return result;
 }
 
+class _BindingSelection {
+  const _BindingSelection(this.ids, this.zero);
+  final Set<String> ids;
+  final bool zero;
+}
+
 class _TargetPickerDialog extends StatefulWidget {
   const _TargetPickerDialog({
     required this.title,
     required this.hint,
     required this.candidates,
     required this.initial,
+    this.canConfirmZero = false,
+    this.confirmedZero = false,
   });
 
   final String title;
   final String hint;
   final List<GlReportLineCandidate> candidates;
   final Set<String> initial;
+  final bool canConfirmZero;
+  final bool confirmedZero;
 
   @override
   State<_TargetPickerDialog> createState() => _TargetPickerDialogState();
@@ -430,6 +463,7 @@ class _TargetPickerDialog extends StatefulWidget {
 
 class _TargetPickerDialogState extends State<_TargetPickerDialog> {
   late final Set<String> _selected = {...widget.initial};
+  late bool _zero = widget.confirmedZero;
   String _keyword = '';
 
   @override
@@ -476,6 +510,17 @@ class _TargetPickerDialogState extends State<_TargetPickerDialog> {
               ),
             ),
             const SizedBox(height: UtenSpacing.s8),
+            if (widget.canConfirmZero)
+              CheckboxListTile(
+                key: const ValueKey('gl-line-confirm-zero'),
+                title: const Text('财务确认本行单独取数为零'),
+                subtitle: const Text('其中明细和未结转损益仍按实际计算；已有金额会提示冲突'),
+                value: _zero,
+                onChanged: (value) => setState(() {
+                  _zero = value ?? false;
+                  if (_zero) _selected.clear();
+                }),
+              ),
             UtenSearchBar(
               key: const ValueKey('gl-line-target-search'),
               hint: '搜索名称或编码',
@@ -501,6 +546,7 @@ class _TargetPickerDialogState extends State<_TargetPickerDialog> {
                           title: Text(item.label),
                           onChanged: (checked) => setState(() {
                             if (checked ?? false) {
+                              _zero = false;
                               _selected.add(item.id);
                             } else {
                               _selected.remove(item.id);
@@ -521,7 +567,10 @@ class _TargetPickerDialogState extends State<_TargetPickerDialog> {
         ),
         FilledButton(
           key: const ValueKey('gl-line-target-save'),
-          onPressed: () => Navigator.pop(context, _selected),
+          onPressed: () => Navigator.pop(
+            context,
+            _BindingSelection(Set.of(_selected), _zero),
+          ),
           child: Text('保存 (${_selected.length})'),
         ),
       ],

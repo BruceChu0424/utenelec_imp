@@ -37,6 +37,7 @@ class _Api extends ApiClient {
             'key': changeSchema && page > 1 ? 'different' : 'value',
             'label': '值',
             'type': 'text',
+            'width': 240.0,
           },
         ],
       'rows': page <= pages.length ? pages[page - 1] : <Map<String, dynamic>>[],
@@ -45,6 +46,36 @@ class _Api extends ApiClient {
 }
 
 void main() {
+  test(
+    'suggested widths are opt-in and do not change default report printing',
+    () async {
+      final api =
+          _Api([
+              [
+                {'value': '原始金额'},
+              ],
+            ])
+            ..total = 1
+            ..totalPages = 1;
+      final original = await loadBoundedReportPrintPreview(
+        api: api,
+        endpointOf: () => '/report',
+        queryOf: () => const {},
+        isCurrent: () => true,
+      );
+      final template = await loadBoundedReportPrintPreview(
+        api: api,
+        endpointOf: () => '/report',
+        queryOf: () => const {},
+        isCurrent: () => true,
+        useSuggestedWidths: true,
+      );
+      expect(original.columnWidths, isNull);
+      expect(template.columnWidths, [240.0]);
+      expect(template.rows, original.rows);
+    },
+  );
+
   test(
     'domain display overrides preserve explicit null rather than falling back to a raw fact',
     () async {

@@ -198,7 +198,7 @@ class GlReportLineBindingPostgresTest {
         ReportTableResponse annual = reports.profitAnnual(YEAR);
         Map<String, Object> tax = opRow(annual, "营业税金及附加");
         assertThat(tax.get("m" + MONTH)).isNull();
-        assertThat(tax.get("basis")).isEqualTo("未配置科目");
+        assertThat(tax.get("basis")).isEqualTo("待财务配置科目或确认无业务");
         assertThat((BigDecimal) opRow(annual, "财务费用").get("m" + MONTH)).isEqualByComparingTo("0");
         Map<String, Object> monthly = opRow(reports.profitMonthly(YEAR, MONTH), "营业税金及附加");
         assertThat(monthly.get("monthAmount")).isNull();

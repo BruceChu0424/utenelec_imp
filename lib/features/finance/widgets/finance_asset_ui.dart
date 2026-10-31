@@ -42,6 +42,8 @@ String financeAssetStatusLabel(String status) {
     'DRAFT' => '草稿',
     'SUBMITTED' || 'PENDING_APPROVAL' => '待审批',
     'APPROVED' => '已审批',
+    'RECOGNITION_REVERSAL_PENDING' => '待审核初始确认撤销',
+    'RECOGNITION_REVERSAL_APPROVED' => '待执行初始确认撤销',
     'ACTIVE' => '使用中',
     'DISPOSED' => '已处置',
     'DISPOSAL_PENDING' => '待处置',

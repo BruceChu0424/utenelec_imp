@@ -57,15 +57,19 @@ public class FinanceAssetAuthorization {
                     has(DELETE) ? Set.of("DELETE") : Set.of());
             case "PENDING_APPROVAL" -> has(APPROVE) && !same(actorId, makerId)
                     ? Set.of("APPROVE", "REJECT") : Set.of();
-            case "APPROVED" -> featureGate.postedWorkflowsEnabled()
-                    && has(POST) && !same(actorId, makerId) ? Set.of("ACTIVATE") : Set.of();
+            case "APPROVED" -> has(POST) && !same(actorId, makerId) ? Set.of("ACTIVATE") : Set.of();
             case "ACTIVE" -> deferredExpense
                     ? union(featureGate.postedWorkflowsEnabled() && has(DISPOSE)
-                            ? Set.of("TERMINATE") : Set.of())
+                            ? Set.of("TERMINATE") : Set.of(),has(REVERSE)?Set.of("REVERSE_RECOGNITION"):Set.of())
                     : union(
                             has(EDIT) ? Set.of("TRANSFER", "OPERATING_STATUS") : Set.of(),
+                            has(REVERSE)?Set.of("REVERSE_RECOGNITION"):Set.of(),
                             featureGate.postedWorkflowsEnabled() && has(DISPOSE)
                                     ? Set.of("DISPOSE") : Set.of());
+            case "RECOGNITION_REVERSAL_PENDING" -> has(APPROVE)&&!same(actorId,makerId)
+                    ?Set.of("APPROVE_RECOGNITION_REVERSAL","REJECT_RECOGNITION_REVERSAL"):Set.of();
+            case "RECOGNITION_REVERSAL_APPROVED" -> has(REVERSE)&&!same(actorId,makerId)
+                    ?Set.of("POST_RECOGNITION_REVERSAL"):Set.of();
             case "DISPOSAL_PENDING" -> pendingActions(actorId, makerId, false);
             case "TERMINATION_PENDING" -> pendingActions(actorId, makerId, true);
             default -> Set.of();

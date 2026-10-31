@@ -12,6 +12,10 @@ const _labels = <String, String>{
   'code': '编号',
   'name': '名称',
   'originalValue': '资产原值',
+  'openingAsOf': '接续日',
+  'openingAccumulated': '期初累计折旧',
+  'openingRemaining': '剩余计提月数',
+  'openingVoucher': '关联期初凭证',
   'totalAmount': '待摊金额',
   'usefulMonths': '使用月数',
   'salvageRate': '残值率',
@@ -40,6 +44,8 @@ const _labels = <String, String>{
 };
 const _numbers = {
   'originalValue',
+  'openingAccumulated',
+  'openingRemaining',
   'totalAmount',
   'usefulMonths',
   'salvageRate',
@@ -57,6 +63,19 @@ Map<String, dynamic>? _snapshot(String? text) {
   if (text == null || text.isEmpty) return null;
   try {
     final value = jsonDecode(text);
+    if (value is Map<String, dynamic>) {
+      final opening = value['openingBalance'];
+      value['openingAsOf'] = opening is Map ? opening['asOf'] : null;
+      value['openingAccumulated'] = opening is Map
+          ? opening['accumulatedAmount']
+          : null;
+      value['openingRemaining'] = opening is Map
+          ? opening['remainingMonths']
+          : null;
+      value['openingVoucher'] = opening is Map
+          ? opening['existingVoucherId']
+          : null;
+    }
     return value is Map<String, dynamic> &&
             value['schemaVersion'] == 1 &&
             (value['name'] is String || value['effectiveDate'] is String)

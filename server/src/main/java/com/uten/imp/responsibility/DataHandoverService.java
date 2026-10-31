@@ -550,12 +550,12 @@ public class DataHandoverService {
         if (scopes.contains("finance")) {
             add(items, "asset.custodian", "未终态固定资产", "finance", count("""
                     SELECT count(*) FROM fixed_assets
-                    WHERE custodian_employee_id=:source AND lifecycle_status <> 'DISPOSED' AND is_deleted=false
+                    WHERE custodian_employee_id=:source AND lifecycle_status NOT IN ('DISPOSED','REVERSED') AND is_deleted=false
                     """, source.id()), DataHandoverAction.BLOCKING);
             add(items, "deferred.responsible", "未终态待摊事项", "finance", count("""
                     SELECT count(*) FROM deferred_expenses
                     WHERE responsible_employee_id=:source
-                      AND lifecycle_status NOT IN ('COMPLETED','TERMINATED') AND is_deleted=false
+                      AND lifecycle_status NOT IN ('COMPLETED','TERMINATED','REVERSED') AND is_deleted=false
                     """, source.id()), DataHandoverAction.BLOCKING);
         }
         for (String scope : scopes) {
@@ -1169,8 +1169,8 @@ public class DataHandoverService {
             lock("SELECT id FROM production_execution_segments WHERE responsible_employee_id=:source AND status IN ('READY','WAITING','DISPATCHED','IN_PROGRESS') ORDER BY id FOR UPDATE", sourceId);
         }
         if (scopes.contains("finance")) {
-            lock("SELECT id FROM fixed_assets WHERE custodian_employee_id=:source AND lifecycle_status<>'DISPOSED' ORDER BY id FOR UPDATE", sourceId);
-            lock("SELECT id FROM deferred_expenses WHERE responsible_employee_id=:source AND lifecycle_status NOT IN ('COMPLETED','TERMINATED') ORDER BY id FOR UPDATE", sourceId);
+            lock("SELECT id FROM fixed_assets WHERE custodian_employee_id=:source AND lifecycle_status NOT IN ('DISPOSED','REVERSED') ORDER BY id FOR UPDATE", sourceId);
+            lock("SELECT id FROM deferred_expenses WHERE responsible_employee_id=:source AND lifecycle_status NOT IN ('COMPLETED','TERMINATED','REVERSED') ORDER BY id FOR UPDATE", sourceId);
         }
         if (includeWholePersonExtras && scopes.equals(ALL_SCOPE_SET)) {
             lock("SELECT id FROM departments WHERE manager_id=:source AND is_deleted=false ORDER BY id FOR UPDATE", sourceId);

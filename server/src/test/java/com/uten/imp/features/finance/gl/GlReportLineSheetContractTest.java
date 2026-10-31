@@ -38,7 +38,7 @@ class GlReportLineSheetContractTest {
     void siblingsAreOtherStyleLinesOfTheSameSheetOnly() {
         assertThat(GlReportLine.styleSiblings("ADM_OFFICE")).contains("ADM_RENT").doesNotContain("ADM_OFFICE", "OP_OFFICE");
         assertThat(GlReportLine.styleSiblings("MFG_DEPRECIATION")).contains("MFG_OTHER");
-        assertThat(GlReportLine.styleSiblings("SALES_FEE")).containsExactlyInAnyOrder("PL_TAX", "PL_FINANCE");
+        assertThat(GlReportLine.styleSiblings("SALES_FEE")).contains("PL_TAX", "PL_FINANCE", "PL_24", "PL_31").doesNotContain("SALES_FEE", "BS_1", "OP_FINANCE");
         assertThat(GlReportLine.styleSiblings("LABOR_DIRECT")).as("人工行绑部门, 不参与科目互斥")
                 .doesNotContain("LABOR_DIRECT", "LABOR_INDIRECT");
     }

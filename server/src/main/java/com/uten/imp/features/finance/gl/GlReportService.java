@@ -17,7 +17,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -31,8 +30,8 @@ import static com.uten.imp.features.finance.gl.GlReportSourceScopes.Root.*;
  *   <li>科目余额表 {@link #trialBalance}：期初/本期借贷/期末，按科目类别定正负向。</li>
  *   <li>附 9 资产负债表 {@link #balanceSheet}：小企业会计准则固定行；期末/年初两列；未分配利润=321+累计损益净额。</li>
  *   <li>附 10 年度利润汇总 {@link #profitAnnual} / 附 11 月度利润表 {@link #profitMonthly}：同一口径行集，
- *       收入=031+032 贷净；成本=041+042 借净；税金=税金；销售费用=销售类 8 科目；管理费用=043 其余；
- *       财务费用=手续费；营业外收入=033 贷净。</li>
+ *       通过 FinancialStatementCatalog/Service 统一映射与公式，收入贷净、费用借净；
+ *       其中行只归集一次，缺少映射时合计明确保留未知。</li>
  *   <li>附 12 制造费用明细 {@link #manufacturingExpense} / 附 13 管理费用明细 {@link #adminExpense} /
  *       附 14 销售费用明细 {@link #salesExpense}：科目月金额透视（行=项目，列=01..12 月）。</li>
  *   <li>附 16 经营损益表 {@link #operatingPl}：按库存实际 COGS 变动分类列示已知销售成本，另列当期工费和管理费，
@@ -171,56 +170,13 @@ public class GlReportService {
     public ReportTableResponse balanceSheet(LocalDate dateTo) {
         com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         GlReportSourceScopes.assertUnambiguous(em);
-        LocalDate yearStart = dateTo.withDayOfYear(1);
-        LocalDate yearOpen = yearStart.minusDays(1);
-        Map<GlReportSourceScopes.Root, BigDecimal> end = balancesByRoot(dateTo);
-        Map<GlReportSourceScopes.Root, BigDecimal> open = balancesByRoot(yearOpen);
-
         List<ReportColumn> cols = List.of(
-                ReportColumn.text("item", "项目", 200),
-                ReportColumn.text("side", "类别", 110),
-                ReportColumn.number("lineNo", "行次"),
-                ReportColumn.money("periodEnd", "期末余额"),
-                ReportColumn.money("yearStart", "年初余额"));
-        List<Map<String, Object>> rows = new ArrayList<>();
-        // 资产
-        BigDecimal cash1 = sum(end, CASH, BANK), cash0 = sum(open, CASH, BANK);
-        BigDecimal ar1 = sum(end, RECEIVABLES), ar0 = sum(open, RECEIVABLES);
-        BigDecimal oar1 = sum(end, OTHER_RECEIVABLES, OTHER_RECEIVABLES_ALTERNATE), oar0 = sum(open, OTHER_RECEIVABLES, OTHER_RECEIVABLES_ALTERNATE);
-        BigDecimal inv1 = sum(end, INVENTORY), inv0 = sum(open, INVENTORY);
-        BigDecimal prepaid1 = sum(end, PREPAID), prepaid0 = sum(open, PREPAID);
-        BigDecimal fa1 = sum(end, FIXED_ASSETS), fa0 = sum(open, FIXED_ASSETS);
-        BigDecimal assets1 = cash1.add(ar1).add(oar1).add(inv1).add(prepaid1).add(fa1);
-        BigDecimal assets0 = cash0.add(ar0).add(oar0).add(inv0).add(prepaid0).add(fa0);
-        // 负债
-        BigDecimal ap1 = sum(end, PAYABLES), ap0 = sum(open, PAYABLES);
-        BigDecimal tax1 = sum(end, TAX_PAYABLE), tax0 = sum(open, TAX_PAYABLE);
-        BigDecimal oap1 = sum(end, OTHER_PAYABLES, OTHER_PAYABLES_ALTERNATE), oap0 = sum(open, OTHER_PAYABLES, OTHER_PAYABLES_ALTERNATE);
-        BigDecimal liab1 = ap1.add(tax1).add(oap1), liab0 = ap0.add(tax0).add(oap0);
-        // 权益：期初资本 + 未分配利润（/321/ + 累计损益净额）
-        BigDecimal eq1 = sum(end, CAPITAL), eq0 = sum(open, CAPITAL);
-        BigDecimal profit1 = sum(end, RETAINED_PROFIT).add(plNet(dateTo));
-        BigDecimal profit0 = sum(open, RETAINED_PROFIT).add(plNet(yearOpen));
-        BigDecimal equity1 = eq1.add(profit1), equity0 = eq0.add(profit0);
-
-        addBsRow(rows, "货币资金", "资产", 1, cash1, cash0);
-        addBsRow(rows, "应收账款", "资产", 4, ar1, ar0);
-        addBsRow(rows, "其他应收款", "资产", 8, oar1, oar0);
-        addBsRow(rows, "存货", "资产", 9, inv1, inv0);
-        addBsRow(rows, "其中:库存商品", "资产", 12, inv1, inv0);
-        addBsRow(rows, "其他流动资产(待摊费用)", "资产", 14, prepaid1, prepaid0);
-        addBsRow(rows, "流动资产合计", "资产", 15, cash1.add(ar1).add(oar1).add(inv1).add(prepaid1),
-                cash0.add(ar0).add(oar0).add(inv0).add(prepaid0));
-        addBsRow(rows, "固定资产原价", "资产", 24, fa1, fa0);
-        addBsRow(rows, "资产总计", "资产", 29, assets1, assets0);
-        addBsRow(rows, "应付账款", "负债和所有者权益", 33, ap1, ap0);
-        addBsRow(rows, "应交税费", "负债和所有者权益", 36, tax1, tax0);
-        addBsRow(rows, "其他应付款", "负债和所有者权益", 39, oap1, oap0);
-        addBsRow(rows, "流动负债合计", "负债和所有者权益", 41, liab1, liab0);
-        addBsRow(rows, "实收资本(期初资本)", "负债和所有者权益", 47, eq1, eq0);
-        addBsRow(rows, "未分配利润", "负债和所有者权益", 50, profit1, profit0);
-        addBsRow(rows, "所有者权益合计", "负债和所有者权益", 51, equity1, equity0);
-        addBsRow(rows, "负债和所有者权益总计", "负债和所有者权益", 52, liab1.add(equity1), liab0.add(equity0));
+                ReportColumn.text("item", "项目", 260), ReportColumn.text("side", "类别", 110),
+                new ReportColumn("lineNo", "行次", "int", 70),
+                ReportColumn.money("periodEnd", "期末余额").withUnitLabel("元"),
+                ReportColumn.money("yearStart", "年初余额").withUnitLabel("元"),
+                ReportColumn.text("basis", "取数口径", 280));
+        List<Map<String,Object>> rows = new FinancialStatementService(em).balance(dateTo);
         return GlComputedHeaders.apply("gl/balance-sheet",new ReportTableResponse(cols, rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1),com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
     }
 
@@ -230,113 +186,18 @@ public class GlReportService {
         return GlComputedHeaders.apply("gl/balance-sheet",balanceSheet(dateTo),options);
     }
 
-    /** 经来源凭证确认的根分类净额；余额方向沿用根类别，显示编码不参与身份判断。 */
-    private Map<GlReportSourceScopes.Root, BigDecimal> balancesByRoot(LocalDate date) {
-        var q = em.createNativeQuery(GlReportSourceScopes.balancesSql());
-        q.setParameter("d", date);
-        Map<GlReportSourceScopes.Root, BigDecimal> result = new EnumMap<>(GlReportSourceScopes.Root.class);
-        for (Object[] row : NativeQueryResults.objectArrayRows(q)) {
-            result.put(GlReportSourceScopes.Root.valueOf((String) row[0]), (BigDecimal) row[1]);
-        }
-        return result;
-    }
-
-    /** 累计损益净额（收入贷净 − 成本费用借净），截至 date。 */
-    private BigDecimal plNet(LocalDate date) {
-        var q = em.createNativeQuery("""
-                SELECT COALESCE(SUM(CASE WHEN ps.category = 'INCOME' THEN -e.direction * e.amount
-                                         WHEN ps.category = 'EXPENSE' THEN -e.direction * e.amount
-                                         ELSE 0 END), 0)
-                FROM gl_entries e JOIN payment_styles ps ON ps.id = e.style_id
-                WHERE e.is_deleted = false AND e.entry_date <= :d AND ps.category IN ('INCOME','EXPENSE')
-                """);
-        q.setParameter("d", date);
-        return (BigDecimal) q.getSingleResult();
-    }
-
-    private static BigDecimal sum(Map<GlReportSourceScopes.Root, BigDecimal> m, GlReportSourceScopes.Root... roots) {
-        BigDecimal t = BigDecimal.ZERO;
-        for (GlReportSourceScopes.Root root : roots) t = t.add(m.getOrDefault(root, BigDecimal.ZERO));
-        return t;
-    }
-
-    private static void addBsRow(List<Map<String, Object>> rows, String item, String side, int lineNo,
-                                 BigDecimal end, BigDecimal open) {
-        Map<String, Object> m = new LinkedHashMap<>();
-        m.put("item", item);
-        m.put("side", side);
-        m.put("lineNo", lineNo);
-        // 负债/权益类余额已按贷正归一化（balancesByRoot 按类别调号）。
-        m.put("periodEnd", end);
-        m.put("yearStart", open);
-        rows.add(m);
-    }
-
-    // ======================== ③④ 附 10/11 利润表 ========================
-
-    /** 利润表行集(12 个月)。税金/销售费用/财务费用取各自绑定的科目, 管理费用 = 043 其余科目。 */
+    /** Monthly and annual statements share the same template, account allocation and formulas. */
     private List<Map<String, Object>> profitRows(int year) {
-        LocalDate from = LocalDate.of(year, 1, 1);
-        LocalDate to = LocalDate.of(year, 12, 31);
         GlReportSourceScopes.assertUnambiguous(em);
-        BigDecimal[] income = monthlyByRoots(year, "INCOME", MAIN_REVENUE, OTHER_REVENUE);
-        BigDecimal[] cost = monthlyByRoots(year, "EXPENSE", MAIN_COST, OTHER_COST);
-        BigDecimal[] nonOp = monthlyByRoots(year, "INCOME", NON_OPERATING_REVENUE);
-        List<String> boundKeys = List.of(GlReportLine.PL_TAX.key(), GlReportLine.SALES_FEE.key(),
-                GlReportLine.PL_FINANCE.key());
-        GlReportLineSource.Bindings bindings = lines.bindings(boundKeys);
-        Map<String, BigDecimal[]> bound = lines.styleMonthly(boundKeys, "EXPENSE", from, to);
-        BigDecimal[] tax = bound.get(GlReportLine.PL_TAX.key());
-        BigDecimal[] sales = bound.get(GlReportLine.SALES_FEE.key());
-        BigDecimal[] fin = bound.get(GlReportLine.PL_FINANCE.key());
-        BigDecimal[] admin = lines.adminMonthly(boundKeys, from, to);
-
-        String[] labels = {"一、营业收入", "减：营业成本", "营业税金及附加", "销售费用", "管理费用", "财务费用",
-                "二、营业利润", "加：营业外收入", "减：营业外支出", "三、利润总额", "减：所得税费用", "四、净利润"};
-        List<Map<String, Object>> rows = new ArrayList<>();
-        for (String label : labels) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("item", label);
-            for (int mi = 1; mi <= 12; mi++) {
-                BigDecimal inc = at(income, mi), cst = at(cost, mi), tx = at(tax, mi), sl = at(sales, mi);
-                BigDecimal ad = at(admin, mi), fn = at(fin, mi), no = at(nonOp, mi);
-                BigDecimal opProfit = inc.subtract(cst).subtract(tx).subtract(sl).subtract(ad).subtract(fn);
-                BigDecimal total = opProfit.add(no);
-                // 未配置科目的行显示空(取数口径列标注), 不计入利润; 已配置但当月没有发生额显示 0。
-                BigDecimal v = switch (label) {
-                    case "一、营业收入" -> inc;
-                    case "减：营业成本" -> cst;
-                    case "营业税金及附加" -> bindings.bound(GlReportLine.PL_TAX.key()) ? tx : null;
-                    case "销售费用" -> bindings.bound(GlReportLine.SALES_FEE.key()) ? sl : null;
-                    case "管理费用" -> ad;
-                    case "财务费用" -> bindings.bound(GlReportLine.PL_FINANCE.key()) ? fn : null;
-                    case "二、营业利润" -> opProfit;
-                    case "加：营业外收入" -> no;
-                    case "减：营业外支出" -> null;
-                    case "三、利润总额" -> total;
-                    case "减：所得税费用" -> null;
-                    default -> total; // 四、净利润
-                };
-                row.put("m" + mi, v);
-            }
-            row.put("basis", switch (label) {
-                case "营业税金及附加" -> basis(GlReportLine.PL_TAX, bindings);
-                case "销售费用" -> basis(GlReportLine.SALES_FEE, bindings);
-                case "财务费用" -> basis(GlReportLine.PL_FINANCE, bindings);
-                case "管理费用" -> "043 费用科目, 扣除已归销售费用/税金/财务费用的科目";
-                case "减：营业外支出", "减：所得税费用" -> "暂无数据来源";
-                default -> "";
-            });
-            rows.add(row);
-        }
-        return rows;
+        return new FinancialStatementService(em).profit(year);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ, propagation = Propagation.REQUIRES_NEW)
     public ReportTableResponse profitAnnual(int year) {
         com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         List<ReportColumn> cols = new ArrayList<>();
-        cols.add(ReportColumn.text("item", "项目", 200));
+        cols.add(ReportColumn.text("item", "项目", 260));
+        cols.add(new ReportColumn("lineNo", "行次", "int", 70));
         for (int mi = 1; mi <= 12; mi++) cols.add(ReportColumn.money("m" + mi, String.format("%02d月", mi)));
         cols.add(ReportColumn.text("basis", "取数口径", 220));
         List<Map<String, Object>> rows = profitRows(year);
@@ -355,21 +216,25 @@ public class GlReportService {
         requireMonth(month);
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("item", "项目", 200),
-                ReportColumn.money("monthAmount", "本月金额"),
-                ReportColumn.money("yearAmount", "本年累计金额"),
+                new ReportColumn("lineNo", "行次", "int", 70),
+                ReportColumn.money("yearAmount", "本年累计金额").withUnitLabel("元"),
+                ReportColumn.money("monthAmount", "本月金额").withUnitLabel("元"),
                 ReportColumn.text("basis", "取数口径", 220));
-        List<Map<String, Object>> annual = profitRows(year);
+        GlReportSourceScopes.assertUnambiguous(em);
+        List<Map<String, Object>> annual = new FinancialStatementService(em).profit(year,month);
         List<Map<String, Object>> rows = new ArrayList<>();
         for (Map<String, Object> a : annual) {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("item", a.get("item"));
+            m.put("lineNo", a.get("lineNo"));
             m.put("monthAmount", a.get("m" + month));
-            BigDecimal ytd = null;
+            BigDecimal ytd = BigDecimal.ZERO;
+            boolean complete = true;
             for (int mi = 1; mi <= month; mi++) {
                 Object v = a.get("m" + mi);
-                if (v instanceof BigDecimal b) ytd = (ytd == null) ? b : ytd.add(b);
+                if (v instanceof BigDecimal b) ytd = ytd.add(b); else complete = false;
             }
-            m.put("yearAmount", ytd);
+            m.put("yearAmount", complete ? ytd : null);
             m.put("basis", a.get("basis"));
             rows.add(m);
         }

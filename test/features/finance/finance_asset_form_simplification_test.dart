@@ -25,6 +25,94 @@ final _assetPermissions = StateProvider<Set<String>>(
 );
 
 void main() {
+  testWidgets('late opening voucher lookup cannot publish after reader A-B-A', (
+    tester,
+  ) async {
+    final api = _PendingOpeningApi();
+    await _pump(
+      tester,
+      api: api,
+      existing: _existing(
+        FinanceAssetLedger.fixedAsset,
+        openingBalance: const {
+          'asOf': '2026-06-30',
+          'accumulatedAmount': '100',
+          'remainingMonths': 6,
+        },
+      ),
+    );
+    tester
+        .widget<SwitchListTile>(
+          find.byKey(const Key('asset-opening-link-voucher')),
+        )
+        .onChanged!(true);
+    await tester.pumpAndSettle();
+    _input(tester, '已生效的手工期初凭证编号').text = 'OPEN-001';
+    tester
+        .widget<TextButton>(find.widgetWithText(TextButton, '核对期初凭证'))
+        .onPressed!();
+    await tester.pump();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FinanceAssetFormSurface)),
+    );
+    container.read(_assetPermissions.notifier).state = {};
+    await tester.pump();
+    container.read(_assetPermissions.notifier).state = {
+      Perm.financeAssetView,
+      Perm.financeAssetEdit,
+    };
+    await tester.pump();
+    api.pending.complete([
+      {'id': 'old-owner-voucher'},
+    ]);
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(TextButton, '已关联期初凭证'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'opening balances retain exact decimals and derive the continuation month',
+    (tester) async {
+      final repository = _Repository();
+      const opening = {
+        'asOf': '2026-06-30',
+        'accumulatedAmount': '123456.1234',
+        'remainingMonths': 18,
+      };
+      await _pump(
+        tester,
+        repository: repository,
+        existing: _existing(
+          FinanceAssetLedger.fixedAsset,
+          openingBalance: opening,
+        ),
+      );
+      expect(
+        tester
+            .widget<SwitchListTile>(
+              find.byKey(const Key('asset-opening-enabled')),
+            )
+            .value,
+        isTrue,
+      );
+      expect(
+        tester
+            .widget<UtenInput>(
+              find.byKey(const Key('asset-opening-accumulated')),
+            )
+            .controller!
+            .text,
+        '123456.1234',
+      );
+      await tester.tap(find.byKey(const Key('finance-asset-form-save')));
+      await tester.pumpAndSettle();
+      expect(repository.saved!.openingBalance, opening);
+      expect(repository.saved!.startPeriod, '2026-07');
+      expect(repository.saved!.toJson()['openingBalance'], opening);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final scenario in ['selection', 'selection-aba', 'reader-aba']) {
     testWidgets('late asset custodian preserves $scenario', (tester) async {
       final api = _PendingCustodianApi();
@@ -255,6 +343,7 @@ FinanceAssetSummary _existing(
   FinanceAssetLedger ledger, {
   String acceptanceDate = '2026-01-05',
   String? custodianId,
+  Map<String, dynamic>? openingBalance,
 }) => FinanceAssetSummary.fromJson({
   'id': 'asset-1',
   'code': 'ZC-001',
@@ -283,6 +372,7 @@ FinanceAssetSummary _existing(
   'remark': '保留原始说明',
   'version': 7,
   'custodianId': custodianId,
+  'openingBalance': openingBalance,
 }, ledger);
 
 Future<void> _pump(
@@ -376,4 +466,15 @@ class _PendingCustodianApi extends _Api {
   }) => path.endsWith('/employee-a')
       ? pending.future
       : super.get(path, query: query);
+}
+
+class _PendingOpeningApi extends _Api {
+  final pending = Completer<List<Map<String, dynamic>>>();
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) => path.endsWith('/opening-vouchers')
+      ? pending.future
+      : super.getList(path, query: query);
 }

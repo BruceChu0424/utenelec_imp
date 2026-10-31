@@ -17,7 +17,7 @@ public final class ReportRecordHeaders {
     }
     public static Compiled compile(Map<String,String> types,Map<String,String> filters,Set<String> facetKeys) {
         Set<String> keys=new LinkedHashSet<>();
-        types.forEach((key,type)->{if(!key.startsWith("__")&&Set.of("text","number","money","count").contains(type))keys.add(key);});
+        types.forEach((key,type)->{if(!key.startsWith("__")&&Set.of("text","number","money","count","int").contains(type))keys.add(key);});
         Map<String,String> requested=new LinkedHashMap<>();
         if(filters!=null)filters.forEach((key,value)->{if(key.startsWith("search."))requested.put(key.substring(7),value);});
         Map<String,String> validated=ColumnKeywordSearch.validate(requested,keys);

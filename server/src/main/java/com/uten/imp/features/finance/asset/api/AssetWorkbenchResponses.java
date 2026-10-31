@@ -65,7 +65,8 @@ public final class AssetWorkbenchResponses {
             UUID sourceId,
             String sourceLineRef,
             LocalDate sourceDocumentDate,
-            UUID responsibleEmployeeId) {}
+            UUID responsibleEmployeeId,
+            AssetWorkbenchRequests.OpeningBalance openingBalance) {}
 
     public record Balance(
             String bookType,

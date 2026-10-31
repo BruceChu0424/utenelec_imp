@@ -343,7 +343,7 @@ void main() {
       find.byKey(const Key('finance-asset-posted-workflow-gate')),
       findsOneWidget,
     );
-    expect(find.text('核心落账暂未开放'), findsOneWidget);
+    expect(find.text('处置与提前终止暂未开放'), findsOneWidget);
     expect(
       find.byKey(const Key('finance-asset-configure-policy')),
       findsNothing,

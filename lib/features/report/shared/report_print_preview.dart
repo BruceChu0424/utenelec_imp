@@ -20,6 +20,7 @@ Future<UtenPrintTable> loadBoundedReportPrintPreview({
   required bool Function() isCurrent,
   int rowLimit = 2000,
   int pageSize = 500,
+  bool useSuggestedWidths = false,
   WeightDisplay weightDisplay = WeightDisplay.auto,
   String? Function(ReportColumn column, Map<String, dynamic> row)? cellTextOf,
   Future<Map<String, dynamic>> Function(
@@ -159,6 +160,15 @@ Future<UtenPrintTable> loadBoundedReportPrintPreview({
     return UtenPrintTable(
       columnKeys: List.unmodifiable(frozen.map((column) => column.key)),
       headers: List.unmodifiable(frozen.map((column) => column.label)),
+      columnWidths: useSuggestedWidths
+          ? frozen
+                .map(
+                  (column) => column.width?.isFinite == true
+                      ? column.width!.clamp(1.0, 2000.0).toDouble()
+                      : 120.0,
+                )
+                .toList(growable: false)
+          : null,
       rows: List.unmodifiable(rows),
       rowIds: List.unmodifiable(ids),
       factValues: List.unmodifiable(facts),

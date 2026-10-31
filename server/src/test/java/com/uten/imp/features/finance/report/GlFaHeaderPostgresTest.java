@@ -29,11 +29,11 @@ class GlFaHeaderPostgresTest {
     @BeforeAll static void start(){
         PG.start();var source=new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword());
         db=new JdbcTemplate(source);named=new NamedParameterJdbcTemplate(source);
-        MigratedProjectionSchema.createCurrentTables(db,"payment_styles","gl_entries","fixed_assets","deferred_expenses","fa_depreciation_log","da_amortization_log","departments");
+        MigratedProjectionSchema.createCurrentTables(db,"payment_styles","gl_entries","gl_vouchers","fixed_assets","deferred_expenses","fa_depreciation_log","da_amortization_log","departments");
     }
     @AfterAll static void stop(){PG.stop();}
     @BeforeEach void fixture() throws Exception {
-        db.execute("TRUNCATE payment_styles,gl_entries,fixed_assets,deferred_expenses,fa_depreciation_log,da_amortization_log,departments");
+        db.execute("TRUNCATE payment_styles,gl_entries,gl_vouchers,fixed_assets,deferred_expenses,fa_depreciation_log,da_amortization_log,departments");
         var em=mock(EntityManager.class);when(em.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0)));
         var access=FinanceReportTestAccess.company();assets=new FixedAssetService(em,mock(TxSessionVars.class),access);
         var constructor=GlReportService.class.getConstructors()[0];
@@ -61,38 +61,41 @@ class GlFaHeaderPostgresTest {
     @Test void depreciationSearchesTheFullActiveBookAndPreservesOriginalValuesAndDepartmentFacets(){
         UUID department=UUID.randomUUID();db.update("INSERT INTO departments(id,code,name) VALUES(?,'D','部门%_')",department);
         for(int n=1;n<=3;n++){
-            UUID asset=UUID.randomUUID();db.update("INSERT INTO fixed_assets(id,code,name,department_id,original_value,salvage_rate,useful_months,start_period,status) VALUES(?,?,?, ?,1000.1234,.05,10,'2026-01','在用')",asset,"FA-"+n,"资产%_"+n,department);
+            UUID asset=UUID.randomUUID();db.update("INSERT INTO fixed_assets(id,code,name,department_id,original_value,salvage_rate,useful_months,start_period,status,capitalized_on) VALUES(?,?,?, ?,1000.1234,.05,10,'2026-01','在用',DATE '2025-12-31')",asset,"FA-"+n,"资产%_"+n,department);
             postings("fa_depreciation_log","asset_id",asset,n);
         }
         db.update("UPDATE fixed_assets SET status='停用' WHERE code='FA-2'");
-        var options=new FinanceReportColumnOptions(Map.of("search.netValue","970.12","search.monthlyDep","95.01","search.postedMonths",">=2","dept","部门%_"),"code","desc");
-        var first=assets.depreciationSchedule(1,1,options);var second=assets.depreciationSchedule(2,1,options);
+        var options=new FinanceReportColumnOptions(Map.of("search.netValue","970.12","search.monthlyDep","0","search.postedMonths",">=2","dept","部门%_"),"code","desc");
+        var first=assets.depreciationSchedule(1,1,options,LocalDate.of(2026,5,31));var second=assets.depreciationSchedule(2,1,options,LocalDate.of(2026,5,31));
         assertThat(first.total()).isEqualTo(2);assertThat(first.rows().getFirst()).containsEntry("code","FA-2").containsEntry("accumDepExact","30.0003");
         assertThat(first.rows().getFirst()).containsEntry("status","停用");
         assertTotal(first,"originalValue","2000.2468");assertTotal(first,"accumDep","60.0006");assertTotal(first,"netValue","1940.24");
         assertThat(first.totals()).isEqualTo(second.totals());
         assertThat(first.totals()).extracting(com.uten.imp.common.report.ReportTotal::key).containsExactly("originalValue","accumDep","netValue");
         var activeFilters=new LinkedHashMap<>(options.filters());activeFilters.put("status","在用");
-        var active=assets.depreciationSchedule(1,1,new FinanceReportColumnOptions(activeFilters,null,null));
+        var active=assets.depreciationSchedule(1,1,new FinanceReportColumnOptions(activeFilters,null,null),LocalDate.of(2026,5,31));
         assertThat(active.total()).isEqualTo(1);assertThat(active.rows().getFirst()).containsEntry("code","FA-1");
         assertTotal(active,"originalValue","1000.1234");assertTotal(active,"accumDep","30.0003");assertTotal(active,"netValue","970.12");
         assertThat(second.rows().getFirst()).containsEntry("code","FA-1");assertThat(first.facets().get("dept").getFirst().count()).isEqualTo(2);
-        assertThat(assets.depreciationSchedule(3,1,options).rows()).isEmpty();
+        assertThat(assets.depreciationSchedule(3,1,options,LocalDate.of(2026,5,31)).rows()).isEmpty();
+        var historical=assets.depreciationSchedule(1,10,FinanceReportColumnOptions.NONE,LocalDate.of(2026,2,28));
+        assertThat(historical.total()).isEqualTo(3);
+        assertThat(historical.rows()).allSatisfy(row->assertThat((BigDecimal)row.get("monthlyDep")).isEqualByComparingTo("20.0002"));
         assertThat(first.columnSearchKeys()).contains("salvageRate","startPeriod","status").doesNotContain("__assetId");
     }
     @Test void amortizationFiltersCompletedHistoryBeforePagingAndDoesNotCountReversals(){
         for(int n=1;n<=3;n++){
-            UUID deferred=UUID.randomUUID();db.update("INSERT INTO deferred_expenses(id,code,name,total_amount,useful_months,start_period,status) VALUES(?,?,?,1000.1234,10,'2026-01','摊销中')",deferred,"DA-"+n,"待摊%_"+n);
+            UUID deferred=UUID.randomUUID();db.update("INSERT INTO deferred_expenses(id,code,name,total_amount,useful_months,start_period,status,recognized_on) VALUES(?,?,?,1000.1234,10,'2026-01','摊销中',DATE '2025-12-31')",deferred,"DA-"+n,"待摊%_"+n);
             postings("da_amortization_log","deferred_id",deferred,n);
         }
-        var options=new FinanceReportColumnOptions(Map.of("search.remain","970.12","search.accumAmt","30.0003","search.monthlyAmt","100.01","search.startPeriod","2026-01"),"code","asc");
-        var result=assets.amortizationSchedule(2,1,options);assertThat(result.total()).isEqualTo(2);assertThat(result.rows().getFirst()).containsEntry("code","DA-2").containsEntry("postedMonths",2L).containsEntry("accumAmtExact","30.0003");
+        var options=new FinanceReportColumnOptions(Map.of("search.remain","970.12","search.accumAmt","30.0003","search.monthlyAmt","0","search.startPeriod","2026-01"),"code","asc");
+        var result=assets.amortizationSchedule(2,1,options,LocalDate.of(2026,5,31));assertThat(result.total()).isEqualTo(2);assertThat(result.rows().getFirst()).containsEntry("code","DA-2").containsEntry("postedMonths",2L).containsEntry("accumAmtExact","30.0003");
         assertTotal(result,"totalAmount","2000.2468");assertTotal(result,"accumAmt","60.0006");assertTotal(result,"remain","1940.24");
         assertThat(result.totals()).extracting(com.uten.imp.common.report.ReportTotal::key).containsExactly("totalAmount","accumAmt","remain");
         var narrow=new LinkedHashMap<>(options.filters());narrow.put("search.code","DA-2");
-        var single=assets.amortizationSchedule(1,1,new FinanceReportColumnOptions(narrow,null,null));
+        var single=assets.amortizationSchedule(1,1,new FinanceReportColumnOptions(narrow,null,null),LocalDate.of(2026,5,31));
         assertThat(single.total()).isEqualTo(1);assertTotal(single,"totalAmount","1000.1234");assertTotal(single,"accumAmt","30.0003");assertTotal(single,"remain","970.12");
-        assertThat(result.columnSearchKeys()).hasSize(10);assertThat(assets.amortizationSchedule(3,1,options).rows()).isEmpty();
+        assertThat(result.columnSearchKeys()).hasSize(10);assertThat(assets.amortizationSchedule(3,1,options,LocalDate.of(2026,5,31)).rows()).isEmpty();
     }
     private static void assertTotal(ReportTableResponse response,String key,String expected) {
         var total=response.totals().stream().filter(value->value.key().equals(key)).findFirst().orElseThrow();

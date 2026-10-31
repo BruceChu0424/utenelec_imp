@@ -40,6 +40,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/platform_branding/platform_branding_provider.dart';
 import '../../../shared/auth/cost_workbench_capability.dart';
 import '../../basic_data/models/client_node.dart';
 import '../../basic_data/widgets/uten_client_picker.dart';
@@ -90,6 +91,7 @@ class _FinanceReportTablePageState
   late final _reportRead = ReportPagedRead(_reportMetadata);
 
   ReportData? _data;
+  bool _preparingTemplate = false;
   Object? _acceptedReadQuery;
   bool _loading = false;
   int _loadGeneration = 0;
@@ -293,20 +295,53 @@ class _FinanceReportTablePageState
   };
 
   /// 按真实服务器分页读取当前条件的前2000行，保持原预览上限及列格式。
-  Future<UtenPrintTable> _printLoader() async {
+  Future<UtenPrintTable> _printLoader({bool template = false}) async {
     final api = ref.read(apiClientProvider);
     final generation = _loadGeneration;
     final epoch = ref.read(exportContextEpochProvider);
     return loadBoundedReportPrintPreview(
+      useSuggestedWidths: template,
       api: api,
       endpointOf: () => _variant.endpoint,
-      queryOf: () => _exportQuery,
+      queryOf: () => {..._exportQuery, if (template) 'layout': 'template'},
       isCurrent: () =>
           mounted &&
           generation == _loadGeneration &&
           epoch == ref.read(exportContextEpochProvider) &&
           identical(api, ref.read(apiClientProvider)),
     );
+  }
+
+  Future<void> _openStatementTemplate() async {
+    if (_preparingTemplate) return;
+    setState(() => _preparingTemplate = true);
+    final generation = _loadGeneration;
+    final epoch = ref.read(exportContextEpochProvider);
+    try {
+      final branding = await ref.read(platformBrandingProvider.future);
+      if (!mounted ||
+          generation != _loadGeneration ||
+          epoch != ref.read(exportContextEpochProvider)) {
+        return;
+      }
+      await showUtenPrintPreview(
+        context: context,
+        title: _exportReport == 'gl/balance-sheet' ? '资产负债表' : '利润表',
+        subtitle:
+            '编制单位：${branding.companyName}  ${_exportReport == 'gl/balance-sheet' ? '会小企01表 · ${_fmt(_to)}' : '会小企02表 · ${_to.year}年${_to.month}月'}  单位：元',
+        loader: () => _printLoader(template: true),
+        applyTableProjection: false,
+        exportEndpoint: '/finance/reports/export',
+        exportPermission: Perm.financeReportExport,
+        exportReport: _exportReport,
+        exportQuery: {..._exportQuery, 'layout': 'template'},
+        exportFilename: _variant.label,
+      );
+    } catch (_) {
+      if (mounted) context.appError('模板预览加载失败，请重试');
+    } finally {
+      if (mounted) setState(() => _preparingTemplate = false);
+    }
   }
 
   String get _readEndpoint => _variant.endpoint;
@@ -597,6 +632,11 @@ class _FinanceReportTablePageState
                   _persistAndReload();
                 },
               ),
+              if (_exportReport == 'gl/profit-monthly')
+                const Text('按截止日所在月份统计本月及本年累计'),
+              if (_exportReport == 'gl/balance-sheet' ||
+                  _exportReport.startsWith('fa/'))
+                const Text('余额与明细截至所选截止日'),
               if (_isCustomerPrepaymentEvents)
                 SizedBox(
                   width: 240,
@@ -619,7 +659,7 @@ class _FinanceReportTablePageState
                   key: const ValueKey('gl-line-bindings'),
                   onPressed: _openLineBindings,
                   icon: const Icon(Icons.tune_outlined, size: 18),
-                  label: const Text('附表取数设置'),
+                  label: const Text('报表取数设置'),
                 ),
               for (final entry in _filters.entries)
                 Chip(
@@ -739,6 +779,20 @@ class _FinanceReportTablePageState
             type: UtenButtonType.secondary,
             onPressed: _openInventoryCostPosting,
             child: Text(AppLocalizations.of(context).inventoryCostTitle),
+          ),
+        if (_exportReport == 'gl/balance-sheet' ||
+            _exportReport == 'gl/profit-monthly')
+          UtenButton(
+            key: const Key('finance-statement-template-preview'),
+            onPressed:
+                _filters.isEmpty &&
+                    _acceptedQueryCurrent &&
+                    !_loading &&
+                    !_preparingTemplate
+                ? _openStatementTemplate
+                : null,
+            size: UtenButtonSize.large,
+            child: const Text('模板预览'),
           ),
         UtenPrintPreviewButton(
           title: '钱流${_variant.label}',

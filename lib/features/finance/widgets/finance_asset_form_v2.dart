@@ -22,6 +22,7 @@ import '../../../components/layout/uten_form_grid.dart';
 import '../../../components/layout/uten_detail_action_layout.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/latest_request_guard.dart';
+import '../../../core/network/api_client.dart';
 import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -105,6 +106,14 @@ class _FinanceAssetFormSurfaceState
   final _formKey = GlobalKey<FormState>();
   final _categoryGuard = LatestRequestGuard();
   late final TextEditingController _name;
+  late final TextEditingController _openingAccumulated;
+  late final TextEditingController _openingRemaining;
+  late final TextEditingController _openingVoucherNo;
+  bool _opening = false;
+  bool _linkOpeningVoucher = false;
+  DateTime? _openingAsOf;
+  String? _openingVoucherId;
+  bool _checkingVoucher = false;
   late final TextEditingController _amount;
   late final TextEditingController _months;
   late final TextEditingController _salvageRate;
@@ -167,6 +176,13 @@ class _FinanceAssetFormSurfaceState
     'name': _name.text,
     'amount': _amount.text,
     'months': _months.text,
+    'opening': _opening,
+    'openingAsOf': _iso(_openingAsOf),
+    'openingAccumulated': _openingAccumulated.text,
+    'openingRemaining': _openingRemaining.text,
+    'linkOpeningVoucher': _linkOpeningVoucher,
+    'openingVoucherId': _openingVoucherId,
+    'openingVoucherNo': _openingVoucherNo.text,
     'salvageRate': _salvageRate.text,
     'location': _location.text,
     'serialNumber': _serialNumber.text,
@@ -193,6 +209,13 @@ class _FinanceAssetFormSurfaceState
     _name.text = draftText(data, 'name');
     _amount.text = draftText(data, 'amount');
     _months.text = draftText(data, 'months');
+    _opening = data['opening'] == true;
+    _openingAsOf = _parseDate(data['openingAsOf'] as String?);
+    _openingAccumulated.text = draftText(data, 'openingAccumulated');
+    _openingRemaining.text = draftText(data, 'openingRemaining');
+    _linkOpeningVoucher = data['linkOpeningVoucher'] == true;
+    _openingVoucherId = data['openingVoucherId'] as String?;
+    _openingVoucherNo.text = draftText(data, 'openingVoucherNo');
     _salvageRate.text = draftText(data, 'salvageRate');
     _location.text = draftText(data, 'location');
     _serialNumber.text = draftText(data, 'serialNumber');
@@ -227,6 +250,20 @@ class _FinanceAssetFormSurfaceState
   void initState() {
     super.initState();
     final item = widget.existing;
+    final opening = item?.openingBalance;
+    _opening = opening != null;
+    _openingAsOf = _parseDate(opening?['asOf']?.toString());
+    _openingVoucherId = opening?['existingVoucherId']?.toString();
+    _linkOpeningVoucher = _openingVoucherId != null;
+    _openingAccumulated = TextEditingController(
+      text: opening?['accumulatedAmount']?.toString() ?? '0',
+    );
+    _openingRemaining = TextEditingController(
+      text: opening?['remainingMonths']?.toString() ?? '',
+    );
+    _openingVoucherNo = TextEditingController(
+      text: _linkOpeningVoucher ? '已关联期初凭证' : '',
+    );
     _name = TextEditingController(text: item?.name ?? '');
     _amount = TextEditingController(
       text: item == null
@@ -246,6 +283,9 @@ class _FinanceAssetFormSurfaceState
     _sourceLineRef = TextEditingController(text: item?.sourceLineRef ?? '');
     _remark = TextEditingController(text: item?.remark ?? '');
     _controllers = [
+      _openingAccumulated,
+      _openingRemaining,
+      _openingVoucherNo,
       _name,
       _amount,
       _months,
@@ -289,7 +329,9 @@ class _FinanceAssetFormSurfaceState
   }
 
   String? get _derivedStartPeriod {
-    final date = _fixed ? _readyForUseDate : _benefitStartDate;
+    final date = _fixed
+        ? (_opening ? _openingAsOf : _readyForUseDate)
+        : _benefitStartDate;
     if (date == null) return null;
     if (!_fixed) {
       return '${date.year}-${date.month.toString().padLeft(2, '0')}';
@@ -463,6 +505,13 @@ class _FinanceAssetFormSurfaceState
       }
     });
     if (_departmentId == null) valid = false;
+    if (_fixed &&
+        _opening &&
+        (_openingAsOf == null ||
+            (_linkOpeningVoucher && _openingVoucherId == null))) {
+      _dateError = '请填写接续日，并核对需要关联的期初凭证';
+      valid = false;
+    }
     return valid;
   }
 
@@ -483,6 +532,14 @@ class _FinanceAssetFormSurfaceState
     }
     final existing = widget.existing;
     final input = FinanceAssetDraftInput(
+      openingBalance: _fixed && _opening
+          ? {
+              'asOf': _iso(_openingAsOf),
+              'accumulatedAmount': _openingAccumulated.text.trim(),
+              'remainingMonths': int.tryParse(_openingRemaining.text.trim()),
+              if (_linkOpeningVoucher) 'existingVoucherId': _openingVoucherId,
+            }
+          : null,
       ledger: widget.ledger,
       categoryId: _categoryId,
       name: _name.text,
@@ -667,6 +724,7 @@ class _FinanceAssetFormSurfaceState
                               ],
                               const SizedBox(height: UtenSpacing.s12),
                               _startPeriodNotice(theme),
+                              if (_fixed) _openingFields(),
                               const SizedBox(height: UtenSpacing.s24),
                               UtenCollapsibleSection(
                                 key: const ValueKey(
@@ -1033,16 +1091,135 @@ class _FinanceAssetFormSurfaceState
     );
   }
 
+  Future<void> _checkOpeningVoucher() async {
+    final number = _openingVoucherNo.text.trim();
+    if (number.isEmpty) {
+      context.appWarning('请先填写完整的期初凭证编号');
+      return;
+    }
+    final ownerCurrent = captureReadOwner(ref);
+    setState(() => _checkingVoucher = true);
+    try {
+      final rows = await ref
+          .read(apiClientProvider)
+          .getList(
+            '/finance/fixed-assets/opening-vouchers',
+            query: {'voucherNo': number},
+          );
+      if (!mounted ||
+          !ownerCurrent() ||
+          number != _openingVoucherNo.text.trim()) {
+        return;
+      }
+      if (rows.length != 1) {
+        context.appError('未找到唯一的可接续手工凭证，请核对编号及生效状态');
+        return;
+      }
+      setState(() => _openingVoucherId = rows.single['id']?.toString());
+      _markDirty();
+      context.appSuccess('已找到期初凭证；启用时将核对科目与金额');
+    } catch (_) {
+      if (mounted && ownerCurrent()) context.appError('期初凭证查询失败，请重试');
+    } finally {
+      if (mounted) setState(() => _checkingVoucher = false);
+    }
+  }
+
+  Widget _openingFields() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      SwitchListTile(
+        key: const Key('asset-opening-enabled'),
+        title: const Text('接续已有固定资产'),
+        subtitle: const Text('保留接续日前的累计折旧，只计提剩余期间'),
+        value: _opening,
+        onChanged: (value) => setState(() {
+          _opening = value;
+          _dirty = true;
+        }),
+      ),
+      if (_opening) ...[
+        UtenFormGrid(
+          children: [
+            UtenDateField(
+              label: '接续日（月末）',
+              value: _openingAsOf,
+              onChanged: (value) => setState(() {
+                _openingAsOf = value;
+                _dirty = true;
+              }),
+            ),
+            UtenInput(
+              key: const Key('asset-opening-accumulated'),
+              label: '期初累计折旧',
+              controller: _openingAccumulated,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              validator: (value) =>
+                  value != null &&
+                      RegExp(r'^\d{1,14}(\.\d{1,4})?$').hasMatch(value.trim())
+                  ? null
+                  : '请输入非负金额，最多 4 位小数',
+            ),
+            UtenInput(
+              key: const Key('asset-opening-remaining'),
+              label: '剩余计提月数（已提足填 0）',
+              controller: _openingRemaining,
+              keyboardType: TextInputType.number,
+              validator: (value) {
+                final months = int.tryParse(value ?? '');
+                return months != null && months >= 0 && months <= 1200
+                    ? null
+                    : '请输入 0 到 1200';
+              },
+            ),
+          ],
+        ),
+        SwitchListTile(
+          key: const Key('asset-opening-link-voucher'),
+          title: const Text('总账已经记录这笔期初余额'),
+          subtitle: const Text('已入账须关联原凭证，避免重复记账；未入账将生成期初凭证'),
+          value: _linkOpeningVoucher,
+          onChanged: (value) => setState(() {
+            _linkOpeningVoucher = value;
+            _dirty = true;
+          }),
+        ),
+        if (_linkOpeningVoucher) ...[
+          UtenInput(
+            label: '已生效的手工期初凭证编号',
+            controller: _openingVoucherNo,
+            onChanged: (_) => setState(() => _openingVoucherId = null),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: _checkingVoucher ? null : _checkOpeningVoucher,
+              child: Text(_openingVoucherId == null ? '核对期初凭证' : '已关联期初凭证'),
+            ),
+          ),
+        ],
+      ],
+    ],
+  );
+
   Widget _startPeriodNotice(ThemeData theme) {
     final period = _derivedStartPeriod;
     return Text(
-      financeAssetEntryText(
-        context,
-        _fixed
-            ? (period == null ? 'depreciationPending' : 'depreciationPeriod')
-            : (period == null ? 'amortizationPending' : 'amortizationPeriod'),
-        period: period,
-      ),
+      _fixed && _opening
+          ? (period == null ? '请填写接续日，计提从次月开始' : '从 $period 起按剩余金额和剩余月数计提')
+          : financeAssetEntryText(
+              context,
+              _fixed
+                  ? (period == null
+                        ? 'depreciationPending'
+                        : 'depreciationPeriod')
+                  : (period == null
+                        ? 'amortizationPending'
+                        : 'amortizationPeriod'),
+              period: period,
+            ),
       style: theme.textTheme.bodySmall?.copyWith(
         color: theme.colorScheme.onSurfaceVariant,
       ),

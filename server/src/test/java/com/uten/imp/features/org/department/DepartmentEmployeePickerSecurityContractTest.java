@@ -160,7 +160,8 @@ class DepartmentEmployeePickerSecurityContractTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"employee:view", "account:support", "notice:publish", "client:assign",
-            "warehouse:edit", "employee:handover", "employee:offboard", "audit_log:view", "authorization:manage"})
+            "warehouse:edit", "employee:handover", "employee:offboard", "audit_log:view", "authorization:manage",
+            "company_file:view"})
     void visitorCannotReadCompanyHierarchyEvenWithAnInternalAuthority(String permission) throws Exception {
         login(AuthUser.visitor(UUID.randomUUID(), "visitor", "V0001", Set.of(permission)));
 
@@ -185,7 +186,7 @@ class DepartmentEmployeePickerSecurityContractTest {
                 "anonymous", "anonymousUser", List.of(new SimpleGrantedAuthority("ROLE_ANONYMOUS"))));
         http.perform(get(PICKER)).andExpect(status().isForbidden());
 
-        login(staff(Set.of("employee:view", "account:support", "authorization:manage"), true, true));
+        login(staff(Set.of("employee:view", "account:support", "authorization:manage", "company_file:view"), true, true));
         http.perform(get(PICKER)).andExpect(status().isForbidden());
         verifyNoInteractions(departments, employees);
     }

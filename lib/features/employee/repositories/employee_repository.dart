@@ -35,7 +35,7 @@ abstract interface class EmployeeRepository {
   Future<EmployeeAccountReadiness> accountReadiness(String id);
   Future<void> lockAccount(String id);
   Future<void> unlockAccount(String id);
-  Future<String> resetPassword(String id);
+  Future<String> resetPassword(String id, {String? temporaryPassword});
   Future<EmployeeProfile> update(String id, Map<String, dynamic> body);
   Future<List<EmployeeSecondaryDepartment>> listSecondaryDepartments(String id);
   Future<void> replaceSecondaryDepartments(
@@ -309,11 +309,19 @@ class DioEmployeeRepository
   }
 
   @override
-  Future<String> resetPassword(String id) async {
-    final json = await api.post(ApiEndpoints.employeeAccountResetPassword(id));
+  Future<String> resetPassword(String id, {String? temporaryPassword}) async {
+    final json = await api.post(
+      ApiEndpoints.employeeAccountResetPassword(id),
+      body: temporaryPassword == null
+          ? null
+          : {'temporaryPassword': temporaryPassword},
+    );
     final issued = json['temporaryPassword'];
     if (issued is! String || issued.trim().isEmpty) {
       throw const FormatException('重置密码响应缺少 temporaryPassword');
+    }
+    if (temporaryPassword != null && issued != temporaryPassword) {
+      throw const FormatException('临时密码结果与本次输入不一致，请核对账号状态');
     }
     return issued;
   }

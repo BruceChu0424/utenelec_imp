@@ -29,6 +29,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/account_password_reset_outcome.dart';
 import '../../../shared/auth/permission_action_type.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
@@ -535,11 +536,20 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
       widget.canManageAuthorization ||
       ref.read(currentPermissionsProvider).contains(Perm.accountSupport);
 
-  bool _supportTargetAllowed(EffectivePermissions? data) =>
+  bool _supportTargetAllowed(
+    EffectivePermissions? data, {
+    bool passwordReset = false,
+  }) =>
       _hasAccountSupport &&
-      widget.user.accountSupportAllowed != false &&
+      (!passwordReset ||
+          ref.read(currentPermissionsProvider).contains(Perm.accountSupport)) &&
       ref.read(authenticatedScopeProvider)?.userId != widget.user.id &&
-      data?.superAdmin != true;
+      (passwordReset
+          ? (widget.user.passwordResetSupportAllowed ??
+                (widget.user.accountSupportAllowed != false &&
+                    data?.superAdmin != true))
+          : (widget.user.accountSupportAllowed != false &&
+                data?.superAdmin != true));
 
   List<Widget> _accountHeaderActions(EffectivePermissions? data) {
     final user = widget.user;
@@ -1626,13 +1636,19 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
                 onPressed:
                     _acting ||
                         !user.passwordResetAllowed ||
-                        !_supportTargetAllowed(_currentEffective)
+                        !_supportTargetAllowed(
+                          _currentEffective,
+                          passwordReset: true,
+                        )
                     ? null
                     : _openSetTemporaryPassword,
                 onDisabledTap:
                     _acting ||
                         user.passwordResetAllowed ||
-                        !_supportTargetAllowed(_currentEffective)
+                        !_supportTargetAllowed(
+                          _currentEffective,
+                          passwordReset: true,
+                        )
                     ? null
                     : _explainLifecycleRestriction,
                 child: Text(user.mustChangePassword ? '重新设置临时密码' : '设置临时密码'),
@@ -1934,20 +1950,21 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
   bool _accountActionCurrent(
     int operation,
     String userId,
-    SensitiveReadBoundary boundary,
-  ) =>
+    SensitiveReadBoundary boundary, {
+    bool passwordReset = false,
+  }) =>
       mounted &&
       operation == _accountOperation &&
       widget.user.id == userId &&
       ref.read(sensitiveReadBoundaryProvider) == boundary &&
-      _supportTargetAllowed(_currentEffective);
+      _supportTargetAllowed(_currentEffective, passwordReset: passwordReset);
 
   /// 设置临时密码：先确认，再调端点 (服务端要求再认证，统一密码框)，最后一次性展示明文。
   Future<void> _openSetTemporaryPassword() async {
     final user = widget.user;
     if (_acting ||
         !user.passwordResetAllowed ||
-        !_supportTargetAllowed(_currentEffective)) {
+        !_supportTargetAllowed(_currentEffective, passwordReset: true)) {
       return;
     }
     final boundary = ref.read(sensitiveReadBoundaryProvider);
@@ -1963,17 +1980,39 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         displayName: user.employeeName ?? user.loginAccount,
         loginAccount: user.loginAccount,
         permissionDiscardWarning: discardWarning,
+        isCurrent: () => _accountActionCurrent(
+          operation,
+          user.id,
+          boundary,
+          passwordReset: true,
+        ),
+        ownerChanges: _credentialOwner,
+        allowManual: user.passwordResetSupportAllowed != null,
       );
-      if (confirmed != true ||
+      if (confirmed == null ||
           !mounted ||
-          !_accountActionCurrent(operation, user.id, boundary)) {
+          !_accountActionCurrent(
+            operation,
+            user.id,
+            boundary,
+            passwordReset: true,
+          )) {
         return;
       }
       setState(() => _confirmingAccountAction = false);
       final temporaryPassword = await ref
           .read(adminRepositoryProvider)
-          .resetPassword(user.id);
-      if (!mounted || !_accountActionCurrent(operation, user.id, boundary)) {
+          .resetPassword(
+            user.id,
+            temporaryPassword: confirmed.temporaryPassword,
+          );
+      if (!mounted ||
+          !_accountActionCurrent(
+            operation,
+            user.id,
+            boundary,
+            passwordReset: true,
+          )) {
         return;
       }
       if (discardWarning != null) _discardPermissionDraftAfterAccountAction();
@@ -1985,14 +2024,36 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         loginAccount: user.loginAccount,
         employeeName: user.employeeName,
         employeeCode: user.employeeCode,
-        isCurrent: () => _accountActionCurrent(operation, user.id, boundary),
+        isCurrent: () => _accountActionCurrent(
+          operation,
+          user.id,
+          boundary,
+          passwordReset: true,
+        ),
         ownerChanges: _credentialOwner,
       );
-      if (mounted && _accountActionCurrent(operation, user.id, boundary)) {
+      if (mounted &&
+          _accountActionCurrent(
+            operation,
+            user.id,
+            boundary,
+            passwordReset: true,
+          )) {
         widget.onAccountChanged();
       }
     } on ApiException catch (error) {
-      if (!mounted || !_accountActionCurrent(operation, user.id, boundary)) {
+      if (!mounted ||
+          !_accountActionCurrent(
+            operation,
+            user.id,
+            boundary,
+            passwordReset: true,
+          )) {
+        return;
+      }
+      if (isAccountPasswordResetUncertain(error)) {
+        widget.onAccountChanged();
+        context.appWarning(accountPasswordResetUncertainMessage);
         return;
       }
       if (error.code == 'CONFLICT') widget.onAccountChanged();
@@ -2001,10 +2062,17 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
         error.message.isNotEmpty ? error.message : '设置临时密码失败，请稍后重试',
       );
     } catch (_) {
-      if (!mounted || !_accountActionCurrent(operation, user.id, boundary)) {
+      if (!mounted ||
+          !_accountActionCurrent(
+            operation,
+            user.id,
+            boundary,
+            passwordReset: true,
+          )) {
         return;
       }
-      UtenToast.error(context, '设置临时密码失败，请稍后重试');
+      widget.onAccountChanged();
+      context.appWarning(accountPasswordResetUncertainMessage);
     } finally {
       if (mounted && operation == _accountOperation) {
         setState(() {

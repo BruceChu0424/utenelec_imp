@@ -57,6 +57,47 @@ const _captureScreenshots = bool.fromEnvironment(
 );
 
 void main() {
+  testWidgets(
+    'superadmin reset capability opens only password support and accepts custom input',
+    (tester) async {
+      final repository = _Repository(
+        protected: true,
+        superAdmin: true,
+        resetSupportAllowed: true,
+      );
+      await _mount(tester, repository, _AiRepository(), width: 1440);
+      expect(
+        find.byKey(const ValueKey('admin-header-account-status')),
+        findsNothing,
+      );
+      await tester.tap(find.text('账号安全'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('设置临时密码'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('手动输入'));
+      await tester.pumpAndSettle();
+      const custom = 'Admin-request!';
+      for (final key in [
+        'temporary-password-input',
+        'temporary-password-confirmation',
+      ]) {
+        await tester.enterText(
+          find.descendant(
+            of: find.byKey(ValueKey(key)),
+            matching: find.byType(TextField),
+          ),
+          custom,
+        );
+      }
+      await tester.tap(find.byKey(const Key('set-temporary-password-confirm')));
+      await tester.pumpAndSettle();
+      expect(repository.requestedPasswords, [custom]);
+      expect(find.text(custom), findsOneWidget);
+      expect(repository.lockedUsers, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   permissionRealAlignmentCases();
   testWidgets(
     'saving baseline refreshes an already loaded department dependency warning',
@@ -1490,14 +1531,17 @@ class _Repository implements AdminRepository {
     this.editablePermission = false,
     this.aiPermission = false,
     this.superAdmin = false,
+    this.resetSupportAllowed,
   });
   final bool protected;
   final bool paged;
   final bool editablePermission;
   final bool aiPermission;
   final bool superAdmin;
+  final bool? resetSupportAllowed;
   final lockedUsers = <String>[];
   final resetUsers = <String>[];
+  final requestedPasswords = <String?>[];
   int refreshedTargets = 0;
   String status = 'active';
   AdminUserSummary get user => AdminUserSummary(
@@ -1514,6 +1558,7 @@ class _Repository implements AdminRepository {
     departmentName: '制造部',
     positionName: '工程师',
     accountSupportAllowed: !protected,
+    passwordResetSupportAllowed: resetSupportAllowed,
   );
   @override
   Future<PagedResult<AdminUserSummary>> listUsers({
@@ -1611,9 +1656,13 @@ class _Repository implements AdminRepository {
   }
 
   @override
-  Future<String> resetPassword(String userId) async {
+  Future<String> resetPassword(
+    String userId, {
+    String? temporaryPassword,
+  }) async {
     resetUsers.add(userId);
-    return 'Temp-Demo!12345';
+    requestedPasswords.add(temporaryPassword);
+    return temporaryPassword ?? 'Temp-Demo!12345';
   }
 
   @override

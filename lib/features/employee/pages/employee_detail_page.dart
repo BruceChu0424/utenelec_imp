@@ -595,7 +595,10 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
   String? _accountStatus(EmployeeProfile profile) =>
       profile.accountDeleted ? null : profile.accountStatus;
 
-  bool _maySupportAccount(EmployeeProfile profile) {
+  bool _maySupportAccount(
+    EmployeeProfile profile, {
+    bool passwordReset = false,
+  }) {
     final owner = ref.read(sensitiveReadBoundaryProvider);
     final self = ref.read(sessionProvider).user?.employeeId == profile.id;
     return owner == _profileOwner &&
@@ -604,7 +607,10 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
         !owner.identity!.readOnly &&
         owner.permissions.contains(Perm.accountSupport) &&
         !self &&
-        profile.accountSupportAllowed != false &&
+        (passwordReset
+            ? (profile.passwordResetSupportAllowed ??
+                  profile.accountSupportAllowed != false)
+            : profile.accountSupportAllowed != false) &&
         const {'active', 'probation', 'onLeave'}.contains(profile.status);
   }
 
@@ -648,7 +654,8 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                 onPressed: _accountBusy ? null : _onUnlockAccount,
                 child: Text(l10n.employeeActionUnlockAccount),
               ),
-            if (canSupport && (status == 'active' || status == 'locked'))
+            if (_maySupportAccount(profile, passwordReset: true) &&
+                (status == 'active' || status == 'locked'))
               UtenButton(
                 key: const ValueKey('employee-reset-password-action'),
                 type: UtenButtonType.secondary,
@@ -1550,8 +1557,9 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     int request,
     SensitiveReadBoundary owner,
     String employeeId,
-    String? status,
-  ) {
+    String? status, {
+    bool passwordReset = false,
+  }) {
     final profile = _profile;
     return mounted &&
         request == _accountRequest &&
@@ -1615,7 +1623,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
     final profile = _profile;
     if (_accountBusy ||
         profile == null ||
-        !_maySupportAccount(profile) ||
+        !_maySupportAccount(profile, passwordReset: true) ||
         !const {'active', 'locked'}.contains(_accountStatus(profile))) {
       return;
     }
@@ -1628,11 +1636,23 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
       final changed = await showEmployeeResetPasswordDialog(
         context,
         employee: profile,
-        isCurrent: () => _sameAccountAction(request, owner, employeeId, status),
+        isCurrent: () => _sameAccountAction(
+          request,
+          owner,
+          employeeId,
+          status,
+          passwordReset: true,
+        ),
         ownerChanges: _accountOwnerChanges,
       );
       if (changed == true &&
-          _sameAccountAction(request, owner, employeeId, status)) {
+          _sameAccountAction(
+            request,
+            owner,
+            employeeId,
+            status,
+            passwordReset: true,
+          )) {
         await _load();
       }
     } finally {

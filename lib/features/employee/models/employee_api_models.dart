@@ -288,6 +288,7 @@ class EmployeeProfile {
     this.accountStatus,
     this.accountDeleted = false,
     this.accountSupportAllowed,
+    this.passwordResetSupportAllowed,
     this.emergencyContacts = const [],
     this.history = const [],
     this.resolvedFromEmployeeId,
@@ -366,6 +367,9 @@ class EmployeeProfile {
 
   /// 服务端目标边界；null 兼容旧服务端，仍须当前权限和写接口最终校验。
   final bool? accountSupportAllowed;
+
+  /// Action-specific server capability; other account actions retain their boundary.
+  final bool? passwordResetSupportAllowed;
 
   final List<EmergencyContactView> emergencyContacts;
   final List<EmploymentHistoryView> history;
@@ -463,6 +467,7 @@ class EmployeeProfile {
       accountStatus: json['accountStatus'] as String?,
       accountDeleted: json['accountDeleted'] as bool? ?? false,
       accountSupportAllowed: json['accountSupportAllowed'] as bool?,
+      passwordResetSupportAllowed: json['passwordResetSupportAllowed'] as bool?,
       emergencyContacts: ec
           .map((e) => EmergencyContactView.fromJson(e as Map<String, dynamic>))
           .toList(),

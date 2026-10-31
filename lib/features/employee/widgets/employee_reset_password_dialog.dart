@@ -10,6 +10,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/account_action_owner.dart';
+import '../../../shared/auth/account_password_reset_outcome.dart';
+import '../../../shared/widgets/temporary_password_input.dart';
 import '../models/employee_api_models.dart';
 import '../repositories/employee_repository.dart';
 import 'employee_dialog_error_text.dart';
@@ -49,8 +51,10 @@ class _EmployeeResetPasswordDialogState
     extends ConsumerState<_EmployeeResetPasswordDialog> {
   bool _submitting = false;
   bool _invalidated = false;
+  bool _outcomeUncertain = false;
   late final AccountActionOwner _owner;
   ModalRoute<bool>? _route;
+  final _passwordInput = TemporaryPasswordInputController();
   String? _temporaryPassword;
   String? _error;
 
@@ -69,6 +73,7 @@ class _EmployeeResetPasswordDialogState
 
   @override
   void dispose() {
+    _passwordInput.dispose();
     _owner.dispose();
     super.dispose();
   }
@@ -95,6 +100,7 @@ class _EmployeeResetPasswordDialogState
 
   void _invalidate() {
     if (!mounted || _invalidated) return;
+    _passwordInput.clearSensitive();
     setState(() {
       _invalidated = true;
       _temporaryPassword = null;
@@ -124,8 +130,8 @@ class _EmployeeResetPasswordDialogState
   }
 
   Future<void> _submit() async {
-    if (_submitting || _temporaryPassword != null) return;
-    if (!_ensureCurrent()) return;
+    if (_submitting || _temporaryPassword != null || _outcomeUncertain) return;
+    if (!_ensureCurrent() || !_passwordInput.validate()) return;
     if (widget.employee.status == 'resigned' ||
         !const ['active', 'locked'].contains(widget.employee.accountStatus)) {
       setState(() => _error = '该员工账号当前不能修改密码，请刷新员工资料');
@@ -138,12 +144,24 @@ class _EmployeeResetPasswordDialogState
     try {
       final password = await ref
           .read(employeeRepositoryProvider)
-          .resetPassword(widget.employee.id);
+          .resetPassword(
+            widget.employee.id,
+            temporaryPassword: _passwordInput.choice.temporaryPassword,
+          );
       if (!_ensureCurrent()) return;
+      _passwordInput.clearSensitive();
       setState(() => _temporaryPassword = password);
     } catch (error) {
       if (!_ensureCurrent()) return;
-      setState(() => _error = employeeDialogErrorText(error, '修改密码失败，请稍后重试'));
+      if (isAccountPasswordResetUncertain(error)) {
+        _passwordInput.clearSensitive();
+        setState(() {
+          _outcomeUncertain = true;
+          _error = accountPasswordResetUncertainMessage;
+        });
+      } else {
+        setState(() => _error = employeeDialogErrorText(error, '修改密码失败，请稍后重试'));
+      }
     } finally {
       if (mounted && !_invalidated) setState(() => _submitting = false);
     }
@@ -163,58 +181,66 @@ class _EmployeeResetPasswordDialogState
         title: Text(password == null ? '修改密码' : '一次性临时密码'),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 480),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('${employee.fullName ?? '未命名员工'}（${employee.code}）'),
-              const SizedBox(height: UtenSpacing.s12),
-              if (password == null) ...[
-                const Text(
-                  '系统将生成新的临时密码，原密码立即失效，所有已登录设备会退出。'
-                  '员工使用临时密码登录后，必须设置自己的新密码。',
-                ),
-                if (employee.accountStatus == 'locked') ...[
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('${employee.fullName ?? '未命名员工'}（${employee.code}）'),
+                const SizedBox(height: UtenSpacing.s12),
+                if (password == null) ...[
+                  const Text(
+                    '设置后原密码立即失效，所有已登录设备会退出。'
+                    '员工使用临时密码登录后，必须设置自己的新密码。',
+                  ),
                   const SizedBox(height: UtenSpacing.s12),
-                  Text(l10n.employeeManualLockResetHint),
+                  TemporaryPasswordInput(
+                    controller: _passwordInput,
+                    allowManual: employee.passwordResetSupportAllowed != null,
+                    enabled: !_submitting && !_outcomeUncertain,
+                  ),
+                  if (employee.accountStatus == 'locked') ...[
+                    const SizedBox(height: UtenSpacing.s12),
+                    Text(l10n.employeeManualLockResetHint),
+                  ],
+                  const SizedBox(height: UtenSpacing.s12),
+                  const Text('确认后需要验证你本人的登录密码。'),
+                ] else ...[
+                  const Text(
+                    '请将以下临时密码交给员工。密码只显示这一次，关闭后无法再次查看。'
+                    '临时密码限时有效（默认 72 小时，以系统设置为准），首次登录必须修改。',
+                  ),
+                  const SizedBox(height: UtenSpacing.s16),
+                  Container(
+                    padding: const EdgeInsets.all(UtenSpacing.s16),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(UtenRadius.control),
+                    ),
+                    child: SelectableText(
+                      password,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
                 ],
-                const SizedBox(height: UtenSpacing.s12),
-                const Text('确认后需要验证你本人的登录密码。'),
-              ] else ...[
-                const Text(
-                  '请将以下临时密码交给员工。密码只显示这一次，关闭后无法再次查看。'
-                  '临时密码限时有效（默认 72 小时，以系统设置为准），首次登录必须修改。',
-                ),
-                const SizedBox(height: UtenSpacing.s16),
-                Container(
-                  padding: const EdgeInsets.all(UtenSpacing.s16),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(UtenRadius.control),
-                  ),
-                  child: SelectableText(
-                    password,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.2,
+                if (_error != null) ...[
+                  const SizedBox(height: UtenSpacing.s12),
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      _error!,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
-              if (_error != null) ...[
-                const SizedBox(height: UtenSpacing.s12),
-                Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    _error!,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.error,
-                    ),
-                  ),
-                ),
-              ],
-            ],
+            ),
           ),
         ),
         actionsAlignment: MainAxisAlignment.center,
@@ -224,19 +250,19 @@ class _EmployeeResetPasswordDialogState
                   key: const ValueKey('employee-reset-password-cancel'),
                   onPressed: _submitting
                       ? null
-                      : () => Navigator.of(context).pop(false),
-                  child: Text(l10n.commonCancel),
+                      : () => Navigator.of(context).pop(_outcomeUncertain),
+                  child: Text(_outcomeUncertain ? '关闭并刷新' : l10n.commonCancel),
                 ),
                 FilledButton.icon(
                   key: const ValueKey('employee-reset-password-confirm'),
-                  onPressed: _submitting ? null : _submit,
+                  onPressed: _submitting || _outcomeUncertain ? null : _submit,
                   icon: _submitting
                       ? const SizedBox.square(
                           dimension: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.key_outlined, size: 18),
-                  label: Text(_submitting ? '正在生成…' : '生成临时密码'),
+                  label: Text(_submitting ? '正在设置…' : '设置临时密码'),
                 ),
               ]
             : [

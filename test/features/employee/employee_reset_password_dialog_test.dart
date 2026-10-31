@@ -33,19 +33,22 @@ const _employee = EmployeeProfile(
   phone: '13800138000',
   status: 'active',
   accountStatus: 'active',
+  passwordResetSupportAllowed: true,
 );
 
 class _ResetRepository extends Fake implements EmployeeRepository {
   final employeeIds = <String>[];
+  final requestedPasswords = <String?>[];
   Completer<String>? pending;
   ApiException? error;
 
   @override
-  Future<String> resetPassword(String id) async {
+  Future<String> resetPassword(String id, {String? temporaryPassword}) async {
     employeeIds.add(id);
+    requestedPasswords.add(temporaryPassword);
     final failure = error;
     if (failure != null) throw failure;
-    return pending?.future ?? _temporaryPassword;
+    return pending?.future ?? temporaryPassword ?? _temporaryPassword;
   }
 }
 
@@ -145,6 +148,89 @@ Future<_Results> _open(
 }
 
 void main() {
+  testWidgets(
+    'manual input validates confirmation and submits the exact transient value',
+    (tester) async {
+      final repository = _ResetRepository();
+      await _open(tester, repository);
+      await tester.tap(find.text('手动输入'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(_confirm));
+      await tester.pumpAndSettle();
+      expect(repository.employeeIds, isEmpty);
+      final password = find.descendant(
+        of: find.byKey(const ValueKey('temporary-password-input')),
+        matching: find.byType(TextField),
+      );
+      final confirmation = find.descendant(
+        of: find.byKey(const ValueKey('temporary-password-confirmation')),
+        matching: find.byType(TextField),
+      );
+      const custom = ' 自定A!口令 ';
+      await tester.enterText(password, custom);
+      await tester.enterText(confirmation, '不同口令');
+      await tester.tap(find.byKey(_confirm));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .state<FormFieldState<String>>(
+              find.descendant(
+                of: find.byKey(
+                  const ValueKey('temporary-password-confirmation'),
+                ),
+                matching: find.byType(TextFormField),
+              ),
+            )
+            .errorText,
+        '两次输入的密码不一致',
+      );
+      expect(repository.employeeIds, isEmpty);
+      await tester.enterText(confirmation, custom);
+      await tester.tap(find.byKey(_confirm));
+      await tester.pumpAndSettle();
+      expect(repository.requestedPasswords, [custom]);
+      expect(find.text(custom), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'switching to random discards manual text and uses server generation',
+    (tester) async {
+      final repository = _ResetRepository();
+      await _open(tester, repository);
+      await tester.tap(find.text('手动输入'));
+      await tester.pumpAndSettle();
+      final password = find.descendant(
+        of: find.byKey(const ValueKey('temporary-password-input')),
+        matching: find.byType(TextField),
+      );
+      await tester.enterText(password, 'Transient-only');
+      await tester.tap(find.text('随机生成'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(_confirm));
+      await tester.pumpAndSettle();
+      expect(repository.requestedPasswords, [null]);
+      expect(find.text('Transient-only'), findsNothing);
+    },
+  );
+
+  testWidgets('lost reset response cannot replay the credential command', (
+    tester,
+  ) async {
+    final repository = _ResetRepository()..error = NetworkTimeoutException();
+    final results = await _open(tester, repository);
+    await tester.tap(find.byKey(_confirm));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('设置结果暂时无法确认'), findsOneWidget);
+    expect(tester.widget<FilledButton>(find.byKey(_confirm)).onPressed, isNull);
+    expect(repository.employeeIds, ['emp-7']);
+    await tester.tap(find.text('关闭并刷新'));
+    await tester.pumpAndSettle();
+    expect(results.values, [true]);
+    expect(repository.employeeIds, ['emp-7']);
+  });
+
   setUp(UtenBusyOverlay.debugResetYield);
 
   for (final pending in [false, true]) {

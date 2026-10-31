@@ -4,7 +4,7 @@
 
 ## W7-BIZ-046 · lib/features/employee/pages/employee_detail_page.dart
 
-模块 `employee`；1992 行；SHA256 `44c1fc473bf4abe0c47fb39b4231a3c34fa03e7e58709de32f5c4e7e0cba59a2`。
+模块 `employee`；1992 行；SHA256 `a7cf526572e1a1fe9ff093b43fbea99b3e23d5c9467813af1c001b7b499f3bf8`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -22,7 +22,7 @@
 
 ## W7-BIZ-047 · lib/features/employee/pages/employee_edit_page.dart
 
-模块 `employee`；930 行；SHA256 `90dd5e91bdd5cfbe120694b9452923ab0d19b89c71fa5de72bd5ee72696280ad`。
+模块 `employee`；930 行；SHA256 `16dbdfcdb1fb73b3080f632ee76ddc8a5adbe065cafb0093c59d56f6c108a132`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

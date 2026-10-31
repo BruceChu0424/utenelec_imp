@@ -95,6 +95,6 @@ class WarehouseSelection {
 final warehouseSelectionProvider = FutureProvider.autoDispose
     .family<WarehouseSelection, WarehouseUse>((ref, use) async {
       final names = ref.watch(masterNameServiceProvider);
-      await names.ensureWarehousesLoaded();
-      return WarehouseSelection(names.warehouseHierarchy, use: use);
+      final hierarchy = await names.requireWarehouseHierarchy();
+      return WarehouseSelection(hierarchy, use: use);
     });

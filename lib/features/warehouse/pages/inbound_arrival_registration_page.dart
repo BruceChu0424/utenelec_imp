@@ -623,9 +623,8 @@ class _InboundArrivalRegistrationPageState
     String? fallbackWarehouseId,
   }) async {
     if (_saving || targets.isEmpty) return;
-    final picked = await showUtenWarehousePickerPanel(
+    final picked = await showUtenWarehouseDictionaryPickerPanel(
       context,
-      hierarchy: ref.read(masterNameServiceProvider).warehouseHierarchy,
       use: WarehouseUse.goodIn,
       initialWarehouseId: targets.first.warehouseId ?? fallbackWarehouseId,
       title: targets.length > 1

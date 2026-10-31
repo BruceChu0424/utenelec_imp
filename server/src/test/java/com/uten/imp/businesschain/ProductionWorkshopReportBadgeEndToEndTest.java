@@ -41,7 +41,9 @@ import java.nio.file.*;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
 /** Real approval of six fully reported products plus one partial product; list, count and badge facts share employee scope. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
@@ -65,6 +67,8 @@ class ProductionWorkshopReportBadgeEndToEndTest {
                 DATABASE::getUsername, DATABASE::getPassword);
   try{Path attachments=Files.createTempDirectory("uten-workshop-report-badge-");registry.add("uten.storage.local-dir",attachments::toString);}
   catch(java.io.IOException error){throw new IllegalStateException(error);}
+  try{Path exports=Files.createTempDirectory("uten-workshop-export-");registry.add("uten.report-export.directory",exports::toString);}
+  catch(java.io.IOException error){throw new IllegalStateException(error);}
  }
  public static class Cleanup extends AbstractTestExecutionListener{
   @Override public int getOrder(){return new DirtiesContextTestExecutionListener().getOrder()-1;}
@@ -86,6 +90,91 @@ class ProductionWorkshopReportBadgeEndToEndTest {
  static final String OUTPUT=System.getProperty("uten.badge.diagnostic.directory");
  @AfterEach void clear(){SecurityContextHolder.clearContext();}
  record Case(DailyReportSaveRequest request,FullChainEndToEndTest fixture,FullChainEndToEndTest.World world,List<UUID> segmentIds,UUID workshop,UUID readerUser){}
+
+ @Test void workshopExcelAndDurableJobUseTheSameRealAssignmentScope() throws Exception {
+  var c=prepareSevenSources();
+  c.fixture().loginAs(c.world().superAdminUserId());
+  UUID exporter=c.fixture().createUserWithPerms(c.world(),"task-export-"+UUID.randomUUID().toString().substring(0,8),
+      "production_execution:view","production_report:view","production_report:export");
+  UUID employee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,exporter);
+  UUID originalDepartment=db.queryForObject("SELECT department_id FROM employees WHERE id=?",UUID.class,employee);
+  db.update("UPDATE employees SET department_id=? WHERE id=?",c.workshop(),employee);
+  c.fixture().loginAs(exporter);
+  Authentication actor=SecurityContextHolder.getContext().getAuthentication();
+  assertTrue(actor.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("production_report:export")),
+      "the export fixture must include the existing report-view permission prerequisite");
+  JsonNode rows=getJson("/api/production/workshop-tasks?status=IN_PROGRESS&sort=segment&order=desc",actor);
+  assertEquals(7,rows.path("total").asInt());
+  var response=http.perform(post("/api/production/reports/export").with(authentication(actor)).with(csrf().asHeader())
+      .queryParam("report","workshop-tasks").queryParam("status","IN_PROGRESS")
+      .queryParam("sort","segment").queryParam("order","desc")
+      .contentType("application/json").content("{\"password\":\"\"}")).andReturn().getResponse();
+  assertEquals(200,response.getStatus(),response.getContentAsString());
+  try(var sheet=new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(response.getContentAsByteArray()))) {
+   assertEquals(7,sheet.getSheetAt(0).getLastRowNum());
+   assertEquals(rows.path("items").get(0).path("segmentCode").asText(),sheet.getSheetAt(0).getRow(1).getCell(2).getStringCellValue());
+  }
+  UUID job=UUID.randomUUID();
+  var body=Map.of("id",job.toString(),"domain","production","report","workshop-tasks",
+      "parameters",Map.of("status","IN_PROGRESS","workshopDepartmentId",c.workshop().toString()),
+      "sort","segment","order","desc","format","xlsx",
+      "columnProjection",Map.of("tableKey","features.production.pages.production_workshop_tasks_page.ProductionWorkshopTasksPageState.build.2",
+          "scope","view_production","columns",List.of(Map.of("key","qty","label","产品数量"),Map.of("key","segment","label","工单号"))));
+  var submitted=http.perform(post("/api/report-export-jobs").with(authentication(actor)).with(csrf().asHeader())
+      .contentType("application/json").content(json.writeValueAsBytes(body))).andReturn().getResponse();
+  assertEquals(200,submitted.getStatus(),submitted.getContentAsString());
+  long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(45);
+  JsonNode state;
+  do {
+   state=getJson("/api/report-export-jobs/"+job,actor);
+   if(!Set.of("PENDING","RUNNING").contains(state.path("status").asText()))break;
+   Thread.sleep(100);
+  } while(System.nanoTime()<deadline);
+  assertEquals("SUCCEEDED",state.path("status").asText(),state.toString());
+  assertEquals(7,state.path("rows").asInt());
+  var download=http.perform(post("/api/report-export-jobs/"+job+"/download").with(authentication(actor)).with(csrf().asHeader())
+      .contentType("application/json").content("{\"password\":\"\"}")).andReturn().getResponse();
+  assertEquals(200,download.getStatus(),download.getContentAsString());
+  try(var sheet=new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(download.getContentAsByteArray()))) {
+   assertEquals(7,sheet.getSheetAt(0).getLastRowNum());
+   assertEquals(2,sheet.getSheetAt(0).getRow(0).getLastCellNum());
+   assertTrue(sheet.getSheetAt(0).getRow(0).getCell(0).getStringCellValue().startsWith("产品数量"));
+   assertEquals("工单号",sheet.getSheetAt(0).getRow(0).getCell(1).getStringCellValue());
+  }
+  c.fixture().loginAs(c.world().superAdminUserId());
+  UUID outsider=c.fixture().createUserWithPerms(c.world(),"task-outsider-"+UUID.randomUUID().toString().substring(0,8),
+      "production_execution:view","production_report:view","production_report:export");
+  c.fixture().loginAs(outsider);
+  Authentication other=SecurityContextHolder.getContext().getAuthentication();
+  assertEquals(0,getJson("/api/production/workshop-tasks?status=IN_PROGRESS",other).path("total").asInt());
+  var empty=http.perform(post("/api/production/reports/export").with(authentication(other)).with(csrf().asHeader())
+      .queryParam("report","workshop-tasks").queryParam("status","IN_PROGRESS")
+      .contentType("application/json").content("{\"password\":\"\"}")).andReturn().getResponse();
+  assertEquals(200,empty.getStatus(),empty.getContentAsString());
+  try(var sheet=new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(empty.getContentAsByteArray()))) {
+   assertEquals(0,sheet.getSheetAt(0).getLastRowNum());
+  }
+  assertEquals(404,http.perform(get("/api/report-export-jobs/"+job).with(authentication(other))).andReturn().getResponse().getStatus());
+  c.fixture().loginAs(c.world().superAdminUserId());
+  db.update("UPDATE employees SET department_id=? WHERE id=?",originalDepartment,employee);
+  c.fixture().loginAs(exporter);
+  int retired=http.perform(get("/api/report-export-jobs/"+job+"/download-authorization")
+      .with(authentication(SecurityContextHolder.getContext().getAuthentication()))).andReturn().getResponse().getStatus();
+  assertTrue(Set.of(403,409).contains(retired),"changed workshop membership must retire the old export artifact: "+retired);
+  c.fixture().loginAs(c.world().superAdminUserId());
+  db.update("""
+      INSERT INTO user_permission_overrides(user_id,permission_id,effect)
+      SELECT ?,id,'revoke' FROM permissions WHERE code='production_report:export'
+      ON CONFLICT(user_id,permission_id) DO UPDATE SET effect='revoke',active=true
+      """,c.readerUser());
+  c.fixture().loginAs(c.readerUser());
+  assertTrue(SecurityContextHolder.getContext().getAuthentication().getAuthorities().stream()
+      .noneMatch(a -> a.getAuthority().equals("production_report:export")),"negative actor must explicitly deny inherited export");
+  assertEquals(403,http.perform(post("/api/production/reports/export").with(csrf().asHeader())
+      .with(authentication(SecurityContextHolder.getContext().getAuthentication()))
+      .queryParam("report","workshop-tasks").queryParam("status","IN_PROGRESS")
+      .contentType("application/json").content("{\"password\":\"\"}")).andReturn().getResponse().getStatus());
+ }
 
  @Test void normalApprovalSixFullyReportedOnePartialListCountAndRealContributionStayConsistent() throws Exception {
   var c=prepareSevenSources();

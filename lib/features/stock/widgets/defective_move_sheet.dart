@@ -130,13 +130,9 @@ class _DefectiveMoveSheetState extends ConsumerState<DefectiveMoveSheet> {
 
   Future<void> _pick(bool from) async {
     if (_uncertain) return;
-    final names = ref.read(masterNameServiceProvider);
-    await names.ensureWarehousesLoaded();
-    if (!mounted) return;
     final l10n = AppLocalizations.of(context);
-    final picked = await showUtenWarehousePickerPanel(
+    final picked = await showUtenWarehouseDictionaryPickerPanel(
       context,
-      hierarchy: names.warehouseHierarchy,
       use: from ? _fromUse : _toUse,
       initialWarehouseId: from ? _from : _to,
       title: from ? l10n.defectiveMoveFrom : l10n.defectiveMoveTo,

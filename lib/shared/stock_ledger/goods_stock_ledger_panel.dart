@@ -170,12 +170,8 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
   }
 
   Future<void> _pickWarehouse() async {
-    final names = ref.read(masterNameServiceProvider);
-    await names.ensureWarehousesLoaded();
-    if (!mounted) return;
-    final picked = await showUtenWarehousePickerPanel(
+    final picked = await showUtenWarehouseDictionaryPickerPanel(
       context,
-      hierarchy: names.warehouseHierarchy,
       initialWarehouseId: _scope.warehouseId,
       title: '查询仓库范围（含下级）',
       includeAll: true,

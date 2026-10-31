@@ -1,4 +1,5 @@
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
+import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'dart:async';
 import 'package:uten_imp/shared/paging/paged_read_window_binding.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -43,6 +44,77 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 late SharedPreferences _preferences;
 
 void main() {
+  testWidgets(
+    'Excel export uses the shared task path and current category and filters',
+    (tester) async {
+      const capture = bool.fromEnvironment('UTEN_WORKSHOP_EXPORT_CAPTURE');
+      final captureKey = GlobalKey();
+      if (capture) await loadAuditScreenshotFonts(tester);
+      await tester.binding.setSurfaceSize(const Size(1800, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final router = _router();
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(_preferences),
+            isSuperAdminProvider.overrideWithValue(false),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.productionExecutionView,
+              Perm.productionReportExport,
+            }),
+            productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+              _repository(aStatus: 'IN_PROGRESS'),
+            ),
+          ],
+          child: MaterialApp.router(
+            theme: capture ? auditScreenshotTheme(buildLightTheme()) : null,
+            builder: (context, child) =>
+                RepaintBoundary(key: captureKey, child: child!),
+            routerConfig: router,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      UtenExportButton button() =>
+          tester.widget(find.byKey(const Key('workshop-tasks-export')));
+      expect(button().enabled, isFalse);
+      await selectFilterSegment(tester, '生产中');
+      await tester.pumpAndSettle();
+      expect(button().enabled, isTrue);
+      expect(button().endpoint, '/production/reports/export');
+      expect(button().report, 'workshop-tasks');
+      expect(button().queryParams, {'status': 'IN_PROGRESS'});
+      if (capture) {
+        await saveAuditScreenshot(
+          tester,
+          captureKey,
+          'workshop-tasks-excel-export',
+        );
+      }
+      final table = tester
+          .widget<MasterDataTableView<ProductionExecutionWorkbenchSegment>>(
+            find.byType(
+              MasterDataTableView<ProductionExecutionWorkbenchSegment>,
+            ),
+          );
+      table.onFilterChanged('segment', 'ZX00000001');
+      await tester.pumpAndSettle();
+      expect(button().queryParams['segmentCode'], 'ZX00000001');
+      expect(button().queryParams, isNot(contains('page')));
+      expect(button().queryParams, isNot(contains('size')));
+      await selectFilterSegment(tester, '历史任务');
+      await tester.pumpAndSettle();
+      expect(button().enabled, isTrue);
+      expect(button().queryParams['status'], 'COMPLETED');
+      expect(button().queryParams['dateFrom'], isNotNull);
+      expect(button().queryParams['dateTo'], isNotNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('partial 800 output stays separate from the 1000 plan', (
     tester,
   ) async {

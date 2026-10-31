@@ -52,6 +52,8 @@ import java.util.function.BiFunction;
 @Service
 @RequiredArgsConstructor
 public class ProductionReportService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.production.execution.ProductionWorkshopTaskExportService workshopTaskExports;
 
     private static final UUID NIL = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
@@ -382,6 +384,8 @@ public class ProductionReportService {
      */
     @Transactional(readOnly = true)
     public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
+        if (com.uten.imp.features.production.execution.ProductionWorkshopTaskExportService.REPORT.equals(report))
+            return workshopTaskExports.export(p, sort, order);
         String billNo = p == null ? null : p.get("billNo");
         UUID goodsId = ReportQueryKit.parseUuid(p == null ? null : p.get("goodsId"));
         Short status = ReportQueryKit.parseShort(p == null ? null : p.get("status"));

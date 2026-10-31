@@ -22,7 +22,7 @@
 
 ## W7-BIZ-044 · lib/features/department/pages/my_department_page.dart
 
-模块 `department`；811 行；SHA256 `e14f988832ab45f33e57c80b913d81e5c00e00eff7cbcd76a4bfc6f770a96b75`。
+模块 `department`；811 行；SHA256 `e5bdf603032a222d70218a0f1dda2087cd246a93362cabfe120792b75e19b893`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

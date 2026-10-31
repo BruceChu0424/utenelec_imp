@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
@@ -167,15 +166,12 @@ class _GoodsInlineWarehouseFieldState
     setState(() => _opening = true);
     final boundary = widget.ref.read(sensitiveReadBoundaryProvider);
     try {
-      final names = widget.ref.read(masterNameServiceProvider);
-      await names.ensureWarehousesLoaded();
       if (!mounted ||
           widget.ref.read(sensitiveReadBoundaryProvider) != boundary) {
         return;
       }
-      final result = await showUtenWarehousePickerPanel(
+      final result = await showUtenWarehouseDictionaryPickerPanel(
         context,
-        hierarchy: names.warehouseHierarchy,
         use: WarehouseUse.goodIn,
         initialWarehouseId: widget.value,
         title: '选择所属仓库',

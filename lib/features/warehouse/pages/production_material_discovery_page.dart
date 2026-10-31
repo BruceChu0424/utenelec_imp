@@ -23,7 +23,6 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/production_material_discovery.dart';
-import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
@@ -291,12 +290,9 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
   Future<void> _pickWarehouse(DiscoveryMaterialRow row) async {
     if (!_editable) return;
     try {
-      final names = ref.read(masterNameServiceProvider);
-      await names.ensureWarehousesLoaded();
       if (!mounted || !_grid.rows.contains(row) || !_editable) return;
-      final selected = await showUtenWarehousePickerPanel(
+      final selected = await showUtenWarehouseDictionaryPickerPanel(
         context,
-        hierarchy: names.warehouseHierarchy,
         initialWarehouseId: row.values['warehouseId'] as String?,
         title: AppLocalizations.of(context).materialDiscoveryWarehouse,
         use: WarehouseUse.goodOut,

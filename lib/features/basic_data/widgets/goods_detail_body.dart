@@ -735,10 +735,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       ref: ref,
       resourceKey: 'master.warehouses',
       title: '正在加载仓库…',
-      load: () async {
-        await names.ensureWarehousesLoaded();
-        return names.warehouseHierarchy;
-      },
+      load: () => names.requireWarehouseHierarchy(),
       errorFallback: '仓库加载失败，请重试',
     );
     if (!mounted || !current() || warehouses == null) return null;

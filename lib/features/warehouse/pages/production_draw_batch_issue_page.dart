@@ -663,14 +663,11 @@ class _ProductionDrawBatchIssuePageState
       return;
     }
     try {
-      final names = ref.read(masterNameServiceProvider);
-      await names.ensureWarehousesLoaded();
       if (!mounted || _saving || _uncertain || !_discoveryRows.contains(row)) {
         return;
       }
-      final selected = await showUtenWarehousePickerPanel(
+      final selected = await showUtenWarehouseDictionaryPickerPanel(
         context,
-        hierarchy: names.warehouseHierarchy,
         initialWarehouseId: row.values['warehouseId'] as String?,
         title: '选择实际发料仓',
         use: WarehouseUse.goodOut,

@@ -13,7 +13,10 @@
 //   (历史单据仍按字典显示名称)，当前选中值总能看到。
 // - 所有选项（包括「全部」）先暂存，点底部「确定」才返回；取消/关闭放弃暂存。
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/network/api_exception.dart';
+import '../../components/buttons/uten_button.dart';
 import '../../components/inputs/uten_search_bar.dart';
 import '../../components/layout/uten_adaptive_panel.dart';
 import '../../components/layout/uten_panel_header.dart';
@@ -119,6 +122,125 @@ Future<WarehousePickerResult?> showUtenWarehousePickerPanel(
   );
 }
 
+/// Dictionary-backed selections always load in the current session, with a
+/// visible failure/retry state. Scoped task/material options keep using the
+/// snapshot entry above; replacing those with the full dictionary widens scope.
+Future<WarehousePickerResult?> showUtenWarehouseDictionaryPickerPanel(
+  BuildContext context, {
+  required WarehouseUse use,
+  String? initialWarehouseId,
+  String title = '选择入库仓库',
+  bool includeAll = false,
+  String? allLabel,
+  String? sameClassAs,
+  String? Function(WarehouseDictEntry entry)? subtitleOf,
+}) => showUtenAdaptivePanel<WarehousePickerResult>(
+  context: context,
+  widthFraction: UtenPanelWidth.form,
+  builder: (_) => _WarehouseDictionaryPicker(
+    builder: (hierarchy, reload) => _WarehousePickerSheet(
+      hierarchy: hierarchy,
+      use: use,
+      initialWarehouseId: initialWarehouseId,
+      title: title,
+      includeAll: includeAll,
+      allLabel: allLabel,
+      sameClassAs: sameClassAs,
+      subtitleOf: subtitleOf,
+      onReload: reload,
+    ),
+    title: title,
+  ),
+);
+
+class _WarehouseDictionaryPicker extends ConsumerStatefulWidget {
+  const _WarehouseDictionaryPicker({
+    required this.builder,
+    required this.title,
+  });
+  final Widget Function(List<WarehouseDictEntry>, VoidCallback) builder;
+  final String title;
+
+  @override
+  ConsumerState<_WarehouseDictionaryPicker> createState() =>
+      _WarehouseDictionaryPickerState();
+}
+
+class _WarehouseDictionaryPickerState
+    extends ConsumerState<_WarehouseDictionaryPicker> {
+  MasterNameService? _owner;
+  Future<List<WarehouseDictEntry>>? _read;
+  int _revision = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final owner = ref.watch(masterNameServiceProvider);
+    if (!identical(owner, _owner)) {
+      _owner = owner;
+      _read = owner.requireWarehouseHierarchy();
+      _revision++;
+    }
+    void reload() => setState(() {
+      _read = owner.requireWarehouseHierarchy(reload: true);
+      _revision++;
+    });
+    return FutureBuilder<List<WarehouseDictEntry>>(
+      key: ValueKey(_revision),
+      future: _read,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done &&
+            !snapshot.hasError) {
+          return widget.builder(snapshot.data!, reload);
+        }
+        final error = snapshot.error;
+        final message = error is ApiException
+            ? error.message
+            : '仓库加载失败，请检查连接后重试';
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                UtenPanelHeader(
+                  title: widget.title,
+                  onClose: () => Navigator.of(context).pop(),
+                ),
+                Expanded(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(UtenSpacing.s24),
+                      child: snapshot.hasError
+                          ? Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  message,
+                                  key: const Key('warehouse-picker-load-error'),
+                                ),
+                                const SizedBox(height: UtenSpacing.s16),
+                                UtenButton(
+                                  key: const Key('warehouse-picker-retry'),
+                                  onPressed: reload,
+                                  child: const Text('重新加载'),
+                                ),
+                              ],
+                            )
+                          : const CircularProgressIndicator(
+                              key: Key('warehouse-picker-loading'),
+                            ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _WarehousePickerSheet extends StatefulWidget {
   const _WarehousePickerSheet({
     required this.hierarchy,
@@ -129,6 +251,7 @@ class _WarehousePickerSheet extends StatefulWidget {
     this.initialWarehouseId,
     this.sameClassAs,
     this.subtitleOf,
+    this.onReload,
   });
 
   final List<WarehouseDictEntry> hierarchy;
@@ -139,6 +262,7 @@ class _WarehousePickerSheet extends StatefulWidget {
   final String? allLabel;
   final String? sameClassAs;
   final String? Function(WarehouseDictEntry entry)? subtitleOf;
+  final VoidCallback? onReload;
 
   bool get allowParent => use == WarehouseUse.query;
 
@@ -354,13 +478,30 @@ class _WarehousePickerSheetState extends State<_WarehousePickerSheet> {
                   ? Center(
                       child: Padding(
                         padding: const EdgeInsets.all(UtenSpacing.s24),
-                        child: Text(
-                          query && _query.trim().isNotEmpty
-                              ? '未找到匹配「${_query.trim()}」的仓库'
-                              : '没有可选仓库，请先在基础资料维护仓库',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              query && _query.trim().isNotEmpty
+                                  ? '未找到匹配「${_query.trim()}」的仓库'
+                                  : widget.hierarchy.isEmpty
+                                  ? '暂无仓库资料，请联系仓库管理员维护'
+                                  : '暂无符合当前用途的可选仓库，请检查仓库启用状态、核算属性和用途',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                            if (widget.onReload != null) ...[
+                              const SizedBox(height: UtenSpacing.s16),
+                              UtenButton(
+                                key: const Key(
+                                  'warehouse-picker-refresh-empty',
+                                ),
+                                onPressed: widget.onReload,
+                                child: const Text('重新加载'),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
                     )

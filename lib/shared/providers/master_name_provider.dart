@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
+import '../../core/network/api_exception.dart';
 import '../../core/utils/currency_display.dart';
 import 'master_dictionary_repository.dart';
 import 'master_lookup_queue.dart';
@@ -238,6 +239,7 @@ class MasterDictionaryService extends ChangeNotifier {
   }
 
   final Map<String, Future<void>> _dictionaryLoads = {};
+  final Map<String, Object> _dictionaryErrors = {};
   // 100 UUIDs stay below ordinary HTTP request-line limits. Employees retain
   // their object-authorized detail endpoint and at most four concurrent reads.
   late final _goodsLookup = MasterLookupQueue(
@@ -288,9 +290,11 @@ class MasterDictionaryService extends ChangeNotifier {
         final rows = await dictionaries.load(key);
         if (!_disposed && identical(_dictionaryLoads[key], pending)) {
           apply(rows);
+          _dictionaryErrors.remove(key);
         }
-      } catch (_) {
+      } catch (error) {
         if (identical(_dictionaryLoads[key], pending)) {
+          _dictionaryErrors[key] = error;
           _dictionaryLoads.remove(key);
         }
       } finally {
@@ -340,6 +344,24 @@ class MasterDictionaryService extends ChangeNotifier {
         _warehouseById = {for (final entry in hierarchy) entry.id: entry};
         _mainWarehouseCache.clear();
       });
+
+  /// Selection is a required business read. Display-name enrichment may fail
+  /// softly, but a picker must distinguish that failure from an empty warehouse.
+  Future<List<WarehouseDictEntry>> requireWarehouseHierarchy({
+    bool reload = false,
+  }) async {
+    if (reload) {
+      _dictionaryLoads.remove(ApiEndpoints.warehousesDict);
+      dictionaries.invalidate(ApiEndpoints.warehousesDict);
+    }
+    await ensureWarehousesLoaded();
+    if (_disposed) {
+      throw ApiException('READ_SCOPE_CHANGED', '账号或权限已变化，请重新打开仓库选择');
+    }
+    final error = _dictionaryErrors[ApiEndpoints.warehousesDict];
+    if (error != null) throw error;
+    return warehouseHierarchy;
+  }
 
   Future<void> ensureCommonLoaded() => Future.wait([
     ensureWarehousesLoaded(),

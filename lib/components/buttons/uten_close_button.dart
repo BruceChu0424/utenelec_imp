@@ -53,6 +53,11 @@ class UtenWindowControlButton extends StatefulWidget {
   static const double nativeWidth = 30;
   static const double nativeHeight = 36;
 
+  /// Native windows sit flush with the physical screen top when maximized, so
+  /// the glyph keeps extra clearance there (11px instead of a dead-centered 7)
+  /// while the full-height hit target and strip layout stay untouched.
+  static const double nativeGlyphTopInset = 8;
+
   String _label(BuildContext context) {
     if (tooltip != null) return tooltip!;
     if (control == UtenWindowControl.close) {
@@ -101,6 +106,23 @@ class _UtenWindowControlButtonState extends State<UtenWindowControlButton> {
         }
       }
     }
+  }
+
+  /// Native glyphs drop below the strip's centered line so a maximized window
+  /// flush with the screen top cannot visually clip them. Other surfaces keep
+  /// the plain centered circle.
+  Widget _nativeGlyph({required Widget circle}) {
+    if (!widget.native) return circle;
+    return SizedBox(
+      width: UtenWindowControlButton.nativeWidth,
+      height: UtenWindowControlButton.nativeHeight,
+      child: Padding(
+        padding: const EdgeInsets.only(
+          top: UtenWindowControlButton.nativeGlyphTopInset,
+        ),
+        child: Center(child: circle),
+      ),
+    );
   }
 
   @override
@@ -169,23 +191,27 @@ class _UtenWindowControlButtonState extends State<UtenWindowControlButton> {
                   : BorderSide.none,
             ),
           ),
-          icon: Container(
-            width: widget.native
-                ? UtenWindowControlButton.nativeCircleExtent
-                : UtenWindowControlButton.circleExtent,
-            height: widget.native
-                ? UtenWindowControlButton.nativeCircleExtent
-                : UtenWindowControlButton.circleExtent,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: enabled ? color : scheme.onSurface.withValues(alpha: 0.12),
-            ),
-            child: Icon(
-              icon,
-              size: widget.native ? 14 : 18,
-              color: enabled
-                  ? Colors.white
-                  : scheme.onSurface.withValues(alpha: 0.38),
+          icon: _nativeGlyph(
+            circle: Container(
+              width: widget.native
+                  ? UtenWindowControlButton.nativeCircleExtent
+                  : UtenWindowControlButton.circleExtent,
+              height: widget.native
+                  ? UtenWindowControlButton.nativeCircleExtent
+                  : UtenWindowControlButton.circleExtent,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: enabled
+                    ? color
+                    : scheme.onSurface.withValues(alpha: 0.12),
+              ),
+              child: Icon(
+                icon,
+                size: widget.native ? 14 : 18,
+                color: enabled
+                    ? Colors.white
+                    : scheme.onSurface.withValues(alpha: 0.38),
+              ),
             ),
           ),
         ),

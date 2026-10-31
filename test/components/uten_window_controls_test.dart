@@ -135,8 +135,15 @@ void main() {
     );
     expect(tester.getSize(find.byType(UtenWindowControls)), const Size(90, 36));
     for (final key in [_closeKey, _minimizeKey, _expandKey]) {
-      expect(tester.getSize(find.byKey(key)), const Size(30, 36));
-      expect(_circle(tester, key).size, const Size.square(22));
+      final target = tester.getRect(find.byKey(key));
+      final circle = _circle(tester, key);
+      expect(target.size, const Size(30, 36));
+      expect(circle.size, const Size.square(22));
+      // Maximized windows are flush with the physical screen top; the glyph
+      // keeps 11px of clearance there while the hit target spans the strip.
+      expect(circle.top - target.top, 11);
+      expect(target.bottom - circle.bottom, 3);
+      expect(circle.center.dx, target.center.dx);
     }
     expect(
       _circle(tester, _closeKey).left - _circle(tester, _expandKey).right,

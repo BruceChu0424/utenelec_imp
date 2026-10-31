@@ -10,10 +10,8 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
-import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
-import '../../../core/theme/uten_tokens.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
@@ -68,8 +66,6 @@ class _FinanceAssetLedgerPanelState
   bool _loading = true;
   String? _error;
   List<FinanceAssetCategory> _categories = const [];
-  bool _categoriesLoading = true;
-  String? _categoriesError;
   DeptSelection? _department;
   bool _fullscreen = false;
 
@@ -95,7 +91,12 @@ class _FinanceAssetLedgerPanelState
   Future<void> _refresh({int? page}) async {
     final completion = widget.refreshCompletion;
     try {
-      await Future.wait([_load(page: page), _loadCategories()]);
+      await Future.wait([
+        _load(page: page),
+        // Keep category names available for local draft rows. The header menu
+        // owns visible loading failures and retries when candidates are opened.
+        _loadCategories().catchError((Object _) => <FinanceAssetCategory>[]),
+      ]);
     } finally {
       if (completion != null && !completion.isCompleted) {
         completion.complete();
@@ -121,8 +122,6 @@ class _FinanceAssetLedgerPanelState
       _result = null;
       _draftTotal = null;
       _categories = const [];
-      _categoriesLoading = false;
-      _categoriesError = null;
       _loading = false;
       _error = scopedPagedReadRejection?.message;
     });
@@ -206,28 +205,34 @@ class _FinanceAssetLedgerPanelState
     }
   }
 
-  Future<void> _loadCategories() async {
+  Future<List<FinanceAssetCategory>> _loadCategories() async {
     final generation = _categoryGuard.begin();
-    setState(() {
-      _categoriesLoading = true;
-      _categoriesError = null;
-    });
-    try {
-      final categories = await ref
-          .read(financeAssetCategoryRepositoryProvider)
-          .list(widget.ledger);
-      if (!mounted || !_categoryGuard.isCurrent(generation)) return;
-      setState(() {
-        _categories = categories;
-        _categoriesLoading = false;
-      });
-    } catch (_) {
-      if (!mounted || !_categoryGuard.isCurrent(generation)) return;
-      setState(() {
-        _categoriesLoading = false;
-        _categoriesError = '分类筛选加载失败';
-      });
+    final categories = await ref
+        .read(financeAssetCategoryRepositoryProvider)
+        .list(widget.ledger);
+    if (mounted && _categoryGuard.isCurrent(generation)) {
+      setState(() => _categories = categories);
     }
+    return categories;
+  }
+
+  Future<MasterFacetPage> _loadCategoryFacets(String keyword, int page) async {
+    final categories = await _loadCategories();
+    return MasterFacetPage(
+      items: [
+        for (final category in rankedKeywordMatches(
+          categories,
+          keyword,
+          fields: (category) => [category.code, category.name],
+        ))
+          MasterFacetBucket(
+            value: category.id,
+            label: '${category.code} · ${category.name}',
+            count: 0,
+          ),
+      ],
+      hasMore: false,
+    );
   }
 
   void _changeQuery(FinanceAssetQuery query, {bool useCache = false}) {
@@ -385,73 +390,7 @@ class _FinanceAssetLedgerPanelState
       : table;
 
   @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return _table(filterWidth: constraints.maxWidth);
-      },
-    );
-  }
-
-  // Stable table slots retain focus during loading, empty/error states and
-  // fullscreen. Each field wraps as a unit; no clipped secondary scroll pane.
-  List<Widget> _filterFields(double width) {
-    if (width < 840) {
-      final active = [
-        _query.status,
-        _query.categoryId,
-        _query.departmentId,
-      ].where((value) => value != null).length;
-      return [
-        _draftFilter(),
-        SizedBox(width: 180, child: _search()),
-        UtenButton(
-          key: Key('finance-asset-more-filters-${widget.ledger.apiValue}'),
-          type: active > 0 ? UtenButtonType.tonal : UtenButtonType.secondary,
-          icon: Icons.filter_alt_outlined,
-          onPressed: _showMoreFilters,
-          child: Text(active == 0 ? '筛选' : '筛选 ($active)'),
-        ),
-      ];
-    }
-    final fieldWidth = width < 600
-        ? ((width - 16) / 2).clamp(120.0, 180.0)
-        : 180.0;
-    return [
-      _draftFilter(),
-      SizedBox(width: fieldWidth, child: _search()),
-      SizedBox(width: fieldWidth, child: _statusFilter()),
-      SizedBox(width: fieldWidth, child: _categoryFilter()),
-      SizedBox(
-        width: fieldWidth,
-        child: UtenDepartmentPicker(
-          key: ValueKey('asset-filter-department-${_department?.id}'),
-          mode: UtenDepartmentPickerMode.single,
-          label: '归属部门',
-          hint: '全部部门',
-          initialSelection: _department == null ? const [] : [_department!],
-          onChanged: (selection) {
-            final department = selection.firstOrNull;
-            _department = department;
-            _changeQuery(
-              _query.copyWith(
-                page: 1,
-                departmentId: department?.id,
-                clearDepartmentId: department == null,
-              ),
-            );
-          },
-        ),
-      ),
-      UtenButton(
-        key: Key('finance-asset-reset-${widget.ledger.apiValue}'),
-        type: UtenButtonType.ghost,
-        icon: Icons.filter_alt_off_outlined,
-        onPressed: _resetFilters,
-        child: const Text('重置筛选'),
-      ),
-    ];
-  }
+  Widget build(BuildContext context) => _table();
 
   Widget _search() {
     return UtenSearchBar(
@@ -464,20 +403,7 @@ class _FinanceAssetLedgerPanelState
     );
   }
 
-  Widget _statusFilter() {
-    return UtenDropdownField(
-      key: ValueKey('asset-status-${widget.ledger.apiValue}-${_query.status}'),
-      label: '状态',
-      value: _query.status,
-      hintText: '全部状态',
-      items: _statusItems,
-      onChanged: (value) => _changeQuery(
-        _query.copyWith(page: 1, status: value, clearStatus: value == null),
-      ),
-    );
-  }
-
-  List<UtenDropdownItem> get _statusItems {
+  List<MasterFacetBucket> get _statusFacets {
     final statuses = <String, String>{
       'DRAFT': '草稿',
       'PENDING_APPROVAL': '待审批',
@@ -493,112 +419,8 @@ class _FinanceAssetLedgerPanelState
     };
     return [
       for (final entry in statuses.entries)
-        UtenDropdownItem(value: entry.key, label: entry.value),
+        MasterFacetBucket(value: entry.key, label: entry.value, count: 0),
     ];
-  }
-
-  Future<void> _showMoreFilters() async {
-    var status = _query.status;
-    var category = _query.categoryId;
-    var department = _department;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, update) => UtenAlertDialog(
-          title: Text('${widget.ledger.label}筛选'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              UtenDropdownField(
-                key: ValueKey('asset-status-${widget.ledger.apiValue}-$status'),
-                label: '状态',
-                value: status,
-                hintText: '全部状态',
-                items: _statusItems,
-                onChanged: (value) => update(() => status = value),
-              ),
-              const SizedBox(height: UtenSpacing.s16),
-              if (_categoriesError != null)
-                UtenButton(
-                  type: UtenButtonType.ghost,
-                  onPressed: () async {
-                    await _loadCategories();
-                    if (context.mounted) update(() {});
-                  },
-                  child: const Text('分类加载失败，重试'),
-                ),
-              UtenDropdownField(
-                key: ValueKey(
-                  'asset-category-filter-${widget.ledger.apiValue}-$category',
-                ),
-                label: '分类',
-                value: category,
-                hintText: '全部分类',
-                searchable: true,
-                items: [
-                  for (final item in _categories)
-                    UtenDropdownItem(
-                      value: item.id,
-                      label: '${item.code} · ${item.name}',
-                    ),
-                ],
-                onChanged: (value) => update(() => category = value),
-              ),
-              const SizedBox(height: UtenSpacing.s16),
-              UtenDepartmentPicker(
-                key: ValueKey('asset-filter-department-${department?.id}'),
-                mode: UtenDepartmentPickerMode.single,
-                label: '归属部门',
-                hint: '全部部门',
-                initialSelection: department == null ? const [] : [department!],
-                onChanged: (values) =>
-                    update(() => department = values.firstOrNull),
-              ),
-              const SizedBox(height: UtenSpacing.s8),
-              UtenButton(
-                type: UtenButtonType.ghost,
-                onPressed: () => update(() {
-                  status = null;
-                  category = null;
-                  department = null;
-                }),
-                child: const Text('重置筛选'),
-              ),
-            ],
-          ),
-          actions: [
-            UtenButton(
-              type: UtenButtonType.secondary,
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('取消'),
-            ),
-            UtenButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('应用'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (!mounted || confirmed != true) return;
-    if (status == _query.status &&
-        category == _query.categoryId &&
-        department?.id == _query.departmentId) {
-      return;
-    }
-    _department = department;
-    _changeQuery(
-      _query.copyWith(
-        page: 1,
-        status: status,
-        clearStatus: status == null,
-        categoryId: category,
-        clearCategoryId: category == null,
-        departmentId: department?.id,
-        clearDepartmentId: department == null,
-      ),
-    );
   }
 
   Widget _draftFilter() {
@@ -624,54 +446,6 @@ class _FinanceAssetLedgerPanelState
         countForm: UtenSegmentCountForm.actionable,
       ),
     );
-  }
-
-  Widget _categoryFilter() {
-    if (_categoriesLoading) return const LinearProgressIndicator();
-    if (_categoriesError != null) {
-      return Row(
-        children: [
-          Expanded(child: Text(_categoriesError!)),
-          IconButton(
-            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-            tooltip: '重试分类',
-            onPressed: _loadCategories,
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
-      );
-    }
-    return UtenDropdownField(
-      key: ValueKey(
-        'asset-category-filter-${widget.ledger.apiValue}-${_query.categoryId}',
-      ),
-      label: '分类',
-      value: _query.categoryId,
-      hintText: '全部分类',
-      searchable: true,
-      items: [
-        for (final item in _categories)
-          UtenDropdownItem(
-            value: item.id,
-            label: '${item.code} · ${item.name}',
-          ),
-      ],
-      onChanged: (value) => _changeQuery(
-        _query.copyWith(
-          page: 1,
-          categoryId: value,
-          clearCategoryId: value == null,
-        ),
-      ),
-    );
-  }
-
-  void _resetFilters() {
-    setState(() {
-      _query = const FinanceAssetQuery();
-      _department = null;
-    });
-    _load();
   }
 
   void _headerFilterChanged(String key, String? value) {
@@ -710,6 +484,7 @@ class _FinanceAssetLedgerPanelState
         context,
         tree: tree,
         initialSelection: _department == null ? const [] : [_department!],
+        allowClear: true,
       );
       if (!mounted || selection == null) return;
       _department = selection.firstOrNull;
@@ -725,13 +500,16 @@ class _FinanceAssetLedgerPanelState
     }
   }
 
-  Widget _table({required double filterWidth}) {
+  Widget _table() {
     final result = _result;
     return _withFormDraftRows(
       MasterDataTableView<FinanceAssetSummary>(
         rowsController: _tableRows,
         tableKey: 'finance.asset.${widget.ledger.name}.ledger',
-        toolbarLeadingActions: _filterFields(filterWidth),
+        toolbarLeadingActions: [
+          _draftFilter(),
+          SizedBox(width: 180, child: _search()),
+        ],
         onFullscreenChanged: (fullscreen) {
           if (!mounted) return;
           setState(() => _fullscreen = fullscreen);
@@ -836,24 +614,8 @@ class _FinanceAssetLedgerPanelState
           ),
         ],
         items: result?.items ?? const [],
-        facets: {
-          'status': [
-            for (final option in _statusItems)
-              MasterFacetBucket(
-                value: option.value!,
-                label: option.label,
-                count: 0,
-              ),
-          ],
-          'categoryName': [
-            for (final category in _categories)
-              MasterFacetBucket(
-                value: category.id,
-                label: '${category.code} · ${category.name}',
-                count: 0,
-              ),
-          ],
-        },
+        facets: {'status': _statusFacets},
+        facetPageLoaders: {'categoryName': _loadCategoryFacets},
         nullCounts: const <String, int>{},
         filters: {
           'status': _query.status,

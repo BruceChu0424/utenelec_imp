@@ -8,7 +8,7 @@ ALTER TABLE fixed_assets
     ADD CONSTRAINT fixed_asset_opening_shape CHECK (
         (opening_as_of IS NULL AND opening_accumulated_amount=0 AND opening_remaining_months IS NULL AND opening_voucher_id IS NULL)
         OR (opening_as_of IS NOT NULL AND opening_remaining_months BETWEEN 0 AND 1200
-            AND opening_accumulated_amount BETWEEN 0 AND original_value*(1-salvage_rate)));
+            AND opening_accumulated_amount BETWEEN 0 AND original_value-round(original_value*salvage_rate,4)));
 CREATE UNIQUE INDEX ux_fixed_asset_opening_voucher ON fixed_assets(opening_voucher_id)
     WHERE opening_voucher_id IS NOT NULL AND lifecycle_status<>'REVERSED' AND NOT is_deleted;
 ALTER TABLE finance_asset_books ADD COLUMN opening_accumulated_amount NUMERIC(18,4) NOT NULL DEFAULT 0

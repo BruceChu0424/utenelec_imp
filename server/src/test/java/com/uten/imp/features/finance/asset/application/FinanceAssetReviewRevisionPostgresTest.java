@@ -497,6 +497,33 @@ class FinanceAssetReviewRevisionPostgresTest {
         assertThat(queries.fixedAsset(cleared.id()).summary().openingBalance()).isNull();
     }
 
+    @Test
+    void fullyDepreciatedOpeningUsesTheSameRoundedResidualInValidationAndDatabase() {
+        Actor maker=actor("opening-rounded-maker"), reviewer=actor("opening-rounded-reviewer"), poster=actor("opening-rounded-poster");
+        UUID category=category(false);
+        var asOf=YearMonth.from(BusinessTime.today()).minusMonths(1).atEndOfMonth();
+        String period=YearMonth.from(asOf).plusMonths(1).toString(),source="ROUNDING-"+UUID.randomUUID();
+        login(maker,financialPermissions());
+        var draft=workflow.createFixed(new AssetWorkbenchRequests.FixedAssetDraft(null,"四位精度提足资产",category,maker.department(),maker.employee(),"一楼",null,null,null,
+                new BigDecimal("100.0001"),new BigDecimal("0.05"),12,period,asOf,asOf,asOf,"MANUAL",null,source,"HEADER",asOf,null,null,
+                new AssetWorkbenchRequests.OpeningBalance(asOf,new BigDecimal("95.0001"),0,null)));
+        var submitted=workflow.submit(draft.id(),draft.version(),false);
+        login(reviewer,financialPermissions());
+        var approved=workflow.approve(draft.id(),submitted.version(),"核对舍入残值",false);
+        login(poster,financialPermissions());
+        workflow.activate(draft.id(),approved.version(),false);
+        assertThat(queries.fixedAsset(draft.id()).summary().netBookValue()).isEqualByComparingTo("5.0000");
+        assertThat(jdbc.queryForObject("SELECT depreciable_amount-opening_accumulated_amount FROM finance_asset_books WHERE asset_id=?",BigDecimal.class,draft.id()))
+                .isEqualByComparingTo("0.0000");
+        // Keep the shared application fixture clear of another test's company-wide posting candidates.
+        login(maker,financialPermissions());
+        var active=queries.fixedAsset(draft.id()).summary();
+        var requested=recognitionReversals.request(draft.id(),false,new AssetWorkbenchRequests.ReasonCommand(active.version(),"回归清理"));
+        login(reviewer,financialPermissions());
+        var checked=recognitionReversals.approve(draft.id(),false,new AssetWorkbenchRequests.VersionCommand(requested.version()));
+        recognitionReversals.post(draft.id(),false,new AssetWorkbenchRequests.VersionCommand(checked.version()));
+    }
+
     private AssetWorkbenchResponses.PostingRun postNormalMonth(String period,Actor maker,Actor reviewer,Actor poster) {
         login(maker,financialPermissions());
         var preview=posting.preview(new AssetWorkbenchRequests.PostingPreviewCommand("DEPRECIATION","CORPORATE",period));

@@ -469,7 +469,7 @@ namespace Uten.Legacy.Core.Tests
                     return Business == null ? Ready(Json(UnitReply)) : Business(request, ct);
                 }), new MemoryAuthStore(), store);
             }
-            internal Task Login() { return Session.LoginAsync("UT0001", "fixture-password", null, CancellationToken.None); }
+            internal Task Login() { return Session.LoginAsync("UT0001", "fixture-password", CancellationToken.None); }
             internal MutationOwnerSnapshot Owner() { return Session.CaptureMutationOwner(); }
             internal DraftWriteLease Lease(MutationOwnerSnapshot owner) { return Session.CreateDraftLease(MutationAction.UnitCreate, NewId(), owner); }
             internal MutationRequest Command() { return Session.PrepareMutation(MutationAction.UnitCreate, NewId(), ValidBody, Owner()); }

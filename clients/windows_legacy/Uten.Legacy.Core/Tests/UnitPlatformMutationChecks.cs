@@ -271,7 +271,7 @@ namespace Uten.Legacy.Core.Tests
             }
             internal string Values(IDictionary<string, string> input) { return JsonValue.Serialize(new Dictionary<string, object> { ["expectedVersion"] = Version, ["cells"] = input.Select(pair => new Dictionary<string, object> { ["columnId"] = pair.Key, ["value"] = pair.Value }).ToArray() }); }
             internal MutationOwnerSnapshot Owner() { return Session.CaptureMutationOwner(); }
-            internal Task Login() { return Session.LoginAsync("fixture", "fixture-password", null, CancellationToken.None); }
+            internal Task Login() { return Session.LoginAsync("fixture", "fixture-password", CancellationToken.None); }
             internal MutationRequest Prepare(MutationAction action, string body, string resource = null) { return Session.PrepareMutation(action, Guid.NewGuid().ToString("D"), body, Owner(), resource); }
             public void Dispose() { Session.Dispose(); State?.Dispose(); }
         }

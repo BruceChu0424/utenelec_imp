@@ -84,7 +84,7 @@ namespace Uten.Legacy.Core.Tests
                 var store = new MemoryStore();
                 using (var session = new SessionCoordinator(Configuration(), handler, store))
                 {
-                    var pending = session.LoginAsync("UT0001", "test-password", null, CancellationToken.None);
+                    var pending = session.LoginAsync("UT0001", "test-password", CancellationToken.None);
                     True(headersSeen.Wait(TimeSpan.FromSeconds(5)), "actual auth response headers observed");
                     await session.LogoutAsync(CancellationToken.None);
                     release.Set();

@@ -211,7 +211,7 @@ namespace Uten.Legacy.Core.Tests
                     return new HttpResponseMessage(Status) { Content = content };
                 }), new MemoryStore(), State.Store);
             }
-            internal Task Login() { return Session.LoginAsync("fixture", "fixture-password", null, CancellationToken.None); }
+            internal Task Login() { return Session.LoginAsync("fixture", "fixture-password", CancellationToken.None); }
             public void Dispose() { Session.Dispose(); State.Dispose(); }
         }
         private sealed class Handler : HttpMessageHandler

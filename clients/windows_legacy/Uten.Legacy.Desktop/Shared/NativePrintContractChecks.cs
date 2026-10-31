@@ -137,7 +137,7 @@ namespace Uten.Legacy.Desktop.Shared
                     return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
                 }), new MemoryStore(), state.Store))
                 {
-                    await session.LoginAsync("fixture", "fixture-password", null, CancellationToken.None);
+                    await session.LoginAsync("fixture", "fixture-password", CancellationToken.None);
                     var snapshot = await UnitPrintSnapshot.LoadAsync(session, new UnitQuery(), CancellationToken.None);
                     check(snapshot.Rows.Count == 205 && pages == 3 && writes == 0 && snapshot.IsCurrent(session), "view-only full print uses all scoped pages, never export authority");
                 }

@@ -401,7 +401,7 @@ namespace Uten.Legacy.Core.Tests
                     return action == null ? Json(UnitBody) : await action(request, ct);
                 }), new MemoryStore(), state.Store);
             }
-            internal Task Login() { return Session.LoginAsync("UT0001", "fixture-password", null, CancellationToken.None); }
+            internal Task Login() { return Session.LoginAsync("UT0001", "fixture-password", CancellationToken.None); }
             internal MutationRequest Create(string body = "{\"name\":\"kg\"}")
             { return Session.PrepareMutation(MutationAction.UnitCreate, NewId(), body, Session.CaptureMutationOwner()); }
             private string Token(string access, int expires, bool changed)

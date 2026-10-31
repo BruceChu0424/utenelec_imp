@@ -164,7 +164,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 Picker.Output = Path.Combine(State.RootDirectory, "unit-export-ui.xlsx");
                 var config = new ClientConfiguration(new[] { new ServerEndpoint("fixture", "Fixture", "https://export-ui.company.test/api") }, "fixture");
                 Session = new SessionCoordinator(config, new Handler(Serve), new MemoryStore(), State.Store);
-                Session.LoginAsync("fixture", "fixture-password", null, CancellationToken.None).GetAwaiter().GetResult();
+                Session.LoginAsync("fixture", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
             }
             internal UnitExportWindow Open(UnitQuery query)
             {

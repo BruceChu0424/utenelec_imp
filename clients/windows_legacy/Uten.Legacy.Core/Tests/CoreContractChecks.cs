@@ -79,7 +79,7 @@ namespace Uten.Legacy.Core.Tests
                 return request.Headers.Authorization.Parameter == "access-old" ? Unauthorized() : Json("{\"ok\":true}");
             }), new MemoryStore()))
             {
-                await session.LoginAsync("UT0001", "test-password", "123456", CancellationToken.None);
+                await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
                 var generation = session.Generation;
                 await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => session.GetAsync("auth/me", CancellationToken.None)));
                 Equal(1, refreshes, "one refresh for concurrent 401s");
@@ -102,7 +102,7 @@ namespace Uten.Legacy.Core.Tests
                 return Task.FromResult(Unauthorized());
             }), store))
             {
-                await session.LoginAsync("UT0001", "test-password", null, CancellationToken.None);
+                await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
                 var pending = session.GetAsync("auth/me", CancellationToken.None);
                 True(entered.Task.Wait(TimeSpan.FromSeconds(5)), "refresh entered");
                 var generation = session.Generation;
@@ -124,7 +124,7 @@ namespace Uten.Legacy.Core.Tests
             using (var session = new SessionCoordinator(Configuration(), new Handler((request, ct) =>
             { sends.Add(request.RequestUri.Host); return reply.Task; }), store))
             {
-                var pending = session.LoginAsync("UT0001", "test-password", null, CancellationToken.None);
+                var pending = session.LoginAsync("UT0001", "test-password", CancellationToken.None);
                 session.SelectEndpoint("cloud");
                 reply.SetResult(Json(Token("access-old", "refresh-old")));
                 await ThrowsAsync<ApiException>(() => pending);
@@ -151,7 +151,7 @@ namespace Uten.Legacy.Core.Tests
                     return Task.FromResult(Unauthorized());
                 }), new MemoryStore()))
                 {
-                    await session.LoginAsync("UT0001", "test-password", null, CancellationToken.None);
+                    await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
                     var generation = session.Generation;
                     var error = await ThrowsAsync<ApiException>(() => session.GetAsync("auth/me", CancellationToken.None));
                     Equal("SESSION_CHANGED", error.Code, "changed profile stops old read");
@@ -167,7 +167,7 @@ namespace Uten.Legacy.Core.Tests
                 request.RequestUri.AbsolutePath.EndsWith("/login") ? Json(Token("access-old", "refresh-old")) :
                 request.RequestUri.AbsolutePath.EndsWith("/refresh") ? Json("<html>unavailable</html>", HttpStatusCode.ServiceUnavailable) : Unauthorized())), new MemoryStore()))
             {
-                await session.LoginAsync("UT0001", "test-password", null, CancellationToken.None);
+                await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
                 await ThrowsAsync<ApiException>(() => session.GetAsync("auth/me", CancellationToken.None));
                 True(session.IsAuthenticated, "proxy refresh outage preserves session");
             }
@@ -185,7 +185,7 @@ namespace Uten.Legacy.Core.Tests
                 return Task.FromResult(Unauthorized());
             }), new MemoryStore()))
             {
-                await session.LoginAsync("UT0001", "test-password", null, CancellationToken.None);
+                await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
                 await ThrowsAsync<ApiException>(() => session.ChangePasswordAsync("old-password", "new-password", CancellationToken.None));
                 Equal(1, changes, "password submission count");
                 Equal(0, refreshes, "password 401 does not replay via refresh");
@@ -194,7 +194,7 @@ namespace Uten.Legacy.Core.Tests
             using (var session = new SessionCoordinator(Configuration(), new Handler((request, ct) =>
             { attempts++; throw new HttpRequestException("fixture network failure"); }), new MemoryStore()))
             {
-                var error = await ThrowsAsync<ApiException>(() => session.LoginAsync("UT0001", "test-password", null, CancellationToken.None));
+                var error = await ThrowsAsync<ApiException>(() => session.LoginAsync("UT0001", "test-password", CancellationToken.None));
                 True(error.IsSubmissionUnknown, "sent write has unknown outcome");
                 Equal(1, attempts, "no automatic network retry");
             }
@@ -211,14 +211,14 @@ namespace Uten.Legacy.Core.Tests
                 return Task.FromResult(response);
             }), new MemoryStore()))
             {
-                var error = await ThrowsAsync<ApiException>(() => session.LoginAsync("UT0001", "test-password", null, CancellationToken.None));
+                var error = await ThrowsAsync<ApiException>(() => session.LoginAsync("UT0001", "test-password", CancellationToken.None));
                 Equal("REDIRECT_BLOCKED", error.Code, "redirect rejected");
                 Equal(1, attempts, "redirect not followed");
             }
             using (var session = new SessionCoordinator(Configuration(1024), new Handler((request, ct) => Task.FromResult(
                 request.RequestUri.AbsolutePath.EndsWith("/login") ? Json(Token("access-old", "refresh-old")) : Json(new string('x', 2048)))), new MemoryStore()))
             {
-                await session.LoginAsync("UT0001", "test-password", null, CancellationToken.None);
+                await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
                 var error = await ThrowsAsync<ApiException>(() => session.GetAsync("large", CancellationToken.None));
                 Equal("RESPONSE_TOO_LARGE", error.Code, "read bound");
             }
@@ -233,7 +233,7 @@ namespace Uten.Legacy.Core.Tests
                 throw new HttpRequestException("fixture offline");
             }), store))
             {
-                await session.LoginAsync("UT0001", "test-password", null, CancellationToken.None);
+                await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
                 await ThrowsAsync<ApiException>(() => session.LogoutAsync(CancellationToken.None));
                 True(!session.IsAuthenticated && store.Load() == null, "offline local logout");
                 Equal(1, store.PendingRevocations().Count, "offline logout retained");
@@ -262,7 +262,7 @@ namespace Uten.Legacy.Core.Tests
                     ? Json("{\"code\":\"ACCOUNT_DISABLED\",\"message\":\"账号已停用\"}", HttpStatusCode.Unauthorized)
                     : Unauthorized())), store))
             {
-                await session.LoginAsync("UT0001", "test-password", null, CancellationToken.None);
+                await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
                 session.SessionChanged += (sender, args) => notifications++;
                 var generation = session.Generation;
                 var error = await ThrowsAsync<ApiException>(() => session.GetAsync("auth/me", CancellationToken.None));
@@ -290,7 +290,7 @@ namespace Uten.Legacy.Core.Tests
                         : Json("", HttpStatusCode.NoContent));
                 }), store))
                 {
-                    await session.LoginAsync("UT0001", "test-password", null, CancellationToken.None);
+                    await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
                     store.FailEnd = true;
                     var error = await ThrowsAsync<ApiException>(() => session.LogoutAsync(CancellationToken.None));
                     Equal("LOGOUT_STORAGE_FAILED", error.Code, "durability failure not reported as successful logout");
@@ -328,7 +328,7 @@ namespace Uten.Legacy.Core.Tests
                 return Task.FromResult(Unauthorized());
             }), store))
             {
-                await session.LoginAsync("UT0001", "test-password", null, CancellationToken.None);
+                await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
                 var generation = session.Generation;
                 var error = await ThrowsAsync<ApiException>(() => session.GetAsync("auth/me", CancellationToken.None));
                 Equal("LOCAL_SESSION_STORAGE", error.Code, "commit storage failure visible");

@@ -180,7 +180,7 @@ namespace Uten.Legacy.Core.Tests
                     Downloads++; return body(request,ct);
                 }),new MemoryStore());
             }
-            internal Task Login() { return Session.LoginAsync("UT0001","test-password",null,CancellationToken.None); }
+            internal Task Login() { return Session.LoginAsync("UT0001","test-password",CancellationToken.None); }
             public void Dispose()
             {
                 Session.Dispose();

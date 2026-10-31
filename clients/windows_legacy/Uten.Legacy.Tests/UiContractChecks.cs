@@ -72,7 +72,7 @@ namespace Uten.Legacy.Tests
                 var window = new MainWindow(session, configuration, true);
                 try
                 {
-                    session.LoginAsync("fixture", "fixture-password", null, CancellationToken.None).GetAwaiter().GetResult();
+                    session.LoginAsync("fixture", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
                     Pump(window);
                     var host = (ContentControl)window.FindName("WorkspaceContent");
                     object previous = host.Content;
@@ -113,7 +113,7 @@ namespace Uten.Legacy.Tests
                 var handler = new UnitUiHandler();
                 using (var session = new SessionCoordinator(configuration, handler, new MemoryStore(), blocked))
                 {
-                    session.LoginAsync("fixture", "fixture-password", null, CancellationToken.None).GetAwaiter().GetResult();
+                    session.LoginAsync("fixture", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
                     var oldOwner = session.CaptureMutationOwner();
                     var main = new MainWindow(session, configuration, true) { Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
                     UnitEditorWindow editor = null;
@@ -141,7 +141,7 @@ namespace Uten.Legacy.Tests
                         main.Close();
                         if (mainClosed) throw new InvalidOperationException("The real owner must not close while its editor is preserving a draft.");
                         handler.UserId = "fixture-new-owner";
-                        session.LoginAsync("fixture-new", "fixture-password", null, CancellationToken.None).GetAwaiter().GetResult();
+                        session.LoginAsync("fixture-new", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
                         Pump(main);
                         main.Close();
                         if (mainClosed) throw new InvalidOperationException("Replacing a workspace must not lose a retired editor's global exit guard.");
@@ -193,7 +193,7 @@ namespace Uten.Legacy.Tests
                 var handler = new UnitUiHandler();
                 using (var session = new SessionCoordinator(configuration, handler, new MemoryStore(), state.Store))
                 {
-                    session.LoginAsync("fixture", "fixture-password", null, CancellationToken.None).GetAwaiter().GetResult();
+                    session.LoginAsync("fixture", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
                     var service = new UnitService(session);
                     var owner = session.CaptureMutationOwner();
                     var editor = new UnitEditorWindow(null, session, service, null, MutationAction.UnitCreate);
@@ -219,7 +219,7 @@ namespace Uten.Legacy.Tests
                         System.Windows.Automation.AutomationProperties.GetName(item) == "单位名称").Text = "退役前输入";
                     bool retiredClosed = false; retiredEditor.Closed += (sender, args) => retiredClosed = true;
                     handler.UserId = "fixture-other-user";
-                    session.LoginAsync("fixture-other", "fixture-password", null, CancellationToken.None).GetAwaiter().GetResult();
+                    session.LoginAsync("fixture-other", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
                     PumpUntil(() => retiredClosed, "Retired form must preserve only its original owner's draft and close.");
                     var oldDrafts = state.Store.ListDrafts(owner);
                     var newOwner = session.CaptureMutationOwner();

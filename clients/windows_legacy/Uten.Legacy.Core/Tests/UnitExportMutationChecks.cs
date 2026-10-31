@@ -268,7 +268,7 @@ namespace Uten.Legacy.Core.Tests
                     return Post == null ? Ready(Json(View(null))) : Post(message, ct);
                 }), new AuthStore(), store);
             }
-            internal Task Login() { return Session.LoginAsync("fixture", "fixture-password", null, CancellationToken.None); }
+            internal Task Login() { return Session.LoginAsync("fixture", "fixture-password", CancellationToken.None); }
             internal MutationOwnerSnapshot Owner() { return Session.CaptureMutationOwner(); }
             internal MutationRequest Submit(string body) { return Session.PrepareMutation(MutationAction.UnitExportSubmit, NewId(), body, Owner()); }
             public void Dispose() { Session.Dispose(); State?.Dispose(); }

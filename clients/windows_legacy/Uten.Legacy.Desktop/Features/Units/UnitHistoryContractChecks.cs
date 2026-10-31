@@ -261,7 +261,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 Session = new SessionCoordinator(new ClientConfiguration(new[] { new ServerEndpoint("first", "First", "https://first.history.test/api"),
                     new ServerEndpoint("second", "Second", "https://second.history.test/api") }, "first"), Handler, new AuthStore(), storage.Store);
             }
-            internal Task Login() { return Session.LoginAsync("fixture", "fixture-secret", null, CancellationToken.None); }
+            internal Task Login() { return Session.LoginAsync("fixture", "fixture-secret", CancellationToken.None); }
             internal IReadOnlyList<MutationJournalRecord> ReadJournal(MutationOwnerSnapshot owner) { return storage.Store.ListJournal(owner); }
             public void Dispose() { Session.Dispose(); storage.Dispose(); }
         }

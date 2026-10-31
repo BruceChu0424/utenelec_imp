@@ -472,7 +472,7 @@ namespace Uten.Legacy.Core.Tests
                     return action(request, token);
                 }), Store);
             }
-            internal Task Login() { return Session.LoginAsync(Account, "fixture-password", null, CancellationToken.None); }
+            internal Task Login() { return Session.LoginAsync(Account, "fixture-password", CancellationToken.None); }
             public void Dispose() { Session.Dispose(); }
         }
         private sealed class Handler : HttpMessageHandler

@@ -369,7 +369,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 Session = new SessionCoordinator(new ClientConfiguration(new[] { new ServerEndpoint("first", "First", "https://first.inline.test/api"),
                     new ServerEndpoint("second", "Second", "https://second.inline.test/api") }, "first"), Handler, new AuthStore(), Store);
             }
-            internal void Login() { Wait(Session.LoginAsync("fixture", "fixture-secret", null, CancellationToken.None)); }
+            internal void Login() { Wait(Session.LoginAsync("fixture", "fixture-secret", CancellationToken.None)); }
             internal UnitReadSnapshot<UnitPageResult> Snapshot() { return Wait(new UnitService(Session).ListAsync(new UnitQuery(), CancellationToken.None)); }
             public void Dispose() { Session.Dispose(); storage.Dispose(); }
         }

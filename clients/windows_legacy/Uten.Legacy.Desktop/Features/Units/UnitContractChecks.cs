@@ -172,7 +172,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                     new ServerEndpoint("second", "Second", "https://second.unit.test/api") }, "first");
                 Session = new SessionCoordinator(configuration, Handler, new AuthStore(), state.Store);
             }
-            internal Task Login() { return Session.LoginAsync("fixture", "fixture-secret", null, CancellationToken.None); }
+            internal Task Login() { return Session.LoginAsync("fixture", "fixture-secret", CancellationToken.None); }
             public void Dispose() { Session.Dispose(); state.Dispose(); }
         }
         private sealed class AuthStore : ISessionStore

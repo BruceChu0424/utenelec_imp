@@ -98,7 +98,7 @@ namespace Uten.Legacy.Desktop.Features.Columns
                 Session = new SessionCoordinator(new ClientConfiguration(new[] { new ServerEndpoint("first", "First", "https://first.columns.test/api"),
                     new ServerEndpoint("second", "Second", "https://second.columns.test/api") }, "first"), Handler, new AuthStore(), storage.Store);
             }
-            internal Task Login() { return Session.LoginAsync("fixture", "fixture-secret", null, CancellationToken.None); }
+            internal Task Login() { return Session.LoginAsync("fixture", "fixture-secret", CancellationToken.None); }
             public void Dispose() { Session.Dispose(); storage.Dispose(); }
         }
         private sealed class AuthStore : ISessionStore

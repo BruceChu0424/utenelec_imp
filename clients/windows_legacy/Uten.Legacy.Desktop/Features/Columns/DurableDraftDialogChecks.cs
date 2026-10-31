@@ -169,7 +169,7 @@ namespace Uten.Legacy.Desktop.Features.Columns
                 Session = new SessionCoordinator(new ClientConfiguration(new[] { new ServerEndpoint("first", "First", "https://first.dialog.test/api"),
                     new ServerEndpoint("second", "Second", "https://second.dialog.test/api") }, "first"), Handler, new AuthStore(), Store);
             }
-            internal void Login() { Session.LoginAsync("fixture", "fixture-secret", null, CancellationToken.None).GetAwaiter().GetResult(); }
+            internal void Login() { Session.LoginAsync("fixture", "fixture-secret", CancellationToken.None).GetAwaiter().GetResult(); }
             public void Dispose() { Session.Dispose(); state.Dispose(); }
         }
         private sealed class FaultStore : IBusinessStateStore

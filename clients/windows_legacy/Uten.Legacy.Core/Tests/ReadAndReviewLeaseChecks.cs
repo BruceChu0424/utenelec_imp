@@ -180,7 +180,7 @@ namespace Uten.Legacy.Core.Tests
                     Interlocked.Increment(ref BusinessWrites); throw new HttpRequestException("fixture sent write lost");
                 }), new AuthStore(), store);
             }
-            internal Task Login() { return Session.LoginAsync("fixture", "fixture-password", null, CancellationToken.None); }
+            internal Task Login() { return Session.LoginAsync("fixture", "fixture-password", CancellationToken.None); }
             internal MutationOwnerSnapshot Owner() { return Session.CaptureMutationOwner(); }
             internal MutationRequest Command() { return Session.PrepareMutation(MutationAction.UnitStatus, Guid.NewGuid().ToString("D"), "{\"status\":\"禁用\"}", Owner(), Record); }
             private string Token(string access) { return "{\"accessToken\":\"" + access + "\",\"refreshToken\":\"refresh-fixture\",\"expiresIn\":900,\"user\":{\"id\":\"read-review-owner\",\"loginAccount\":\"UT0001\",\"superAdmin\":false,\"mustChangePassword\":false,\"permissions\":"

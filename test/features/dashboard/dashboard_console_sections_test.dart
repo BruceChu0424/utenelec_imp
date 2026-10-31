@@ -132,7 +132,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('指标区渲染标题、数值与副标题', (tester) async {
+  testWidgets('指标区渲染标题与数值，副标题不再占行', (tester) async {
     await tester.pumpWidget(
       host(
         panel(
@@ -150,7 +150,8 @@ void main() {
     // 数值由 UtenAnimatedNumber 画；settle 后应停在目标值上。
     expect(find.text('12'), findsOneWidget);
     expect(find.text('7'), findsOneWidget);
-    expect(find.text('已审订单未排产'), findsWidgets);
+    // 2026-10-30 用户口径：副标题行删除，未知副标题不再显示（静态口径走「?」悬停）。
+    expect(find.text('已审订单未排产'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -245,7 +246,7 @@ void main() {
     }
   }
 
-  testWidgets('隐藏确定零未读的冗余说明，保留逾期和未知副标题', (tester) async {
+  testWidgets('副标题一律不占行：零未读、逾期与未知副标题都不显示', (tester) async {
     await tester.pumpWidget(
       host(
         panel(
@@ -273,10 +274,13 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    for (final text in ['5', '0', '2', '3 个已逾期', '当前需要核对']) {
+    for (final text in ['5', '0', '2']) {
       expect(find.text(text), findsOneWidget);
     }
-    expect(find.text('今天没有未读消息'), findsNothing);
+    // 2026-10-30 用户口径：副标题行删除，即时事实与未知副标题同样不占版面。
+    for (final text in ['3 个已逾期', '今天没有未读消息', '当前需要核对']) {
+      expect(find.text(text), findsNothing);
+    }
     expect(
       find.byWidgetPredicate(
         (widget) => widget is UtenFieldHintIcon && widget.info == '3 个已逾期',
@@ -286,7 +290,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('未读加载、错误和未知值保留原值与原因，不显示伪零', (tester) async {
+  testWidgets('未读加载、错误和未知值保留原值不显示伪零，原因不占行', (tester) async {
     for (final state in [
       ('…', '正在加载未读通知'),
       ('—', '未读通知统计暂不可用'),
@@ -309,7 +313,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text(state.$1), findsOneWidget);
-      expect(find.text(state.$2), findsOneWidget);
+      // 2026-10-30 用户口径：副标题行删除，加载/异常原因不再占版面。
+      expect(find.text(state.$2), findsNothing);
       expect(find.text('0'), findsNothing);
       expect(tester.takeException(), isNull);
     }

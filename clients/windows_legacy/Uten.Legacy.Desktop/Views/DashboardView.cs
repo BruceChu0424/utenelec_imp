@@ -57,11 +57,11 @@ namespace Uten.Legacy.Desktop.Views
                 metrics.Children.Clear(); todos.Children.Clear();
                 foreach (var item in Objects(data, "metrics"))
                 {
+                    // 2026-10-30 用户口径：指标只留标题＋数值两行，副标题不再占行（与 Flutter 端同步）。
                     var row = new DockPanel();
                     var value = new TextBlock { Text = Text(item, "value"), FontSize = 23, FontWeight = FontWeights.SemiBold, Margin = new Thickness(20, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
                     DockPanel.SetDock(value, Dock.Right); row.Children.Add(value);
-                    var caption = new StackPanel(); caption.Children.Add(new TextBlock { Text = Text(item, "title"), FontWeight = FontWeights.SemiBold });
-                    caption.Children.Add(new TextBlock { Text = Text(item, "subtitle"), Foreground = Brush("Uten.Muted"), FontSize = (double)FindResource("Uten.FontSize.Caption"), Margin = new Thickness(0, Space("S4"), 0, 0) });
+                    var caption = new TextBlock { Text = Text(item, "title"), FontWeight = FontWeights.SemiBold };
                     row.Children.Add(caption); metrics.Children.Add(Surface(row));
                 }
                 foreach (var item in Objects(data, "todos"))

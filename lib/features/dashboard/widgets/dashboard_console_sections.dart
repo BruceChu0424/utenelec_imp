@@ -238,8 +238,9 @@ class _StripMetric extends StatelessWidget {
       ('notice-unread', '0', '今天没有未读消息') => '',
       _ => metric.subtitle,
     };
-    // 同一个指标的副标题也可能是“3 个已逾期”等即时事实。仅将已确认的
-    // 静态口径折叠；其他服务端副标题仍可见，不能按指标 id 一概隐藏。
+    // 2026-10-30 用户口径：指标副标题行整行删除，所有指标统一「标题＋数值」
+    // 两行、同排等高。已确认的静态口径说明保留标题旁「?」悬停；其余服务端
+    // 副标题（如「3 个已逾期」）只进读屏 Semantics，不再占版面。
     final guidance = switch ((metric.id, subtitle)) {
       ('production-pending', '按销售订单需求实时汇总') ||
       ('sales-active', '已审核且尚未结案') => subtitle,
@@ -292,22 +293,6 @@ class _StripMetric extends StatelessWidget {
               numeric == null
                   ? Text(metric.value, style: valueStyle)
                   : UtenAnimatedNumber(value: numeric, style: valueStyle),
-              if (guidance == null && subtitle.isNotEmpty) ...[
-                const SizedBox(height: UtenSpacing.s2),
-                // 副标题只给一行，长文案不撑宽指标带。
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 220),
-                  child: Text(
-                    subtitle,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ],
             ],
           ),
         ),

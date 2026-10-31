@@ -196,13 +196,12 @@ class _StripMetricSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 与真实指标同构：标题行＋数值两行（2026-10-30 副标题行已删）。
     return const Column(
       children: [
         UtenSkeleton(width: 80, height: 12),
         SizedBox(height: UtenSpacing.s8),
         UtenSkeleton(width: 60, height: 24),
-        SizedBox(height: UtenSpacing.s4),
-        UtenSkeleton(width: 120, height: 10),
       ],
     );
   }

@@ -5,7 +5,7 @@
   "summary": {
     "pageFiles": 213,
     "featureGroups": 34,
-    "controllerFiles": 243,
+    "controllerFiles": 244,
     "routeConstructorCandidates": 233,
     "pagesWithDirectRouterBinding": 173,
     "pagesWithPossibleAliases": 24,
@@ -17895,6 +17895,25 @@
           ]
         },
         {
+          "source": "server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java",
+          "status": "需人工核实",
+          "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
+          "endpointEvidence": [
+            {
+              "source": "lib/features/basic_data/repositories/account_repository.dart",
+              "line": 20,
+              "template": "/finance/account-balance-adjustments/batch",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/basic_data/repositories/account_repository.dart",
+              "line": 21,
+              "template": "/finance/reports/account/statement",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            }
+          ]
+        },
+        {
           "source": "server/src/main/java/com/uten/imp/features/finance/asset/FixedAssetController.java",
           "status": "需人工核实",
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
@@ -19406,6 +19425,25 @@
               "line": 20,
               "template": "/finance/account-balance-adjustments/batch",
               "controllerBase": "/api/finance/account-balance-adjustments"
+            }
+          ]
+        },
+        {
+          "source": "server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java",
+          "status": "需人工核实",
+          "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
+          "endpointEvidence": [
+            {
+              "source": "lib/features/basic_data/repositories/account_repository.dart",
+              "line": 20,
+              "template": "/finance/account-balance-adjustments/batch",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/basic_data/repositories/account_repository.dart",
+              "line": 21,
+              "template": "/finance/reports/account/statement",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
             }
           ]
         },
@@ -48057,7 +48095,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4280884303b94526a957de217f86d55c6c984fad66e7562d16a15c27ba082bc7"
+          "targetSha256": "3239c43920c78fe574207e9446986f1f620bfc7cff3612b75d6a3bc20ffbd5ad"
         },
         {
           "directive": "import",
@@ -62485,7 +62523,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "3eb996d08680daa2efc573791e22685cc939002953a59bbba546b042b30f5c89"
+          "targetSha256": "f0f75708cd7f2f69afc3ab587d7c693904346924f137e168258d34604aa1d6c3"
         },
         {
           "directive": "import",
@@ -63181,7 +63219,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "3eb996d08680daa2efc573791e22685cc939002953a59bbba546b042b30f5c89"
+          "targetSha256": "f0f75708cd7f2f69afc3ab587d7c693904346924f137e168258d34604aa1d6c3"
         },
         {
           "directive": "import",
@@ -64655,6 +64693,43 @@
           ]
         },
         {
+          "source": "server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java",
+          "status": "需人工核实",
+          "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
+          "endpointEvidence": [
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 21,
+              "template": "/finance/{seg}/{id}",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 23,
+              "template": "/finance/{seg}/{id}/approve",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 25,
+              "template": "/finance/{seg}/{id}/reverse",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 28,
+              "template": "/finance/ar-ap/{id}",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 221,
+              "template": "/finance/{_seg}/{id}/gl-confirm",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            }
+          ]
+        },
+        {
           "source": "server/src/main/java/com/uten/imp/features/finance/asset/FixedAssetController.java",
           "status": "需人工核实",
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
@@ -65335,8 +65410,8 @@
       "id": "page:finance/pages/finance_asset_workbench_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_asset_workbench_page.dart",
-      "sha256": "8c1c79f306485e963771e3a2a67da62ab2a8020c9a09902dc0f091b295484e6e",
-      "lineCount": 573,
+      "sha256": "03c4b218ce53aebcdd15138d90582ccd579d6a31a358c17ad67d0b52c9727698",
+      "lineCount": 575,
       "classes": [
         {
           "name": "FinanceAssetWorkbenchPage",
@@ -65352,13 +65427,13 @@
         },
         {
           "name": "_RestrictionLabel",
-          "line": 480,
+          "line": 482,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         },
         {
           "name": "_MetricCard",
-          "line": 507,
+          "line": 509,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         }
@@ -65638,7 +65713,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "816b34245f6df09154f356fdf26f32523d42c951ebc2e2c7119cf0f7bb582622"
+          "targetSha256": "4a45e08b51883a6a669081106309df2a28f2d04114d89b55af0a6e56e9af8a02"
         },
         {
           "directive": "import",
@@ -65662,7 +65737,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b0c1beb96836b0b0a00bcb39abe5d412fd81d4dddf6daf6cb45255d156f5806c"
+          "targetSha256": "96485ba30c428be7eb32feef7338329050cb8171f8f23731aae07d12dd4f2843"
         },
         {
           "directive": "import",
@@ -65710,7 +65785,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c2c30a7e1b7b4fd021d5697359d05d615bc8dfd92c118dc2548cccb55f5a773a"
+          "targetSha256": "0abdd96c190b4dd6e35575bd14a8fe75f843ecbee003c50474a12c2decb00044"
         }
       ],
       "partUnits": [],
@@ -65823,7 +65898,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 500,
+          "line": 502,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -65833,7 +65908,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 542,
+          "line": 544,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -65843,7 +65918,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 549,
+          "line": 551,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -65863,6 +65938,19 @@
       "routerBindings": [],
       "possibleRedirectAliases": [],
       "candidateBackendControllers": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java",
+          "status": "需人工核实",
+          "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
+          "endpointEvidence": [
+            {
+              "source": "lib/features/finance/repositories/finance_asset_overview_repository.dart",
+              "line": 69,
+              "template": "/finance/asset-workbench/overview",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            }
+          ]
+        },
         {
           "source": "server/src/main/java/com/uten/imp/features/finance/asset/FixedAssetController.java",
           "status": "需人工核实",
@@ -65907,7 +65995,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "8c1c79f306485e963771e3a2a67da62ab2a8020c9a09902dc0f091b295484e6e"
+          "targetSha256": "03c4b218ce53aebcdd15138d90582ccd579d6a31a358c17ad67d0b52c9727698"
         },
         {
           "directive": "import",
@@ -65919,7 +66007,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "8c1c79f306485e963771e3a2a67da62ab2a8020c9a09902dc0f091b295484e6e"
+          "targetSha256": "03c4b218ce53aebcdd15138d90582ccd579d6a31a358c17ad67d0b52c9727698"
         }
       ],
       "partUnits": [],
@@ -67342,6 +67430,43 @@
               "line": 221,
               "template": "/finance/{_seg}/{id}/gl-confirm",
               "controllerBase": "/api/finance/ar-ap"
+            }
+          ]
+        },
+        {
+          "source": "server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java",
+          "status": "需人工核实",
+          "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
+          "endpointEvidence": [
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 21,
+              "template": "/finance/{seg}/{id}",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 23,
+              "template": "/finance/{seg}/{id}/approve",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 25,
+              "template": "/finance/{seg}/{id}/reverse",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 28,
+              "template": "/finance/ar-ap/{id}",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 221,
+              "template": "/finance/{_seg}/{id}/gl-confirm",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
             }
           ]
         },
@@ -70023,6 +70148,55 @@
           ]
         },
         {
+          "source": "server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java",
+          "status": "需人工核实",
+          "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
+          "endpointEvidence": [
+            {
+              "source": "lib/features/finance/repositories/customer_prepayment_repository.dart",
+              "line": 34,
+              "template": "/finance/customer-prepayments/sales-orders/{salesOrderId}/summary",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/customer_prepayment_repository.dart",
+              "line": 63,
+              "template": "/finance/customer-prepayment-offsets/{batchId}/reverse",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 21,
+              "template": "/finance/{seg}/{id}",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 23,
+              "template": "/finance/{seg}/{id}/approve",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 25,
+              "template": "/finance/{seg}/{id}/reverse",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 28,
+              "template": "/finance/ar-ap/{id}",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 221,
+              "template": "/finance/{_seg}/{id}/gl-confirm",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            }
+          ]
+        },
+        {
           "source": "server/src/main/java/com/uten/imp/features/finance/asset/FixedAssetController.java",
           "status": "需人工核实",
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
@@ -71990,6 +72164,43 @@
               "line": 221,
               "template": "/finance/{_seg}/{id}/gl-confirm",
               "controllerBase": "/api/finance/ar-ap"
+            }
+          ]
+        },
+        {
+          "source": "server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java",
+          "status": "需人工核实",
+          "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
+          "endpointEvidence": [
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 21,
+              "template": "/finance/{seg}/{id}",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 23,
+              "template": "/finance/{seg}/{id}/approve",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 25,
+              "template": "/finance/{seg}/{id}/reverse",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 28,
+              "template": "/finance/ar-ap/{id}",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 221,
+              "template": "/finance/{_seg}/{id}/gl-confirm",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
             }
           ]
         },
@@ -74201,6 +74412,61 @@
       "possibleRedirectAliases": [],
       "candidateBackendControllers": [
         {
+          "source": "server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java",
+          "status": "需人工核实",
+          "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
+          "endpointEvidence": [
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 129,
+              "template": "/finance/procurement-approvals/tasks/batch-approve",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 152,
+              "template": "/finance/procurement-approvals/tasks",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 178,
+              "template": "/finance/procurement-approvals/tasks/facets",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 195,
+              "template": "/finance/procurement-approvals/type-counts",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 207,
+              "template": "/finance/procurement-approvals/tasks/{caseId}/review",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 221,
+              "template": "/finance/procurement-approvals/tasks/batch-approve",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 238,
+              "template": "/finance/procurement-approvals/tasks/batch-reject",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 153,
+              "template": "/finance/procurement-approvals/history",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            }
+          ]
+        },
+        {
           "source": "server/src/main/java/com/uten/imp/features/finance/asset/FixedAssetController.java",
           "status": "需人工核实",
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
@@ -75209,6 +75475,61 @@
       ],
       "possibleRedirectAliases": [],
       "candidateBackendControllers": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java",
+          "status": "需人工核实",
+          "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
+          "endpointEvidence": [
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 129,
+              "template": "/finance/procurement-approvals/tasks/batch-approve",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 152,
+              "template": "/finance/procurement-approvals/tasks",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 178,
+              "template": "/finance/procurement-approvals/tasks/facets",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 195,
+              "template": "/finance/procurement-approvals/type-counts",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 207,
+              "template": "/finance/procurement-approvals/tasks/{caseId}/review",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 221,
+              "template": "/finance/procurement-approvals/tasks/batch-approve",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 238,
+              "template": "/finance/procurement-approvals/tasks/batch-reject",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+              "line": 153,
+              "template": "/finance/procurement-approvals/history",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            }
+          ]
+        },
         {
           "source": "server/src/main/java/com/uten/imp/features/finance/asset/FixedAssetController.java",
           "status": "需人工核实",
@@ -78055,6 +78376,43 @@
           ]
         },
         {
+          "source": "server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java",
+          "status": "需人工核实",
+          "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
+          "endpointEvidence": [
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 21,
+              "template": "/finance/{seg}/{id}",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 23,
+              "template": "/finance/{seg}/{id}/approve",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 25,
+              "template": "/finance/{seg}/{id}/reverse",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 28,
+              "template": "/finance/ar-ap/{id}",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/finance/repositories/finance_repository.dart",
+              "line": 221,
+              "template": "/finance/{_seg}/{id}/gl-confirm",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            }
+          ]
+        },
+        {
           "source": "server/src/main/java/com/uten/imp/features/finance/asset/FixedAssetController.java",
           "status": "需人工核实",
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
@@ -78735,18 +79093,18 @@
       "id": "page:finance/pages/finance_report_table_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_report_table_page.dart",
-      "sha256": "11ad8dc2df6668b7aaeb8f5ed08821bb78eeb5d618085d85e4c2e7e8497c59dc",
-      "lineCount": 811,
+      "sha256": "931ae5a4873c54b802acb3b230895d972fec099a3322899eeb6adeca839bf3e6",
+      "lineCount": 865,
       "classes": [
         {
           "name": "FinanceReportTablePage",
-          "line": 62,
+          "line": 63,
           "role": "page-class",
           "extends": "ConsumerStatefulWidget"
         },
         {
           "name": "_FinanceReportTablePageState",
-          "line": 71,
+          "line": 72,
           "role": "state-class",
           "extends": "ConsumerState<FinanceReportTablePage>"
         }
@@ -79092,9 +79450,21 @@
         },
         {
           "directive": "import",
+          "uri": "../../../shared/platform_branding/platform_branding_provider.dart",
+          "source": "lib/shared/platform_branding/platform_branding_provider.dart",
+          "line": 43,
+          "role": "sharedComponents",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "e14d495f67e2536f31e1a63e1c353628829f3d743a038b006c547a55b89374c3"
+        },
+        {
+          "directive": "import",
           "uri": "../../../shared/auth/cost_workbench_capability.dart",
           "source": "lib/shared/auth/cost_workbench_capability.dart",
-          "line": 43,
+          "line": 44,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -79106,7 +79476,7 @@
           "directive": "import",
           "uri": "../../basic_data/models/client_node.dart",
           "source": "lib/features/basic_data/models/client_node.dart",
-          "line": 44,
+          "line": 45,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -79118,7 +79488,7 @@
           "directive": "import",
           "uri": "../../basic_data/widgets/uten_client_picker.dart",
           "source": "lib/features/basic_data/widgets/uten_client_picker.dart",
-          "line": 45,
+          "line": 46,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -79130,7 +79500,7 @@
           "directive": "import",
           "uri": "../../basic_data/models/master_facet.dart",
           "source": "lib/features/basic_data/models/master_facet.dart",
-          "line": 46,
+          "line": 47,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -79142,7 +79512,7 @@
           "directive": "import",
           "uri": "../../basic_data/widgets/master_data_table_view.dart",
           "source": "lib/features/basic_data/widgets/master_data_table_view.dart",
-          "line": 47,
+          "line": 48,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -79154,7 +79524,7 @@
           "directive": "import",
           "uri": "../../report/shared/report_cell.dart",
           "source": "lib/features/report/shared/report_cell.dart",
-          "line": 48,
+          "line": 49,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -79166,7 +79536,7 @@
           "directive": "import",
           "uri": "../../report/shared/report_data.dart",
           "source": "lib/features/report/shared/report_data.dart",
-          "line": 49,
+          "line": 50,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -79178,7 +79548,7 @@
           "directive": "import",
           "uri": "../../report/shared/report_metadata_reuse.dart",
           "source": "lib/features/report/shared/report_metadata_reuse.dart",
-          "line": 50,
+          "line": 51,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -79190,7 +79560,7 @@
           "directive": "import",
           "uri": "../../report/shared/report_paged_read.dart",
           "source": "lib/features/report/shared/report_paged_read.dart",
-          "line": 51,
+          "line": 52,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -79202,19 +79572,19 @@
           "directive": "import",
           "uri": "../../report/shared/report_print_preview.dart",
           "source": "lib/features/report/shared/report_print_preview.dart",
-          "line": 52,
+          "line": 53,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "3eb996d08680daa2efc573791e22685cc939002953a59bbba546b042b30f5c89"
+          "targetSha256": "f0f75708cd7f2f69afc3ab587d7c693904346924f137e168258d34604aa1d6c3"
         },
         {
           "directive": "import",
           "uri": "../../report/shared/report_date_range.dart",
           "source": "lib/features/report/shared/report_date_range.dart",
-          "line": 53,
+          "line": 54,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -79226,7 +79596,7 @@
           "directive": "import",
           "uri": "../widgets/finance_date_range_filter.dart",
           "source": "lib/features/finance/widgets/finance_date_range_filter.dart",
-          "line": 54,
+          "line": 55,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -79238,7 +79608,7 @@
           "directive": "import",
           "uri": "../../report/shared/report_filter_prefs.dart",
           "source": "lib/features/report/shared/report_filter_prefs.dart",
-          "line": 55,
+          "line": 56,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -79250,7 +79620,7 @@
           "directive": "import",
           "uri": "../../report/shared/report_sort.dart",
           "source": "lib/features/report/shared/report_sort.dart",
-          "line": 56,
+          "line": 57,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -79262,7 +79632,7 @@
           "directive": "import",
           "uri": "../../report/shared/report_total.dart",
           "source": "lib/features/report/shared/report_total.dart",
-          "line": 57,
+          "line": 58,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -79274,7 +79644,7 @@
           "directive": "import",
           "uri": "../config/finance_report_config.dart",
           "source": "lib/features/finance/config/finance_report_config.dart",
-          "line": 58,
+          "line": 59,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -79286,19 +79656,19 @@
           "directive": "import",
           "uri": "../widgets/gl_report_line_bindings_dialog.dart",
           "source": "lib/features/finance/widgets/gl_report_line_bindings_dialog.dart",
-          "line": 59,
+          "line": 60,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "f91b881792bef02dcd7e80e68073d88610c45c3e020bbc62a3b13b2670941049"
+          "targetSha256": "989d696378f6505cb2408ac52941db9ab032f7b7fa83861b870707f537e46e40"
         },
         {
           "directive": "import",
           "uri": "../widgets/inventory_cost_posting_dialog.dart",
           "source": "lib/features/finance/widgets/inventory_cost_posting_dialog.dart",
-          "line": 60,
+          "line": 61,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -79310,23 +79680,30 @@
       "partUnits": [],
       "permissionReferences": [
         {
+          "symbol": "Perm.financeReportExport",
+          "literal": "finance_report:export",
+          "line": 335,
+          "definitionSource": "lib/shared/auth/permissions.dart",
+          "definitionLine": 436
+        },
+        {
           "symbol": "Perm.paymentStyleEdit",
           "literal": "payment_style:edit",
-          "line": 544,
+          "line": 579,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 491
         },
         {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
-          "line": 748,
+          "line": 802,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 436
         },
         {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
-          "line": 757,
+          "line": 811,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 436
         }
@@ -79337,7 +79714,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 138,
+          "line": 140,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -79347,7 +79724,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 174,
+          "line": 176,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -79357,7 +79734,7 @@
         {
           "symbol": "update",
           "receiver": null,
-          "line": 221,
+          "line": 223,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "update"
@@ -79367,17 +79744,17 @@
         {
           "symbol": "_printLoader",
           "receiver": null,
-          "line": 296,
+          "line": 298,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "print"
           ],
-          "evidenceLine": "Future<UtenPrintTable> _printLoader() async {"
+          "evidenceLine": "Future<UtenPrintTable> _printLoader({bool template = false}) async {"
         },
         {
           "symbol": "loadBoundedReportPrintPreview",
           "receiver": null,
-          "line": 300,
+          "line": 302,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "print"
@@ -79385,9 +79762,29 @@
           "evidenceLine": "return loadBoundedReportPrintPreview("
         },
         {
+          "symbol": "showUtenPrintPreview",
+          "receiver": null,
+          "line": 327,
+          "kind": "action-like-invocation",
+          "actionNameHints": [
+            "print"
+          ],
+          "evidenceLine": "await showUtenPrintPreview("
+        },
+        {
+          "symbol": "_printLoader",
+          "receiver": null,
+          "line": 332,
+          "kind": "action-like-invocation",
+          "actionNameHints": [
+            "print"
+          ],
+          "evidenceLine": "loader: () => _printLoader(template: true),"
+        },
+        {
           "symbol": "remove",
           "receiver": "_filters",
-          "line": 446,
+          "line": 481,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -79397,7 +79794,7 @@
         {
           "symbol": "remove",
           "receiver": "_filters",
-          "line": 454,
+          "line": 489,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -79407,7 +79804,7 @@
         {
           "symbol": "UtenPrintPreviewButton",
           "receiver": null,
-          "line": 743,
+          "line": 797,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "print"
@@ -79417,7 +79814,7 @@
         {
           "symbol": "UtenExportButton",
           "receiver": null,
-          "line": 755,
+          "line": 809,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -83849,7 +84246,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "3eb996d08680daa2efc573791e22685cc939002953a59bbba546b042b30f5c89"
+          "targetSha256": "f0f75708cd7f2f69afc3ab587d7c693904346924f137e168258d34604aa1d6c3"
         },
         {
           "directive": "import",
@@ -84827,6 +85224,19 @@
       ],
       "possibleRedirectAliases": [],
       "candidateBackendControllers": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java",
+          "status": "需人工核实",
+          "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
+          "endpointEvidence": [
+            {
+              "source": "lib/features/finance/payables/repositories/finance_payables_repository.dart",
+              "line": 101,
+              "template": "/finance/payables/facets",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            }
+          ]
+        },
         {
           "source": "server/src/main/java/com/uten/imp/features/finance/asset/FixedAssetController.java",
           "status": "需人工核实",
@@ -128380,7 +128790,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "3eb996d08680daa2efc573791e22685cc939002953a59bbba546b042b30f5c89"
+          "targetSha256": "f0f75708cd7f2f69afc3ab587d7c693904346924f137e168258d34604aa1d6c3"
         },
         {
           "directive": "import",
@@ -128566,18 +128976,18 @@
       "id": "page:production/pages/production_workshop_tasks_page.dart",
       "feature": "production",
       "source": "lib/features/production/pages/production_workshop_tasks_page.dart",
-      "sha256": "971f9068d199003e5478a642db5669b3652964de9b919564513ffe6636a7d24f",
-      "lineCount": 3829,
+      "sha256": "367100e4d8ef592d128a3a3dd9ba032c1e580d522134f6fa0d1c171d26435043",
+      "lineCount": 3738,
       "classes": [
         {
           "name": "ProductionWorkshopTasksPage",
-          "line": 113,
+          "line": 114,
           "role": "page-class",
           "extends": "ConsumerStatefulWidget"
         },
         {
           "name": "_ProductionWorkshopTasksPageState",
-          "line": 121,
+          "line": 122,
           "role": "state-class",
           "extends": "ConsumerState<ProductionWorkshopTasksPage>\n    with ScopedPagedReadViewMixin<ProductionWorkshopTasksPage>"
         }
@@ -128585,9 +128995,21 @@
       "directImports": [
         {
           "directive": "import",
+          "uri": "../models/production_workshop_task_stage.dart",
+          "source": "lib/features/production/models/production_workshop_task_stage.dart",
+          "line": 1,
+          "role": "models",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "9971c32d99521034ef2580106e76d53f9fc8623c063096a8c3fbcc8f77fd09f5"
+        },
+        {
+          "directive": "import",
           "uri": "package:uten_imp/components/inputs/uten_editor_tooltip.dart",
           "source": "lib/components/inputs/uten_editor_tooltip.dart",
-          "line": 1,
+          "line": 2,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128599,7 +129021,7 @@
           "directive": "import",
           "uri": "package:uten_imp/shared/providers/native_facet_options.dart",
           "source": "lib/shared/providers/native_facet_options.dart",
-          "line": 2,
+          "line": 3,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128611,7 +129033,7 @@
           "directive": "import",
           "uri": "../../../core/router/page_navigation_session.dart",
           "source": "lib/core/router/page_navigation_session.dart",
-          "line": 3,
+          "line": 4,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -128623,7 +129045,7 @@
           "directive": "import",
           "uri": "package:uten_imp/components/buttons/uten_refresh_button.dart",
           "source": "lib/components/buttons/uten_refresh_button.dart",
-          "line": 4,
+          "line": 5,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128635,7 +129057,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_export_button.dart",
           "source": "lib/components/buttons/uten_export_button.dart",
-          "line": 5,
+          "line": 6,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128647,7 +129069,7 @@
           "directive": "import",
           "uri": "../widgets/production_sales_requirements.dart",
           "source": "lib/features/production/widgets/production_sales_requirements.dart",
-          "line": 6,
+          "line": 7,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -128659,7 +129081,7 @@
           "directive": "import",
           "uri": "package:uten_imp/components/feedback/uten_dialog.dart",
           "source": "lib/components/feedback/uten_dialog.dart",
-          "line": 35,
+          "line": 36,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128671,7 +129093,7 @@
           "directive": "import",
           "uri": "dart:async",
           "source": null,
-          "line": 36,
+          "line": 37,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -128683,7 +129105,7 @@
           "directive": "import",
           "uri": "package:flutter/material.dart",
           "source": null,
-          "line": 38,
+          "line": 39,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -128695,7 +129117,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/form_draft_category.dart",
           "source": "lib/shared/drafts/form_draft_category.dart",
-          "line": 40,
+          "line": 41,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128707,7 +129129,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/task_form_drafts.dart",
           "source": "lib/shared/drafts/task_form_drafts.dart",
-          "line": 41,
+          "line": 42,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128719,7 +129141,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/form_drafts_page.dart",
           "source": "lib/shared/drafts/form_drafts_page.dart",
-          "line": 42,
+          "line": 43,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128731,7 +129153,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/task_form_draft_recovery_notice.dart",
           "source": "lib/shared/drafts/task_form_draft_recovery_notice.dart",
-          "line": 43,
+          "line": 44,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128743,7 +129165,7 @@
           "directive": "import",
           "uri": "package:flutter_riverpod/flutter_riverpod.dart",
           "source": null,
-          "line": 44,
+          "line": 45,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -128755,7 +129177,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_back_button.dart",
           "source": "lib/components/buttons/uten_back_button.dart",
-          "line": 46,
+          "line": 47,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128767,7 +129189,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_button.dart",
           "source": "lib/components/buttons/uten_button.dart",
-          "line": 47,
+          "line": 48,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128779,7 +129201,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_status_badge.dart",
           "source": "lib/components/data_display/uten_status_badge.dart",
-          "line": 48,
+          "line": 49,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128791,7 +129213,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_status_cell_color.dart",
           "source": "lib/components/data_display/uten_status_cell_color.dart",
-          "line": 49,
+          "line": 50,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128803,7 +129225,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_busy_overlay.dart",
           "source": "lib/components/feedback/uten_busy_overlay.dart",
-          "line": 50,
+          "line": 51,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128815,7 +129237,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_context_menu.dart",
           "source": "lib/components/feedback/uten_context_menu.dart",
-          "line": 51,
+          "line": 52,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128827,7 +129249,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_segment_badge_label.dart",
           "source": "lib/components/feedback/uten_segment_badge_label.dart",
-          "line": 52,
+          "line": 53,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128839,7 +129261,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_dropdown_field.dart",
           "source": "lib/components/inputs/uten_dropdown_field.dart",
-          "line": 53,
+          "line": 54,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128851,7 +129273,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_table_cell_action.dart",
           "source": "lib/components/inputs/uten_table_cell_action.dart",
-          "line": 54,
+          "line": 55,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128863,7 +129285,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_field_hint_icon.dart",
           "source": "lib/components/inputs/uten_field_hint_icon.dart",
-          "line": 55,
+          "line": 56,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128875,7 +129297,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_app_bar.dart",
           "source": "lib/components/layout/uten_app_bar.dart",
-          "line": 56,
+          "line": 57,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128887,7 +129309,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_content_container.dart",
           "source": "lib/components/layout/uten_content_container.dart",
-          "line": 57,
+          "line": 58,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128899,7 +129321,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_filter_toolbar.dart",
           "source": "lib/components/layout/uten_filter_toolbar.dart",
-          "line": 58,
+          "line": 59,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128911,7 +129333,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_history_time_filter.dart",
           "source": "lib/components/layout/uten_history_time_filter.dart",
-          "line": 59,
+          "line": 60,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128923,7 +129345,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_goods_identity_cell.dart",
           "source": "lib/components/data_display/uten_goods_identity_cell.dart",
-          "line": 60,
+          "line": 61,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -128935,7 +129357,7 @@
           "directive": "import",
           "uri": "../../../core/router/nav_helpers.dart",
           "source": "lib/core/router/nav_helpers.dart",
-          "line": 61,
+          "line": 62,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -128947,7 +129369,7 @@
           "directive": "import",
           "uri": "../../../core/l10n/gen/app_localizations.dart",
           "source": "lib/core/l10n/gen/app_localizations.dart",
-          "line": 62,
+          "line": 63,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -128959,7 +129381,7 @@
           "directive": "import",
           "uri": "../../../core/l10n/gen/app_localizations_zh.dart",
           "source": "lib/core/l10n/gen/app_localizations_zh.dart",
-          "line": 63,
+          "line": 64,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -128971,7 +129393,7 @@
           "directive": "import",
           "uri": "../../../core/router/page_resume_provider.dart",
           "source": "lib/core/router/page_resume_provider.dart",
-          "line": 64,
+          "line": 65,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -128983,7 +129405,7 @@
           "directive": "import",
           "uri": "../../../core/router/route_access_policy.dart",
           "source": "lib/core/router/route_access_policy.dart",
-          "line": 65,
+          "line": 66,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -128995,7 +129417,7 @@
           "directive": "import",
           "uri": "../../../core/router/route_names.dart",
           "source": "lib/core/router/route_names.dart",
-          "line": 66,
+          "line": 67,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -129007,7 +129429,7 @@
           "directive": "import",
           "uri": "../../../core/theme/uten_colors.dart",
           "source": "lib/core/theme/uten_colors.dart",
-          "line": 67,
+          "line": 68,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -129019,7 +129441,7 @@
           "directive": "import",
           "uri": "../../../core/theme/uten_tokens.dart",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 68,
+          "line": 69,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -129031,7 +129453,7 @@
           "directive": "import",
           "uri": "../../../core/ui/app_notification.dart",
           "source": "lib/core/ui/app_notification.dart",
-          "line": 69,
+          "line": 70,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -129043,7 +129465,7 @@
           "directive": "import",
           "uri": "../../../core/utils/china_datetime.dart",
           "source": "lib/core/utils/china_datetime.dart",
-          "line": 70,
+          "line": 71,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -129055,7 +129477,7 @@
           "directive": "import",
           "uri": "../../../shared/auth/permissions.dart",
           "source": "lib/shared/auth/permissions.dart",
-          "line": 71,
+          "line": 72,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -129067,7 +129489,7 @@
           "directive": "import",
           "uri": "../../../shared/paging/scoped_paged_read_view_mixin.dart",
           "source": "lib/shared/paging/scoped_paged_read_view_mixin.dart",
-          "line": 72,
+          "line": 73,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -129079,7 +129501,7 @@
           "directive": "import",
           "uri": "../../../shared/paging/paged_query_identity.dart",
           "source": "lib/shared/paging/paged_query_identity.dart",
-          "line": 73,
+          "line": 74,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -129091,7 +129513,7 @@
           "directive": "import",
           "uri": "../../../shared/paging/paged_read_window_binding.dart",
           "source": "lib/shared/paging/paged_read_window_binding.dart",
-          "line": 74,
+          "line": 75,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -129103,7 +129525,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/list_refresh_provider.dart",
           "source": "lib/shared/providers/list_refresh_provider.dart",
-          "line": 75,
+          "line": 76,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -129115,7 +129537,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/authenticated_scope_provider.dart",
           "source": "lib/shared/providers/authenticated_scope_provider.dart",
-          "line": 76,
+          "line": 77,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -129127,7 +129549,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/export_context_epoch_provider.dart",
           "source": "lib/shared/providers/export_context_epoch_provider.dart",
-          "line": 77,
+          "line": 78,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -129139,7 +129561,7 @@
           "directive": "import",
           "uri": "../providers/production_execution_refresh.dart",
           "source": "lib/features/production/providers/production_execution_refresh.dart",
-          "line": 78,
+          "line": 79,
           "role": "providers",
           "importAlias": null,
           "showSymbols": [],
@@ -129151,7 +129573,7 @@
           "directive": "import",
           "uri": "../../basic_data/models/master_facet.dart",
           "source": "lib/features/basic_data/models/master_facet.dart",
-          "line": 79,
+          "line": 80,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -129163,7 +129585,7 @@
           "directive": "import",
           "uri": "../../basic_data/widgets/master_data_table_view.dart",
           "source": "lib/features/basic_data/widgets/master_data_table_view.dart",
-          "line": 80,
+          "line": 81,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -129175,7 +129597,7 @@
           "directive": "import",
           "uri": "../models/production_daily_report.dart",
           "source": "lib/features/production/models/production_daily_report.dart",
-          "line": 81,
+          "line": 82,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -129187,7 +129609,7 @@
           "directive": "import",
           "uri": "../models/production_execution_workbench.dart",
           "source": "lib/features/production/models/production_execution_workbench.dart",
-          "line": 82,
+          "line": 83,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -129199,7 +129621,7 @@
           "directive": "import",
           "uri": "../models/production_flow_stage.dart",
           "source": "lib/features/production/models/production_flow_stage.dart",
-          "line": 83,
+          "line": 84,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -129211,7 +129633,7 @@
           "directive": "import",
           "uri": "../models/production_material_usage_source.dart",
           "source": "lib/features/production/models/production_material_usage_source.dart",
-          "line": 84,
+          "line": 85,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -129223,7 +129645,7 @@
           "directive": "import",
           "uri": "../models/workshop_task_drafts.dart",
           "source": "lib/features/production/models/workshop_task_drafts.dart",
-          "line": 85,
+          "line": 86,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -129235,7 +129657,7 @@
           "directive": "import",
           "uri": "../providers/production_department_provider.dart",
           "source": "lib/features/production/providers/production_department_provider.dart",
-          "line": 86,
+          "line": 87,
           "role": "providers",
           "importAlias": null,
           "showSymbols": [],
@@ -129247,7 +129669,7 @@
           "directive": "import",
           "uri": "../providers/production_workshop_task_count_provider.dart",
           "source": "lib/features/production/providers/production_workshop_task_count_provider.dart",
-          "line": 87,
+          "line": 88,
           "role": "providers",
           "importAlias": null,
           "showSymbols": [],
@@ -129259,7 +129681,7 @@
           "directive": "import",
           "uri": "../repositories/production_execution_workbench_repository.dart",
           "source": "lib/features/production/repositories/production_execution_workbench_repository.dart",
-          "line": 88,
+          "line": 89,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
@@ -129271,7 +129693,7 @@
           "directive": "import",
           "uri": "production_material_discovery_request_page.dart",
           "source": "lib/features/production/pages/production_material_discovery_request_page.dart",
-          "line": 89,
+          "line": 90,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -129283,7 +129705,7 @@
           "directive": "import",
           "uri": "../repositories/production_material_discovery_request_repository.dart",
           "source": "lib/features/production/repositories/production_material_discovery_request_repository.dart",
-          "line": 90,
+          "line": 91,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
@@ -129295,7 +129717,7 @@
           "directive": "import",
           "uri": "../repositories/production_repository.dart",
           "source": "lib/features/production/repositories/production_repository.dart",
-          "line": 91,
+          "line": 92,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
@@ -129307,7 +129729,7 @@
           "directive": "import",
           "uri": "../repositories/production_overproduction_rate_repository.dart",
           "source": "lib/features/production/repositories/production_overproduction_rate_repository.dart",
-          "line": 92,
+          "line": 93,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
@@ -129319,7 +129741,7 @@
           "directive": "import",
           "uri": "../repositories/production_material_increment_repository.dart",
           "source": "lib/features/production/repositories/production_material_increment_repository.dart",
-          "line": 93,
+          "line": 94,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
@@ -129331,7 +129753,7 @@
           "directive": "import",
           "uri": "../widgets/production_overproduction_rate_request_dialog.dart",
           "source": "lib/features/production/widgets/production_overproduction_rate_request_dialog.dart",
-          "line": 94,
+          "line": 95,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -129343,7 +129765,7 @@
           "directive": "import",
           "uri": "../repositories/production_material_repository.dart",
           "source": "lib/features/production/repositories/production_material_repository.dart",
-          "line": 95,
+          "line": 96,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
@@ -129355,7 +129777,7 @@
           "directive": "import",
           "uri": "../widgets/production_flow_stage_cell.dart",
           "source": "lib/features/production/widgets/production_flow_stage_cell.dart",
-          "line": 96,
+          "line": 97,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -129367,7 +129789,7 @@
           "directive": "import",
           "uri": "../widgets/production_material_settlement_sheet.dart",
           "source": "lib/features/production/widgets/production_material_settlement_sheet.dart",
-          "line": 97,
+          "line": 98,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -129379,7 +129801,7 @@
           "directive": "import",
           "uri": "../widgets/segment_material_change_dialog.dart",
           "source": "lib/features/production/widgets/segment_material_change_dialog.dart",
-          "line": 98,
+          "line": 99,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -129391,7 +129813,7 @@
           "directive": "import",
           "uri": "../widgets/start_confirmation_sheet.dart",
           "source": "lib/features/production/widgets/start_confirmation_sheet.dart",
-          "line": 99,
+          "line": 100,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -129403,7 +129825,7 @@
           "directive": "import",
           "uri": "../widgets/workshop_task_material_table.dart",
           "source": "lib/features/production/widgets/workshop_task_material_table.dart",
-          "line": 100,
+          "line": 101,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -129415,7 +129837,7 @@
           "directive": "import",
           "uri": "../widgets/workshop_task_material_dialog.dart",
           "source": "lib/features/production/widgets/workshop_task_material_dialog.dart",
-          "line": 101,
+          "line": 102,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -129427,7 +129849,7 @@
           "directive": "import",
           "uri": "../widgets/workshop_task_detail_dialog.dart",
           "source": "lib/features/production/widgets/workshop_task_detail_dialog.dart",
-          "line": 102,
+          "line": 103,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -129439,7 +129861,7 @@
           "directive": "import",
           "uri": "../widgets/workshop_task_material_bin_panel.dart",
           "source": "lib/features/production/widgets/workshop_task_material_bin_panel.dart",
-          "line": 103,
+          "line": 104,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -129451,7 +129873,7 @@
           "directive": "import",
           "uri": "../../../shared/badges/badge_registry.dart",
           "source": "lib/shared/badges/badge_registry.dart",
-          "line": 104,
+          "line": 105,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -129465,70 +129887,70 @@
         {
           "symbol": "Perm.productionPlanApprove",
           "literal": "production_plan:approve",
-          "line": 263,
+          "line": 264,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 378
         },
         {
           "symbol": "Perm.productionPlanView",
           "literal": "production_plan:view",
-          "line": 419,
+          "line": 420,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 374
         },
         {
           "symbol": "Perm.productionExecutionView",
           "literal": "production_execution:view",
-          "line": 424,
+          "line": 425,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 375
         },
         {
           "symbol": "Perm.productionExecutionStart",
           "literal": "production_execution:start",
-          "line": 425,
+          "line": 426,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 643
         },
         {
           "symbol": "Perm.productionExecutionView",
           "literal": "production_execution:view",
-          "line": 431,
+          "line": 432,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 375
         },
         {
           "symbol": "Perm.productionDailyReportView",
           "literal": "production_daily_report:view",
-          "line": 432,
+          "line": 433,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 406
         },
         {
           "symbol": "Perm.productionDailyReportCreate",
           "literal": "production_daily_report:create",
-          "line": 433,
+          "line": 434,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 627
         },
         {
           "symbol": "Perm.productionMaterialReverse",
           "literal": "production_material:reverse",
-          "line": 2636,
+          "line": 2637,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 653
         },
         {
           "symbol": "Perm.productionMaterialSettle",
           "literal": "production_material:settle",
-          "line": 2640,
+          "line": 2641,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 652
         },
         {
           "symbol": "Perm.productionReportExport",
           "literal": "production_report:export",
-          "line": 2940,
+          "line": 2849,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 417
         }
@@ -130049,7 +130471,7 @@
         {
           "symbol": "update",
           "receiver": "_tableRows",
-          "line": 382,
+          "line": 383,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "update"
@@ -130059,7 +130481,7 @@
         {
           "symbol": "_routeSubmitTargets",
           "receiver": null,
-          "line": 532,
+          "line": 533,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "submit"
@@ -130069,7 +130491,7 @@
         {
           "symbol": "_submitRoutes",
           "receiver": null,
-          "line": 587,
+          "line": 588,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -130079,7 +130501,7 @@
         {
           "symbol": "_submitRememberedRoutes",
           "receiver": null,
-          "line": 594,
+          "line": 595,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -130089,7 +130511,7 @@
         {
           "symbol": "_submitRememberedRoutes",
           "receiver": null,
-          "line": 602,
+          "line": 603,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "submit"
@@ -130099,7 +130521,7 @@
         {
           "symbol": "_confirmRoutes",
           "receiver": null,
-          "line": 613,
+          "line": 614,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -130109,7 +130531,7 @@
         {
           "symbol": "_canEnterStart",
           "receiver": null,
-          "line": 627,
+          "line": 628,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130119,7 +130541,7 @@
         {
           "symbol": "_cancelMaterialDiscovery",
           "receiver": null,
-          "line": 683,
+          "line": 684,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "cancel"
@@ -130129,7 +130551,7 @@
         {
           "symbol": "_canEnterStart",
           "receiver": null,
-          "line": 707,
+          "line": 708,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130139,7 +130561,7 @@
         {
           "symbol": "_startTasks",
           "receiver": null,
-          "line": 712,
+          "line": 713,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130149,7 +130571,7 @@
         {
           "symbol": "_canEnterStart",
           "receiver": null,
-          "line": 766,
+          "line": 767,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130159,7 +130581,7 @@
         {
           "symbol": "_canStartTask",
           "receiver": null,
-          "line": 777,
+          "line": 778,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130169,7 +130591,7 @@
         {
           "symbol": "_submitRoutes",
           "receiver": null,
-          "line": 903,
+          "line": 904,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -130179,7 +130601,7 @@
         {
           "symbol": "_routeSubmitTargets",
           "receiver": null,
-          "line": 903,
+          "line": 904,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -130189,7 +130611,7 @@
         {
           "symbol": "_confirmRoutes",
           "receiver": null,
-          "line": 959,
+          "line": 960,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "confirm"
@@ -130199,7 +130621,7 @@
         {
           "symbol": "confirmExecutionSegmentRoute",
           "receiver": null,
-          "line": 969,
+          "line": 970,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -130209,7 +130631,7 @@
         {
           "symbol": "_submitRoutes",
           "receiver": null,
-          "line": 1008,
+          "line": 1009,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "submit"
@@ -130219,7 +130641,7 @@
         {
           "symbol": "_confirmRoutes",
           "receiver": null,
-          "line": 1015,
+          "line": 1016,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -130229,7 +130651,7 @@
         {
           "symbol": "_canStartTask",
           "receiver": null,
-          "line": 1022,
+          "line": 1023,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "start"
@@ -130239,7 +130661,7 @@
         {
           "symbol": "_canEnterStart",
           "receiver": null,
-          "line": 1036,
+          "line": 1037,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "start"
@@ -130249,7 +130671,7 @@
         {
           "symbol": "_canStartTask",
           "receiver": null,
-          "line": 1040,
+          "line": 1041,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130259,7 +130681,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 1183,
+          "line": 1184,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -130269,7 +130691,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 1297,
+          "line": 1298,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -130279,7 +130701,7 @@
         {
           "symbol": "removeWhere",
           "receiver": "_selected",
-          "line": 1305,
+          "line": 1306,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -130289,7 +130711,7 @@
         {
           "symbol": "removeWhere",
           "receiver": "_selected",
-          "line": 1395,
+          "line": 1396,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -130299,7 +130721,7 @@
         {
           "symbol": "_selectedStartTasks",
           "receiver": null,
-          "line": 1649,
+          "line": 1650,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "start"
@@ -130309,7 +130731,7 @@
         {
           "symbol": "_canEnterStart",
           "receiver": null,
-          "line": 1652,
+          "line": 1653,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130319,7 +130741,7 @@
         {
           "symbol": "removeAll",
           "receiver": "_selected",
-          "line": 1696,
+          "line": 1697,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -130329,7 +130751,7 @@
         {
           "symbol": "removeAll",
           "receiver": "_selected",
-          "line": 1721,
+          "line": 1722,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -130339,7 +130761,7 @@
         {
           "symbol": "_cancelMaterialDiscovery",
           "receiver": null,
-          "line": 1730,
+          "line": 1731,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "cancel"
@@ -130349,7 +130771,7 @@
         {
           "symbol": "cancel",
           "receiver": null,
-          "line": 1740,
+          "line": 1741,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "cancel"
@@ -130359,7 +130781,7 @@
         {
           "symbol": "remove",
           "receiver": "_selected",
-          "line": 1769,
+          "line": 1770,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -130369,7 +130791,7 @@
         {
           "symbol": "_startTasks",
           "receiver": null,
-          "line": 1782,
+          "line": 1783,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "start"
@@ -130379,7 +130801,7 @@
         {
           "symbol": "_startWithConfirmation",
           "receiver": null,
-          "line": 1794,
+          "line": 1795,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130389,7 +130811,7 @@
         {
           "symbol": "batchStartExecutionSegments",
           "receiver": null,
-          "line": 1816,
+          "line": 1817,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130399,7 +130821,7 @@
         {
           "symbol": "removeAll",
           "receiver": "_selected",
-          "line": 1833,
+          "line": 1834,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -130409,7 +130831,7 @@
         {
           "symbol": "_startWithConfirmation",
           "receiver": null,
-          "line": 1853,
+          "line": 1854,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "start"
@@ -130419,7 +130841,7 @@
         {
           "symbol": "showStartConfirmationSheet",
           "receiver": null,
-          "line": 1860,
+          "line": 1861,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130429,7 +130851,7 @@
         {
           "symbol": "removeAll",
           "receiver": "_selected",
-          "line": 1873,
+          "line": 1874,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -130439,7 +130861,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 2194,
+          "line": 2195,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -130449,7 +130871,7 @@
         {
           "symbol": "_canEnterStart",
           "receiver": null,
-          "line": 2240,
+          "line": 2241,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130459,7 +130881,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 2302,
+          "line": 2303,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -130469,7 +130891,7 @@
         {
           "symbol": "_startTasks",
           "receiver": null,
-          "line": 2426,
+          "line": 2427,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130479,7 +130901,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 2463,
+          "line": 2464,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -130489,7 +130911,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 2477,
+          "line": 2478,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -130499,7 +130921,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 2505,
+          "line": 2506,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -130509,7 +130931,7 @@
         {
           "symbol": "UtenExportButton",
           "receiver": null,
-          "line": 2935,
+          "line": 2844,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -130519,7 +130941,7 @@
         {
           "symbol": "_selectedStartTasks",
           "receiver": null,
-          "line": 3361,
+          "line": 3270,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130529,7 +130951,7 @@
         {
           "symbol": "_startTasks",
           "receiver": null,
-          "line": 3364,
+          "line": 3273,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130539,7 +130961,7 @@
         {
           "symbol": "_selectedStartTasks",
           "receiver": null,
-          "line": 3364,
+          "line": 3273,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130549,7 +130971,7 @@
         {
           "symbol": "_canEnterStart",
           "receiver": null,
-          "line": 3521,
+          "line": 3430,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -130559,7 +130981,7 @@
         {
           "symbol": "_startTasks",
           "receiver": null,
-          "line": 3526,
+          "line": 3435,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -144700,7 +145122,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "3eb996d08680daa2efc573791e22685cc939002953a59bbba546b042b30f5c89"
+          "targetSha256": "f0f75708cd7f2f69afc3ab587d7c693904346924f137e168258d34604aa1d6c3"
         },
         {
           "directive": "import",
@@ -160511,7 +160933,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "3eb996d08680daa2efc573791e22685cc939002953a59bbba546b042b30f5c89"
+          "targetSha256": "f0f75708cd7f2f69afc3ab587d7c693904346924f137e168258d34604aa1d6c3"
         },
         {
           "directive": "import",
@@ -177512,7 +177934,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "3eb996d08680daa2efc573791e22685cc939002953a59bbba546b042b30f5c89"
+          "targetSha256": "f0f75708cd7f2f69afc3ab587d7c693904346924f137e168258d34604aa1d6c3"
         },
         {
           "directive": "import",
@@ -199732,6 +200154,31 @@
       "possibleRedirectAliases": [],
       "candidateBackendControllers": [
         {
+          "source": "server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java",
+          "status": "需人工核实",
+          "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
+          "endpointEvidence": [
+            {
+              "source": "lib/features/warehouse/repositories/procurement_inbound_repository.dart",
+              "line": 399,
+              "template": "/finance/procurement-arrival-exceptions/tasks",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/warehouse/repositories/procurement_inbound_repository.dart",
+              "line": 410,
+              "template": "/finance/procurement-arrival-exceptions/{id}",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            },
+            {
+              "source": "lib/features/warehouse/repositories/procurement_inbound_repository.dart",
+              "line": 424,
+              "template": "/finance/procurement-arrival-exceptions/{id}/decision",
+              "controllerBase": "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+            }
+          ]
+        },
+        {
           "source": "server/src/main/java/com/uten/imp/features/finance/asset/FixedAssetController.java",
           "status": "需人工核实",
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
@@ -216627,7 +217074,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "3eb996d08680daa2efc573791e22685cc939002953a59bbba546b042b30f5c89"
+          "targetSha256": "f0f75708cd7f2f69afc3ab587d7c693904346924f137e168258d34604aa1d6c3"
         },
         {
           "directive": "import",
@@ -232728,18 +233175,81 @@
       "bindingStatus": "需人工核实"
     },
     {
+      "source": "server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java",
+      "sha256": "ed126c189567faf1e397e0cdd63f2e600dbf613ffd1e4c86b2a322415b29b5ab",
+      "lineCount": 28,
+      "class": "AssetRecognitionController",
+      "declaredBasePaths": [
+        "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}"
+      ],
+      "methodMappingAnnotationCount": 4,
+      "declaredMethodMappings": [
+        {
+          "httpMethod": "POST",
+          "line": 15,
+          "declaredPathLiterals": [
+            "/reverse-recognition"
+          ],
+          "fullPathCandidates": [
+            "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}/reverse-recognition"
+          ]
+        },
+        {
+          "httpMethod": "POST",
+          "line": 18,
+          "declaredPathLiterals": [
+            "/approve-recognition-reversal"
+          ],
+          "fullPathCandidates": [
+            "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}/approve-recognition-reversal"
+          ]
+        },
+        {
+          "httpMethod": "POST",
+          "line": 21,
+          "declaredPathLiterals": [
+            "/reject-recognition-reversal"
+          ],
+          "fullPathCandidates": [
+            "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}/reject-recognition-reversal"
+          ]
+        },
+        {
+          "httpMethod": "POST",
+          "line": 24,
+          "declaredPathLiterals": [
+            "/post-recognition-reversal"
+          ],
+          "fullPathCandidates": [
+            "/api/finance/{ledger:fixed-assets|deferred-expenses}/{id}/post-recognition-reversal"
+          ]
+        }
+      ],
+      "bindingStatus": "需人工核实"
+    },
+    {
       "source": "server/src/main/java/com/uten/imp/features/finance/asset/FixedAssetController.java",
-      "sha256": "1d0f67753d8cb71f7beb5a0db49439eb36ebfd2afe09db0e40e4ef9c4318ed97",
-      "lineCount": 408,
+      "sha256": "ce8078efa07da0d93f92c24c72422d2677fa427e2d997c0259514abb73a38efc",
+      "lineCount": 414,
       "class": "FixedAssetController",
       "declaredBasePaths": [
         "/api/finance"
       ],
-      "methodMappingAnnotationCount": 45,
+      "methodMappingAnnotationCount": 46,
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
           "line": 47,
+          "declaredPathLiterals": [
+            "/fixed-assets/opening-vouchers"
+          ],
+          "fullPathCandidates": [
+            "/api/finance/fixed-assets/opening-vouchers"
+          ]
+        },
+        {
+          "httpMethod": "GET",
+          "line": 53,
           "declaredPathLiterals": [
             "/asset-workbench/overview"
           ],
@@ -232749,7 +233259,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 51,
+          "line": 57,
           "declaredPathLiterals": [
             "/fixed-assets"
           ],
@@ -232759,7 +233269,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 64,
+          "line": 70,
           "declaredPathLiterals": [
             "/fixed-assets/{id}"
           ],
@@ -232769,7 +233279,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 79,
+          "line": 85,
           "declaredPathLiterals": [
             "/fixed-assets"
           ],
@@ -232779,7 +233289,7 @@
         },
         {
           "httpMethod": "PUT",
-          "line": 86,
+          "line": 92,
           "declaredPathLiterals": [
             "/fixed-assets/{id}"
           ],
@@ -232789,7 +233299,7 @@
         },
         {
           "httpMethod": "DELETE",
-          "line": 94,
+          "line": 100,
           "declaredPathLiterals": [
             "/fixed-assets/{id}"
           ],
@@ -232799,7 +233309,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 101,
+          "line": 107,
           "declaredPathLiterals": [
             "/fixed-assets/{id}/submit"
           ],
@@ -232809,7 +233319,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 108,
+          "line": 114,
           "declaredPathLiterals": [
             "/fixed-assets/{id}/approve"
           ],
@@ -232819,7 +233329,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 115,
+          "line": 121,
           "declaredPathLiterals": [
             "/fixed-assets/{id}/reject"
           ],
@@ -232829,7 +233339,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 122,
+          "line": 128,
           "declaredPathLiterals": [
             "/fixed-assets/{id}/activate"
           ],
@@ -232839,7 +233349,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 129,
+          "line": 135,
           "declaredPathLiterals": [
             "/fixed-assets/{id}/transfer"
           ],
@@ -232849,7 +233359,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 136,
+          "line": 142,
           "declaredPathLiterals": [
             "/fixed-assets/{id}/operating-status"
           ],
@@ -232859,7 +233369,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 143,
+          "line": 149,
           "declaredPathLiterals": [
             "/fixed-assets/{id}/dispose"
           ],
@@ -232869,7 +233379,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 150,
+          "line": 156,
           "declaredPathLiterals": [
             "/fixed-assets/{id}/approve-disposal"
           ],
@@ -232879,7 +233389,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 157,
+          "line": 163,
           "declaredPathLiterals": [
             "/fixed-assets/{id}/reject-disposal"
           ],
@@ -232889,7 +233399,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 164,
+          "line": 170,
           "declaredPathLiterals": [
             "/deferred-expenses"
           ],
@@ -232899,7 +233409,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 177,
+          "line": 183,
           "declaredPathLiterals": [
             "/deferred-expenses/{id}"
           ],
@@ -232909,7 +233419,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 192,
+          "line": 198,
           "declaredPathLiterals": [
             "/deferred-expenses"
           ],
@@ -232919,7 +233429,7 @@
         },
         {
           "httpMethod": "PUT",
-          "line": 199,
+          "line": 205,
           "declaredPathLiterals": [
             "/deferred-expenses/{id}"
           ],
@@ -232929,7 +233439,7 @@
         },
         {
           "httpMethod": "DELETE",
-          "line": 207,
+          "line": 213,
           "declaredPathLiterals": [
             "/deferred-expenses/{id}"
           ],
@@ -232939,7 +233449,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 214,
+          "line": 220,
           "declaredPathLiterals": [
             "/deferred-expenses/{id}/submit"
           ],
@@ -232949,7 +233459,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 221,
+          "line": 227,
           "declaredPathLiterals": [
             "/deferred-expenses/{id}/approve"
           ],
@@ -232959,7 +233469,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 228,
+          "line": 234,
           "declaredPathLiterals": [
             "/deferred-expenses/{id}/reject"
           ],
@@ -232969,7 +233479,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 235,
+          "line": 241,
           "declaredPathLiterals": [
             "/deferred-expenses/{id}/activate"
           ],
@@ -232979,7 +233489,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 242,
+          "line": 248,
           "declaredPathLiterals": [
             "/deferred-expenses/{id}/terminate"
           ],
@@ -232989,7 +233499,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 249,
+          "line": 255,
           "declaredPathLiterals": [
             "/deferred-expenses/{id}/approve-termination"
           ],
@@ -232999,7 +233509,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 256,
+          "line": 262,
           "declaredPathLiterals": [
             "/deferred-expenses/{id}/reject-termination"
           ],
@@ -233009,16 +233519,6 @@
         },
         {
           "httpMethod": "GET",
-          "line": 263,
-          "declaredPathLiterals": [
-            "/asset-categories"
-          ],
-          "fullPathCandidates": [
-            "/api/finance/asset-categories"
-          ]
-        },
-        {
-          "httpMethod": "POST",
           "line": 269,
           "declaredPathLiterals": [
             "/asset-categories"
@@ -233028,8 +233528,18 @@
           ]
         },
         {
+          "httpMethod": "POST",
+          "line": 275,
+          "declaredPathLiterals": [
+            "/asset-categories"
+          ],
+          "fullPathCandidates": [
+            "/api/finance/asset-categories"
+          ]
+        },
+        {
           "httpMethod": "PUT",
-          "line": 274,
+          "line": 280,
           "declaredPathLiterals": [
             "/asset-categories/{id}"
           ],
@@ -233039,7 +233549,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 282,
+          "line": 288,
           "declaredPathLiterals": [
             "/asset-categories/{id}/activate"
           ],
@@ -233049,7 +233559,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 289,
+          "line": 295,
           "declaredPathLiterals": [
             "/asset-posting-runs"
           ],
@@ -233059,7 +233569,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 300,
+          "line": 306,
           "declaredPathLiterals": [
             "/asset-posting-runs/{id}"
           ],
@@ -233069,7 +233579,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 317,
+          "line": 323,
           "declaredPathLiterals": [
             "/asset-posting-runs/preview"
           ],
@@ -233079,7 +233589,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 322,
+          "line": 328,
           "declaredPathLiterals": [
             "/asset-posting-runs/{id}/submit"
           ],
@@ -233089,7 +233599,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 329,
+          "line": 335,
           "declaredPathLiterals": [
             "/asset-posting-runs/{id}/approve"
           ],
@@ -233099,7 +233609,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 336,
+          "line": 342,
           "declaredPathLiterals": [
             "/asset-posting-runs/{id}/post"
           ],
@@ -233109,7 +233619,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 343,
+          "line": 349,
           "declaredPathLiterals": [
             "/asset-posting-runs/{id}/reverse"
           ],
@@ -233119,7 +233629,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 350,
+          "line": 356,
           "declaredPathLiterals": [
             "/asset-periods"
           ],
@@ -233129,7 +233639,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 354,
+          "line": 360,
           "declaredPathLiterals": [
             "/asset-periods/{period}/close"
           ],
@@ -233139,7 +233649,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 361,
+          "line": 367,
           "declaredPathLiterals": [
             "/asset-periods/{period}/reopen"
           ],
@@ -233149,7 +233659,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 368,
+          "line": 374,
           "declaredPathLiterals": [
             "/fa/depreciate"
           ],
@@ -233159,7 +233669,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 372,
+          "line": 378,
           "declaredPathLiterals": [
             "/fa/amortize"
           ],
@@ -233169,7 +233679,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 387,
+          "line": 393,
           "declaredPathLiterals": [
             "/reports/fa/depreciation-schedule"
           ],
@@ -233179,7 +233689,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 397,
+          "line": 403,
           "declaredPathLiterals": [
             "/reports/fa/amortization-schedule"
           ],
@@ -233503,7 +234013,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/gl/GlController.java",
-      "sha256": "a5d895d571099ef642b0cbf8814ed8edb7df4be684016a30fca56901446a07ba",
+      "sha256": "1b62d6f7b20095ea75ae60c1022f9b182165dbed0b019fa2f2bb5780d5f47648",
       "lineCount": 186,
       "class": "GlController",
       "declaredBasePaths": [],
@@ -248535,7 +249045,7 @@
     },
     {
       "source": "lib/core/constants/app_info.dart",
-      "sha256": "4280884303b94526a957de217f86d55c6c984fad66e7562d16a15c27ba082bc7",
+      "sha256": "3239c43920c78fe574207e9446986f1f620bfc7cff3612b75d6a3bc20ffbd5ad",
       "lineCount": 13
     },
     {
@@ -250330,8 +250840,8 @@
     },
     {
       "source": "lib/features/finance/models/finance_asset_models.dart",
-      "sha256": "816b34245f6df09154f356fdf26f32523d42c951ebc2e2c7119cf0f7bb582622",
-      "lineCount": 1078
+      "sha256": "4a45e08b51883a6a669081106309df2a28f2d04114d89b55af0a6e56e9af8a02",
+      "lineCount": 1089
     },
     {
       "source": "lib/features/finance/models/finance_decimal.dart",
@@ -250400,8 +250910,8 @@
     },
     {
       "source": "lib/features/finance/pages/finance_asset_workbench_page.dart",
-      "sha256": "8c1c79f306485e963771e3a2a67da62ab2a8020c9a09902dc0f091b295484e6e",
-      "lineCount": 573
+      "sha256": "03c4b218ce53aebcdd15138d90582ccd579d6a31a358c17ad67d0b52c9727698",
+      "lineCount": 575
     },
     {
       "source": "lib/features/finance/pages/finance_assets_page.dart",
@@ -250460,8 +250970,8 @@
     },
     {
       "source": "lib/features/finance/pages/finance_report_table_page.dart",
-      "sha256": "11ad8dc2df6668b7aaeb8f5ed08821bb78eeb5d618085d85e4c2e7e8497c59dc",
-      "lineCount": 811
+      "sha256": "931ae5a4873c54b802acb3b230895d972fec099a3322899eeb6adeca839bf3e6",
+      "lineCount": 865
     },
     {
       "source": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
@@ -250590,8 +251100,8 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_asset_ledger_panel.dart",
-      "sha256": "b0c1beb96836b0b0a00bcb39abe5d412fd81d4dddf6daf6cb45255d156f5806c",
-      "lineCount": 692
+      "sha256": "96485ba30c428be7eb32feef7338329050cb8171f8f23731aae07d12dd4f2843",
+      "lineCount": 695
     },
     {
       "source": "lib/features/finance/widgets/finance_asset_policy_dialog.dart",
@@ -250605,8 +251115,8 @@
     },
     {
       "source": "lib/features/finance/widgets/finance_asset_ui.dart",
-      "sha256": "c2c30a7e1b7b4fd021d5697359d05d615bc8dfd92c118dc2548cccb55f5a773a",
-      "lineCount": 213
+      "sha256": "0abdd96c190b4dd6e35575bd14a8fe75f843ecbee003c50474a12c2decb00044",
+      "lineCount": 215
     },
     {
       "source": "lib/features/finance/widgets/finance_audit_center_badge.dart",
@@ -250660,8 +251170,8 @@
     },
     {
       "source": "lib/features/finance/widgets/gl_report_line_bindings_dialog.dart",
-      "sha256": "f91b881792bef02dcd7e80e68073d88610c45c3e020bbc62a3b13b2670941049",
-      "lineCount": 530
+      "sha256": "989d696378f6505cb2408ac52941db9ab032f7b7fa83861b870707f537e46e40",
+      "lineCount": 579
     },
     {
       "source": "lib/features/finance/widgets/inventory_cost_posting_dialog.dart",
@@ -251074,6 +251584,11 @@
       "lineCount": 231
     },
     {
+      "source": "lib/features/production/models/production_workshop_task_stage.dart",
+      "sha256": "9971c32d99521034ef2580106e76d53f9fc8623c063096a8c3fbcc8f77fd09f5",
+      "lineCount": 110
+    },
+    {
       "source": "lib/features/production/models/reportable_plan_line.dart",
       "sha256": "320ebc2fbacf47e56dc5080765ebbbc7e526a79cebace347c588fd2717effc0c",
       "lineCount": 248
@@ -251265,8 +251780,8 @@
     },
     {
       "source": "lib/features/production/pages/production_workshop_tasks_page.dart",
-      "sha256": "971f9068d199003e5478a642db5669b3652964de9b919564513ffe6636a7d24f",
-      "lineCount": 3829
+      "sha256": "367100e4d8ef592d128a3a3dd9ba032c1e580d522134f6fa0d1c171d26435043",
+      "lineCount": 3738
     },
     {
       "source": "lib/features/production/pages/where_used_report_page.dart",
@@ -251880,8 +252395,8 @@
     },
     {
       "source": "lib/features/report/shared/report_print_preview.dart",
-      "sha256": "3eb996d08680daa2efc573791e22685cc939002953a59bbba546b042b30f5c89",
-      "lineCount": 170
+      "sha256": "f0f75708cd7f2f69afc3ab587d7c693904346924f137e168258d34604aa1d6c3",
+      "lineCount": 180
     },
     {
       "source": "lib/features/report/shared/report_sort.dart",
@@ -254419,9 +254934,14 @@
       "lineCount": 122
     },
     {
+      "source": "server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java",
+      "sha256": "ed126c189567faf1e397e0cdd63f2e600dbf613ffd1e4c86b2a322415b29b5ab",
+      "lineCount": 28
+    },
+    {
       "source": "server/src/main/java/com/uten/imp/features/finance/asset/FixedAssetController.java",
-      "sha256": "1d0f67753d8cb71f7beb5a0db49439eb36ebfd2afe09db0e40e4ef9c4318ed97",
-      "lineCount": 408
+      "sha256": "ce8078efa07da0d93f92c24c72422d2677fa427e2d997c0259514abb73a38efc",
+      "lineCount": 414
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/bank_transfer/FinanceBankTransferController.java",
@@ -254440,7 +254960,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/gl/GlController.java",
-      "sha256": "a5d895d571099ef642b0cbf8814ed8edb7df4be684016a30fca56901446a07ba",
+      "sha256": "1b62d6f7b20095ea75ae60c1022f9b182165dbed0b019fa2f2bb5780d5f47648",
       "lineCount": 186
     },
     {

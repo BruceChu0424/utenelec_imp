@@ -310,7 +310,7 @@ def write_rendered(registry: dict, check=False) -> None:
                 raise ValueError("Generated progress document drifted: " + str(path.relative_to(ROOT)))
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(text, encoding="utf-8")
+            path.write_text(text, encoding="utf-8", newline="\n")
     stats = summary(registry)
     main = DOCS / "00-总实施计划与交接入口.md"
     text = main.read_text(encoding="utf-8")
@@ -322,7 +322,7 @@ def write_rendered(registry: dict, check=False) -> None:
     if check and updated != text:
         raise ValueError("Main plan summary drifted")
     if not check:
-        main.write_text(updated, encoding="utf-8")
+        main.write_text(updated, encoding="utf-8", newline="\n")
     history = STATE / "history.jsonl"
     history_lines = ["# 工作包变更与完成记录", "", "由history.jsonl生成，记录时间为UTC。任务状态唯一入口仍为work-items.json。", "",
                      "| 时间UTC | 任务 | 原状态 → 新状态 | 操作者 | 说明 | 证据 |", "|---|---|---|---|---|---|"]
@@ -336,7 +336,7 @@ def write_rendered(registry: dict, check=False) -> None:
     if check and (not history_doc.is_file() or history_doc.read_text(encoding="utf-8") != history_text):
         raise ValueError("Generated task history drifted")
     if not check:
-        history_doc.write_text(history_text, encoding="utf-8")
+        history_doc.write_text(history_text, encoding="utf-8", newline="\n")
 
 
 def validate_document_links() -> None:
@@ -444,7 +444,7 @@ def main():
                                    "owner": item["owner"], "note": "Source inventory sync; stable task identity preserved.",
                                    "evidence": item["evidence"], "acceptanceReviewed": False})
         if events:
-            with (STATE / "history.jsonl").open("a", encoding="utf-8") as stream:
+            with (STATE / "history.jsonl").open("a", encoding="utf-8", newline="\n") as stream:
                 for recorded in events:
                     stream.write(json.dumps(recorded, ensure_ascii=False) + "\n")
         if args.command in {"init", "sync", "set", "render", "check"}:

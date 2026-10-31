@@ -503,7 +503,7 @@ def main() -> None:
         print(json.dumps(inventory["summary"], ensure_ascii=False))
     elif args.write:
         OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-        OUTPUT.write_text(rendered, encoding="utf-8")
+        OUTPUT.write_text(rendered, encoding="utf-8", newline="\n")
         print(json.dumps(inventory["summary"], ensure_ascii=False))
     else:
         print(rendered, end="")

@@ -1,4 +1,6 @@
 import copy
+import hashlib
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -6,6 +8,7 @@ import unittest
 from unittest import mock
 
 import progress_tracker as tracker
+import business_inventory as inventory
 
 
 class ProgressTrackerTest(unittest.TestCase):
@@ -131,6 +134,30 @@ class ProgressTrackerTest(unittest.TestCase):
             with self.assertRaises(OSError): tracker.write_json(target, {"new": True})
         self.assertEqual('{"prior":true}\n', target.read_text(encoding="utf-8"))
         self.assertEqual([], list(self.state.glob(".work-registry-*")))
+
+    def test_inventory_hash_survives_git_lf_checkout_on_windows(self):
+        self.source_inputs([])
+        generated = {"pages": [self.page("a")], "featureGroups": [], "summary": {"pageFiles": 1}}
+        target = self.state / "business-inventory.json"
+        with mock.patch.object(inventory, "OUTPUT", target), mock.patch.object(inventory, "collect", return_value=generated), \
+                mock.patch("sys.argv", ["business_inventory.py", "--write"]), mock.patch("sys.stdout", new_callable=io.StringIO):
+            inventory.main()
+        registry = tracker.build_registry()
+        git_checkout_bytes = target.read_bytes().replace(b"\r\n", b"\n")
+        self.assertEqual(hashlib.sha256(git_checkout_bytes).hexdigest(), registry["inventorySha256"])
+        self.assertNotIn(b"\r\n", target.read_bytes())
+
+    def test_generated_progress_documents_use_checkout_stable_lf_bytes(self):
+        docs = self.root / "docs"
+        docs.mkdir()
+        main = docs / "00-总实施计划与交接入口.md"
+        main.write_bytes(b"<!-- PROGRESS_SUMMARY:START -->\nold\n<!-- PROGRESS_SUMMARY:END -->\n")
+        generated = docs / "fixture.md"
+        registry = {"tasks": [self.task()], "baselineCounts": {"commonAndFlowPackages": 1, "businessPagePackages": 0}}
+        with mock.patch.object(tracker, "DOCS", docs), mock.patch.object(tracker, "render", return_value={generated: "first\nsecond\n"}):
+            tracker.write_rendered(registry)
+        for path in docs.glob("*.md"):
+            self.assertNotIn(b"\r\n", path.read_bytes(), str(path))
 
 
 if __name__ == "__main__":

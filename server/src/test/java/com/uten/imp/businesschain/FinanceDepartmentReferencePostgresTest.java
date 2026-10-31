@@ -56,6 +56,9 @@ class FinanceDepartmentReferencePostgresTest {
     private static final PostgreSQLContainer POSTGRES=new PostgreSQLContainer("postgres:16-alpine")
             .withDatabaseName("uten_finance_department").withUsername("fixture_admin").withPassword("uten");
     private static final String PICKER="/api/org/departments/finance-allocation-picker-tree";
+    private static final String SHARED_PICKER="/api/org/departments/employee-picker-tree";
+    private static final List<String> ALLOCATION_WRITES=List.of("finance_expense:create","finance_expense:edit",
+            "finance_other_income:create","finance_other_income:edit");
     private static final ThreadLocal<List<String>> SQL=new ThreadLocal<>();
     @TestConfiguration static class ProbeConfiguration {
         @Bean HibernatePropertiesCustomizer financeReferenceSqlProbe() {
@@ -78,12 +81,46 @@ class FinanceDepartmentReferencePostgresTest {
     @AfterEach void cleanup(){SQL.remove();SecurityContextHolder.clearContext();}
 
     @Test void eachAllocationWritePermissionAllowsOnlyTheMinimalPickerAndDoesNotGrantHrAccess() throws Exception {
-        for(String permission:List.of("finance_expense:create","finance_expense:edit","finance_other_income:create","finance_other_income:edit")) {
-            Authentication actor=auth(user(permission));
+        for(String permission:ALLOCATION_WRITES) {
+            UUID account=user(permission);
+            // V958 gives ordinary staff company_file:view through the baseline.
+            // Revoke that independent picker authority to test finance alone.
+            override(account,"company_file:view","revoke");
+            Authentication actor=auth(account);
+            assertTrue(hasAuthority(actor,permission));
+            assertFalse(hasAuthority(actor,"company_file:view"));
             JsonNode tree=read(PICKER,actor,200);assertTrue(tree.isArray());assertFalse(tree.isEmpty());
             assertMinimalTree(tree);
-            read("/api/org/departments/tree",actor,403);
-            read("/api/org/departments/employee-picker-tree",actor,403);
+            assertHrAccessForbidden(actor,account);
+            read(SHARED_PICKER,actor,403);
+        }
+    }
+    @Test void baselineLibraryAndFinanceAuthoritiesStayIndependentThroughPersonalRevocation() throws Exception {
+        for(String permission:ALLOCATION_WRITES) {
+            UUID account=user(permission);
+            Authentication combined=auth(account);
+            assertTrue(hasAuthority(combined,"company_file:view"),"V958 supplies the real baseline library authority");
+            assertTrue(hasAuthority(combined,permission));
+            assertMinimalTree(read(SHARED_PICKER,combined,200));
+            assertMinimalTree(read(PICKER,combined,200));
+            assertHrAccessForbidden(combined,account);
+
+            override(account,"company_file:view","revoke");
+            Authentication financeOnly=auth(account);
+            assertFalse(hasAuthority(financeOnly,"company_file:view"));
+            assertTrue(hasAuthority(financeOnly,permission));
+            read(SHARED_PICKER,financeOnly,403);
+            assertMinimalTree(read(PICKER,financeOnly,200));
+            assertHrAccessForbidden(financeOnly,account);
+
+            override(account,"company_file:view","grant");
+            override(account,permission,"revoke");
+            Authentication libraryOnly=auth(account);
+            assertTrue(hasAuthority(libraryOnly,"company_file:view"));
+            assertFalse(hasAuthority(libraryOnly,permission));
+            assertMinimalTree(read(SHARED_PICKER,libraryOnly,200));
+            read(PICKER,libraryOnly,403);
+            assertHrAccessForbidden(libraryOnly,account);
         }
     }
     @Test void readOnlyFinanceAndUnrelatedWritesDoNotAuthorizeTheReferenceDirectory() throws Exception {
@@ -132,6 +169,20 @@ class FinanceDepartmentReferencePostgresTest {
     }
     private long labelQueries(){return SQL.get().stream().map(s->s.replaceAll("\\s+"," ").toLowerCase())
             .filter(s->s.contains("from departments where id in")).count();}
+    private boolean hasAuthority(Authentication actor,String permission){return actor.getAuthorities().stream()
+            .anyMatch(authority->permission.equals(authority.getAuthority()));}
+    private void override(UUID account,String permission,String effect){assertEquals(1,db.update(
+            "INSERT INTO user_permission_overrides(user_id,permission_id,effect) SELECT ?,id,? FROM permissions WHERE code=? "
+                    + "ON CONFLICT(user_id,permission_id) DO UPDATE SET effect=EXCLUDED.effect",account,effect,permission));}
+    private void assertHrAccessForbidden(Authentication actor,UUID account)throws Exception {
+        assertFalse(hasAuthority(actor,"department:view"));assertFalse(hasAuthority(actor,"employee:view"));
+        UUID department=db.queryForObject("SELECT department_id FROM employees WHERE id=?",UUID.class,employee(account));
+        read("/api/org/departments/tree",actor,403);
+        read("/api/org/departments/"+department,actor,403);
+        read("/api/org/departments/"+department+"/subtree",actor,403);
+        read("/api/org/departments/"+department+"/workforce-overview",actor,403);
+        read("/api/org/employees",actor,403);
+    }
     private void assertMinimalTree(JsonNode nodes){for(JsonNode node:nodes){Set<String> fields=new HashSet<>();node.fieldNames().forEachRemaining(fields::add);
         assertTrue(Set.of("id","code","name","level","parentId","children").containsAll(fields));
         assertTrue(fields.containsAll(Set.of("id","code","name","level","children")));assertMinimalTree(node.path("children"));}}

@@ -674,6 +674,10 @@ public class CompanyFileService {
     }
 
     public List<Principal> principals(String type, String search) {
+        return principals(type, search, 0, 100);
+    }
+
+    public List<Principal> principals(String type, String search, int page, int size) {
         AuthUser u = user();
         // Any reader may resolve subjects: folder-level managers are appointed through
         // directory ACL grants, not through global administration codes (V958).
@@ -683,10 +687,12 @@ public class CompanyFileService {
         if (value.length() > 60) throw invalid("搜索内容过长");
         String pattern =
                 "%" + value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
+        int limit = Math.clamp(size, 1, 100);
+        long offset = (long) Math.max(0, page) * limit;
         if (type.equals("DEPARTMENT"))
             return jdbc.query(
                     "SELECT id,name,code detail FROM departments WHERE NOT is_deleted AND (name"
-                            + " ILIKE ? OR code ILIKE ?) ORDER BY sort_order,name,id LIMIT 50",
+                            + " ILIKE ? OR code ILIKE ?) ORDER BY sort_order,name,id LIMIT ? OFFSET ?",
                     (rs, row) ->
                             new Principal(
                                     rs.getObject("id", UUID.class),
@@ -694,22 +700,22 @@ public class CompanyFileService {
                                     rs.getString("detail"),
                                     type),
                     pattern,
-                    pattern);
+                    pattern, limit, offset);
         return jdbc.query(
                 """
-                SELECT u.id,e.full_name||'('||e.code||')' AS name,d.name AS detail
+                SELECT u.id,e.full_name||'('||e.code||')' AS name,d.name AS detail,e.department_id
                 FROM users u JOIN employees e ON e.id=u.employee_id LEFT JOIN departments d ON d.id=e.department_id
                 WHERE NOT u.is_deleted AND u.status='active' AND NOT e.is_deleted
-                  AND (e.full_name ILIKE ? OR e.code ILIKE ?) ORDER BY e.full_name,e.code,u.id LIMIT 50
+                  AND (e.full_name ILIKE ? OR e.code ILIKE ?) ORDER BY e.full_name,e.code,u.id LIMIT ? OFFSET ?
                 """,
                 (rs, row) ->
                         new Principal(
                                 rs.getObject("id", UUID.class),
                                 rs.getString("name"),
                                 rs.getString("detail"),
-                                type),
+                                type, rs.getObject("department_id", UUID.class)),
                 pattern,
-                pattern);
+                pattern, limit, offset);
     }
 
     /**
@@ -893,16 +899,14 @@ public class CompanyFileService {
             // The single system switch: the library entrance. Every action needs it.
             if (!has(user, "view")) return false;
             List<Node> path = chain(n);
-            boolean recovery = action.equals("manage_permissions") && user.isSuperAdmin();
             if (!trash && path.stream().anyMatch(v -> v.deleted)) return false;
+            // Super administrators administer all library entries without local ACL grants
+            // or session passwords. Lifecycle and original-upload ownership remain separate.
+            if (user.isSuperAdmin()) return true;
             if (n.pending
                     && !n.createdBy.equals(user.getId())
-                    && !recovery
                     && (!Set.of("view", "delete").contains(action) || !canAdministerPending(path)))
                 return false;
-            if (recovery)
-                return true; // Audited ACL/password recovery only. Never grants view/download
-            // bytes.
             // A protected folder's own label can be shown. Known UUIDs never reveal metadata below
             // it.
             if (path.subList(0, path.size() - 1).stream()
@@ -976,6 +980,7 @@ public class CompanyFileService {
         }
 
         boolean locked(Node n) {
+            if (user.isSuperAdmin()) return false;
             return chain(n).stream()
                     .anyMatch(
                             v ->
@@ -1164,13 +1169,14 @@ public class CompanyFileService {
         if (u == null
                 || u.isVisitor()
                 || !ACTIONS.contains(action)) return false;
+        if (u.isSuperAdmin() && !action.equals("upload")) return true;
         // V958: view is the single common-module entrance switch; download follows it.
         if (action.equals("view") || action.equals("download"))
             return u.getPermissions().contains(PERMISSIONS.get("view"));
         if (action.equals("upload"))
             return u.getEmployeeId() != null
-                    && u.getPermissions()
-                            .containsAll(Set.of("attachment:view", "attachment:upload"));
+                    && (u.isSuperAdmin() || u.getPermissions()
+                            .containsAll(Set.of("attachment:view", "attachment:upload")));
         // Write actions remain catalog codes held by global library administrators.
         return u.getPermissions().contains(PERMISSIONS.get(action));
     }

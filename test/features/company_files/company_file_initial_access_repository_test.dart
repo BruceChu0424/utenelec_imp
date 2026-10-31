@@ -36,7 +36,43 @@ class _CommandApi extends ApiClient {
   }
 }
 
+class _PrincipalApi extends ApiClient {
+  _PrincipalApi() : super(Dio());
+  final pages = <int>[];
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    expect(path, '/company-files/principals');
+    expect(query!['type'], 'USER');
+    final page = query['page'] as int;
+    pages.add(page);
+    return [
+      for (var i = 0; i < (page == 0 ? 100 : 3); i++)
+        {
+          'id': 'account-${page * 100 + i}',
+          'name': '测试人员($i)',
+          'type': 'USER',
+          'departmentId': 'real-department-id',
+          'detail': '研发部',
+        },
+    ];
+  }
+}
+
 void main() {
+  test(
+    'account selection loads every page and retains account and department IDs',
+    () async {
+      final api = _PrincipalApi();
+      final people = await CompanyFileRepository(api).principals(type: 'USER');
+      expect(api.pages, [0, 1]);
+      expect(people, hasLength(103));
+      expect(people.last.id, 'account-102');
+      expect(people.last.departmentId, 'real-department-id');
+    },
+  );
   CompanyFileInitialAccessDraft privateAccess() =>
       CompanyFileInitialAccessDraft(
         inheritPermissions: false,

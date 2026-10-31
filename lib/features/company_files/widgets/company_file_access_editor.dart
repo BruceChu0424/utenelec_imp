@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_dialog_modules.dart';
-import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input.dart';
-import '../../../components/inputs/uten_search_bar.dart';
+import '../../../components/inputs/uten_employee_picker.dart';
+import '../../department/widgets/uten_department_picker.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/authenticated_request_scope.dart';
@@ -50,19 +50,65 @@ class CompanyFileScopeBoundary extends StatelessWidget {
   }
 }
 
+/// The library supplies authorized account IDs; shared selectors own presentation.
 Future<CompanyFilePrincipal?> showCompanyFilePrincipalPicker(
   BuildContext context, {
   required CompanyFileRepository repository,
   required AuthenticatedRequestScope scope,
   required SensitiveReadBoundary boundary,
-}) => showDialog<CompanyFilePrincipal>(
-  context: context,
-  builder: (_) => CompanyFileScopeBoundary(
-    boundary: boundary,
-    scope: scope,
-    child: _CompanyFilePrincipalDialog(repository: repository, scope: scope),
-  ),
-);
+  String type = 'USER',
+}) async {
+  final l = AppLocalizations.of(context);
+  Widget protect(BuildContext _, Widget child) =>
+      CompanyFileScopeBoundary(boundary: boundary, scope: scope, child: child);
+  if (type == 'DEPARTMENT') {
+    final tree = await scope.run(repository.principalDepartments);
+    if (!context.mounted || !scope.isCurrent) return null;
+    final selected = await showUtenDepartmentPickerPanel(
+      context,
+      tree: tree,
+      selectablePredicate: (_) => true,
+      scopeBuilder: protect,
+    );
+    if (!scope.isCurrent || selected == null || selected.isEmpty) return null;
+    final department = selected.single;
+    return CompanyFilePrincipal(
+      id: department.id,
+      name: department.name,
+      detail: department.fullPath,
+      type: type,
+    );
+  }
+  final candidates = <String, CompanyFilePrincipal>{};
+  final selected = await showUtenEmployeeSelectionPanel(
+    context,
+    title: l.companyFilesAddReader,
+    searchHint: l.companyFilesPrincipalSearch,
+    emptyMessage: l.companyFilesNoResults,
+    candidateScopeKey: (boundary, scope),
+    scopeBuilder: protect,
+    departmentTreeLoader: () => scope.run(repository.principalDepartments),
+    loader: (keyword) async {
+      final rows = await scope.run(
+        () => repository.principals(type: 'USER', search: keyword ?? ''),
+      );
+      for (final row in rows) {
+        candidates[row.id] = row;
+      }
+      return [
+        for (final row in rows)
+          UtenEmployeePickerItem(
+            id: row.id,
+            name: row.name,
+            departmentId: row.departmentId,
+            departmentName: row.detail,
+          ),
+      ];
+    },
+  );
+  if (!scope.isCurrent || selected == null || selected.isEmpty) return null;
+  return candidates[selected.single.id];
+}
 
 /// Only entry-local reading rules are offered during creation. Existing advanced
 /// operation ACLs are edited separately and never reconstructed from this widget.
@@ -133,7 +179,7 @@ class _CompanyFileInitialAccessEditorState
     ),
   );
 
-  Future<void> _add(String effect) async {
+  Future<void> _add(String effect, [String type = 'USER']) async {
     if (!_enabled) return;
     final l = AppLocalizations.of(context);
     if (_rules.length >= 100) {
@@ -147,6 +193,7 @@ class _CompanyFileInitialAccessEditorState
         repository: widget.repository,
         scope: widget.scope,
         boundary: widget.boundary,
+        type: type,
       );
       if (!mounted || !widget.scope.isCurrent || principal == null) return;
       if (_rules.any(
@@ -170,6 +217,14 @@ class _CompanyFileInitialAccessEditorState
         );
       });
       _publish();
+    } catch (error) {
+      if (mounted && widget.scope.isCurrent) {
+        setState(
+          () => _error = error is ApiException
+              ? error.message
+              : l.companyFilesLoadFailed,
+        );
+      }
     } finally {
       if (mounted) setState(() => _picking = false);
     }
@@ -210,15 +265,29 @@ class _CompanyFileInitialAccessEditorState
               icon: const Icon(Icons.close),
             ),
           ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: UtenButton(
-            key: ValueKey('initial-access-add-${effect.toLowerCase()}'),
-            type: UtenButtonType.ghost,
-            icon: Icons.person_add_alt_outlined,
-            onPressed: _enabled ? () => _add(effect) : null,
-            child: Text(l.companyFilesAddReader),
-          ),
+        Wrap(
+          spacing: UtenSpacing.s8,
+          runSpacing: UtenSpacing.s8,
+          children: [
+            for (final type in const ['USER', 'DEPARTMENT'])
+              UtenButton(
+                key: ValueKey(
+                  type == 'USER'
+                      ? 'initial-access-add-${effect.toLowerCase()}'
+                      : 'initial-access-add-${effect.toLowerCase()}-department',
+                ),
+                type: UtenButtonType.ghost,
+                icon: type == 'USER'
+                    ? Icons.person_add_alt_outlined
+                    : Icons.group_add_outlined,
+                onPressed: _enabled ? () => _add(effect, type) : null,
+                child: Text(
+                  type == 'USER'
+                      ? l.companyFilesUser
+                      : l.companyFilesDepartment,
+                ),
+              ),
+          ],
         ),
       ],
     );
@@ -377,155 +446,6 @@ class _CompanyFileInitialAccessEditorState
             ),
           ),
         ],
-      ],
-    );
-  }
-}
-
-class _CompanyFilePrincipalDialog extends StatefulWidget {
-  const _CompanyFilePrincipalDialog({
-    required this.repository,
-    required this.scope,
-  });
-  final CompanyFileRepository repository;
-  final AuthenticatedRequestScope scope;
-  @override
-  State<_CompanyFilePrincipalDialog> createState() =>
-      _CompanyFilePrincipalDialogState();
-}
-
-class _CompanyFilePrincipalDialogState
-    extends State<_CompanyFilePrincipalDialog> {
-  String _type = 'USER', _search = '';
-  int _request = 0;
-  List<CompanyFilePrincipal>? _items;
-  Object? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  @override
-  void dispose() {
-    ++_request;
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    final request = ++_request;
-    setState(() {
-      _items = null;
-      _error = null;
-    });
-    try {
-      final rows = await widget.scope.run(
-        () => widget.repository.principals(type: _type, search: _search),
-      );
-      if (mounted && widget.scope.isCurrent && request == _request) {
-        setState(() => _items = rows);
-      }
-    } catch (error) {
-      if (mounted && widget.scope.isCurrent && request == _request) {
-        setState(() => _error = error);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    return UtenAlertDialog(
-      title: Text(l.companyFilesAddReader),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            spacing: UtenSpacing.s8,
-            runSpacing: UtenSpacing.s8,
-            children: [
-              for (final type in const ['USER', 'DEPARTMENT'])
-                ChoiceChip(
-                  label: Text(
-                    type == 'USER'
-                        ? l.companyFilesUser
-                        : l.companyFilesDepartment,
-                  ),
-                  selected: _type == type,
-                  onSelected: (_) {
-                    if (_type == type || !widget.scope.isCurrent) return;
-                    _type = type;
-                    _load();
-                  },
-                ),
-            ],
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          UtenSearchBar(
-            hint: l.companyFilesPrincipalSearch,
-            onInputChanged: (_) {
-              ++_request;
-              setState(() {
-                _items = null;
-                _error = null;
-              });
-            },
-            onChanged: (value) {
-              _search = value;
-              _load();
-            },
-          ),
-          const SizedBox(height: UtenSpacing.s12),
-          if (!widget.scope.isCurrent)
-            Text(l.companyFilesPermissionDenied)
-          else if (_error != null)
-            UtenEmpty.error(
-              message: _error is ApiException
-                  ? (_error as ApiException).message
-                  : l.companyFilesLoadFailed,
-              actionLabel: l.companyFilesRetry,
-              onAction: _load,
-            )
-          else if (_items == null)
-            const Center(child: CircularProgressIndicator())
-          else if (_items!.isEmpty)
-            UtenEmpty(message: l.companyFilesNoResults)
-          else
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * .38,
-              ),
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: _items!.length,
-                itemBuilder: (_, index) {
-                  final person = _items![index];
-                  return ListTile(
-                    leading: Icon(
-                      person.type == 'USER'
-                          ? Icons.person_outline
-                          : Icons.groups_outlined,
-                    ),
-                    title: Text(person.name),
-                    subtitle: person.detail.isEmpty
-                        ? null
-                        : Text(person.detail),
-                    onTap: !widget.scope.isCurrent
-                        ? null
-                        : () => Navigator.pop(context, person),
-                  );
-                },
-              ),
-            ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(l.companyFilesCancel),
-        ),
       ],
     );
   }

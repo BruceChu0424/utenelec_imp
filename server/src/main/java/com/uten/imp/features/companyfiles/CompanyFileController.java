@@ -43,8 +43,10 @@ public class CompanyFileController {
     @PreAuthorize("hasAuthority('company_file:view')")
     public List<Principal> principals(
             @RequestParam(defaultValue = "USER") String type,
-            @RequestParam(defaultValue = "") String search) {
-        return service.principals(type, search);
+            @RequestParam(defaultValue = "") String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "100") int size) {
+        return service.principals(type, search, page, size);
     }
 
     @GetMapping("/{id}")

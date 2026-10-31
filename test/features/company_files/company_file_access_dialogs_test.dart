@@ -1,3 +1,6 @@
+import 'package:uten_imp/components/feedback/uten_dialog_modules.dart';
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/features/department/models/department_node.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -66,6 +69,17 @@ class _Repository extends CompanyFileRepository {
   }
 
   @override
+  Future<List<DepartmentNode>> principalDepartments() async => [
+    DepartmentNode(
+      id: 'hr',
+      code: 'DEPT_TEST',
+      name: '人事部',
+      level: '一级部门',
+      children: [],
+    ),
+  ];
+
+  @override
   Future<List<CompanyFilePrincipal>> principals({
     required String type,
     String search = '',
@@ -86,6 +100,7 @@ Future<({ProviderContainer container, AuthenticatedRequestScope scope})> _mount(
   addTearDown(tester.view.resetDevicePixelRatio);
   final container = ProviderContainer(
     overrides: [
+      apiBaseUrlProvider.overrideWithValue('https://library.test/api'),
       sensitiveReadBoundaryProvider.overrideWith((ref) => ref.watch(_identity)),
     ],
   );
@@ -169,6 +184,102 @@ void main() {
       'NotoSansSC',
     )..addFont(rootBundle.load('assets/fonts/NotoSansSCFull.ttf'))).load();
   });
+
+  testWidgets('upload starts with folder inheritance and no everyone grant', (
+    tester,
+  ) async {
+    final state = await _mount(tester);
+    final result = _show<CompanyFileInitialAccessDraft>(
+      tester,
+      CompanyFileUploadAccessDialog(
+        repository: _Repository(),
+        scope: state.scope,
+        boundary: state.container.read(_identity),
+        selectedNames: const ['部门资料.pdf'],
+      ),
+    );
+    await tester.pumpAndSettle();
+    final inherited = tester.widget<UtenDialogSettingTile>(
+      find.byKey(const Key('initial-access-inherit')),
+    );
+    expect(inherited.selected, isTrue);
+    await _capture(tester, 'upload-default-inherit');
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('company-initial-access-confirm')),
+    );
+    final access = (await result)!;
+    expect(access.inheritPermissions, isTrue);
+    expect(access.rules, isEmpty);
+  });
+
+  for (final compact in [false, true]) {
+    testWidgets(
+      'permission details collapse without losing edits compact=$compact',
+      (tester) async {
+        final state = await _mount(
+          tester,
+          size: compact ? const Size(390, 844) : const Size(1200, 1000),
+          dark: compact,
+          scale: compact ? 1.5 : 1,
+        );
+        final repo = _Repository()
+          ..existing = const CompanyFileAccess(
+            inheritPermissions: false,
+            version: 4,
+            rules: [
+              CompanyFileAccessRule(
+                subjectType: 'USER',
+                subjectId: 'alice',
+                subjectName: '张明',
+              ),
+              CompanyFileAccessRule(
+                subjectType: 'DEPARTMENT',
+                subjectId: 'hr',
+                subjectName: '人事部',
+              ),
+            ],
+          );
+        _show<bool>(
+          tester,
+          CompanyFileAccessDialog(
+            entry: const CompanyFile(
+              id: 'folder',
+              name: '财务操作手册',
+              kind: 'FOLDER',
+              version: 4,
+              allowedActions: {'view', 'manage_permissions'},
+            ),
+            repository: repo,
+            scope: state.scope,
+            boundary: state.container.read(_identity),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(FilterChip).hitTestable(), findsNothing);
+        await _capture(tester, 'permission-collapsed-$compact');
+        await _tap(tester, find.byKey(const Key('entry-access-everyone')));
+        await _tap(tester, find.byKey(const Key('entry-access-specific')));
+        await _tap(tester, find.text('张明'));
+        expect(find.byType(FilterChip).hitTestable(), findsWidgets);
+        await _tap(tester, find.widgetWithText(FilterChip, '下载原件').first);
+        await _tap(tester, find.text('张明'));
+        expect(find.byType(FilterChip).hitTestable(), findsNothing);
+        await _tap(tester, find.text('张明'));
+        expect(
+          tester
+              .widget<FilterChip>(find.widgetWithText(FilterChip, '下载原件').first)
+              .selected,
+          isFalse,
+        );
+        await _capture(tester, 'permission-expanded-$compact');
+        await _tap(tester, find.text('保存'));
+        expect(repo.savedRules!.first.actions, {'view'});
+        expect(repo.savedRules!.last.actions, {'view', 'download'});
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   for (final layout in [
     (name: 'desktop', size: const Size(1200, 1000), scale: 1.0, dark: false),
@@ -352,7 +463,11 @@ void main() {
       await tester.pumpAndSettle();
       await _tap(tester, find.byKey(const Key('initial-access-specific')));
       await _tap(tester, find.byKey(const Key('initial-access-add-allow')));
-      await _tap(tester, find.text('张明'));
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('employee-picker-item-alice')),
+      );
+      await _tap(tester, find.text('确定').hitTestable());
       await _tap(
         tester,
         find.byKey(const Key('initial-access-password-switch')),
@@ -535,7 +650,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.enterText(_input('company-folder-name'), '模板');
-      expect(find.byType(FilterChip), findsNothing);
+      expect(find.byType(FilterChip).hitTestable(), findsNothing);
       expect(find.text('谁可以查看'), findsOneWidget);
       expect(find.text('所有人可以看'), findsOneWidget);
       await _capture(tester, 'folder-create-access-desktop');
@@ -577,10 +692,27 @@ void main() {
       await tester.pumpAndSettle();
       await _tap(tester, find.byKey(const Key('initial-access-specific')));
       await _tap(tester, find.byKey(const Key('initial-access-add-allow')));
-      await _tap(tester, find.text('张明'));
-      await _tap(tester, find.byKey(const Key('initial-access-add-deny')));
-      await _tap(tester, find.text('部门'));
+      await _capture(tester, 'permission-person-selector');
+      expect(
+        tester.getRect(find.byKey(const Key('uten-adaptive-panel'))).right,
+        1200,
+      );
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('employee-picker-item-alice')),
+      );
+      await _tap(tester, find.text('确定').hitTestable());
+      await _tap(
+        tester,
+        find.byKey(const Key('initial-access-add-deny-department')),
+      );
+      await _capture(tester, 'permission-department-selector');
+      expect(
+        tester.getRect(find.byKey(const Key('uten-adaptive-panel'))).right,
+        1200,
+      );
       await _tap(tester, find.text('人事部'));
+      await _tap(tester, find.text('确定').hitTestable());
       await _tap(
         tester,
         find.byKey(const ValueKey('company-initial-access-confirm')),
@@ -610,8 +742,13 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('所有人可以看'), findsOneWidget);
+    await _tap(tester, find.byKey(const Key('initial-access-everyone')));
     await _tap(tester, find.byKey(const Key('initial-access-add-deny')));
-    await _tap(tester, find.text('张明'));
+    await _tap(
+      tester,
+      find.byKey(const ValueKey('employee-picker-item-alice')),
+    );
+    await _tap(tester, find.text('确定').hitTestable());
     await _tap(
       tester,
       find.byKey(const ValueKey('company-initial-access-confirm')),

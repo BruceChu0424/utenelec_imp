@@ -94,7 +94,7 @@ class DepartmentEmployeePickerSecurityContractTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"employee:view", "account:support", "notice:publish", "client:assign",
-            "warehouse:edit", "employee:handover", "employee:offboard", "audit_log:view"})
+            "warehouse:edit", "employee:handover", "employee:offboard", "audit_log:view", "company_file:view"})
     void eachExistingInternalPickerAuthorityCanReadOnlyOrganizationReferences(String permission) throws Exception {
         login(staff(Set.of(permission), false, false));
 
@@ -113,7 +113,7 @@ class DepartmentEmployeePickerSecurityContractTest {
 
     @ParameterizedTest
     @ValueSource(strings = {"account:support", "client:assign", "warehouse:edit", "employee:handover",
-            "employee:offboard", "audit_log:view"})
+            "employee:offboard", "audit_log:view", "company_file:view"})
     void businessPickerPermissionsDoNotOpenDepartmentManagementOrHrRoster(String permission) throws Exception {
         login(staff(Set.of(permission), false, false));
 

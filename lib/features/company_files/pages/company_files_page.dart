@@ -96,6 +96,49 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
   final Map<CompanyFileUpload, String?> _destinations = {};
   bool _queueRunning = false, _stopQueue = false;
   SensitiveReadBoundary? _queueBoundary;
+  final _queueRevision = ValueNotifier<int>(0);
+  DialogRoute<void>? _queueRoute;
+
+  void _removeQueueDialog() {
+    final route = _queueRoute;
+    _queueRoute = null;
+    if (route == null) return;
+    scheduleMicrotask(() {
+      if (route.isActive) route.navigator?.removeRoute(route);
+    });
+  }
+
+  void _queueChanged() {
+    if (!mounted) return;
+    setState(() {});
+    _queueRevision.value++;
+  }
+
+  void _showQueueDialog() {
+    if (_queueRoute?.isActive == true) return;
+    final route = DialogRoute<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ValueListenableBuilder<int>(
+        valueListenable: _queueRevision,
+        builder: (_, _, _) =>
+            PopScope(canPop: !_queueRunning, child: _queueDialog()),
+      ),
+    );
+    _queueRoute = route;
+    unawaited(
+      Navigator.of(context, rootNavigator: true).push(route).whenComplete(() {
+        if (_queueRoute != route) return;
+        _queueRoute = null;
+        if (mounted && !_queueRunning) {
+          setState(() {
+            _queue.clear();
+            _destinations.clear();
+          });
+        }
+      }),
+    );
+  }
 
   AppLocalizations get l => AppLocalizations.of(context);
   CompanyFileRepository get repository =>
@@ -111,6 +154,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
       ++_epoch;
       ++_request;
       _stopQueue = true;
+      _removeQueueDialog();
       setState(() {
         _listing = null;
         _selected = null;
@@ -142,6 +186,8 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     ++_request;
     _stopQueue = true;
     WidgetsBinding.instance.removeObserver(this);
+    _removeQueueDialog();
+    _queueRevision.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -1194,6 +1240,8 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
       _queueRunning = true;
       _stopQueue = false;
     });
+    _queueChanged();
+    _showQueueDialog();
     try {
       final scope = await boundary.api.captureRequestScope(isCurrent: current);
       await sendCompanyFileUploadQueue(
@@ -1204,7 +1252,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
         parentIdOf: (file) => _destinations[file],
         shouldStop: () => _stopQueue || !current(),
         onChanged: () {
-          if (current()) setState(() {});
+          if (current()) _queueChanged();
         },
       );
     } catch (e) {
@@ -1219,7 +1267,16 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
             }
           }
         });
+        _queueChanged();
         await _load();
+        if (mounted && current() && _queue.every((file) => file.complete)) {
+          _removeQueueDialog();
+          setState(() {
+            _queue.clear();
+            _destinations.clear();
+          });
+          context.appSuccess(l.companyFilesUploaded);
+        }
       }
     }
   }
@@ -1257,9 +1314,6 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: _floatingActions(),
-      bottomNavigationBar: _queue.isEmpty
-          ? null
-          : SafeArea(top: false, child: _queuePanel()),
       body: SafeArea(
         child: UtenPageEdgePadding(
           child: LayoutBuilder(
@@ -2016,7 +2070,6 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
       padding: const EdgeInsets.fromLTRB(17, UtenSpacing.s8, 17, 0),
       child: CompanyFileDetailRow(
         header: true,
-        leading: const SizedBox.shrink(),
         trailing: const SizedBox.shrink(),
         name: header('name', l.companyFilesName, sortable: true),
         type: header(
@@ -2249,106 +2302,117 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     );
   }
 
-  Widget _queuePanel() {
+  Widget _queueDialog() {
     final done = _queue.where((f) => f.complete).length;
-    return Material(
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * .35,
-        ),
-        child: CustomScrollView(
-          primary: false,
-          shrinkWrap: true,
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s16,
-                  vertical: UtenSpacing.s8,
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
+    return UtenAlertDialog(
+      key: const ValueKey('company-file-upload-progress'),
+      title: Text(
+        _queueRunning ? l.companyFilesUploading : l.companyFilesQueue,
+      ),
+      showCloseButton: true,
+      closeEnabled: !_queueRunning,
+      onClose: () {
+        final route = _queueRoute;
+        if (route != null && route.isActive) {
+          route.navigator?.removeRoute(route);
+        }
+      },
+      content: SizedBox(
+        width: 600,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * .45,
+          ),
+          child: CustomScrollView(
+            primary: false,
+            shrinkWrap: true,
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: UtenSpacing.s16,
+                    vertical: UtenSpacing.s8,
+                  ),
+                  child: Wrap(
+                    spacing: UtenSpacing.s12,
+                    runSpacing: UtenSpacing.s8,
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
                         '${l.companyFilesQueue}  $done / ${_queue.length}',
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
-                    ),
-                    if (_queueRunning)
-                      TextButton(
-                        onPressed: _stopQueue
-                            ? null
-                            : () => setState(() => _stopQueue = true),
-                        child: Text(l.companyFilesStopQueue),
-                      )
-                    else
-                      UtenCloseButton(
-                        onPressed: () => setState(() {
-                          _queue.clear();
-                          _destinations.clear();
-                        }),
-                        tooltip: l.companyFilesClose,
-                      ),
-                  ],
+                      if (_queueRunning)
+                        TextButton(
+                          onPressed: _stopQueue
+                              ? null
+                              : () {
+                                  _stopQueue = true;
+                                  _queueChanged();
+                                },
+                          child: Text(l.companyFilesStopQueue),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            if (_queueRunning)
-              const SliverToBoxAdapter(
-                child: LinearProgressIndicator(minHeight: 2),
-              ),
-            SliverList.builder(
-              itemCount: _queue.length,
-              itemBuilder: (_, i) {
-                final f = _queue[i];
-                final label = switch (f.state) {
-                  CompanyFileUploadState.waiting => l.companyFilesWaiting,
-                  CompanyFileUploadState.uploading => l.companyFilesUploading,
-                  CompanyFileUploadState.verifying => l.companyFilesVerifying,
-                  CompanyFileUploadState.done => l.companyFilesUploaded,
-                  CompanyFileUploadState.failed => l.companyFilesUploadFailed,
-                  CompanyFileUploadState.unknown => l.companyFilesUnknown,
-                  CompanyFileUploadState.stopped => l.companyFilesStopped,
-                };
-                return ListTile(
-                  dense: true,
-                  leading: Icon(
-                    f.complete
-                        ? Icons.check_circle_outline
-                        : f.error == null
-                        ? Icons.insert_drive_file_outlined
-                        : Icons.error_outline,
-                    color: f.complete
-                        ? Theme.of(context).colorScheme.primary
-                        : f.error != null
-                        ? Theme.of(context).colorScheme.error
+              if (_queueRunning)
+                const SliverToBoxAdapter(
+                  child: LinearProgressIndicator(minHeight: 2),
+                ),
+              SliverList.builder(
+                itemCount: _queue.length,
+                itemBuilder: (_, i) {
+                  final f = _queue[i];
+                  final label = switch (f.state) {
+                    CompanyFileUploadState.waiting => l.companyFilesWaiting,
+                    CompanyFileUploadState.uploading => l.companyFilesUploading,
+                    CompanyFileUploadState.verifying => l.companyFilesVerifying,
+                    CompanyFileUploadState.done => l.companyFilesUploaded,
+                    CompanyFileUploadState.failed => l.companyFilesUploadFailed,
+                    CompanyFileUploadState.unknown => l.companyFilesUnknown,
+                    CompanyFileUploadState.stopped => l.companyFilesStopped,
+                  };
+                  return ListTile(
+                    dense: true,
+                    leading: Icon(
+                      f.complete
+                          ? Icons.check_circle_outline
+                          : f.error == null
+                          ? Icons.insert_drive_file_outlined
+                          : Icons.error_outline,
+                      color: f.complete
+                          ? Theme.of(context).colorScheme.primary
+                          : f.error != null
+                          ? Theme.of(context).colorScheme.error
+                          : null,
+                    ),
+                    title: Text(
+                      f.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      f.error == null
+                          ? label
+                          : '$label: ${companyFileError(f.error!, l)}',
+                    ),
+                    trailing: !_queueRunning && !f.complete
+                        ? TextButton(
+                            onPressed: () => _runQueue([f]),
+                            child: Text(
+                              f.state == CompanyFileUploadState.unknown
+                                  ? l.companyFilesCheckResult
+                                  : l.companyFilesRetry,
+                            ),
+                          )
                         : null,
-                  ),
-                  title: Text(
-                    f.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    f.error == null
-                        ? label
-                        : '$label: ${companyFileError(f.error!, l)}',
-                  ),
-                  trailing: !_queueRunning && !f.complete
-                      ? TextButton(
-                          onPressed: () => _runQueue([f]),
-                          child: Text(
-                            f.state == CompanyFileUploadState.unknown
-                                ? l.companyFilesCheckResult
-                                : l.companyFilesRetry,
-                          ),
-                        )
-                      : null,
-                );
-              },
-            ),
-          ],
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

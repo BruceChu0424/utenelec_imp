@@ -243,8 +243,8 @@ class LegacyBootstrapCoordinatorPostgresTest {
             for (String status : List.of("SUBMITTED", "APPROVED", "REJECTED", "POSTED")) {
                 UUID requester = UUID.randomUUID(), voucher = UUID.randomUUID();
                 try (var insert = connection.prepareStatement("""
-                        INSERT INTO users(id,employee_id,login_account,password_hash,status,is_deleted)
-                        SELECT ?,id,?,'!synthetic-bootstrap-finance-no-login','active',false
+                        INSERT INTO users(id,employee_id,login_account,password_hash,is_super_admin,status,is_deleted)
+                        SELECT ?,id,?,'!synthetic-bootstrap-finance-no-login',true,'active',false
                         FROM employees WHERE code='ADMIN' AND status='active' AND NOT is_deleted
                         """)) {
                     insert.setObject(1, requester);

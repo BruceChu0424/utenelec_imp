@@ -293,6 +293,7 @@ class GoodsBomTab extends ConsumerStatefulWidget {
     this.productWeightGrams,
     this.onEditModeChanged,
     this.onInteractionChanged,
+    this.navigationActions = const [],
   });
 
   final String goodsId;
@@ -319,6 +320,10 @@ class GoodsBomTab extends ConsumerStatefulWidget {
   /// A pending snapshot, draft, write or confirmation must finish before the
   /// host can replay operation history against the same canonical assembly.
   final ValueChanged<bool>? onInteractionChanged;
+
+  /// Host-owned record navigation joins the existing floating action group,
+  /// including fullscreen, without reserving a row above the BOM table.
+  final List<Widget> navigationActions;
 
   @override
   ConsumerState<GoodsBomTab> createState() => GoodsBomTabState();
@@ -4068,6 +4073,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                       ),
                   ],
                   batchActionsBuilder: (context, ids) => [
+                    ...widget.navigationActions,
                     if (_canCreate)
                       UtenButton(
                         key: const Key('goods-bom-add-component'),

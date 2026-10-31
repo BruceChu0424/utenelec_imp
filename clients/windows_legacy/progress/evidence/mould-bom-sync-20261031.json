@@ -131,9 +131,9 @@
     "lib/features/basic_data/models/goods_detail_sequence.dart": "f6b3aaa5d3cc2df1568bb31ac2cf646810d2a22f85642d804d6e2bbe49661586",
     "lib/features/basic_data/pages/goods_detail_page.dart": "dbe9c18a02340d1ebb92c736ed6a7ba58499eb588648647508eb126f706a30b9",
     "lib/features/basic_data/pages/product_category_page.dart": "ed991eb9c5eadaf097b3ece45d0e2e1b0d72afecbfdb0c18b4ad5494cb2cd368",
-    "lib/features/basic_data/widgets/goods_bom_navigation.dart": "41b6ed34c13be68cd66f288372e1d913e17fa3ef0705e8ae54049e2823ebd609",
-    "lib/features/basic_data/widgets/goods_bom_tab.dart": "ce53dfc2bd5593e727e0c6968d4c0c8081783a84eb9c2611e4137909b7e5c770",
-    "lib/features/basic_data/widgets/goods_detail_body.dart": "9ccc4d0513a6cab357827a1366eb797801ee483fc8fd98b7f866355f613b4291",
+    "lib/features/basic_data/widgets/goods_bom_navigation.dart": "d3aed60716b43636a76f80590e53f1c5216ccd93aa710184d2ab43a951a10599",
+    "lib/features/basic_data/widgets/goods_bom_tab.dart": "4c6a916732726890b4cbcc5570fe9ef30a6b07cd6158305be4eda474400ff43b",
+    "lib/features/basic_data/widgets/goods_detail_body.dart": "195be7904f0b7993fb0bd92f353e0d62840e48c66159c07a43e0217efab6ce15",
     "lib/features/basic_data/widgets/master_inline_edit.dart": "2252202dfb083934c20e529095f1154712b73d1933a5dcf8801821b070e4fb7e",
     "lib/features/client_update/client_release_publish_page.dart": "0823757b001d2b672a3116db32a5649df9f8b45838c40e22010ba9d889018c10",
     "lib/features/production/pages/where_used_report_page.dart": "fbd50ea452098ccd6b643701307288e9c253e5945f0134be3b0fae3f4cbe0706",
@@ -149,8 +149,29 @@
     "test/core/router/business_window_host_test.dart": "0cb0ccb0bbea2e95e94a89c62c67553cf1a26cb0ec675626b918d0eabd879b59",
     "test/core/router/business_window_navigation_test.dart": "caf415f83e0cbc16cb800ca09481d943a01c10f9d02fd7a42d963db97484474a",
     "test/features/basic_data/goods_bom_navigation_guard_test.dart": "5ece424db70b30891d1dc4a3a977416f78cfc6bfca6772bbc05cc528e9bfc2a9",
-    "test/features/basic_data/widgets/goods_bom_navigation_test.dart": "1941d1f9ee69c947eae877f4be7367680c3f09b646845ea4501552432fe32b8f",
-    "test/features/basic_data/widgets/goods_bom_workspace_test.dart": "17db452c315212595037130fe71e676fb03b9b3bb137dfcbcd858edcd33326f3",
+    "test/features/basic_data/widgets/goods_bom_navigation_test.dart": "0ab53c5c80898614b0979c94ef3cf03f6c7770a75a37ea4237fe95396b5d5c51",
+    "test/features/basic_data/widgets/goods_bom_workspace_test.dart": "6c60815e87c5b638674167c5ea2869028e74b8bbc0a641bdacaf185723a9c6cd",
     "test/features/production/where_used_report_page_interaction_test.dart": "eb41187a7ea29a2d3e7f4e97e0b32c96ea2bff5c37af778d1dcbfe1efd2e2e1d"
+  },
+  "floatingNavigationFollowup": {
+    "date": "2026-10-31",
+    "baseCommit": "09ceef146346ed5c579592dcced2c13f96dbd14b",
+    "request": "上一个/下一个 BOM 改为底部悬浮，不占内容布局",
+    "implementation": "GoodsBomNavigation actions are passed through GoodsBomTab.navigationActions into the existing MasterDataTableView / UtenFloatingActionGroup. The separate top row is removed; compact position retains full scope in tooltip.",
+    "verification": {
+      "tests": 9,
+      "failed": 0,
+      "log": ".test-floating-bom.log",
+      "cases": [
+        "UUID boundaries and disabled state",
+        "wide/light, dark and narrow/large-text window screenshots",
+        "fullscreen record switch removes its old fullscreen presentation",
+        "continue/discard/save decisions before next BOM"
+      ],
+      "analysisIssues": 0,
+      "analysisLog": ".analyze-floating-bom.log"
+    },
+    "nativeWpf": "BOM page remains unported; no completion or production claim",
+    "deployed": false
   }
 }

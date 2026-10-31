@@ -20,13 +20,15 @@ void main() {
               sequence: GoodsDetailSequence(['a', 'b', 'b', '', 'c']),
               enabled: enabled,
               onSelected: selected.add,
+              builder: (_, actions) => Wrap(children: actions),
             ),
           ),
         ),
       ),
     );
     await pump('b');
-    expect(find.text('当前页结果 2 / 3'), findsOneWidget);
+    expect(find.text('2 / 3'), findsOneWidget);
+    expect(find.byTooltip('当前页结果 2 / 3'), findsOneWidget);
     await tester.tap(find.byKey(const Key('goods-previous-bom')));
     await tester.tap(find.byKey(const Key('goods-next-bom')));
     expect(selected, ['a', 'c']);

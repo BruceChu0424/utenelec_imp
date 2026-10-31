@@ -36,6 +36,7 @@ class GoodsBomNavigation extends ConsumerWidget {
     required this.categoryId,
     required this.onSelected,
     required this.enabled,
+    required this.builder,
     this.sequence,
   });
 
@@ -44,6 +45,7 @@ class GoodsBomNavigation extends ConsumerWidget {
   final GoodsDetailSequence? sequence;
   final ValueChanged<String> onSelected;
   final bool enabled;
+  final Widget Function(BuildContext context, List<Widget> actions) builder;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -54,47 +56,62 @@ class GoodsBomNavigation extends ConsumerWidget {
         : ref.watch(_categorySequenceProvider(category));
     final data = state.value;
     final index = data?.ids.indexOf(goodsId) ?? -1;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: UtenSpacing.s8),
-      child: Wrap(
-        spacing: UtenSpacing.s8,
-        runSpacing: UtenSpacing.s8,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          UtenButton(
-            key: const Key('goods-previous-bom'),
-            type: UtenButtonType.secondary,
-            onPressed: enabled && index > 0
-                ? () => onSelected(data!.ids[index - 1])
-                : null,
-            child: const Text('上一个 BOM'),
-          ),
-          Text(
-            state.isLoading
-                ? '正在读取浏览顺序…'
-                : state.hasError
-                ? '浏览顺序加载失败'
-                : index < 0
-                ? '当前货品已不在来源结果中'
-                : '${data!.label} ${index + 1} / ${data.ids.length}',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          if (state.hasError && category != null)
-            TextButton(
-              onPressed: () =>
-                  ref.invalidate(_categorySequenceProvider(category)),
-              child: const Text('重试'),
-            ),
-          UtenButton(
-            key: const Key('goods-next-bom'),
-            type: UtenButtonType.secondary,
-            onPressed: enabled && index >= 0 && index < data!.ids.length - 1
-                ? () => onSelected(data.ids[index + 1])
-                : null,
-            child: const Text('下一个 BOM'),
-          ),
-        ],
+    final scopeLabel = state.isLoading
+        ? '正在读取浏览顺序…'
+        : state.hasError
+        ? '浏览顺序加载失败'
+        : index < 0
+        ? '当前货品已不在来源结果中'
+        : '${data!.label} ${index + 1} / ${data.ids.length}';
+    return builder(context, [
+      UtenButton(
+        key: const Key('goods-previous-bom'),
+        type: UtenButtonType.secondary,
+        size: UtenButtonSize.large,
+        onPressed: enabled && index > 0
+            ? () => onSelected(data!.ids[index - 1])
+            : null,
+        child: const Text('上一个 BOM'),
       ),
-    );
+      Tooltip(
+        message: scopeLabel,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHigh,
+            borderRadius: UtenRadius.controlAll,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: UtenSpacing.s12,
+              vertical: UtenSpacing.s8,
+            ),
+            child: Center(
+              widthFactor: 1,
+              heightFactor: 1,
+              child: Text(
+                data != null && index >= 0
+                    ? '${index + 1} / ${data.ids.length}'
+                    : scopeLabel,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ),
+        ),
+      ),
+      if (state.hasError && category != null)
+        TextButton(
+          onPressed: () => ref.invalidate(_categorySequenceProvider(category)),
+          child: const Text('重试'),
+        ),
+      UtenButton(
+        key: const Key('goods-next-bom'),
+        type: UtenButtonType.secondary,
+        size: UtenButtonSize.large,
+        onPressed: enabled && index >= 0 && index < data!.ids.length - 1
+            ? () => onSelected(data.ids[index + 1])
+            : null,
+        child: const Text('下一个 BOM'),
+      ),
+    ]);
   }
 }

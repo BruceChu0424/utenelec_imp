@@ -25616,7 +25616,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "9ccc4d0513a6cab357827a1366eb797801ee483fc8fd98b7f866355f613b4291"
+          "targetSha256": "195be7904f0b7993fb0bd92f353e0d62840e48c66159c07a43e0217efab6ce15"
         },
         {
           "directive": "import",
@@ -249556,8 +249556,8 @@
     },
     {
       "source": "lib/features/basic_data/widgets/goods_detail_body.dart",
-      "sha256": "9ccc4d0513a6cab357827a1366eb797801ee483fc8fd98b7f866355f613b4291",
-      "lineCount": 2070
+      "sha256": "195be7904f0b7993fb0bd92f353e0d62840e48c66159c07a43e0217efab6ce15",
+      "lineCount": 2065
     },
     {
       "source": "lib/features/basic_data/widgets/goods_import_mode_picker.dart",

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:flutter/material.dart';
@@ -164,6 +165,13 @@ void main() {
         );
         expect(find.text('产品编号：80N001R'), findsOneWidget);
         expect(find.text('80N开关按钮'), findsWidgets);
+        expect(
+          find.ancestor(
+            of: find.byKey(const Key('goods-next-bom')),
+            matching: find.byType(UtenFloatingActionGroup),
+          ),
+          findsOneWidget,
+        );
         if (scenario.width >= 1000) {
           windows.open(
             '/basicinfo/goods/b?tab=bom',
@@ -190,13 +198,28 @@ void main() {
           );
         }
         expect(tester.takeException(), isNull);
+        if (scenario.width == 1600) {
+          await tester.tap(
+            find.descendant(
+              of: find.byKey(windows.windows.first.windowKey),
+              matching: find.byKey(
+                const ValueKey('master-table-fullscreen-toggle'),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('退出全屏'), findsOneWidget);
+        }
         await tester.tap(
-          find.descendant(
-            of: find.byKey(windows.windows.first.windowKey),
-            matching: find.byKey(const Key('goods-next-bom')),
-          ),
+          scenario.width == 1600
+              ? find.byKey(const Key('goods-next-bom')).last
+              : find.descendant(
+                  of: find.byKey(windows.windows.first.windowKey),
+                  matching: find.byKey(const Key('goods-next-bom')),
+                ),
         );
         await tester.pumpAndSettle();
+        expect(find.text('退出全屏'), findsNothing);
         expect(find.text('产品编号：80N001R'), findsNothing);
         expect(
           find.text('产品编号：80N002R'),

@@ -77,12 +77,14 @@ public class AdminUserController {
         userAccountAdmin.setStatus(id, "active");
     }
 
-    /** 重置为系统生成的随机临时密码 (不能自定), 明文只在本次响应里出现一次。 */
+    /** Random by default, or the administrator's supplied temporary password; plaintext is response-only. */
     @PostMapping("/users/{id}/reset-password")
     @PreAuthorize("hasAuthority('account:support')")
     @RequiresStepUp
-    public TemporaryPasswordResponse resetPassword(@PathVariable UUID id) {
-        return new TemporaryPasswordResponse(userAccountAdmin.resetPassword(id));
+    public TemporaryPasswordResponse resetPassword(@PathVariable UUID id,
+            @Valid @RequestBody(required = false) com.uten.imp.features.admin.dto.TemporaryPasswordResetRequest request) {
+        return new TemporaryPasswordResponse(userAccountAdmin.resetPassword(id,
+                request == null ? null : request.temporaryPassword()));
     }
 
     /**

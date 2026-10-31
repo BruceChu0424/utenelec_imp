@@ -5,4 +5,6 @@ package com.uten.imp.features.admin.dto;
  *
  * <p>The plaintext is returned once and is never written to logs or storage.
  */
-public record TemporaryPasswordResponse(String temporaryPassword) {}
+public record TemporaryPasswordResponse(String temporaryPassword) {
+    @Override public String toString() { return "TemporaryPasswordResponse[credentials=REDACTED]"; }
+}

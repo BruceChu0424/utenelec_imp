@@ -23,6 +23,15 @@ import java.util.Set;
 @Component
 public class CredentialIssuancePolicy {
 
+    /** Initial UI/target eligibility only; writes also recheck live lifecycle and high-risk authority. */
+    public static boolean passwordResetSupportAllowed(AuthUser actor, UserAccount target) {
+        return actor != null && target != null && !target.isDeleted() && target.getEmployeeId() != null
+                && !actor.isVisitor() && !actor.isMustChangePassword() && actor.getImpersonatedBy() == null
+                && actor.getPermissions().contains("account:support")
+                && !actor.getId().equals(target.getId())
+                && (!target.isSuperAdmin() || actor.isSuperAdmin());
+    }
+
     private final NamedParameterJdbcTemplate jdbc;
     private final PermissionResolver permissionResolver;
     private final SecurityContextCurrentUser currentUser;

@@ -32,4 +32,6 @@ public class UserSummary {
     private OffsetDateTime tempPasswordExpiresAt;
     /** Target eligibility only; each operation still enforces current lifecycle and credential policy. */
     private Boolean accountSupportAllowed;
+    /** Credential-target eligibility is separate from lock/disable/support operations. */
+    private Boolean passwordResetSupportAllowed;
 }

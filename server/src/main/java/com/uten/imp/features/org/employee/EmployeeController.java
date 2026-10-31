@@ -133,12 +133,14 @@ public class EmployeeController {
         userAccountAdminService.unlockByEmployee(id);
     }
 
-    /** 员工详情页修改密码：系统生成临时密码，员工首次登录必须修改。 */
+    /** Employee details reuse the same random/custom temporary credential contract and first-login change. */
     @PostMapping("/{id}/account/reset-password")
     @PreAuthorize("hasAuthority('account:support')")
     @RequiresStepUp
-    public TemporaryPasswordResponse resetPassword(@PathVariable UUID id) {
-        return new TemporaryPasswordResponse(userAccountAdminService.resetPasswordByEmployee(id));
+    public TemporaryPasswordResponse resetPassword(@PathVariable UUID id,
+            @Valid @RequestBody(required = false) com.uten.imp.features.admin.dto.TemporaryPasswordResetRequest request) {
+        return new TemporaryPasswordResponse(userAccountAdminService.resetPasswordByEmployee(id,
+                request == null ? null : request.temporaryPassword()));
     }
 
     @PutMapping("/{id}")

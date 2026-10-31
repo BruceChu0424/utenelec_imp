@@ -11,8 +11,13 @@ import org.springframework.stereotype.Component;
 public class PasswordPolicy {
 
     public void validate(String newPassword) {
-        if (newPassword == null || newPassword.isBlank()) {
+        if (!hasContent(newPassword)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "密码不能为空");
         }
+    }
+
+    /** Shared nonblank check for optional credential DTOs; never trims the value. */
+    public static boolean hasContent(String password) {
+        return password != null && !password.isBlank();
     }
 }

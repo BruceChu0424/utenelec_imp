@@ -67,7 +67,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-
+        VerifiedStaffRequest.clear(request);
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
@@ -130,6 +130,8 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             UsernamePasswordAuthenticationToken auth =
                     new UsernamePasswordAuthenticationToken(authUser, null, authUser.getAuthorities());
             SecurityContextHolder.getContext().setAuthentication(auth);
+            if(!authUser.isVisitor() && authUser.getImpersonatedBy()==null)
+                VerifiedStaffRequest.bind(request,authUser,numericClaim(claims,"av"),numericClaim(claims,"ae"));
             // 模拟身份时把请求内全部审计的真实操作人绑成 admin(impersonatedBy)，并标注被模拟的账号，
             // 保证「谁在以谁身份操作」可追溯(含业务服务显式写的下载/查看事件)。非模拟时绑当前主体。
             boolean impersonating = authUser.getImpersonatedBy() != null;

@@ -203,6 +203,9 @@ public class EmployeeQueryService {
         // Reuse the account already loaded for this authorized detail. Refresh/activity/step-up are not logins.
         d.setAccountLastLoginAt(account == null || account.isDeleted() ? null : account.getLastLoginAt());
         d.setAccountDeleted(account != null && account.isDeleted());
+        d.setPasswordResetSupportAllowed(currentUser.get().map(actor ->
+                com.uten.imp.features.auth.CredentialIssuancePolicy.passwordResetSupportAllowed(actor, account))
+                .orElse(false));
         d.setAccountSupportAllowed(currentUser.get().map(actor ->
                 !actor.isVisitor()
                         && !actor.isMustChangePassword()

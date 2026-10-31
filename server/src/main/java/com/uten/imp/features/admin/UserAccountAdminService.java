@@ -22,6 +22,8 @@ import com.uten.imp.features.org.employee.EmployeeRepository;
 import com.uten.imp.features.org.employee.EmployeeSensitive;
 import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.security.TemporaryPasswordGenerator;
+import com.uten.imp.security.PasswordPolicy;
+import com.uten.imp.security.CurrentStaffWriteGuard;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.JoinType;
@@ -45,9 +47,9 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * 账号支持: 列表、锁定/启停/解锁、重置为随机临时密码、开通账号候选 (ADR-110; security-02)。
+ * 账号支持: 列表、锁定/启停/解锁、设置随机或自定临时密码、开通账号候选 (ADR-110; security-02)。
  *
- * <p>account:support 只能个人点名授予。重置只发系统生成的高熵临时密码 (不能自定), 明文仅在本次
+ * <p>account:support 只能个人点名授予。重置可发随机或管理员输入的临时密码，明文仅在本次
  * 响应里出现一次, 有效期按系统设置「临时密码有效期」, 首次登录必须改密; 目标持有高危权限时只有
  * 超级管理员能重置。重置、锁定、解锁、停用、启用都给目标本人发系统通知, 并写一条语义化业务事件。</p>
  */
@@ -64,6 +66,7 @@ public class UserAccountAdminService {
     private final RefreshTokenRepository refreshTokenRepo;
     private final PasswordEncoder passwordEncoder;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
+    private final PasswordPolicy passwordPolicy;
     private final TxSessionVars tx;
     private final AdminUserSupport support;
     private final AdminAccountLifecycleLock accountLifecycle;
@@ -72,6 +75,7 @@ public class UserAccountAdminService {
     private final SystemSettingsService settings;
     private final AccountSecurityNoticePort accountNotice;
     private final AccountLifecycleCoordinator lifecycleCoordinator;
+    private final CurrentStaffWriteGuard writeGuard;
 
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional(readOnly = true)
@@ -131,7 +135,7 @@ public class UserAccountAdminService {
     }
 
     private UserSummary toSummary(UserAccount user) {
-        Employee employee = empRepo.findById(user.getEmployeeId()).orElse(null);
+        Employee employee = user.getEmployeeId()==null?null:empRepo.findById(user.getEmployeeId()).orElse(null);
         Department department = employee == null ? null : employee.getDepartment();
         return new UserSummary(
                 user.getId(),
@@ -152,7 +156,8 @@ public class UserAccountAdminService {
                 user.getLastLoginAt(),
                 user.isRemoteAccess(),
                 user.getTempPasswordExpiresAt(),
-                support.canSupportTarget(user));
+                support.canSupportTarget(user),
+                support.canResetPasswordTarget(user));
     }
 
     /**
@@ -207,6 +212,7 @@ public class UserAccountAdminService {
                 ? accountLifecycle.lockForRevocation(id) : accountLifecycle.lock(id);
         UserAccount user = locked.account();
         support.requireAccountSupportTarget(user);
+        writeGuard.requireFresh("account:support");
         if (!"disabled".equals(status)) {
             accountLifecycle.requireCurrentEmployee(locked);
         }
@@ -259,6 +265,7 @@ public class UserAccountAdminService {
         AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(id);
         UserAccount user = locked.account();
         support.requireAccountSupportTarget(user);
+        writeGuard.requireFresh("account:support");
         accountLifecycle.requireCurrentEmployee(locked);
         accountLifecycle.requireAccountNotDisabled(locked);
         boolean changed = !"active".equals(user.getStatus())
@@ -277,14 +284,24 @@ public class UserAccountAdminService {
     }
 
     /**
-     * 重置为系统生成的 20 位高熵临时密码 (不能自定)。明文只在本次响应出现一次, 不落库不记日志;
+     * 旧调用默认使用系统生成的 20 位临时密码；新调用可提供符合公共密码规则的原文。
+     * 明文只在本次响应出现一次, 不落库不记日志;
      * 账号被迫首登改密, 全部旧会话吊销, 临时密码按系统设置「临时密码有效期」过期。
      * 目标持有高危权限时只有超级管理员能重置; 控制器入口另要求再认证。
      */
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional
     public String resetPassword(UUID id) {
+        return resetPassword(id, null);
+    }
+
+    @PreAuthorize("hasAuthority('account:support')")
+    @Transactional
+    public String resetPassword(UUID id, String requestedPassword) {
         tx.bind();
+        // Registry -> employee -> user, matching super-admin role changes. A
+        // queued reset must not trust an administrator flag that was revoked.
+        lifecycleCoordinator.lock();
         AdminAccountLifecycleLock.LockedTarget locked = accountLifecycle.lock(id);
         UserAccount user = locked.account();
         support.requirePasswordResetAllowed(user);
@@ -293,7 +310,9 @@ public class UserAccountAdminService {
         if (!disabled) {
             accountLifecycle.requireCurrentEmployee(locked);
         }
-        String temporaryPassword = temporaryPasswordGenerator.generate();
+        writeGuard.requireFreshStepUp("account:support");
+        String temporaryPassword = requestedPassword == null ? temporaryPasswordGenerator.generate() : requestedPassword;
+        passwordPolicy.validate(temporaryPassword);
         user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
         user.setMustChangePassword(true);
         user.setTempPasswordExpiresAt(OffsetDateTime.now().plusHours(
@@ -356,11 +375,17 @@ public class UserAccountAdminService {
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional
     public String resetPasswordByEmployee(UUID employeeId) {
+        return resetPasswordByEmployee(employeeId, null);
+    }
+
+    @PreAuthorize("hasAuthority('account:support')")
+    @Transactional
+    public String resetPasswordByEmployee(UUID employeeId, String requestedPassword) {
         // 只解析 ID，避免锁前把账号实体放入持久化上下文，导致锁内读到过时的账号状态。
         UUID userId = userRepo.findIdByEmployeeId(employeeId)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.NOT_FOUND, "该员工未开通账号，无法修改密码"));
-        return resetPassword(userId);
+        return resetPassword(userId, requestedPassword);
     }
 
     private UUID requireAccountIdByEmployee(UUID employeeId) {

@@ -128,7 +128,7 @@ class CompanyFileItem extends StatelessWidget {
                     Flexible(
                       child: Text(
                         entry.name,
-                        maxLines: 2,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -175,7 +175,7 @@ class CompanyFileItem extends StatelessWidget {
             message: entry.name,
             child: Text(
               entry.name,
-              maxLines: 2,
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
@@ -206,17 +206,17 @@ class CompanyFileItem extends StatelessWidget {
             MediaQuery.textScalerOf(context).scale(1) < 1.5;
         if (wideDetails) {
           final l = AppLocalizations.of(context);
-          Widget text(String value) => Text(
-            value,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall,
+          Widget text(String value) => Tooltip(
+            message: value,
+            child: Text(
+              value,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall,
+            ),
           );
           return CompanyFileDetailRow(
-            leading: Padding(
-              padding: const EdgeInsets.only(left: 12),
-              child: Center(child: CompanyFileIcon(entry: entry, size: 32)),
-            ),
             name: Tooltip(
               message: entry.name,
               child: Column(
@@ -225,13 +225,12 @@ class CompanyFileItem extends StatelessWidget {
                 children: [
                   Text(
                     entry.name,
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (entry.description.isNotEmpty) text(entry.description),
                 ],
               ),
             ),
@@ -269,11 +268,10 @@ class CompanyFileItem extends StatelessWidget {
           ),
           child: Row(
             children: [
-              CompanyFileIcon(
-                entry: entry,
-                size: view == CompanyFileView.tiles ? 42 : 32,
-              ),
-              const SizedBox(width: UtenSpacing.s12),
+              if (view != CompanyFileView.details) ...[
+                CompanyFileIcon(entry: entry, size: 42),
+                const SizedBox(width: UtenSpacing.s12),
+              ],
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -283,7 +281,7 @@ class CompanyFileItem extends StatelessWidget {
                       message: entry.name,
                       child: Text(
                         entry.name,
-                        maxLines: 2,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w600,

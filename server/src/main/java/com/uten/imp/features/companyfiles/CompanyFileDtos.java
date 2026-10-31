@@ -105,5 +105,9 @@ public final class CompanyFileDtos {
 
     public record Unlocked(Instant expiresAt) {}
 
-    public record Principal(UUID id, String name, String detail, String type) {}
+    public record Principal(UUID id, String name, String detail, String type, UUID departmentId) {
+        public Principal(UUID id, String name, String detail, String type) {
+            this(id, name, detail, type, null);
+        }
+    }
 }

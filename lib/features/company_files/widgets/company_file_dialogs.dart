@@ -10,6 +10,7 @@ import '../../../components/feedback/uten_dialog_modules.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/uten_input.dart';
 import '../../../components/layout/uten_section_header.dart';
+import '../../../components/layout/uten_collapsible_section.dart';
 import '../../../components/layout/uten_pagination.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_exception.dart';
@@ -201,7 +202,7 @@ class CompanyFileUploadAccessDialog extends StatelessWidget {
     required this.selectedNames,
     this.onRemoveFile,
     this.onAddFiles,
-    this.initialAccess = const CompanyFileInitialAccessDraft.everyoneVisible(),
+    this.initialAccess = const CompanyFileInitialAccessDraft.inherited(),
   });
 
   final CompanyFileRepository repository;
@@ -457,7 +458,7 @@ class _CompanyFileInitialEntryDialogState
                               message: names[index],
                               child: Text(
                                 names[index],
-                                maxLines: 2,
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -672,6 +673,7 @@ class _CompanyFileAccessDialogState
     extends ConsumerState<CompanyFileAccessDialog> {
   CompanyFileAccess? _access;
   List<CompanyFileAccessRule> _rules = [];
+  List<Key> _ruleKeys = [];
   bool _inherit = true;
   _EntryAccessMode _mode = _EntryAccessMode.inherit;
   bool _busy = false;
@@ -714,6 +716,7 @@ class _CompanyFileAccessDialogState
         _access = value;
         _inherit = value.inheritPermissions;
         _rules = value.rules.toList();
+        _ruleKeys = List.generate(_rules.length, (_) => UniqueKey());
         _mode = _rules.any((rule) => rule.isEveryoneRule)
             ? _EntryAccessMode.everyone
             : _inherit
@@ -730,9 +733,15 @@ class _CompanyFileAccessDialogState
   void _selectMode(_EntryAccessMode mode) {
     setState(() {
       _mode = mode;
-      _rules.removeWhere((rule) => rule.isEveryoneRule);
+      for (var i = _rules.length - 1; i >= 0; i--) {
+        if (_rules[i].isEveryoneRule) {
+          _rules.removeAt(i);
+          _ruleKeys.removeAt(i);
+        }
+      }
       if (mode == _EntryAccessMode.everyone) {
         _rules.insert(0, kCompanyFileEveryoneRule);
+        _ruleKeys.insert(0, UniqueKey());
       }
       _inherit = mode != _EntryAccessMode.specific;
     });
@@ -774,7 +783,7 @@ class _CompanyFileAccessDialogState
     }
   }
 
-  Future<void> _add() async {
+  Future<void> _add(String type) async {
     if (_busy || _picking || !_current) return;
     if (_rules.length >= 100) {
       setState(
@@ -790,10 +799,13 @@ class _CompanyFileAccessDialogState
     try {
       principal = await showCompanyFilePrincipalPicker(
         context,
+        type: type,
         repository: widget.repository,
         scope: widget.scope,
         boundary: widget.boundary,
       );
+    } catch (error) {
+      if (_current) setState(() => _error = error);
     } finally {
       if (mounted) setState(() => _picking = false);
     }
@@ -817,6 +829,7 @@ class _CompanyFileAccessDialogState
     }
     setState(() {
       _error = null;
+      _ruleKeys.add(UniqueKey());
       _rules.add(
         CompanyFileAccessRule(
           subjectType: selectedPrincipal.type,
@@ -964,113 +977,139 @@ class _CompanyFileAccessDialogState
                               ),
                               child: Padding(
                                 padding: const EdgeInsets.all(UtenSpacing.s12),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          rule.subjectType == 'USER'
-                                              ? Icons.person_outline
-                                              : Icons.groups_outlined,
-                                        ),
-                                        const SizedBox(width: UtenSpacing.s8),
-                                        Expanded(
-                                          child: Text(
-                                            rule.subjectName,
-                                            style: Theme.of(
-                                              context,
-                                            ).textTheme.titleSmall,
+                                child: UtenCollapsibleSection(
+                                  key: _ruleKeys[i],
+                                  initiallyExpanded: false,
+                                  title: rule.subjectName,
+                                  titleTrailing: Icon(
+                                    rule.subjectType == 'USER'
+                                        ? Icons.person_outline
+                                        : Icons.groups_outlined,
+                                    size: 18,
+                                  ),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        '${rule.effect == 'ALLOW' ? l.companyFilesAllow : l.companyFilesDeny} ${rule.actions.length}',
+                                        style: Theme.of(
+                                          context,
+                                        ).textTheme.bodySmall,
+                                      ),
+                                      IconButton(
+                                        tooltip: l.companyFilesRemoveRule,
+                                        onPressed: _busy
+                                            ? null
+                                            : () => setState(() {
+                                                _rules.removeAt(i);
+                                                _ruleKeys.removeAt(i);
+                                              }),
+                                        icon: const Icon(Icons.close),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Wrap(
+                                        spacing: UtenSpacing.s8,
+                                        runSpacing: UtenSpacing.s4,
+                                        children: [
+                                          ChoiceChip(
+                                            label: Text(l.companyFilesAllow),
+                                            selected: rule.effect == 'ALLOW',
+                                            onSelected:
+                                                _busy || duplicate('ALLOW')
+                                                ? null
+                                                : (_) => setState(
+                                                    () => _rules[i] = rule
+                                                        .copyWith(
+                                                          effect: 'ALLOW',
+                                                        ),
+                                                  ),
                                           ),
-                                        ),
-                                        IconButton(
-                                          tooltip: l.companyFilesRemoveRule,
-                                          onPressed: _busy
-                                              ? null
-                                              : () => setState(
-                                                  () => _rules.removeAt(i),
+                                          ChoiceChip(
+                                            label: Text(l.companyFilesDeny),
+                                            selected: rule.effect == 'DENY',
+                                            selectedColor: Theme.of(
+                                              context,
+                                            ).colorScheme.errorContainer,
+                                            onSelected:
+                                                _busy || duplicate('DENY')
+                                                ? null
+                                                : (_) => setState(
+                                                    () => _rules[i] = rule
+                                                        .copyWith(
+                                                          effect: 'DENY',
+                                                        ),
+                                                  ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: UtenSpacing.s8),
+                                      Wrap(
+                                        spacing: UtenSpacing.s6,
+                                        runSpacing: UtenSpacing.s4,
+                                        children: actions.entries
+                                            .map(
+                                              (a) => FilterChip(
+                                                label: Text(a.value),
+                                                selected: rule.actions.contains(
+                                                  a.key,
                                                 ),
-                                          icon: const Icon(Icons.close),
-                                        ),
-                                      ],
-                                    ),
-                                    Wrap(
-                                      spacing: UtenSpacing.s8,
-                                      runSpacing: UtenSpacing.s4,
-                                      children: [
-                                        ChoiceChip(
-                                          label: Text(l.companyFilesAllow),
-                                          selected: rule.effect == 'ALLOW',
-                                          onSelected:
-                                              _busy || duplicate('ALLOW')
-                                              ? null
-                                              : (_) => setState(
-                                                  () =>
-                                                      _rules[i] = rule.copyWith(
-                                                        effect: 'ALLOW',
+                                                onSelected: _busy
+                                                    ? null
+                                                    : (selected) => setState(
+                                                        () {
+                                                          final next = {
+                                                            ...rule.actions,
+                                                          };
+                                                          if (selected) {
+                                                            next.add(a.key);
+                                                          } else {
+                                                            next.remove(a.key);
+                                                          }
+                                                          _rules[i] = rule
+                                                              .copyWith(
+                                                                actions: next,
+                                                              );
+                                                        },
                                                       ),
-                                                ),
-                                        ),
-                                        ChoiceChip(
-                                          label: Text(l.companyFilesDeny),
-                                          selected: rule.effect == 'DENY',
-                                          selectedColor: Theme.of(
-                                            context,
-                                          ).colorScheme.errorContainer,
-                                          onSelected: _busy || duplicate('DENY')
-                                              ? null
-                                              : (_) => setState(
-                                                  () => _rules[i] = rule
-                                                      .copyWith(effect: 'DENY'),
-                                                ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: UtenSpacing.s8),
-                                    Wrap(
-                                      spacing: UtenSpacing.s6,
-                                      runSpacing: UtenSpacing.s4,
-                                      children: actions.entries
-                                          .map(
-                                            (a) => FilterChip(
-                                              label: Text(a.value),
-                                              selected: rule.actions.contains(
-                                                a.key,
                                               ),
-                                              onSelected: _busy
-                                                  ? null
-                                                  : (selected) => setState(() {
-                                                      final next = {
-                                                        ...rule.actions,
-                                                      };
-                                                      if (selected) {
-                                                        next.add(a.key);
-                                                      } else {
-                                                        next.remove(a.key);
-                                                      }
-                                                      _rules[i] = rule.copyWith(
-                                                        actions: next,
-                                                      );
-                                                    }),
-                                            ),
-                                          )
-                                          .toList(),
-                                    ),
-                                  ],
+                                            )
+                                            .toList(),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           );
                         }),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: UtenButton(
-                        type: UtenButtonType.secondary,
-                        icon: Icons.add,
-                        onPressed: _busy || _picking ? null : _add,
-                        child: Text(l.companyFilesAddRule),
-                      ),
+                    Wrap(
+                      spacing: UtenSpacing.s8,
+                      runSpacing: UtenSpacing.s8,
+                      children: [
+                        for (final type in const ['USER', 'DEPARTMENT'])
+                          UtenButton(
+                            key: ValueKey(
+                              'company-file-add-${type.toLowerCase()}',
+                            ),
+                            type: UtenButtonType.secondary,
+                            icon: type == 'USER'
+                                ? Icons.person_add_alt_outlined
+                                : Icons.group_add_outlined,
+                            onPressed: _busy || _picking
+                                ? null
+                                : () => _add(type),
+                            child: Text(
+                              type == 'USER'
+                                  ? l.companyFilesUser
+                                  : l.companyFilesDepartment,
+                            ),
+                          ),
+                      ],
                     ),
                     if (_error != null)
                       Padding(

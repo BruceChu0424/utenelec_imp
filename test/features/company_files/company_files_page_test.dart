@@ -1,3 +1,5 @@
+import 'package:uten_imp/core/network/server_config.dart';
+import 'package:uten_imp/features/department/models/department_node.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -271,6 +273,17 @@ class _Repository extends CompanyFileRepository {
   }
 
   @override
+  Future<List<DepartmentNode>> principalDepartments() async => [
+    DepartmentNode(
+      id: 'department',
+      code: 'DEPT_TEST',
+      name: '研发部',
+      level: '一级部门',
+      children: [],
+    ),
+  ];
+
+  @override
   Future<List<CompanyFilePrincipal>> principals({
     required String type,
     String search = '',
@@ -407,6 +420,7 @@ class _TextAttachments extends AttachmentService {
 class _CopyAttachments extends _TextAttachments {
   int presignCount = 0, rawCount = 0, confirmCount = 0;
   String expectedContentType = 'text/plain';
+  Completer<void>? uploadGate;
   final uploadedNames = <String>[];
   final owners = <String>[];
   final receipts = <String, Attachment>{};
@@ -447,6 +461,7 @@ class _CopyAttachments extends _TextAttachments {
   Future<void> uploadBytes(PresignResult upload, Uint8List bytes) async {
     rawCount++;
     expectSync(bytes, [97, 98, 99]);
+    await uploadGate?.future;
   }
 
   @override
@@ -552,6 +567,7 @@ Future<ProviderContainer> _mount(
   addTearDown(tester.view.resetDevicePixelRatio);
   final container = ProviderContainer(
     overrides: [
+      apiBaseUrlProvider.overrideWithValue('https://library.test/api'),
       companyFileRepositoryProvider.overrideWithValue(repository),
       apiClientProvider.overrideWithValue(_api),
       if (attachments != null)
@@ -600,7 +616,11 @@ Future<ProviderContainer> _mount(
   return container;
 }
 
-Future<void> _capture(WidgetTester tester, String name) async {
+Future<void> _capture(
+  WidgetTester tester,
+  String name, {
+  bool settle = true,
+}) async {
   if (Platform.environment['UI_CAPTURE'] != '1') return;
   final previousShadows = debugDisableShadows;
   debugDisableShadows = false;
@@ -699,6 +719,97 @@ void main() {
     )..addFont(rootBundle.load('assets/fonts/NotoSansSCFull.ttf'))).load();
   });
   setUp(() => FilePicker.platform = _LibraryPicker([]));
+
+  for (final compact in [false, true]) {
+    testWidgets(
+      'upload progress is a guarded dialog and closes after success compact=$compact',
+      (tester) async {
+        final repo = _Repository()..items = [];
+        final gate = Completer<void>();
+        final attachments = _CopyAttachments()..uploadGate = gate;
+        FilePicker.platform = _LibraryPicker([
+          _selectedUploadFile('正在上传的资料.txt'),
+        ]);
+        await _mount(
+          tester,
+          repo,
+          attachments: attachments,
+          size: compact ? const Size(360, 780) : const Size(1440, 920),
+          scale: compact ? 2 : 1,
+          dark: compact,
+        );
+        await _tap(tester, find.byKey(const ValueKey('company-files-upload')));
+        await _tap(
+          tester,
+          find.byKey(const ValueKey('company-initial-access-confirm')),
+        );
+        final progress = find.byKey(
+          const ValueKey('company-file-upload-progress'),
+        );
+        expect(progress, findsOneWidget);
+        expect(find.text('正在上传'), findsWidgets);
+        expect(
+          tester
+              .widget<Scaffold>(find.byType(Scaffold).first)
+              .bottomNavigationBar,
+          isNull,
+        );
+        await tester.tapAt(const Offset(5, 5));
+        await tester.pump();
+        expect(progress, findsOneWidget);
+        final route = ModalRoute.of(tester.element(progress))!;
+        expect(route.popDisposition, RoutePopDisposition.doNotPop);
+        expect(attachments.rawCount, 1);
+        expect(
+          repo.reservations.single.access,
+          isA<CompanyFileInitialAccessDraft>(),
+        );
+        final access =
+            repo.reservations.single.access as CompanyFileInitialAccessDraft;
+        expect(access.inheritPermissions, isTrue);
+        expect(access.rules, isEmpty);
+        await _capture(tester, 'upload-progress-modal-$compact', settle: false);
+        gate.complete();
+        await tester.pumpAndSettle();
+        expect(progress, findsNothing);
+        expect(repo.completions, hasLength(1));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'changing identity closes upload modal and rejects late completion',
+    (tester) async {
+      final repo = _Repository()..items = [];
+      final gate = Completer<void>();
+      final attachments = _CopyAttachments()..uploadGate = gate;
+      FilePicker.platform = _LibraryPicker([_selectedUploadFile('私有资料.txt')]);
+      final container = await _mount(tester, repo, attachments: attachments);
+      await _tap(tester, find.byKey(const ValueKey('company-files-upload')));
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('company-initial-access-confirm')),
+      );
+      expect(
+        find.byKey(const ValueKey('company-file-upload-progress')),
+        findsOneWidget,
+      );
+      container.read(_testIdentity.notifier).state = _identity('B');
+      await tester.pump();
+      container.read(_testIdentity.notifier).state = _identity('A');
+      await tester.pump();
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('company-file-upload-progress')),
+        findsNothing,
+      );
+      expect(find.text('私有资料.txt'), findsNothing);
+      expect(repo.completions, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('all-format picker preserves design and model originals', (
     tester,
@@ -1591,10 +1702,17 @@ void main() {
       );
       await _tap(tester, specificReaders);
       await _tap(tester, find.byKey(const Key('initial-access-add-allow')));
-      await _tap(tester, find.text('查看人(10010)'));
-      await _tap(tester, find.byKey(const Key('initial-access-add-allow')));
-      await _tap(tester, find.text('部门'));
+      await _tap(
+        tester,
+        find.byKey(const ValueKey('employee-picker-item-person')),
+      );
+      await _tap(tester, find.text('确定').hitTestable());
+      await _tap(
+        tester,
+        find.byKey(const Key('initial-access-add-allow-department')),
+      );
       await _tap(tester, find.text('研发部'));
+      await _tap(tester, find.text('确定').hitTestable());
       await _tap(
         tester,
         find.byKey(const Key('initial-access-password-switch')),
@@ -2075,7 +2193,30 @@ void main() {
         of: find.byWidget(row.widget),
         matching: find.byType(UtenTableCellFrame),
       );
-      expect(cells, findsNWidgets(7));
+      expect(cells, findsNWidgets(6));
+      expect(
+        find.descendant(
+          of: find.byWidget(row.widget),
+          matching: find.byType(CompanyFileIcon),
+        ),
+        findsNothing,
+      );
+      for (final label
+          in find
+              .descendant(
+                of: find.byWidget(row.widget),
+                matching: find.byType(Text),
+              )
+              .evaluate()) {
+        final text = label.widget as Text;
+        if (_items.any(
+              (entry) =>
+                  text.data == entry.name || text.data == entry.updatedByName,
+            ) ||
+            (text.data?.contains('(北京)') ?? false)) {
+          expect(text.maxLines, 1);
+        }
+      }
       expect(
         tester.widget<UtenTableCellFrame>(cells.last).border.right.width,
         .5,

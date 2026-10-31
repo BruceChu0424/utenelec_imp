@@ -180,39 +180,42 @@ class CompanyFileEntryAccessPostgresTest {
         run(()->{service.delete(pending.id(),pending.version());return null;});
         assertThat(db.queryForObject("SELECT deleted FROM company_file_nodes WHERE id=?",Boolean.class,pending.id())).isTrue();
     }
-    @Test void superadminCanRecoverAbandonedPrivatePendingAccessWithoutAcquiringTheOriginal() {
+    @Test void superadminCanAdministerAbandonedPendingFilesWithoutLocalGrantsOrPasswords() {
         Entry pending=reserve(null,access(false,"private-abandoned-password"));
         UUID admin=UUID.randomUUID(),adminEmployee=UUID.randomUUID();insertUser(admin,adminEmployee,department);
         principal=new AuthUser(admin,adminEmployee,"recovery-admin",ALL,false,true,true,false,null,UUID.randomUUID());when(current.get()).thenReturn(Optional.of(principal));
-        assertThatThrownBy(()->run(()->service.detail(pending.id()))).isInstanceOf(ApiException.class);
-        Permissions old=run(()->service.permissions(pending.id()));
-        Entry cleared=run(()->service.setPassword(pending.id(),new Password(null,pending.version())));
-        assertMinimalReceipt(cleared,pending.id(),pending.version()+1);
-        run(()->service.setPermissions(pending.id(),new Permissions(false,List.of(new Rule("USER",admin,null,"ALLOW",List.copyOf(CompanyFileService.ACTIONS))),cleared.version())));
-        assertThat(old.rules()).isNotEmpty();
-        assertThatThrownBy(()->run(()->service.complete(pending.id(),new Complete(UUID.randomUUID(),cleared.version()+1)))).isInstanceOf(ApiException.class);
+        Entry detail=run(()->service.detail(pending.id()));
+        assertThat(detail.locked()).isFalse();
+        assertThat(detail.allowedActions()).contains("view","edit","move","delete","manage_permissions").doesNotContain("upload","download");
+        // A pending original still belongs to its initiating upload, not to a different account.
+        assertThatThrownBy(()->run(()->service.complete(pending.id(),new Complete(UUID.randomUUID(),pending.version())))).isInstanceOf(ApiException.class);
         assertThatThrownBy(()->run(()->{service.requireAttachmentDownload(pending.id(),principal);return null;})).isInstanceOf(ApiException.class);
-        run(()->{service.delete(pending.id(),cleared.version()+1);return null;});
+        run(()->{service.delete(pending.id(),pending.version());return null;});
         assertThat(db.queryForObject("SELECT deleted FROM company_file_nodes WHERE id=?",Boolean.class,pending.id())).isTrue();
-        verify(audit).logCommitted(admin,"recovery-admin","company_file_password_clear","company_file_nodes",pending.id().toString(),"success");
     }
-    @Test void passwordRecoveryAndNoopOrChangedAclReturnNoMetadataWithoutView() {
-        Entry reserved=run(()->service.reserveFile(new Create(null,"敏感文件名称.txt","敏感文件说明",null,access(false,null))));
-        Entry original=publish(reserved);
+    @Test void superadminHasEveryApplicableFileActionThroughPrivateLockedAncestorsAndExplicitDenies() {
+        Entry parent=folder(null,access(false,null));
+        Entry published=publish(reserve(parent.id(),access(false,"original-password")));
+        run(()->service.setPassword(parent.id(),new Password("ancestor-password",parent.version())));
         UUID admin=UUID.randomUUID(),adminEmployee=UUID.randomUUID();insertUser(admin,adminEmployee,department);
-        principal=new AuthUser(admin,adminEmployee,"metadata-recovery-admin",ALL,false,true,true,false,null,UUID.randomUUID());when(current.get()).thenReturn(Optional.of(principal));
-        assertThatThrownBy(()->run(()->service.detail(original.id()))).isInstanceOf(ApiException.class);
-        Permissions existing=run(()->service.permissions(original.id()));
-        Entry noop=run(()->service.setPermissions(original.id(),existing));
-        assertMinimalReceipt(noop,original.id(),original.version());
-        Entry password=run(()->service.setPassword(original.id(),new Password("recovery-password",noop.version())));
-        assertMinimalReceipt(password,original.id(),noop.version()+1);
-        Entry changed=run(()->service.setPermissions(original.id(),new Permissions(false,List.of(new Rule("USER",admin,null,"DENY",List.of("view"))),password.version())));
-        assertMinimalReceipt(changed,original.id(),password.version()+1);
-        Entry cleared=run(()->service.setPassword(original.id(),new Password(null,changed.version())));
-        assertMinimalReceipt(cleared,original.id(),changed.version()+1);
-        assertThatThrownBy(()->run(()->service.detail(original.id()))).isInstanceOf(ApiException.class);
-        assertThatThrownBy(()->run(()->{service.requireAttachmentDownload(original.id(),principal);return null;})).isInstanceOf(ApiException.class);
+        // Real explicit deny plus independent private scope must not require an admin ACL row.
+        db.update("INSERT INTO company_file_acl(node_id,subject_type,subject_id,effect,actions) VALUES(?,'USER',?,'DENY',?::text[])",published.id(),admin,"{view,download,edit,move,delete,restore,manage_permissions}");
+        principal=new AuthUser(admin,adminEmployee,"all-file-admin",ALL,false,true,true,false,null,UUID.randomUUID());when(current.get()).thenReturn(Optional.of(principal));
+        Entry detail=run(()->service.detail(published.id()));
+        assertThat(detail.locked()).isFalse();
+        assertThat(detail.allowedActions()).containsExactly("view","download","edit","move","delete","manage_permissions");
+        assertThat(run(()->service.list(parent.id(),"","name","asc",false,0,100)).entries()).extracting(Entry::id).contains(published.id());
+        run(()->{service.requireAttachmentView(published.id(),principal);service.requireAttachmentDownload(published.id(),principal);return null;});
+        Entry renamed=run(()->service.edit(published.id(),new Edit("admin-renamed.txt", "admin edit",published.version())));
+        run(()->{service.delete(published.id(),renamed.version());return null;});
+        Entry deleted=run(()->service.detail(published.id()));
+        assertThat(deleted.allowedActions()).contains("view","restore").doesNotContain("download");
+        Entry restored=run(()->service.restore(published.id(),new Version(deleted.version())));
+        assertThat(restored.deleted()).isFalse();
+        // The same published file remains protected for a regular account with all catalog codes.
+        login(admin,adminEmployee,ALL,UUID.randomUUID());
+        assertThatThrownBy(()->run(()->service.detail(published.id()))).isInstanceOf(ApiException.class);
+        assertThatThrownBy(()->run(()->{service.requireAttachmentDownload(published.id(),principal);return null;})).isInstanceOf(ApiException.class);
     }
     @Test void everyoneMarkerOpensViewAndDownloadForAnyEntrantAndDenyStillCarvesExceptions() {
         UUID stranger=UUID.randomUUID(),strangerEmployee=UUID.randomUUID();insertUser(stranger,strangerEmployee,department);

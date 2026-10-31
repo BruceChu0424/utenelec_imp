@@ -106,19 +106,23 @@ Future<List<DeptSelection>?> showUtenDepartmentPickerPanel(
   Set<String> initiallyExpandedIds = const {},
   DepartmentSelectionPredicate selectablePredicate =
       isOperationalDepartmentNode,
+  Widget Function(BuildContext, Widget)? scopeBuilder,
 }) {
   return showUtenAdaptivePanel<List<DeptSelection>>(
     context: context,
     widthFraction: UtenPanelWidth.form,
-    builder: (_) => _DepartmentPickerSheet(
-      mode: mode,
-      tree: tree,
-      initialSelection: initialSelection,
-      allowClear: allowClear,
-      expandOnRowTap: expandOnRowTap,
-      initiallyExpandedIds: initiallyExpandedIds,
-      selectablePredicate: selectablePredicate,
-    ),
+    builder: (panelContext) {
+      final panel = _DepartmentPickerSheet(
+        mode: mode,
+        tree: tree,
+        initialSelection: initialSelection,
+        allowClear: allowClear,
+        expandOnRowTap: expandOnRowTap,
+        initiallyExpandedIds: initiallyExpandedIds,
+        selectablePredicate: selectablePredicate,
+      );
+      return scopeBuilder?.call(panelContext, panel) ?? panel;
+    },
   );
 }
 

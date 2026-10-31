@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_endpoints.dart';
+import '../../department/models/department_node.dart';
 import '../models/company_file.dart';
 import '../models/company_file_access_draft.dart';
 
@@ -150,13 +152,26 @@ class CompanyFileRepository {
     await api.post('$base/$id/lock');
   }
 
+  Future<List<DepartmentNode>> principalDepartments() async =>
+      (await api.getList(
+        ApiEndpoints.employeePickerDepartmentTree,
+      )).map(DepartmentNode.fromJson).toList(growable: false);
+
   Future<List<CompanyFilePrincipal>> principals({
     required String type,
     String search = '',
-  }) async => (await api.getList(
-    '$base/principals',
-    query: {'type': type, 'search': search},
-  )).map(CompanyFilePrincipal.fromJson).toList(growable: false);
+  }) async {
+    const size = 100;
+    final result = <CompanyFilePrincipal>[];
+    for (var page = 0; ; page++) {
+      final rows = await api.getList(
+        '$base/principals',
+        query: {'type': type, 'search': search, 'page': page, 'size': size},
+      );
+      result.addAll(rows.map(CompanyFilePrincipal.fromJson));
+      if (rows.length < size) return result;
+    }
+  }
 }
 
 final companyFileRepositoryProvider = Provider<CompanyFileRepository>(

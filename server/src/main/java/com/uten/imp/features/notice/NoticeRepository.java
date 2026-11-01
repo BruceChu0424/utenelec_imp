@@ -185,6 +185,17 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
             @Param("aggregateId") UUID aggregateId, @Param("sourceEvent") String sourceEvent,
             @Param("reason") String reason);
 
+    /** A later reviewed generation supersedes actionability, never the recipient's read history. */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("""
+            UPDATE Notice n SET n.resolvedAt=CURRENT_TIMESTAMP,n.resolvedReason='SUPERSEDED_BY_REVIEW'
+            WHERE n.aggregateKind='SALES_ORDER' AND n.aggregateId=:orderId
+              AND n.sourceEvent='SALES_ORDER_APPROVED' AND n.resolvedAt IS NULL
+              AND n.sourceRevision IS NOT NULL AND n.sourceRevision<:currentRevision
+            """)
+    int resolveEarlierSalesPlanningHandoffs(@Param("orderId") UUID orderId,
+            @Param("currentRevision") long currentRevision);
+
     @Query("""
             SELECT COUNT(n)
             FROM Notice n

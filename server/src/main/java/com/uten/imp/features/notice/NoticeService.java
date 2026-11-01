@@ -1287,6 +1287,15 @@ public class NoticeService {
         return noticeRepo.saveAndFlush(notice);
     }
 
+    /** Caller holds the order header lock and validated the current initial-handoff generation.
+     * This is supersession, not a user reading/acknowledging the old receipt. */
+    @Transactional
+    public int resolveEarlierSalesPlanningHandoffs(UUID orderId, long currentRevision) {
+        if (orderId == null || currentRevision < 0)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "计划接手提醒缺少有效订单和审核版本");
+        return noticeRepo.resolveEarlierSalesPlanningHandoffs(orderId,currentRevision);
+    }
+
     /** A finance decision completes only its finance cards, never a planning handoff on the same order. */
     @Transactional
     public int resolveReviewNoticesByEvent(String aggregateKind, UUID aggregateId, String sourceEvent, String reason) {

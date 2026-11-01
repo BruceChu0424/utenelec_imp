@@ -187,14 +187,19 @@ final class SubcontractComponentCustodyProjection {
                     JOIN (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) item ON item.id=source.order_item_id AND NOT item.is_deleted
                     JOIN (SELECT * FROM subcontract_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_orders',archive_origin.id)) document ON document.id=item.order_id
                       AND document.status=1 AND NOT document.is_deleted
-                    WHERE source.alloc_qty>0 AND source.order_item_id IN (
+                    -- The membership predicate already implies this scope is nonempty. Keep an
+                    -- uncorrelated gate so stale statistics cannot evaluate unrelated document
+                    -- origin guards before discovering that this analysis has no applications.
+                    WHERE EXISTS (SELECT 1 FROM live_items)
+                      AND source.alloc_qty>0 AND source.order_item_id IN (
                         SELECT relevant.order_item_id FROM subcontract_order_item_sources relevant
                         WHERE relevant.application_item_id IN (SELECT application_item_id FROM live_items))
                 ), stocked AS MATERIALIZED (
                     SELECT item.id AS order_item_id,COALESCE(item.unit_rate,1) AS order_unit_rate,
                            %s AS stocked_base
                     FROM (SELECT * FROM subcontract_order_items archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('subcontract_order_items',archive_origin.id)) item
-                    WHERE item.id IN (SELECT order_item_id FROM sources)
+                    WHERE EXISTS (SELECT 1 FROM sources)
+                      AND item.id IN (SELECT order_item_id FROM sources)
                 ), received AS (
                     SELECT live.action_id,SUM(fn_subcontract_order_source_share(
                                source.order_item_id,source.application_item_id,stocked.stocked_base)) AS qty

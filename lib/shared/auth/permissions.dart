@@ -454,6 +454,15 @@ abstract final class Perm {
   static const financeOrderApprovalView = 'finance_order_approval:view';
 
   /// 销售订货单财务确认（V294 闸门：确认后计划部才可见/可排产）。
+  static const salesQuoteManagerView = 'sales_quote_manager:view';
+  static const salesQuoteManagerConfirm = 'sales_quote_manager:confirm';
+  static const salesQuoteManagerReject = 'sales_quote_manager:reject';
+  static const salesQuoteManagerReverse = 'sales_quote_manager:reverse';
+  static const salesOrderManagerView = 'sales_order_manager:view';
+  static const salesOrderManagerConfirm = 'sales_order_manager:confirm';
+  static const salesOrderManagerReject = 'sales_order_manager:reject';
+  static const salesOrderManagerReverse = 'sales_order_manager:reverse';
+
   static const salesOrderFinanceView = 'sales_order_finance:view';
   static const salesOrderFinanceConfirm = 'sales_order_finance:confirm';
 

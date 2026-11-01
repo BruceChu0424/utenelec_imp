@@ -267,6 +267,7 @@ const _registeredPagePermissionScopes = <PagePermissionScope>[
   _workshopMaterialReportScope,
   _procurementIqcRejectionScope,
   _procurementExceptionScope,
+  _salesManagerReviewScope,
   _salesHubScope,
   _salesTasksScope,
   _salesReportScope,
@@ -416,6 +417,7 @@ PagePermissionScope? _warehouseScopeFor(String path, List<String> segments) {
 
 PagePermissionScope? _salesScopeFor(List<String> segments) {
   if (segments.length == 1) return _salesHubScope;
+  if (segments[1] == 'manager-review') return _salesManagerReviewScope;
   // 销售任务中心在文件头已按整路径优先命中（/sales/tasks 是静态段）。
   if (segments[1] == 'report') {
     return segments.length <= 3 ? _salesReportScope : null;
@@ -880,6 +882,11 @@ const _stockDocumentCodes = <String>{
   'CHECK',
   'WASTE', // 旧损耗单只读入口；写动作仍由原路由和服务端禁止。
 };
+
+const _salesManagerReviewScope = PagePermissionScope(
+  surfaceKey: 'sales.manager-review',
+  title: '订单审核',
+);
 
 const _salesHubScope = PagePermissionScope(
   surfaceKey: 'sales.hub',

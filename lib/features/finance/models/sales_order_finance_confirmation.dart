@@ -1,3 +1,4 @@
+import '../../../shared/models/progress_timeline_event.dart';
 import '../../../shared/business_columns/business_column.dart';
 // 销售订货单财务确认任务模型（V294 闸门，V300 补驳回与审核详情）。
 //
@@ -196,7 +197,15 @@ class SalesOrderFinancePendingPage {
 
 /// 财务审核详情（V300 专用审核页）：订单信息 + 产品明细 + 客户财务快照。
 class SalesOrderFinanceReview {
+  final List<SalesManagerReviewDecision> managerDecisions;
+  final List<ProgressTimelineEvent> managerHistory;
+  final bool managerReversible;
+  final String? managerDecisionClaimId;
   const SalesOrderFinanceReview({
+    this.managerDecisions = const [],
+    this.managerHistory = const [],
+    this.managerReversible = false,
+    this.managerDecisionClaimId,
     required this.orderId,
     required this.billNo,
     this.billDate,
@@ -309,9 +318,39 @@ class SalesOrderFinanceReview {
   final bool? matchesQuote;
 
   factory SalesOrderFinanceReview.fromJson(Map<String, dynamic> json) {
+    if (json['reviewStage'] == 'SALES_MANAGER') {
+      json = {
+        ...json,
+        'financeConfirmed': json['reviewApproved'],
+        'financeConfirmedAt': json['reviewApprovedAt'],
+        'financeConfirmedByName': json['reviewApprovedByName'],
+        'financeConfirmRemark': json['reviewRemark'],
+        'financeRejected': json['reviewRejected'],
+        'financeRejectedReason': json['reviewRejectReason'],
+        'financeRejectedAt': json['reviewRejectedAt'],
+        'financeRejectedByName': json['reviewRejectedByName'],
+        'financeReviewRevision': json['reviewRevision'],
+      };
+    }
     final rawItems = json['items'];
     final rawChanges = json['qtyChanges'];
     return SalesOrderFinanceReview(
+      managerDecisions: (json['managerDecisions'] as List? ?? [])
+          .map(
+            (row) => SalesManagerReviewDecision.fromJson(
+              Map<String, dynamic>.from(row as Map),
+            ),
+          )
+          .toList(),
+      managerHistory: (json['managerHistory'] as List? ?? [])
+          .map(
+            (e) => ProgressTimelineEvent.fromJson(
+              Map<String, dynamic>.from(e as Map),
+            ),
+          )
+          .toList(),
+      managerReversible: json['managerReversible'] == true,
+      managerDecisionClaimId: json['managerDecisionClaimId'] as String?,
       requotedToId: _string(json['requotedToId']),
       requotedAt: _string(json['requotedAt']),
       readOnlyReason: _string(json['readOnlyReason']),
@@ -611,6 +650,18 @@ class SalesOrderFinanceReviewLine {
       clientGoodsName: _string(json['clientGoodsName']),
     );
   }
+}
+
+/// Immutable server evidence; display timeline labels are never decision identities.
+class SalesManagerReviewDecision {
+  SalesManagerReviewDecision.fromJson(Map<String, dynamic> json)
+    : decisionId = _string(json['decisionId']),
+      revision = _int(json['revision']),
+      action = _string(json['action']),
+      actorId = _string(json['actorId']),
+      reason = _string(json['reason']);
+  final String? decisionId, action, actorId, reason;
+  final int? revision;
 }
 
 String? _string(Object? value) {

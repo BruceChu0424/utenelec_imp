@@ -77,7 +77,7 @@ public record SalesOrderFinanceReviewDto(
         Boolean matchesQuote,
         UUID requotedToId,
         OffsetDateTime requotedAt,
-        String readOnlyReason) {
+        String readOnlyReason, UUID managerDecisionClaimId, boolean managerReversible, List<OrderProgressTimelineEvent> managerHistory) {
 
     /** 来源报价核价信息(订单确认只需再核信用与条款; 价格已由财务在报价上核定)。 */
     public record SourceQuote(

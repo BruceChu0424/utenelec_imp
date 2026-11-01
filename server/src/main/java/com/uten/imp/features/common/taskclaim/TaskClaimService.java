@@ -232,8 +232,13 @@ public class TaskClaimService implements TaskClaimMutationGuardPort {
         return employee;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.SalesManagerReviewerEligibilityPort managerReviewers;
+
     private void requireCurrentReviewerEligibility(String targetType) {
         boolean eligible = switch (targetType) {
+            case "SALES_QUOTE_MANAGER_REVIEW" -> managerReviewers.eligible(currentUser.requireId(), "quote", "claim");
+            case "SALES_ORDER_MANAGER_REVIEW" -> managerReviewers.eligible(currentUser.requireId(), "order", "claim");
             case "SALES_ORDER_FINANCE_CONFIRM" -> salesReviewers.isEligible(currentUser.requireId());
             case "PROCUREMENT_FINANCE_APPROVE" -> procurementReviewers.findEligible(currentUser.requireId()).isPresent();
             case "SALES_QUOTE_FINANCE_REVIEW" -> quoteReviewers != null

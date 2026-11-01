@@ -31,6 +31,7 @@ public class SalesQuoteAttachmentAccessPolicy implements AttachmentOwnerAccessPo
     @Override public void requireCanView(UUID ownerId, AuthUser user) { readable(document(ownerId), user); }
     @Override public void requireCanViewSensitiveOriginal(UUID ownerId,AuthUser user) {
         SalesQuote quote=document(ownerId);readable(quote,user);
+        if(has(user,"sales_quote_manager:view") && !com.uten.imp.features.sales.SalesManagerReview.NOT_REQUIRED.equals(quote.getManagerReview().getState())) return;
         if(has(user,SalesQuoteService.FINANCE_VIEW)&&SalesQuoteService.financeVisible(quote))return;
         if(!prices.canView())throw new ApiException(ErrorCode.FORBIDDEN,"识别原文件可能包含商业金额，需要订货价格查看权限");
     }
@@ -58,6 +59,7 @@ public class SalesQuoteAttachmentAccessPolicy implements AttachmentOwnerAccessPo
 
     private void readable(SalesQuote document, AuthUser user, boolean includeDeleted) {
         if ((!includeDeleted && document.isDeleted())) throw missing();
+        if (has(user, "sales_quote_manager:view") && !com.uten.imp.features.sales.SalesManagerReview.NOT_REQUIRED.equals(document.getManagerReview().getState())) return;
         if (has(user, SalesQuoteService.FINANCE_VIEW) && SalesQuoteService.financeVisible(document,includeDeleted)) return;
         if (!has(user, "sales_quote:view")) throw missing();
         access.requireReadable(document.getMakerId(), "销售报价单不存在");
@@ -86,6 +88,7 @@ public class SalesQuoteAttachmentAccessPolicy implements AttachmentOwnerAccessPo
     }
     @Override public void requireCanViewSensitiveOriginalHistory(UUID ownerId, AuthUser user) {
         SalesQuote quote=document(ownerId,true);readable(quote,user,true);
+        if(has(user,"sales_quote_manager:view") && !com.uten.imp.features.sales.SalesManagerReview.NOT_REQUIRED.equals(quote.getManagerReview().getState())) return;
         if(has(user,SalesQuoteService.FINANCE_VIEW)&&SalesQuoteService.financeVisible(quote,true))return;
         if(!prices.canView())throw new ApiException(ErrorCode.FORBIDDEN,"识别原文件可能包含商业金额，需要订货价格查看权限");
     }

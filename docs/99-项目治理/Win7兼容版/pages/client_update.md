@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ClientReleasePublishPage @64 (page-class)<br>_PublishPageState @82 (state-class)<br>_QueueRow @999 (supporting-class)<br>_QueueRowState @1017 (state-class)<br>_TargetFields @1161 (supporting-class) |
-| 真实路由绑定 | /settings/software-publish；router @593；builder ['ClientReleasePublishPage']；redirect None |
+| 真实路由绑定 | /settings/software-publish；router @594；builder ['ClientReleasePublishPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SoftwareDownloadsPage @23 (page-class)<br>_DownloadsState @29 (state-class)<br>_HostStrip @513 (supporting-class)<br>_TargetFields @563 (supporting-class)<br>_PlatformRow @667 (supporting-class)<br>_InstallHelp @716 (supporting-class)<br>_DownloadStatus @743 (supporting-class)<br>_DesktopArtwork @832 (supporting-class) |
-| 真实路由绑定 | /software-downloads；router @588；builder ['SoftwareDownloadsPage']；redirect None |
+| 真实路由绑定 | /software-downloads；router @589；builder ['SoftwareDownloadsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

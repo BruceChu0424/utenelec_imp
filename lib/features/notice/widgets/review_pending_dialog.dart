@@ -57,6 +57,10 @@ String workbenchRouteFor(
   'SALES_SHIPMENT_PENDING_FINANCE_AUDIT' => RouteName.financeSalesShipmentAudit,
   // ADR-134 报价待财务核价：落核价队列(待核价分段)。
   'SALES_QUOTE_PENDING_FINANCE_REVIEW' => RouteName.financeQuoteReview,
+  'SALES_QUOTE_PENDING_MANAGER_REVIEW' =>
+    '${RouteName.salesManagerReview}?kind=quote',
+  'SALES_ORDER_PENDING_MANAGER_REVIEW' =>
+    '${RouteName.salesManagerReview}?kind=order',
   'PROCUREMENT_FINANCE_SUBMITTED' ||
   'PROCUREMENT_FINANCE_CHANGE_SUBMITTED' => '/finance/procurement-approvals',
   'PROCUREMENT_IQC_PENDING' => RouteName.qualityTaskCenter,
@@ -785,6 +789,8 @@ class _Header extends StatelessWidget {
 }
 
 IconData _eventIcon(String? sourceEvent) => switch (sourceEvent) {
+  'SALES_QUOTE_PENDING_MANAGER_REVIEW' ||
+  'SALES_ORDER_PENDING_MANAGER_REVIEW' => Icons.fact_check_outlined,
   'SALES_ORDER_PENDING_FINANCE_CONFIRM' => Icons.request_quote_outlined,
   'PROCUREMENT_FINANCE_SUBMITTED' => Icons.approval_outlined,
   'PROCUREMENT_IQC_PENDING' => Icons.science_outlined,

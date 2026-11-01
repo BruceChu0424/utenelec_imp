@@ -6014,7 +6014,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesQuoteStatusFieldReturnReason => '退回原因';
 
   @override
-  String get salesQuoteStatusFieldSubmittedAt => '提交核价时间';
+  String get salesQuoteStatusFieldSubmittedAt => '提交审核时间';
 
   @override
   String get salesQuoteStatusFieldConfirmedBy => '核价人';
@@ -6026,7 +6026,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesQuoteStatusFieldFinanceRemark => '财务备注';
 
   @override
-  String get salesQuoteStatusActionSubmit => '提交财务核价';
+  String get salesQuoteStatusActionSubmit => '提交负责人审核';
 
   @override
   String get salesQuoteStatusActionWithdraw => '撤回';
@@ -6054,7 +6054,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get salesQuoteStatusSubmitConfirmBody =>
-      '提交后财务会逐行定价格和折扣, 这期间你不能修改这张报价。确定提交?';
+      '提交后先由销售负责人审核，通过后再转交财务核价。审核期间不能修改报价。确定提交？';
 
   @override
   String get salesQuoteStatusWithdrawConfirmBody =>
@@ -6078,7 +6078,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesQuoteStatusCancel => '取消';
 
   @override
-  String get salesQuoteStatusSubmitted => '已提交财务核价';
+  String get salesQuoteStatusSubmitted => '已提交销售负责人审核';
 
   @override
   String get salesQuoteStatusWithdrawn => '已撤回, 可以继续修改';
@@ -6107,7 +6107,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesQuoteStatusTimelineEmpty => '还没有核价记录';
 
   @override
-  String get salesQuoteStatusRevisionSubmit => '提交财务核价';
+  String get salesQuoteStatusRevisionSubmit => '提交负责人审核';
 
   @override
   String get salesQuoteStatusRevisionWithdraw => '销售撤回';

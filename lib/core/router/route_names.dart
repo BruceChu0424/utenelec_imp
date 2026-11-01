@@ -476,6 +476,8 @@ abstract final class RouteName {
   static const String financeArrivalExceptions =
       '/finance/procurement-arrival-exceptions';
 
+  static const salesManagerReview = '/sales/manager-review';
+
   // 销售管理（综合营销部）：hub + 5 单据 + 报表。
   // new/detail/edit 走 RoutePath.salesDoc*；seg = quotes|orders|shipments|other-shipments|returns。
   static const String sales = '/sales';

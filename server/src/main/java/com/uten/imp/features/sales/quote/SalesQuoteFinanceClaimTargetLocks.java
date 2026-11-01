@@ -49,7 +49,7 @@ public class SalesQuoteFinanceClaimTargetLocks implements ReviewTaskTargetLockPo
 
     @Override
     public void lockHeader(Target target, boolean requireReviewable) {
-        String state = requireReviewable ? " AND status = 2 AND NOT is_deleted" : "";
+        String state = requireReviewable ? " AND status = 2 AND NOT is_deleted AND manager_review_state IN ('NOT_REQUIRED','APPROVED')" : "";
         var rows = em.createNativeQuery("SELECT id FROM sales_quotes WHERE id = :id" + state + " FOR UPDATE")
                 .setParameter("id", target.aggregateId())
                 .getResultList();

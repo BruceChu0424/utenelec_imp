@@ -40,8 +40,8 @@ class DocumentStatusCountSqlContractTest {
                 "DRAFT", "PENDING_FINANCE", "FINANCE_REJECTED", "APPROVED", "REVERSED");
         assertThat(keys("subcontractOrder")).containsExactly(
                 "DRAFT", "PENDING_FINANCE", "FINANCE_REJECTED", "APPROVED", "REVERSED", "EXECUTING");
-        assertThat(keys("salesQuote")).as("ADR-134 报价核价分段").containsExactly(
-                "DRAFT", "PENDING_FINANCE", "FINANCE_REJECTED", "APPROVED", "REVERSED");
+        assertThat(keys("salesQuote")).as("两级报价审核分段").containsExactly(
+                "DRAFT", "PENDING_MANAGER", "MANAGER_REJECTED", "PENDING_FINANCE", "FINANCE_REJECTED", "APPROVED", "REVERSED");
         for (String kind : List.of("salesReturn", "financeReceipt", "productionPlan",
                 "purchaseReceipt", "subcontractWaste", "stockDocument", "stockTransfer")) {
             assertThat(keys(kind)).as(kind).containsExactly("DRAFT", "APPROVED", "REVERSED");
@@ -87,12 +87,14 @@ class DocumentStatusCountSqlContractTest {
     @Test
     void salesQuoteBucketsSeparateReturnedDraftsFromDrafts() {
         DraftSource source = DocumentDraftCountQueryService.SALES_QUOTE;
-        assertThat(source.extraPredicate()).isEqualTo("o.finance_return_reason IS NULL");
+        assertThat(source.extraPredicate()).isEqualTo("o.finance_return_reason IS NULL AND o.manager_review_state <> 'REJECTED'");
         List<Bucket> buckets = DocumentStatusCountQueryService.bucketsOf("salesQuote", source);
-        assertThat(predicate(buckets, "DRAFT")).isEqualTo("o.status = 0 AND o.finance_return_reason IS NULL");
+        assertThat(predicate(buckets, "DRAFT")).isEqualTo("o.status = 0 AND o.finance_return_reason IS NULL AND o.manager_review_state <> 'REJECTED'");
         assertThat(predicate(buckets, "FINANCE_REJECTED"))
                 .isEqualTo("o.status = 0 AND o.finance_return_reason IS NOT NULL");
-        assertThat(predicate(buckets, "PENDING_FINANCE")).isEqualTo("o.status = 2");
+        assertThat(predicate(buckets, "PENDING_FINANCE")).isEqualTo("o.status = 2 AND o.manager_review_state IN ('NOT_REQUIRED','APPROVED')");
+        assertThat(predicate(buckets, "PENDING_MANAGER")).contains("manager_review_state='PENDING'");
+        assertThat(predicate(buckets, "MANAGER_REJECTED")).contains("manager_review_state='REJECTED'");
         assertThat(predicate(buckets, "APPROVED")).isEqualTo("o.status = 1");
         assertThat(predicate(buckets, "REVERSED")).isEqualTo("o.status = -1");
         assertThat(DocumentStatusCountQueryService.FINANCE_REJECTED_KINDS).contains("salesQuote");

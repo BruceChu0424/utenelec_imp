@@ -99,6 +99,27 @@ class FormDraftDescriptor {
 /// still require current action permissions, live claims and server capabilities.
 /// Accounting policy creation remains an approval operation.
 abstract final class FormDraftCatalog {
+  static const salesManagerOrderBatch = FormDraftDescriptor(
+    title: '负责人批量审核订货',
+    module: BadgeModule.salesReview,
+    route: '/sales/manager-review?kind=order',
+    permission: Perm.salesOrderManagerView,
+    draftKind: 'sales_manager_order_batch',
+  );
+  static const salesManagerQuoteReview = FormDraftDescriptor(
+    title: '销售负责人报价审核',
+    module: BadgeModule.salesReview,
+    route: '/sales/manager-review/quotes/:id',
+    permission: Perm.salesQuoteManagerView,
+    draftKind: 'sales_manager_quote_review',
+  );
+  static const salesManagerOrderReview = FormDraftDescriptor(
+    title: '销售负责人订货审核',
+    module: BadgeModule.salesReview,
+    route: '/sales/manager-review/orders/:id',
+    permission: Perm.salesOrderManagerView,
+    draftKind: 'sales_manager_order_review',
+  );
   static const financeSalesOrderReview = FormDraftDescriptor(
     title: '销售订单财务审核',
     module: BadgeModule.finance,
@@ -521,6 +542,9 @@ abstract final class FormDraftCatalog {
 
   /// Completeness index for the single reviewed descriptor catalog.
   static const all = <String, FormDraftDescriptor>{
+    'salesManagerOrderBatch': salesManagerOrderBatch,
+    'salesManagerQuoteReview': salesManagerQuoteReview,
+    'salesManagerOrderReview': salesManagerOrderReview,
     'financeSalesOrderReview': financeSalesOrderReview,
     'financeProcurementReview': financeProcurementReview,
     'financeQuoteReview': financeQuoteReview,

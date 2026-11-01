@@ -324,6 +324,78 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets(
+    'sales manager reviews appear in the central dialog and open the exact order queue',
+    (tester) async {
+      final repo = _FakeNoticeRepository();
+      await pumpDialog(
+        tester,
+        repo: repo,
+        pending: [
+          noticeOf(
+            'manager-order',
+            title: '订货单等待负责人审核',
+            content: '请核对单据后批准或驳回；批准后转交财务审核。',
+            sourceEvent: 'SALES_ORDER_PENDING_MANAGER_REVIEW',
+            actionRoute: '/sales/manager-review/orders/order-1',
+          ),
+        ],
+        routes: [
+          GoRoute(
+            path: RouteName.salesManagerReview,
+            builder: (_, state) =>
+                Text('manager-queue-${state.uri.queryParameters['kind']}'),
+          ),
+        ],
+      );
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.text('订货单等待负责人审核'), findsOneWidget);
+      expect(find.byIcon(Icons.fact_check_outlined), findsOneWidget);
+      await tester.tap(find.text('去工作台处理'));
+      await tester.pumpAndSettle();
+      expect(find.text('manager-queue-order'), findsOneWidget);
+      expect(repo.readIds, ['manager-order']);
+      expect(
+        noticeClearEventsForLocation('/sales/manager-review/orders/order-1'),
+        ['SALES_ORDER_PENDING_MANAGER_REVIEW'],
+      );
+    },
+  );
+  testWidgets(
+    'quote and order manager reminders merge into one review workspace',
+    (tester) async {
+      final repo = _FakeNoticeRepository();
+      await pumpDialog(
+        tester,
+        repo: repo,
+        pending: [
+          noticeOf(
+            'manager-quote',
+            title: '报价待审核',
+            sourceEvent: 'SALES_QUOTE_PENDING_MANAGER_REVIEW',
+          ),
+          noticeOf(
+            'manager-order',
+            title: '订货待审核',
+            sourceEvent: 'SALES_ORDER_PENDING_MANAGER_REVIEW',
+          ),
+        ],
+        routes: [
+          GoRoute(
+            path: RouteName.salesManagerReview,
+            builder: (_, _) => const Text('manager-workspace'),
+          ),
+        ],
+      );
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.text('待办 2'), findsOneWidget);
+      await tester.tap(find.text('去工作台处理'));
+      await tester.pumpAndSettle();
+      expect(find.text('manager-workspace'), findsOneWidget);
+      expect(repo.readIds, containsAll(['manager-quote', 'manager-order']));
+    },
+  );
+
   for (final entry in [
     (
       'PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED',

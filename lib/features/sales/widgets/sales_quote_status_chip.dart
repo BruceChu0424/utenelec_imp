@@ -17,6 +17,8 @@ import 'sales_quote_revision_comparison.dart';
 /// 分桶文案。
 String salesQuoteStageLabel(AppLocalizations l10n, String? stage) =>
     switch (stage) {
+      SalesQuoteStage.pendingManager => '待负责人审核',
+      SalesQuoteStage.managerRejected => '负责人已驳回',
       SalesQuoteStage.draft => l10n.salesQuoteStatusDraft,
       SalesQuoteStage.financeRejected => l10n.salesQuoteStatusReturned,
       SalesQuoteStage.pendingFinance => l10n.salesQuoteStatusPendingFinance,
@@ -45,7 +47,9 @@ UtenStatusBadgeType salesQuoteStageBadgeType(
         : UtenStatusBadgeType.sky;
   }
   return switch (stage) {
+    SalesQuoteStage.managerRejected ||
     SalesQuoteStage.financeRejected => UtenStatusBadgeType.danger,
+    SalesQuoteStage.pendingManager ||
     SalesQuoteStage.pendingFinance => UtenStatusBadgeType.warning,
     SalesQuoteStage.awaitingCustomer => UtenStatusBadgeType.sky,
     SalesQuoteStage.awaitingConversion => UtenStatusBadgeType.success,
@@ -56,7 +60,9 @@ UtenStatusBadgeType salesQuoteStageBadgeType(
 
 /// 分桶图标(颜色之外的第二重区分，色弱也能读)。
 IconData salesQuoteStageIcon(String? stage) => switch (stage) {
+  SalesQuoteStage.managerRejected ||
   SalesQuoteStage.financeRejected => Icons.undo_rounded,
+  SalesQuoteStage.pendingManager ||
   SalesQuoteStage.pendingFinance => Icons.hourglass_top_rounded,
   SalesQuoteStage.approved => Icons.verified_rounded,
   SalesQuoteStage.reversed => Icons.block_rounded,

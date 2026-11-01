@@ -161,6 +161,24 @@ class ProgressTrackerTest(unittest.TestCase):
         for path in docs.glob("*.md"):
             self.assertNotIn(b"\r\n", path.read_bytes(), str(path))
 
+    def test_multiline_router_evidence_survives_render_and_verify_roundtrip(self):
+        docs = self.root / "docs"
+        docs.mkdir()
+        (docs / "00-总实施计划与交接入口.md").write_text(
+            "<!-- PROGRESS_SUMMARY:START -->\nold\n<!-- PROGRESS_SUMMARY:END -->\n", encoding="utf-8")
+        generated = docs / "warehouse.md"
+        hint = tracker._source_hint("routerBindings", {
+            "path": "/warehouse/counts", "routerLine": 42, "builderClasses": ["CountPage"],
+            "redirectExpression": "(_, s) =>\r\n    s.query.isEmpty ? '/warehouse' : null",
+        })
+        registry = {"tasks": [self.task()], "baselineCounts": {"commonAndFlowPackages": 1, "businessPagePackages": 0}}
+        with mock.patch.object(tracker, "DOCS", docs), mock.patch.object(
+                tracker, "render", return_value={generated: "| 路由 | " + hint + " |\n"}):
+            tracker.write_rendered(registry)
+            tracker.write_rendered(registry, check=True)
+        self.assertNotIn(b"\r", generated.read_bytes())
+        self.assertIn("<br>    s.query", generated.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -49,6 +49,7 @@ public class SalesOrderAttachmentAccessPolicy implements AttachmentOwnerAccessPo
         em.refresh(locked, LockModeType.PESSIMISTIC_WRITE);
         editable(locked, user);
         claims.requireNoActiveClaim("SALES_ORDER_FINANCE_CONFIRM", ownerId.toString());
+        claims.requireNoActiveClaim("SALES_ORDER_MANAGER_REVIEW", ownerId.toString());
     }
 
     private SalesOrder order(UUID id) { return order(id, false); }
@@ -67,7 +68,8 @@ public class SalesOrderAttachmentAccessPolicy implements AttachmentOwnerAccessPo
         // 只对「已进入财务流程」的订单（已提交待确认 / 已退回 / 已确认）读附件，不要求
         // 销售文档权限与对象归属——财务确认队列本身即全量可读口径，审核页已展示同等的
         // 金额事实。销售草稿尚未提交，财务不得借页面权限提前读取。
-        boolean financeView = has(user, "sales_order_finance:view") && enteredFinanceFlow(order);
+        boolean financeView = has(user, "sales_order_finance:view") && order.getManagerReview().financeReady() && enteredFinanceFlow(order)
+                || has(user, "sales_order_manager:view") && !com.uten.imp.features.sales.SalesManagerReview.NOT_REQUIRED.equals(order.getManagerReview().getState());
         if ((!includeDeleted && order.isDeleted())
                 || (!financeView && !has(user, "sales_order:view"))) {
             throw missing();
@@ -91,7 +93,7 @@ public class SalesOrderAttachmentAccessPolicy implements AttachmentOwnerAccessPo
         if (!has(user, "sales_order:edit")) throw new ApiException(ErrorCode.FORBIDDEN, "缺少销售订货编辑权限");
         access.requireWritable(order.getOwnerEmployeeId(), "无权修改该销售订货单附件");
         boolean draftOrReturned = order.getStatus() == 0
-                || (order.getStatus() == 1 && order.isFinanceRejected() && !order.isFinanceConfirmed());
+                || (order.getStatus() == 1 && (order.isFinanceRejected() || order.getManagerReview().rejected()) && !order.isFinanceConfirmed());
         if (!draftOrReturned || order.isClosed() || order.isStopped()) {
             throw new ApiException(ErrorCode.CONFLICT, "仅未关闭、未中止的草稿或财务退回销售订单可修改附件");
         }

@@ -143,7 +143,7 @@ class DocumentDraftCountSqlContractTest {
 
         assertThat(sql).contains("o.finance_rejected = false");
         assertThat(DocumentDraftCountQueryService.SALES_ORDER.extraPredicate())
-                .isEqualTo("o.finance_rejected = false");
+                .isEqualTo("o.finance_rejected = false AND o.manager_review_state <> 'REJECTED'");
     }
 
     /**

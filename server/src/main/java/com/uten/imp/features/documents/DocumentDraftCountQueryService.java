@@ -92,7 +92,7 @@ public class DocumentDraftCountQueryService {
     // —— 销售：订货/出货/退货的归属列是 owner_employee_id，报价沿用 maker_id（与 SalesQuoteService 一致）——
     static final DraftSource SALES_ORDER = new DraftSource(
             "sales_orders", "o.owner_employee_id", "sales", "sales:view:all",
-            "sales_order:view", "o.finance_rejected = false");
+            "sales_order:view", "o.finance_rejected = false AND o.manager_review_state <> 'REJECTED'");
     static final DraftSource SALES_SHIPMENT = new DraftSource(
             "sales_shipments", "o.owner_employee_id", "sales", "sales:view:all",
             "sales_shipment:view", SALES_SHIPMENT_DRAFT_PREDICATE);
@@ -105,7 +105,7 @@ public class DocumentDraftCountQueryService {
      */
     static final DraftSource SALES_QUOTE = new DraftSource(
             "sales_quotes", "o.maker_id", "sales", "sales:view:all",
-            "sales_quote:view", "o.finance_return_reason IS NULL");
+            "sales_quote:view", "o.finance_return_reason IS NULL AND o.manager_review_state <> 'REJECTED'");
 
     // 采购/委外订货单：财务通过前单据 status 保持 0，但已提交财务审核的单
     // 不再是「我的草稿」（在等财务处理，列表另设「等待财务审核」段）；

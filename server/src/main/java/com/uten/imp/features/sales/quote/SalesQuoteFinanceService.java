@@ -77,6 +77,11 @@ public class SalesQuoteFinanceService {
     private final SalesPriceAuthority priceAuthority;
     private final SalesDocumentAccessPolicy accessPolicy;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.SalesManagerReviewerEligibilityPort managerReviewers;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.SalesManagerReviewNoticePort managerNotices;
+
     // ------------------------------------------------------------------ 列表与计数
 
     /** 核价列表: state = pending 待核价(默认) / confirmed 已核价 / returned 已退回。 */
@@ -85,7 +90,7 @@ public class SalesQuoteFinanceService {
     public PageResponse<QuoteFinanceListItem> list(String state, String keyword, int page, int size) {
         String normalizedState = state == null || state.isBlank() ? "pending" : state.trim().toLowerCase(Locale.ROOT);
         String statePredicate = switch (normalizedState) {
-            case "pending" -> "o.status = 2";
+            case "pending" -> "o.status = 2 AND o.manager_review_state IN ('NOT_REQUIRED','APPROVED')";
             case "confirmed" -> "o.status = 1 AND o.finance_confirmed_at IS NOT NULL";
             case "returned" -> "o.status = 0 AND o.finance_returned_at IS NOT NULL"
                     + " AND o.submitted_at IS NOT NULL AND o.finance_returned_at >= o.submitted_at";
@@ -172,7 +177,7 @@ public class SalesQuoteFinanceService {
             return Map.of("pending", 0L);
         }
         Number n = (Number) em.createNativeQuery(
-                "SELECT COUNT(*) FROM (SELECT * FROM sales_quotes archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_quotes',archive_origin.id)) o WHERE o.is_deleted = FALSE AND o.status = 2")
+                "SELECT COUNT(*) FROM (SELECT * FROM sales_quotes archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_quotes',archive_origin.id)) o WHERE o.is_deleted = FALSE AND o.status = 2 AND o.manager_review_state IN ('NOT_REQUIRED','APPROVED')")
                 .getSingleResult();
         return Map.of("pending", n.longValue());
     }
@@ -185,10 +190,19 @@ public class SalesQuoteFinanceService {
         SalesQuote q = quoteRepo.findById(id)
                 .filter(SalesQuoteService::financeVisible)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售报价单不存在"));
-        return reviewOf(q);
+        return reviewOf(q, false);
     }
 
-    private QuoteFinanceReviewDto reviewOf(SalesQuote q) {
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_quote_manager:view')")
+    public QuoteFinanceReviewDto managerReview(UUID id) {
+        SalesQuote q = quoteRepo.findById(id).filter(v -> !v.isDeleted()
+                && !com.uten.imp.features.sales.SalesManagerReview.NOT_REQUIRED.equals(v.getManagerReview().getState()))
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售报价审核不存在"));
+        return reviewOf(q, true);
+    }
+
+    private QuoteFinanceReviewDto reviewOf(SalesQuote q, boolean manager) {
         UUID id = q.getId();
         Object[] h = (Object[]) em.createNativeQuery("""
                         SELECT COALESCE(c.name, ''), COALESCE(c.code, ''),
@@ -205,12 +219,12 @@ public class SalesQuoteFinanceService {
                         LEFT JOIN currencies base ON base.is_base_currency AND base.is_deleted = FALSE
                         LEFT JOIN settlement_methods sm ON sm.id = o.settlement_method_id
                         LEFT JOIN employees submitter ON submitter.id = o.submitted_by
-                        LEFT JOIN employees returner ON returner.id = o.finance_returned_by
-                        LEFT JOIN employees confirmer ON confirmer.id = o.finance_confirmed_by
+                        LEFT JOIN employees returner ON returner.id = CASE WHEN :manager THEN o.manager_rejected_by ELSE o.finance_returned_by END
+                        LEFT JOIN employees confirmer ON confirmer.id = CASE WHEN :manager THEN o.manager_approved_by ELSE o.finance_confirmed_by END
                         WHERE o.id = :id
                         """.formatted(com.uten.imp.common.finance.CurrencyDisplayLabel.sql("cur"),
                                 com.uten.imp.common.finance.CurrencyDisplayLabel.sql("base")))
-                .setParameter("id", id)
+                .setParameter("id", id).setParameter("manager", manager)
                 .getSingleResult();
         @SuppressWarnings("unchecked")
         List<Object[]> lineRows = em.createNativeQuery("""
@@ -218,7 +232,7 @@ public class SalesQuoteFinanceService {
                                COALESCE(i.goods_code_snapshot, g.code, ''),
                                COALESCE(i.goods_name_snapshot, g.name, ''),
                                COALESCE(col.name, ''), COALESCE(u.name, ''),
-                               i.qty, i.price, i.price_source, COALESCE(fp.full_name, ''), i.finance_price_at,
+                               i.qty, i.price, i.price_source, COALESCE(fp.full_name, ''), COALESCE(i.manager_price_at, i.finance_price_at),
                                CASE WHEN g.status = '使用' AND NOT COALESCE(g.is_deleted, FALSE) THEN g.price END,
                                i.client_price, i.discount, i.amount_original,
                                i.client_model, i.client_goods_name, i.remark, i.unit_id, CAST(i.extra_columns AS text),
@@ -227,7 +241,7 @@ public class SalesQuoteFinanceService {
                         LEFT JOIN goods g ON g.id = i.goods_id
                         LEFT JOIN colors col ON col.id = i.color_id
                         LEFT JOIN units u ON u.id = i.unit_id
-                        LEFT JOIN employees fp ON fp.id = i.finance_price_by
+                        LEFT JOIN employees fp ON fp.id = COALESCE(i.manager_price_by, i.finance_price_by)
                         WHERE i.quote_id = :id
                         ORDER BY i.line_no NULLS LAST, i.id
                         """)
@@ -298,24 +312,48 @@ public class SalesQuoteFinanceService {
                 q.getSettlementMethodId(), blankToNull((String) h[6]),
                 q.getValidUntil(), q.getDeliverDate(), q.getContractNo(), q.getRemark(),
                 q.getClientFileCurrency(), fileCurrency.base() ? null : rate, rateMissing,
-                q.getStatus(), SalesQuoteService.statusBucket(q), q.getReviewRevision(),
+                manager ? managerStatus(q) : q.getStatus(),
+                manager ? managerBucket(q) : SalesQuoteService.statusBucket(q), q.getReviewRevision(),
                 q.getSubmittedAt(), blankToNull((String) h[7]),
-                q.getFinanceRemark(), q.getFinanceReturnReason(), q.getFinanceReturnedAt(),
-                blankToNull((String) h[8]), q.getFinanceConfirmedAt(), blankToNull((String) h[9]),
+                (manager ? q.getManagerReview().getRemark() : q.getFinanceRemark()), (manager ? q.getManagerReview().getRejectReason() : q.getFinanceReturnReason()), (manager ? q.getManagerReview().getRejectedAt() : q.getFinanceReturnedAt()),
+                blankToNull((String) h[8]), (manager ? q.getManagerReview().getApprovedAt() : q.getFinanceConfirmedAt()), blankToNull((String) h[9]),
                 q.getTotalOriginal(),
                 fileTotalComplete && !lines.isEmpty() ? MoneyPolicy.canonical(fileTotal) : null,
                 pricePending, blocking,
                 confirmed != null || revisionLog.hasAction(id, SalesQuoteRevisionLog.RETURN),
                 convertedOrderNo,
                 accessPolicy.hasAuthority("goods:edit") && accessPolicy.hasAuthority("goods:price:edit"),
-                financeActions(q, convertedOrderNo != null),
-                TARGET,
+                manager ? managerActions(q) : financeActions(q, convertedOrderNo != null),
+                manager ? "SALES_QUOTE_MANAGER_REVIEW" : TARGET,
                 lines,
-                revisionLog.history(id));
+                revisionLog.history(id), manager ? q.getManagerReview().getDecisionClaimId() : null);
+    }
+
+    private static short managerStatus(SalesQuote q) {
+        if(q.getStatus()!=null && q.getStatus()==-1) return -1;
+        if(q.getManagerReview().approved()) return 1;
+        return (short)(q.getStatus()!=null && q.getStatus()==2 && q.getManagerReview().pending() ? 2 : 0);
+    }
+    private static String managerBucket(SalesQuote q) {
+        return switch(managerStatus(q)) {
+            case -1 -> "REVERSED"; case 1 -> "APPROVED"; case 2 -> "PENDING_FINANCE";
+            default -> q.getManagerReview().rejected() ? "FINANCE_REJECTED" : "DRAFT";
+        };
+    }
+
+    private List<String> managerActions(SalesQuote q) {
+        List<String> actions = new ArrayList<>();
+        if (q.getStatus() != null && q.getStatus() == 2 && !q.isClosed() && q.getManagerReview().pending()) {
+            if (managerReviewers.eligible(currentUser.requireId(), "quote", "confirm")) { actions.add("edit"); actions.add("confirm"); }
+            if (managerReviewers.eligible(currentUser.requireId(), "quote", "reject")) actions.add("return");
+        } else if (q.getStatus() != null && q.getStatus() == 2 && q.getManagerReview().approved()
+                && q.getFinanceConfirmedAt() == null && managerReviewers.eligible(currentUser.requireId(), "quote", "reverse")) actions.add("reopen");
+        return List.copyOf(actions);
     }
 
     private List<String> financeActions(SalesQuote q, boolean converted) {
         short status = q.getStatus() == null ? SalesQuoteService.STATUS_DRAFT : q.getStatus();
+        if (!q.getManagerReview().financeReady()) return List.of();
         if (status == SalesQuoteService.STATUS_PENDING_FINANCE
                 && (accessPolicy.hasAuthority(FINANCE_CONFIRM) || accessPolicy.hasAuthority(FINANCE_REJECT))
                 && reviewers.isEligible(currentUser.requireId())) {
@@ -337,13 +375,25 @@ public class SalesQuoteFinanceService {
     @Transactional
     @PreAuthorize("hasAuthority('sales_quote_finance:view') and hasAuthority('sales_quote_finance:confirm')")
     public QuoteFinanceReviewDto edit(UUID id, QuoteFinanceEditRequest req) {
+        return edit(id, req, false);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_quote_manager:view') and hasAuthority('sales_quote_manager:confirm')")
+    public QuoteFinanceReviewDto editManager(UUID id, QuoteFinanceEditRequest req) {
+        if (!managerReviewers.eligible(currentUser.requireId(), "quote", "confirm"))
+            throw new ApiException(ErrorCode.FORBIDDEN, "当前账号没有销售报价负责人审核资格");
+        return edit(id, req, true);
+    }
+
+    private QuoteFinanceReviewDto edit(UUID id, QuoteFinanceEditRequest req, boolean manager) {
         tx.bind();
-        requireEligibleReviewer();
+        if (!manager) requireEligibleReviewer();
         SalesQuote q = lockForDecision(id);
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
-        requirePendingFinance(q);
+        requirePending(q, manager);
         SalesQuoteService.requireRevision(q, req.expectedRevision());
-        claimGuard.requireActiveClaimByMe(TARGET, id.toString(), req.expectedClaimId());
+        claimGuard.requireActiveClaimByMe(manager ? "SALES_QUOTE_MANAGER_REVIEW" : TARGET, id.toString(), req.expectedClaimId());
         UUID actor = currentUser.requireEmployeeId();
         OffsetDateTime now = OffsetDateTime.now();
         if (req.settlementMethodId() != null) {
@@ -352,7 +402,8 @@ public class SalesQuoteFinanceService {
         }
         q.setValidUntil(req.validUntil());
         q.setSettlementMethodId(req.settlementMethodId());
-        q.setFinanceRemark(blankToNull(req.financeRemark()));
+        if (manager) q.getManagerReview().setRemark(blankToNull(req.financeRemark()));
+        else q.setFinanceRemark(blankToNull(req.financeRemark()));
 
         List<SalesQuoteItem> items = new ArrayList<>(itemRepo.findByQuoteIdOrderByLineNoAsc(id));
         Map<UUID, SalesQuoteItem> byId = new HashMap<>();
@@ -397,7 +448,7 @@ public class SalesQuoteFinanceService {
                 }
                 item.setDiscount(SalesPriceAuthority.normalizeExplicitDiscount(edit.discount()));
             } else if (Boolean.TRUE.equals(edit.giftZeroPrice())) {
-                financePrice(item, BigDecimal.ZERO, actor, now);
+                financePrice(item, BigDecimal.ZERO, actor, now, manager);
             } else if (Boolean.TRUE.equals(edit.useMasterPrice())) {
                 BigDecimal current = master.get(item.getGoodsId());
                 if (current == null || current.signum() < 0) {
@@ -405,11 +456,13 @@ public class SalesQuoteFinanceService {
                 }
                 item.setPrice(current);
                 item.setPriceSource(SalesQuoteItem.PRICE_SOURCE_MASTER);
+                item.setManagerPriceBy(null);
+                item.setManagerPriceAt(null);
                 item.setFinancePriceBy(null);
                 item.setFinancePriceAt(null);
                 item.setDiscount(SalesPriceAuthority.normalizeDiscountForWrite(item.getDiscount()));
             } else if (edit.dealPrice() != null) {
-                applyDealPrice(item, edit.dealPrice(), master.get(item.getGoodsId()), label, actor, now);
+                applyDealPrice(item, edit.dealPrice(), master.get(item.getGoodsId()), label, actor, now, manager);
             }
             BigDecimal amount = item.getPrice() == null ? null
                     : com.uten.imp.common.columns.ExtraColumnCalculator.apply(
@@ -422,16 +475,28 @@ public class SalesQuoteFinanceService {
         q.setReviewRevision(q.getReviewRevision() + 1);
         quoteRepo.save(q);
         itemRepo.flush();
-        revisionLog.append(q, items, SalesQuoteRevisionLog.FINANCE_EDIT, actor, null);
-        return reviewOf(q);
+        revisionLog.append(q, items, manager ? "MANAGER_EDIT" : SalesQuoteRevisionLog.FINANCE_EDIT, actor, null);
+        return reviewOf(q, manager);
     }
 
     /** 退回销售: 待核价 → 草稿(带原因), 通知报价负责人。 */
     @Transactional
     @PreAuthorize("hasAuthority('sales_quote_finance:view') and hasAuthority('sales_quote_finance:reject')")
     public QuoteFinanceReviewDto returnToSales(UUID id, QuoteFinanceDecisionRequest req) {
+        return returnToSales(id, req, false);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_quote_manager:view') and hasAuthority('sales_quote_manager:reject')")
+    public QuoteFinanceReviewDto rejectManager(UUID id, QuoteFinanceDecisionRequest req) {
+        if (!managerReviewers.eligible(currentUser.requireId(), "quote", "reject"))
+            throw new ApiException(ErrorCode.FORBIDDEN, "当前账号没有销售报价负责人审核资格");
+        return returnToSales(id, req, true);
+    }
+
+    private QuoteFinanceReviewDto returnToSales(UUID id, QuoteFinanceDecisionRequest req, boolean manager) {
         tx.bind();
-        requireEligibleReviewer();
+        if (!manager) requireEligibleReviewer();
         if (req == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请写明退回原因, 告诉销售要改什么");
         String reason = req.text() == null ? "" : req.text().strip();
         if (reason.isEmpty()) {
@@ -439,22 +504,26 @@ public class SalesQuoteFinanceService {
         }
         SalesQuote q = lockForDecision(id);
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
-        requirePendingFinance(q);
+        requirePending(q, manager);
         SalesQuoteService.requireRevision(q, req.expectedRevision());
-        claimGuard.requireActiveClaimByMe(TARGET, id.toString(), req.expectedClaimId());
+        claimGuard.requireActiveClaimByMe(manager ? "SALES_QUOTE_MANAGER_REVIEW" : TARGET, id.toString(), req.expectedClaimId());
         UUID actor = currentUser.requireEmployeeId();
         q.setStatus(SalesQuoteService.STATUS_DRAFT);
+        if (manager) { q.getManagerReview().reject(actor, reason); q.getManagerReview().setDecisionClaimId(req.expectedClaimId()); }
+        else {
         q.setFinanceReturnedAt(OffsetDateTime.now());
         q.setFinanceReturnedBy(actor);
         q.setFinanceReturnReason(reason);
+        }
         q.setReviewRevision(q.getReviewRevision() + 1);
         quoteRepo.save(q);
         List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
-        revisionLog.append(q, items, SalesQuoteRevisionLog.RETURN, actor, reason);
-        notices.notifyReturned(id);
-        notices.resolveReviewNotices(id, "RETURNED");
-        claimGuard.release(TARGET, id.toString());
-        return reviewOf(q);
+        revisionLog.append(q, items, manager ? "MANAGER_REJECT" : SalesQuoteRevisionLog.RETURN, actor, reason);
+        em.flush();
+        if (manager) { managerNotices.resolved("quote", id, "REJECTED"); managerNotices.rejected("quote", id, reason); }
+        else { notices.notifyReturned(id); notices.resolveReviewNotices(id, "RETURNED"); }
+        claimGuard.release(manager ? "SALES_QUOTE_MANAGER_REVIEW" : TARGET, id.toString());
+        return reviewOf(q, manager);
     }
 
     /**
@@ -464,13 +533,25 @@ public class SalesQuoteFinanceService {
     @Transactional
     @PreAuthorize("hasAuthority('sales_quote_finance:view') and hasAuthority('sales_quote_finance:confirm')")
     public QuoteFinanceReviewDto confirm(UUID id, QuoteFinanceDecisionRequest req) {
+        return confirm(id, req, false);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_quote_manager:view') and hasAuthority('sales_quote_manager:confirm')")
+    public QuoteFinanceReviewDto confirmManager(UUID id, QuoteFinanceDecisionRequest req) {
+        if (!managerReviewers.eligible(currentUser.requireId(), "quote", "confirm"))
+            throw new ApiException(ErrorCode.FORBIDDEN, "当前账号没有销售报价负责人审核资格");
+        return confirm(id, req, true);
+    }
+
+    private QuoteFinanceReviewDto confirm(UUID id, QuoteFinanceDecisionRequest req, boolean manager) {
         tx.bind();
-        requireEligibleReviewer();
+        if (!manager) requireEligibleReviewer();
         SalesQuote q = lockForDecision(id);
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
-        requirePendingFinance(q);
+        requirePending(q, manager);
         SalesQuoteService.requireRevision(q, req == null ? null : req.expectedRevision());
-        claimGuard.requireActiveClaimByMe(TARGET, id.toString(), req.expectedClaimId());
+        claimGuard.requireActiveClaimByMe(manager ? "SALES_QUOTE_MANAGER_REVIEW" : TARGET, id.toString(), req.expectedClaimId());
         List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT, "报价没有货品明细, 不能确认");
@@ -486,35 +567,59 @@ public class SalesQuoteFinanceService {
         OffsetDateTime now = OffsetDateTime.now();
         quotes.captureApprovalSnapshots(items, now);
         items.forEach(itemRepo::save);
+        if (manager) {
+            String managerRemark = req == null ? null : blankToNull(req.text());
+            q.getManagerReview().approve(actor,
+                    managerRemark == null ? q.getManagerReview().getRemark() : managerRemark);
+            q.getManagerReview().setDecisionClaimId(req.expectedClaimId());
+        }
+        else {
         q.setStatus(SalesQuoteService.STATUS_CONFIRMED);
         q.setFinanceConfirmedAt(now);
         q.setFinanceConfirmedBy(actor);
         q.setApproverId(actor);
+        }
         String remark = req.text() == null ? null : blankToNull(req.text());
-        if (remark != null) q.setFinanceRemark(remark);
+        if (!manager && remark != null) q.setFinanceRemark(remark);
         q.setReviewRevision(q.getReviewRevision() + 1);
         quoteRepo.save(q);
         itemRepo.flush();
-        revisionLog.append(q, items, SalesQuoteRevisionLog.CONFIRM, actor, remark);
-        notices.notifyConfirmed(id);
-        notices.resolveReviewNotices(id, "CONFIRMED");
-        claimGuard.release(TARGET, id.toString());
-        return reviewOf(q);
+        revisionLog.append(q, items, manager ? "MANAGER_CONFIRM" : SalesQuoteRevisionLog.CONFIRM, actor, remark);
+        em.flush();
+        if (manager) { managerNotices.resolved("quote", id, "APPROVED"); notices.notifySubmittedForReview(id); }
+        else { notices.notifyConfirmed(id); notices.resolveReviewNotices(id, "CONFIRMED"); }
+        claimGuard.release(manager ? "SALES_QUOTE_MANAGER_REVIEW" : TARGET, id.toString());
+        return reviewOf(q, manager);
     }
 
     /** 重新核价: 已核价且未转订货单 → 待核价(之后照常认领核价)。 */
     @Transactional
     @PreAuthorize("hasAuthority('sales_quote_finance:view') and hasAuthority('sales_quote_finance:reverse')")
     public QuoteFinanceReviewDto reopen(UUID id, QuoteActionRequest req) {
+        return reopen(id, req, false);
+    }
+
+    @Transactional
+    @PreAuthorize("hasAuthority('sales_quote_manager:view') and hasAuthority('sales_quote_manager:reverse')")
+    public QuoteFinanceReviewDto reopenManager(UUID id, QuoteActionRequest req) {
+        if (!managerReviewers.eligible(currentUser.requireId(), "quote", "reverse"))
+            throw new ApiException(ErrorCode.FORBIDDEN, "当前账号没有销售报价负责人审核资格");
+        return reopen(id, req, true);
+    }
+
+    private QuoteFinanceReviewDto reopen(UUID id, QuoteActionRequest req, boolean manager) {
         tx.bind();
-        if (!reviewers.canReopen(currentUser.requireId())) {
+        if (!manager && !reviewers.canReopen(currentUser.requireId())) {
             throw new ApiException(ErrorCode.FORBIDDEN,
                     "无法重新核价：请核对账号是否启用、员工是否在职，以及报价核价查看和重新核价权限");
         }
         SalesQuote q = lockForDecision(id);
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
-        if (q.getStatus() == null || q.getStatus() != SalesQuoteService.STATUS_CONFIRMED
-                || q.getFinanceConfirmedAt() == null) {
+        if (manager) {
+            if (!q.getManagerReview().approved() || q.getStatus() == null || q.getStatus() != 2 || q.getFinanceConfirmedAt() != null)
+                throw new ApiException(ErrorCode.CONFLICT, "只有负责人已通过且财务尚未通过的报价可以反审核；已核价时须先由财务撤销确认");
+            claimGuard.requireNoActiveClaim(TARGET, id.toString());
+        } else if (q.getStatus() == null || q.getStatus() != SalesQuoteService.STATUS_CONFIRMED || q.getFinanceConfirmedAt() == null) {
             throw new ApiException(ErrorCode.CONFLICT, "只有已确认的报价可以重新核价");
         }
         SalesQuoteService.requireRevision(q, req == null ? null : req.expectedRevision());
@@ -523,6 +628,7 @@ public class SalesQuoteFinanceService {
         }
         UUID actor = currentUser.requireEmployeeId();
         q.setStatus(SalesQuoteService.STATUS_PENDING_FINANCE);
+        if (manager) q.getManagerReview().submit();
         q.setFinanceConfirmedAt(null);
         q.setFinanceConfirmedBy(null);
         SalesQuoteService.clearCustomerAcceptance(q);
@@ -530,9 +636,11 @@ public class SalesQuoteFinanceService {
         q.setReviewRevision(q.getReviewRevision() + 1);
         quoteRepo.save(q);
         List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
-        revisionLog.append(q, items, SalesQuoteRevisionLog.FINANCE_REOPEN, actor, req.reason());
-        notices.notifyFinanceReopened(id);
-        return reviewOf(q);
+        revisionLog.append(q, items, manager ? "MANAGER_REVERSE" : SalesQuoteRevisionLog.FINANCE_REOPEN, actor, req.reason());
+        em.flush();
+        if (manager) { notices.resolveReviewNotices(id, "MANAGER_REVERSED"); managerNotices.pending("quote", id); }
+        else notices.notifyFinanceReopened(id);
+        return reviewOf(q, manager);
     }
 
     // ------------------------------------------------------------------ 内部
@@ -542,11 +650,11 @@ public class SalesQuoteFinanceService {
      * 没有标价(空或 0)或高于标价 → 财务定价(单价 = 成交单价, 折扣 1)。成交单价为 0 请用赠品/0价。
      */
     private void applyDealPrice(SalesQuoteItem item, BigDecimal dealPrice, BigDecimal currentMaster,
-                                String label, UUID actor, OffsetDateTime now) {
+                                String label, UUID actor, OffsetDateTime now, boolean manager) {
         if (dealPrice.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, label + "成交单价要大于 0; 0 价请勾选赠品/0价");
         }
-        BigDecimal listPrice = !SalesQuoteItem.PRICE_SOURCE_FINANCE.equals(item.getPriceSource()) && item.getPrice() != null
+        BigDecimal listPrice = !java.util.Set.of("FINANCE","MANAGER").contains(item.getPriceSource()) && item.getPrice() != null
                 ? item.getPrice() : currentMaster;
         MoneyPolicy.DiscountQuote quote = MoneyPolicy.discountFromUnitPrice(dealPrice, BigDecimal.ONE, listPrice);
         switch (quote.flag()) {
@@ -557,21 +665,25 @@ public class SalesQuoteFinanceService {
                 if (!SalesQuoteItem.PRICE_SOURCE_SALES.equals(item.getPriceSource())) {
                     item.setPriceSource(SalesQuoteItem.PRICE_SOURCE_MASTER);
                 }
+                item.setManagerPriceBy(null);
+                item.setManagerPriceAt(null);
                 item.setFinancePriceBy(null);
                 item.setFinancePriceAt(null);
                 item.setDiscount(quote.discount());
             }
-            case NO_LIST_PRICE, ABOVE_LIST -> financePrice(item, dealPrice, actor, now);
+            case NO_LIST_PRICE, ABOVE_LIST -> financePrice(item, dealPrice, actor, now, manager);
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     label + "成交单价太小, 算不出有效折扣, 请改填折扣");
         }
     }
 
-    private static void financePrice(SalesQuoteItem item, BigDecimal price, UUID actor, OffsetDateTime now) {
+    private static void financePrice(SalesQuoteItem item, BigDecimal price, UUID actor, OffsetDateTime now, boolean manager) {
         item.setPrice(price);
-        item.setPriceSource(SalesQuoteItem.PRICE_SOURCE_FINANCE);
-        item.setFinancePriceBy(actor);
-        item.setFinancePriceAt(now);
+        item.setPriceSource(manager ? SalesQuoteItem.PRICE_SOURCE_MANAGER : SalesQuoteItem.PRICE_SOURCE_FINANCE);
+        item.setManagerPriceBy(manager ? actor : null);
+        item.setManagerPriceAt(manager ? now : null);
+        item.setFinancePriceBy(manager ? null : actor);
+        item.setFinancePriceAt(manager ? null : now);
         item.setDiscount(BigDecimal.ONE.setScale(4));
     }
 
@@ -582,7 +694,7 @@ public class SalesQuoteFinanceService {
     /** 确认前必须处理的行问题; 没有问题返回 null。 */
     static String blockingReason(BigDecimal price, String priceSource, BigDecimal clientPrice) {
         if (price == null) return "还没有单价, 请先填写成交单价";
-        if (price.signum() == 0 && !SalesQuoteItem.PRICE_SOURCE_FINANCE.equals(priceSource)
+        if (price.signum() == 0 && !java.util.Set.of("FINANCE","MANAGER").contains(priceSource == null ? "" : priceSource)
                 && clientPrice != null && clientPrice.signum() > 0) {
             return "标价为 0, 请填写成交单价或勾选赠品/0价";
         }
@@ -624,7 +736,9 @@ public class SalesQuoteFinanceService {
         return q;
     }
 
-    private static void requirePendingFinance(SalesQuote q) {
+    private static void requirePending(SalesQuote q, boolean manager) {
+        if (manager ? !q.getManagerReview().pending() : !q.getManagerReview().financeReady())
+            throw new ApiException(ErrorCode.CONFLICT, "单据审核阶段已经变化，请刷新后重试");
         if (q.getStatus() == null || q.getStatus() != SalesQuoteService.STATUS_PENDING_FINANCE) {
             throw new ApiException(ErrorCode.CONFLICT, "报价已不在待财务核价状态, 请刷新");
         }

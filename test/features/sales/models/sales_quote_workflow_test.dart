@@ -55,6 +55,8 @@ void main() {
       expect(SalesQuoteStage.draft, SalesShipmentStage.draft);
       expect(SalesQuoteStage.segments, [
         'DRAFT',
+        'MANAGER_REJECTED',
+        'PENDING_MANAGER',
         'FINANCE_REJECTED',
         'PENDING_FINANCE',
         'AWAITING_CUSTOMER',

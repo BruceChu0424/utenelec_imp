@@ -258,7 +258,7 @@ public class BusinessColumnService {
     private boolean canViewPrice(String scope) {
         String priceScope = "sales_quote".equals(scope) ? "sales_order" : scope;
         return currentUser.get().filter(user -> !user.isVisitor()).map(user -> user.isSuperAdmin() || user.getPermissions().contains(priceScope + ":price:view")
-                || ("sales_quote".equals(scope) && user.getPermissions().contains("sales_quote_finance:view"))
+                || ("sales_quote".equals(scope) && (user.getPermissions().contains("sales_quote_finance:view") || user.getPermissions().contains("sales_quote_manager:view")))
                 || user.getPermissions().contains("finance:view:all")).orElse(false);
     }
     private static ApiException invalid(String message) { return new ApiException(ErrorCode.VALIDATION_FAILED, message); }

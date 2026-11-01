@@ -460,6 +460,7 @@ BEGIN
         ('sales_intake_layouts','SEED_OR_ADMIN'),
         ('sales_order_cost_items','EMPTY'),
         ('sales_order_items','EMPTY'),
+        ('sales_order_manager_review_events','EMPTY'),
         ('sales_order_qty_change_logs','EMPTY'),
         ('sales_order_revision_logs','EMPTY'),
         ('sales_orders','EMPTY'),

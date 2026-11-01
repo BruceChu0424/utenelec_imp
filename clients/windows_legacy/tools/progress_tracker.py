@@ -210,7 +210,7 @@ def summary(registry: dict) -> dict:
 
 
 def md(value) -> str:
-    return str(value).replace("|", "\\|").replace("\n", "<br>")
+    return str(value).replace("\r\n", "\n").replace("\r", "\n").replace("|", "\\|").replace("\n", "<br>")
 
 
 def _task_details(item: dict) -> list[str]:

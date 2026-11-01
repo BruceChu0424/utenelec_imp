@@ -61,6 +61,7 @@ public class SalesOrderTimelineService {
 
         List<OrderProgressTimelineEvent> events = new ArrayList<>();
         addOrderEvents(order, events);
+        events.addAll(managerEvents(order));
         addFinanceEvents(order, events);
         List<UUID> analysisIds = addMaterialAnalysisEvents(orderId, order, events);
         addSupplyEvents(analysisIds, events);
@@ -121,6 +122,25 @@ public class SalesOrderTimelineService {
 
     // ============================ 财务审核 ============================
 
+    public List<OrderProgressTimelineEvent> managerEvents(SalesOrder order) {
+        List<OrderProgressTimelineEvent> events = new ArrayList<>();
+        @SuppressWarnings("unchecked") List<Object[]> rows = em.createNativeQuery("""
+            SELECT h.action,e.full_name,h.created_at,h.reason,h.revision
+            FROM sales_order_manager_review_events h LEFT JOIN employees e ON e.id=h.actor_id
+            WHERE h.order_id=:id ORDER BY h.created_at DESC,h.id
+            """).setParameter("id",order.getId()).getResultList();
+        for (Object[] row:rows) {
+            String action=(String)row[0];
+            events.add(new OrderProgressTimelineEvent(25,"MANAGER_"+action,
+                switch(action) { case "APPROVED" -> "负责人审核通过"; case "REJECTED" -> "负责人驳回"; default -> "负责人反审核"; },
+                "审核人",(String)row[1],com.uten.imp.common.util.NativeValueConverters.toOffsetDateTime(row[2]),
+                "REJECTED".equals(action) ? REJECTED : DONE,"审核版本 "+row[4]+(row[3]==null?"":" · "+row[3]),null,null,null));
+        }
+        if (order.getManagerReview().pending() && order.getStatus()!=null && order.getStatus()==1)
+            events.addFirst(new OrderProgressTimelineEvent(25,"MANAGER_PENDING","销售负责人审核",null,null,null,CURRENT,"负责人批准后转交财务",null,null,null));
+        return events;
+    }
+
     private void addFinanceEvents(SalesOrder order, List<OrderProgressTimelineEvent> events) {
         boolean hasRejectionHistory = order.getFinanceRejectedAt() != null;
         if (hasRejectionHistory) {
@@ -141,10 +161,10 @@ public class SalesOrderTimelineService {
         if (order.getStatus() == 1) {
             events.add(new OrderProgressTimelineEvent(
                     30, "FINANCE_CONFIRMED", "财务审核", null, null, null,
-                    order.isFinanceRejected() ? REJECTED : CURRENT,
+                    order.isFinanceRejected() ? REJECTED : order.getManagerReview().financeReady() ? CURRENT : PENDING,
                     order.isFinanceRejected()
                             ? "已被驳回，待销售修订并重新审核"
-                            : hasRejectionHistory
+                            : !order.getManagerReview().financeReady() ? "等待销售负责人批准后转交财务" : hasRejectionHistory
                                     ? "销售已修订并重新审核，等待财务确认"
                                     : "等待销售订单财务确认",
                     null, null, null));

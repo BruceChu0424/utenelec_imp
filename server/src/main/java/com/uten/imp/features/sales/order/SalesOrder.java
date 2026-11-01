@@ -181,4 +181,6 @@ public class SalesOrder extends SoftDeletableEntity {
     /** ADR-134 客户文件上单价的币种代码(如 USD), 供阅读明细的文件单价; 订单本身的币种仍是 currency_id。 */
     @Column(name = "client_file_currency")
     private String clientFileCurrency;
+    @jakarta.persistence.Embedded
+    private com.uten.imp.features.sales.SalesManagerReview managerReview = new com.uten.imp.features.sales.SalesManagerReview();
 }

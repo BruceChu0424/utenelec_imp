@@ -34,7 +34,7 @@ public class SalesFinanceClaimTargetLocks implements ReviewTaskTargetLockPort {
 
     @Override public void lockHeader(Target target,boolean requireReviewable) {
         String state=requireReviewable ? """
-                 AND status=1 AND NOT is_deleted AND NOT finance_confirmed AND NOT finance_rejected
+                 AND manager_review_state IN ('NOT_REQUIRED','APPROVED') AND status=1 AND NOT is_deleted AND NOT finance_confirmed AND NOT finance_rejected
                  AND NOT is_stopped AND (NOT is_closed OR finance_review_revision>0)
                  AND requoted_to_id IS NULL
                 """ : "";

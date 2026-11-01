@@ -64,7 +64,7 @@ public record QuoteFinanceReviewDto(
         List<String> financeActions,
         String claimType,
         List<Line> lines,
-        List<QuoteRevisionDto> revisions) {
+        List<QuoteRevisionDto> revisions, UUID managerDecisionClaimId) {
 
     public record Line(
             UUID itemId,

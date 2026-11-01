@@ -4,14 +4,14 @@
 
 ## W7-BIZ-134 · lib/features/rd_task/pages/rd_task_page.dart
 
-模块 `rd_task`；1165 行；SHA256 `3355b019e4076aa80d7195a124bf4a1f6be22c34ab2b3d9193b06559c2bf6817`。
+模块 `rd_task`；1165 行；SHA256 `7aa794b7fa7243360b1146e69ce1c82f986e09320b1198758cd8760790c70750`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | RdTaskPage @92 (page-class)<br>_RdTaskPageState @102 (state-class)<br>_RdTaskListPanel @231 (supporting-class)<br>_RdTaskListPanelState @242 (state-class)<br>_DesktopTaskTable @850 (supporting-class)<br>_ResolveBar @1076 (supporting-class) |
-| 真实路由绑定 | /rd/tasks；router @1024；builder ['RdTaskPage']；redirect None |
+| 真实路由绑定 | /rd/tasks；router @1025；builder ['RdTaskPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | rd_task:resolve @297；定义 lib/shared/auth/permissions.dart:513 |
+| 权限 | rd_task:resolve @297；定义 lib/shared/auth/permissions.dart:522 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/rd_task/repositories/rd_task_repository.dart；接口：/rd-tasks、/rd-tasks/{id}/resolve |
 | 动作处理 | addPostFrameCallback @255 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>removeRoute @262 [action-like-invocation] 提示 ['remove']；Navigator.of(dialog).removeRoute(route);<br>_finishUnitOpening @267 [method-declaration-candidate] 提示 ['finish']；void _finishUnitOpening(Object token) {<br>_reconcileInitialBasicUnit @315 [action-like-invocation] 提示 ['reconcile']；await _reconcileInitialBasicUnit(row);<br>_reconcileInitialBasicUnit @358 [method-declaration-candidate] 提示 ['reconcile']；Future<void> _reconcileInitialBasicUnit(RdTaskRow row) async {<br>_finishUnitOpening @398 [action-like-invocation] 提示 ['finish']；_finishUnitOpening(openingToken);<br>_finishUnitOpening @402 [action-like-invocation] 提示 ['finish']；_finishUnitOpening(openingToken);<br>_finishUnitOpening @419 [action-like-invocation] 提示 ['finish']；_finishUnitOpening(openingToken);<br>reconcileInitialBasicUnit @437 [action-like-invocation] 提示 ['reconcile']；final result = await repo.reconcileInitialBasicUnit(<br>addPostFrameCallback @481 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @502 [action-like-invocation] 提示 ['update']；_tableRows.update(const []);<br>_reconcileInitialBasicUnit @836 [action-like-invocation] 提示 ['reconcile']；? _reconcileInitialBasicUnit(sel) |

@@ -20,6 +20,8 @@ import 'draft_counts_provider.dart';
 abstract final class DocumentStatusBucket {
   static const pendingGlConfirmation = 'PENDING_GL_CONFIRMATION';
   static const draft = 'DRAFT';
+  static const pendingManager = 'PENDING_MANAGER';
+  static const managerRejected = 'MANAGER_REJECTED';
   static const pendingFinance = 'PENDING_FINANCE';
   static const financeRejected = 'FINANCE_REJECTED';
 
@@ -99,12 +101,14 @@ final effectiveDocumentStatusCountsProvider = Provider.autoDispose
         ...?counts,
         for (final bucket in const [
           DocumentStatusBucket.draft,
+          DocumentStatusBucket.managerRejected,
           DocumentStatusBucket.financeRejected,
           DocumentStatusBucket.pendingGlConfirmation,
         ])
           if (counts?.containsKey(bucket) ?? false)
             bucket: counts?['ACTIONABLE_$bucket'] ?? 0,
         for (final bucket in const [
+          DocumentStatusBucket.pendingManager,
           DocumentStatusBucket.pendingFinance,
           'FINANCE_APPROVED',
           DocumentStatusBucket.executing,

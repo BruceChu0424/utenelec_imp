@@ -11222,7 +11222,7 @@ abstract class AppLocalizations {
   /// No description provided for @salesQuoteStatusFieldSubmittedAt.
   ///
   /// In zh, this message translates to:
-  /// **'提交核价时间'**
+  /// **'提交审核时间'**
   String get salesQuoteStatusFieldSubmittedAt;
 
   /// No description provided for @salesQuoteStatusFieldConfirmedBy.
@@ -11246,7 +11246,7 @@ abstract class AppLocalizations {
   /// No description provided for @salesQuoteStatusActionSubmit.
   ///
   /// In zh, this message translates to:
-  /// **'提交财务核价'**
+  /// **'提交负责人审核'**
   String get salesQuoteStatusActionSubmit;
 
   /// No description provided for @salesQuoteStatusActionWithdraw.
@@ -11300,7 +11300,7 @@ abstract class AppLocalizations {
   /// No description provided for @salesQuoteStatusSubmitConfirmBody.
   ///
   /// In zh, this message translates to:
-  /// **'提交后财务会逐行定价格和折扣, 这期间你不能修改这张报价。确定提交?'**
+  /// **'提交后先由销售负责人审核，通过后再转交财务核价。审核期间不能修改报价。确定提交？'**
   String get salesQuoteStatusSubmitConfirmBody;
 
   /// No description provided for @salesQuoteStatusWithdrawConfirmBody.
@@ -11342,7 +11342,7 @@ abstract class AppLocalizations {
   /// No description provided for @salesQuoteStatusSubmitted.
   ///
   /// In zh, this message translates to:
-  /// **'已提交财务核价'**
+  /// **'已提交销售负责人审核'**
   String get salesQuoteStatusSubmitted;
 
   /// No description provided for @salesQuoteStatusWithdrawn.
@@ -11396,7 +11396,7 @@ abstract class AppLocalizations {
   /// No description provided for @salesQuoteStatusRevisionSubmit.
   ///
   /// In zh, this message translates to:
-  /// **'提交财务核价'**
+  /// **'提交负责人审核'**
   String get salesQuoteStatusRevisionSubmit;
 
   /// No description provided for @salesQuoteStatusRevisionWithdraw.

@@ -75,6 +75,15 @@ bool _isAnalysisSalesOrderPath(String routePath) {
 List<String>? requiredAnyPermFor(String rawLocation) {
   final location = hubCardPath(rawLocation);
   final routePath = location;
+  if (location.startsWith('/sales/manager-review/quotes/')) {
+    return const [Perm.salesQuoteManagerView];
+  }
+  if (location.startsWith('/sales/manager-review/orders/')) {
+    return const [Perm.salesOrderManagerView];
+  }
+  if (location == RouteName.salesManagerReview) {
+    return const [Perm.salesQuoteManagerView, Perm.salesOrderManagerView];
+  }
   if (location == RouteName.clientReleasePublish) {
     return const [Perm.clientReleasePublish];
   }

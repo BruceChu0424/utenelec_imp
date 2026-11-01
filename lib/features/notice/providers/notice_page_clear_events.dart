@@ -22,6 +22,12 @@
 /// 命中规则见 NoticeRouteReadBridge：落点等于 key，或落点以 `key/` 开头
 /// （详情子页视为同一队列的更深视图，如 /finance/sales-order-confirmations/{id}）。
 const Map<String, List<String>> noticePageClearEvents = {
+  '/sales/manager-review/quotes': ['SALES_QUOTE_PENDING_MANAGER_REVIEW'],
+  '/sales/manager-review/orders': ['SALES_ORDER_PENDING_MANAGER_REVIEW'],
+  '/sales/manager-review': [
+    'SALES_QUOTE_PENDING_MANAGER_REVIEW',
+    'SALES_ORDER_PENDING_MANAGER_REVIEW',
+  ],
   // —— 运营任务工作台（采购/委外/仓库看任务的实际入口页，不是单据列表）——
   // 采购任务台：申请待分解/等待财务审核/财务已通过/已完成 全生命周期卡。
   '/operations/workbench/purchase': [
@@ -60,6 +66,7 @@ const Map<String, List<String>> noticePageClearEvents = {
     // 详情页，销售在订单进度页看结果，进页即清）。
     'SALES_ORDER_FINANCE_CONFIRMED',
     'SALES_ORDER_FINANCE_REJECTED',
+    'SALES_ORDER_MANAGER_REJECTED',
     'SALES_DELIVERY_DUE',
     'SALES_RESERVATION_HOLD_OVERDUE',
     'SALES_RESERVATION_YIELDED',
@@ -153,6 +160,7 @@ const Map<String, List<String>> noticePageClearEvents = {
   // 销售在报价列表处理核价结果，2026-10-09 补齐"操作了还挂着未读"缺口）——
   '/sales/quotes': [
     'SALES_QUOTE_FINANCE_RETURNED',
+    'SALES_QUOTE_MANAGER_REJECTED',
     'SALES_QUOTE_FINANCE_CONFIRMED',
     'SALES_QUOTE_FINANCE_REOPENED',
   ],

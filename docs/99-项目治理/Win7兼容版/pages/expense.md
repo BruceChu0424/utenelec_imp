@@ -9,9 +9,9 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseApprovalDetailPage @53 (page-class)<br>_ExpenseApprovalDetailPageState @62 (state-class)<br>_ExpensePaymentDialog @487 (supporting-class)<br>_ExpensePaymentDialogState @495 (state-class)<br>_Hero @686 (supporting-class) |
-| 真实路由绑定 | /expense/approval/:id；router @707；builder ['ExpenseApprovalDetailPage']；redirect None |
+| 真实路由绑定 | /expense/approval/:id；router @708；builder ['ExpenseApprovalDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | expense:approve @88；定义 lib/shared/auth/permissions.dart:56<br>attachment:view @98；定义 lib/shared/auth/permissions.dart:86<br>attachment:download @99；定义 lib/shared/auth/permissions.dart:730<br>expense:pay @104；定义 lib/shared/auth/permissions.dart:57 |
+| 权限 | expense:approve @88；定义 lib/shared/auth/permissions.dart:56<br>attachment:view @98；定义 lib/shared/auth/permissions.dart:86<br>attachment:download @99；定义 lib/shared/auth/permissions.dart:739<br>expense:pay @104；定义 lib/shared/auth/permissions.dart:57 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
 | 动作处理 | _approve @110 [method-declaration-candidate] 提示 ['approve']；Future<void> _approve() async {<br>approveExpense @123 [action-like-invocation] 提示 ['approve']；await approveExpense(ref, widget.claimId);<br>_reject @135 [method-declaration-candidate] 提示 ['reject']；Future<void> _reject() async {<br>rejectExpense @144 [action-like-invocation] 提示 ['reject']；await rejectExpense(ref, widget.claimId, reason);<br>_pay @156 [method-declaration-candidate] 提示 ['pay']；Future<void> _pay() async {<br>payExpense @173 [action-like-invocation] 提示 ['pay']；await payExpense(<br>showExpenseClaimPrintPreview @205 [action-like-invocation] 提示 ['print']；onPressed: () => showExpenseClaimPrintPreview(context, claim),<br>copyWith @385 [action-like-invocation] 提示 ['copy']；?.copyWith(fontWeight: FontWeight.w400),<br>copyWith @422 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),<br>copyWith @434 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @465 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @471 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleMedium?.copyWith(<br>_submit @533 [method-declaration-candidate] 提示 ['submit']；void _submit() {<br>copyWith @658 [action-like-invocation] 提示 ['copy']；style: Theme.of(context).textTheme.bodySmall?.copyWith(<br>copyWith @741 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith( |
@@ -27,9 +27,9 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseApprovalListPage @48 (page-class)<br>_ExpenseApprovalListPageState @57 (state-class) |
-| 真实路由绑定 | /expense/approval；router @698；builder ['ExpenseApprovalListPage']；redirect None |
+| 真实路由绑定 | /expense/approval；router @699；builder ['ExpenseApprovalListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | expense:approve @152；定义 lib/shared/auth/permissions.dart:56<br>expense:pay @153；定义 lib/shared/auth/permissions.dart:57<br>attachment:view @416；定义 lib/shared/auth/permissions.dart:86<br>attachment:download @417；定义 lib/shared/auth/permissions.dart:730 |
+| 权限 | expense:approve @152；定义 lib/shared/auth/permissions.dart:56<br>expense:pay @153；定义 lib/shared/auth/permissions.dart:57<br>attachment:view @416；定义 lib/shared/auth/permissions.dart:86<br>attachment:download @417；定义 lib/shared/auth/permissions.dart:739 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/expense/repositories/expense_repository.dart；接口：/expense-claims |
 | 动作处理 | addPostFrameCallback @99 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>copyWith @229 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>removeWhere @281 [action-like-invocation] 提示 ['remove']；_selectedVersions.removeWhere((id, _) => !next.contains(id));<br>_batchApprove @425 [action-like-invocation] 提示 ['approve']；? () => _batchApprove(Set<String>.of(selectedIds))<br>_batchReject @436 [action-like-invocation] 提示 ['reject']；? () => _batchReject(Set<String>.of(selectedIds))<br>_batchApprove @452 [method-declaration-candidate] 提示 ['approve']；Future<void> _batchApprove(Set<String> ids) async {<br>approveBatch @495 [action-like-invocation] 提示 ['approve']；.approveBatch(<br>_batchReject @520 [method-declaration-candidate] 提示 ['reject']；Future<void> _batchReject(Set<String> ids) async {<br>showUtenBatchRejectDialog @522 [action-like-invocation] 提示 ['reject']；final reason = await showUtenBatchRejectDialog(<br>rejectBatch @533 [action-like-invocation] 提示 ['reject']；.rejectBatch( |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseClaimEditPage @55 (page-class)<br>_ExpenseClaimEditPageState @67 (state-class) |
-| 真实路由绑定 | /expense/new；router @678；builder ['ExpenseClaimEditPage']；redirect None<br>/expense/:id/edit；router @692；builder ['ExpenseClaimEditPage']；redirect None |
+| 真实路由绑定 | /expense/new；router @679；builder ['ExpenseClaimEditPage']；redirect None<br>/expense/:id/edit；router @693；builder ['ExpenseClaimEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:apply @600；定义 lib/shared/auth/permissions.dart:55 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseDetailPage @47 (page-class)<br>_ExpenseDetailPageState @56 (state-class)<br>_HeroCard @475 (supporting-class) |
-| 真实路由绑定 | /expense/:id；router @713；builder ['ExpenseDetailPage']；redirect None |
+| 真实路由绑定 | /expense/:id；router @714；builder ['ExpenseDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:apply @83；定义 lib/shared/auth/permissions.dart:55 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseListPage @54 (page-class)<br>_ExpenseListPageState @61 (state-class) |
-| 真实路由绑定 | /expense；router @673；builder ['ExpenseListPage']；redirect None |
+| 真实路由绑定 | /expense；router @674；builder ['ExpenseListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:apply @80；定义 lib/shared/auth/permissions.dart:55<br>expense:apply @141；定义 lib/shared/auth/permissions.dart:55 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -94,12 +94,12 @@
 
 ## W7-BIZ-056 · lib/features/expense/pages/expense_settings_page.dart
 
-模块 `expense`；260 行；SHA256 `c1fafc1a71f695bb0cd2b2b5e9eb75916c4c0f0e58c6773dcb564f97373301f2`。
+模块 `expense`；260 行；SHA256 `52ce06ed66c0020894cf68ea5a50e4c4a08499427bd1ca6dcda299acd697dc69`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ExpenseSettingsPage @22 (page-class)<br>_ExpenseSettingsPageState @30 (state-class) |
-| 真实路由绑定 | /expense/settings；router @687；builder ['ExpenseSettingsPage']；redirect None |
+| 真实路由绑定 | /expense/settings；router @688；builder ['ExpenseSettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:settings @100；定义 lib/shared/auth/permissions.dart:58 |
 | 接口常量 | 未静态确认；不能当作不存在 |

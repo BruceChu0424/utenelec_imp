@@ -143,6 +143,8 @@ void main() {
     expect(toolbar.segments.map((segment) => segment.label), [
       '待办与进行中',
       '草稿',
+      '负责人已驳回',
+      '待负责人审核',
       '财务退回',
       '待财务核价',
       '待客户同意',

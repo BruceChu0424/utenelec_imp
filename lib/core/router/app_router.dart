@@ -1,3 +1,4 @@
+import '../../features/sales/pages/sales_manager_review_page.dart';
 import '../../features/basic_data/models/goods_detail_sequence.dart';
 import '../../shared/windows/business_windows.dart';
 import 'business_window_host.dart';
@@ -1776,6 +1777,27 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
             ),
           ),
 
+          DraftAwareGoRoute(
+            path: RouteName.salesManagerReview,
+            builder: (_, s) => SalesManagerReviewPage(
+              initialKind: s.uri.queryParameters['kind'] ?? 'quote',
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/sales/manager-review/quotes/:id',
+            builder: (_, s) => FinanceQuoteReviewPage(
+              id: s.pathParameters['id']!,
+              managerReview: true,
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/sales/manager-review/orders/:id',
+            builder: (_, s) => FinanceSalesOrderReviewPage(
+              id: s.pathParameters['id']!,
+              managerReview: true,
+              returnTo: '/sales/manager-review?kind=order',
+            ),
+          ),
           // —— 销售管理（综合营销部；静态段 /sales/report 在 :seg 参数路由前）——
           DraftAwareGoRoute(
             path: RouteName.sales,

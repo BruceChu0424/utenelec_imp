@@ -7,6 +7,8 @@
 
 /// 徽章容器: 一个 [BadgeModule] 对应工作台上的一张模块卡 / 一个 hub。
 enum BadgeModule {
+  salesReview,
+
   /// 人事与访客(我的访客 / 访客审批 / 信息变更审核 / HR 任务中心 / 我的报销)。
   people,
 

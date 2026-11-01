@@ -179,11 +179,15 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
               ? null
               : sumCounts(quoteCounts, const [
                       SalesQuoteStage.draft,
+                      SalesQuoteStage.managerRejected,
                       SalesQuoteStage.financeRejected,
                     ])! +
                     quoteToConvert +
                     quoteToConfirm,
-          inProgressCount: quoteCounts?[SalesQuoteStage.pendingFinance],
+          inProgressCount: sumCounts(quoteCounts, const [
+            SalesQuoteStage.pendingManager,
+            SalesQuoteStage.pendingFinance,
+          ]),
         ),
       if (canOpen(SalesRoutePath.list('other-shipments')))
         const _GroupSpec(value: 'otherShipments', label: '历史其它出货'),

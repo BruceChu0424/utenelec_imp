@@ -4721,6 +4721,10 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             if (!planningSources.needsInitialHandoff(orderId)) return;
             OrderRef o = orderRef(orderId);
             if (o == null) return;
+            // The same order lock serializes normal delivery, catch-up and finance decisions.
+            // Retire older proven generations before publishing, in this outbox transaction:
+            // a failed new publication must roll back both supersession and the new receipt.
+            noticeService.resolveEarlierSalesPlanningHandoffs(orderId,revision);
             Map<String, Object> agg = one("""
                     SELECT COUNT(*) AS lines,
                            MIN(COALESCE(i.deliver_date, oo.deliver_date)) AS deliver,
@@ -4763,6 +4767,14 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
                 """, Boolean.class, orderId, userId, revision));
     }
 
+    private boolean hasEarlierActivePlanningHandoff(UUID orderId,long revision) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM notices WHERE aggregate_kind='SALES_ORDER' AND aggregate_id=?
+                  AND source_event='SALES_ORDER_APPROVED' AND resolved_at IS NULL
+                  AND source_revision IS NOT NULL AND source_revision<?)
+                """,Boolean.class,orderId,revision));
+    }
+
     /** One bounded reconciliation item. Never writes from inbox reads. */
     @org.springframework.transaction.annotation.Transactional
     public boolean enqueueSalesPlanningCatchUp(UUID orderId) {
@@ -4771,7 +4783,9 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         boolean missing = actionUserIdsWithAuthorities(NOTICE_READ_AUTHORITY,
                 "production_material_analysis:view", "production_material_analysis:create").stream()
                 .anyMatch(userId -> !hasPlanningHandoff(orderId, userId, revision));
-        if (!missing || Boolean.TRUE.equals(jdbc.queryForObject("""
+        // A current receipt can already exist from an earlier buggy delivery. Reconcile the
+        // obsolete active generation through the same atomic delivery path, without a duplicate.
+        if ((!missing && !hasEarlierActivePlanningHandoff(orderId,revision)) || Boolean.TRUE.equals(jdbc.queryForObject("""
                 SELECT EXISTS(SELECT 1 FROM business_outbox WHERE event_type=? AND aggregate_id=? AND status=0)
                 """, Boolean.class, EVENT_SALES_PLANNING_CATCH_UP, orderId))) return false;
         // A skipped (e.g. temporarily revoked) signal must not permanently consume a phase/user dedupe key.

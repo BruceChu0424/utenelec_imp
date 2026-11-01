@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
 import '../../components/inputs/uten_dropdown_scroll_scope.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../components/layout/uten_app_bar.dart';
 import '../../components/layout/uten_content_container.dart';
 import '../../core/network/api_client.dart';
@@ -178,7 +179,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
           _notes.text = _context.releaseNotes;
           _store.text = _context.storeUrl;
         }
-        _notice = '已恢复发布元数据。原提交先核对状态；文件内容不会保存在草稿中，请按提示重选原文件。';
+        _notice = '已恢复发布队列，原提交按原编号核对。草稿不保存文件内容；已收到或已发布的文件无需重传，未上传的原文件才需重选。';
       }
       FormDraftNavigation.register(
         this,
@@ -199,6 +200,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
       });
       try {
         await _queue.load();
+        if (saved != null && _current) await _queue.reconcilePending();
       } catch (_) {
         if (_current) setState(() => _notice = '发布列表暂未读取完整，已保留当前队列。');
       }
@@ -268,7 +270,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
         storeUrl: _store.text,
       ),
     );
-    _queueChanged();
+    _queue.applyDefaults(_context);
   }
 
   void _setTarget(ClientReleasePublishMetadata metadata) {
@@ -276,7 +278,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
     _hadInput = true;
     setState(() => _context = metadata);
     if (_store.text != metadata.storeUrl) _store.text = metadata.storeUrl;
-    _queueChanged();
+    _queue.applyDefaults(_context);
   }
 
   Future<void> _pick(bool multiple, [ClientReleaseQueueItem? replacing]) async {
@@ -319,7 +321,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
       _leave ??= _leaveNow().whenComplete(() => _leave = null);
   Future<bool> _leaveNow() async {
     if (_exitAllowed) return true;
-    if (_queue.busy || _choosing) {
+    if ((_queue.busy && !_queue.readingOnly) || _choosing) {
       setState(() => _notice = '正在完成当前文件或提交状态，请稍候再离开。');
       return false;
     }
@@ -477,19 +479,8 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
                           _contextPanel(),
                           notice,
                           const SizedBox(height: UtenSpacing.s16),
-                          Expanded(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Expanded(child: _workPanel()),
-                                const SizedBox(width: UtenSpacing.s24),
-                                SizedBox(
-                                  width: 300,
-                                  child: SingleChildScrollView(child: summary),
-                                ),
-                              ],
-                            ),
-                          ),
+                          Expanded(child: _workPanel()),
+                          _summaryDisclosure(summary),
                         ],
                       )
                     : SingleChildScrollView(
@@ -506,7 +497,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
                               child: _workPanel(),
                             ),
                             const SizedBox(height: UtenSpacing.s24),
-                            summary,
+                            _summaryDisclosure(summary),
                             const SizedBox(height: UtenSpacing.s24),
                           ],
                         ),
@@ -558,9 +549,19 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
             runSpacing: UtenSpacing.s4,
             alignment: WrapAlignment.spaceBetween,
             children: [
-              Text('版本与适用设备', style: theme.textTheme.titleMedium),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('本批发布设置', style: theme.textTheme.titleMedium),
+                  const UtenFieldHintIcon(
+                    dense: true,
+                    info:
+                        '顶部改动同步尚未生成发布记录且未被单行覆盖的字段。设备和版本/构建各自成组保留；单行可明确恢复使用本批设置。已绑定编号或SHA的项目不会改写。',
+                  ),
+                ],
+              ),
               Text(
-                '新增项目默认值',
+                '可更新 ${_queue.editableCount} 项（含单独设置 ${_queue.overriddenCount} 项） · 已锁定 ${_queue.items.length - _queue.editableCount} 项',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -574,6 +575,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
             onChanged: _setTarget,
             version: _version,
             buildController: _build,
+            showPackageKind: false,
           ),
           const SizedBox(height: UtenSpacing.s12),
           TextField(
@@ -650,6 +652,16 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
                           },
                     child: const Text('添加商店链接'),
                   ),
+                if (_queue.statusReadCount > 0)
+                  UtenButton(
+                    key: const ValueKey('client-release-read-pending'),
+                    type: UtenButtonType.secondary,
+                    icon: Icons.fact_check_outlined,
+                    onPressed: _queue.busy || _choosing
+                        ? null
+                        : _queue.reconcilePending,
+                    child: Text('核对原状态 (${_queue.statusReadCount})'),
+                  ),
               ],
             ),
           ),
@@ -694,6 +706,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
                           _hadInput = true;
                           _queue.edit(item, metadata);
                         },
+                        onUseDefaults: () => _queue.useDefaults(item, _context),
                         onReselect: () => _pick(false, item),
                         onRead: () => _queue.reconcile(item),
                         onRemove: () => _queue.remove(item),
@@ -704,29 +717,54 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
           const Divider(height: 1),
           Padding(
             padding: const EdgeInsets.all(UtenSpacing.s16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _queue.busy
-                        ? '逐项处理，原编号和结果持续保全…'
-                        : '已确认 ${_queue.confirmedCount} 项；失败与待核对项目保留原记录。',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-                UtenButton(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final result = Text(
+                  _queue.busy
+                      ? '逐项处理，原编号和结果持续保全…'
+                      : '已确认 ${_queue.confirmedCount} 项；失败与待核对项目保留原记录。',
+                  style: theme.textTheme.bodySmall,
+                );
+                final action = UtenButton(
                   key: const ValueKey('client-release-publish-batch'),
                   icon: _queue.busy ? null : Icons.publish_rounded,
                   onPressed:
                       !_ready ||
                           _queue.busy ||
                           _choosing ||
-                          _queue.items.isEmpty
+                          _queue.runnableCount == 0
                       ? null
                       : _queue.run,
-                  child: Text(_queue.busy ? '正在处理' : '上传并发布'),
-                ),
-              ],
+                  child: Text(
+                    _queue.busy
+                        ? '正在处理'
+                        : _queue.items.isNotEmpty && !_queue.hasWork
+                        ? '全部已完成'
+                        : _queue.hasUnknown && _queue.runnableCount == 0
+                        ? '先核对原状态'
+                        : _queue.confirmedCount > 0
+                        ? '继续未完成 (${_queue.runnableCount})'
+                        : '上传并发布',
+                  ),
+                );
+                if (constraints.maxWidth < 640 ||
+                    MediaQuery.textScalerOf(context).scale(14) > 21) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      result,
+                      const SizedBox(height: UtenSpacing.s12),
+                      action,
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: result),
+                    action,
+                  ],
+                );
+              },
             ),
           ),
         ],
@@ -890,6 +928,23 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
     );
   }
 
+  Widget _summaryDisclosure(Widget summary) => ExpansionTile(
+    key: const ValueKey('client-release-summary'),
+    title: const Text('交付配对与草稿'),
+    subtitle: Text(
+      '已确认 ${_queue.confirmedCount} 项 · 待核对 ${_queue.items.where((item) => item.uncertain).length} 项',
+    ),
+    children: [
+      ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 280),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(UtenSpacing.s16),
+          child: summary,
+        ),
+      ),
+    ],
+  );
+
   Widget _summary() {
     final theme = Theme.of(context);
     final records = <String, ClientRelease>{
@@ -1002,6 +1057,7 @@ class _QueueRow extends StatefulWidget {
     required this.item,
     required this.busy,
     required this.onEdit,
+    required this.onUseDefaults,
     required this.onReselect,
     required this.onRead,
     required this.onRemove,
@@ -1009,7 +1065,7 @@ class _QueueRow extends StatefulWidget {
   final ClientReleaseQueueItem item;
   final bool busy;
   final ValueChanged<ClientReleasePublishMetadata> onEdit;
-  final VoidCallback onReselect, onRead, onRemove;
+  final VoidCallback onReselect, onRead, onRemove, onUseDefaults;
   @override
   State<_QueueRow> createState() => _QueueRowState();
 }
@@ -1020,6 +1076,17 @@ class _QueueRowState extends State<_QueueRow> {
         text: widget.item.metadata.version,
       ),
       buildText = TextEditingController(text: widget.item.metadata.buildNumber);
+  @override
+  void didUpdateWidget(covariant _QueueRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (version.text != widget.item.metadata.version) {
+      version.text = widget.item.metadata.version;
+    }
+    if (buildText.text != widget.item.metadata.buildNumber) {
+      buildText.text = widget.item.metadata.buildNumber;
+    }
+  }
+
   @override
   void dispose() {
     version.dispose();
@@ -1112,7 +1179,7 @@ class _QueueRowState extends State<_QueueRow> {
             spacing: UtenSpacing.s8,
             children: [
               TextButton(
-                onPressed: item.frozen
+                onPressed: !item.metadataEditable || widget.busy
                     ? null
                     : () => setState(() => expanded = !expanded),
                 child: Text(expanded ? '收起目标' : '核对/编辑目标'),
@@ -1122,7 +1189,7 @@ class _QueueRowState extends State<_QueueRow> {
                   onPressed: widget.busy || item.uncertain
                       ? null
                       : widget.onReselect,
-                  child: const Text('重选文件'),
+                  child: Text(item.needsFile ? '重选原文件' : '更换文件'),
                 ),
               if (item.requestId != null && !item.terminal)
                 TextButton(
@@ -1138,9 +1205,14 @@ class _QueueRowState extends State<_QueueRow> {
                   onPressed: widget.busy ? null : widget.onRemove,
                   child: const Text('移出队列'),
                 ),
+              if (item.metadataEditable && item.metadataOverrides.isNotEmpty)
+                TextButton(
+                  onPressed: widget.busy ? null : widget.onUseDefaults,
+                  child: const Text('使用本批设置'),
+                ),
             ],
           ),
-          if (expanded && !item.frozen)
+          if (expanded && item.metadataEditable)
             _TargetFields(
               metadata: item.metadata,
               enabled: !widget.busy,
@@ -1167,12 +1239,14 @@ class _TargetFields extends StatelessWidget {
     required this.buildController,
     this.onVersion,
     this.onBuild,
+    this.showPackageKind = true,
   });
   final ClientReleasePublishMetadata metadata;
   final bool enabled;
   final ValueChanged<ClientReleasePublishMetadata> onChanged;
   final TextEditingController version, buildController;
   final ValueChanged<String>? onVersion, onBuild;
+  final bool showPackageKind;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) => _fields(context, constraints.maxWidth),
@@ -1283,7 +1357,7 @@ class _TargetFields extends StatelessWidget {
           (architecture) =>
               onChanged(metadata.copyWith(architecture: architecture)),
         ),
-        if (metadata.platform == 'windows')
+        if (metadata.platform == 'windows' && showPackageKind)
           select(
             '包类型',
             metadata.packageKind,

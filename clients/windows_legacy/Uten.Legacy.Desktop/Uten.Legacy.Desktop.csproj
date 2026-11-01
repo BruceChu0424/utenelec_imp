@@ -30,6 +30,9 @@
     <Compile Include="MainWindow.xaml.cs"><DependentUpon>MainWindow.xaml</DependentUpon></Compile>
     <Compile Include="Views\**\*.cs"/><Compile Include="Controls\**\*.cs"/><Compile Include="Updates\**\*.cs"/><Compile Include="Shared\**\*.cs" Exclude="Shared\**\*Checks.cs"/><Compile Include="Features\**\*.cs" Exclude="Features\**\*Checks.cs"/>
     <Compile Include="Features\**\*Checks.cs" Condition="'$(Configuration)' == 'Debug'"/>
+    <EmbeddedResource Include="..\..\..\test\fixtures\client_release_publish_defaults_v1.json" Condition="'$(Configuration)' == 'Debug'">
+      <LogicalName>Uten.PublishBatchDefaultsFixture.json</LogicalName>
+    </EmbeddedResource>
     <Compile Include="Shared\**\*Checks.cs" Condition="'$(Configuration)' == 'Debug'"/>
     <Resource Include="..\..\..\assets\images\logo_ip.png"><Link>Assets\logo_ip.png</Link></Resource>
     <Resource Include="..\..\..\assets\images\logo_name.png"><Link>Assets\logo_name.png</Link></Resource>

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -19,6 +20,7 @@ import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
@@ -108,7 +110,8 @@ class _Api extends ApiClient {
   _Api() : super(Dio(BaseOptions(baseUrl: 'https://fixture.test/api')));
   final creates = <Map<String, dynamic>>[],
       packages = <String>[],
-      publishIds = <String>[];
+      publishIds = <String>[],
+      readIds = <String>[];
   final uploadedBytes = <Uint8List>[],
       records = <String, Map<String, dynamic>>{};
   int listCalls = 0, withdrawCalls = 0;
@@ -153,6 +156,7 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    readIds.add(path.split('/').last);
     final record = records[path.split('/').last];
     if (record == null) {
       throw ApiException(
@@ -237,6 +241,7 @@ Future<void> _pump(
   String architecture = 'x64',
   String kind = 'installer',
   bool tile = false,
+  String? draftId,
   ValueChanged<List<ClientRelease>>? onPublished,
 }) async {
   tester.view.physicalSize = size;
@@ -244,7 +249,9 @@ Future<void> _pump(
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   final router = GoRouter(
-    initialLocation: tile ? '/settings' : RouteName.clientReleasePublish,
+    initialLocation: tile
+        ? '/settings'
+        : '${RouteName.clientReleasePublish}${draftId == null ? '' : '?draftId=$draftId'}',
     routes: [
       GoRoute(
         path: '/settings',
@@ -432,6 +439,105 @@ void main() {
       await _run(tester);
       expect(api.publishIds, hasLength(2));
       expect(api.uploadedBytes, hasLength(2));
+    },
+  );
+  testWidgets(
+    'selected rows follow batch fields and deliberate row edits reset explicitly',
+    (tester) async {
+      final api = _Api();
+      final boundary = GlobalKey();
+      await _pump(tester, api, _Session(_identity()), boundaryKey: boundary);
+      await _add(tester);
+      await _fill(tester);
+      final expand = find.text('核对/编辑目标').first;
+      await _reveal(tester, expand);
+      await tester.tap(expand);
+      await tester.pumpAndSettle();
+      Finder version() => find.widgetWithText(TextField, '版本');
+      Finder build() => find.widgetWithText(TextField, '构建号');
+      expect(
+        tester.widget<TextField>(version().last).controller!.text,
+        '2.5.34',
+      );
+      await _reveal(tester, version().last);
+      await tester.enterText(version().last, '2.5.41');
+      await tester.enterText(build().last, '2541');
+      await tester.pumpAndSettle();
+      await _reveal(tester, version().first);
+      await tester.enterText(version().first, '2.5.42');
+      await tester.enterText(build().first, '2542');
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(version().last).controller!.text,
+        '2.5.41',
+      );
+      expect(tester.widget<TextField>(build().last).controller!.text, '2541');
+      final reset = find.text('使用本批设置');
+      await _reveal(tester, reset);
+      await tester.tap(reset);
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(version().last).controller!.text,
+        '2.5.42',
+      );
+      expect(tester.widget<TextField>(build().last).controller!.text, '2542');
+      await tester.tap(find.text('收起目标'));
+      await tester.pumpAndSettle();
+      await _capture(tester, boundary, 'publisher-batch-following');
+      await _run(tester);
+      expect(api.creates.every((row) => row['version'] == '2.5.42'), isTrue);
+      expect(api.creates.every((row) => row['buildNumber'] == 2542), isTrue);
+      expect(api.creates.map((row) => row['packageKind']).toSet(), {
+        'installer',
+        'update',
+      });
+      final publish = tester.widget<UtenButton>(
+        find.byKey(const ValueKey('client-release-publish-batch')),
+      );
+      expect(publish.onPressed, isNull);
+      expect(find.text('全部已完成'), findsOneWidget);
+      await _capture(tester, boundary, 'publisher-complete-no-reupload');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'restored successful files reconcile their original IDs without a picker or another write',
+    (tester) async {
+      final api = _Api(), storage = _Storage();
+      await _pump(tester, api, _Session(_identity()), storage: storage);
+      await _fill(tester);
+      await _add(tester);
+      await _run(tester);
+      final originalIds = api.creates.map((row) => row['requestId']).toList();
+      final draftId =
+          (jsonDecode(storage.records.values.single) as Map)['id'] as String;
+      final readCount = api.readIds.length;
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      await _pump(
+        tester,
+        api,
+        _Session(_identity()),
+        storage: storage,
+        draftId: draftId,
+        files: [],
+      );
+      expect(api.readIds.skip(readCount), originalIds);
+      expect(find.text('已确认发布'), findsNWidgets(2));
+      expect(find.text('全部已完成'), findsOneWidget);
+      expect(
+        tester
+            .widget<UtenButton>(
+              find.byKey(const ValueKey('client-release-publish-batch')),
+            )
+            .onPressed,
+        isNull,
+      );
+      expect(api.creates, hasLength(2));
+      expect(api.uploadedBytes, hasLength(2));
+      expect(api.publishIds, hasLength(2));
+      expect(tester.takeException(), isNull);
     },
   );
   testWidgets('single file upload preserves its exact legacy X86 target', (
@@ -830,6 +936,9 @@ void main() {
           );
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
+          if (width == 375 && scale == 2 && brightness == Brightness.dark) {
+            await _capture(tester, key, '$name-action');
+          }
         });
       }
     }

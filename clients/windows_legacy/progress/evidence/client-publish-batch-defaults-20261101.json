@@ -1,0 +1,194 @@
+{
+  "evidenceId": "E-W7-NEXT-PUBLISH-DEFAULTS-20261101",
+  "recordedAtUtc": "2026-11-01T06:39:22.246097+00:00",
+  "branch": "uimp/client-publish-workbench-next-20261101",
+  "baselineCommit": "9477b9c7a50677f524048736d844ccbeafccacae",
+  "workItems": [
+    "W7-BIZ-215",
+    "W7-CORE-023",
+    "W7-UI-013"
+  ],
+  "sourceIdentity": "Exact verified source hashes below; final Git commit is supplied in the handoff.",
+  "environment": {
+    "machine": "developer Windows 11 x64; not a Win7 target PC",
+    "msbuild": "D:/Software/Visual Studio Installe/MSBuild/Current/Bin/MSBuild.exe",
+    "python": "C:/Program Files/LibreOffice/program/python.exe",
+    "buildScope": "next-publish-defaults",
+    "pinnedPrivateTlsDependencyVerified": true,
+    "globalSdkOrPackageCacheChanged": false
+  },
+  "results": {
+    "flutterTests": 78,
+    "flutterFailures": 0,
+    "flutterSkipped": 0,
+    "flutterAnalyzeTargets": 6,
+    "flutterAnalyzeIssues": 0,
+    "fixtureCaptureScenarios": 13,
+    "nativePublishAssertionsPerArchitecture": 95,
+    "nativeArchitectures": [
+      "x86",
+      "x64"
+    ],
+    "actualNativeViewConstructionMeasureArrange": true,
+    "nativeCompilerWarnings": 0,
+    "nativeVerificationSucceeded": true,
+    "formalPackageCreated": false,
+    "productionRequestsExecuted": false,
+    "targetPcAcceptance": false,
+    "progressToolTests": 14,
+    "canonicalProgressCheckPassed": true,
+    "otherOriginalWorkItemsPreserved": 352,
+    "historyOriginalRows": 83,
+    "historyFinalRows": 89,
+    "versionAndLockUnchanged": true
+  },
+  "sharedSample": {
+    "path": "test/fixtures/client_release_publish_defaults_v1.json",
+    "sha256": "d23724d020f66375fd3bdff817787eadfa857fbcc4969513706d303b93f0134e"
+  },
+  "sourceFiles": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/ClientReleaseModels.cs",
+      "sha256": "9a4cae3147ee2f884b93bcedf2a0a912f51856e6c2f53fc88e25842eeef7c7f8"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/ClientReleasePublishContract.cs",
+      "sha256": "9619df93dadb24a3541aca9ed0164c2904a8d8cdda5434ef6801c9f1692e9ccd"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/ClientReleasePublishQueue.cs",
+      "sha256": "16da37f051f16f461eed586218ba484447746f3404350d5a1c763e8c1a4ee343"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleasePublishView.cs",
+      "sha256": "f6072d419da8fdf6376db4e26b809132c3c7da0c62ff5ca9178cb2029510b27f"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleaseTargetEditor.cs",
+      "sha256": "42467b746a89a4992026dc6c45a1139d269a2499dccec68a30d75da7d3e9684c"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/PublishContractChecks.cs",
+      "sha256": "bd8ed95a33cc2b44b490c5f411d6ab8943b0dd7d4597b2e32152be28ca7931e6"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Uten.Legacy.Desktop.csproj",
+      "sha256": "d8508edb97e8e973dff25b3e673324880b8c8176cf9c470ec3fe49096f3241a9"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+      "sha256": "e2621c2c1cccbbc16d4d4777a55d0928bff1225d2eb2945faf1f58c868ebbec9"
+    },
+    {
+      "path": "clients/windows_legacy/design-token-provenance.json",
+      "sha256": "8b0025197b44982bfbfe87ab295134cbcd06b02cc7688837b6eea2387c2751f3"
+    },
+    {
+      "path": "lib/features/client_update/client_release_publish_drafts.dart",
+      "sha256": "bf9bafd85b51120b674c18e9accd1cc243f8e43c50a174dd00e38ebe116eb814"
+    },
+    {
+      "path": "lib/features/client_update/client_release_publish_page.dart",
+      "sha256": "d2391f39613d6db1d3fd3f30dc056f6c75d1444ae966391ba5913cbb43ae7e83"
+    },
+    {
+      "path": "lib/features/client_update/client_release_publish_queue.dart",
+      "sha256": "1034faa96afbe2d8a4d07afd7de6a8b212fb667a7659ee4c4cec63da61b66e52"
+    },
+    {
+      "path": "test/features/client_update/client_release_publish_drafts_test.dart",
+      "sha256": "028a96cb4611cff2d532872cc292101622d334729a46f3114b66c5e8b8584af1"
+    },
+    {
+      "path": "test/features/client_update/client_release_publish_queue_test.dart",
+      "sha256": "298559a3895ba4b0e73eaf59a7a5597731da113e2dfedcefaece8e4b3c3cbcd3"
+    },
+    {
+      "path": "test/features/client_update/client_release_publish_test.dart",
+      "sha256": "95d927fbee9bc897510c347c681b0b3f14a9d3f635ac7c43c3f2fa45584195f0"
+    },
+    {
+      "path": "test/fixtures/client_release_publish_defaults_v1.json",
+      "sha256": "d23724d020f66375fd3bdff817787eadfa857fbcc4969513706d303b93f0134e"
+    }
+  ],
+  "logs": [
+    {
+      "path": "build-client-publish-next-final-tests.log",
+      "sha256": "5e2bb6b108d7e067ddf411817af23dde55280dc933672f583625c56023cbc295"
+    },
+    {
+      "path": "build-client-publish-next-final-analyze.log",
+      "sha256": "f656f1477e022c6f446417b74f9eef1f8f5eac87ee20248984e8c7e00c8d18a1"
+    },
+    {
+      "path": "build-client-publish-next-capture.log",
+      "sha256": "75b60657c153b3fa484fdfe8a00fe7cfcc1f48ea5dedadd8e91461deb23a9ccb"
+    },
+    {
+      "path": "build/windows-wpf/verification/b8f23c0f-1281-478f-b38f-ea4cafa56218/verification.json",
+      "sha256": "98b3b0b838ed858153bb5fc36c437847b83e375d7bc666f5f67a77512dccb49f"
+    },
+    {
+      "path": "build/windows-wpf/verification/b8f23c0f-1281-478f-b38f-ea4cafa56218/x86-build.log",
+      "sha256": "161b9f639d2c58559e24eb968280bf24321782d86334da69731dfd069ce0fe63"
+    },
+    {
+      "path": "build/windows-wpf/verification/b8f23c0f-1281-478f-b38f-ea4cafa56218/x86-tests.log",
+      "sha256": "ac5b49386db3a44dcd567792f0a7973d0cbf45f861a18f8fdc7b12e3770c65d8"
+    },
+    {
+      "path": "build/windows-wpf/verification/b8f23c0f-1281-478f-b38f-ea4cafa56218/x64-build.log",
+      "sha256": "13841461c6d3c8381b74f781e8a3464f045b1d7a06b61ccc35d5a97d8ad6258e"
+    },
+    {
+      "path": "build/windows-wpf/verification/b8f23c0f-1281-478f-b38f-ea4cafa56218/x64-tests.log",
+      "sha256": "f7c4ec5df457309283e179cc9fb8cd8efc0ad6c890fcc4693cd7f6e02af32bd6"
+    },
+    {
+      "path": "build-client-publish-next-progress-tests.log",
+      "sha256": "4a21be2b6186cd620a3ea217db6cb49f7af2732d446d004ae302bfac831e4887"
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "build/software-downloads-20261028/previews/publisher-batch-following.png",
+      "sha256": "277e67ae9256545ca756159ea303a8e63c270f77a4355af263e2167897c9b9e5"
+    },
+    {
+      "path": "build/software-downloads-20261028/previews/publisher-complete-no-reupload.png",
+      "sha256": "b2ba44d4ee757244e8ce654fa630c14deeda6e7bb2923cce4194d31000698f88"
+    },
+    {
+      "path": "build/software-downloads-20261028/previews/publisher-1440-light-100.png",
+      "sha256": "f75c81e7c2dd2aeec726188d92b58f7c0a027ac979fa258be93f5ed887278dd4"
+    },
+    {
+      "path": "build/software-downloads-20261028/previews/publisher-375-dark-200.png",
+      "sha256": "c4a8d91c5b27448025f303c31ad729a01463314a74b69c38dd8a0125cc2886e7"
+    },
+    {
+      "path": "build/software-downloads-20261028/previews/publisher-375-dark-200-action.png",
+      "sha256": "4a0c8c6b31d92c944fac9d573ee82a7a453dc66232af154d8e8567cf49932d78"
+    }
+  ],
+  "covered": [
+    "batch defaults with finite field ownership and grouped manual choices",
+    "frozen request/release/SHA metadata",
+    "pre-read validation retains picked source",
+    "same-original-ID read-only recovery and successful no-reupload",
+    "legacy conservative origins and invalid-origin rejection",
+    "one shared Flutter/C# JSON sample",
+    "actual native View construction/Measure/Arrange after parent and typed-radius fixes",
+    "existing full native contract and UI groups on x86/x64"
+  ],
+  "notCovered": [
+    "new full-width/disclosure/native adaptive layout tracked as W7-UI-013 TODO",
+    "Win7 SP1 real target machines and DPI/IME UAT",
+    "real company prepare/upload/publish/withdraw",
+    "power-loss and real network recovery acceptance",
+    "formal installer/update ZIP or publication",
+    "complete ERP migration"
+  ],
+  "oldFailureEvidence": "Original-main-line comparison, original-parent STA proof and three failure stacks are kept separate; exact paths/hashes were handed to the main canonical owner. This evidence describes only the next fixed source."
+}

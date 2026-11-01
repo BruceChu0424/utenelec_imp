@@ -31,6 +31,19 @@ namespace Uten.Legacy.Tests
                 new ServerEndpoint("first", "第一测试服务器", "https://first.company.test/api"),
                 new ServerEndpoint("second", "第二测试服务器", "https://second.company.test/api")
             }, "first");
+            using (var session = new SessionCoordinator(configuration, new NoNetworkHandler(), new MemoryStore()))
+            using (var publisher = new Uten.Legacy.Desktop.Features.Publish.ClientReleasePublishView(session))
+            {
+                // Construct the actual native caller with application resources, without
+                // loading/authenticating it or dispatching a server request.
+                publisher.Measure(new Size(1440, 1000));
+                publisher.Arrange(new Rect(0, 0, 1440, 1000));
+                var host = publisher.Content as Grid;
+                var content = host == null ? null : host.Children.OfType<DockPanel>().SingleOrDefault();
+                var header = content == null ? null : content.Children.OfType<Border>().SingleOrDefault();
+                if (header == null || DockPanel.GetDock(header) != Dock.Top)
+                    throw new InvalidOperationException("Publish workspace must keep its header above one correctly parented target editor.");
+            }
             var pendingStore = new MemoryStore();
             pendingStore.EnqueueRevocation(new StoredSession("refresh.fixture", "https://first.company.test/api", "first", "fixture-user"));
             using (var session = new SessionCoordinator(configuration, new NoNetworkHandler(), pendingStore))

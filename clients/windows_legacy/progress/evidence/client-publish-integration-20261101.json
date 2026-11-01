@@ -1,0 +1,283 @@
+{
+  "schemaVersion": 1,
+  "state": "SOURCE_INTEGRATION_REVIEWED_TARGETED_TESTS_PASSED",
+  "baselineCommit": "2643110f7f6a5cd4f1b40a8f56e96f3309c0cf54",
+  "frontendFixCommit": "b1009ea320b689f433ed3159bbe1f7980047cacf",
+  "featureCommit": "8773e9fd0e67d83a50cd0565b45d8372ff9b2aac",
+  "scope": "2.5.42 authorized source integration; no package, deploy, live queue or permission writes",
+  "flutter": {
+    "tests": 79,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "evidence": "output/release-2542-client-publish-integration-20261101/flutter-publish-combined.raw.log",
+    "analyzeTargets": 6,
+    "analyzeIssues": 0,
+    "pageCaptureTests": 28,
+    "capturePngCount": 15,
+    "visuallyInspected": [
+      "publisher-batch-following.png",
+      "publisher-375-dark-200-action.png"
+    ]
+  },
+  "wpf": {
+    "candidateOnly": true,
+    "currentIntegrationResult": "X86_X64_PASS",
+    "targetPcAcceptance": false,
+    "formalPackageCreated": false,
+    "publishAssertionsX86": 95,
+    "actualViewConstructionMeasureArrangeX86": true,
+    "verificationDirectory": "D:\\Projects\\uten_imp_worktrees\\release2542-client-publish-integration\\build\\windows-wpf\\verification\\00b819c9-be3d-458f-a8fd-80c5e6f72109",
+    "fullVerificationFinished": true,
+    "publishAssertionsPerArchitecture": 95,
+    "actualViewConstructionMeasureArrangeBoth": true,
+    "verificationReceiptSha256": "95e065c4f2d25d741f3cdf50e108693982cc10502d615e22a98a0bfae42ac231",
+    "completedAtUtc": "2026-11-01T19:06:08.0273187Z"
+  },
+  "registry": {
+    "priorTasks": 359,
+    "priorDone": 10,
+    "expectedTotal": 361,
+    "existingStatusOwnerDoDPreserved": true,
+    "originalMainHistoryPrefixPreserved": true,
+    "newTasks": [
+      "W7-CORE-023",
+      "W7-UI-013"
+    ],
+    "unimplementedNativeLayout": "W7-UI-013 todo",
+    "newCoreStatus": "implemented retained conservatively; full local x86/x64 passed after initial checkpoint, no done or target acceptance",
+    "mainOriginalHistoryRows": 104
+  },
+  "originalFeatureHistory": {
+    "preservedInSourceCommit": "8773e9fd0e67d83a50cd0565b45d8372ff9b2aac",
+    "fullDoDAndHistoryDeltaSaved": "output/release-2542-client-publish-integration-20261101/feature-original-task-history-provenance.json",
+    "old355_11SnapshotImported": false
+  },
+  "notCovered": [
+    "Win7 target machine and full ERP acceptance",
+    "native full-width adaptive publisher layout",
+    "real company publish/download",
+    "formal client packaging or activation"
+  ],
+  "recordedAtUtc": "2026-11-01T19:06:36.150788+00:00",
+  "decisions": [
+    "Applied only877 feature delta to264+b100; no old9477 server or migration changes",
+    "All8 conflicts were old generated registry/docs; regenerated from current source and retained all359 original tasks",
+    "CORE023 finite batch field ownership is independent from generic draft/unknown contracts; UI013 native full-width layout remains separate TODO",
+    "Exact same35min Web upload budget owner blobs; unknownprogress null branch retained; originalrequest/release IDs frozen; GET-only recovery and no reupload of alreadyuploaded packages",
+    "WPF is private Debug candidate only; no package or production requests; native full-width layout and Win7 UAT remain unimplemented"
+  ],
+  "historicalSource877TaskAndHistoryProvenance": {
+    "sourceCommit": "8773e9fd0e67d83a50cd0565b45d8372ff9b2aac",
+    "oldSource": "9477b9c7a50677f524048736d844ccbeafccacae",
+    "originalNewTasks": [
+      {
+        "id": "W7-CORE-023",
+        "title": "客户端发布批设置与原编号恢复合同增量（下一版）",
+        "group": "CORE",
+        "groupLabel": "公共客户端与业务安全",
+        "phase": "B",
+        "status": "verified_local",
+        "impactArea": "frontend+shared-contract",
+        "owner": "Codex",
+        "sources": [
+          "lib/features/client_update/client_release_publish_queue.dart",
+          "lib/features/client_update/client_release_publish_drafts.dart",
+          "lib/features/client_update/client_release_publish_page.dart",
+          "test/features/client_update/client_release_publish_queue_test.dart",
+          "test/features/client_update/client_release_publish_drafts_test.dart",
+          "test/features/client_update/client_release_publish_test.dart",
+          "test/fixtures/client_release_publish_defaults_v1.json"
+        ],
+        "nativeTargets": [
+          "clients/windows_legacy/Uten.Legacy.Core/ClientReleasePublishQueue.cs",
+          "clients/windows_legacy/Uten.Legacy.Core/ClientReleasePublishContract.cs",
+          "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleasePublishView.cs",
+          "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleasePublishDraftLease.cs",
+          "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleaseTargetEditor.cs"
+        ],
+        "dependencies": [
+          "W7-BIZ-215",
+          "W7-CORE-014"
+        ],
+        "definitionOfDone": [
+          "按公共发布合同迁移批默认的有限字段归属：未提交且未手动覆盖才联动，设备与版本成组；绑定requestId/releaseId/SHA及已发布项目永不改写元数据。",
+          "原编号批量只读核对与草稿恢复不创建、不重传、不重发未知命令；已成功和已上传分支沿原身份继续，回归晚到结果及身份/服务器/权限变化。",
+          "区分尚未读取的验证失败和已消耗的一次性文件流，减少无谓重选；浏览器刷新不保存无授权文件，WPF文件来源按原生授权合同保留必要平台差异，同SHA约束不变。",
+          "在x86/x64执行合同及真实调用方回归，并完成Win7目标机适用验收；旧215本机证据不代替此新增差异，全部适用DoD满足前保持未完成。"
+        ],
+        "evidence": [
+          "docs/99-项目治理/2026-11-01-客户端发布工作台批设置与恢复.md",
+          "clients/windows_legacy/progress/evidence/client-publish-batch-defaults-20261101.json"
+        ],
+        "notes": "最小适用合同已同步Flutter与WPF：有限字段继承/覆盖来源、三身份冻结、pre-read保留、同原ID批GET/恢复、成功禁重复上传。共享JSON样例两语言实际消费，Flutter78、原生publish95每arch及实际View/UI组在x86/x64全绿。仅开发机证据，真server/Win7/掉电等未验；新布局另归UI013 TODO。",
+        "lastUpdated": "2026-11-01T06:39:22.584576+00:00"
+      },
+      {
+        "id": "W7-UI-013",
+        "title": "客户端发布工作台全宽队列与自适应布局（下一版）",
+        "group": "UI",
+        "groupLabel": "Uten同源界面与交互",
+        "phase": "C",
+        "status": "todo",
+        "impactArea": "frontend",
+        "owner": "待实施",
+        "sources": [
+          "lib/features/client_update/client_release_publish_page.dart",
+          "test/features/client_update/client_release_publish_test.dart"
+        ],
+        "nativeTargets": [
+          "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleasePublishView.cs",
+          "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleaseTargetEditor.cs"
+        ],
+        "dependencies": [
+          "W7-CORE-023",
+          "W7-UI-001",
+          "W7-UI-012"
+        ],
+        "definitionOfDone": [
+          "迁移本批联动范围提示、全宽队列与可展开配对/草稿说明，保留Uten同源主题和既有原生键盘操作。",
+          "以宽窄窗口、明暗主题、100%/200%字体和目标机DPI对照Flutter，状态结果与主操作自适应排布，不挤窄说明或遮挡关键动作。",
+          "保留CORE-023的冻结、原ID核对与成功禁重传合同；完整实际交互和Win7目标机验收前保持未完成，不把旧215或仅编译证据充作新版UI通过。"
+        ],
+        "evidence": [
+          "docs/99-项目治理/2026-11-01-客户端发布工作台批设置与恢复.md"
+        ],
+        "notes": "新布局尚未迁移到WPF；共享行为增量归CORE-023。独立下一版，不纳入2.5.39，不授权正式打包或发布。",
+        "lastUpdated": "2026-11-01"
+      }
+    ],
+    "originalHistoryDelta": [
+      {
+        "atUtc": "2026-11-01T06:08:08.069002+00:00",
+        "id": "W7-CORE-023",
+        "from": "unregistered",
+        "to": "todo",
+        "owner": "待实施",
+        "note": "Source inventory sync; stable task identity preserved.",
+        "evidence": [
+          "docs/99-项目治理/2026-11-01-客户端发布工作台批设置与恢复.md"
+        ],
+        "acceptanceReviewed": false
+      },
+      {
+        "atUtc": "2026-11-01T06:08:08.475016+00:00",
+        "id": "W7-BIZ-215",
+        "from": "verified_local",
+        "to": "verified_local",
+        "owner": "Codex",
+        "note": "保留2026-10-30原生工作台本机检查点与既有证据；尚未完成真实服务器、Win7目标机与正式双包验收。下一版批设置字段归属、原ID批量GET恢复和新布局为未迁移新增差异，单列W7-CORE-023 TODO；本项旧验证不覆盖该增量。",
+        "evidence": [
+          "clients/windows_legacy/progress/evidence/software-download-publish-20261028.json",
+          "clients/windows_legacy/progress/evidence/publish-workbench-20261030.json"
+        ],
+        "acceptanceReviewed": false
+      },
+      {
+        "atUtc": "2026-11-01T06:33:13.422309+00:00",
+        "id": "W7-UI-013",
+        "from": "unregistered",
+        "to": "todo",
+        "owner": "待实施",
+        "note": "Source inventory sync; stable task identity preserved.",
+        "evidence": [
+          "docs/99-项目治理/2026-11-01-客户端发布工作台批设置与恢复.md"
+        ],
+        "acceptanceReviewed": false
+      },
+      {
+        "atUtc": "2026-11-01T06:37:47.701697+00:00",
+        "id": "W7-BIZ-215",
+        "from": "verified_local",
+        "to": "in_progress",
+        "owner": "Codex",
+        "note": "旧75项为协议证据，新增真实View构造/Arrange证明原两个重复逻辑父级和CardValue错误类型，旧本机UI可用性失效；历史证据保留。仅next隔离分支已最小修复，待新增完整两架构本机证据后再恢复verified_local；真server/Win7/UAT/正式双包仍未验。",
+        "evidence": [
+          "clients/windows_legacy/progress/evidence/software-download-publish-20261028.json",
+          "clients/windows_legacy/progress/evidence/publish-workbench-20261030.json"
+        ],
+        "acceptanceReviewed": false
+      },
+      {
+        "atUtc": "2026-11-01T06:39:22.584576+00:00",
+        "id": "W7-CORE-023",
+        "from": "todo",
+        "to": "verified_local",
+        "owner": "Codex",
+        "note": "最小适用合同已同步Flutter与WPF：有限字段继承/覆盖来源、三身份冻结、pre-read保留、同原ID批GET/恢复、成功禁重复上传。共享JSON样例两语言实际消费，Flutter78、原生publish95每arch及实际View/UI组在x86/x64全绿。仅开发机证据，真server/Win7/掉电等未验；新布局另归UI013 TODO。",
+        "evidence": [
+          "docs/99-项目治理/2026-11-01-客户端发布工作台批设置与恢复.md",
+          "clients/windows_legacy/progress/evidence/client-publish-batch-defaults-20261101.json"
+        ],
+        "acceptanceReviewed": false
+      },
+      {
+        "atUtc": "2026-11-01T06:39:23.142619+00:00",
+        "id": "W7-BIZ-215",
+        "from": "in_progress",
+        "to": "verified_local",
+        "owner": "Codex",
+        "note": "旧75项仅协议事实与原历史保留；本next独立源码已修两处原逻辑父级及typed CornerRadius，新增真实View构造/Measure/Arrange与完整x86/x64 runner全绿，publish95每arch。凭新增本机证据恢复verified_local，不代表完整迁移、正式支持或Win7/真server验收；合同增量CORE023，新布局UI013 TODO。",
+        "evidence": [
+          "clients/windows_legacy/progress/evidence/software-download-publish-20261028.json",
+          "clients/windows_legacy/progress/evidence/publish-workbench-20261030.json",
+          "clients/windows_legacy/progress/evidence/client-publish-batch-defaults-20261101.json"
+        ],
+        "acceptanceReviewed": false
+      }
+    ],
+    "integrationBaselineTasks": 359,
+    "integrationBaselineDone": 10
+  },
+  "reviewedOwnerBoundaries": [
+    "ClientReleasePublishQueue.run skips Uploaded before upload and skips terminal; strict validateRecord identity/SHA/size",
+    "Flutter gateway.begin/current guards preserve owner after await; native ReadClientReleaseAsync rechecks MutationOwnerLocked before returning",
+    "Metadata override finite allowlist, legacy origins conservative, target/version grouped, explicitly UseDefaults only reset",
+    "Native shared defaults fixture is Debug-only resource; Uten Card CornerRadius typed and actual view parenting fixed"
+  ],
+  "logs": [
+    {
+      "path": "D:\\Projects\\uten_imp\\output\\release-2542-client-publish-integration-20261101\\flutter-publish-combined.raw.log",
+      "sha256": "e2cb928c499539a0d14f027f43616a28a612311981cf06b0042166d91143809a"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp\\output\\release-2542-client-publish-integration-20261101\\flutter-analyze.raw.log",
+      "sha256": "bc1e8cdd9f71091a2749dcb48ccbfc3413f6159ae29ec6ddbc9213255faad8ab"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp\\output\\release-2542-client-publish-integration-20261101\\flutter-page-capture.raw.log",
+      "sha256": "1d9724604a4a55a438dc9585db1f4862f01e94322c60c2e36df8d1d963bcd297"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp\\output\\release-2542-client-publish-integration-20261101\\progress-tool-tests.raw.log",
+      "sha256": "9d04c0133303cb0046db241f1ebd82adb9a295048dcac9f7621b296cc091d8c8"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\release2542-client-publish-integration\\build\\windows-wpf\\verification\\00b819c9-be3d-458f-a8fd-80c5e6f72109\\x86-build.log",
+      "sha256": "64ed5852dba44ecd16c340ee3f5fd76342cc415088f1b8c4ea3fff4e2be71b92"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\release2542-client-publish-integration\\build\\windows-wpf\\verification\\00b819c9-be3d-458f-a8fd-80c5e6f72109\\x86-tests.log",
+      "sha256": "ac5b49386db3a44dcd567792f0a7973d0cbf45f861a18f8fdc7b12e3770c65d8"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\release2542-client-publish-integration\\build\\windows-wpf\\verification\\00b819c9-be3d-458f-a8fd-80c5e6f72109\\verification.json",
+      "sha256": "95e065c4f2d25d741f3cdf50e108693982cc10502d615e22a98a0bfae42ac231"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\release2542-client-publish-integration\\build\\windows-wpf\\verification\\00b819c9-be3d-458f-a8fd-80c5e6f72109\\x64-build.log",
+      "sha256": "a15e634bc94fd759c8b27d474efe6e98e8fea14f3ea2fba10e439f0c0ef946a3"
+    },
+    {
+      "path": "D:\\Projects\\uten_imp_worktrees\\release2542-client-publish-integration\\build\\windows-wpf\\verification\\00b819c9-be3d-458f-a8fd-80c5e6f72109\\x64-tests.log",
+      "sha256": "f7c4ec5df457309283e179cc9fb8cd8efc0ad6c890fcc4693cd7f6e02af32bd6"
+    }
+  ],
+  "progressToolTests": 15,
+  "runningChecksNotClaimedGreen": [],
+  "initialNativeCheckpoint": {
+    "atUtc": "2026-11-01T19:06:36.150788+00:00",
+    "result": "x86 PASS95; x64 was running; no result inferred"
+  },
+  "allCurrentTargetedVerificationCompletedAtUtc": "2026-11-01T19:07:26.836023+00:00"
+}

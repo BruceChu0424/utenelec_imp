@@ -33,7 +33,7 @@ namespace Uten.Legacy.Desktop.Features.Publish
         private readonly Button addMany = new Button { Content = "批量添加" };
         private readonly Button addStore = new Button { Content = "添加商店链接", Visibility = Visibility.Collapsed };
         private readonly Button run = new Button { Content = "上传并发布" };
-        private readonly Button refreshLedger = new Button { Content = "刷新发布记录" };
+        private readonly Button refreshLedger = new Button { Content = "刷新并核对原状态" };
         private readonly Button saveDraft = new Button { Content = "保存发布草稿" };
         private readonly ScrollViewer workScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         private readonly ScrollViewer summaryScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -70,7 +70,8 @@ namespace Uten.Legacy.Desktop.Features.Publish
             run.Click += async delegate { await RunQueueAsync(); };
             refreshLedger.Click += async delegate { await ReloadLedgerAsync(); };
             saveDraft.Click += delegate { SaveDraft(); };
-            releaseNotes.TextChanged += delegate { hadInput = true; ScheduleDraftSave(); };
+            releaseNotes.TextChanged += delegate { ApplyBatchContext(); };
+            contextEditor.Changed += ApplyBatchContext;
             debounce.Tick += delegate { debounce.Stop(); SaveDraft(); };
             session.SessionChanged += OnSessionChanged;
             Loaded += async delegate { await InitializeAsync(); };
@@ -111,7 +112,7 @@ namespace Uten.Legacy.Desktop.Features.Publish
             });
             lockedPanel.SetResourceReference(TextBlock.ForegroundProperty, "Uten.Error");
             var host = new Grid();
-            host.Children.Add(page);
+            host.Children.Add(content);
             host.Children.Add(lockedPanel);
             Content = host;
             workScroll.Content = BuildWorkPanel();
@@ -131,18 +132,23 @@ namespace Uten.Legacy.Desktop.Features.Publish
             var head = new StackPanel { Margin = new Thickness(0, 0, 0, Space("S16")) };
             head.Children.Add(title);
             head.Children.Add(subtitle);
-            DockPanel.SetDock(head, Dock.Top);
-            return new Border { Child = head };
+            var header = new Border { Child = head };
+            DockPanel.SetDock(header, Dock.Top);
+            return header;
         }
 
         private Border BuildContextPanel()
         {
             var panel = new StackPanel { Margin = new Thickness(0, 0, 0, Space("S12")) };
-            var caption = new TextBlock { Text = "版本与适用设备", Margin = new Thickness(0, 0, 0, Space("S8")), Style = (Style)FindResource("Uten.SectionTitle") };
+            var caption = new TextBlock { Text = "本批发布设置", Margin = new Thickness(0, 0, 0, Space("S8")), Style = (Style)FindResource("Uten.SectionTitle") };
             panel.Children.Add(caption);
             var editorHost = new StackPanel();
             var fields = new StackPanel { Orientation = Orientation.Horizontal };
-            foreach (var child in contextEditor.Root.Children.Cast<UIElement>().ToList()) fields.Children.Add(child);
+            foreach (var child in contextEditor.Root.Children.Cast<UIElement>().ToList())
+            {
+                contextEditor.Root.Children.Remove(child);
+                fields.Children.Add(child);
+            }
             editorHost.Children.Add(fields);
             var notesLabel = new TextBlock { Text = "发布说明", Margin = new Thickness(0, Space("S8"), 0, Space("S4")) };
             notesLabel.SetResourceReference(TextBlock.ForegroundProperty, "Uten.Muted");
@@ -232,7 +238,7 @@ namespace Uten.Legacy.Desktop.Features.Publish
             var border = new Border { Child = content as UIElement, Padding = new Thickness(Space("S16")), Margin = new Thickness(0, 0, 0, Space("S12")) };
             border.SetResourceReference(Border.BorderBrushProperty, "Uten.Border");
             border.SetResourceReference(Border.BackgroundProperty, "Uten.Surface");
-            border.SetResourceReference(Border.CornerRadiusProperty, "Uten.Radius.CardValue");
+            border.SetResourceReference(Border.CornerRadiusProperty, "Uten.Radius.Card");
             return border;
         }
 
@@ -283,11 +289,14 @@ namespace Uten.Legacy.Desktop.Features.Publish
                         contextEditor.Bind(MetadataFromContext(snapshot.Context));
                         releaseNotes.Text = ContextText(snapshot.Context, "releaseNotes");
                     }
-                    Status("已恢复发布元数据。原提交先核对状态；文件内容不会保存在草稿中，请按提示重选原文件。", false);
+                    Status("已恢复发布队列，将按原编号核对；已收到或已发布的文件无需重传，未上传的原文件才需重选。", false);
                 }
                 ready = true;
                 UpdateControls();
-                try { await queue.LoadAsync(lifetime.Token); }
+                try {
+                    await queue.LoadAsync(lifetime.Token);
+                    if (stored != null) await queue.ReconcilePendingAsync(lifetime.Token);
+                }
                 catch (Exception) { Status("发布列表暂未读取完整，已保留当前队列。", true); }
             }
             catch (Exception error)
@@ -381,6 +390,19 @@ namespace Uten.Legacy.Desktop.Features.Publish
             debounce.Start();
         }
 
+        private ClientReleasePublishMetadata BatchContext()
+        {
+            var metadata = contextEditor.Read();
+            metadata.ReleaseNotes = releaseNotes.Text;
+            return metadata;
+        }
+        private void ApplyBatchContext()
+        {
+            if (!ready || retired || queue == null || queue.Busy) return;
+            hadInput = true;
+            queue.ApplyDefaults(BatchContext());
+        }
+
         private bool SaveDraft()
         {
             if (!ready || retired || discarding || disposed) return true;
@@ -430,7 +452,7 @@ namespace Uten.Legacy.Desktop.Features.Publish
                     else
                     {
                         foreach (var path in dialog.FileNames)
-                            queue.AddFile(path, new System.IO.FileInfo(path).Length, contextEditor.Read());
+                            queue.AddFile(path, new System.IO.FileInfo(path).Length, BatchContext());
                     }
                     hadInput = true;
                     SaveDraft();
@@ -449,7 +471,7 @@ namespace Uten.Legacy.Desktop.Features.Publish
             if (!ready || retired || queue.Busy) return;
             try
             {
-                var metadata = contextEditor.Read();
+                var metadata = BatchContext();
                 var error = metadata.ValidationError();
                 if (error != null && error != "请填写该平台的官方商店链接。") { Status(error, true); return; }
                 queue.AddStore(metadata);
@@ -470,7 +492,7 @@ namespace Uten.Legacy.Desktop.Features.Publish
         private async System.Threading.Tasks.Task ReloadLedgerAsync()
         {
             if (!ready || retired) return;
-            try { await queue.LoadAsync(lifetime.Token); }
+            try { await queue.LoadAsync(lifetime.Token); await queue.ReconcilePendingAsync(lifetime.Token); }
             catch (Exception) { Status("发布记录刷新未完成，请稍后重试。", true); }
         }
 
@@ -541,6 +563,7 @@ namespace Uten.Legacy.Desktop.Features.Publish
             public Button Replace;
             public Button Reconcile;
             public Button Remove;
+            public Button UseDefaults;
         }
 
         private void RebuildRows()
@@ -612,10 +635,12 @@ namespace Uten.Legacy.Desktop.Features.Publish
             row.Replace = RowButton("重选文件", delegate { PickFiles(false, item); });
             row.Reconcile = RowButton("核对原状态", async delegate { await queue.ReconcileAsync(item, lifetime.Token); });
             row.Remove = RowButton("移除", delegate { queue.Remove(item); });
+            row.UseDefaults = RowButton("使用本批设置", delegate { queue.UseDefaults(item, BatchContext()); });
             actions.Children.Add(row.Edit);
             actions.Children.Add(row.Replace);
             actions.Children.Add(row.Reconcile);
             actions.Children.Add(row.Remove);
+            actions.Children.Add(row.UseDefaults);
             Grid.SetColumn(actions, 1);
             grid.Children.Add(actions);
             row.Card = WrapCard(grid);
@@ -652,7 +677,7 @@ namespace Uten.Legacy.Desktop.Features.Publish
             row.Progress.Visibility = item.Stage == ClientReleaseQueueStage.Uploading ? Visibility.Visible : Visibility.Collapsed;
             row.Progress.Value = item.Progress;
             var busy = queue.Busy;
-            row.Edit.Visibility = item.Frozen ? Visibility.Collapsed : Visibility.Visible;
+            row.Edit.Visibility = item.MetadataEditable ? Visibility.Visible : Visibility.Collapsed;
             row.Edit.IsEnabled = !busy;
             row.Replace.Visibility = item.NeedsFile || !item.Frozen ? Visibility.Visible : Visibility.Collapsed;
             row.Replace.IsEnabled = !busy && !item.Uncertain;
@@ -661,6 +686,8 @@ namespace Uten.Legacy.Desktop.Features.Publish
             row.Remove.Visibility = !item.Frozen || item.Stage == ClientReleaseQueueStage.Rejected || item.Stage == ClientReleaseQueueStage.Withdrawn
                 ? Visibility.Visible : Visibility.Collapsed;
             row.Remove.IsEnabled = !busy && !item.Uncertain && !item.Published;
+            row.UseDefaults.Visibility = item.MetadataEditable && item.MetadataOverrides.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+            row.UseDefaults.IsEnabled = !busy;
         }
 
         private static string StageLabel(ClientReleaseQueueItem item)
@@ -685,7 +712,7 @@ namespace Uten.Legacy.Desktop.Features.Publish
 
         private void EditRow(ClientReleaseQueueItem item)
         {
-            if (queue.Busy || item.Frozen) return;
+            if (queue.Busy || !item.MetadataEditable) return;
             var dialog = new PromptDialog(Window.GetWindow(this), "核对发布目标", 520);
             var editor = new ClientReleaseTargetEditor();
             editor.Bind(item.Metadata);
@@ -813,8 +840,11 @@ namespace Uten.Legacy.Desktop.Features.Publish
             addStore.IsEnabled = enabled;
             refreshLedger.IsEnabled = enabled;
             saveDraft.IsEnabled = ready && !retired && !discarding;
-            run.IsEnabled = enabled && queue != null && queue.Items.Count > 0;
-            run.Content = queue != null && queue.Busy ? "正在处理" : "上传并发布";
+            run.IsEnabled = enabled && queue != null && queue.RunnableCount > 0;
+            run.Content = queue != null && queue.Busy ? "正在处理"
+                : queue != null && queue.Items.Count > 0 && queue.Items.All(item => item.Terminal) ? "全部已完成"
+                : queue != null && queue.HasUnknown && queue.RunnableCount == 0 ? "先核对原状态"
+                : queue != null && queue.ConfirmedCount > 0 ? "继续未完成 (" + queue.RunnableCount + ")" : "上传并发布";
             queueStatus.Text = queue != null && queue.Busy
                 ? "逐项处理，原编号和结果持续保全…"
                 : queue != null ? "已确认 " + queue.ConfirmedCount + " 项；失败与待核对项目保留原记录。" : "";

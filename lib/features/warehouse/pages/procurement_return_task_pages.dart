@@ -103,7 +103,7 @@ class _ProcurementReturnTasksPageState
       _seg != null && (_seg != _ReturnSeg.history || !_historyTime.isNone);
 
   Future<void> _load(int page) async {
-    if (!_shouldLoad) return;
+    if (!mounted || !_shouldLoad) return;
     final requestVersion = ++_requestVersion;
     final range = _seg == _ReturnSeg.history ? _historyTime.range : null;
     final query = _readQuery;
@@ -184,7 +184,7 @@ class _ProcurementReturnTasksPageState
 
   /// 批量确认退回（物流凭证）：超量未入库，确认即记录实物已退并关闭任务，不冲库存/应付。
   Future<void> _batchConfirmReturn() async {
-    if (_batchSaving) return;
+    if (!mounted || _batchSaving) return;
     final epoch = ref.read(exportContextEpochProvider);
     bool current() => mounted && epoch == ref.read(exportContextEpochProvider);
     final tasks = _selectedTasks
@@ -244,34 +244,34 @@ class _ProcurementReturnTasksPageState
       _loading = true;
     });
     try {
-    final repo = ref.read(procurementInboundRepositoryProvider);
-    var ok = 0;
-    var fail = 0;
-    for (final task in tasks) {
-      if (!current()) break;
-      final returnTask = task.returnTask;
-      if (returnTask == null) continue;
-      try {
-        await repo.completeReturn(
-          returnTaskId: returnTask.id,
-          expectedVersion: returnTask.version,
-          completionNote: note,
-        );
-        ok++;
-      } catch (_) {
-        fail++;
+      final repo = ref.read(procurementInboundRepositoryProvider);
+      var ok = 0;
+      var fail = 0;
+      for (final task in tasks) {
+        if (!current()) break;
+        final returnTask = task.returnTask;
+        if (returnTask == null) continue;
+        try {
+          await repo.completeReturn(
+            returnTaskId: returnTask.id,
+            expectedVersion: returnTask.version,
+            completionNote: note,
+          );
+          ok++;
+        } catch (_) {
+          fail++;
+        }
       }
-    }
-    if (!current()) return;
-    _selected.clear();
-    refreshBadges(ref);
-    await _load(_result?.page ?? 1);
-    if (!mounted) return;
-    if (fail == 0) {
-      context.appSuccess('已确认退回 $ok 条');
-    } else {
-      context.appWarning('已确认 $ok 条，$fail 条失败(可能已被处理，请刷新)');
-    }
+      if (!current()) return;
+      _selected.clear();
+      refreshBadges(ref);
+      await _load(_result?.page ?? 1);
+      if (!mounted || !current()) return;
+      if (fail == 0) {
+        context.appSuccess('已确认退回 $ok 条');
+      } else {
+        context.appWarning('已确认 $ok 条，$fail 条失败(可能已被处理，请刷新)');
+      }
     } finally {
       // The submitted operation keeps its lock through read/identity changes.
       // Only its settlement clears the busy flag; no old DTO is republished.
@@ -624,7 +624,9 @@ class _ProcurementReturnTaskDetailPageState
   void initState() {
     super.initState();
     initializeNativeReadScope();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
   @override
@@ -634,11 +636,14 @@ class _ProcurementReturnTaskDetailPageState
     _error = '登录身份或服务器已变化，原任务信息已隐藏';
   });
   @override
-  void nativeReadPermissionChanged() => setState(() { _loading = false; });
+  void nativeReadPermissionChanged() => setState(() {
+    _loading = false;
+  });
   @override
   Future<void> nativeReadReload() => _load();
 
   Future<void> _load() async {
+    if (!mounted) return;
     final current = captureNativeRead(
       widget.id,
       () => widget.id,
@@ -661,17 +666,17 @@ class _ProcurementReturnTaskDetailPageState
       });
     } on ApiException catch (error) {
       if (!current()) return;
-      final retained=failNativeRead(error, message: error.message);
+      final retained = failNativeRead(error, message: error.message);
       setState(() {
-        if(!retained)_task=null;
+        if (!retained) _task = null;
         _error = error.message;
         _loading = false;
       });
     } catch (error) {
       if (!current()) return;
-      final retained=failNativeRead(error, message: '退回任务加载失败，请检查网络后重试');
+      final retained = failNativeRead(error, message: '退回任务加载失败，请检查网络后重试');
       setState(() {
-        if(!retained)_task=null;
+        if (!retained) _task = null;
         _error = '退回任务加载失败，请检查网络后重试';
         _loading = false;
       });

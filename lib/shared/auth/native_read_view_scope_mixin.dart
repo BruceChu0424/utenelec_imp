@@ -287,9 +287,7 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
-                      UtenCloseButton(
-                        onPressed: () => Navigator.pop(context, false),
-                      ),
+                      UtenCloseButton(onPressed: () => Navigator.pop(context)),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -303,7 +301,7 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
                 child: UtenAlertDialog(
                   title: const Text('操作权限已更新'),
                   showCloseButton: true,
-                  onClose: () => Navigator.pop(context, false),
+                  onClose: () => Navigator.pop(context),
                   content: const Text('此窗口中的输入不会提交。请关闭窗口，核对当前信息后再操作。'),
                 ),
               ),

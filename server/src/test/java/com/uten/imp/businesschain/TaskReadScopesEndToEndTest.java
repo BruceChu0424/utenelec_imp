@@ -115,7 +115,7 @@ class TaskReadScopesEndToEndTest {
         var old=tasks.workshopTasks(1,50,tag,"PREPARING",null,null,null);
         db.update("DELETE FROM employee_secondary_departments WHERE employee_id=? AND department_id=?",employeeA,b);
         assertThatThrownBy(()->new ReportReadScopeAdvice(scopes).beforeBodyWrite(old,null,org.springframework.http.MediaType.APPLICATION_JSON,
-                org.springframework.http.converter.json.MappingJackson2HttpMessageConverter.class,
+                org.springframework.http.converter.json.JacksonJsonHttpMessageConverter.class,
                 new org.springframework.http.server.ServletServerHttpRequest(req),new org.springframework.http.server.ServletServerHttpResponse(res)))
                 .isInstanceOfSatisfying(ApiException.class,error->assertThat(error.getCode()).isEqualTo(ErrorCode.READ_SCOPE_CHANGED));
 
@@ -124,7 +124,7 @@ class TaskReadScopesEndToEndTest {
         new NativeTaskReadScopeInterceptor(scopes,current).preHandle(grantRead,res,new Object());
         admin(world.superAdminUserId(),()->db.update("UPDATE user_permission_overrides SET active=false WHERE user_id=? AND permission_id=(SELECT id FROM permissions WHERE code='production_workshop_task:view:all')",viewer));
         assertThatThrownBy(()->new ReportReadScopeAdvice(scopes).beforeBodyWrite(old,null,org.springframework.http.MediaType.APPLICATION_JSON,
-                org.springframework.http.converter.json.MappingJackson2HttpMessageConverter.class,
+                org.springframework.http.converter.json.JacksonJsonHttpMessageConverter.class,
                 new org.springframework.http.server.ServletServerHttpRequest(grantRead),new org.springframework.http.server.ServletServerHttpResponse(res)))
                 .isInstanceOf(ApiException.class);
         fixture.loginAs(viewer);assertThat(tasks.workshopTasks(1,50,tag,"PREPARING",null,null,null).getItems()).isEmpty();

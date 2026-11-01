@@ -125,8 +125,9 @@ public interface WarehouseTaskScopePort {
     List<UUID> noticeCandidateUserIds(Collection<UUID> warehouseIds);
 
     /**
-     * 仓库类通知收件人唯一规则: 该仓链上子仓负责人 ∩ 池; 没有则指定的主管 ∩ 池(超管不因超管身份算在这一级,
-     * 否则「还没配置」那一级永远到不了); 再没有(还没配置)才发整个池。仓库为空 = 未定仓的任务, 直接走主管那一级。
+     * 仓库类通知收件人唯一规则: (该仓链上有效子仓负责人 ∪ 指定的主管) ∩ 精确资格池。
+     * 仅超管身份不构成指定主管；两个集合在池内均为空时才保留原整池 fallback。
+     * 仓库为空时没有子仓负责人，仍向池内指定主管投递；不重写旧通知或回执。
      */
     List<UUID> noticeRecipients(Collection<UUID> pool, Collection<UUID> warehouseIds);
 

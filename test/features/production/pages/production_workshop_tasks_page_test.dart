@@ -22,6 +22,7 @@ import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
 import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
@@ -44,6 +45,69 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 late SharedPreferences _preferences;
 
 void main() {
+  testWidgets(
+    'foreign workshop detail remains read-only and retires on same-permission scope changes',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final router = _router();
+      addTearDown(router.dispose);
+      final writes = <String>[];
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(_preferences),
+            isSuperAdminProvider.overrideWithValue(false),
+            currentPermissionsProvider.overrideWithValue({
+              Perm.productionExecutionView,
+              Perm.productionWorkshopTaskViewAll,
+              Perm.productionExecutionStart,
+              Perm.productionDailyReportView,
+              Perm.productionDailyReportCreate,
+            }),
+            productionExecutionWorkbenchRepositoryProvider.overrideWithValue(
+              _repository(
+                withWaitingRow: true,
+                cCanRecheck: false,
+                onRequest: (request) {
+                  if (request.method != 'GET') writes.add(request.path);
+                },
+              ),
+            ),
+          ],
+          child: MaterialApp.router(
+            routerConfig: router,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            locale: const Locale('zh'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '开工准备');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('产品 C'));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('产品 C'));
+      await tester.pumpAndSettle();
+      expect(find.text('车间任务详情'), findsOneWidget);
+      for (final action in ['start', 'draw', 'report', 'urge']) {
+        expect(
+          find.byKey(ValueKey('workshop-detail-$action-segment-c')),
+          findsNothing,
+        );
+      }
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ProductionWorkshopTasksPage)),
+      );
+      container.read(readScopeRevisionProvider.notifier).state++;
+      await tester.pumpAndSettle();
+      expect(find.text('任务已更新，请关闭后重新打开'), findsOneWidget);
+      expect(writes, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'Excel export uses the shared task path and current category and filters',
     (tester) async {

@@ -968,14 +968,14 @@ class ProcurementArrivalGuardPostgresTest {
         var rows=serviceAs(original).ownerTasks(null,1,20,null,null,null,f.marker());assertEquals(2L,rows.getTotal());
         scopeDb().update("UPDATE supplier_return_tasks SET owner_user_id=?,owner_employee_id=? WHERE arrival_exception_id=?",f.other().userId(),f.other().employeeId(),f.first().exceptionId());
         var changed=assertThrows(com.uten.imp.common.web.ApiException.class,()->advice.beforeBodyWrite(rows,null,org.springframework.http.MediaType.APPLICATION_JSON,
-                org.springframework.http.converter.json.MappingJackson2HttpMessageConverter.class,
+                org.springframework.http.converter.json.JacksonJsonHttpMessageConverter.class,
                 new org.springframework.http.server.ServletServerHttpRequest(request),new org.springframework.http.server.ServletServerHttpResponse(response)));
         assertEquals(com.uten.imp.common.web.ErrorCode.READ_SCOPE_CHANGED,changed.getCode());
         var second=new org.springframework.mock.web.MockHttpServletRequest("GET","/api/procurement/arrival-exceptions/"+f.second().exceptionId());
         assertTrue(interceptor.preHandle(second,response,new Object()));
         actual.set(subject(f.owner(),"supplier_return_task:view","supplier_return_task:complete"));
         assertThrows(com.uten.imp.common.web.ApiException.class,()->advice.beforeBodyWrite(rows,null,org.springframework.http.MediaType.APPLICATION_JSON,
-                org.springframework.http.converter.json.MappingJackson2HttpMessageConverter.class,
+                org.springframework.http.converter.json.JacksonJsonHttpMessageConverter.class,
                 new org.springframework.http.server.ServletServerHttpRequest(second),new org.springframework.http.server.ServletServerHttpResponse(response)));
     }
 

@@ -6,6 +6,47 @@ import java.util.Set;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class BusinessNoticeParticipationTest {
+    @Test void aSubcontractFinanceSubmitterReceivesOrdinaryReceiptsWithoutEditOrDraw() {
+        Set<String> grants=Set.of("notice:read","subcontract_order:view","subcontract_order:submit_finance");
+        for(String route:Set.of("/subcontract/orders","/subcontract/orders/123","/subcontract/orders?status=draft")) {
+            assertThat(BusinessNoticeParticipation.allowed(route,"GOODS_BOM_UPDATED",grants)).as(route).isTrue();
+        }
+        // The symmetric purchase submitter was already registered; keep it exact.
+        assertThat(BusinessNoticeParticipation.allowed("/purchase/orders/123","GOODS_BOM_UPDATED",
+                Set.of("notice:read","purchase_order:view","purchase_order:submit_finance"))).isTrue();
+    }
+
+    @Test void aPlanningPackageGeneratorReceivesOrdinaryReceiptsWithoutEditOrApprove() {
+        Set<String> grants=Set.of("notice:read","production_plan:view","production_planning_package:generate");
+        assertThat(BusinessNoticeParticipation.allowed("/production/plans/123","GOODS_BOM_UPDATED",grants)).isTrue();
+        assertThat(BusinessNoticeParticipation.allowed("/production/plans/123",null,grants)).isTrue();
+    }
+
+    @Test void narrowActionsStillNeedTheirOwnViewAndNoticeReadAndUnrelatedWritesNeverSubscribe() {
+        for(var contract:java.util.List.of(
+                java.util.List.of("/subcontract/orders/123","subcontract_order:view","subcontract_order:submit_finance","subcontract_order:change_qty"),
+                java.util.List.of("/production/plans/123","production_plan:view","production_planning_package:generate","production_plan:flags"))) {
+            var grants=new HashSet<>(Set.of("notice:read",contract.get(1),contract.get(2)));
+            assertThat(BusinessNoticeParticipation.allowed(contract.get(0),"GOODS_BOM_UPDATED",grants)).isTrue();
+            for(String required:Set.of("notice:read",contract.get(1),contract.get(2))) {
+                var missing=new HashSet<>(grants);missing.remove(required);
+                assertThat(BusinessNoticeParticipation.allowed(contract.get(0),"GOODS_BOM_UPDATED",missing)).as(required).isFalse();
+            }
+            var unrelated=new HashSet<>(Set.of("notice:read",contract.get(1),contract.get(3),
+                    "company_file:view","company_file:create","company_file:edit","company_file:delete",
+                    "company_file:move","company_file:restore","company_file:upload","company_file:manage_permissions",
+                    "attachment:view","attachment:upload"));
+            assertThat(BusinessNoticeParticipation.allowed(contract.get(0),"GOODS_BOM_UPDATED",unrelated)).isFalse();
+        }
+    }
+
+    @Test void registeredActionEventsRetainTheirExactActionAfterAnOrdinaryRouteIsEnabled() {
+        assertThat(BusinessNoticeParticipation.allowed("/subcontract/orders/123","PROCUREMENT_FINANCE_REJECTED",
+                Set.of("notice:read","subcontract_order:view","subcontract_order:submit_finance"))).isFalse();
+        assertThat(BusinessNoticeParticipation.allowed("/production/plans/123","PRODUCTION_MATERIAL_INCREMENT_SUBMITTED",
+                Set.of("notice:read","production_plan:view","production_planning_package:generate"))).isFalse();
+    }
+
     @Test void readOnlyObserversAreSilentForEveryRegisteredActionAndOrdinaryReceipt() {
         Set<String> readers=new HashSet<>(Set.of("notice:read","sales:view:all","expense:view:all",
                 "profile_change:view","visitor_approval:view","stock:count:finance_view"));

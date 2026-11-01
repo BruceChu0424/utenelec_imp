@@ -11,6 +11,35 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS", matches="(?i)true")
 class BusinessNoticeParticipationPostgresTest {
+    @Test void narrowActorsAndSilentViewersHaveTheSameLivePolicyInDeliveryAndPostgres() {
+        try(var postgres=new PostgreSQLContainer("postgres:16-alpine")) {
+            postgres.start();
+            var jdbc=new JdbcTemplate(new DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()));
+            NoticeParticipationSqlFixture.install(jdbc);
+            for(var contract:List.of(
+                    List.of("/subcontract/orders/123","subcontract_order:view","subcontract_order:submit_finance","PROCUREMENT_FINANCE_REJECTED"),
+                    List.of("/production/plans/123","production_plan:view","production_planning_package:generate","PRODUCTION_MATERIAL_INCREMENT_SUBMITTED"))) {
+                var actor=new java.util.HashSet<>(Set.of("notice:read",contract.get(1),contract.get(2)));
+                for(boolean subscribed:List.of(true,false,true)) {
+                    if(subscribed) actor.add(contract.get(2));else actor.remove(contract.get(2));
+                    assertThat(BusinessNoticeParticipation.allowed(contract.get(0),"GOODS_BOM_UPDATED",actor)).isEqualTo(subscribed);
+                    assertThat(jdbc.queryForObject("SELECT fn_notice_participation_visible(?,?,?)",Boolean.class,
+                            contract.get(0),"GOODS_BOM_UPDATED",BusinessNoticeParticipation.readRules(actor))).isEqualTo(subscribed);
+                    // A precise action event takes precedence over the ordinary route fallback.
+                    assertThat(jdbc.queryForObject("SELECT fn_notice_participation_visible(?,?,?)",Boolean.class,
+                            contract.get(0),contract.get(3),BusinessNoticeParticipation.readRules(actor))).isFalse();
+                }
+                for(Set<String> silent:List.of(Set.of("notice:read",contract.get(1)),Set.of("notice:read",contract.get(2)),
+                        Set.of(contract.get(1),contract.get(2)),Set.of("notice:read",contract.get(1),
+                                "company_file:view","company_file:edit","company_file:upload","company_file:manage_permissions","attachment:upload"))) {
+                    assertThat(BusinessNoticeParticipation.allowed(contract.get(0),"GOODS_BOM_UPDATED",silent)).isFalse();
+                    assertThat(jdbc.queryForObject("SELECT fn_notice_participation_visible(?,?,?)",Boolean.class,
+                            contract.get(0),"GOODS_BOM_UPDATED",BusinessNoticeParticipation.readRules(silent))).isFalse();
+                }
+            }
+        }
+    }
+
     @Test void deliveryAndDatabaseListCountHistoryFiltersUseTheSameGrantAndRevocationPolicy() {
         try(var postgres=new PostgreSQLContainer("postgres:16-alpine")) {
             postgres.start();

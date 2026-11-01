@@ -36,9 +36,12 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/sensitive_write.dart';
+import '../../../core/network/read_scope_revision.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/expense_claim.dart';
 import '../providers/expense_providers.dart';
+import '../providers/expense_action_eligibility.dart';
 import '../repositories/expense_repository.dart';
 import '../../../shared/badges/badge_registry.dart';
 
@@ -60,10 +63,13 @@ class _ExpenseApprovalListPageState
   final _tableRows = MasterDataTableRowsController<ExpenseClaim>();
   final _retainedPage = RetainedAsyncPage<PagedResult<ExpenseClaim>>();
   Set<String> _selectedIds = {};
-  final Map<String, int> _selectedVersions = {};
+  final Map<String, ExpenseClaim> _selectedClaims = {};
+  int _selectionGeneration = 0;
+  int _operationGeneration = 0;
 
   /// 批量审批进行中（防并发 + 按钮加载态）。
   bool _batchBusy = false;
+  bool _batchSending = false;
   bool _queueReady = true;
   int _queueGeneration = 0;
   bool _queueListenerBound = false;
@@ -72,6 +78,12 @@ class _ExpenseApprovalListPageState
   void initState() {
     super.initState();
     _prepareInitialQueue();
+    ref.listenManual(expenseActionEligibilityProvider, (previous, next) {
+      if (previous != next) _retireSelection();
+    });
+    ref.listenManual(readScopeRevisionProvider, (previous, next) {
+      if (previous != next) _retireSelection();
+    });
   }
 
   @override
@@ -81,6 +93,7 @@ class _ExpenseApprovalListPageState
   }
 
   void _prepareInitialQueue() {
+    _retireSelection();
     final generation = ++_queueGeneration;
     final requested = widget.initialQueue;
     if (requested == null) {
@@ -95,7 +108,7 @@ class _ExpenseApprovalListPageState
       _queueListenerBound = true;
     }
     _selectedIds.clear();
-    _selectedVersions.clear();
+    _selectedClaims.clear();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || generation != _queueGeneration) return;
       ref
@@ -105,6 +118,48 @@ class _ExpenseApprovalListPageState
         requested,
       );
       setState(() => _queueReady = true);
+    });
+  }
+
+  void _retireSelection() {
+    if (!mounted) return;
+    ++_selectionGeneration;
+    ++_operationGeneration;
+    void clear() {
+      _selectedIds = {};
+      _selectedClaims.clear();
+      _batchBusy = false;
+      _batchSending = false;
+    }
+
+    if (_selectedIds.isNotEmpty || _batchBusy) {
+      setState(clear);
+    } else {
+      clear();
+    }
+  }
+
+  void _select(Set<String> requested) {
+    if (_batchBusy) return;
+    final eligibility = ref.read(expenseActionEligibilityProvider);
+    final visible = {for (final claim in _tableRows.items) claim.id: claim};
+    final next = requested
+        .where(
+          (id) =>
+              eligibility.canReviewClaim(visible[id] ?? _selectedClaims[id]),
+        )
+        .toSet();
+    if (next.length == _selectedIds.length &&
+        next.every(_selectedIds.contains)) {
+      return;
+    }
+    setState(() {
+      ++_selectionGeneration;
+      _selectedClaims.removeWhere((id, _) => !next.contains(id));
+      for (final id in next) {
+        _selectedClaims.putIfAbsent(id, () => visible[id]!);
+      }
+      _selectedIds = next;
     });
   }
 
@@ -152,6 +207,7 @@ class _ExpenseApprovalListPageState
     final canView = permissions.contains(Perm.expenseView);
     final canApprove = permissions.contains(Perm.expenseApprove);
     final canPay = permissions.contains(Perm.expensePay);
+    final eligibility = ref.watch(expenseActionEligibilityProvider);
     final isPendingQueue = queue == ApprovalQueue.pending;
     final summary = summaryAsync.value;
     final l10n = AppLocalizations.of(context);
@@ -206,10 +262,8 @@ class _ExpenseApprovalListPageState
               ],
               selected: {queue},
               onSelectionChanged: (value) {
-                setState(() {
-                  ref.read(approvalQueueProvider.notifier).state = value;
-                  _selectedIds = {}; // 选中的是旧分段内的报销单
-                });
+                _retireSelection();
+                ref.read(approvalQueueProvider.notifier).state = value;
               },
             ),
             // 队列汇总统计条（/summary：两队列 + 本月口径，财务汇总；随页滚走）。
@@ -288,19 +342,12 @@ class _ExpenseApprovalListPageState
           },
           // 待审批段开多选 + 悬浮批量通过/驳回；待付款段只读浏览
           //（打款参数逐单不同，打款在详情页完成）。
-          selectable: isPendingQueue && canApprove,
-          idOf: (claim) => claim.id,
+          selectable: isPendingQueue && eligibility.canReview,
+          idOf: (claim) => eligibility.canReviewClaim(claim) ? claim.id : null,
+          rowKeyOf: (claim) => claim.id,
           selectedIds: _selectedIds,
-          onSelectedIdsChanged: (next) => setState(() {
-            _selectedVersions.removeWhere((id, _) => !next.contains(id));
-            for (final claim in _tableRows.items) {
-              if (next.contains(claim.id) && !_selectedIds.contains(claim.id)) {
-                _selectedVersions[claim.id] = claim.version;
-              }
-            }
-            _selectedIds = next;
-          }),
-          batchActionsBuilder: isPendingQueue && canApprove
+          onSelectedIdsChanged: _select,
+          batchActionsBuilder: isPendingQueue && eligibility.canReview
               ? _batchActions
               : null,
           // 双击行进入审批详情：push（2026-09-24 起），审批后详情 pop 回本页，
@@ -348,7 +395,7 @@ class _ExpenseApprovalListPageState
     final current = ref.read(expenseApprovalFiltersProvider);
     ref.read(expenseApprovalFiltersProvider.notifier).state = current
         .withColumn(key, value);
-    setState(() => _selectedIds = {});
+    _retireSelection();
   }
 
   final List<MasterColumnDef<ExpenseClaim>> _columns = [
@@ -437,7 +484,7 @@ class _ExpenseApprovalListPageState
           type: UtenButtonType.success,
           size: UtenButtonSize.large,
           icon: Icons.check_circle_outline_rounded,
-          isLoading: _batchBusy,
+          isLoading: _batchSending,
           onPressed: selectedIds.isNotEmpty && !_batchBusy
               ? () => _batchApprove(Set<String>.of(selectedIds))
               : null,
@@ -448,7 +495,7 @@ class _ExpenseApprovalListPageState
         type: UtenButtonType.danger,
         size: UtenButtonSize.large,
         icon: Icons.cancel_outlined,
-        isLoading: _batchBusy,
+        isLoading: _batchSending,
         onPressed: selectedIds.isNotEmpty && !_batchBusy
             ? () => _batchReject(Set<String>.of(selectedIds))
             : null,
@@ -466,9 +513,7 @@ class _ExpenseApprovalListPageState
 
   // ---- 批量通过 / 批量驳回（V608：后端单事务端点，全成全败） -------------------
 
-  Future<void> _batchApprove(Set<String> ids) async {
-    if (_batchBusy || ids.isEmpty || !_withinBatchLimit(ids.length)) return;
-    final count = ids.length;
+  Future<String?> _confirmBatchApproval(int count) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => UtenAlertDialog(
@@ -504,76 +549,101 @@ class _ExpenseApprovalListPageState
         ],
       ),
     );
-    if (confirmed != true || !mounted) return;
-    setState(() => _batchBusy = true);
-    try {
-      final processed = await ref
-          .read(expenseRepositoryProvider)
-          .approveBatch(
-            ids,
-            expectedVersions: {
-              for (final id in ids) id: _selectedVersions[id]!,
-            },
-          );
-      if (mounted) {
-        context.appSuccess('已通过 $processed 单报销');
-      }
-    } catch (error) {
-      if (mounted) {
-        context.appApiError(error);
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _batchBusy = false;
-          _selectedIds = {};
-        });
-      }
-      if (mounted) _refreshQueue();
-    }
+    return confirmed == true ? '' : null;
   }
 
-  /// 批量驳回：统一原因对话框一次填写（含责任提示），后端单事务应用。
-  Future<void> _batchReject(Set<String> ids) async {
-    if (_batchBusy || ids.isEmpty || !_withinBatchLimit(ids.length)) return;
-    final reason = await showUtenBatchRejectDialog(
+  Future<void> _batchApprove(Set<String> ids) => _runBatch(
+    ids,
+    approve: true,
+    confirm: () => _confirmBatchApproval(ids.length),
+  );
+
+  Future<void> _batchReject(Set<String> ids) => _runBatch(
+    ids,
+    approve: false,
+    confirm: () => showUtenBatchRejectDialog(
       context,
       count: ids.length,
       actionLabel: '报销审批',
       subjectLabel: '报销单',
-    );
-    if (reason == null || reason.isEmpty || !mounted) return;
+    ),
+  );
+
+  Future<void> _runBatch(
+    Set<String> ids, {
+    required bool approve,
+    required Future<String?> Function() confirm,
+  }) async {
+    if (_batchBusy || ids.isEmpty || !_withinBatchLimit(ids.length)) return;
+    final eligibility = ref.read(expenseActionEligibilityProvider);
+    if (ids.any(
+      (id) => approve
+          ? !eligibility.canInspectClaim(_selectedClaims[id])
+          : !eligibility.canReviewClaim(_selectedClaims[id]),
+    )) {
+      return;
+    }
+    final versions = Map<String, int>.unmodifiable({
+      for (final id in ids) id: _selectedClaims[id]!.version,
+    });
+    final repository = ref.read(expenseRepositoryProvider);
+    final selection = _selectionGeneration;
+    final operation = ++_operationGeneration;
+    bool ownerCurrent() =>
+        mounted &&
+        operation == _operationGeneration &&
+        ref.read(expenseActionEligibilityProvider) == eligibility &&
+        identical(ref.read(expenseRepositoryProvider), repository);
+    bool current() =>
+        ownerCurrent() &&
+        selection == _selectionGeneration &&
+        ref.read(approvalQueueProvider) == ApprovalQueue.pending;
+    var attempted = false;
     setState(() => _batchBusy = true);
     try {
-      final processed = await ref
-          .read(expenseRepositoryProvider)
-          .rejectBatch(
-            ids,
-            reason,
-            expectedVersions: {
-              for (final id in ids) id: _selectedVersions[id]!,
-            },
-          );
-      if (mounted) {
-        context.appSuccess('已驳回 $processed 单报销，等待申请人修订后重新提交');
-      }
+      final processed = await runSensitiveWrite<int?>(
+        ref,
+        isCurrent: current,
+        write: () async {
+          final reason = await confirm();
+          if (reason == null ||
+              (!approve && reason.trim().isEmpty) ||
+              !current()) {
+            return null;
+          }
+          attempted = true;
+          setState(() => _batchSending = true);
+          return approve
+              ? repository.approveBatch(ids, expectedVersions: versions)
+              : repository.rejectBatch(ids, reason, expectedVersions: versions);
+        },
+      );
+      if (!mounted || !current() || processed == null) return;
+      context.appSuccess(
+        approve ? '已通过 $processed 单报销' : '已驳回 $processed 单报销，等待申请人修订后重新提交',
+      );
     } catch (error) {
-      if (mounted) {
-        context.appApiError(error);
-      }
+      if (mounted && current()) context.appApiError(error);
     } finally {
-      if (mounted) {
+      final refresh = current() && attempted;
+      if (mounted && operation == _operationGeneration) {
         setState(() {
           _batchBusy = false;
-          _selectedIds = {};
+          _batchSending = false;
+          if (attempted) {
+            ++_selectionGeneration;
+            _selectedIds = {};
+            _selectedClaims.clear();
+          }
         });
       }
-      if (mounted) _refreshQueue();
+      if (refresh) _refreshQueue(stillCurrent: ownerCurrent);
     }
   }
 
   /// 批量动作后列表、筛选桶与汇总一起刷新（计数随队列变化）。
-  Future<void> _refreshQueue() async {
+  Future<void> _refreshQueue({bool Function()? stillCurrent}) async {
+    if (stillCurrent != null && !stillCurrent()) return;
     ref.read(expenseApprovalListProvider.notifier).invalidateCachedPages();
     final facets = expenseApprovalFacetsProvider(
       ref.read(approvalQueueProvider),
@@ -589,7 +659,9 @@ class _ExpenseApprovalListPageState
         ref.read(expenseQueueSummaryProvider.future),
       ]);
     } catch (error) {
-      if (mounted) context.appApiError(error);
+      if (mounted && (stillCurrent == null || stillCurrent())) {
+        context.appApiError(error);
+      }
     }
   }
 }

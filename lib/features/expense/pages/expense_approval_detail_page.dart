@@ -28,7 +28,6 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/router/nav_helpers.dart';
-import '../../../shared/providers/session_provider.dart';
 import '../models/expense_invoice.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -36,7 +35,8 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/rmb_amount.dart';
 import '../../../shared/attachments/attachment_section.dart';
-import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/sensitive_write.dart';
+import '../../../core/network/read_scope_revision.dart';
 import '../../../shared/widgets/task_claim_badge.dart';
 import '../../../shared/widgets/task_claim_handle.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
@@ -45,6 +45,8 @@ import '../models/expense_item.dart';
 import '../widgets/expense_item_columns.dart';
 import '../models/expense_payment.dart';
 import '../providers/expense_providers.dart';
+import '../providers/expense_action_eligibility.dart';
+import '../repositories/expense_repository.dart';
 import '../widgets/expense_claim_print.dart';
 import '../widgets/expense_claim_timeline.dart';
 import '../widgets/expense_invoice_section.dart';
@@ -63,6 +65,36 @@ class _ExpenseApprovalDetailPageState
     extends ConsumerState<ExpenseApprovalDetailPage> {
   final _comment = TextEditingController();
   bool _acting = false;
+  int _operationGeneration = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    ref.listenManual(expenseActionEligibilityProvider, (previous, next) {
+      if (previous == next) return;
+      if (previous?.owner != next.owner) _comment.clear();
+      _retireAction();
+    });
+    ref.listenManual(readScopeRevisionProvider, (previous, next) {
+      if (previous != next) _retireAction();
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant ExpenseApprovalDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.claimId != widget.claimId) {
+      ++_operationGeneration;
+      _acting = false;
+      _comment.clear();
+    }
+  }
+
+  void _retireAction() {
+    if (!mounted) return;
+    ++_operationGeneration;
+    if (_acting) setState(() => _acting = false);
+  }
 
   // 2026-09-22 全站表格滚动口径：明细表/发票表表头吸顶，任一表置顶后才显示
   // 页面滚动条（UtenGridPageScrollbar 门控）。
@@ -83,112 +115,143 @@ class _ExpenseApprovalDetailPageState
       ref.read(expenseDetailProvider(widget.claimId)).value;
 
   bool get _canApprove {
-    final claim = _claim;
-    final permissions = ref.read(currentPermissionsProvider);
-    return permissions.contains(Perm.expenseApprove) &&
-        claim != null &&
-        claim.applicantId != ref.read(sessionProvider).user?.employeeId &&
-        (claim.status == ExpenseClaimStatus.submitted ||
-            claim.status == ExpenseClaimStatus.reviewing);
+    return ref.read(expenseActionEligibilityProvider).canReviewClaim(_claim);
   }
 
   bool get _canInspect {
-    final permissions = ref.read(currentPermissionsProvider);
-    return _canApprove &&
-        permissions.contains(Perm.attachmentView) &&
-        permissions.contains(Perm.attachmentDownload);
+    return ref.read(expenseActionEligibilityProvider).canInspectClaim(_claim);
   }
 
   bool get _canPay {
-    final claim = _claim;
-    return ref.read(currentPermissionsProvider).contains(Perm.expensePay) &&
-        claim?.status == ExpenseClaimStatus.approved &&
-        claim?.applicantId != ref.read(sessionProvider).user?.employeeId &&
-        claim?.approvedBy != ref.read(sessionProvider).user?.employeeId;
+    return ref.read(expenseActionEligibilityProvider).canPayClaim(_claim);
   }
 
   Future<void> _approve() async {
-    if (_acting || !_canInspect) return;
-    if (_claim?.invoices.any(
-          (invoice) => invoice.checkState != ExpenseInvoiceCheckState.verified,
-        ) ==
-        true) {
+    final claim = _claim;
+    final id = widget.claimId;
+    if (_acting || claim == null || !_canInspect) return;
+    if (claim.invoices.any(
+      (invoice) => invoice.checkState != ExpenseInvoiceCheckState.verified,
+    )) {
       context.appWarning(
         AppLocalizations.of(context).expenseFlowVerifyBeforeApprove,
       );
       return;
     }
-    setState(() => _acting = true);
-    try {
-      await approveExpense(ref, widget.claimId);
-      if (mounted) {
+    await _runAction(
+      (current) async {
+        if (!current() || !_canInspect) return false;
+        await approveExpense(
+          ref,
+          id,
+          expectedVersion: claim.version,
+          stillCurrent: current,
+        );
+        return true;
+      },
+      () {
         context.appSuccess('审批已通过');
         backTo(context, defaultPath: '/expense/approval');
-      }
-    } catch (error) {
-      if (mounted) context.appApiError(error);
-    } finally {
-      if (mounted) setState(() => _acting = false);
-    }
+      },
+    );
   }
 
   Future<void> _reject() async {
+    final claim = _claim;
+    final id = widget.claimId;
+    if (_acting || claim == null || !_canApprove) return;
     final reason = _comment.text.trim();
     if (reason.isEmpty) {
       context.appError('请填写驳回原因');
       return;
     }
-    if (_acting) return;
-    setState(() => _acting = true);
-    try {
-      await rejectExpense(ref, widget.claimId, reason);
-      if (mounted) {
+    await _runAction(
+      (current) async {
+        if (!current() || !_canApprove) return false;
+        await rejectExpense(
+          ref,
+          id,
+          reason,
+          expectedVersion: claim.version,
+          stillCurrent: current,
+        );
+        return true;
+      },
+      () {
         context.appSuccess('报销单已驳回，等待申请人修订后重新提交');
         backTo(context, defaultPath: '/expense/approval');
-      }
-    } catch (error) {
-      if (mounted) context.appApiError(error);
-    } finally {
-      if (mounted) setState(() => _acting = false);
-    }
+      },
+    );
   }
 
   Future<void> _pay() async {
     final paymentClaim = _claim;
-    if (_acting || paymentClaim == null) return;
+    final id = widget.claimId;
+    if (_acting || paymentClaim == null || !_canPay) return;
     if (paymentClaim.paymentProofs.isEmpty) {
       context.appWarning(
         AppLocalizations.of(context).expenseFlowPaymentProofRequired,
       );
       return;
     }
-    setState(() => _acting = true);
-    try {
-      final input = await showDialog<ExpensePaymentInput>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const _ExpensePaymentDialog(),
-      );
-      if (!mounted || input == null) return;
-      await payExpense(
-        ref,
-        widget.claimId,
-        input,
-        expectedVersion: paymentClaim.version,
-      );
-      if (mounted) {
+    await _runAction(
+      (current) async {
+        final input = await showDialog<ExpensePaymentInput>(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => const _ExpensePaymentDialog(),
+        );
+        if (input == null || !current() || !_canPay) return false;
+        await payExpense(
+          ref,
+          id,
+          input,
+          expectedVersion: paymentClaim.version,
+          stillCurrent: current,
+        );
+        return true;
+      },
+      () {
         context.appSuccess(AppLocalizations.of(context).expenseFlowPaymentDone);
         backTo(context, defaultPath: '/expense/approval');
-      }
+      },
+    );
+  }
+
+  Future<void> _runAction(
+    Future<bool> Function(bool Function()) write,
+    VoidCallback succeeded,
+  ) async {
+    final eligibility = ref.read(expenseActionEligibilityProvider);
+    final repository = ref.read(expenseRepositoryProvider);
+    final id = widget.claimId;
+    final operation = ++_operationGeneration;
+    bool current() =>
+        mounted &&
+        operation == _operationGeneration &&
+        widget.claimId == id &&
+        ref.read(expenseActionEligibilityProvider) == eligibility &&
+        identical(ref.read(expenseRepositoryProvider), repository);
+    setState(() => _acting = true);
+    try {
+      final completed = await runSensitiveWrite<bool>(
+        ref,
+        isCurrent: current,
+        write: () => write(current),
+      );
+      if (completed && current()) succeeded();
     } catch (error) {
-      if (mounted) context.appApiError(error);
+      if (mounted && current()) context.appApiError(error);
     } finally {
-      if (mounted) setState(() => _acting = false);
+      if (mounted && operation == _operationGeneration) {
+        setState(() => _acting = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(expenseActionEligibilityProvider);
     final detail = ref.watch(expenseDetailProvider(widget.claimId));
     final theme = Theme.of(context);
 

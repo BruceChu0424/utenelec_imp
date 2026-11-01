@@ -35,6 +35,7 @@ class _BadgeApi extends ApiClient {
   Map<String, dynamic> body = _summaryJson(todo: 1);
   final Map<String, Map<String, dynamic>> scopedBodies = {};
   final List<Completer<Map<String, dynamic>>> responses = [];
+  final List<String> selectedWarehouseReads = [];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -45,6 +46,9 @@ class _BadgeApi extends ApiClient {
       throw StateError('unexpected GET $path');
     }
     calls++;
+    if (query?['scopeWarehouseId'] case final String warehouseId) {
+      selectedWarehouseReads.add(warehouseId);
+    }
     if (responses.isNotEmpty) return responses.removeAt(0).future;
     final pending = gate;
     if (pending != null) await pending.future;
@@ -75,13 +79,28 @@ final _scope = StateProvider<AuthenticatedScope?>(
   (ref) => const AuthenticatedScope(userId: 'user-1'),
 );
 
-(ProviderContainer, _BadgeApi) _container({WarehouseTaskScope? taskScope}) {
+const _physicalWarehouse = MyWarehouseScope(
+  role: WarehouseScopeRole.keeper,
+  warehouseParticipant: true,
+  selectable: [WarehouseScopeOption(id: 'hw', name: '实际负责仓')],
+  keeperWarehouses: [WarehouseScopeOption(id: 'hw', name: '实际负责仓')],
+);
+
+(ProviderContainer, _BadgeApi) _container({
+  WarehouseTaskScope? taskScope,
+  Future<MyWarehouseScope> Function()? physicalScope,
+}) {
   final api = _BadgeApi();
   final container = ProviderContainer(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(_prefs),
       apiClientProvider.overrideWithValue(api),
       authenticatedScopeProvider.overrideWith((ref) => ref.watch(_scope)),
+      myWarehouseScopeProvider.overrideWith(
+        (ref) async => physicalScope == null
+            ? MyWarehouseScope.empty
+            : await physicalScope(),
+      ),
       if (taskScope != null)
         warehouseTaskScopeProvider.overrideWithValue(taskScope),
     ],
@@ -114,6 +133,7 @@ void main() {
     };
     final (container, api) = _container(
       taskScope: const WarehouseTaskScope.warehouse('hw'),
+      physicalScope: () async => _physicalWarehouse,
     );
     api.body = inboundSnapshot(9);
     api.scopedBodies['hw'] = inboundSnapshot(2);
@@ -167,7 +187,9 @@ void main() {
   testWidgets(
     'unchanged global totals still refresh a changed warehouse queue',
     (tester) async {
-      final (container, api) = _container();
+      final (container, api) = _container(
+        physicalScope: () async => _physicalWarehouse,
+      );
       const scope = WarehouseTaskScope.warehouse('hw');
       api.scopedBodies['hw'] = _summaryJson(todo: 1);
       final subscription = container.listen(
@@ -192,6 +214,86 @@ void main() {
       );
       subscription.close();
       await _settle(tester);
+      container.dispose();
+      await _settle(tester);
+    },
+  );
+
+  testWidgets(
+    'unconfirmed or failed physical scope never requests selected warehouse badges',
+    (tester) async {
+      final scope = Completer<MyWarehouseScope>();
+      final (container, api) = _container(physicalScope: () => scope.future);
+      final provider = warehouseScopedBadgesProvider(
+        const WarehouseTaskScope.warehouse('hw'),
+      );
+      final subscription = container.listen(
+        provider,
+        (_, _) {},
+        fireImmediately: true,
+      );
+      await _settle(tester);
+      expect(container.read(provider).facts, isEmpty);
+      expect(api.selectedWarehouseReads, isEmpty);
+      scope.completeError(StateError('warehouse responsibility unavailable'));
+      await _settle(tester);
+      expect(container.read(myWarehouseScopeProvider).hasError, isTrue);
+      expect(container.read(provider).facts, isEmpty);
+      expect(api.selectedWarehouseReads, isEmpty);
+      subscription.close();
+      container.dispose();
+      await _settle(tester);
+    },
+  );
+
+  testWidgets(
+    'all-warehouse browsing cannot turn a foreign warehouse into task badge eligibility',
+    (tester) async {
+      final (container, api) = _container(
+        physicalScope: () async => const MyWarehouseScope(
+          role: WarehouseScopeRole.keeper,
+          warehouseParticipant: true,
+          readAllWarehouses: true,
+          canSelectAll: true,
+          selectable: [
+            WarehouseScopeOption(id: 'hw', name: '本仓'),
+            WarehouseScopeOption(id: 'foreign', name: '外仓'),
+          ],
+          commandSelectable: [WarehouseScopeOption(id: 'hw', name: '本仓')],
+        ),
+      );
+      api.scopedBodies['hw'] = _summaryJson(todo: 2);
+      api.scopedBodies['foreign'] = _summaryJson(todo: 99);
+      final foreign = warehouseScopedBadgesProvider(
+        const WarehouseTaskScope.warehouse('foreign'),
+      );
+      final own = warehouseScopedBadgesProvider(
+        const WarehouseTaskScope.warehouse('hw'),
+      );
+      final foreignSubscription = container.listen(
+        foreign,
+        (_, _) {},
+        fireImmediately: true,
+      );
+      await _settle(tester);
+      await _settle(tester);
+      expect(container.read(foreign).facts, isEmpty);
+      expect(api.selectedWarehouseReads, isEmpty);
+      final ownSubscription = container.listen(
+        own,
+        (_, _) {},
+        fireImmediately: true,
+      );
+      await _settle(tester);
+      await _settle(tester);
+      expect(container.read(own).total.todo, 2);
+      expect(api.selectedWarehouseReads, ['hw']);
+      await container.read(badgeSummaryProvider.notifier).refresh();
+      await _settle(tester);
+      expect(container.read(foreign).facts, isEmpty);
+      expect(api.selectedWarehouseReads, everyElement('hw'));
+      ownSubscription.close();
+      foreignSubscription.close();
       container.dispose();
       await _settle(tester);
     },

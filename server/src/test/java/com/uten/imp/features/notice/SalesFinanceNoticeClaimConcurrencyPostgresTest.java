@@ -78,7 +78,13 @@ class SalesFinanceNoticeClaimConcurrencyPostgresTest {
         data.accounts(449,data.finance,false);
         for (UUID id:List.of(reviewer,revoked)) { data.grant(id,data.view); data.grant(id,data.confirm); }
         com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(jdbc,"sales_orders","notices");
-        order=UUID.randomUUID(); jdbc.update("INSERT INTO sales_orders(id,bill_no,status) VALUES (?,'XD-BATCH-451',1)",order);
+        // This projection isolates finance notice/header-lock races after a
+        // completed upstream manager decision; never use NOT_REQUIRED to make
+        // a new financial claim eligible. Full chains exercise the real helper.
+        order=UUID.randomUUID(); jdbc.update("""
+                INSERT INTO sales_orders(id,bill_no,status,manager_review_state,manager_approved_at,manager_approved_by,finance_review_revision)
+                SELECT ?,'XD-BATCH-451',1,'APPROVED',now(),employee_id,1 FROM users WHERE id=?
+                """,order,reviewer);
         var users=mock(UserAccountRepository.class);
         when(users.findById(any())).thenAnswer(call -> account(call.getArgument(0)));
         var recipientPool=new SalesOrderFinanceConfirmerEligibility(jdbc,users,permissions);

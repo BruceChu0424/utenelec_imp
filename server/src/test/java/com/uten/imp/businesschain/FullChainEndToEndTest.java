@@ -8872,6 +8872,7 @@ class FullChainEndToEndTest {
         assertEquals("美元资金链",salesMoneyQuery.salesOrderSummary(order).currencyName());
         UUID pendingOrder=salesOrderService.create(orderRequest(w,w.goodsC(),"1","100")).getId();
         salesOrderService.approve(pendingOrder);
+        approveSalesManagerReview(pendingOrder,0L);
         String pendingNo=jdbc.queryForObject("SELECT bill_no FROM sales_orders WHERE id=?",String.class,pendingOrder);
         var listed=financeConfirmService.pending(1,20,false,null,null,null,null,pendingNo).getItems();
         assertEquals(1,listed.size());
@@ -10574,49 +10575,48 @@ class FullChainEndToEndTest {
     // ---------------------------------------------------------------------------------------------
     @Test
     void planBatchApproveSendsOneMergedSchedulingNoticePerOrder() {
-        World w = seedWorld("pbatchnotice");
-        UUID orderId = createApprovedOrder(w, w.goodsA(), "30", "100");
-        UUID orderItemId = orderItemId(orderId);
-        loginAs(w.superAdminUserId());
-        UUID p1 = createLegacyTestDraft(orderItemId, w.goodsA(), "3");
-        UUID p2 = createLegacyTestDraft(orderItemId, w.goodsA(), "3");
-        UUID p3 = createLegacyTestDraft(orderItemId, w.goodsA(), "3");
-        planService.batchApprove(List.of(p1, p2, p3));
-
-        String billNo = jdbc.queryForObject(
-                "select bill_no from sales_orders where id = ?", String.class, orderId);
-        UUID ownerUser = w.superAdminUserId();
-        int pendingSchedulingEvents = 3;
-        for (int i = 0; i < 60 && pendingSchedulingEvents != 0; i++) {
-            while (businessOutboxProcessor.processNext()) { }
-            pendingSchedulingEvents = count("""
-                    select count(*) from business_outbox
-                    where event_type = 'PRODUCTION_PLAN_SCHEDULED'
-                      and aggregate_id in (?, ?, ?) and status <> 1
-                    """, p1, p2, p3);
-            if (pendingSchedulingEvents != 0) {
-                try { Thread.sleep(50); } catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
+        for(boolean subscribes:List.of(false,true)) {
+            World w=seedWorld("pbatchnotice-"+subscribes);
+            UUID orderId=createApprovedOrder(w,w.goodsA(),"30","100");
+            UUID orderItemId=orderItemId(orderId);
+            loginAs(w.superAdminUserId());
+            if(subscribes) assertEquals(3,jdbc.update("""
+                    INSERT INTO user_permission_overrides(user_id,permission_id,effect)
+                    SELECT ?,id,'grant' FROM permissions
+                    WHERE code IN ('notice:read','sales_order:view','sales_order:approve')
+                    ON CONFLICT(user_id,permission_id) DO UPDATE SET effect='grant'
+                    """,w.superAdminUserId()));
+            UUID p1=createLegacyTestDraft(orderItemId,w.goodsA(),"3");
+            UUID p2=createLegacyTestDraft(orderItemId,w.goodsA(),"3");
+            UUID p3=createLegacyTestDraft(orderItemId,w.goodsA(),"3");
+            planService.batchApprove(List.of(p1,p2,p3));
+            String billNo=jdbc.queryForObject("SELECT bill_no FROM sales_orders WHERE id=?",String.class,orderId);
+            int pendingSchedulingEvents=3;
+            for(int i=0;i<60&&pendingSchedulingEvents!=0;i++) {
+                while(businessOutboxProcessor.processNext()) { }
+                pendingSchedulingEvents=count("""
+                        SELECT count(*) FROM business_outbox WHERE event_type='PRODUCTION_PLAN_SCHEDULED'
+                          AND aggregate_id IN(?,?,?) AND status<>1
+                        """,p1,p2,p3);
+                if(pendingSchedulingEvents!=0) {
+                    try {Thread.sleep(50);} catch(InterruptedException e) {Thread.currentThread().interrupt();break;}
+                }
             }
+            assertEquals(0,pendingSchedulingEvents,"三条持久事件须投递完毕后再核对合并通知");
+            int schedulingNotices=count("""
+                    SELECT count(*) FROM notices WHERE audience_user_id=?
+                      AND source_event='PRODUCTION_PLAN_SCHEDULED' AND title=?
+                    """,w.superAdminUserId(),"排产通知："+billNo);
+            assertEquals(subscribes?1:0,schedulingNotices,
+                    "隐式超级管理员目录不订阅；显式业务参与者的同单批量审核必须只收到一条合并通知");
+            if(!subscribes) continue;
+            String content=jdbc.queryForObject("""
+                    SELECT content FROM notices WHERE audience_user_id=?
+                      AND source_event='PRODUCTION_PLAN_SCHEDULED' AND title=?
+                    """,String.class,w.superAdminUserId(),"排产通知："+billNo);
+            assertTrue(content.contains("已排产 9"),"须保留三张计划的合计排产量："+content);
+            assertTrue(content.contains("共 3 张计划单"),"须保留合并计划单张数："+content);
         }
-        assertEquals(0, pendingSchedulingEvents, "本次批量审核的三条持久事件必须全部投递后再核对通知");
-        int schedulingNotices = count("""
-                select count(*) from notices
-                where audience_user_id = ?
-                  and source_event = 'PRODUCTION_PLAN_SCHEDULED'
-                  and title = ?
-                """, ownerUser, "排产通知：" + billNo);
-        assertEquals(1, schedulingNotices,
-                "同一订单批量审核多张计划单必须合并成一条排产通知");
-        Map<String, Object> merged = jdbc.queryForMap("""
-                select content from notices
-                where audience_user_id = ?
-                  and source_event = 'PRODUCTION_PLAN_SCHEDULED'
-                  and title = ?
-                """, ownerUser, "排产通知：" + billNo);
-        String content = (String) merged.get("content");
-        assertTrue(content.contains("已排产 9"), "合并通知正文必须带三张计划单的合计排产量：" + content);
-        assertTrue(content.contains("共 3 张计划单"),
-                "合并通知正文必须标注计划单张数：" + content);
     }
 
     // ---------------------------------------------------------------------------------------------

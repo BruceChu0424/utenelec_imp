@@ -236,6 +236,7 @@ abstract final class Perm {
 
   /// 仓库管理单据（view 全员 / edit 归 PMC）
   static const stockDocView = 'stock_doc:view';
+  static const warehouseTaskViewAll = 'warehouse_task:view:all';
   static const stockDocEdit = 'stock_doc:edit';
 
   /// 查看全部仓库单据（对象级授权；按制单人 maker_id 隔离，持此权限看全部）。
@@ -380,6 +381,7 @@ abstract final class Perm {
   // ===== 生产管理（生产部）=====
   static const productionPlanView = 'production_plan:view';
   static const productionExecutionView = 'production_execution:view';
+  static const productionWorkshopTaskViewAll = 'production_workshop_task:view:all';
   static const productionExecutionOverview = 'production_execution:overview';
   static const productionPlanEdit = 'production_plan:edit';
   static const productionPlanApprove = 'production_plan:approve';
@@ -762,6 +764,7 @@ abstract final class Perm {
   static const salesReturnQualityCorrect = 'sales_return_quality:correct';
   static const salesReturnQualityDispose = 'sales_return_quality:dispose';
   static const supplierReturnTaskView = 'supplier_return_task:view';
+  static const supplierReturnTaskViewAll = 'supplier_return_task:view:all';
   static const supplierReturnTaskComplete = 'supplier_return_task:complete';
   static const procurementIqcRejectionRecordReturn =
       'procurement_iqc_rejection:record_return';

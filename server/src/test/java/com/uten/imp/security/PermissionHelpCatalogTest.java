@@ -12,6 +12,18 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 class PermissionHelpCatalogTest {
+    @Test void moneyDocumentApprovalHelpExplainsBookEffectsWithoutPromisingBankExecution() {
+        var help=PermissionBusinessDescriptions.catalog();
+        for(String code:List.of("finance_expense:approve","finance_other_income:approve","finance_payment:approve",
+                "finance_receipt:approve","finance_bank_transfer:approve")) {
+            assertThat(help.get(code).description()).as(code).contains("账面余额","流水","总账分录","不自动向银行发起转账","制单人与审核人分离");
+        }
+        assertThat(help.get("finance_expense:approve").description()).contains("扣减","不核销客户应收或供应商应付");
+        assertThat(help.get("finance_other_income:approve").description()).contains("增加","按期间生成");
+        assertThat(help.get("finance_payment:approve").description()).contains("核销对应应付","供应商预付禁止审核");
+        assertThat(help.get("finance_receipt:approve").description()).contains("核销对应应收","客户预收");
+        assertThat(help.get("finance_bank_transfer:approve").description()).contains("转出账户","各转入账户","按期间生成");
+    }
     @Test void salesManagerHelpSeparatesReadingDecisionsAndFinanceResponsibilities() {
         var help=PermissionBusinessDescriptions.catalog();
         for (String kind : List.of("quote","order")) {
@@ -51,7 +63,7 @@ class PermissionHelpCatalogTest {
         var db=PermissionCatalogTestSupport.database();
         assertThat(PermissionBusinessDescriptions.catalog().keySet()).containsExactlyInAnyOrderElementsOf(PermissionCatalogTestSupport.catalogCodes());
         var before=db.queryForList("SELECT id,code,action_type,module,category,sort_order,grant_policy::text,high_risk,baseline,baseline_pinned,sensitivity,explicit_grant_required FROM permissions ORDER BY code");
-        Path migration=Path.of("src/main/resources/db/migration/V980__plain_permission_names_and_examples.sql");
+        Path migration=Path.of("src/main/resources/db/migration/V983__task_read_all_permission_help.sql");
         db.execute(Files.readString(migration));
         assertThat(db.queryForList("SELECT id,code,action_type,module,category,sort_order,grant_policy::text,high_risk,baseline,baseline_pinned,sensitivity,explicit_grant_required FROM permissions ORDER BY code")).isEqualTo(before);
         db.queryForList("SELECT code,name,description FROM permissions").forEach(row->{

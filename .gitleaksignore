@@ -448,3 +448,18 @@ d1e83824a4e765b8859be5cbf509d4434d06ef21:clients/windows_legacy/design-token-pro
 d1e83824a4e765b8859be5cbf509d4434d06ef21:clients/windows_legacy/design-token-provenance.json:generic-api-key:689
 d1e83824a4e765b8859be5cbf509d4434d06ef21:clients/windows_legacy/design-token-provenance.json:generic-api-key:717
 d1e83824a4e765b8859be5cbf509d4434d06ef21:clients/windows_legacy/tools/test_design_tokens.py:generic-api-key:103
+
+# 2026-11-01 release integration: nine SHA-256 source fingerprints verified
+# against their exact owning Git blobs (including historical EOL serialization),
+# plus the existing isolated quote-finance Spring JWT fixture. No live credential.
+# Exceptions are exact commit/path/rule/line fingerprints; no file/rule exclusions.
+202385d398a5223ce030ebfa8de5497793f6fcea:docs/99-项目治理/2026-10-31-只读查单与业务参与统一.evidence.json:generic-api-key:15
+202385d398a5223ce030ebfa8de5497793f6fcea:docs/99-项目治理/2026-10-31-只读查单与业务参与统一.evidence.json:generic-api-key:43
+202385d398a5223ce030ebfa8de5497793f6fcea:docs/99-项目治理/2026-10-31-只读查单与业务参与统一.evidence.json:generic-api-key:53
+202385d398a5223ce030ebfa8de5497793f6fcea:docs/99-项目治理/2026-10-31-只读查单与业务参与统一.evidence.json:generic-api-key:55
+202385d398a5223ce030ebfa8de5497793f6fcea:docs/99-项目治理/2026-10-31-只读查单与业务参与统一.evidence.json:generic-api-key:62
+202385d398a5223ce030ebfa8de5497793f6fcea:docs/99-项目治理/2026-10-31-只读查单与业务参与统一.evidence.json:generic-api-key:79
+202385d398a5223ce030ebfa8de5497793f6fcea:docs/99-项目治理/2026-10-31-只读查单与业务参与统一.evidence.json:generic-api-key:101
+202385d398a5223ce030ebfa8de5497793f6fcea:docs/99-项目治理/2026-10-31-只读查单与业务参与统一.evidence.json:generic-api-key:108
+202385d398a5223ce030ebfa8de5497793f6fcea:docs/99-项目治理/2026-10-31-只读查单与业务参与统一.evidence.json:generic-api-key:116
+327d968469c18b98fa2b8ea34003793b2a7770ee:server/src/test/java/com/uten/imp/features/sales/quote/SalesManagerReviewFlowPostgresTest.java:generic-api-key:76

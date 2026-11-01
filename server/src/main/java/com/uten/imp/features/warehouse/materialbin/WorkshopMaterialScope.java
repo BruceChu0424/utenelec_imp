@@ -219,6 +219,29 @@ public class WorkshopMaterialScope {
         return warehouseScope.predicate(warehouseColumn, ":warehouseScope");
     }
 
+    public String readRequisitionPhysicalWarehouseFilter(WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
+            MapSqlParameterSource params,String warehouseColumn,UUID workshop) {
+        if(warehouseColumn==null || !warehouseColumn.matches("[a-zA-Z_][a-zA-Z0-9_.]*"))
+            throw new IllegalArgumentException("invalid internal column");
+        if(warehouseScope==null || !warehouseScope.active())return "";
+        if(!allTaskReads())return requisitionPhysicalWarehouseFilter(warehouseScope,params,warehouseColumn);
+        if(restrictedWorkshops().map(workshops->workshops.contains(workshop)).orElse(false))return "";
+        return physicalWarehousePredicate(warehouseScope,params,warehouseColumn);
+    }
+
+    public String readWorkshopWarehouseArrayFilter(WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
+            MapSqlParameterSource params,String warehouseColumn,String workshopColumn) {
+        if(warehouseColumn==null || !warehouseColumn.matches("[a-zA-Z_][a-zA-Z0-9_.]*")
+                || workshopColumn==null || !workshopColumn.matches("[a-zA-Z_][a-zA-Z0-9_.]*"))
+            throw new IllegalArgumentException("invalid internal column");
+        if(warehouseScope==null || !warehouseScope.active())return "";
+        var original=restrictedWorkshops();
+        if(original.isPresent() && !allTaskReads())return "";
+        params.addValue("warehouseScope",warehouseScope.idsCsv());
+        String physical=warehouseScope.predicateAny("ARRAY["+warehouseColumn+"]",":warehouseScope");
+        return original.isPresent()?"("+predicate(workshopColumn,params)+" OR "+physical+")":physical;
+    }
+
     /**
      * 车间列在范围内的 SQL 条件; column 是调用方内部的列名 (不是请求输入)。不受限时为 TRUE、不绑定参数。
      */

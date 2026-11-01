@@ -106,11 +106,9 @@ public class WorkshopMaterialSettingsService {
     @Transactional(readOnly = true)
     public List<SettingsView> taskStatus(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope warehouses) {
         var params = new MapSqlParameterSource();
-        String predicate = scope.predicate("workshop.id", params);
-        if (warehouses.active() && scope.restrictedWorkshops().isEmpty()) {
-            params.addValue("warehouseScope", warehouses.idsCsv());
-            predicate += " AND " + warehouses.predicateAny("ARRAY[opened.source_warehouse_id]", ":warehouseScope");
-        }
+        String predicate = scope.readPredicate("workshop.id", params);
+        String physical=scope.readWorkshopWarehouseArrayFilter(warehouses,params,"opened.source_warehouse_id","workshop.id");
+        if(!physical.isEmpty())predicate+=" AND "+physical;
         List<UUID> workshops = db.queryForList("""
                 SELECT workshop.id FROM departments workshop
                 JOIN workshop_bins opened ON opened.workshop_department_id=workshop.id
@@ -658,6 +656,7 @@ public class WorkshopMaterialSettingsService {
             rows.put((UUID) row.get("id"), row);
         }
         boolean canSetup = permissions.has(WorkshopMaterialPermissions.SETUP);
+        var commandWorkshops=scope.restrictedWorkshops();
         List<SettingsView> out = new ArrayList<>();
         for (UUID workshopId : workshopIds) {
             Map<String, Object> row = rows.get(workshopId);
@@ -682,7 +681,7 @@ public class WorkshopMaterialSettingsService {
             };
             UUID main = (UUID) row.get("main_id");
             List<String> actions = new ArrayList<>();
-            if (canSetup) {
+            if (canSetup && commandWorkshops.map(workshops->workshops.contains(workshopId)).orElse(true)) {
                 actions.add("SETUP");
                 switch (status) {
                     case STATUS_NOT_OPEN -> {

@@ -28,7 +28,10 @@ DECLARE
         'legacy_quantity_counter_import_sources','legacy_production_plan_counter_import_sources',
         'legacy_production_plan_counter_import_contexts','stock_measurement_holds'];
     private_relations constant text[] := ARRAY[
-        'flyway_schema_history','business_test_object_cleanup_intents'];
+        'flyway_schema_history','business_test_object_cleanup_intents',
+        -- V977 contains the private reviewed personnel plan; a no-op callback
+        -- must not undo its explicit migration-time REVOKE.
+        'employee_code_numbering_receipts'];
     -- Only these views keep a runtime INSERT path; the INSTEAD OF trigger lands the
     -- rows in audit_log, and UPDATE/DELETE stay denied because no such trigger exists.
     insert_through_views constant text[] := ARRAY['v_audit_log_all'];

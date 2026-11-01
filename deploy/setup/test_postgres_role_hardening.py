@@ -61,6 +61,17 @@ PHASE2 = (HERE / "phase2-postgres.sh").read_text(encoding="utf-8")
 
 
 class RoleHardeningSourceContractTest(unittest.TestCase):
+    def test_private_relation_policy_matches_the_canonical_dev_and_reconcile_entry(self):
+        canonical = (MIGRATION_ROOT.parent / "local-runtime-privileges.sql").read_text(encoding="utf-8")
+        local = re.search(r"private_relations constant text\[\] := ARRAY\[(.*?)\];", canonical, re.S).group(1)
+        production = re.search(r"private_names constant text\[\] := ARRAY\[(.*?)\];",
+                               shipped_block("private_runtime_relations"), re.S).group(1)
+        names = lambda body: set(re.findall(r"'([a-z_]+)'", body))
+        self.assertEqual(names(local), names(production))
+        self.assertIn("employee_code_numbering_receipts", names(local))
+        self.assertLess(HARDENER.index("GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES"),
+                        HARDENER.index("DO $private_runtime_relations$"))
+
     def test_membership_cleanup_precedes_ownership_and_retains_maintenance_gates(self):
         self.assertLess(HARDENER.index("DO $runtime_membership_cleanup$"), HARDENER.index("REASSIGN OWNED BY uten TO"))
         self.assertLess(HARDENER.index("ALTER ROLE uten NOLOGIN"), HARDENER.index("DO $runtime_membership_cleanup$"))
@@ -240,6 +251,19 @@ SELECT has_table_privilege('uten','public.legacy_subcontract_order_import_source
        has_function_privilege('uten','public.ordinary_business_function()','EXECUTE');
 """)
         self.assertEqual(result, "t|f|f|t|t|t|t")
+
+    def test_private_numbering_plan_is_closed_after_table_and_column_grants(self):
+        result = self.sql("""CREATE TABLE public.employee_code_numbering_receipts(plan jsonb);
+ALTER TABLE public.employee_code_numbering_receipts OWNER TO uten_owner;
+GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO uten;
+GRANT SELECT(plan),UPDATE(plan) ON employee_code_numbering_receipts TO PUBLIC,uten;
+GRANT SELECT ON employee_code_numbering_receipts TO uten_migrator;
+""" + shipped_block("private_runtime_relations") + """
+SELECT has_table_privilege('uten','employee_code_numbering_receipts','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER'),
+       has_any_column_privilege('uten','employee_code_numbering_receipts','SELECT,INSERT,UPDATE,REFERENCES'),
+       has_table_privilege('uten_migrator','employee_code_numbering_receipts','SELECT');
+""")
+        self.assertEqual(result, "f|f|t")
 
     def test_older_reviewed_head_without_v624_objects_still_hardens(self):
         self.assertEqual(self.sql(shipped_block("restricted_import_acl") + "SELECT 1;"), "1")

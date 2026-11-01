@@ -113,5 +113,7 @@ class LocalRuntimePrivilegesPostgresTest {
             assertThat(owner.queryForObject("SELECT has_function_privilege('uten',?,'EXECUTE')", Boolean.class, signature)).isFalse();
         }
         assertThat(owner.queryForObject("SELECT has_function_privilege('uten','fn_claim_next_released_employee_code(uuid)','EXECUTE')", Boolean.class)).isTrue();
+        assertThat(owner.queryForObject("SELECT has_table_privilege('uten','employee_code_numbering_receipts','SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')", Boolean.class)).isFalse();
+        assertThat(owner.queryForObject("SELECT has_any_column_privilege('uten','employee_code_numbering_receipts','SELECT,INSERT,UPDATE,REFERENCES')", Boolean.class)).isFalse();
     }
 }

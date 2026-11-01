@@ -296,6 +296,12 @@ verify_runtime_role_contract() {
       NOT has_function_privilege('uten', 'public.fn_require_runtime_maintenance(boolean)', 'EXECUTE') END
     AND CASE WHEN to_regprocedure('public.fn_require_runtime_refresh()') IS NULL THEN TRUE ELSE
       NOT has_function_privilege('uten', 'public.fn_require_runtime_refresh()', 'EXECUTE') END
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE n.nspname='public' AND c.relname=ANY(ARRAY[
+        'flyway_schema_history','business_test_object_cleanup_intents','employee_code_numbering_receipts'])
+        AND (has_table_privilege('uten',c.oid,'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER')
+             OR has_any_column_privilege('uten',c.oid,'SELECT,INSERT,UPDATE,REFERENCES')))
     )::int;")"
   [[ "$import_acl" == 1 ]] || die "$phase runtime role can mutate or issue restricted legacy import evidence"
 }
@@ -639,6 +645,26 @@ ALTER DEFAULT PRIVILEGES FOR ROLE uten_owner IN SCHEMA public
 ALTER DEFAULT PRIVILEGES FOR ROLE uten_owner IN SCHEMA public
   GRANT EXECUTE ON FUNCTIONS TO uten;
 REVOKE ALL ON TABLE flyway_schema_history FROM uten;
+-- Same private relation policy as db/local-runtime-privileges.sql. Revoke
+-- independent column/PUBLIC paths too; never copy the V977 personnel plan to
+-- the runtime role after the broad business grants above.
+DO $private_runtime_relations$
+DECLARE
+  relation record;
+  attribute record;
+  private_names constant text[] := ARRAY[
+    'flyway_schema_history','business_test_object_cleanup_intents','employee_code_numbering_receipts'];
+BEGIN
+  FOR relation IN SELECT c.oid,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                  WHERE n.nspname='public' AND c.relkind IN('r','p') AND c.relname=ANY(private_names) LOOP
+    EXECUTE format('REVOKE ALL ON TABLE public.%I FROM PUBLIC,uten RESTRICT',relation.relname);
+    FOR attribute IN SELECT attname FROM pg_attribute
+                     WHERE attrelid=relation.oid AND attnum>0 AND NOT attisdropped AND attacl IS NOT NULL LOOP
+      EXECUTE format('REVOKE ALL (%I) ON TABLE public.%I FROM PUBLIC,uten RESTRICT',attribute.attname,relation.relname);
+    END LOOP;
+  END LOOP;
+END;
+$private_runtime_relations$;
 -- Preserve V624/V626/V627 source authority boundaries after the general business grants.
 -- These objects may be absent on an older, independently approved release head.
 DO $restricted_import_acl$

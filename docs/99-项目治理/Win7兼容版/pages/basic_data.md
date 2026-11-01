@@ -4,7 +4,7 @@
 
 ## W7-BIZ-018 · lib/features/basic_data/pages/account_detail_page.dart
 
-模块 `basic_data`；1312 行；SHA256 `c481611b65de18bea280182eeac8e4493fa270f0aff59795306ac932172a9de1`。
+模块 `basic_data`；1312 行；SHA256 `8a726c41bc05d4c26d8fbc26fada1b294602f669ab4e6053961b851aa7ed4cd7`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -76,7 +76,7 @@
 
 ## W7-BIZ-022 · lib/features/basic_data/pages/client_category_page.dart
 
-模块 `basic_data`；942 行；SHA256 `7cb8c00b20bae86c742b55927cf5864ccf11e1ed670a66858302083f1b3fb349`。
+模块 `basic_data`；942 行；SHA256 `c4b9e10d0074b64f1b146527da1de9958a670c980574bef3fadc3c0f64828f84`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -256,7 +256,7 @@
 
 ## W7-BIZ-032 · lib/features/basic_data/pages/party_detail_page.dart
 
-模块 `basic_data`；2207 行；SHA256 `ad73dd12427d43013c3c5ce8160b709976d0f46ca35969cd4026b46c4d8cf2d7`。
+模块 `basic_data`；2207 行；SHA256 `bfc9b15d9ba0a454b9e6e0629bd675fb86f316750e6c1cfa7f86cf6b24b49fe4`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -274,7 +274,7 @@
 
 ## W7-BIZ-033 · lib/features/basic_data/pages/payment_style_page.dart
 
-模块 `basic_data`；2546 行；SHA256 `637b4a2e42121e80e7c61837e8e9fc9acd7daeb00fcaba4e1f01690314cece4c`。
+模块 `basic_data`；2546 行；SHA256 `6f4a760747832392087116126b072a715b25940a85102a98efac0af6ac21ab89`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -310,7 +310,7 @@
 
 ## W7-BIZ-035 · lib/features/basic_data/pages/settlement_method_page.dart
 
-模块 `basic_data`；985 行；SHA256 `9f2a2fdc835f4dff6bc46e70450a385620b3ad659031ec59c5263e00a2f4c9a5`。
+模块 `basic_data`；985 行；SHA256 `9299b98fa8d3e64c221ab07f3366a9f518b64e532d1ea6b6bedf9b79eac3836e`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -328,7 +328,7 @@
 
 ## W7-BIZ-036 · lib/features/basic_data/pages/supplier_category_page.dart
 
-模块 `basic_data`；611 行；SHA256 `4e8eecd76b5f097416b13b577f07ede76beb13e89a6b1fa3c8ec73a06c2d5e6b`。
+模块 `basic_data`；611 行；SHA256 `a7fafd7bb9a0f3ef9f836bd8ab54521967e875e82da584c39a326a48f8312da9`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

@@ -4,7 +4,7 @@
 
 ## W7-BIZ-146 · lib/features/settings/pages/device_audit_receipts_page.dart
 
-模块 `settings`；452 行；SHA256 `1bc8f44dd5acf8e3aa115bb8dd86611cce29f8f540b13c8531f6eca55cd7daf6`。
+模块 `settings`；452 行；SHA256 `58766bd7ecca8ff686c6877ecc4772e988bb473d72bc81fde8d86ebf3055cfc2`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

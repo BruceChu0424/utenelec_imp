@@ -22,7 +22,7 @@
 
 ## W7-BIZ-174 · lib/features/warehouse/materialbin/pages/workshop_material_count_page.dart
 
-模块 `warehouse`；1116 行；SHA256 `6ba80e381fed6e3c63ec5ba0e649fdbb17579189bae2ce63be08ffef1f8cec81`。
+模块 `warehouse`；1116 行；SHA256 `3d679ac138eb2e63855315b4fc79cc837af932e51cff6d13d253f908686d3b18`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -184,7 +184,7 @@
 
 ## W7-BIZ-181 · lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart
 
-模块 `warehouse`；652 行；SHA256 `04c5ec81cc8179d58cf3b703198dc450eaae3299a79df576d37cb9d3ab990183`。
+模块 `warehouse`；652 行；SHA256 `253c713ba1064218cd1509063ceb910147220032d86198b11be1c6524a41db01`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -436,7 +436,7 @@
 
 ## W7-BIZ-195 · lib/features/warehouse/pages/warehouse_insight_page.dart
 
-模块 `warehouse`；1315 行；SHA256 `5e79468848a50c8f2605d21ee4fc4c5712cfa370d801d00aee3e5cb2e950f8f8`。
+模块 `warehouse`；1315 行；SHA256 `a3f67499af60c0c3bd161d4fc1ad6f1b7612781444e6ef9dada551583c6c29e6`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -490,7 +490,7 @@
 
 ## W7-BIZ-198 · lib/features/warehouse/pages/warehouse_quality_batch_stock_in_page.dart
 
-模块 `warehouse`；706 行；SHA256 `d1777c78e05b54c38eea2b4281d7d16137d00c62c37cf0041fb46cf1aaee6abe`。
+模块 `warehouse`；706 行；SHA256 `3bdb37a72a7b14029a3730c0ecc2b40cf4e903a4af433571bcaff166af1cfd21`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -544,7 +544,7 @@
 
 ## W7-BIZ-201 · lib/features/warehouse/pages/warehouse_quality_results_page.dart
 
-模块 `warehouse`；1109 行；SHA256 `d320622717ca4a4366015711da3a4ef13ade7a2b5925310da298e2e7aea4bd9d`。
+模块 `warehouse`；1109 行；SHA256 `a24fc6e62c85a4575e4756d08bed357044f3c99d6059517562fbc1d54415d881`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -562,7 +562,7 @@
 
 ## W7-BIZ-202 · lib/features/warehouse/pages/warehouse_report_table_page.dart
 
-模块 `warehouse`；684 行；SHA256 `31cd6e7fd3b09e5014ed4b5aff06b467f40ee8bb593f177c21c18397cbe9a4b2`。
+模块 `warehouse`；684 行；SHA256 `4eb31bc07368d47da58670f4c8c764787cc55e8dcb2907302c3e6a38ae887118`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

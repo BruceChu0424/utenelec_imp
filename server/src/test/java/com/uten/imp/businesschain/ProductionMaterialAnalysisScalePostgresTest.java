@@ -101,7 +101,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
     private ProductionChainDataFactory factory;
     private int historyRows;
 
-    @BeforeEach void setUp() { factory = new ProductionChainDataFactory(beans, jdbc, sales, finance); }
+    @BeforeEach void setUp() { factory = new ProductionChainDataFactory(beans, jdbc, sales); }
     @AfterEach void clearActor() { SecurityContextHolder.clearContext(); ProductionJdbcMeasurement.end(); }
 
     /** Read hot paths are measured separately from refresh writes and diagnostic serialization. */

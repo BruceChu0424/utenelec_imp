@@ -212,6 +212,7 @@ class FullChainEndToEndTest {
     @Autowired private com.uten.imp.application.port.SubcontractDrawRecheckPort subcontractDrawRecheck;
     @Autowired private com.uten.imp.features.finance.procurement.ProcurementFinanceApprovalService financeApproval;
     @Autowired private com.uten.imp.features.common.taskclaim.TaskClaimService reviewClaims;
+    @Autowired private com.uten.imp.features.sales.SalesManagerReviewService salesManagerReviews;
     @Autowired private jakarta.persistence.EntityManager quantityEntityManager;
     @Autowired private com.uten.imp.common.platformcolumns.PlatformColumnService platformColumnService;
     @Autowired private com.uten.imp.features.purchase.receipt.PurchaseReceiptService purchaseReceiptService;
@@ -588,6 +589,7 @@ class FullChainEndToEndTest {
         assertTrue(analysisService.salesCandidates(orderNo, 1, 20).items().isEmpty(),
                 "unconfirmed order must not appear in material-analysis candidates");
 
+        long financeRevision=approveSalesManagerReview(orderId,0L);
         // 非财务部门矩阵授予确认权后可认领并确认，不再要求财务部门或个人重复加授。
         UUID outsider = createUserWithPerms(w, "fin-outsider-s19b",
                 "sales_order_finance:view");
@@ -599,7 +601,7 @@ class FullChainEndToEndTest {
         loginAs(outsider);
         var claim = reviewClaims.claim("SALES_ORDER_FINANCE_CONFIRM", orderId.toString());
         financeConfirmService.confirm(orderId,
-                new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null, 0L, claim.claimId()));
+                new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null, financeRevision, claim.claimId()));
         assertEquals(0, jdbc.queryForObject("""
                 SELECT count(*) FROM user_permission_overrides po
                 JOIN permissions p ON p.id = po.permission_id
@@ -4646,9 +4648,15 @@ class FullChainEndToEndTest {
     }
 
     /** Explicit initial-review fixture: never substitutes a newer commercial revision for a caller's old snapshot. */
-    private void confirmInitialSalesFinance(UUID orderId) {
+    void confirmInitialSalesFinance(UUID orderId) {
+        long financeRevision=approveSalesManagerReview(orderId,0L);
         var claim=reviewClaims.claim("SALES_ORDER_FINANCE_CONFIRM",orderId.toString());
-        financeConfirmService.confirm(orderId,new com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,0L,claim.claimId()));
+        financeConfirmService.confirm(orderId,new com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,financeRevision,claim.claimId()));
+    }
+
+    long approveSalesManagerReview(UUID orderId,long reviewedRevision) {
+        return com.uten.imp.support.SalesManagerReviewFixtures.approveOrderForFinance(
+                jdbc,reviewClaims,salesManagerReviews,orderId,reviewedRevision);
     }
 
     private UUID createIqcWarehouseConfirmer(World w, String tag) {
@@ -10107,9 +10115,10 @@ class FullChainEndToEndTest {
             assertEquals(0, pendingMaterial.shortageQty().compareTo(BigDecimal.ZERO),
                     "等待财审不能把已经合格入库的货重新显示成实物缺口");
             assertEquals(0, pendingMaterial.allocatedAvailableQty().compareTo(new BigDecimal("10")));
-            var claim = reviewClaims.claim("SALES_ORDER_FINANCE_CONFIRM", salesOrder.toString());
-            Long revision = jdbc.queryForObject("select finance_review_revision from sales_orders where id=?",
+            Long managerRevision = jdbc.queryForObject("select finance_review_revision from sales_orders where id=?",
                     Long.class, salesOrder);
+            long revision=approveSalesManagerReview(salesOrder,managerRevision);
+            var claim = reviewClaims.claim("SALES_ORDER_FINANCE_CONFIRM", salesOrder.toString());
             financeConfirmService.confirm(salesOrder, new com.uten.imp.features.sales.order
                     .SalesOrderFinanceConfirmService.FinanceConfirmRequest(null, revision, claim.claimId()));
             AnalysisView approved = analysisService.detail(initial.analysisId());
@@ -11052,7 +11061,8 @@ class FullChainEndToEndTest {
         var order=salesOrderService.create(request);
         UUID id=order.getId();
         salesOrderService.approve(id);
-        var initialDecision=new com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,0L);
+        long financeRevision=approveSalesManagerReview(id,0L);
+        var initialDecision=new com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,financeRevision,UUID.randomUUID());
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,() -> financeConfirmService.confirm(id,initialDecision)).getCode());
         assertFalse(financeConfirmService.review(id).financeConfirmed());
         var first=reviewClaims.claim("SALES_ORDER_FINANCE_CONFIRM",id.toString());
@@ -11060,20 +11070,20 @@ class FullChainEndToEndTest {
         request.setRemark("审核中不得改动");
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,() -> salesOrderService.update(id,request)).getCode());
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,() -> salesOrderService.cancel(id)).getCode());
-        var wrong=new com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,0L,UUID.randomUUID());
+        var wrong=new com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,financeRevision,UUID.randomUUID());
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,() -> financeConfirmService.confirm(id,wrong)).getCode());
         // Simulate time passing for a negative expiry test, never fabricate an approval or bypass a guard.
         jdbc.update("update task_claims set lease_until=now()-interval '1 second' where id=?",first.claimId());
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,() -> financeConfirmService.confirm(id,
-                new com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,0L,first.claimId()))).getCode());
+                new com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,financeRevision,first.claimId()))).getCode());
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,() -> reviewClaims.heartbeat("SALES_ORDER_FINANCE_CONFIRM",id.toString(),first.claimId())).getCode());
         var current=reviewClaims.claim("SALES_ORDER_FINANCE_CONFIRM",id.toString());
         assertFalse(first.claimId().equals(current.claimId()));
         reviewClaims.release("SALES_ORDER_FINANCE_CONFIRM",id.toString(),first.claimId());
         assertEquals(current.claimId(),reviewClaims.activeClaimView("SALES_ORDER_FINANCE_CONFIRM",id.toString()).orElseThrow().claimId());
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,() -> financeConfirmService.confirm(id,
-                new com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,0L,first.claimId()))).getCode());
-        financeConfirmService.confirm(id,new com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,0L,current.claimId()));
+                new com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,financeRevision,first.claimId()))).getCode());
+        financeConfirmService.confirm(id,new com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,financeRevision,current.claimId()));
         assertTrue(financeConfirmService.review(id).financeConfirmed());
         assertTrue(reviewClaims.activeClaimView("SALES_ORDER_FINANCE_CONFIRM",id.toString()).isEmpty());
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,() -> reviewClaims.claim("SALES_ORDER_FINANCE_CONFIRM",id.toString())).getCode());
@@ -11082,9 +11092,10 @@ class FullChainEndToEndTest {
 
         UUID rejectedOrder=salesOrderService.create(orderRequest(w,w.goodsC(),"2","100")).getId();
         salesOrderService.approve(rejectedOrder);
+        long rejectedFinanceRevision=approveSalesManagerReview(rejectedOrder,0L);
         var rejectionClaim=reviewClaims.claim("SALES_ORDER_FINANCE_CONFIRM",rejectedOrder.toString());
         financeConfirmService.reject(rejectedOrder,new com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.FinanceRejectRequest(
-                "请核对条款",0L,rejectionClaim.claimId()));
+                "请核对条款",rejectedFinanceRevision,rejectionClaim.claimId()));
         assertTrue(financeConfirmService.review(rejectedOrder).financeRejected());
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,() -> reviewClaims.heartbeat("SALES_ORDER_FINANCE_CONFIRM",rejectedOrder.toString(),rejectionClaim.claimId())).getCode());
         salesOrderService.cancel(rejectedOrder);
@@ -11100,6 +11111,7 @@ class FullChainEndToEndTest {
         UUID orderId=saved.getId();
         request.getItems().getFirst().setId(saved.getItems().getFirst().getId());
         salesOrderService.approve(orderId);
+        approveSalesManagerReview(orderId,0L);
         UUID reviewer=createUserWithPerms(w,"finance-lease-waiter","sales_order_finance:view","sales_order_finance:confirm");
         request.setRemark("先完成的销售修改");
         var edited=new java.util.concurrent.CountDownLatch(1);
@@ -11111,6 +11123,8 @@ class FullChainEndToEndTest {
                 loginAs(w.superAdminUserId());
                 try { return new org.springframework.transaction.support.TransactionTemplate(transactionManager).execute(status -> {
                     var result=salesOrderService.update(orderId,request);
+                    long editedRevision=jdbc.queryForObject("SELECT finance_review_revision FROM sales_orders WHERE id=?",Long.class,orderId);
+                    approveSalesManagerReview(orderId,editedRevision);
                     edited.countDown();
                     try { assertTrue(release.await(20,java.util.concurrent.TimeUnit.SECONDS)); }
                     catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException(interrupted); }

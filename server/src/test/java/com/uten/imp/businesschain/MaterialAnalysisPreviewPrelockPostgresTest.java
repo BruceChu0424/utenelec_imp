@@ -60,7 +60,7 @@ class MaterialAnalysisPreviewPrelockPostgresTest {
     @MockitoSpyBean ProductionMutationFootprintService footprints;
     private ProductionChainDataFactory factory;
 
-    @BeforeEach void setup() { factory = new ProductionChainDataFactory(beans, jdbc, sales, finance); }
+    @BeforeEach void setup() { factory = new ProductionChainDataFactory(beans, jdbc, sales); }
     @AfterEach void clearActor() { SecurityContextHolder.clearContext(); }
 
     @Test

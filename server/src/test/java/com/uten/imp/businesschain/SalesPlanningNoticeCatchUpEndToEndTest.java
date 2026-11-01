@@ -99,8 +99,7 @@ class SalesPlanningNoticeCatchUpEndToEndTest {
         transactions = new TransactionTemplate(transactionManager);
         order = sales.create(fixture.orderRequest(world, world.goodsA(), "10", "100")).getId();
         sales.approve(order);
-        var claim = claims.claim("SALES_ORDER_FINANCE_CONFIRM", order.toString());
-        finance.confirm(order, new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null, 0L, claim.claimId()));
+        fixture.confirmInitialSalesFinance(order);
     }
     @AfterEach void cleanup() {
         for (UUID user : recipients) jdbc.update("UPDATE users SET status='disabled' WHERE id=?", user);
@@ -351,6 +350,7 @@ class SalesPlanningNoticeCatchUpEndToEndTest {
         drain();
         UUID user = planner();
         resubmit("10");
+        fixture.approveSalesManagerReview(order,revision());
         var claim = claims.claim("SALES_ORDER_FINANCE_CONFIRM", order.toString());
         finance.reject(order, new SalesOrderFinanceConfirmService.FinanceRejectRequest("核对后再提交", revision(), claim.claimId()));
         catchUp.runBatch(); deliver(); drain();
@@ -405,6 +405,7 @@ class SalesPlanningNoticeCatchUpEndToEndTest {
     }
     private long revision() { return jdbc.queryForObject("SELECT finance_review_revision FROM sales_orders WHERE id=?", Long.class, order); }
     private void confirm(boolean batch) {
+        fixture.approveSalesManagerReview(order,revision());
         var claim = claims.claim("SALES_ORDER_FINANCE_CONFIRM", order.toString());
         if (batch) finance.confirmBatch(new SalesOrderFinanceConfirmService.FinanceBatchConfirmRequest(
                 List.of(order), null, Map.of(order, revision()), Map.of(order, claim.claimId())));

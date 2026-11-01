@@ -1,5 +1,14 @@
 -- Load in one maintenance connection after V977. Temporary functions never run
 -- themselves. Review the preview, then apply that EXACT JSON in a transaction.
+-- Retire both temporary functions before COMMIT (see the release runbook).
+-- This database-wide one-shot gate also survives a later dataset-id change.
+DO $one_shot$
+BEGIN
+    IF EXISTS(SELECT 1 FROM public.employee_code_numbering_receipts) THEN
+        RAISE EXCEPTION 'Initial numbering is already complete; this one-shot maintenance script is retired';
+    END IF;
+END;
+$one_shot$;
 CREATE OR REPLACE FUNCTION pg_temp.employee_numbering_plan(
     founder_one uuid, founder_two uuid,
     owner_login text DEFAULT '17665410007', owner_hire_date date DEFAULT DATE '2026-10-31')
@@ -7,6 +16,9 @@ RETURNS jsonb LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE owner_employee uuid; realm uuid; entries jsonb; excluded jsonb; accounts jsonb;
         owner_history jsonb; issues jsonb := '[]'::jsonb; bootstrap_confirmation boolean;
 BEGIN
+    IF EXISTS(SELECT 1 FROM public.employee_code_numbering_receipts) THEN
+        RAISE EXCEPTION 'Initial numbering is already complete; no new numbering plan is allowed';
+    END IF;
     SELECT business_dataset_id INTO STRICT realm FROM public.authorization_state WHERE singleton_id=1;
     SELECT employee_id INTO STRICT owner_employee FROM public.users
     WHERE login_account=owner_login AND NOT is_deleted;
@@ -115,9 +127,13 @@ BEGIN
         RAISE EXCEPTION 'Numbering plan belongs to a different database or business dataset';
     END IF;
     plan_hash:=encode(public.digest(plan::text,'sha256'),'hex');
-    SELECT * INTO receipt FROM public.employee_code_numbering_receipts WHERE dataset_id=realm;
+    SELECT * INTO receipt FROM public.employee_code_numbering_receipts ORDER BY applied_at LIMIT 1;
     IF FOUND THEN
-        IF receipt.plan_sha256<>plan_hash THEN RAISE EXCEPTION 'Initial numbering is already complete; employee numbers are fixed'; END IF;
+        IF receipt.dataset_id<>realm OR receipt.plan_sha256<>plan_hash THEN
+            RAISE EXCEPTION 'Initial numbering is already complete; employee numbers are fixed';
+        END IF;
+        -- Same-connection unknown-submit recovery only: return the stored result
+        -- without touching employees, history, counters or the completion marker.
         RETURN jsonb_build_object('alreadyApplied',true,'planSha256',plan_hash,'count',jsonb_array_length(plan->'entries'));
     END IF;
     actual:=pg_temp.employee_numbering_plan((plan->>'founderOne')::uuid,(plan->>'founderTwo')::uuid,

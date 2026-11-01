@@ -195,6 +195,35 @@ class EmployeeSixDigitNumberingPostgresTest {
         assertThat(nextCode(db)).isEqualTo("000007");
         assertThat(db.queryForObject("SELECT count(*) FROM business_identifier_reservation_members WHERE normalized_identifier='900000' AND entity_id=?",Integer.class,imported)).isEqualTo(1);
     }
+    @Test void oneShotEntryIsRetiredAndLaterServerMigrationNeverRenumbersEmployees() throws Exception {
+        String preview=plan();
+        connection.setAutoCommit(false);
+        apply(preview);
+        db.execute("DROP FUNCTION pg_temp.apply_employee_numbering(jsonb,text)");
+        db.execute("DROP FUNCTION pg_temp.employee_numbering_plan(uuid,uuid,text,date)");
+        connection.commit();connection.setAutoCommit(true);
+        assertThat(db.queryForObject("SELECT to_regprocedure('pg_temp.apply_employee_numbering(jsonb,text)')::text",String.class)).isNull();
+        assertThat(db.queryForObject("SELECT to_regprocedure('pg_temp.employee_numbering_plan(uuid,uuid,text,date)')::text",String.class)).isNull();
+
+        String employeesBefore=db.queryForObject("SELECT jsonb_agg(to_jsonb(e) ORDER BY id)::text FROM employees e",String.class);
+        String historyBefore=db.queryForObject("SELECT jsonb_agg(to_jsonb(h) ORDER BY id)::text FROM employment_history h",String.class);
+        String receiptBefore=db.queryForObject("SELECT to_jsonb(r)::text FROM employee_code_numbering_receipts r",String.class);
+        int sequenceBefore=db.queryForObject("SELECT last_seq FROM master_code_sequences WHERE prefix=''",Integer.class);
+        var migration=TestFlyway.configure().dataSource(postgres.getJdbcUrl().replace("numbering_template",databaseName),postgres.getUsername(),postgres.getPassword())
+                .locations("classpath:db/migration").load().migrate();
+        assertThat(migration.migrationsExecuted).isZero();
+        assertThat(db.queryForObject("SELECT jsonb_agg(to_jsonb(e) ORDER BY id)::text FROM employees e",String.class)).isEqualTo(employeesBefore);
+        assertThat(db.queryForObject("SELECT jsonb_agg(to_jsonb(h) ORDER BY id)::text FROM employment_history h",String.class)).isEqualTo(historyBefore);
+        assertThat(db.queryForObject("SELECT to_jsonb(r)::text FROM employee_code_numbering_receipts r",String.class)).isEqualTo(receiptBefore);
+        assertThat(db.queryForObject("SELECT last_seq FROM master_code_sequences WHERE prefix=''",Integer.class)).isEqualTo(sequenceBefore);
+
+        // Even a new maintenance connection cannot load the retired script again.
+        try(var c=open()) {
+            var later=new JdbcTemplate(new SingleConnectionDataSource(c,true));
+            assertThatThrownBy(()->later.execute(maintenance)).hasMessageContaining("script is retired");
+        }
+        assertThat(nextCode(db)).isEqualTo("000006");
+    }
     private UUID employee(String code,String name,String hireDate) {
         UUID id=UUID.randomUUID();
         db.update("INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type) SELECT ?,?,?,'其他',department_id,?::date,'active','regular' FROM employees WHERE id=?",id,code,name,hireDate,owner);

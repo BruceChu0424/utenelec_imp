@@ -22,7 +22,6 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -61,13 +60,6 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
                 POSTGRES::getUsername, POSTGRES::getPassword);
     }
 
-    /** 类级共享：号段触发器要求 XD+日期+6 位序号注册格式，序号不重复。 */
-    private static final AtomicInteger BILL_SEQUENCE = new AtomicInteger();
-
-    private static String billNo() {
-        return "XD20260905%06d".formatted(BILL_SEQUENCE.incrementAndGet());
-    }
-
     @Autowired
     private JdbcTemplate jdbc;
 
@@ -83,6 +75,9 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
     @Autowired
     private com.uten.imp.features.common.taskclaim.TaskClaimService claims;
 
+    @Autowired
+    private com.uten.imp.features.sales.SalesManagerReviewService managers;
+
     @AfterEach
     void clearAuth() {
         SecurityContextHolder.clearContext();
@@ -93,30 +88,16 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
         loginAsSuperAdmin("commercial");
         UUID goodsId = goods();
         jdbc.update("UPDATE goods SET price = 10 WHERE id = ?", goodsId);
-        UUID unitId = jdbc.queryForObject("SELECT unit_id FROM goods WHERE id = ?", UUID.class, goodsId);
-        UUID currencyId = jdbc.queryForObject("""
-                SELECT id FROM currencies WHERE status = '使用' AND NOT is_deleted
-                ORDER BY is_base_currency DESC, id LIMIT 1
-                """, UUID.class);
-        var request = new com.uten.imp.features.sales.order.dto.OrderSaveRequest();
-        request.setBillDate(LocalDate.of(2026, 9, 5));
-        request.setClientId(client());
-        request.setCurrencyId(currencyId);
-        request.setShipmentPolicy("ALLOW_PARTIAL");
+        var request=orderRequest(client(),goodsId);
         request.setRemark("原备注");
-        var item = new com.uten.imp.features.sales.order.dto.OrderItemLine();
-        item.setGoodsId(goodsId);
-        item.setUnitId(unitId);
-        item.setUnitRate(BigDecimal.ONE);
-        item.setQty(BigDecimal.TEN);
-        item.setDiscount(BigDecimal.ONE);
-        request.setItems(List.of(item));
+        var item=request.getItems().getFirst();
         var created = service.create(request);
         UUID orderId = created.getId();
         UUID itemId = created.getItems().getFirst().getId();
         service.approve(orderId);
+        long initialFinanceRevision=approveManager(orderId,0L);
         var initialClaim=claims.claim("SALES_ORDER_FINANCE_CONFIRM",orderId.toString());
-        financeService.confirm(orderId,new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,0L,initialClaim.claimId()));
+        financeService.confirm(orderId,new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,initialFinanceRevision,initialClaim.claimId()));
         item.setId(itemId);
         request.setRemark("修改后的备注");
         item.setDiscount(new BigDecimal("0.9"));
@@ -125,8 +106,12 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
         assertThat(revised.isFinanceConfirmed()).isFalse();
         assertThat(revised.getItems().getFirst().getId()).isEqualTo(itemId);
         assertThat(revised.getTotalOriginal()).isEqualByComparingTo("90");
+        assertThat(revised.getManagerReview().pending()).isTrue();
+        assertThat(financeService.pending(1,50,false,null,true).getItems())
+                .noneMatch(row->row.orderId().equals(orderId));
+        long editedFinanceRevision=approveManager(orderId,initialFinanceRevision+1);
         var review = financeService.review(orderId);
-        assertThat(review.financeReviewRevision()).isEqualTo(1);
+        assertThat(review.financeReviewRevision()).isEqualTo(editedFinanceRevision);
         assertThat(review.commercialChanges()).anyMatch(change -> change.field().contains("备注")
                 && change.beforeValue().equals("原备注") && change.afterValue().equals("修改后的备注"));
         assertThat(review.commercialChanges()).anyMatch(change -> change.field().endsWith("折扣"));
@@ -147,22 +132,24 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
                 .isInstanceOf(com.uten.imp.common.web.ApiException.class);
         claims.release("SALES_ORDER_FINANCE_CONFIRM", orderId.toString());
         service.update(orderId, request);
+        long latestFinanceRevision=approveManager(orderId,editedFinanceRevision+1);
         var revisedClaim=claims.claim("SALES_ORDER_FINANCE_CONFIRM",orderId.toString());
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> financeService.confirm(orderId,
-                new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,1L,revisedClaim.claimId())))
+                new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,editedFinanceRevision,revisedClaim.claimId())))
                 .isInstanceOf(com.uten.imp.common.web.ApiException.class);
         UUID otherOrderId = service.create(request).getId();
         service.approve(otherOrderId);
+        long otherFinanceRevision=approveManager(otherOrderId,0L);
         var otherClaim=claims.claim("SALES_ORDER_FINANCE_CONFIRM",otherOrderId.toString());
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> financeService.confirmBatch(
                 new SalesOrderFinanceConfirmService.FinanceBatchConfirmRequest(
-                        List.of(orderId,otherOrderId),null,Map.of(orderId,1L,otherOrderId,0L),
+                        List.of(orderId,otherOrderId),null,Map.of(orderId,editedFinanceRevision,otherOrderId,otherFinanceRevision),
                         Map.of(orderId,revisedClaim.claimId(),otherOrderId,otherClaim.claimId()))))
                 .isInstanceOf(com.uten.imp.common.web.ApiException.class);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_orders WHERE id IN (?, ?) AND finance_confirmed",
                 Long.class, orderId, otherOrderId)).isZero();
         var batch = financeService.confirmBatch(new SalesOrderFinanceConfirmService.FinanceBatchConfirmRequest(
-                List.of(orderId,otherOrderId),null,Map.of(orderId,2L,otherOrderId,0L),
+                List.of(orderId,otherOrderId),null,Map.of(orderId,latestFinanceRevision,otherOrderId,otherFinanceRevision),
                 Map.of(orderId,revisedClaim.claimId(),otherOrderId,otherClaim.claimId())));
         assertThat(batch.newlyConfirmedCount()).isEqualTo(2);
         assertThat(financeService.review(orderId).commercialChanges()).isEmpty();
@@ -176,9 +163,12 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
 
     @Test
     void confirmedOrderQtyChangeRequeuesFinanceAndKeepsAnOldToNewLedger() {
-        UUID actor = loginAsSuperAdmin("qtyreconfirm");
+        UUID actor=loginAsSuperAdmin("qtyreconfirm");
         UUID clientId = client();
         UUID goodsId = goods();
+        // Exact retained projection input from before V978: already finance-confirmed,
+        // chain_status=0 and no fabricated manager decision. Current amendments below
+        // must pass real manager claim/approval before any finance re-confirmation.
         UUID orderId = UUID.randomUUID();
         UUID itemId = UUID.randomUUID();
         OffsetDateTimeLike confirmedAt = OffsetDateTimeLike.hoursAgo(1);
@@ -194,7 +184,7 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
                         (SELECT employee_id FROM users WHERE id = ?),
                         TRUE, ?, ?,
                         now(), now())
-                """, orderId, billNo(), clientId, actor, actor,
+                """, orderId, historicalBillNo(), clientId, actor, actor,
                 confirmedAt.value, actorEmployeeOf(actor));
         jdbc.update("""
                 INSERT INTO sales_order_items(
@@ -206,7 +196,11 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
                         'QTY-RC-001', '改量复核测试货品',
                         'MASTER_AT_APPROVAL', now(),
                         10, 0)
-                """, itemId, billNo(), orderId, goodsId);
+                """, itemId, historicalBillNo(), orderId, goodsId);
+
+        long initialFinanceRevision=0L;
+        assertThat(jdbc.queryForObject("SELECT manager_review_state FROM sales_orders WHERE id=?",String.class,orderId))
+                .isEqualTo("NOT_REQUIRED");
 
         // 改量：10 → 6。
         OrderChangeQtyRequest request = new OrderChangeQtyRequest();
@@ -216,7 +210,7 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
         request.setItems(List.of(line));
         service.changeQty(orderId, request);
 
-        // 1) 置回待确认（重新进入财务队列）。
+        // 1) 改量先回负责人审核，批准后再进入财务队列。
         Boolean requeued = jdbc.queryForObject(
                 "SELECT finance_confirmed FROM sales_orders WHERE id = ?",
                 Boolean.class, orderId);
@@ -238,7 +232,10 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
         assertThat(((BigDecimal) logs.get(0).get("new_qty")).stripTrailingZeros())
                 .isEqualByComparingTo("6");
 
-        // 3) 财务队列标注「改后待确认 · 1 处」。
+        assertThat(financeService.pending(1,50,false,null,true).getItems())
+                .noneMatch(row->row.orderId().equals(orderId));
+        long firstFinanceRevision=approveManager(orderId,initialFinanceRevision+1);
+        // 3) 负责人批准后，财务队列标注「改后待确认 · 1 处」。
         var page = financeService.pending(1, 50, false, null);
         var row = page.getItems().stream()
                 .filter(item -> item.orderId().equals(orderId))
@@ -260,16 +257,18 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
         assertThat(review.revisionDiff().afterItems().getFirst().values()).containsEntry("数量", "6");
         line.setNewQty(new BigDecimal("8"));
         service.changeQty(orderId, request);
+        long secondFinanceRevision=approveManager(orderId,firstFinanceRevision+1);
         var secondRevision = financeService.review(orderId).revisionDiff();
         assertThat(secondRevision.beforeItems().getFirst().values()).containsEntry("数量", "10");
         assertThat(secondRevision.afterItems().getFirst().values()).containsEntry("数量", "8");
         line.setNewQty(BigDecimal.TEN);
         service.changeQty(orderId, request);
+        long restoredBaselineRevision=approveManager(orderId,secondFinanceRevision+1);
         assertThat(financeService.review(orderId).revisionDiff().changedItemIds()).isEmpty();
 
         // 5) 重新确认后（finance_confirmed_at 前进到改量之后）清单归档隐藏。
         var firstReconfirmationClaim=claims.claim("SALES_ORDER_FINANCE_CONFIRM",orderId.toString());
-        financeService.confirm(orderId,new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,3L,firstReconfirmationClaim.claimId()));
+        financeService.confirm(orderId,new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,restoredBaselineRevision,firstReconfirmationClaim.claimId()));
         var afterReconfirm = financeService.review(orderId);
         assertThat(afterReconfirm.qtyChanges()).isEmpty();
         assertThat(afterReconfirm.revisionDiff()).isNull();
@@ -281,18 +280,45 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
         line.setNewQty(new BigDecimal("5"));
         service.changeQty(orderId, request);
         assertThat(jdbc.queryForObject("SELECT is_closed FROM sales_orders WHERE id = ?", Boolean.class, orderId)).isTrue();
+        long finalFinanceRevision=approveManager(orderId,restoredBaselineRevision+1);
         assertThat(financeService.pending(1, 50, false, null, true).getItems())
                 .anyMatch(itemRow -> itemRow.orderId().equals(orderId));
         var finalClaim=claims.claim("SALES_ORDER_FINANCE_CONFIRM",orderId.toString());
-        financeService.confirm(orderId,new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,4L,finalClaim.claimId()));
+        financeService.confirm(orderId,new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,finalFinanceRevision,finalClaim.claimId()));
         assertThat(financeService.review(orderId).financeConfirmed()).isTrue();
     }
 
     // ---- 夹具 -------------------------------------------------------------
 
+    private static final java.util.concurrent.atomic.AtomicInteger HISTORICAL_BILL_SEQUENCE=
+            new java.util.concurrent.atomic.AtomicInteger();
+    private static String historicalBillNo() {
+        return "XD20260905%06d".formatted(HISTORICAL_BILL_SEQUENCE.incrementAndGet());
+    }
     private UUID actorEmployeeOf(UUID userId) {
-        return jdbc.queryForObject(
-                "SELECT employee_id FROM users WHERE id = ?", UUID.class, userId);
+        return jdbc.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,userId);
+    }
+    private record OffsetDateTimeLike(java.sql.Timestamp value) {
+        static OffsetDateTimeLike hoursAgo(long hours) {
+            return new OffsetDateTimeLike(java.sql.Timestamp.from(java.time.Instant.now()
+                    .minus(java.time.Duration.ofHours(hours))));
+        }
+    }
+
+    private long approveManager(UUID orderId,long reviewedRevision) {
+        return com.uten.imp.support.SalesManagerReviewFixtures.approveOrderForFinance(
+                jdbc,claims,managers,orderId,reviewedRevision);
+    }
+
+    private com.uten.imp.features.sales.order.dto.OrderSaveRequest orderRequest(UUID clientId,UUID goodsId) {
+        var request=new com.uten.imp.features.sales.order.dto.OrderSaveRequest();
+        request.setBillDate(LocalDate.of(2026,9,5));request.setClientId(clientId);
+        request.setCurrencyId(jdbc.queryForObject("SELECT id FROM currencies WHERE status='使用' AND NOT is_deleted ORDER BY is_base_currency DESC,id LIMIT 1",UUID.class));
+        request.setShipmentPolicy("ALLOW_PARTIAL");
+        var item=new com.uten.imp.features.sales.order.dto.OrderItemLine();
+        item.setGoodsId(goodsId);item.setUnitId(jdbc.queryForObject("SELECT unit_id FROM goods WHERE id=?",UUID.class,goodsId));
+        item.setUnitRate(BigDecimal.ONE);item.setQty(BigDecimal.TEN);item.setDiscount(BigDecimal.ONE);
+        request.setItems(List.of(item));return request;
     }
 
     /** 超管账号 + 安全上下文（@PreAuthorize 与 owner 写权限全通）。 */
@@ -357,12 +383,4 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
         return id;
     }
 
-    /** confirmed_at 值载体（避免测试类直接依赖时区细节）。 */
-    private record OffsetDateTimeLike(java.sql.Timestamp value) {
-        static OffsetDateTimeLike hoursAgo(long hours) {
-            return new OffsetDateTimeLike(
-                    java.sql.Timestamp.from(java.time.Instant.now()
-                            .minus(java.time.Duration.ofHours(hours))));
-        }
-    }
 }

@@ -40,10 +40,26 @@ class BusinessTaskNoticeStatePostgresTest {
                 CREATE FUNCTION fn_production_draw_pending(uuid) RETURNS boolean LANGUAGE sql AS
                     'SELECT pending FROM stock_documents WHERE id=$1';
                 CREATE TABLE sales_orders(id uuid,status int,is_deleted boolean DEFAULT FALSE,is_closed boolean DEFAULT FALSE,
-                    is_stopped boolean DEFAULT FALSE,finance_confirmed boolean DEFAULT TRUE,finance_rejected boolean DEFAULT FALSE,requoted_to_id uuid,source_quote_id uuid);
+                    is_stopped boolean DEFAULT FALSE,finance_confirmed boolean DEFAULT TRUE,finance_rejected boolean DEFAULT FALSE,requoted_to_id uuid,source_quote_id uuid,
+                  manager_review_state text NOT NULL DEFAULT 'NOT_REQUIRED',
+                  manager_approved_at timestamptz,
+                  manager_approved_by uuid,
+                  manager_rejected_at timestamptz,
+                  manager_rejected_by uuid,
+                  manager_reject_reason text,
+                  manager_review_remark text,
+                  manager_decision_claim_id uuid);
                 CREATE TABLE sales_quotes(id uuid,maker_id uuid,status int,is_deleted boolean DEFAULT FALSE,is_closed boolean DEFAULT FALSE,
                     finance_confirmed_at timestamptz,finance_return_reason text,customer_accepted_at timestamptz,
-                    customer_accepted_revision int,review_revision int);
+                    customer_accepted_revision int,review_revision int,
+                  manager_review_state text NOT NULL DEFAULT 'NOT_REQUIRED',
+                  manager_approved_at timestamptz,
+                  manager_approved_by uuid,
+                  manager_rejected_at timestamptz,
+                  manager_rejected_by uuid,
+                  manager_reject_reason text,
+                  manager_review_remark text,
+                  manager_decision_claim_id uuid);
                 CREATE TABLE sales_order_items(id uuid,order_id uuid,goods_id uuid,qty numeric,shipped_qty numeric DEFAULT 0,
                     returned_qty numeric DEFAULT 0,flag_qty numeric DEFAULT 0,reserved_qty numeric DEFAULT 0,
                     planned_qty numeric DEFAULT 0,produced_qty numeric DEFAULT 0,is_deleted boolean DEFAULT FALSE, legacy_counter_import_run_id uuid);

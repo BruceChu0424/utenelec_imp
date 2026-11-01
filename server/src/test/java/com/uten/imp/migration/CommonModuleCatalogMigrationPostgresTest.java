@@ -43,7 +43,7 @@ class CommonModuleCatalogMigrationPostgresTest {
     @Test
     void workbenchSelfServiceCodesFormTheCommonModuleGroupInCardOrder() {
         List<Grouped> rows = jdbc.query(
-                "SELECT code, category, sort_order FROM permissions WHERE module = '常用模块' ORDER BY sort_order",
+                "SELECT code, category, sort_order FROM permissions WHERE module = '常用模块' ORDER BY sort_order,code",
                 (rs, i) -> new Grouped(rs.getString("code"), rs.getString("category"), rs.getInt("sort_order")));
 
         assertThat(rows).containsExactly(
@@ -51,7 +51,9 @@ class CommonModuleCatalogMigrationPostgresTest {
                 new Grouped("expense:apply", "我的报销", 30),
                 new Grouped("payroll:view:self", "工资条", 40),
                 new Grouped("suggestion:submit", "意见箱", 50),
-                new Grouped("visitor:host_confirm", "我的访客", 60));
+                new Grouped("suggestion:view", "意见箱", 50),
+                new Grouped("visitor:host_confirm", "我的访客", 60),
+                new Grouped("visitor:host_view", "我的访客", 60));
     }
 
     @Test

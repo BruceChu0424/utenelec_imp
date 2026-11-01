@@ -74,7 +74,15 @@ class TaskClaimMutationConcurrencyPostgresTest {
                   is_deleted boolean NOT NULL DEFAULT FALSE, finance_confirmed boolean NOT NULL DEFAULT FALSE,
                   finance_rejected boolean NOT NULL DEFAULT FALSE, is_stopped boolean NOT NULL DEFAULT FALSE,
                   is_closed boolean NOT NULL DEFAULT FALSE,finance_review_revision bigint NOT NULL DEFAULT 0,
-                  client_file_currency VARCHAR(8), requoted_to_id uuid, requoted_at timestamptz, requoted_by uuid)
+                  client_file_currency VARCHAR(8), requoted_to_id uuid, requoted_at timestamptz, requoted_by uuid,
+                  manager_review_state text NOT NULL DEFAULT 'NOT_REQUIRED',
+                  manager_approved_at timestamptz,
+                  manager_approved_by uuid,
+                  manager_rejected_at timestamptz,
+                  manager_rejected_by uuid,
+                  manager_reject_reason text,
+                  manager_review_remark text,
+                  manager_decision_claim_id uuid)
                 """);
     }
 
@@ -186,6 +194,16 @@ class TaskClaimMutationConcurrencyPostgresTest {
     }
 
     @Test
+    void pendingManagerReviewCannotCreateAFinanceLease() {
+        UUID order=UUID.randomUUID();
+        jdbc.update("INSERT INTO sales_orders(id,manager_review_state) VALUES (?,'PENDING')",order);
+        assertThatThrownBy(()->as("claim",manager,()->service.claim("SALES_ORDER_FINANCE_CONFIRM",order.toString())))
+                .isInstanceOf(ApiException.class);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM task_claims WHERE target_type='SALES_ORDER_FINANCE_CONFIRM' AND target_key=?",
+                Integer.class,order.toString())).isZero();
+    }
+
+    @Test
     void expiredClaimReplacementFreesTheUniqueKeyBeforeInserting() {
         for (String type : TYPES) {
             Fixture task = seed(type, -1);
@@ -197,7 +215,12 @@ class TaskClaimMutationConcurrencyPostgresTest {
 
     private Fixture seed(String type, int remainingMinutes) {
         String key = UUID.randomUUID().toString();
-        if (type.equals("SALES_ORDER_FINANCE_CONFIRM")) jdbc.update("INSERT INTO sales_orders(id) VALUES (?)", UUID.fromString(key));
+        // This deliberately small unit fixture starts from already-reviewed facts
+        // to isolate claim row-lock races. Full service chains use the real manager
+        // claim/approval helper; they never take the NOT_REQUIRED compatibility path.
+        if (type.equals("SALES_ORDER_FINANCE_CONFIRM")) jdbc.update(
+                "INSERT INTO sales_orders(id,manager_review_state,manager_approved_by,manager_approved_at) VALUES (?,'APPROVED',?,now())",
+                UUID.fromString(key),manager);
         return transactions.execute(status -> {
             TaskClaim claim = new TaskClaim();
             claim.setTargetType(type); claim.setTargetKey(key); claim.setClaimedBy(owner);

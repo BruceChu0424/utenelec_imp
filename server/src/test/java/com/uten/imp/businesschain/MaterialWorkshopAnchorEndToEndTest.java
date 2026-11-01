@@ -637,7 +637,7 @@ class MaterialWorkshopAnchorEndToEndTest {
         qty("6000",product(analyses.detail(c.analysis()),root).requestedQty());
         assertEquals(oldPlans,frozenPlans(c.analysis()));
 
-        confirmSales(c.salesOrder(),c.financeActor());fixture.loginAs(c.planner());
+        confirmSales(c.world(),c.salesOrder(),c.financeActor());fixture.loginAs(c.planner());
         Map<String,String> before=nonPlanningFacts(c);
         ApiException excessive=assertThrows(ApiException.class,()->analyses.preview(salesPreview(c,"9000","over-capacity")));
         assertTrue(excessive.getMessage().contains("超过销售订单尚未安排"));
@@ -885,9 +885,11 @@ class MaterialWorkshopAnchorEndToEndTest {
                 null,null,BusinessTime.today().plusDays(10),new BigDecimal(qty))));
     }
 
-    private void confirmSales(UUID order,UUID actor){
+    private void confirmSales(FullChainEndToEndTest.World world,UUID order,UUID actor){
+        fixture.loginAs(world.superAdminUserId());
+        Long managerRevision=db.queryForObject("SELECT finance_review_revision FROM sales_orders WHERE id=?",Long.class,order);
+        long revision=fixture.approveSalesManagerReview(order,managerRevision);
         fixture.loginAs(actor);var claim=claims.claim("SALES_ORDER_FINANCE_CONFIRM",order.toString());
-        Long revision=db.queryForObject("SELECT finance_review_revision FROM sales_orders WHERE id=?",Long.class,order);
         finance.confirm(order,new com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,revision,claim.claimId()));
     }
 
@@ -954,7 +956,7 @@ class MaterialWorkshopAnchorEndToEndTest {
             financeActor=fixture.createUserWithPerms(w,"finance-"+tag,"sales_order_finance:view","sales_order_finance:confirm");
             db.update("UPDATE clients SET owner_employee_id=(SELECT employee_id FROM users WHERE id=?) WHERE id=?",salesActor,w.clientId());
             fixture.loginAs(salesActor);salesOrder=sales.create(fixture.orderRequest(w,root,sourceQty,"100")).getId();
-            sales.approve(salesOrder);confirmSales(salesOrder,financeActor);
+            sales.approve(salesOrder);confirmSales(w,salesOrder,financeActor);
             salesItem=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,salesOrder);
         }
         UUID planner=fixture.createUserWithPerms(w,"planner-"+tag,

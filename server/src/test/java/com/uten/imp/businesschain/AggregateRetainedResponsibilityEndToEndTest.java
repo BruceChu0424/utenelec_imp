@@ -189,8 +189,9 @@ class AggregateRetainedResponsibilityEndToEndTest {
         assertEquals(0,h.db.queryForObject("SELECT status FROM stock_documents WHERE id=?",Integer.class,inbound));
         amount("0",h.db.queryForObject("SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE goods_id=?",BigDecimal.class,c.child()));
         amount("100",h.db.queryForObject("SELECT fn_preplan_action_admitted_qty(action_id) FROM preplan_aggregate_batches WHERE id=?",BigDecimal.class,child.batchId()));
+        Long managerRevision=h.db.queryForObject("SELECT finance_review_revision FROM sales_orders WHERE id=?",Long.class,order);
+        long revision=h.fixture.approveSalesManagerReview(order,managerRevision);
         var claim=beans.getBean(com.uten.imp.features.common.taskclaim.TaskClaimService.class).claim("SALES_ORDER_FINANCE_CONFIRM",order.toString());
-        Long revision=h.db.queryForObject("SELECT finance_review_revision FROM sales_orders WHERE id=?",Long.class,order);
         beans.getBean(com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.class).confirm(order,
                 new com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,revision,claim.claimId()));
         h.fixture.confirmFinishedInboundFully(inbound);

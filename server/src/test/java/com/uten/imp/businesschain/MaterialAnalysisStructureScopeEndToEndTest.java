@@ -103,7 +103,7 @@ class MaterialAnalysisStructureScopeEndToEndTest {
     // interceptor. Business commands still call the original Spring proxy.
     private ProductionPlanService planTarget() { return AopTestUtils.getUltimateTargetObject(plans); }
 
-    @BeforeEach void prepare() { factory = new ProductionChainDataFactory(beans, jdbc, sales, finance); }
+    @BeforeEach void prepare() { factory = new ProductionChainDataFactory(beans, jdbc, sales); }
     @AfterEach void clear() { reset(planTarget()); SecurityContextHolder.clearContext(); ProductionJdbcMeasurement.end(); }
 
     @Test void committedBomChangeOnUnselectedSourceDuringLoopRollsBackEveryPlan() throws Exception {

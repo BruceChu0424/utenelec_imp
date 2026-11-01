@@ -28,8 +28,8 @@ class GoodsQuoteHistoryPostgresTest {
         jdbc.execute("""
                 CREATE TABLE clients(id uuid primary key, name text);
                 CREATE TABLE employees(id uuid primary key, full_name text);
-                CREATE TABLE sales_quotes(id uuid primary key, bill_no text, client_id uuid, seller_id uuid, maker_id uuid);
-                CREATE TABLE sales_orders(id uuid primary key, source_quote_id uuid, client_id uuid, bill_no text, is_deleted boolean, created_at timestamptz default now(), requoted_to_id uuid, requoted_at timestamptz, requoted_by uuid);
+                CREATE TABLE sales_quotes(id uuid primary key, bill_no text, client_id uuid, seller_id uuid, maker_id uuid, manager_review_state text NOT NULL DEFAULT 'NOT_REQUIRED', manager_approved_at timestamptz, manager_approved_by uuid, manager_rejected_at timestamptz, manager_rejected_by uuid, manager_reject_reason text, manager_review_remark text, manager_decision_claim_id uuid);
+                CREATE TABLE sales_orders(id uuid primary key, source_quote_id uuid, client_id uuid, bill_no text, is_deleted boolean, created_at timestamptz default now(), requoted_to_id uuid, requoted_at timestamptz, requoted_by uuid, manager_review_state text NOT NULL DEFAULT 'NOT_REQUIRED', manager_approved_at timestamptz, manager_approved_by uuid, manager_rejected_at timestamptz, manager_rejected_by uuid, manager_reject_reason text, manager_review_remark text, manager_decision_claim_id uuid);
                 CREATE TABLE sales_quote_revision_logs(id uuid primary key, quote_id uuid, revision integer, action text, snapshot jsonb, created_at timestamptz default now());
                 """);
     }

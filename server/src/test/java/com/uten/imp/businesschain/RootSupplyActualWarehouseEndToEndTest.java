@@ -147,8 +147,9 @@ class RootSupplyActualWarehouseEndToEndTest {
                 """,fixture.analysis(),fixture.root(),fixture.leaf())).isEqualByComparingTo("10");
         var held=analyses.detail(fixture.analysis()).flatMaterials().stream().filter(row->row.materialLineId().equals(fixture.root())).findFirst().orElseThrow();
         assertThat(held.shortageQty()).isZero();assertThat(held.allocatedAvailableQty()).isEqualByComparingTo("10");
+        Long managerRevision=db.queryForObject("SELECT finance_review_revision FROM sales_orders WHERE id=?",Long.class,fixture.salesOrder());
+        long revision=harness.approveSalesManagerReview(fixture.salesOrder(),managerRevision);
         var claim=claims.claim("SALES_ORDER_FINANCE_CONFIRM",fixture.salesOrder().toString());
-        Long revision=db.queryForObject("SELECT finance_review_revision FROM sales_orders WHERE id=?",Long.class,fixture.salesOrder());
         salesFinance.confirm(fixture.salesOrder(),new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,revision,claim.claimId()));
         var approved=analyses.detail(fixture.analysis());
         var request=new NotifyRequest(approved.version(),approved.fingerprint(),"root-sale-resumed-"+fixture.analysis(),"BUY",List.of(fixture.root()),null,null);

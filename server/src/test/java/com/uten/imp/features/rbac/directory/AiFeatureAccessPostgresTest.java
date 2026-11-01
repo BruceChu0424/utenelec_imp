@@ -75,7 +75,7 @@ class AiFeatureAccessPostgresTest {
         assertThat((String) explain.execute(Map.of("target", "缺少操作权限：sales_order:approve")).get("reply"))
                 .isEqualTo("你还没有「审核销售订货单」权限(属于「销售管理 · 销售订货」)。\n请联系管理员开通。");
         assertThat((String) explain.execute(Map.of("target", "我为什么打不开财务报表")).get("reply"))
-                .contains("缺少「查看钱流报表」权限").endsWith("请联系管理员开通。");
+                .contains("缺少「查看财务收支报表」权限").endsWith("请联系管理员开通。");
         String personnel = (String) explain.execute(Map.of("target", "缺少操作权限：payroll:view:all")).get("reply");
         assertThat(personnel).contains("需要管理员开通相关权限").doesNotContain("查看全员工资条");
         AiFeatureAccess payrollClerk = access(Set.of("ai:use", "employee:view"), Set.of("SELF", "HR"));

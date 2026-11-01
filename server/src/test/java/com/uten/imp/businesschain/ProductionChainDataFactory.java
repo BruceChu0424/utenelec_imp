@@ -1,7 +1,6 @@
 package com.uten.imp.businesschain;
 
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.PreviewItem;
-import com.uten.imp.features.sales.order.SalesOrderFinanceConfirmService;
 import com.uten.imp.features.sales.order.SalesOrderService;
 import com.uten.imp.features.sales.order.dto.OrderItemLine;
 import java.math.BigDecimal;
@@ -17,22 +16,17 @@ final class ProductionChainDataFactory {
     private final FullChainEndToEndTest masters;
     private final JdbcTemplate jdbc;
     private final SalesOrderService sales;
-    private final SalesOrderFinanceConfirmService finance;
-    private final com.uten.imp.features.common.taskclaim.TaskClaimService claims;
 
     ProductionChainDataFactory(AutowireCapableBeanFactory beans, JdbcTemplate jdbc,
-            SalesOrderService sales, SalesOrderFinanceConfirmService finance) {
+            SalesOrderService sales) {
         masters = new FullChainEndToEndTest();
         beans.autowireBean(masters);
         this.jdbc = jdbc;
         this.sales = sales;
-        this.finance = finance;
-        this.claims=beans.getBean(com.uten.imp.features.common.taskclaim.TaskClaimService.class);
     }
 
     private void confirmInitialFinance(UUID orderId) {
-        var claim=claims.claim("SALES_ORDER_FINANCE_CONFIRM",orderId.toString());
-        finance.confirm(orderId,new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,0L,claim.claimId()));
+        masters.confirmInitialSalesFinance(orderId);
     }
 
     record Scenario(FullChainEndToEndTest.World world, UUID orderId,

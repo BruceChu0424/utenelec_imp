@@ -38,7 +38,8 @@ public class RemoteIngressConnectorConfiguration {
             if (properties.getRemoteMaxConcurrentRequests() + 2 > databasePoolSize - 4) {
                 throw new IllegalStateException("Remote requests plus two health probes must leave at least four database connections for local work");
             }
-            Connector remote = new Connector(TomcatServletWebServerFactory.DEFAULT_PROTOCOL);
+            Connector remote = new Connector(new Http11NioProtocol(
+                    new RemoteIngressNioEndpoint(properties.requireRemoteWriteTimeoutMillis())));
             remote.setPort(properties.getRemoteIngressPort());
             remote.setScheme("https");
             remote.setSecure(true);

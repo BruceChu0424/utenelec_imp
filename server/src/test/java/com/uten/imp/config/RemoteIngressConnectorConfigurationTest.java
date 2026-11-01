@@ -28,6 +28,26 @@ class RemoteIngressConnectorConfigurationTest {
         assertEquals("127.0.0.1",((Http11NioProtocol)connector.getProtocolHandler()).getAddress().getHostAddress());
         assertTrue(connector.getSecure());
         assertEquals(64,((Http11NioProtocol)connector.getProtocolHandler()).getMaxConnections());
+        var protocol = (Http11NioProtocol)connector.getProtocolHandler();
+        assertEquals(10_000, protocol.getConnectionTimeout());
+        assertEquals(15_000, protocol.getKeepAliveTimeout());
+        assertEquals(24, protocol.getMaxThreads());
+        assertEquals(16, protocol.getAcceptCount());
+        assertEquals(16_384, protocol.getMaxHttpRequestHeaderSize());
+        assertEquals(60_000, properties.requireRemoteWriteTimeoutMillis());
+    }
+
+    @Test
+    void remoteWriteBudgetRejectsDisabledOverflowingAndUnboundedConfigurations() {
+        for (var timeout : java.util.Arrays.asList(null, java.time.Duration.ZERO,
+                java.time.Duration.ofMillis(-1), java.time.Duration.ofNanos(1), java.time.Duration.ofMinutes(6),
+                java.time.Duration.ofSeconds(Long.MAX_VALUE))) {
+            var properties = new DeploymentProperties();
+            properties.setRemoteIngressEnabled(true);
+            properties.setRemoteWriteTimeout(timeout);
+            assertThrows(IllegalStateException.class, () -> configuration.remoteIngressConnector(properties,8080,20)
+                    .customize(new TomcatServletWebServerFactory()));
+        }
     }
 
     @Test

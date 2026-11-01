@@ -17,13 +17,11 @@ import java.util.List;
 class DocumentWorkbenchBadgeSources implements WorkbenchBadgeSources {
 
     private final DocumentDraftCountController controller;
-    @org.springframework.beans.factory.annotation.Autowired
-    private DocumentStatusCountQueryService statuses;
 
     @Override
     public List<Source> sources() {
         return List.of(
-                new Source("managerRejected", () -> WorkbenchBadgeSources.numbers(statuses.managerRejectedCounts())),
+                new Source("managerRejected", () -> WorkbenchBadgeSources.numbers(controller.managerRejectedCounts())),
                 new Source("drafts", () -> WorkbenchBadgeSources.numbers(controller.draftCounts())),
                 new Source("financeRejected", () -> WorkbenchBadgeSources.numbers(controller.financeRejectedCounts())));
     }

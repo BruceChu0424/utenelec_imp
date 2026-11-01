@@ -113,7 +113,8 @@ public class WarehouseOutboundTaskCenterQueryService {
                 has("warehouse_sales_outbound:view"), has("subcontract_outbound:view"),
                 has("warehouse_subcontract_outbound_history:view"), has("stock_doc:view"),
                 has("stock_doc:view") && productionAccess.canBrowseWarehouseTasks(), stockAccess.scope(),
-                WarehouseWorkshopMaterialTaskProjection.scope(has("workshop_material:view"),materialScopes,scope));
+                WarehouseWorkshopMaterialTaskProjection.scope(has("workshop_material:view"),materialScopes,scope),
+                productionAccess.canAccessWarehouseTasks());
     }
 
     public record PhysicalLine(UUID id, Integer lineNo, String goodsCode, String goodsName,
@@ -373,13 +374,13 @@ public class WarehouseOutboundTaskCenterQueryService {
                     data.put("expectedVersion",revision);
                     if (raw.length >= 29) data.put("requisitionLineId",UUID.fromString(String.valueOf(raw[19]).split("~",2)[0]));
                 } else if (record.equals("MATERIAL_DISCOVERY")) {
-                    canHandle = actionable && access.production() && has("stock_doc:approve") && has("stock_doc:issue");
+                    canHandle = actionable && access.productionParticipant() && has("stock_doc:approve") && has("stock_doc:issue");
                     action = canHandle ? "MATERIAL_DISCOVERY" : "HISTORY_DETAIL";
                     data.put("requestId", id);
                     data.put("materialsDefined", defined);
                     data.put("expectedVersion", revision);
                 } else {
-                    canHandle = actionable && access.production() && has("stock_doc:issue")
+                    canHandle = actionable && access.productionParticipant() && has("stock_doc:issue")
                             && (stockStatus != 0 || has("stock_doc:approve"));
                     action = canHandle ? "PRODUCTION_DRAW"
                             : status.equals("DRAW_REVERSED") ? "HISTORY_DETAIL" : "STOCK_DETAIL";

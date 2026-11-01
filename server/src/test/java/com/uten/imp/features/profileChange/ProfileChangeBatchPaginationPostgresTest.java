@@ -83,7 +83,9 @@ class ProfileChangeBatchPaginationPostgresTest {
         AuthUser user = mock(AuthUser.class);
         when(user.getId()).thenReturn(UUID.randomUUID());
         when(user.getEmployeeId()).thenReturn(employeeA);
+        when(user.getPermissions()).thenReturn(java.util.Set.of("profile:review"));
         when(access.requireStaff()).thenReturn(user);
+        when(access.requireReader()).thenReturn(user);
         when(access.requireHr()).thenReturn(user);
         when(access.hasReviewPerm()).thenReturn(true);
         codec = mock(ProfileChangeSnapshotCodec.class);

@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Real kernel backpressure and real ResourceHttpMessageConverter; no mocked socket or output stream. */
 class RemoteIngressSlowReceiverTomcatTest {
     private static final long SIZE = 32L * 1024 * 1024;
+    private static final java.util.Random PAYLOAD_RANDOM = new java.util.Random(2539);
     @TempDir static Path directory;
     private static Path payload;
     private static String checksum;
@@ -38,14 +39,18 @@ class RemoteIngressSlowReceiverTomcatTest {
     @BeforeAll static void payload() throws Exception {
         payload = directory.resolve("resource.bin");
         byte[] block = new byte[64 * 1024];
-        new java.util.Random(2539).nextBytes(block);
+        PAYLOAD_RANDOM.nextBytes(block);
         try (var output = Files.newOutputStream(payload)) {
-            for (int i = 0; i < SIZE / block.length; i++) output.write(block);
+            for (long i = 0; i < SIZE / block.length; i++) {
+                output.write(block);
+            }
         }
         var digest = MessageDigest.getInstance("SHA-256");
         try (var input = Files.newInputStream(payload)) {
             byte[] buffer = new byte[64 * 1024];
-            for (int count; (count = input.read(buffer)) != -1;) digest.update(buffer, 0, count);
+            for (int count; (count = input.read(buffer)) != -1;) {
+                digest.update(buffer, 0, count);
+            }
         }
         checksum = HexFormat.of().formatHex(digest.digest());
     }
@@ -104,7 +109,9 @@ class RemoteIngressSlowReceiverTomcatTest {
             assertTrue(result.bytes() < SIZE, "A finite configured write budget must still abort a stalled receiver");
             assertNotNull(harness.failure().get());
             Throwable cause = harness.failure().get();
-            while (cause.getCause() != null) cause = cause.getCause();
+            while (cause.getCause() != null) {
+                cause = cause.getCause();
+            }
             assertInstanceOf(java.net.SocketTimeoutException.class, cause);
         }
     }
@@ -128,7 +135,10 @@ class RemoteIngressSlowReceiverTomcatTest {
         var server = factory.getWebServer(context -> context.addServlet("resource", new jakarta.servlet.http.HttpServlet() {
             @Override protected void doGet(jakarta.servlet.http.HttpServletRequest request,
                     jakarta.servlet.http.HttpServletResponse response) throws IOException {
-                if (!"/resource".equals(request.getRequestURI())) { response.sendError(404); return; }
+                if (!"/resource".equals(request.getRequestURI())) {
+                    response.sendError(404);
+                    return;
+                }
                 var output = new ServletServerHttpResponse(response);
                 output.getHeaders().setContentLength(SIZE);
                 output.getHeaders().setContentType(MediaType.APPLICATION_OCTET_STREAM);
@@ -161,17 +171,23 @@ class RemoteIngressSlowReceiverTomcatTest {
             var header = new ByteArrayOutputStream();
             while (header.size() < 16_384) {
                 int value = socket.getInputStream().read();
-                if (value == -1) throw new IOException("EOF before response headers");
+                if (value == -1) {
+                    throw new IOException("EOF before response headers");
+                }
                 header.write(value);
                 byte[] bytes = header.toByteArray();
                 int n = bytes.length;
-                if (n >= 4 && bytes[n-4] == '\r' && bytes[n-3] == '\n' && bytes[n-2] == '\r' && bytes[n-1] == '\n') break;
+                if (n >= 4 && bytes[n-4] == '\r' && bytes[n-3] == '\n' && bytes[n-2] == '\r' && bytes[n-1] == '\n') {
+                    break;
+                }
             }
             String[] lines = header.toString(StandardCharsets.US_ASCII).split("\r\n");
             status = Integer.parseInt(lines[0].split(" ")[1]);
             for (int i = 1; i < lines.length; i++) {
                 int colon = lines[i].indexOf(':');
-                if (colon > 0) headers.put(lines[i].substring(0, colon).toLowerCase(java.util.Locale.ROOT), lines[i].substring(colon+1).trim());
+                if (colon > 0) {
+                    headers.put(lines[i].substring(0, colon).toLowerCase(java.util.Locale.ROOT), lines[i].substring(colon+1).trim());
+                }
             }
             Thread.sleep(pauseMillis);
             socket.setReceiveBufferSize(1024 * 1024);
@@ -179,7 +195,9 @@ class RemoteIngressSlowReceiverTomcatTest {
             try {
                 while (count < SIZE) {
                     int read = socket.getInputStream().read(buffer);
-                    if (read == -1) break;
+                    if (read == -1) {
+                        break;
+                    }
                     digest.update(buffer, 0, read); count += read;
                 }
             } catch (IOException transportFailure) { failure = transportFailure; }

@@ -147,7 +147,9 @@ class WarehouseDataScopeEndToEndTest {
     @org.springframework.core.annotation.Order(org.springframework.core.Ordered.HIGHEST_PRECEDENCE+25)
     static class SourceMutationBeforePublication implements org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice<Object> {
         static final ThreadLocal<Runnable> PENDING=new ThreadLocal<>();
+        @Override
         public boolean supports(org.springframework.core.MethodParameter parameter,Class<? extends org.springframework.http.converter.HttpMessageConverter<?>> converter){return true;}
+        @Override
         public Object beforeBodyWrite(Object body,org.springframework.core.MethodParameter parameter,org.springframework.http.MediaType media,
                 Class<? extends org.springframework.http.converter.HttpMessageConverter<?>> converter,
                 org.springframework.http.server.ServerHttpRequest request,org.springframework.http.server.ServerHttpResponse response) {
@@ -347,7 +349,9 @@ class WarehouseDataScopeEndToEndTest {
         selections.put(member, Arrays.asList(null, warehouseC, root));
         for (var entry : selections.entrySet()) {
             fixture.loginAs(entry.getKey());
-            for (UUID selected : entry.getValue()) assertBadgeEqualsLists(entry.getKey(), selected);
+            for (UUID selected : entry.getValue()) {
+                assertBadgeEqualsLists(entry.getKey(), selected);
+            }
         }
     }
 
@@ -676,7 +680,9 @@ class WarehouseDataScopeEndToEndTest {
                 .mapToLong(Map.Entry::getValue).sum();
         assertThat(typed).as(label + " quality result").isEqualTo(open);
         for (var status : statuses.entrySet()) {
-            if (status.getKey().startsWith("TASK_")) continue;
+            if (status.getKey().startsWith("TASK_")) {
+                continue;
+            }
             assertThat(qualityResults.list("", "ALL", status.getKey(), "COMPLETED".equals(status.getKey()) ? "HISTORY" : "ACTIVE",
                     null, null, 1, 1, null, null, null, selected)
                     .getTotal()).as(label + " quality " + status.getKey()).isEqualTo(status.getValue());
@@ -766,7 +772,9 @@ class WarehouseDataScopeEndToEndTest {
 
     private WarehouseKeeperSaveRequest keepersOf(UUID... users) {
         List<UUID> employees = new ArrayList<>();
-        for (UUID user : users) employees.add(db.queryForObject("SELECT employee_id FROM users WHERE id=?", UUID.class, user));
+        for (UUID user : users) {
+            employees.add(db.queryForObject("SELECT employee_id FROM users WHERE id=?", UUID.class, user));
+        }
         return new WarehouseKeeperSaveRequest(employees);
     }
 

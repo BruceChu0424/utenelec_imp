@@ -2,10 +2,12 @@ package com.uten.imp.responsibility;
 
 import com.uten.imp.testsupport.FixtureDatabaseProperties;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.common.docnumber.DocNumberPrefix;
 import com.uten.imp.common.docnumber.DocNumberService;
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.admin.DataScopeAdminService;
 import com.uten.imp.features.admin.UserAccountAdminService;
@@ -21,12 +23,15 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.dao.DataAccessException;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.web.servlet.MockMvc;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.LocalDate;
@@ -42,8 +47,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
+@AutoConfigureMockMvc
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.MOCK,
         properties = {
@@ -92,6 +99,8 @@ class DataHandoverPostgresTest {
     @Autowired private DataHandoverCandidateService candidates;
     @Autowired private EmployeeCommandService employees;
     @Autowired private UserAccountAdminService accounts;
+    @Autowired private MockMvc mvc;
+    @Autowired private ObjectMapper json;
 
     @AfterEach
     void clearAuthentication() {
@@ -297,7 +306,7 @@ class DataHandoverPostgresTest {
     }
 
     @Test
-    void offboardingPreservesPerScopeSuccessorsIsIdempotentAndRehireRestoresNoPersonalGrant() {
+    void offboardingPreservesPerScopeSuccessorsIsIdempotentAndRehireRestoresNoPersonalGrant() throws Exception {
         loginAsSuperAdministrator();
         UUID department = departmentId();
         Staff source = staff("off-a", department, "active", true, false);
@@ -464,7 +473,12 @@ class DataHandoverPostgresTest {
                 """, source.userId()));
         assertEquals(false, jdbc.queryForObject(
                 "select remote_access from users where id=?", Boolean.class, source.userId()));
-        accounts.setStatus(source.userId(), "active");
+        ApiException syntheticActor = assertThrows(ApiException.class,
+                () -> accounts.setStatus(source.userId(), "active"));
+        assertEquals(ErrorCode.FORBIDDEN, syntheticActor.getCode(),
+                "A synthetic principal without an admitted HTTP session cannot enable an account");
+        assertEquals("disabled", accountStatus(source.userId()));
+        enableAccountThroughRealAdministratorSession(source.userId());
         assertEquals("active", accountStatus(source.userId()));
         assertEquals(0, count("select count(*) from user_permission_overrides where user_id=? and active=true",
                 source.userId()), "Explicit account enable must not restore old personal grants");
@@ -968,6 +982,41 @@ class DataHandoverPostgresTest {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(
                         principal, null, principal.getAuthorities()));
+    }
+
+    private void enableAccountThroughRealAdministratorSession(UUID targetUserId) throws Exception {
+        var businessActor = SecurityContextHolder.getContext().getAuthentication();
+        try {
+            SecurityContextHolder.clearContext();
+            var login = mvc.perform(post("/api/auth/login")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(json.writeValueAsString(Map.of(
+                            "loginAccount", "handover-bootstrap-admin-test",
+                            "password", "HarnessAdminPass-1!"))))
+                    .andReturn().getResponse();
+            assertEquals(200, login.getStatus(), login.getContentAsString());
+            var authenticated = json.readTree(login.getContentAsString());
+            String token = authenticated.path("accessToken").asText();
+            if (authenticated.path("mustChangePassword").asBoolean()) {
+                var changed = mvc.perform(post("/api/auth/change-password")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of(
+                                "oldPassword", "HarnessAdminPass-1!",
+                                "newPassword", "HandoverHttpAdministrator-Changed-1!"))))
+                        .andReturn().getResponse();
+                assertEquals(200, changed.getStatus(), changed.getContentAsString());
+                token = json.readTree(changed.getContentAsString()).path("accessToken").asText();
+            }
+            var enabled = mvc.perform(post("/api/admin/users/" + targetUserId + "/enable")
+                    .header("Authorization", "Bearer " + token))
+                    .andReturn().getResponse();
+            assertEquals(200, enabled.getStatus(), enabled.getContentAsString());
+        } finally {
+            // The surrounding business assertions intentionally use their existing
+            // actor fixture; MockMvc clears the request's SecurityContext on exit.
+            SecurityContextHolder.getContext().setAuthentication(businessActor);
+        }
     }
 
     private UUID superAdministratorUserId() {

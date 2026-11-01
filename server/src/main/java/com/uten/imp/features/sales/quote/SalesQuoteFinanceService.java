@@ -389,6 +389,8 @@ public class SalesQuoteFinanceService {
     private QuoteFinanceReviewDto edit(UUID id, QuoteFinanceEditRequest req, boolean manager) {
         tx.bind();
         if (!manager) requireEligibleReviewer();
+        if (req == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请提供核价修改请求");
+        requireDecisionInputs(req.expectedRevision(), req.expectedClaimId());
         SalesQuote q = lockForDecision(id);
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         requirePending(q, manager);
@@ -409,14 +411,16 @@ public class SalesQuoteFinanceService {
         Map<UUID, SalesQuoteItem> byId = new HashMap<>();
         items.forEach(item -> byId.put(item.getId(), item));
         List<QuoteFinanceEditRequest.Line> edits = req.lines() == null ? List.of() : req.lines();
+        if (edits.stream().anyMatch(line -> line == null || line.itemId() == null))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"核价修改明细及原行编号不能为空");
         java.util.Set<UUID> seen = new java.util.HashSet<>();
         List<UUID> needMaster = new ArrayList<>();
         for (QuoteFinanceEditRequest.Line edit : edits) {
             SalesQuoteItem item = byId.get(edit.itemId());
-        com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quote_items",item);
             if (item == null) {
                 throw new ApiException(ErrorCode.CONFLICT, "报价明细已变化, 请刷新后再核价");
             }
+            com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quote_items",item);
             if (!seen.add(edit.itemId())) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "同一行不能重复修改");
             }
@@ -498,6 +502,7 @@ public class SalesQuoteFinanceService {
         tx.bind();
         if (!manager) requireEligibleReviewer();
         if (req == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请写明退回原因, 告诉销售要改什么");
+        requireDecisionInputs(req.expectedRevision(), req.expectedClaimId());
         String reason = req.text() == null ? "" : req.text().strip();
         if (reason.isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请写明退回原因, 告诉销售要改什么");
@@ -547,10 +552,12 @@ public class SalesQuoteFinanceService {
     private QuoteFinanceReviewDto confirm(UUID id, QuoteFinanceDecisionRequest req, boolean manager) {
         tx.bind();
         if (!manager) requireEligibleReviewer();
+        if (req == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请提供报价确认请求");
+        requireDecisionInputs(req.expectedRevision(), req.expectedClaimId());
         SalesQuote q = lockForDecision(id);
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         requirePending(q, manager);
-        SalesQuoteService.requireRevision(q, req == null ? null : req.expectedRevision());
+        SalesQuoteService.requireRevision(q, req.expectedRevision());
         claimGuard.requireActiveClaimByMe(manager ? "SALES_QUOTE_MANAGER_REVIEW" : TARGET, id.toString(), req.expectedClaimId());
         List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
@@ -568,7 +575,7 @@ public class SalesQuoteFinanceService {
         quotes.captureApprovalSnapshots(items, now);
         items.forEach(itemRepo::save);
         if (manager) {
-            String managerRemark = req == null ? null : blankToNull(req.text());
+            String managerRemark = blankToNull(req.text());
             q.getManagerReview().approve(actor,
                     managerRemark == null ? q.getManagerReview().getRemark() : managerRemark);
             q.getManagerReview().setDecisionClaimId(req.expectedClaimId());
@@ -579,7 +586,7 @@ public class SalesQuoteFinanceService {
         q.setFinanceConfirmedBy(actor);
         q.setApproverId(actor);
         }
-        String remark = req.text() == null ? null : blankToNull(req.text());
+        String remark = blankToNull(req.text());
         if (!manager && remark != null) q.setFinanceRemark(remark);
         q.setReviewRevision(q.getReviewRevision() + 1);
         quoteRepo.save(q);
@@ -613,6 +620,8 @@ public class SalesQuoteFinanceService {
             throw new ApiException(ErrorCode.FORBIDDEN,
                     "无法重新核价：请核对账号是否启用、员工是否在职，以及报价核价查看和重新核价权限");
         }
+        if (req == null || req.expectedRevision() == null)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"缺少反审核请求或修订号，请刷新后重试");
         SalesQuote q = lockForDecision(id);
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         if (manager) {
@@ -622,7 +631,7 @@ public class SalesQuoteFinanceService {
         } else if (q.getStatus() == null || q.getStatus() != SalesQuoteService.STATUS_CONFIRMED || q.getFinanceConfirmedAt() == null) {
             throw new ApiException(ErrorCode.CONFLICT, "只有已确认的报价可以重新核价");
         }
-        SalesQuoteService.requireRevision(q, req == null ? null : req.expectedRevision());
+        SalesQuoteService.requireRevision(q, req.expectedRevision());
         if (!quotes.convertedOrders(List.of(id)).isEmpty()) {
             throw new ApiException(ErrorCode.CONFLICT, "报价已转成订货单，不能重新核价");
         }
@@ -749,6 +758,12 @@ public class SalesQuoteFinanceService {
             throw new ApiException(ErrorCode.FORBIDDEN,
                     "无法办理报价核价：请核对账号是否启用、员工是否在职，以及报价核价查看和本次操作权限");
         }
+    }
+
+    /** Missing input is validation failure; a supplied stale version/lease remains a conflict. */
+    private static void requireDecisionInputs(Integer revision, UUID claimId) {
+        if (revision == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"缺少核价修订号，请刷新后重试");
+        if (claimId == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"缺少本次核价认领编号，请重新认领后重试");
     }
 
     private static String lineLabel(SalesQuoteItem item) {

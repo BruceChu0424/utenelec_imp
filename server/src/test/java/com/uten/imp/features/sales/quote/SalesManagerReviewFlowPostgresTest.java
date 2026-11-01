@@ -158,6 +158,98 @@ class SalesManagerReviewFlowPostgresTest {
         managers.confirmOrder(id,new SalesOrderFinanceConfirmService.FinanceConfirmRequest("已核对",revision(id),claim.claimId()));
     }
 
+    @Test void missingOrderDecisionInputsAreValidationFailuresWithoutMutationOrLeaseReuse() {
+        Fixture f=fixture("manager-order-inputs"); UUID manager=manager(); var order=submittedOrder(f);
+        loginAs(manager); var claim=claims.claim(MANAGER_ORDER,order.getId().toString());
+        long reviewed=revision(order.getId());
+        String before=jdbc.queryForObject("SELECT to_jsonb(o)::text FROM sales_orders o WHERE id=?",String.class,order.getId());
+        assertCode(() -> managers.confirmOrder(order.getId(),null),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> managers.confirmOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,null,claim.claimId())),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> managers.confirmOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,reviewed,null)),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> managers.rejectOrder(order.getId(),null),ErrorCode.VALIDATION_FAILED);
+        for (String reason : java.util.Arrays.asList(null,"","  "))
+            assertCode(() -> managers.rejectOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceRejectRequest(reason,reviewed,claim.claimId())),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> managers.rejectOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceRejectRequest("请核对",null,claim.claimId())),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> managers.rejectOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceRejectRequest("请核对",reviewed,null)),ErrorCode.VALIDATION_FAILED);
+        assertConflict(() -> managers.confirmOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,reviewed+1,claim.claimId())));
+        assertConflict(() -> managers.rejectOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceRejectRequest("旧租约",reviewed,UUID.randomUUID())));
+        assertThat(jdbc.queryForObject("SELECT to_jsonb(o)::text FROM sales_orders o WHERE id=?",String.class,order.getId())).isEqualTo(before);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_order_manager_review_events WHERE order_id=?",Long.class,order.getId())).isZero();
+        assertThat(jdbc.queryForObject("SELECT released_at IS NULL FROM task_claims WHERE id=?",Boolean.class,claim.claimId())).isTrue();
+        // Omitting the generation must not let an old page borrow a fresh lease held by the same user.
+        claims.release(MANAGER_ORDER,order.getId().toString()); var renewed=claims.claim(MANAGER_ORDER,order.getId().toString());
+        assertCode(() -> managers.confirmOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,reviewed,null)),ErrorCode.VALIDATION_FAILED);
+        assertConflict(() -> managers.confirmOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,reviewed,claim.claimId())));
+        managers.confirmOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,reviewed,renewed.claimId()));
+        assertThat(revision(order.getId())).isEqualTo(reviewed+1);
+        assertCode(() -> managers.reverseOrder(order.getId(),null),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> managers.reverseOrder(order.getId(),new com.uten.imp.features.sales.SalesManagerReviewService.ReverseRequest(null,reviewed+1,"重新核对")),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> managers.reverseOrder(order.getId(),new com.uten.imp.features.sales.SalesManagerReviewService.ReverseRequest(UUID.randomUUID(),null,"重新核对")),ErrorCode.VALIDATION_FAILED);
+        for (String reason : java.util.Arrays.asList(null,"","  "))
+            assertCode(() -> managers.reverseOrder(order.getId(),new com.uten.imp.features.sales.SalesManagerReviewService.ReverseRequest(UUID.randomUUID(),reviewed+1,reason)),ErrorCode.VALIDATION_FAILED);
+        assertThat(revision(order.getId())).isEqualTo(reviewed+1);
+        assertThat(orderFinance.managerReview(order.getId()).financeConfirmed()).isTrue();
+    }
+
+    @Test void managerBatchRequiresEveryOriginalRevisionAndLeaseBeforeAnyDecision() {
+        Fixture f=fixture("manager-batch-inputs"); UUID manager=manager(); var first=submittedOrder(f);var second=submittedOrder(f);
+        loginAs(manager);var a=claims.claim(MANAGER_ORDER,first.getId().toString());var b=claims.claim(MANAGER_ORDER,second.getId().toString());
+        var ids=List.of(first.getId(),second.getId());var versions=Map.of(first.getId(),revision(first.getId()),second.getId(),revision(second.getId()));
+        var leases=Map.of(first.getId(),a.claimId(),second.getId(),b.claimId());
+        assertCode(() -> managers.confirmOrders(null),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> managers.confirmOrders(new SalesOrderFinanceConfirmService.FinanceBatchConfirmRequest(ids,null,null,leases)),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> managers.confirmOrders(new SalesOrderFinanceConfirmService.FinanceBatchConfirmRequest(ids,null,versions,null)),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> managers.confirmOrders(new SalesOrderFinanceConfirmService.FinanceBatchConfirmRequest(ids,null,versions,Map.of(first.getId(),a.claimId()))),ErrorCode.VALIDATION_FAILED);
+        assertThat(jdbc.queryForList("SELECT manager_review_state FROM sales_orders WHERE id IN (?,?)",String.class,first.getId(),second.getId())).containsOnly("PENDING");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_order_manager_review_events WHERE order_id IN (?,?)",Long.class,first.getId(),second.getId())).isZero();
+        managers.confirmOrders(new SalesOrderFinanceConfirmService.FinanceBatchConfirmRequest(ids,null,versions,leases));
+        assertThat(jdbc.queryForList("SELECT manager_review_state FROM sales_orders WHERE id IN (?,?)",String.class,first.getId(),second.getId())).containsOnly("APPROVED");
+    }
+
+    @Test void quoteManagerAndFinanceRejectIncompleteInputsAndRetainExactLeaseGeneration() {
+        Fixture f=fixture("manager-quote-inputs"); UUID manager=manager();var quote=submitted(f);
+        loginAs(manager);var managerClaim=claims.claim(MANAGER_QUOTE,quote.getId().toString());
+        assertQuoteInputFailures(quote.getId(),quote.getReviewRevision(),managerClaim.claimId(),true);
+        approveQuote(quote.getId(),manager);
+        loginAs(f.finance());var review=finance.review(quote.getId());var financeClaim=claims.claim(CLAIM,quote.getId().toString());
+        assertQuoteInputFailures(quote.getId(),review.reviewRevision(),financeClaim.claimId(),false);
+        claims.release(CLAIM,quote.getId().toString());var renewed=claims.claim(CLAIM,quote.getId().toString());
+        assertCode(() -> finance.confirm(quote.getId(),new QuoteFinanceDecisionRequest(review.reviewRevision(),null,null)),ErrorCode.VALIDATION_FAILED);
+        assertConflict(() -> finance.confirm(quote.getId(),new QuoteFinanceDecisionRequest(review.reviewRevision(),financeClaim.claimId(),null)));
+        finance.confirm(quote.getId(),new QuoteFinanceDecisionRequest(review.reviewRevision(),renewed.claimId(),null));
+        assertCode(() -> finance.reopen(quote.getId(),null),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> finance.reopen(quote.getId(),new QuoteActionRequest(null)),ErrorCode.VALIDATION_FAILED);
+        assertThat(finance.review(quote.getId()).status()).isEqualTo((short)1);
+    }
+
+    private void assertQuoteInputFailures(UUID id,int revision,UUID lease,boolean manager) {
+        java.util.function.Consumer<QuoteFinanceDecisionRequest> confirm=req->{if(manager)finance.confirmManager(id,req);else finance.confirm(id,req);};
+        java.util.function.Consumer<QuoteFinanceDecisionRequest> reject=req->{if(manager)finance.rejectManager(id,req);else finance.returnToSales(id,req);};
+        java.util.function.Consumer<QuoteFinanceEditRequest> edit=req->{if(manager)finance.editManager(id,req);else finance.edit(id,req);};
+        String before=jdbc.queryForObject("SELECT to_jsonb(q)::text FROM sales_quotes q WHERE id=?",String.class,id);
+        assertCode(() -> confirm.accept(null),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> reject.accept(null),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> edit.accept(null),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> confirm.accept(new QuoteFinanceDecisionRequest(null,lease,null)),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> confirm.accept(new QuoteFinanceDecisionRequest(revision,null,null)),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> reject.accept(new QuoteFinanceDecisionRequest(null,lease,"请核对")),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> reject.accept(new QuoteFinanceDecisionRequest(revision,null,"请核对")),ErrorCode.VALIDATION_FAILED);
+        for(String reason:java.util.Arrays.asList(null,"","  "))
+            assertCode(() -> reject.accept(new QuoteFinanceDecisionRequest(revision,lease,reason)),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> edit.accept(new QuoteFinanceEditRequest(null,lease,null,null,null,List.of())),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> edit.accept(new QuoteFinanceEditRequest(revision,null,null,null,null,List.of())),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> edit.accept(new QuoteFinanceEditRequest(revision,lease,null,null,null,java.util.Arrays.asList((QuoteFinanceEditRequest.Line)null))),ErrorCode.VALIDATION_FAILED);
+        assertCode(() -> edit.accept(new QuoteFinanceEditRequest(revision,lease,null,null,null,List.of(new QuoteFinanceEditRequest.Line(null,null,BigDecimal.ONE,null,null)))),ErrorCode.VALIDATION_FAILED);
+        assertConflict(() -> confirm.accept(new QuoteFinanceDecisionRequest(revision+1,lease,null)));
+        assertConflict(() -> reject.accept(new QuoteFinanceDecisionRequest(revision,UUID.randomUUID(),"旧租约")));
+        assertThat(jdbc.queryForObject("SELECT to_jsonb(q)::text FROM sales_quotes q WHERE id=?",String.class,id)).isEqualTo(before);
+        assertThat(jdbc.queryForObject("SELECT released_at IS NULL FROM task_claims WHERE id=?",Boolean.class,lease)).isTrue();
+        if(manager) {
+            assertCode(() -> finance.reopenManager(id,null),ErrorCode.VALIDATION_FAILED);
+            assertCode(() -> finance.reopenManager(id,new QuoteActionRequest(null)),ErrorCode.VALIDATION_FAILED);
+        }
+    }
+
     @Test void quoteMustPassManagementBeforeAnyFinanceDecisionOrClaim() {
         Fixture f=fixture("manager-gate"); UUID manager=manager(); var quote=submitted(f);
         assertThat(quote.getManagerReview().getState()).isEqualTo("PENDING");

@@ -104,6 +104,12 @@ final class BusinessNoticeParticipation {
 
     /** Classifies a known old producer's complete result shape, never infers its source batch. */
     static boolean allowed(Notice notice, Set<String> permissions) {
+        if (SubcontractOutboundNoticePurpose.EVENT.equals(notice.getSourceEvent())) {
+            if (SubcontractOutboundNoticePurpose.ordinary(notice))
+                return allowed(notice.getActionRoute(), null, permissions);
+            return SubcontractOutboundNoticePurpose.classify(notice) == SubcontractOutboundNoticePurpose.Purpose.WAREHOUSE_ACTION
+                    && BusinessNoticeActionCatalog.eligible(notice.getSourceEvent(), permissions);
+        }
         return legacyProfileResult(notice)
                 ? allowed(null, "PROFILE_CHANGE_APPROVED", permissions)
                 : allowed(notice.getActionRoute(), notice.getSourceEvent(), permissions);
@@ -129,10 +135,21 @@ final class BusinessNoticeParticipation {
 
     /** SQL receives resolved booleans, never maintains a second list of permission combinations. */
     static String readRules(Set<String> permissions) {
+        return readRules(permissions, false);
+    }
+
+    /** Only a repository-validated ordinary receipt shape may select this policy. */
+    static String ordinaryReceiptReadRules(Set<String> permissions) {
+        return readRules(permissions, true);
+    }
+
+    private static String readRules(Set<String> permissions, boolean ordinaryReceipt) {
         Map<String, Object> snapshot = new LinkedHashMap<>();
         Map<String, Boolean> events = new LinkedHashMap<>();
         ReviewNoticeCatalog.events().stream().sorted().forEach(event -> events.put(event, ReviewNoticeAudience.eligible(event, permissions)));
-        BusinessNoticeActionCatalog.events().stream().sorted().forEach(event -> events.put(event, BusinessNoticeActionCatalog.eligible(event, permissions)));
+        BusinessNoticeActionCatalog.events().stream()
+                .filter(event -> !ordinaryReceipt || !SubcontractOutboundNoticePurpose.EVENT.equals(event))
+                .sorted().forEach(event -> events.put(event, BusinessNoticeActionCatalog.eligible(event, permissions)));
         PROFILE_RESULT_EVENTS.stream().sorted().forEach(event -> events.put(event, allowed(null, event, permissions)));
         snapshot.put("events", events);
         List<Map<String, Object>> routes = new ArrayList<>();

@@ -1211,13 +1211,17 @@ public class NoticeService {
     public Notice publishForUser(UUID audienceUserId, String title, String content,
                                  String type, String publisher, String actionRoute,
                                  String sourceEvent, String explicitPriority) {
+        return publishDirectedNotice(audienceUserId,title,content,type,publisher,actionRoute,sourceEvent,explicitPriority,null);
+    }
+
+    private Notice publishDirectedNotice(UUID audienceUserId,String title,String content,String type,String publisher,
+            String actionRoute,String sourceEvent,String explicitPriority,UUID aggregateId) {
         if (audienceUserId == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "定向通知缺少接收人");
         }
         if (!TYPES.contains(type)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "通知类型不正确: " + type);
         }
-        if (!reviewAudience.canReceiveBusinessNotice(audienceUserId, actionRoute, sourceEvent)) return null;
         Notice n = new Notice();
         n.setTitle(title);
         n.setContent(content);
@@ -1238,6 +1242,21 @@ public class NoticeService {
         if (sourceEvent != null && !sourceEvent.isBlank()) {
             n.setSourceEvent(sourceEvent.strip());
         }
+        var entry = ReviewNoticeCatalog.of(sourceEvent);
+        if (aggregateId != null && entry.isPresent()) {
+            n.setAggregateKind(entry.get().aggregateKind());
+            n.setAggregateId(aggregateId);
+        } else if (aggregateId != null && BusinessNoticeActionCatalog.contains(sourceEvent)) {
+            n.setAggregateKind(BusinessNoticeActionCatalog.kind(sourceEvent));
+            n.setAggregateId(aggregateId);
+        } else if (aggregateId != null && BusinessNoticeParticipation.receiptKind(sourceEvent) != null) {
+            n.setAggregateKind(BusinessNoticeParticipation.receiptKind(sourceEvent));
+            n.setAggregateId(aggregateId);
+        }
+        boolean canReceive = SubcontractOutboundNoticePurpose.EVENT.equals(n.getSourceEvent())
+                ? reviewAudience.canReceiveBusinessNotice(audienceUserId, n)
+                : reviewAudience.canReceiveBusinessNotice(audienceUserId, actionRoute, sourceEvent);
+        if (!canReceive) return null;
         Notice saved = noticeRepo.saveAndFlush(n);
         stateRepo.save(newState(saved.getId(), audienceUserId));
         return saved;
@@ -1254,25 +1273,7 @@ public class NoticeService {
                                  String type, String publisher, String actionRoute,
                                  String sourceEvent, String explicitPriority,
                                  UUID aggregateId) {
-        Notice n = publishForUser(
-                audienceUserId, title, content, type, publisher, actionRoute,
-                sourceEvent, explicitPriority);
-        if (n == null) return null;
-        var entry = ReviewNoticeCatalog.of(sourceEvent);
-        if (aggregateId != null && entry.isPresent()) {
-            n.setAggregateKind(entry.get().aggregateKind());
-            n.setAggregateId(aggregateId);
-            noticeRepo.saveAndFlush(n);
-        } else if (aggregateId != null && BusinessNoticeActionCatalog.contains(sourceEvent)) {
-            n.setAggregateKind(BusinessNoticeActionCatalog.kind(sourceEvent));
-            n.setAggregateId(aggregateId);
-            noticeRepo.saveAndFlush(n);
-        } else if (aggregateId != null && BusinessNoticeParticipation.receiptKind(sourceEvent) != null) {
-            n.setAggregateKind(BusinessNoticeParticipation.receiptKind(sourceEvent));
-            n.setAggregateId(aggregateId);
-            noticeRepo.saveAndFlush(n);
-        }
-        return n;
+        return publishDirectedNotice(audienceUserId,title,content,type,publisher,actionRoute,sourceEvent,explicitPriority,aggregateId);
     }
 
     // =========================== V459 审核待办弹卡 ===========================

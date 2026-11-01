@@ -59,6 +59,10 @@ public class ReviewNoticeAudience {
         }
         public String registeredEvents() { return java.util.stream.Stream.concat(ReviewNoticeCatalog.events().stream(),
                 BusinessNoticeActionCatalog.events().stream()).collect(Collectors.joining(",")); }
+        public String ordinaryReceiptParticipationRules() {
+            return BusinessNoticeParticipation.ordinaryReceiptReadRules(
+                    permissions == null || permissions.isBlank() ? Set.of() : Set.copyOf(List.of(permissions.split(","))));
+        }
         static final ReadScope NONE = new ReadScope(WorkshopScope.NONE, false, false, "");
     }
 
@@ -188,6 +192,13 @@ public class ReviewNoticeAudience {
             permissions.add("server:update");
         }
         return BusinessNoticeParticipation.allowed(route, event, permissions);
+    }
+
+    /** Complete metadata precedes this final delivery gate; other publishers keep their existing policy. */
+    public boolean canReceiveBusinessNotice(UUID userId, Notice notice) {
+        if (!SubcontractOutboundNoticePurpose.EVENT.equals(notice.getSourceEvent()))
+            return canReceiveBusinessNotice(userId, notice.getActionRoute(), notice.getSourceEvent());
+        return userId != null && BusinessNoticeParticipation.allowed(notice, permissionResolver.grantedPermsOf(userId));
     }
 
     private static boolean actionEligible(String event,Set<String> permissions) {

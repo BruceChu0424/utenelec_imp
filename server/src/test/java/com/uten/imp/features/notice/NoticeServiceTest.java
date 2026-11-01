@@ -131,6 +131,21 @@ class NoticeServiceTest {
     }
 
     @Test
+    void normalizedSharedEventCannotUseTheUnshapedLegacyGateOrWriteAnUnsupportedReceipt() {
+        Set<String> allActions=Set.of("notice:read","warehouse_inbound:view","warehouse_inbound:stock_in",
+                "subcontract_order:view","subcontract_order:draw","production_material_analysis:view","production_material_analysis:notify");
+        when(reviewAudience.canReceiveBusinessNotice(eq(userId),any(Notice.class)))
+                .thenAnswer(call->BusinessNoticeParticipation.allowed(call.getArgument(1,Notice.class),allActions));
+        assertNull(service.publishForUser(userId,"shape","shape","workflow","系统","/warehouse/inbound/expectations",
+                "  SUBCONTRACT_OUTBOUND_COMPLETED  "));
+        verify(reviewAudience).canReceiveBusinessNotice(eq(userId),argThat((Notice n)->
+                "SUBCONTRACT_OUTBOUND_COMPLETED".equals(n.getSourceEvent()) && "workflow".equals(n.getType())
+                        && n.getAggregateId()==null));
+        verify(noticeRepository,never()).saveAndFlush(any());
+        verify(stateRepository,never()).save(any());
+    }
+
+    @Test
     void revocationHidesActionWorkflowAndResolvedBusinessNoticesWithoutDeletingHistory() {
         Notice notice = new Notice();
         notice.setAudienceUserId(userId);

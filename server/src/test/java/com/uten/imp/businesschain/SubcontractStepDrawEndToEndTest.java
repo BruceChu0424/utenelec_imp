@@ -170,6 +170,10 @@ class SubcontractStepDrawEndToEndTest {
     @Autowired MaterialAnalysisService analyses;
     @Autowired MaterialAnalysisCommandService analysisCommands;
     @Autowired PlatformTransactionManager transactions;
+    @Autowired com.uten.imp.features.notice.NoticeService notices;
+    @Autowired com.uten.imp.features.notice.NoticeRepository noticeRows;
+    @Autowired com.uten.imp.features.notice.ReviewNoticeAudience noticeAudience;
+    @Autowired com.uten.imp.features.notice.ChainNoticeService chainNotices;
 
     FullChainEndToEndTest fixture;
 
@@ -194,6 +198,96 @@ class SubcontractStepDrawEndToEndTest {
                 SELECT ?, p.id, 'grant' FROM permissions p
                 WHERE p.code = ANY(string_to_array(?, ','))
                 """, userId, String.join(",", codes));
+    }
+
+    @Test
+    void sharedOutboundEventSeparatesActualRecipientsBeforeDeliveryAndEverySqlRead() {
+        String tag="scstep-purpose";
+        var w=fixture.seedWorld(tag);fixture.loginAs(w.superAdminUserId());
+        grantAuthorities(w.superAdminUserId(),"subcontract_order:view","subcontract_order:draw","subcontract:view:all");
+        UUID product=goods(w,tag,"P","委外"),component=goods(w,tag,"A","自制");
+        fixture.insertBom(product,component,"1");otherIn(w,w.warehouseId(),component,null,"10","5");
+        UUID order=subcontractOrder(w,product,"10",BusinessTime.today().plusDays(5),BigDecimal.ZERO);
+        approveSubcontract(w,order);UUID item=itemOf(order);
+        UUID issue=drawCommands.submit(new DrawSubmitRequest(List.of(new DrawItemRequest(item,null)),tag+"-draw")).issueIds().getFirst();
+        materialIssues.approve(issue);drainOutboxFor(Set.of(order,issue));
+        qty("10",returnable(item),"真实已发材料可回厂");
+
+        UUID drawer=fixture.createUserWithPerms(w,tag+"-drawer","notice:read","subcontract_order:view","subcontract_order:draw","subcontract:view:all");
+        UUID planner=fixture.createUserWithPerms(w,tag+"-planner","notice:read","production_material_analysis:view","production_material_analysis:notify");
+        UUID keeper=fixture.createUserWithPerms(w,tag+"-keeper","notice:read","warehouse_inbound:view","warehouse_inbound:stock_in");
+        UUID viewer=fixture.createUserWithPerms(w,tag+"-viewer","notice:read","subcontract_order:view","production_material_analysis:view","warehouse_inbound:view");
+        UUID library=fixture.createUserWithPerms(w,tag+"-library","notice:read","subcontract_order:view","production_material_analysis:view","warehouse_inbound:view",
+                "company_file:view","company_file:create","company_file:edit","company_file:delete","company_file:move","company_file:restore","company_file:upload","company_file:manage_permissions","attachment:view","attachment:upload");
+        UUID keeperEmployee=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,keeper);
+        db.update("INSERT INTO warehouse_keepers(warehouse_id,employee_id) VALUES(?,?)",w.warehouseId(),keeperEmployee);
+        UUID implicit=fixture.seedWorld(tag+"-implicit").superAdminUserId();
+        String event="SUBCONTRACT_OUTBOUND_COMPLETED",orderRoute="/subcontract/orders/"+order;
+        // Historical result receipts do not depend on the source record still existing.
+        String analysisRoute="/production/material-analyses/"+UUID.randomUUID()+"/summary";
+        var valid=new java.util.LinkedHashMap<UUID,UUID>();
+        for(UUID user:List.of(drawer,planner,keeper,viewer,library,implicit)) {
+            long before=count("SELECT count(*) FROM notices WHERE audience_user_id=?",user);
+            long beforeStates=count("SELECT count(*) FROM notice_user_states WHERE user_id=?",user);
+            var orderReceipt=notices.publishForUser(user,"purpose order","已发物料回执","workflow","系统",orderRoute,event);
+            var analysisReceipt=notices.publishForUser(user,"purpose analysis","分析供料结果回执","workflow","系统",analysisRoute,event);
+            var warehouseAction=notices.publishForUser(user,"purpose warehouse","真实预计回厂行动","task","系统","/warehouse/inbound/expectations",event,null,order);
+            assertEquals(user.equals(drawer),orderReceipt!=null,"仅实际委外领料资格接订单结果");
+            assertEquals(user.equals(planner),analysisReceipt!=null,"仅实际计划资格接分析结果");
+            assertEquals(user.equals(keeper),warehouseAction!=null,"仓库行动仍须自己的精确资格");
+            assertEquals(before+(user.equals(drawer)||user.equals(planner)||user.equals(keeper)?1:0),
+                    count("SELECT count(*) FROM notices WHERE audience_user_id=?",user),"门禁先于notice/state写入");
+            assertEquals(beforeStates+(user.equals(drawer)||user.equals(planner)||user.equals(keeper)?1:0),count("SELECT count(*) FROM notice_user_states WHERE user_id=?",user));
+            var result=orderReceipt!=null?orderReceipt:analysisReceipt!=null?analysisReceipt:warehouseAction;
+            if(result!=null)valid.put(user,result.getId());
+        }
+        assertNull(notices.publishForUser(keeper,"bad route","fixture","workflow","系统","/warehouse/inbound/expectations",event));
+        assertNull(notices.publishForUser(drawer,"bad type","fixture","task","系统",orderRoute,event,null,order));
+        assertNull(notices.publishForUser(planner,"unknown route","fixture","workflow","系统",analysisRoute+"/extra",event));
+        for(var entry:valid.entrySet()) {
+            UUID user=entry.getKey(),id=entry.getValue();fixture.loginAs(user);
+            assertEquals(id.toString(),notices.getById(id).id());
+            var actor=(com.uten.imp.security.AuthUser)SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+            var scope=noticeAudience.readScope(actor);
+            assertTrue(noticeRows.findScopedVisibleNoticeIds(user,Set.of(id),scope).contains(id));
+            assertTrue(noticeRows.findVisible(user,false,scope,org.springframework.data.domain.PageRequest.of(0,1)).stream().anyMatch(n->n.getId().equals(id)));
+            assertEquals(notices.list(true).size(),notices.unreadCount());
+            String state=db.queryForObject("SELECT to_jsonb(s)::text FROM notice_user_states s WHERE notice_id=? AND user_id=?",String.class,id,user);
+            // Corrupt/legacy stored shapes must remain invisible before paging.
+            for(int changed=0;changed<5;changed++) {
+                var bad=new com.uten.imp.features.notice.Notice();bad.setTitle("unsupported purpose");bad.setContent("fixture shape");bad.setPublisher("系统");
+                bad.setSourceEvent(event);bad.setType("workflow");bad.setKind("NORMAL");bad.setAudienceUserId(user);bad.setAudienceScope("selected");bad.setAudienceCount(1);
+                bad.setActionRoute(orderRoute);bad.setPublishedAt(java.time.Instant.now().plusSeconds(30));
+                switch(changed) {
+                    case 0->bad.setActionRoute("/subcontract/orders/not-a-uuid");
+                    case 1->bad.setType("task");
+                    case 2->{bad.setAggregateKind("SUBCONTRACT_ORDER");bad.setAggregateId(order);}
+                    case 3->bad.setSourceRevision(1L);
+                    case 4->bad.setActionRoute("/warehouse/inbound/expectations");
+                }
+                var saved=noticeRows.saveAndFlush(bad);
+                assertTrue(noticeRows.findScopedVisibleNoticeIds(user,Set.of(saved.getId()),scope).isEmpty());
+                assertThrows(ApiException.class,()->notices.getById(saved.getId()));
+            }
+            assertEquals(id,noticeRows.findVisible(user,false,scope,org.springframework.data.domain.PageRequest.of(0,1)).getFirst().getId(),"非法新行不能占据第一页");
+            assertEquals(notices.list(true).size(),notices.unreadCount());
+            assertEquals(state,db.queryForObject("SELECT to_jsonb(s)::text FROM notice_user_states s WHERE notice_id=? AND user_id=?",String.class,id,user));
+            assertEquals(event,db.queryForObject("SELECT source_event FROM notices WHERE id=?",String.class,id));
+        }
+        fixture.loginAs(w.superAdminUserId());
+        Receipt received=registerReturn(w,item,product,"10",tag+"-return");
+        stockIn("SUBCONTRACT",received.receiptId(),passIqc("SUBCONTRACT",received.receiptId(),tag+"-pass"),tag+"-stock",w.warehouseId());
+        qty("0",db.queryForObject("""
+                SELECT GREATEST(fn_subcontract_returnable_qty(?) - COALESCE((
+                    SELECT SUM(detail.material_basis_qty) FROM subcontract_receipt_items detail
+                    JOIN subcontract_receipts receipt ON receipt.id=detail.receipt_id
+                    WHERE detail.order_item_id=? AND NOT detail.is_deleted AND receipt.status=1 AND NOT receipt.is_deleted),0),0)
+                """,BigDecimal.class,item,item),"正式预计到货口径：累计可制套数减已登记回厂基数");
+        fixture.loginAs(keeper);assertThrows(ApiException.class,()->notices.getById(valid.get(keeper)));
+        long beforeLate=count("SELECT count(*) FROM notices WHERE audience_user_id=? AND source_event=?",keeper,event);
+        fixture.loginAs(w.superAdminUserId());chainNotices.notifySubcontractOutboundCompleted(issue);drainOutboxFor(Set.of(order,issue));
+        assertEquals(beforeLate,count("SELECT count(*) FROM notices WHERE audience_user_id=? AND source_event=?",keeper,event),"迟到事件不能复活仓库行动卡");
+        fixture.loginAs(drawer);assertEquals(valid.get(drawer).toString(),notices.getById(valid.get(drawer)).id(),"普通结果仍是历史事实");
     }
 
     // =====================================================================================

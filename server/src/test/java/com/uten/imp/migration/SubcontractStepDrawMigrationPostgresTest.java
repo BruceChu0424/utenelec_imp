@@ -649,7 +649,7 @@ class SubcontractStepDrawMigrationPostgresTest {
                 FROM permissions WHERE code = 'subcontract_order:draw'
                 """);
         assertNotNull(permission, "委外领料权限点 subcontract_order:draw 必须存在");
-        assertEquals("委外领料(提交、撤回、结束领料)", permission.get("name"), "权限名称用半角括号");
+        assertEquals("提交、撤回或结束委外领料", permission.get("name"), "权限名称使用当前统一业务目录的直白动作说明");
         assertEquals("委外管理", permission.get("module"));
         assertEquals("委外订货", permission.get("category"));
         assertEquals("EXECUTE", permission.get("action_type"));

@@ -73,7 +73,7 @@ class CompanyFileEveryoneMigrationPostgresTest {
         assertThat(db.queryForList(
                 "SELECT code FROM permissions WHERE module='常用模块' ORDER BY sort_order", String.class))
                 .containsExactly("company_file:view", "expense:apply", "payroll:view:self",
-                        "suggestion:submit", "visitor:host_confirm");
+                        "suggestion:submit", "suggestion:view", "visitor:host_confirm", "visitor:host_view");
         assertThat(db.queryForObject(
                 "SELECT count(*) FROM permissions WHERE module='系统管理' AND code LIKE 'company_file:%'",
                 Integer.class)).isEqualTo(7);

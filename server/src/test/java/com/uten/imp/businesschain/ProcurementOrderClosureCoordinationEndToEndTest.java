@@ -214,13 +214,25 @@ class ProcurementOrderClosureCoordinationEndToEndTest {
     }
 
     @Test void warehouseAndFinanceNoticesResolveWithoutResurrectingLateDeliveryEvents() {
-        var f=fixture("notice-close");owner(f);drain();
-        assertThat(count("SELECT COUNT(*) FROM notices WHERE aggregate_kind='PROCUREMENT_ORDER' AND aggregate_id=? AND resolved_at IS NULL",f.order())).isPositive();
-        var pending=submit(f,"CLOSE");owner(f);drain();
-        assertThat(count("SELECT COUNT(*) FROM notices WHERE aggregate_kind='PROCUREMENT_APPROVAL_CASE' AND aggregate_id=? AND resolved_at IS NULL",pending.caseId())).isZero();
-        assertThat(count("SELECT COUNT(*) FROM notices WHERE aggregate_kind IN ('PROCUREMENT_ORDER','PROCUREMENT_APPROVAL_CASE') AND aggregate_id IN (?,?) AND resolved_at IS NULL",f.order(),pending.caseId())).isZero();
-        assertThat(count("SELECT COUNT(*) FROM notices WHERE audience_user_id=? AND title LIKE '%已结束%' AND action_route=?",f.world().superAdminUserId(),"/purchase/orders/"+f.order())).isEqualTo(1);
-        assertThat(count("SELECT COUNT(*) FROM business_outbox WHERE aggregate_id IN (?,?) AND status<>1",f.order(),pending.caseId())).isZero();
+        for (boolean subscribes : List.of(false,true)) {
+            var f=fixture("notice-close-"+subscribes);
+            if (subscribes) {
+                assertThat(db.update("""
+                        INSERT INTO user_permission_overrides(user_id,permission_id,effect)
+                        SELECT ?,id,'grant' FROM permissions
+                        WHERE code IN ('notice:read','purchase_order:view','purchase_order:submit_finance')
+                        ON CONFLICT(user_id,permission_id) DO UPDATE SET effect='grant'
+                        """,f.world().superAdminUserId())).isEqualTo(3);
+            }
+            owner(f);drain();
+            assertThat(count("SELECT COUNT(*) FROM notices WHERE aggregate_kind='PROCUREMENT_ORDER' AND aggregate_id=? AND resolved_at IS NULL",f.order())).isPositive();
+            var pending=submit(f,"CLOSE");owner(f);drain();
+            assertThat(count("SELECT COUNT(*) FROM notices WHERE aggregate_kind='PROCUREMENT_APPROVAL_CASE' AND aggregate_id=? AND resolved_at IS NULL",pending.caseId())).isZero();
+            assertThat(count("SELECT COUNT(*) FROM notices WHERE aggregate_kind IN ('PROCUREMENT_ORDER','PROCUREMENT_APPROVAL_CASE') AND aggregate_id IN (?,?) AND resolved_at IS NULL",f.order(),pending.caseId())).isZero();
+            assertThat(count("SELECT COUNT(*) FROM notices WHERE audience_user_id=? AND title LIKE '%已结束%' AND action_route=?",f.world().superAdminUserId(),"/purchase/orders/"+f.order()))
+                    .as("超级管理员标记不自动订阅；显式业务参与资格才收到结束回执").isEqualTo(subscribes?1:0);
+            assertThat(count("SELECT COUNT(*) FROM business_outbox WHERE aggregate_id IN (?,?) AND status<>1",f.order(),pending.caseId())).isZero();
+        }
     }
 
     @Test void lateLegacySubmissionEventCannotResurrectFinanceApprovalAfterDirectCompletion() {

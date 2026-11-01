@@ -247,6 +247,7 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
 
         var access=mock(ProductionStockTaskAccessPolicy.class);
         when(access.canAccessWarehouseTasks()).thenReturn(true);
+        when(access.canBrowseWarehouseTasks()).thenReturn(true);
         var legacy=new ProductionFinishedInboundTaskService(executingEntityManager(),access);
         var scoped=legacy.list("","ARRIVAL_REGISTRATION",null,1,20,scope);
         assertThat(scoped.getTotal()).isEqualTo(1);
@@ -772,7 +773,10 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
                     assertThat(row.actionData()).containsEntry("canRegisterBeforeInspection",false);
                 });
         assertThat(service(actor,WarehouseTaskScope.ALL,false).list(filter("FINISHED","",1,30)).items())
-                .noneSatisfy(row->assertThat(row.actionData()).containsEntry("canRegisterBeforeInspection",true));
+                .isNotEmpty().allSatisfy(row->{
+                    assertThat(row.canHandle()).isFalse();
+                    assertThat(row.actionData()).containsEntry("canRegisterBeforeInspection",false);
+                });
         var sparseAdmin=new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"admin",
                 Set.of("stock_doc:view","stock_doc:approve","warehouse_inbound:view","warehouse_inbound:stock_in"),
                 false,true,true);

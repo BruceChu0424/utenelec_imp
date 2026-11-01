@@ -162,6 +162,29 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
     }
 
     @Test
+    void productionReadScopeDoesNotConferWarehouseResponsibilityDespiteGrantedActionCodes() {
+        UUID discovery = UUID.randomUUID(), draw = UUID.randomUUID();
+        for (boolean participant : List.of(false, true)) {
+            Fixture fixture = new Fixture(Set.of("stock_doc:view", "stock_doc:approve", "stock_doc:issue"),
+                    participant, new OwnerScope(false, Set.of(ACTOR)));
+            Query count = query(); when(count.getSingleResult()).thenReturn(2L);
+            Query rows = query(); when(rows.getResultList()).thenReturn(List.of(
+                    row("DRAW", "MATERIAL_DISCOVERY", discovery, "DRAW_DISCOVERY_PENDING", OTHER_OWNER, true),
+                    row("DRAW", "STOCK_DOC", draw, "DRAW_PENDING", OTHER_OWNER, true)));
+            Query states = query(); when(states.getResultList()).thenReturn(List.of());
+            Query bills = query(); when(bills.getResultList()).thenReturn(List.of());
+            when(fixture.em.createNativeQuery(anyString())).thenReturn(count, rows, states, bills);
+
+            Page result = fixture.service.list(new Filter("DRAW", null, null, null, null, null, null, 1, 20));
+            assertThat(result.items()).extracting(Row::id).containsExactly(discovery, draw);
+            assertThat(result.items()).allSatisfy(item -> assertThat(item.canHandle()).isEqualTo(participant));
+            if (!participant) {
+                assertThat(result.items()).extracting(Row::action).containsExactly("HISTORY_DETAIL", "STOCK_DETAIL");
+            }
+        }
+    }
+
+    @Test
     void historyPermissionDoesNotAllowHandlingPendingSubcontractDrafts() {
         Fixture f = new Fixture(Set.of("warehouse_subcontract_outbound_history:view", "subcontract_outbound:execute",
                 "subcontract_material_issue:view", "subcontract_material_issue:edit", "subcontract_material_issue:approve"), false,
@@ -308,6 +331,7 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
             doCallRealMethod().when(scopes).withQueryScopeCache(any());
             ProductionStockTaskAccessPolicy tasks = mock(ProductionStockTaskAccessPolicy.class);
             when(tasks.canAccessWarehouseTasks()).thenReturn(production);
+            when(tasks.canBrowseWarehouseTasks()).thenReturn(permissions.contains("stock_doc:view"));
             service = new WarehouseOutboundTaskCenterQueryService(em, access, actor, scopes, tasks, audit,
                     mock(com.uten.imp.features.warehouse.materialbin.WorkshopMaterialScope.class),
                     new com.fasterxml.jackson.databind.ObjectMapper());

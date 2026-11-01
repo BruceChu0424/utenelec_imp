@@ -81,7 +81,7 @@ public class WarehouseInboundTaskCenterQueryService {
         var scope = warehouseScopes.current(filter.scopeWarehouseId());
         var owner = stockAccess.nativeReadScope("document.maker_id", "stockOwners", rights.owner());
         var access = new WarehouseInboundTaskCenterSql.Access(rights.inbound(),rights.purchaseHistory(),
-                rights.subcontractHistory(),rights.quality(),rights.stock(),rights.productionPool(),owner.predicate(),
+                rights.subcontractHistory(),rights.quality(),rights.stock(),rights.canReadProduction(),owner.predicate(),
                 WarehouseWorkshopMaterialTaskProjection.scope(rights.workshop(),materialScopes,scope));
         var headers = WarehouseTaskHeaderQuery.criteria(filter.columnSearch(), true);
         String base = WarehouseInboundTaskCenterSql.base(access,scope,filter.keyword(),headers.predicate());
@@ -300,7 +300,7 @@ public class WarehouseInboundTaskCenterQueryService {
         var scope=warehouseScopes.current(warehouseId);
         var owner=stockAccess.nativeReadScope("document.maker_id","stockOwners",rights.owner());
         var access=new WarehouseInboundTaskCenterSql.Access(rights.inbound(),rights.purchaseHistory(),
-                rights.subcontractHistory(),rights.quality(),rights.stock(),rights.productionPool(),owner.predicate(),
+                rights.subcontractHistory(),rights.quality(),rights.stock(),rights.canReadProduction(),owner.predicate(),
                 WarehouseWorkshopMaterialTaskProjection.scope(rights.workshop(),materialScopes,scope));
         var parameters=new MapSqlParameterSource("type","ALL").addValue("warehouseScope",scope.idsCsv())
                 .addValue("ownDraftMaker",warehouseId==null && actor.getEmployeeId()!=null?actor.getEmployeeId().toString():"")
@@ -411,7 +411,8 @@ public class WarehouseInboundTaskCenterQueryService {
         boolean quality() { return has("warehouse_iqc_stock_in:view") || has("warehouse_iqc_return:view"); }
         boolean stock() { return has("stock_doc:view"); }
         boolean workshop() { return has("workshop_material:view"); }
-        boolean productionPool() { return stock(); }
+        boolean canReadProduction() { return stock(); }
+        boolean productionPool() { return warehouseParticipant && stock(); }
         boolean history(String source) { return source.equals("PURCHASE")?purchaseHistory():source.equals("SUBCONTRACT")&&subcontractHistory(); }
         boolean anyView() { return inbound() || purchaseHistory() || subcontractHistory() || quality() || stock() || workshop(); }
         boolean sourceAllowed(String source) { return switch(source) {

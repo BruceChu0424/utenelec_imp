@@ -54,4 +54,12 @@ public class DocumentDraftCountController {
     public Map<String, Long> financeRejectedCounts() {
         return statusCounts.financeRejectedCounts();
     }
+
+    /** 销售负责人驳回后，由有更正资格的销售人员跟进；沿用同一对象与办理范围。 */
+    @GetMapping("/manager-rejected/count")
+    @PreAuthorize("isAuthenticated()")
+    @com.uten.imp.security.BusinessTaskRead
+    public Map<String, Long> managerRejectedCounts() {
+        return statusCounts.managerRejectedCounts();
+    }
 }

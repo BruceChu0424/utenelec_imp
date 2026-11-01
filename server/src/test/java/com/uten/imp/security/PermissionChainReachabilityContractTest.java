@@ -17,7 +17,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>被非 GET 端点引用、动作类别属执行 / 审批 / 创建的码，必须至少有一个部门持有、或属全员基础包、
  * 或显式标为 SUPERADMIN_ONLY / INDIVIDUAL_ONLY(超管专属或只能逐人点名授予的高风险码)。
- * 明确要求由设置按需授权的新可选动作例外，逐项校验可配置目录与零默认授权，不能据此推导部门授权。
+ * 明确要求由设置按需授权的动作例外，逐项校验可配置目录与零默认授权，不能据此推导部门授权。
  * 否则就会出现「退回供应商任务 / IQC 不合格闭环 / 官网询盘只有超管能办、到货异常一直关不了」。
  */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
@@ -27,7 +27,15 @@ class PermissionChainReachabilityContractTest {
     // V886 deliberately adds no department/user grant. Reusing the retired plan action would
     // hide the feature; assigning a department merely to satisfy this test would invent authority.
     private static final Map<String, String> EXPLICIT_CONFIGURATION_ACTIONS = Map.of(
-            "production_material_analysis:forward_rd", "production.material-analysis");
+            "production_material_analysis:forward_rd", "production.material-analysis",
+            // V978 requires a named manager to be configured through the reviewed permission flow.
+            // It must not silently grant sales or finance staff the newly introduced approval stage.
+            "sales_quote_manager:confirm", "sales.manager-review",
+            "sales_quote_manager:reject", "sales.manager-review",
+            "sales_quote_manager:reverse", "sales.manager-review",
+            "sales_order_manager:confirm", "sales.manager-review",
+            "sales_order_manager:reject", "sales.manager-review",
+            "sales_order_manager:reverse", "sales.manager-review");
     // V958: company-library write endpoints now gate on the entrance code; their
     // action authority (folder ACL or a global administration code) lives in the
     // service, so these codes no longer appear on write guards.

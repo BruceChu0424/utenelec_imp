@@ -39,7 +39,7 @@ class ProductionFinishedInboundHeaderPostgresTest {
         }
         jdbc=new NamedParameterJdbcTemplate(new SingleConnectionDataSource(connection,true));
         em=mock(EntityManager.class);when(em.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0)));
-        access=mock(ProductionStockTaskAccessPolicy.class);when(access.canAccessWarehouseTasks()).thenReturn(true);
+        access=mock(ProductionStockTaskAccessPolicy.class);when(access.canBrowseWarehouseTasks()).thenReturn(true);
         service=new ProductionFinishedInboundTaskService(em,access);
     }
     @AfterEach void rollback()throws Exception {if(connection!=null){connection.rollback();connection.close();}}
@@ -66,7 +66,7 @@ class ProductionFinishedInboundHeaderPostgresTest {
         assertThat(missing.getItems()).extracting(ProductionFinishedInboundTask::taskId).containsExactly(unknown);
         assertThat(missing.getItems().getFirst().pendingQtyText()).isEqualTo("待核验");
         assertThat(service.facets("",null,null,scope,null,null,columns).get("taskNo")).hasSize(1);
-        clearInvocations(em);when(access.canAccessWarehouseTasks()).thenReturn(false);
+        clearInvocations(em);when(access.canBrowseWarehouseTasks()).thenReturn(false);
         assertThat(service.list("",null,null,1,20,scope,null,null,null,null,Map.of("lineCount","NaN")).getTotal()).isZero();verifyNoInteractions(em);
     }
 

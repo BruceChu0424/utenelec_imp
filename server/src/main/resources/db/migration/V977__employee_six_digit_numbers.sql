@@ -45,7 +45,10 @@ DO $$ BEGIN
         REVOKE ALL ON employee_code_numbering_receipts FROM uten;
     END IF;
 END $$;
-SELECT fn_audit_track_table('employee_code_numbering_receipts','FULL','data_change',false);
+-- The immutable private receipt is the retained decision journal. Employee/date
+-- mutations have their own FULL row audit; duplicating its nested personnel plan
+-- into general audit JSON would bypass the receipt table's restricted readers.
+SELECT fn_audit_track_table('employee_code_numbering_receipts','NONE','data_change',false);
 
 -- Old code-only permission imports must require explicit identity mapping after
 -- renumbering too. Never reinterpret old snapshots as a different person.

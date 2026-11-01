@@ -426,7 +426,10 @@ class AuditTriggerCoverageMigrationContractTest {
                         "business_identifier_conflicts", "business_identifier_reservation_members",
                         "business_identifier_reservations", "business_prefix_reservation_members",
                         "business_prefix_reservations", "master_code_history",
-                        "master_code_reservation_members", "master_code_reservations")),
+                        "master_code_reservation_members", "master_code_reservations",
+                        // Private one-shot plans stay in this immutable journal;
+                        // employees and employment_history retain their FULL audit.
+                        "employee_code_numbering_receipts")),
             new NoneGroup("preference",
                     "使用偏好与自动学习: 系统按使用习惯自动写入, 不是业务决定",
                     Set.of(

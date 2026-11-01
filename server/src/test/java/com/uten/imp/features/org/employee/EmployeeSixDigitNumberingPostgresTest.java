@@ -122,6 +122,28 @@ class EmployeeSixDigitNumberingPostgresTest {
         assertThatThrownBy(()->apply(plan())).hasMessageContaining("preflight failed");
         assertThat(code(owner)).isEqualTo("ADMIN");
     }
+    @Test void reviewedSameDayTransferPreservesHistoryWhileCorrectingBothOwnerDates() throws Exception {
+        db.update("UPDATE employees SET confirmed_at=hire_date WHERE id=?",owner);
+        UUID transfer=UUID.randomUUID();
+        db.update("INSERT INTO employment_history(id,employee_id,event_type,event_date,remark) VALUES (?,?,'transfer',DATE '2026-10-31','Retained same-day transfer')",transfer,owner);
+        String original=db.queryForObject("SELECT to_jsonb(h)::text FROM employment_history h WHERE id=?",String.class,transfer);
+        String preview=plan();
+        assertThat(JSON.readTree(preview).path("issues")).isEmpty();
+        apply(preview);
+        assertThat(db.queryForObject("SELECT hire_date::text||'|'||confirmed_at::text FROM employees WHERE id=?",String.class,owner))
+                .isEqualTo("2026-10-31|2026-10-31");
+        assertThat(db.queryForObject("SELECT to_jsonb(h)::text FROM employment_history h WHERE id=?",String.class,transfer)).isEqualTo(original);
+        assertThat(code(owner)).isEqualTo("000005");
+        assertThat(db.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgrelid='employee_code_numbering_receipts'::regclass AND NOT tgisinternal AND tgname LIKE 'trg_audit%'",Integer.class)).isZero();
+    }
+    @Test void earlierRealTransferStillBlocksTheReviewedOwnerDateCorrection() throws Exception {
+        db.update("UPDATE employees SET confirmed_at=hire_date WHERE id=?",owner);
+        db.update("INSERT INTO employment_history(employee_id,event_type,event_date,remark) VALUES (?,'transfer',DATE '2026-10-30','Earlier actual transfer')",owner);
+        assertThat(JSON.readTree(plan()).path("issues")).isNotEmpty();
+        assertThatThrownBy(()->apply(plan())).hasMessageContaining("preflight failed");
+        assertThat(code(owner)).isEqualTo("ADMIN");
+        assertThat(db.queryForObject("SELECT count(*) FROM employee_code_numbering_receipts",Integer.class)).isZero();
+    }
     @Test void wrongFounderAndWrongDatabaseAreRejected() throws Exception {
         assertThatThrownBy(()->db.queryForObject("SELECT pg_temp.employee_numbering_plan(?,?)::text",String.class,second,first))
                 .hasMessageContaining("verified retained");

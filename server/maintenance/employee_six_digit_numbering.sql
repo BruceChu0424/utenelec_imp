@@ -45,9 +45,13 @@ BEGIN
     -- V08's ADMIN seed used 2026-01-01; V213 copied that placeholder into
     -- confirmed_at. Treat this precise bootstrap default as the requested same-day
     -- regular onboarding, with both old/new dates visible in the reviewed plan.
+    -- The owner also explicitly confirmed both dates as 2026-10-31 after the
+    -- company preview found a transfer on that same day. Retain that event;
+    -- earlier transfers and actual regularization history remain blocking.
     SELECT code='ADMIN' AND hire_date=DATE '2026-01-01' AND confirmed_at=hire_date
         AND NOT EXISTS(SELECT 1 FROM public.employment_history h WHERE h.employee_id=owner_employee
-                       AND h.event_type NOT IN('onboard','hire_date_correction'))
+                       AND h.event_type NOT IN('onboard','hire_date_correction')
+                       AND NOT(h.event_type='transfer' AND h.event_date=owner_hire_date))
     INTO bootstrap_confirmation FROM public.employees WHERE id=owner_employee;
     WITH roster AS (
         SELECT e.*, row_number() OVER(ORDER BY

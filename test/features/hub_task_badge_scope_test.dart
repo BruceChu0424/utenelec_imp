@@ -97,15 +97,14 @@ void main() {
     );
 
     expect(redCounts(tester, '仓库任务中心'), [25]);
-    // 2026-10 口径：任务中心卡只展示待办（进行中是另一种状态，不与待办相加
-    // 造成重复），本模块「进行中 11」由 hub 顶栏黄签 UtenModuleProgressChip 呈现。
-    expect(
+    // 模块卡与顶栏共用权威范围，待办和在办分别呈现，不相加。
+    final taskCenterYellow = tester.widgetList<UtenInProgressBadge>(
       find.descendant(
         of: card('仓库任务中心'),
         matching: find.byType(UtenInProgressBadge),
       ),
-      findsNothing,
     );
+    expect(taskCenterYellow.map((badge) => badge.count), [11]);
     expect(find.text('进行中 11'), findsOneWidget);
     expect(find.text('待办 25'), findsOneWidget);
     expectNewCardsWithoutCounts(tester);

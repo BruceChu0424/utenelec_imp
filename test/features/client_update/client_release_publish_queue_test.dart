@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -38,6 +39,7 @@ class _Gateway implements ClientReleasePublishGateway {
   final records = <String, Map<String, dynamic>>{};
   final creates = <Map<String, dynamic>>[];
   final uploads = <String>[], publishes = <String>[], withdraws = <String>[];
+  final reads = <String>[];
   Future<void> Function(Map<String, dynamic>)? onCreate;
   Future<void> Function(String)? onUpload, onPublish, onWithdraw;
   Map<String, dynamic> Function(Map<String, dynamic>)? changeRead;
@@ -104,6 +106,7 @@ class _Gateway implements ClientReleasePublishGateway {
 
   @override
   Future<Map<String, dynamic>> read(String id) async {
+    reads.add(id);
     if (!records.containsKey(id)) {
       throw ApiException(
         'NOT_FOUND',
@@ -147,6 +150,236 @@ void main() {
     );
   });
   tearDown(() => queue.dispose());
+
+  test(
+    'shared native and Flutter batch-default sample preserves exact field ownership',
+    () {
+      final sample =
+          jsonDecode(
+                File(
+                  'test/fixtures/client_release_publish_defaults_v1.json',
+                ).readAsStringSync(),
+              )
+              as Map<String, dynamic>;
+      ClientReleasePublishMetadata metadata(String name) =>
+          ClientReleasePublishMetadata.fromJson(
+            Map<String, dynamic>.from(sample[name] as Map),
+          );
+      queue.addFiles(
+        (sample['files'] as List).cast<String>().map(_file),
+        metadata('initial'),
+      );
+      queue.edit(queue.items.first, metadata('manual'));
+      queue.applyDefaults(metadata('batch'));
+      expect(queue.items.first.metadata.toJson(), sample['expectedManual']);
+      expect(queue.items.last.metadata.toJson(), sample['expectedSecond']);
+      queue.useDefaults(queue.items.first, metadata('batch'));
+      expect(queue.items.first.metadata.toJson(), sample['expectedReset']);
+    },
+  );
+
+  test(
+    'batch fields follow files selected before entering the version and preserve format roles',
+    () async {
+      queue.addFiles([
+        _file('setup.exe'),
+        _file(),
+      ], const ClientReleasePublishMetadata());
+      queue.applyDefaults(_metadata.copyWith(packageKind: 'installer'));
+      expect(queue.items.map((item) => item.metadata.packageKind), [
+        'installer',
+        'update',
+      ]);
+      expect(
+        queue.items.every(
+          (item) =>
+              item.metadata.version == '2.5.34' &&
+              item.metadata.buildNumber == '2534',
+        ),
+        isTrue,
+      );
+      expect(
+        queue.items.every((item) => item.file != null && !item.frozen),
+        isTrue,
+      );
+      await queue.run();
+      expect(queue.confirmedCount, 2);
+      expect(api.uploads, hasLength(2));
+      await queue.run();
+      expect(api.creates, hasLength(2));
+      expect(api.uploads, hasLength(2));
+      expect(api.publishes, hasLength(2));
+    },
+  );
+
+  test(
+    'manual version and target groups survive batch changes until explicitly inherited',
+    () {
+      queue.addFiles([_file('setup.exe'), _file()], _metadata);
+      final item = queue.items.first;
+      queue.edit(
+        item,
+        item.metadata.copyWith(
+          version: '2.5.35',
+          buildNumber: '2535',
+          architecture: 'arm64',
+        ),
+      );
+      queue.applyDefaults(
+        _metadata.copyWith(
+          version: '2.5.36',
+          buildNumber: '2536',
+          architecture: 'x64',
+          releaseNotes: '批说明',
+        ),
+      );
+      expect(item.metadata.version, '2.5.35');
+      expect(item.metadata.buildNumber, '2535');
+      expect(item.metadata.architecture, 'arm64');
+      expect(item.metadata.packageKind, 'installer');
+      expect(item.metadata.releaseNotes, '批说明');
+      expect(queue.items.last.metadata.version, '2.5.36');
+      final saved = queue.snapshot();
+      queue.restore(saved);
+      final restored = queue.items.first;
+      queue.applyDefaults(
+        _metadata.copyWith(version: '2.5.37', buildNumber: '2537'),
+      );
+      expect(restored.metadata.version, '2.5.35');
+      expect(
+        restored.metadataOverrides,
+        containsAll({'version', 'buildNumber', 'architecture'}),
+      );
+      queue.useDefaults(restored, _metadata);
+      expect(restored.metadata.version, '2.5.34');
+      expect(restored.metadata.architecture, 'x64');
+      expect(restored.metadata.packageKind, 'installer');
+      expect(restored.metadataOverrides, isEmpty);
+    },
+  );
+
+  test(
+    'legacy draft origin stays protected and binary items do not silently become store entries',
+    () {
+      queue.addFiles([_file()], _metadata);
+      final saved = queue.snapshot();
+      ((saved['rows'] as List).single as Map).remove('metadataOverrides');
+      queue.restore(saved);
+      queue.applyDefaults(
+        _metadata.copyWith(version: '2.5.40', buildNumber: '2540'),
+      );
+      expect(queue.items.single.metadata.version, '2.5.34');
+      queue.useDefaults(
+        queue.items.single,
+        _metadata.copyWith(
+          platform: 'ios',
+          architecture: 'arm64',
+          storeUrl: 'https://apps.apple.com/app/id123456789',
+        ),
+      );
+      expect(queue.items.single.metadata.platform, 'windows');
+      expect(queue.items.single.metadata.storeUrl, isEmpty);
+    },
+  );
+
+  test(
+    'all bound identities and expected digests freeze metadata even without a request ID',
+    () async {
+      queue.addFiles([_file()], _metadata);
+      final item = queue.items.single;
+      item.sha256 = 'a' * 64;
+      queue.edit(item, _metadata.copyWith(version: '2.5.40'));
+      queue.applyDefaults(_metadata.copyWith(version: '2.5.40'));
+      queue.useDefaults(item, _metadata.copyWith(version: '2.5.40'));
+      expect(item.metadata.version, '2.5.34');
+      item.sha256 = null;
+      await queue.run();
+      final before = jsonEncode(item.toDraft());
+      queue.applyDefaults(_metadata.copyWith(version: '2.5.40'));
+      queue.edit(item, _metadata.copyWith(version: '2.5.40'));
+      await queue.run();
+      expect(jsonEncode(item.toDraft()), before);
+      expect(api.creates, hasLength(1));
+      expect(api.uploads, hasLength(1));
+    },
+  );
+
+  test(
+    'preflight validation keeps an unread picker stream and retries without reselecting',
+    () async {
+      var reads = 0;
+      final file = ClientReleasePickedFile(
+        name: 'uten.zip',
+        size: 3,
+        openRead: () {
+          reads++;
+          return Stream.value([1, 2, 3]);
+        },
+      );
+      queue.addFiles([file], const ClientReleasePublishMetadata());
+      await queue.run();
+      expect(queue.items.single.file, same(file));
+      expect(reads, 0);
+      expect(api.creates, isEmpty);
+      queue.applyDefaults(_metadata);
+      await queue.run();
+      expect(queue.confirmedCount, 1);
+      expect(reads, 1);
+      expect(api.uploads, hasLength(1));
+    },
+  );
+
+  test(
+    'batch recovery reads original IDs and does not retransmit restored successes',
+    () async {
+      queue.addFiles([_file('setup.exe'), _file()], _metadata);
+      await queue.run();
+      final originals = queue.items.map((item) => item.requestId).toList();
+      final restored = ClientReleasePublishQueue(
+        gateway: api,
+        isCurrent: () => true,
+        checkpoint: (_) async {},
+      );
+      addTearDown(restored.dispose);
+      restored.restore(queue.snapshot());
+      expect(restored.hasUnknown, isTrue);
+      expect(restored.items.every((item) => item.file == null), isTrue);
+      final readsBefore = api.reads.length;
+      await restored.reconcilePending();
+      expect(api.reads.skip(readsBefore), originals);
+      expect(restored.confirmedCount, 2);
+      expect(restored.runnableCount, 0);
+      await restored.run();
+      expect(api.creates, hasLength(2));
+      expect(api.uploads, hasLength(2));
+      expect(api.publishes, hasLength(2));
+    },
+  );
+
+  test(
+    'a mismatching recovered receipt stays unknown while other originals can finish read recovery',
+    () async {
+      queue.addFiles([_file('setup.exe'), _file()], _metadata);
+      await queue.run();
+      final restored = ClientReleasePublishQueue(
+        gateway: api,
+        isCurrent: () => true,
+        checkpoint: (_) async {},
+      );
+      addTearDown(restored.dispose);
+      restored.restore(queue.snapshot());
+      api.changeRead = (row) => row['packageKind'] == 'installer'
+          ? {...row, 'sha256': 'f' * 64}
+          : row;
+      await restored.reconcilePending();
+      expect(restored.items.first.uncertain, isTrue);
+      expect(restored.items.last.published, isTrue);
+      expect(restored.items.first.requestId, queue.items.first.requestId);
+      expect(api.creates, hasLength(2));
+      expect(api.uploads, hasLength(2));
+      expect(api.publishes, hasLength(2));
+    },
+  );
 
   test(
     'installer context mixed selection has exact format roles and no filename target inference',

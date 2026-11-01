@@ -29,6 +29,13 @@ namespace Uten.Legacy.Desktop.Features.Publish
         private readonly TextBlock storeLabel = new TextBlock { Text = "官方商店链接", VerticalAlignment = VerticalAlignment.Center };
         private readonly StackPanel root;
         private bool binding;
+        public event Action Changed;
+        private void NotifyChanged()
+        {
+            if (binding) return;
+            var changed = Changed;
+            if (changed != null) changed();
+        }
 
         public ClientReleaseTargetEditor()
         {
@@ -51,6 +58,11 @@ namespace Uten.Legacy.Desktop.Features.Publish
             };
             platform.SelectionChanged += OnPlatformChanged;
             family.SelectionChanged += OnFamilyChanged;
+            architecture.SelectionChanged += delegate { NotifyChanged(); };
+            packageKind.SelectionChanged += delegate { NotifyChanged(); };
+            version.TextChanged += delegate { NotifyChanged(); };
+            buildNumber.TextChanged += delegate { NotifyChanged(); };
+            storeUrl.TextChanged += delegate { NotifyChanged(); };
             root = new StackPanel();
             root.Children.Add(Field("系统", platform));
             root.Children.Add(Field("客户端类型", family));
@@ -112,6 +124,8 @@ namespace Uten.Legacy.Desktop.Features.Publish
         private void OnPlatformChanged(object sender, SelectionChangedEventArgs e)
         {
             if (binding) return;
+            binding = true;
+            try {
             var selected = SelectedPlatform();
             var familyValue = selected == "windows" ? "flutter" : "flutter";
             family.SelectedValue = familyValue;
@@ -120,17 +134,23 @@ namespace Uten.Legacy.Desktop.Features.Publish
             packageKind.SelectedValue = "update";
             storeUrl.Text = "";
             SyncVisibility(selected, false);
+            } finally { binding = false; }
+            NotifyChanged();
         }
 
         private void OnFamilyChanged(object sender, SelectionChangedEventArgs e)
         {
             if (binding) return;
+            binding = true;
+            try {
             var selected = SelectedPlatform();
             var familyValue = family.SelectedValue as string ?? "flutter";
             var supported = SupportedArchitectures(selected, familyValue);
             var current = architecture.SelectedValue as string;
             architecture.ItemsSource = ArchitectureChoices(selected, familyValue);
             architecture.SelectedValue = supported.Contains(current ?? "") ? current : "x64";
+            } finally { binding = false; }
+            NotifyChanged();
         }
 
         private string SelectedPlatform()

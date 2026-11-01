@@ -175,6 +175,23 @@ class ClientReleasePickedFile {
 }
 
 class ClientReleaseQueueItem {
+  static const metadataFields = <String>{
+    'platform',
+    'runtimeFamily',
+    'architecture',
+    'packageKind',
+    'version',
+    'buildNumber',
+    'releaseNotes',
+    'storeUrl',
+  };
+  static const targetFields = <String>{
+    'platform',
+    'runtimeFamily',
+    'architecture',
+    'packageKind',
+    'storeUrl',
+  };
   ClientReleaseQueueItem({
     required this.localId,
     required this._metadata,
@@ -194,7 +211,11 @@ class ClientReleaseQueueItem {
   bool retentionPending = false;
   bool publishAcknowledged = false;
   bool _dispatched = false;
-  bool get frozen => requestId != null;
+  bool _fileReadStarted = false;
+  final _metadataOverrides = <String>{};
+  Set<String> get metadataOverrides => Set.unmodifiable(_metadataOverrides);
+  bool get frozen => requestId != null || releaseId != null || sha256 != null;
+  bool get metadataEditable => !frozen && !terminal && !uncertain;
   bool get uncertain =>
       stage == ClientReleaseQueueStage.unknown || pendingOperation != null;
   bool get published => stage == ClientReleaseQueueStage.published;
@@ -221,6 +242,7 @@ class ClientReleaseQueueItem {
     'pendingOperation': pendingOperation?.name,
     'retentionPending': retentionPending,
     'publishAcknowledged': publishAcknowledged,
+    'metadataOverrides': _metadataOverrides.toList()..sort(),
     // Error text and bytes/path/credentials are deliberately not retained.
   };
   factory ClientReleaseQueueItem.restore(Map<String, dynamic> json) {
@@ -237,6 +259,20 @@ class ClientReleaseQueueItem {
     item.releaseId = json['releaseId'] as String?;
     item.retentionPending = json['retentionPending'] == true;
     item.publishAcknowledged = json['publishAcknowledged'] == true;
+    final overrides = json['metadataOverrides'];
+    if (overrides != null &&
+        (overrides is! List ||
+            overrides.any(
+              (field) => field is! String || !metadataFields.contains(field),
+            ) ||
+            overrides.toSet().length != overrides.length)) {
+      throw const FormatException('发布草稿的单独设置来源无效');
+    }
+    // Earlier drafts did not distinguish a deliberate row edit from a default.
+    // Preserve their values rather than silently guessing inheritance.
+    item._metadataOverrides.addAll(
+      overrides == null ? metadataFields : (overrides as List).cast<String>(),
+    );
     for (final id in [item.requestId, item.releaseId].whereType<String>()) {
       ClientReleasePublishQueue.requireId(id);
     }
@@ -344,6 +380,8 @@ class ClientReleasePublishQueue extends ChangeNotifier {
   List<ClientReleaseQueueItem> get items => List.unmodifiable(_items);
   List<ClientRelease> releases = [];
   bool busy = false, retired = false, _disposed = false;
+  bool _readingOnly = false;
+  bool get readingOnly => _readingOnly;
   StreamIterator<List<int>>? _reader;
   bool get current => !_disposed && !retired && _ownerCurrent();
   bool get hasUnknown =>
@@ -355,6 +393,24 @@ class ClientReleasePublishQueue extends ChangeNotifier {
       );
   bool get hasWork => _items.any((item) => !item.terminal);
   int get confirmedCount => _items.where((item) => item.published).length;
+  int get editableCount => _items.where((item) => item.metadataEditable).length;
+  int get overriddenCount => _items
+      .where(
+        (item) => item.metadataEditable && item.metadataOverrides.isNotEmpty,
+      )
+      .length;
+  int get statusReadCount =>
+      _items.where((item) => item.requestId != null && !item.terminal).length;
+  int get runnableCount => _items
+      .where(
+        (item) =>
+            !item.terminal &&
+            !item.uncertain &&
+            (item.metadata.isStore ||
+                item.stage == ClientReleaseQueueStage.uploaded ||
+                item.file != null),
+      )
+      .length;
   String? error;
   Map<String, dynamic> snapshot() => {
     'schemaVersion': 1,
@@ -446,13 +502,74 @@ class ClientReleasePublishQueue extends ChangeNotifier {
     ClientReleaseQueueItem item,
     ClientReleasePublishMetadata metadata,
   ) {
-    if (!current || busy || item.frozen || !_items.contains(item)) return;
+    if (!current || busy || !item.metadataEditable || !_items.contains(item)) {
+      return;
+    }
+    final previous = item.metadata.toJson(), next = metadata.toJson();
+    final changed = ClientReleaseQueueItem.metadataFields
+        .where((field) => previous[field] != next[field])
+        .toSet();
+    if (changed.any(ClientReleaseQueueItem.targetFields.contains)) {
+      changed.addAll(ClientReleaseQueueItem.targetFields);
+    }
+    if (changed.contains('version') || changed.contains('buildNumber')) {
+      changed.addAll({'version', 'buildNumber'});
+    }
+    item._metadataOverrides.addAll(changed);
     item._metadata = metadata;
     item.error = null;
     item.stage = item.file == null && !metadata.isStore
         ? ClientReleaseQueueStage.needsFile
         : ClientReleaseQueueStage.ready;
     _notify();
+  }
+
+  /// Defaults follow only fields that still belong to this batch. A prepared
+  /// request, expected digest or explicit row choice is never rewritten.
+  void applyDefaults(ClientReleasePublishMetadata defaults) {
+    if (!current || busy) return;
+    for (final item in _items.where((item) => item.metadataEditable)) {
+      _inherit(item, defaults);
+    }
+    _notify();
+  }
+
+  void useDefaults(
+    ClientReleaseQueueItem item,
+    ClientReleasePublishMetadata defaults,
+  ) {
+    if (!current || busy || !item.metadataEditable || !_items.contains(item)) {
+      return;
+    }
+    item._metadataOverrides.clear();
+    _inherit(item, defaults);
+    _notify();
+  }
+
+  void _inherit(
+    ClientReleaseQueueItem item,
+    ClientReleasePublishMetadata defaults,
+  ) {
+    final values = item.metadata.toJson(), incoming = defaults.toJson();
+    for (final field in ClientReleaseQueueItem.metadataFields) {
+      if (!item._metadataOverrides.contains(field) &&
+          !(item.fileName != null &&
+              defaults.isStore &&
+              ClientReleaseQueueItem.targetFields.contains(field))) {
+        values[field] = incoming[field];
+      }
+    }
+    if (!item._metadataOverrides.contains('packageKind') &&
+        values['platform'] == 'windows') {
+      final extension = item.fileName?.split('.').last.toLowerCase();
+      if (extension == 'exe') values['packageKind'] = 'installer';
+      if (extension == 'zip') values['packageKind'] = 'update';
+    }
+    item._metadata = ClientReleasePublishMetadata.fromJson(values);
+    item.error = null;
+    item.stage = item.file == null && !item.metadata.isStore
+        ? ClientReleaseQueueStage.needsFile
+        : ClientReleaseQueueStage.ready;
   }
 
   void replaceFile(ClientReleaseQueueItem item, ClientReleasePickedFile file) {
@@ -467,6 +584,7 @@ class ClientReleasePublishQueue extends ChangeNotifier {
       throw StateError('文件必须非空且不超过512 MiB。');
     }
     item.file = file;
+    item._fileReadStarted = false;
     if (!item.frozen) {
       item.fileName = file.name;
       item.sizeBytes = file.size;
@@ -585,6 +703,7 @@ class ClientReleasePublishQueue extends ChangeNotifier {
   ) async {
     final file = item.file;
     if (file == null) throw StateError('请重新选择原文件后继续。');
+    item._fileReadStarted = true;
     final data = BytesBuilder(copy: false), digest = _DigestSink();
     final hash = sha256.startChunkedConversion(digest);
     final iterator = StreamIterator(file.openRead());
@@ -617,7 +736,7 @@ class ClientReleasePublishQueue extends ChangeNotifier {
   }
 
   Future<void> run() async {
-    if (!current || busy) return;
+    if (!current || busy || runnableCount == 0) return;
     busy = true;
     error = null;
     _notify();
@@ -810,8 +929,9 @@ class ClientReleasePublishQueue extends ChangeNotifier {
       if (definite || !item._dispatched) item.pendingOperation = null;
     }
     item.error = _message(failure);
-    item.file =
-        null; // Each browser/native stream is one-shot; reselect only after a read reconciliation.
+    // Metadata/duplicate/format validation can fail before consuming a picker
+    // stream. Keep that live selection; consumed streams still need reselect.
+    if (item._fileReadStarted) item.file = null;
     try {
       await _save();
     } catch (_) {
@@ -820,9 +940,41 @@ class ClientReleasePublishQueue extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> reconcile(ClientReleaseQueueItem item) async {
-    if (!current || busy || item.requestId == null || item.terminal) return;
+  Future<void> reconcile(ClientReleaseQueueItem item) => _reconcile(item);
+
+  /// A read-only recovery pass. Even a recovered PUBLISHED receipt never
+  /// authorizes an automatic prepare/upload/publish or a new request identity.
+  Future<void> reconcilePending() async {
+    if (!current || busy) return;
     busy = true;
+    _readingOnly = true;
+    _notify();
+    try {
+      for (final item in _items.toList(growable: false)) {
+        if (!current) break;
+        await _reconcile(item, ownsBusy: false);
+      }
+    } finally {
+      _readingOnly = false;
+      busy = false;
+      _notify();
+    }
+  }
+
+  Future<void> _reconcile(
+    ClientReleaseQueueItem item, {
+    bool ownsBusy = true,
+  }) async {
+    if (!current ||
+        (ownsBusy && busy) ||
+        item.requestId == null ||
+        item.terminal) {
+      return;
+    }
+    if (ownsBusy) {
+      busy = true;
+      _readingOnly = true;
+    }
     item.error = null;
     _notify();
     try {
@@ -878,7 +1030,10 @@ class ClientReleasePublishQueue extends ChangeNotifier {
         item.error = _message(failure);
       }
     } finally {
-      busy = false;
+      if (ownsBusy) {
+        busy = false;
+        _readingOnly = false;
+      }
       _notify();
     }
   }

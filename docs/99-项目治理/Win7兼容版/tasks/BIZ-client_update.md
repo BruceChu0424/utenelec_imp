@@ -22,9 +22,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/software-download-publish-20261028.json`；`clients/windows_legacy/progress/evidence/publish-workbench-20261030.json`。
+证据：`clients/windows_legacy/progress/evidence/software-download-publish-20261028.json`；`clients/windows_legacy/progress/evidence/publish-workbench-20261030.json`；`clients/windows_legacy/progress/evidence/client-publish-batch-defaults-20261101.json`。
 
-接续/限制：原生发布工作台已完整迁移（非只读壳）：Core 队列状态机/流式上传 sink/wire PUT 放行/DPAPI 草稿 CAS/step-up 协调器+Desktop 页面/目标编辑器/草稿租约/step-up 密码弹窗/下载页入口。三条铁律与失败三分支 75+9 断言钉住；x86/x64 Debug runner 全绿且既有计数保持。未验：真实服务器发布链、Win7 真机 UAT、正式双包（见证据 notCovered）。。
+接续/限制：旧75项仅协议事实与原历史保留；本next独立源码已修两处原逻辑父级及typed CornerRadius，新增真实View构造/Measure/Arrange与完整x86/x64 runner全绿，publish95每arch。凭新增本机证据恢复verified_local，不代表完整迁移、正式支持或Win7/真server验收；合同增量CORE023，新布局UI013 TODO。。
 
 ## W7-BIZ-039
 

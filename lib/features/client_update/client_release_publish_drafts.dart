@@ -182,6 +182,7 @@ class ClientReleasePublishDraftLease {
           'pendingOperation',
           'retentionPending',
           'publishAcknowledged',
+          'metadataOverrides',
         }.contains(key),
       )) {
         throw const FormatException('发布草稿不能包含文件内容、路径或认证材料');

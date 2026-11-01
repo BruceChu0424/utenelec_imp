@@ -138,6 +138,36 @@ void main() {
       expect(storage.values[lease.key], isNotNull);
     },
   );
+  test(
+    'draft roundtrip preserves only known per-row override origins',
+    () async {
+      final snapshot = _snapshot();
+      ((snapshot['rows'] as List).single as Map)['metadataOverrides'] = [
+        'version',
+        'buildNumber',
+      ];
+      await lease.save(snapshot);
+      final restored = ClientReleaseQueueItem.restore(
+        Map<String, dynamic>.from(
+          (lease.lastSnapshot!['rows'] as List).single as Map,
+        ),
+      );
+      expect(restored.metadataOverrides, {'version', 'buildNumber'});
+      expect(restored.file, isNull);
+      expect(storage.values.values.single, isNot(contains('Uint8List')));
+      for (final invalid in [
+        ['fileBytes'],
+        ['version', 'version'],
+        [1],
+        'version',
+      ]) {
+        final malformed = _snapshot();
+        ((malformed['rows'] as List).single as Map)['metadataOverrides'] =
+            invalid;
+        expect(() => lease.save(malformed), throwsFormatException);
+      }
+    },
+  );
 
   test('CAS conflict preserves competing metadata without overwrite', () async {
     await lease.save(_snapshot());

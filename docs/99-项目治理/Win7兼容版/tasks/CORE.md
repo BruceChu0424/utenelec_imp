@@ -375,3 +375,22 @@
 证据：`docs/99-项目治理/Win7兼容版/11-业务与安装链路增量阶段.md`；`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`。
 
 接续/限制：master.unit表头/自设列/偏好/真实定义与整行version写、恢复、同投影已接，columns46+UI9/common16两arch通过；语言/账号服务器历史以及更多scope仍未完。。
+
+## W7-CORE-023
+
+- [ ] **客户端发布批设置与原编号恢复合同增量（下一版）** — 本机验证/待本项最终验收
+
+影响：`frontend+shared-contract`；负责人：Codex；依赖：W7-BIZ-215, W7-CORE-014。
+
+源入口：`lib/features/client_update/client_release_publish_queue.dart`；`lib/features/client_update/client_release_publish_drafts.dart`；`lib/features/client_update/client_release_publish_page.dart`；`test/features/client_update/client_release_publish_queue_test.dart`；`test/features/client_update/client_release_publish_drafts_test.dart`；`test/features/client_update/client_release_publish_test.dart`；`test/fixtures/client_release_publish_defaults_v1.json`。
+
+完成条件：
+
+1. 按公共发布合同迁移批默认的有限字段归属：未提交且未手动覆盖才联动，设备与版本成组；绑定requestId/releaseId/SHA及已发布项目永不改写元数据。
+2. 原编号批量只读核对与草稿恢复不创建、不重传、不重发未知命令；已成功和已上传分支沿原身份继续，回归晚到结果及身份/服务器/权限变化。
+3. 区分尚未读取的验证失败和已消耗的一次性文件流，减少无谓重选；浏览器刷新不保存无授权文件，WPF文件来源按原生授权合同保留必要平台差异，同SHA约束不变。
+4. 在x86/x64执行合同及真实调用方回归，并完成Win7目标机适用验收；旧215本机证据不代替此新增差异，全部适用DoD满足前保持未完成。
+
+证据：`docs/99-项目治理/2026-11-01-客户端发布工作台批设置与恢复.md`；`clients/windows_legacy/progress/evidence/client-publish-batch-defaults-20261101.json`。
+
+接续/限制：最小适用合同已同步Flutter与WPF：有限字段继承/覆盖来源、三身份冻结、pre-read保留、同原ID批GET/恢复、成功禁重复上传。共享JSON样例两语言实际消费，Flutter78、原生publish95每arch及实际View/UI组在x86/x64全绿。仅开发机证据，真server/Win7/掉电等未验；新布局另归UI013 TODO。。

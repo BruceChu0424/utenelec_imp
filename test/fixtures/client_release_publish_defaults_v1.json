@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "files": ["setup.exe", "update.zip"],
+  "initial": {"platform":"windows","runtimeFamily":"flutter","architecture":"x64","packageKind":"installer","version":"2.5.34","buildNumber":"2534","releaseNotes":"旧说明","storeUrl":""},
+  "manual": {"platform":"windows","runtimeFamily":"flutter","architecture":"arm64","packageKind":"installer","version":"2.5.41","buildNumber":"2541","releaseNotes":"旧说明","storeUrl":""},
+  "batch": {"platform":"windows","runtimeFamily":"flutter","architecture":"x64","packageKind":"installer","version":"2.5.42","buildNumber":"2542","releaseNotes":"批说明","storeUrl":""},
+  "expectedManual": {"platform":"windows","runtimeFamily":"flutter","architecture":"arm64","packageKind":"installer","version":"2.5.41","buildNumber":"2541","releaseNotes":"批说明","storeUrl":""},
+  "expectedSecond": {"platform":"windows","runtimeFamily":"flutter","architecture":"x64","packageKind":"update","version":"2.5.42","buildNumber":"2542","releaseNotes":"批说明","storeUrl":""},
+  "expectedReset": {"platform":"windows","runtimeFamily":"flutter","architecture":"x64","packageKind":"installer","version":"2.5.42","buildNumber":"2542","releaseNotes":"批说明","storeUrl":""}
+}

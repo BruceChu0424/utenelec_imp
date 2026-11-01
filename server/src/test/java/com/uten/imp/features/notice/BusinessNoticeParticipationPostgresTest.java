@@ -29,6 +29,28 @@ class BusinessNoticeParticipationPostgresTest {
                         .isEqualTo(grants.contains("sales_order:edit")?3L:1L);
             }
             assertThat(jdbc.queryForObject("SELECT count(*) FROM receipt",Long.class)).isEqualTo(4L);
+            jdbc.update("INSERT INTO receipt VALUES (5,'/profile/me/changes','PROFILE_CHANGE_APPROVED',true),(6,'/profile/edit','PROFILE_CHANGE_REJECTED',false)");
+            for (Set<String> grants : List.of(Set.of("notice:read", "profile_change:view"),
+                    Set.of("notice:read", "profile:edit:self"), Set.of("notice:read", "profile_change:view"))) {
+                String rules=BusinessNoticeParticipation.readRules(grants);
+                assertThat(jdbc.queryForObject("SELECT count(*) FROM receipt WHERE id IN(5,6) AND fn_notice_participation_visible(route,event,?)",
+                        Long.class,rules)).isEqualTo(grants.contains("profile:edit:self")?2L:0L);
+                for (var row : jdbc.queryForList("SELECT * FROM receipt WHERE id IN(5,6)")) {
+                    assertThat(jdbc.queryForObject("SELECT fn_notice_participation_visible(route,event,?) FROM receipt WHERE id=?",
+                            Boolean.class,rules,row.get("id"))).isEqualTo(BusinessNoticeParticipation.allowed(
+                                    (String)row.get("route"),(String)row.get("event"),grants));
+                }
+            }
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM receipt",Long.class)).isEqualTo(6L);
+            for (var example : LegacyProfileResultNoticeFixture.examples(java.util.UUID.randomUUID())) {
+                for (Set<String> grants : List.of(Set.of("notice:read","profile_change:view"),
+                        Set.of("notice:read","profile:edit:self"))) {
+                    assertThat(jdbc.queryForObject("SELECT fn_notice_participation_visible(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            Boolean.class,LegacyProfileResultNoticeFixture.sqlArguments(example.notice(),BusinessNoticeParticipation.readRules(grants))))
+                            .isEqualTo(BusinessNoticeParticipation.allowed(example.notice(),grants));
+                }
+                assertThat(example.notice().getAggregateId()).isNull();
+            }
             for(String event:ReviewNoticeCatalog.events()) {
                 String rules=BusinessNoticeParticipation.readRules(Set.of("notice:read","sales_order:view"));
                 assertThat(jdbc.queryForObject("SELECT fn_notice_participation_visible(NULL,?,?)",Boolean.class,event,rules)).as(event).isFalse();

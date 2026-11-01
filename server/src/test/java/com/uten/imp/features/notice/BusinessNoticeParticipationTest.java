@@ -39,6 +39,27 @@ class BusinessNoticeParticipationTest {
                 Set.of("notice:read","sales_order:view","sales_shipment:view","sales_shipment:create"))).isTrue();
     }
 
+    @Test void profileResultReceiptsRequireTheSubmittersLiveActionGrantEvenWithoutARoute() {
+        for (String event : Set.of("PROFILE_CHANGE_APPROVED", "PROFILE_CHANGE_REJECTED")) {
+            assertThat(BusinessNoticeParticipation.requiresPermission(null, event)).isTrue();
+            assertThat(BusinessNoticeParticipation.allowed("/profile/edit", event,
+                    Set.of("notice:read", "profile_change:view", "profile:review"))).isFalse();
+            assertThat(BusinessNoticeParticipation.allowed(null, event,
+                    Set.of("notice:read", "profile:edit:self"))).isTrue();
+            assertThat(BusinessNoticeParticipation.allowed(null, event, Set.of("notice:read"))).isFalse();
+        }
+    }
+
+    @Test void legacyProfileResultClassificationLeavesAnnouncementsAndDifferentBodiesAlone() {
+        for (var example : LegacyProfileResultNoticeFixture.examples(java.util.UUID.randomUUID())) {
+            assertThat(BusinessNoticeParticipation.legacyProfileResult(example.notice())).isEqualTo(example.legacyResult());
+            assertThat(BusinessNoticeParticipation.allowed(example.notice(),Set.of("notice:read","profile_change:view")))
+                    .isEqualTo(!example.legacyResult());
+            assertThat(BusinessNoticeParticipation.allowed(example.notice(),Set.of("notice:read","profile:edit:self"))).isTrue();
+            assertThat(example.notice().getAggregateId()).isNull();
+        }
+    }
+
     @Test void businessFutureRoutesFailClosedWhileAnnouncementsAndAccountSecurityKeepTheirAudience() {
         assertThat(BusinessNoticeParticipation.allowed("/sales/new-workflow",null,Set.of("notice:read"))).isFalse();
         assertThat(BusinessNoticeParticipation.allowed(null,"PRODUCTION_NEW_ACTION",Set.of("notice:read"))).isFalse();

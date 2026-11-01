@@ -117,8 +117,8 @@ public class ProductionOverLimitDispositionService {
         long total=((Number)count.getSingleResult()).longValue();
         int actualPage=Math.max(page,1),actualSize=Math.min(Math.max(size,1),100);
         query.setFirstResult(com.uten.imp.common.web.Pageables.checkedOffset(actualPage,actualSize)).setMaxResults(actualSize);
-        boolean active=membership.isActiveOperator();
-        List<View> rows=NativeQueryResults.objectArrayRows(query).stream().map(row->view(row,active,List.of())).toList();
+        boolean reviewer=access.hasAuthority(APPROVE)&&membership.isActiveOperator();
+        List<View> rows=NativeQueryResults.objectArrayRows(query).stream().map(row->view(row,reviewer,List.of())).toList();
         return new PageResponse<>(rows,actualPage,actualSize,total,total==0?0:(int)((total+actualSize-1)/actualSize));
     }
 

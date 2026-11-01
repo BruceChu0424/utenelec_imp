@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_batch_reject_dialog.dart';
+import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
+import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -16,6 +18,17 @@ import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 class _FakeExpenseRepository extends Fake implements ExpenseRepository {
+  ExpenseQueueSummary queueSummary = const ExpenseQueueSummary(
+    pendingCount: 2,
+    pendingAmount: 257.0,
+    payableCount: 0,
+    payableAmount: 0,
+    monthSubmittedCount: 2,
+    monthSubmittedAmount: 257.0,
+    monthPaidCount: 0,
+    monthPaidAmount: 0,
+    actionablePendingCount: 2,
+  );
   final List<Map<String, dynamic>> pendingCalls = [];
   final List<Map<String, dynamic>> historyCalls = [];
   final List<int> payableCalls = [];
@@ -121,16 +134,7 @@ class _FakeExpenseRepository extends Fake implements ExpenseRepository {
   };
 
   @override
-  Future<ExpenseQueueSummary> summary() async => const ExpenseQueueSummary(
-    pendingCount: 2,
-    pendingAmount: 257.0,
-    payableCount: 0,
-    payableAmount: 0,
-    monthSubmittedCount: 2,
-    monthSubmittedAmount: 257.0,
-    monthPaidCount: 0,
-    monthPaidAmount: 0,
-  );
+  Future<ExpenseQueueSummary> summary() async => queueSummary;
 
   @override
   Future<int> rejectBatch(
@@ -184,6 +188,72 @@ MasterDataTableView<ExpenseClaim> _table(WidgetTester tester) =>
     );
 
 void main() {
+  test('missing task counts never promote legacy browsing totals to tasks', () {
+    final summary = ExpenseQueueSummary.fromJson({
+      'pendingCount': 7,
+      'payableCount': 5,
+    });
+    expect(summary.pendingCount, 7);
+    expect(summary.payableCount, 5);
+    expect(summary.actionablePendingCount, 0);
+    expect(summary.actionablePayableCount, 0);
+  });
+
+  for (final handles in [false, true]) {
+    testWidgets('报销浏览数量和实际办理数量独立呈现：handles=$handles', (tester) async {
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      final repo = _FakeExpenseRepository()
+        ..queueSummary = const ExpenseQueueSummary(
+          pendingCount: 7,
+          pendingAmount: 700,
+          payableCount: 5,
+          payableAmount: 500,
+          monthSubmittedCount: 12,
+          monthSubmittedAmount: 1200,
+          monthPaidCount: 0,
+          monthPaidAmount: 0,
+          actionablePendingCount: 2,
+          actionablePayableCount: 1,
+        );
+      await tester.pumpWidget(
+        _app(
+          repo,
+          preferences,
+          initialQueue: ApprovalQueue.pending,
+          permissions: {
+            Perm.expenseView,
+            if (handles) ...[Perm.expenseApprove, Perm.expensePay],
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      final toolbar = tester.widget<UtenFilterToolbar<ApprovalQueue>>(
+        find.byWidgetPredicate(
+          (widget) => widget is UtenFilterToolbar<ApprovalQueue>,
+        ),
+      );
+      final pending = toolbar.segments.singleWhere(
+        (segment) => segment.value == ApprovalQueue.pending,
+      );
+      final payable = toolbar.segments.singleWhere(
+        (segment) => segment.value == ApprovalQueue.payable,
+      );
+      expect(pending.count, handles ? 2 : 7);
+      expect(payable.count, handles ? 1 : 5);
+      expect(
+        pending.countForm,
+        handles
+            ? UtenSegmentCountForm.actionable
+            : UtenSegmentCountForm.browsing,
+      );
+      expect(payable.countForm, pending.countForm);
+      expect(find.textContaining('待审批 7 单'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
   testWidgets('只读报销账号可切换待审和历史，行可打开但不出现审批选择及动作', (tester) async {
     SharedPreferences.setMockInitialValues(const {});
     final preferences = await SharedPreferences.getInstance();

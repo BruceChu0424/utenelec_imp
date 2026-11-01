@@ -16,7 +16,11 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
     // event uses current plan-owner access; existing workshop/draw rules stay unchanged.
     String PARTICIPATION_VISIBILITY = """
               AND cast(function('fn_notice_participation_visible',n.actionRoute,n.sourceEvent,
-                    :#{#readScope.participationRules}) as Boolean) = true
+                    :#{#readScope.participationRules},n.type,n.title,n.content,n.audienceUserId,
+                    n.audienceScope,n.audienceSummary,n.audienceCount,n.interactionMode,n.kind,
+                    n.aggregateKind,n.aggregateId,n.sourceRevision,n.dueAt,n.topPriority,n.priority,
+                    cast(n.attachments as String),cast(n.targetDepartmentIds as String),
+                    cast(n.targetEmployeeIds as String)) as Boolean) = true
             """;
     String SCOPED_VISIBILITY = PARTICIPATION_VISIBILITY + """
               AND (n.resolvedAt IS NOT NULL OR n.type = 'workflow'

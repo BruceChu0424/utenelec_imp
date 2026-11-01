@@ -28,6 +28,7 @@ final class BusinessNoticeParticipation {
     }
 
     static final List<Rule> RULES = List.of(
+            rule("/profile/(edit|me/changes)", "profile:edit:self"),
             rule("/finance/sales-order-(confirmations|changes)", "sales_order_finance:view,sales_order_finance:confirm"),
             rule("/finance/quote-review", "sales_quote_finance:view,sales_quote_finance:confirm", "sales_quote_finance:view,sales_quote_finance:reject"),
             rule("/finance/procurement-(approvals|arrival-exceptions)", "finance_order_approval:view,finance_order_approval:approve", "finance_order_approval:view,finance_order_approval:reject"),
@@ -76,7 +77,13 @@ final class BusinessNoticeParticipation {
             rule("/admin/server-operations", "server:update")
     );
 
-    private static final Pattern BUSINESS_EVENT = Pattern.compile("^(SALES_|PROCUREMENT_|PURCHASE_|SUBCONTRACT_|PRODUCTION_|PREPLAN_|RD_TASK_|GOODS_BOM_|MATERIAL_ANALYSIS_|WORKSHOP_MATERIAL_|STOCK_COUNT_|EXPENSE_CLAIM_|PROFILE_CHANGE_SUBMITTED|VISITOR_APPLY_|VISITOR_HOST_|PAYROLL_BATCH_|SUGGESTION_SUBMITTED|WEBSITE_INQUIRY_)");
+    private static final Set<String> PROFILE_RESULT_EVENTS = Set.of("PROFILE_CHANGE_APPROVED", "PROFILE_CHANGE_REJECTED");
+    private static final Map<String,String> LEGACY_PROFILE_RESULT = Map.of(
+            "type", "approval", "kind", "NORMAL", "scope", "selected", "summary", "指定人员",
+            "interaction", "none", "priority", "normal", "emptyJson", "[]",
+            "title", "个人信息修改已批准",
+            "contentPattern", "^您提交的 [1-9][0-9]* 项个人信息修改\\([^\\r\\n]+\\)已批准并生效。$");
+    private static final Pattern BUSINESS_EVENT = Pattern.compile("^(SALES_|PROCUREMENT_|PURCHASE_|SUBCONTRACT_|PRODUCTION_|PREPLAN_|RD_TASK_|GOODS_BOM_|MATERIAL_ANALYSIS_|WORKSHOP_MATERIAL_|STOCK_COUNT_|EXPENSE_CLAIM_|PROFILE_CHANGE_|VISITOR_APPLY_|VISITOR_HOST_|PAYROLL_BATCH_|SUGGESTION_SUBMITTED|WEBSITE_INQUIRY_)");
     private static final Pattern BUSINESS_ROUTE = Pattern.compile("^/(sales|purchase|subcontract|production|warehouse|workshop-material|quality|rd|expense|finance|operations|webinquiry|hr/profile-changes|visitor-approval|my-visitors|suggestion|stock/count-requests)(/|[?]|$)");
 
     static boolean requiresPermission(String route, String event) {
@@ -87,11 +94,37 @@ final class BusinessNoticeParticipation {
     }
 
     static boolean allowed(String route, String event, Set<String> permissions) {
+        if (receiptKind(event) != null) return permissions.containsAll(Set.of("notice:read", "profile:edit:self"));
         if (ReviewNoticeCatalog.isReviewEvent(event)) return ReviewNoticeAudience.eligible(event, permissions);
         if (BusinessNoticeActionCatalog.contains(event)) return BusinessNoticeActionCatalog.eligible(event, permissions);
         for (Rule rule : RULES) if (rule.matches(route)) return permissions.contains("notice:read") && rule.allowed(permissions);
         return !BUSINESS_ROUTE.matcher(route == null ? "" : route).find()
                 && !BUSINESS_EVENT.matcher(event == null ? "" : event).find();
+    }
+
+    /** Classifies a known old producer's complete result shape, never infers its source batch. */
+    static boolean allowed(Notice notice, Set<String> permissions) {
+        return legacyProfileResult(notice)
+                ? allowed(null, "PROFILE_CHANGE_APPROVED", permissions)
+                : allowed(notice.getActionRoute(), notice.getSourceEvent(), permissions);
+    }
+
+    static boolean legacyProfileResult(Notice notice) {
+        return notice.getSourceEvent()==null && notice.getActionRoute()==null && notice.getAudienceUserId()!=null
+                && notice.getAggregateKind()==null && notice.getAggregateId()==null && notice.getSourceRevision()==null
+                && notice.getDueAt()==null && !notice.isTopPriority() && Integer.valueOf(1).equals(notice.getAudienceCount())
+                && LEGACY_PROFILE_RESULT.get("type").equals(notice.getType())
+                && LEGACY_PROFILE_RESULT.get("kind").equals(notice.getKind())
+                && LEGACY_PROFILE_RESULT.get("scope").equals(notice.getAudienceScope())
+                && LEGACY_PROFILE_RESULT.get("summary").equals(notice.getAudienceSummary())
+                && LEGACY_PROFILE_RESULT.get("interaction").equals(notice.getInteractionMode())
+                && LEGACY_PROFILE_RESULT.get("priority").equals(notice.getPriority())
+                && LEGACY_PROFILE_RESULT.get("emptyJson").equals(notice.getAttachments())
+                && LEGACY_PROFILE_RESULT.get("emptyJson").equals(notice.getTargetDepartmentIds())
+                && LEGACY_PROFILE_RESULT.get("emptyJson").equals(notice.getTargetEmployeeIds())
+                && LEGACY_PROFILE_RESULT.get("title").equals(notice.getTitle())
+                && Pattern.matches(LEGACY_PROFILE_RESULT.get("contentPattern"),
+                        notice.getContent()==null?"":notice.getContent());
     }
 
     /** SQL receives resolved booleans, never maintains a second list of permission combinations. */
@@ -100,14 +133,23 @@ final class BusinessNoticeParticipation {
         Map<String, Boolean> events = new LinkedHashMap<>();
         ReviewNoticeCatalog.events().stream().sorted().forEach(event -> events.put(event, ReviewNoticeAudience.eligible(event, permissions)));
         BusinessNoticeActionCatalog.events().stream().sorted().forEach(event -> events.put(event, BusinessNoticeActionCatalog.eligible(event, permissions)));
+        PROFILE_RESULT_EVENTS.stream().sorted().forEach(event -> events.put(event, allowed(null, event, permissions)));
         snapshot.put("events", events);
         List<Map<String, Object>> routes = new ArrayList<>();
         for (Rule rule : RULES) routes.add(Map.of("pattern", rule.route(), "allowed", permissions.contains("notice:read") && rule.allowed(permissions)));
         snapshot.put("routes", routes);
         snapshot.put("businessRoute", BUSINESS_ROUTE.pattern());
         snapshot.put("businessEvent", BUSINESS_EVENT.pattern());
+        Map<String,Object> legacyProfileResult=new LinkedHashMap<>(LEGACY_PROFILE_RESULT);
+        legacyProfileResult.put("allowed", allowed(null,"PROFILE_CHANGE_APPROVED",permissions));
+        snapshot.put("legacyProfileResult", legacyProfileResult);
         try { return new ObjectMapper().writeValueAsString(snapshot); }
         catch (JsonProcessingException failure) { throw new IllegalStateException("Cannot serialize business notice participation", failure); }
+    }
+
+    /** Result receipts keep a durable batch identity without becoming actionable review cards. */
+    static String receiptKind(String event) {
+        return event != null && PROFILE_RESULT_EVENTS.contains(event) ? "PROFILE_CHANGE_RESULT" : null;
     }
 
     private BusinessNoticeParticipation() {}

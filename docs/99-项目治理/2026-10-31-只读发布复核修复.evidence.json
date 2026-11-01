@@ -1,0 +1,175 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-11-01T03:47:23.1529625Z",
+  "source": {
+    "branch": "uimp/release2539-readonly-fixes",
+    "baseline": "202385d398a5223ce030ebfa8de5497793f6fcea",
+    "sourceAndTestsSha256": {
+      "lib/features/expense/models/expense_claim.dart": "36d8be87c226d369d411663b013c34b0e5c3f303583b8768049575c8e313f9f8",
+      "lib/features/expense/pages/expense_approval_list_page.dart": "276d70f2f343487663a9f5648a7caa703121f9f660ccba3044099648ba5fbf7d",
+      "server/src/main/java/com/uten/imp/features/expenseclaim/dto/ExpenseClaimSummaryDto.java": "8c38afd3ac02a9b0170d3ef5b71264f2401347982b4951169c6e97bf3b59c39a",
+      "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseClaimService.java": "067fe27f5e85f0a8cbaa9530df5c19425ca938640f97ec99527d06069a4d84a8",
+      "server/src/main/java/com/uten/imp/features/notice/BusinessNoticeParticipation.java": "e3ef3a6dcd41947e2c8dc8191e99c9e816458ccd96ae5a4d514728e9e0b671a4",
+      "server/src/main/java/com/uten/imp/features/notice/NoticeRepository.java": "563083ceb96e10b8d097b0da96b5d4f674b592ceea9ecdcdbb406b50763140e4",
+      "server/src/main/java/com/uten/imp/features/notice/NoticeService.java": "48c431adba6edd6f88d8bae2ad07eaf4e26d01bec8a61f07cb679f724f453faf",
+      "server/src/main/java/com/uten/imp/features/production/dailyreport/ProductionOverLimitDispositionService.java": "9a46d86410c70af9d34d8e21e3421ead009755b9513b4a85f9d5c92f53738348",
+      "server/src/main/java/com/uten/imp/features/profileChange/ProfileChangeReviewService.java": "fdf82b5df55167aae50de52289f60235351ff193839c303e9c6e247cf7b225d3",
+      "server/src/main/resources/db/migration/V978__readonly_business_participation.sql": "1ddb93ed5e8da1f6ad9c7115dac689c0b526932d17e1038a8a9bdf54657b3db4",
+      "server/src/test/java/com/uten/imp/features/expenseclaim/ExpenseClaimChainPostgresTest.java": "7838dea0ba937232246cb15eecccf6254c3d8dfaeaa44c053df867d8af493b61",
+      "server/src/test/java/com/uten/imp/features/expenseclaim/ExpenseClaimServiceTest.java": "6ebf14e56d5fdcc8c71b9cd7f3d780eaa8d2c7159d728d4b3d94eabe605d27fa",
+      "server/src/test/java/com/uten/imp/features/notice/BusinessNoticeParticipationPostgresTest.java": "deed195bf6579a6f750171c2e026339ea44168807c7d615f141cdf527f506509",
+      "server/src/test/java/com/uten/imp/features/notice/BusinessNoticeParticipationTest.java": "94eb6881536e9dbfb0a8b6ed086585407ae61a4a3726b8cce9402cb8bee99137",
+      "server/src/test/java/com/uten/imp/features/notice/LegacyProfileResultNoticeFixture.java": "9b58acb83e7b9a29ee6402aaca3a745a0be4cc67d59b71ed7f886fb58abc5360",
+      "server/src/test/java/com/uten/imp/features/notice/ManualNoticePopupPostgresTest.java": "1b72239ca6de8c6eccd57b8a85dffa39a83b52f4d27f17f179517ee2f0880c28",
+      "server/src/test/java/com/uten/imp/features/notice/NoticeServiceTest.java": "46213adccafb880542aa83fab97d77193aea2caea6ff0a45d2121cc85884bf48",
+      "server/src/test/java/com/uten/imp/features/production/dailyreport/ProductionOverLimitHeaderPostgresTest.java": "ab2d1387a76d0a350965730b3c0cf91264bca9c7026592d40f1097699fb29538",
+      "server/src/test/java/com/uten/imp/features/profileChange/ProfileChangeResultNoticeTest.java": "8aa4a60046fea4d75d5fae233d5d322f33c6f00fffc0e2480fee6b9047663b60",
+      "test/features/expense/expense_approval_list_page_test.dart": "86cabc9b58f891c27e7f7830fb7ae601360132697305411d3b972d48b59678bf",
+      "test/features/expense/expense_return_refresh_test.dart": "2e8c41e7787856c026bd625ffa188211524e8298bc5200538e58168403f3ed56"
+    },
+    "pubspecLockSha256": "1f8b96cd8bbca9792278a19b82426eb0458870b7d5af9fd86ae3dbc468b576f5"
+  },
+  "verification": {
+    "backend": {
+      "uniqueInScopePassed": 155.0,
+      "suites": [
+        {
+          "name": "com.uten.imp.features.expenseclaim.ExpenseClaimChainPostgresTest",
+          "tests": 11,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.uten.imp.features.expenseclaim.ExpenseClaimServiceTest",
+          "tests": 43,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.uten.imp.features.notice.BusinessNoticeParticipationPostgresTest",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.uten.imp.features.notice.BusinessNoticeParticipationTest",
+          "tests": 6,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.uten.imp.features.notice.ManualNoticePopupPostgresTest",
+          "tests": 9,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.uten.imp.features.notice.NoticeServiceTest",
+          "tests": 81,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.uten.imp.features.production.dailyreport.ProductionOverLimitHeaderPostgresTest",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.uten.imp.features.production.dailyreport.ProductionOverLimitHeaderQueryTest",
+          "tests": 1,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        {
+          "name": "com.uten.imp.features.profilechange.ProfileChangeResultNoticeTest",
+          "tests": 2,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        }
+      ],
+      "finalBatch": {
+        "tests": 155,
+        "passed": 154,
+        "failures": 1,
+        "errors": 0,
+        "reason": "Obsolete assertion rejected topPriority anywhere in arrival query; legacy-shape predicate now needs it as input, while ascending cursor ORDER BY remains unchanged."
+      },
+      "correctedClassRecheck": {
+        "class": "NoticeServiceTest",
+        "tests": 81,
+        "failures": 0,
+        "errors": 0,
+        "change": "Assert no topPriority in ORDER BY, retaining all stable cursor/read-state checks."
+      },
+      "mainSourceUnchangedAfterFinalBatch": true,
+      "fullSchema": {
+        "migrationCount": 905,
+        "head": "V979",
+        "isolatedPostgreSql": true
+      }
+    },
+    "flutter": {
+      "tests": 16,
+      "failures": 0,
+      "dependencyLockEnforced": true,
+      "analysis": "No issues found",
+      "changedDartFiles": 4
+    },
+    "priorInitial144NotFinalEvidence": true
+  },
+  "historicalMessages": {
+    "updated": 0,
+    "batchMappingsInferred": 0,
+    "legacyApprovalClassification": "Exact old producer shape only; Java/SQL share examples; announcements and different bodies unaffected",
+    "futureReceipts": "Explicit event, route and exact PROFILE_CHANGE_RESULT batch identity; not review cards"
+  },
+  "integration": {
+    "migrationRenumbering": "Root owns readonly V978->V979 and help V979->V980 plus exact source/test references",
+    "salesManagerHelpCodes": "Root owns 8 additional permission-help entries and regenerated help migration",
+    "wpf": "Expense/profile/over-limit business pages remain unported candidate surfaces; no new native support claim",
+    "mainV977": "Preserve newer date/private-audit fixes through three-way merge"
+  },
+  "delivery": {
+    "localOnly": true,
+    "pushed": false,
+    "deployed": false,
+    "formalPackagesProduced": false,
+    "fullProjectRegressionRun": false
+  },
+  "artifacts": {
+    "server/target-release2539-readonly.log": {
+      "sha256": "ed1c87a9069c428e5c9abe301c81f1f91b869b1d23c213d83c908275f4103103",
+      "bytes": 316949
+    },
+    "server/target-release2539-readonly-final.log": {
+      "sha256": "f56b232a801815b4803c14ea30c54e0f2dde353cf7e1a72c479caead1c85a7d4",
+      "bytes": 321291
+    },
+    "server/target-release2539-readonly-notice-recheck.log": {
+      "sha256": "d2b5a96889c112d02016e2b70907741b1905c8ac26181dbb10f0b185a84b7174",
+      "bytes": 4016
+    },
+    "output-release2539-readonly-flutter-locked.log": {
+      "sha256": "57a7900a1278aa21da34820ec2d84a1ed0e01d0c157481958b249cc56a52c8ab",
+      "bytes": 3504
+    },
+    "output-release2539-readonly-analysis.log": {
+      "sha256": "982c478468701a729fa55f8a9c4149aa7f4a7f595a6b839b65efbb7cb877351b",
+      "bytes": 156
+    },
+    "output-release2539-flutter-pub-locked.log": {
+      "sha256": "3def5e186a2ff07d74a661603a61087d0ea0c734d0f7635995d6106c9c082411",
+      "bytes": 592
+    }
+  }
+}

@@ -302,6 +302,8 @@ class ExpenseQueueSummary {
     required this.monthSubmittedAmount,
     required this.monthPaidCount,
     required this.monthPaidAmount,
+    this.actionablePendingCount = 0,
+    this.actionablePayableCount = 0,
   });
 
   final int pendingCount;
@@ -312,6 +314,8 @@ class ExpenseQueueSummary {
   final double monthSubmittedAmount;
   final int monthPaidCount;
   final double monthPaidAmount;
+  final int actionablePendingCount;
+  final int actionablePayableCount;
 
   factory ExpenseQueueSummary.fromJson(Map<String, dynamic> json) =>
       ExpenseQueueSummary(
@@ -325,6 +329,10 @@ class ExpenseQueueSummary {
             (json['monthSubmittedAmount'] as num?)?.toDouble() ?? 0,
         monthPaidCount: (json['monthPaidCount'] as num?)?.toInt() ?? 0,
         monthPaidAmount: (json['monthPaidAmount'] as num?)?.toDouble() ?? 0,
+        actionablePendingCount:
+            (json['actionablePendingCount'] as num?)?.toInt() ?? 0,
+        actionablePayableCount:
+            (json['actionablePayableCount'] as num?)?.toInt() ?? 0,
       );
 }
 

@@ -48,7 +48,10 @@ class _Api extends ApiClient {
     }
     if (path.endsWith('/summary')) {
       summaryCalls++;
-      return {'pendingCount': pendingCount};
+      return {
+        'pendingCount': pendingCount,
+        'actionablePendingCount': pendingCount,
+      };
     }
     if (path.endsWith('/mine') || path.endsWith('/pending')) {
       listCalls.add({'path': path, ...?query});

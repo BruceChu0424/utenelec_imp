@@ -178,7 +178,9 @@ class _ExpenseApprovalListPageState
                   UtenFilterSegment(
                     value: ApprovalQueue.pending,
                     label: '待审批',
-                    count: summary?.pendingCount,
+                    count: canApprove
+                        ? summary?.actionablePendingCount
+                        : summary?.pendingCount,
                     countForm: canApprove
                         ? UtenSegmentCountForm.actionable
                         : UtenSegmentCountForm.browsing,
@@ -187,7 +189,9 @@ class _ExpenseApprovalListPageState
                   UtenFilterSegment(
                     value: ApprovalQueue.payable,
                     label: '待付款',
-                    count: summary?.payableCount,
+                    count: canPay
+                        ? summary?.actionablePayableCount
+                        : summary?.payableCount,
                     countForm: canPay
                         ? UtenSegmentCountForm.actionable
                         : UtenSegmentCountForm.browsing,

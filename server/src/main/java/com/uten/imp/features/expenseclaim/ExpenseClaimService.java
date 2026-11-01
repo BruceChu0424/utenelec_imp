@@ -111,6 +111,8 @@ public class ExpenseClaimService {
 
     @org.springframework.beans.factory.annotation.Autowired
     private ExpenseClaimReadPolicy readAccess;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.TaskAudiencePort taskAudience;
 
     private com.uten.imp.security.OwnerVisibility.OwnerScope observerScope(AuthUser user) {
         return user.getPermissions().contains("expense:view") ? readAccess.scope(user)
@@ -545,22 +547,31 @@ public class ExpenseClaimService {
     @Transactional(readOnly = true)
     public ExpenseClaimSummaryDto summary() {
         AuthUser user = requireStaff();
-        if (has(user,"expense:view")) return applicantQuery.observerSummary(user, observerScope(user));
-        if (!has(user, "expense:approve") && !has(user, "expense:pay")) {
+        if (!has(user,"expense:view") && !has(user, "expense:approve") && !has(user, "expense:pay")) {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
+        Object[] pending=has(user,"expense:approve") ? actionable(user,false) : null;
+        Object[] payable=has(user,"expense:pay") ? actionable(user,true) : null;
+        // Browsing keeps the session's read authority; task counts use the same actual-grant
+        // projection as /counts, so administrative capability never becomes a subscription.
+        long[] tasks=taskAudience==null?new long[]{count(pending),count(payable)}:taskAudience.read(()->{
+            AuthUser participant=requireStaff();
+            var counts=applicantQuery.queueCounts(participant.getEmployeeId(),false,
+                    has(participant,"expense:approve"),has(participant,"expense:pay"));
+            return new long[]{counts.pendingApproval(),counts.pendingPayment()};
+        });
+        if (has(user,"expense:view")) return applicantQuery.observerSummary(user, observerScope(user))
+                .withActionableCounts(tasks[0],tasks[1]);
         YearMonth currentMonth = YearMonth.now(BusinessTime.ZONE);
         Instant monthStart = currentMonth.atDay(1)
                 .atStartOfDay(BusinessTime.ZONE).toInstant();
         Instant monthEnd = currentMonth.plusMonths(1).atDay(1)
                 .atStartOfDay(BusinessTime.ZONE).toInstant();
-        Object[] pending=has(user,"expense:approve") ? actionable(user,false) : null;
-        Object[] payable=has(user,"expense:pay") ? actionable(user,true) : null;
         Object[] submitted=claimRepository.aggregateSubmittedVisible(monthStart,monthEnd,user.getEmployeeId(),
                 has(user,"expense:approve"),has(user,"expense:pay"));
         Object[] paid=has(user,"expense:pay") ? claimRepository.aggregatePaidBetween(monthStart,monthEnd) : null;
         return new ExpenseClaimSummaryDto(count(pending),amount(pending),count(payable),amount(payable),
-                count(submitted),amount(submitted),count(paid),amount(paid));
+                count(submitted),amount(submitted),count(paid),amount(paid),tasks[0],tasks[1]);
     }
 
     /**

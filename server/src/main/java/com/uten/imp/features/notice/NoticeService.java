@@ -1234,8 +1234,8 @@ public class NoticeService {
     /**
      * V459 审核待办入口：显式携带 aggregateId。sourceEvent 在
      * {@link ReviewNoticeCatalog} 注册时自动绑定 aggregateKind（办结撤回按
-     * (kind,id) 批量定位、弹卡可查认领状态）；未注册事件传 aggregateId 无效
-     * （忽略，保持普通通知，历史行为不变）。
+     * (kind,id) 批量定位、弹卡可查认领状态）。业务结果回执保留独立聚合身份，
+     * 不登记为行动卡；其他未注册事件仍忽略 aggregateId。
      */
     @Transactional
     public Notice publishForUser(UUID audienceUserId, String title, String content,
@@ -1253,6 +1253,10 @@ public class NoticeService {
             noticeRepo.saveAndFlush(n);
         } else if (aggregateId != null && BusinessNoticeActionCatalog.contains(sourceEvent)) {
             n.setAggregateKind(BusinessNoticeActionCatalog.kind(sourceEvent));
+            n.setAggregateId(aggregateId);
+            noticeRepo.saveAndFlush(n);
+        } else if (aggregateId != null && BusinessNoticeParticipation.receiptKind(sourceEvent) != null) {
+            n.setAggregateKind(BusinessNoticeParticipation.receiptKind(sourceEvent));
             n.setAggregateId(aggregateId);
             noticeRepo.saveAndFlush(n);
         }

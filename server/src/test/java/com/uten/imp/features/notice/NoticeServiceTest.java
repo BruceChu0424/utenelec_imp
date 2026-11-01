@@ -328,7 +328,9 @@ class NoticeServiceTest {
         assertTrue(query.value().contains("n.id > :afterId"));
         assertTrue(query.value().contains("s.readAt IS NULL"));
         assertTrue(query.value().contains("s.popupAcknowledgedAt IS NULL"));
-        assertFalse(query.value().contains("topPriority"));
+        // topPriority is an input to exact legacy-receipt classification, never an arrival sort key.
+        assertTrue(query.value().contains("fn_notice_participation_visible"));
+        assertFalse(query.value().substring(query.value().lastIndexOf("ORDER BY")).contains("topPriority"));
     }
 
     @Test
@@ -557,6 +559,20 @@ class NoticeServiceTest {
                 null, "SOME_PLAIN_EVENT", null, aggregateId);
         org.junit.jupiter.api.Assertions.assertNull(plain.getAggregateKind());
         org.junit.jupiter.api.Assertions.assertNull(plain.getAggregateId());
+    }
+
+    @Test
+    void profileResultsKeepTheirExactBatchWithoutBecomingReviewCards() {
+        when(noticeRepository.saveAndFlush(any(Notice.class))).thenAnswer(call -> call.getArgument(0));
+        UUID batch=UUID.randomUUID();
+        for (String event : Set.of("PROFILE_CHANGE_APPROVED", "PROFILE_CHANGE_REJECTED")) {
+            Notice receipt=service.publishForUser(UUID.randomUUID(), "资料变更结果", "正文", "approval", "人事",
+                    "/profile/me/changes", event, "normal", batch);
+            assertEquals("PROFILE_CHANGE_RESULT", receipt.getAggregateKind());
+            assertEquals(batch, receipt.getAggregateId());
+            assertEquals("NORMAL", receipt.getKind());
+            assertFalse(ReviewNoticeCatalog.isReviewEvent(receipt.getSourceEvent()));
+        }
     }
 
     @Test

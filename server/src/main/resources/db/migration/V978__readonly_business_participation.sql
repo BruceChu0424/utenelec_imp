@@ -67,10 +67,29 @@ ALTER TABLE employment_history ENABLE ALWAYS TRIGGER trg_expense_read_employment
 
 -- The JVM resolves its single participation catalog against actual current grants once per read.
 -- SQL applies it before paging/counting, including old workflow receipts. No history is deleted.
-CREATE FUNCTION fn_notice_participation_visible(p_route text,p_event text,p_rules text)
+CREATE FUNCTION fn_notice_participation_visible(p_route text,p_event text,p_rules text,
+ p_type text DEFAULT NULL,p_title text DEFAULT NULL,p_content text DEFAULT NULL,
+ p_audience_user uuid DEFAULT NULL,p_audience_scope text DEFAULT NULL,p_audience_summary text DEFAULT NULL,
+ p_audience_count integer DEFAULT NULL,p_interaction text DEFAULT NULL,p_kind text DEFAULT NULL,
+ p_aggregate_kind text DEFAULT NULL,p_aggregate_id uuid DEFAULT NULL,p_source_revision bigint DEFAULT NULL,
+ p_due_at timestamptz DEFAULT NULL,p_top_priority boolean DEFAULT NULL,p_priority text DEFAULT NULL,
+ p_attachments text DEFAULT NULL,p_target_departments text DEFAULT NULL,p_target_employees text DEFAULT NULL)
 RETURNS boolean LANGUAGE plpgsql IMMUTABLE AS $$
 DECLARE rules jsonb:=COALESCE(NULLIF(p_rules,''),'{}')::jsonb; candidate jsonb;
+        legacy_profile_result jsonb:=rules->'legacyProfileResult';
 BEGIN
+ -- The old producer has no source batch metadata. Classify only its complete, exact message
+ -- shape; never map a batch from text/timestamps, rewrite history, or classify human broadcasts.
+ IF p_event IS NULL AND p_route IS NULL AND p_audience_user IS NOT NULL
+    AND p_aggregate_kind IS NULL AND p_aggregate_id IS NULL AND p_source_revision IS NULL
+    AND p_due_at IS NULL AND p_top_priority=FALSE AND p_audience_count=1
+    AND p_type=legacy_profile_result->>'type' AND p_kind=legacy_profile_result->>'kind'
+    AND p_audience_scope=legacy_profile_result->>'scope' AND p_audience_summary=legacy_profile_result->>'summary'
+    AND p_interaction=legacy_profile_result->>'interaction' AND p_priority=legacy_profile_result->>'priority'
+    AND p_attachments=legacy_profile_result->>'emptyJson'
+    AND p_target_departments=legacy_profile_result->>'emptyJson' AND p_target_employees=legacy_profile_result->>'emptyJson'
+    AND p_title=legacy_profile_result->>'title' AND p_content ~ (legacy_profile_result->>'contentPattern')
+ THEN RETURN COALESCE((legacy_profile_result->>'allowed')::boolean,FALSE); END IF;
  IF rules->'events' ? p_event THEN RETURN COALESCE((rules->'events'->>p_event)::boolean,FALSE); END IF;
  FOR candidate IN SELECT value FROM jsonb_array_elements(COALESCE(rules->'routes','[]'::jsonb)) LOOP
    IF COALESCE(p_route,'') ~ (candidate->>'pattern') THEN RETURN COALESCE((candidate->>'allowed')::boolean,FALSE); END IF;

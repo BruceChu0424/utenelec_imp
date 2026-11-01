@@ -99,6 +99,25 @@ class ManualNoticePopupPostgresTest {
     }
 
     @Test
+    void exactUnlinkedProfileResultUsesLiveGrantsAndKeepsAllHistoryRows() {
+        var examples=LegacyProfileResultNoticeFixture.examples(ME);
+        tx(()->examples.forEach(example->em.persist(example.notice())));
+        var readOnly=ReviewNoticeAudience.ReadScope.NONE;
+        var submitter=new ReviewNoticeAudience.ReadScope(readOnly.workshop(),false,false,"",
+                "notice:read,profile:edit:self","","{}","{}");
+        for (var scope : List.of(readOnly,submitter,readOnly)) {
+            var visible=notices.findVisiblePendingManualNotices(ME,NONE_SINCE,scope,PageRequest.of(0,20))
+                    .stream().map(Notice::getId).toList();
+            assertThat(visible).containsAll(examples.stream().filter(example->!example.legacyResult())
+                    .map(example->example.notice().getId()).toList());
+            assertThat(visible.contains(examples.getFirst().notice().getId())).isEqualTo(scope==submitter);
+        }
+        assertThat(em.createQuery("SELECT count(n) FROM Notice n",Long.class).getSingleResult()).isEqualTo(7);
+        examples.forEach(example->assertThat(notices.findById(example.notice().getId())).get()
+                .satisfies(n->{assertThat(n.getAggregateId()).isNull();assertThat(n.getSourceEvent()).isNull();}));
+    }
+
+    @Test
     void selectedScopePopsOnlyForSnapshotRecipients() {
         Notice notice = manual("policy", "selected", null, "normal", Instant.now(), null);
         state(notice.getId(), ME, s -> { });

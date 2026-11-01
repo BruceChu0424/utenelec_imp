@@ -365,6 +365,50 @@ class ExpenseClaimChainPostgresTest {
         assertThatThrownBy(()->claims.approve(pendingId,pendingVersion)).isInstanceOf(ApiException.class);
     }
 
+    @Test void mixedObserverGrantsKeepBrowsingTotalsSeparateFromSelfReviewAndPaymentTasks() {
+        Actor mixed=actor("mixed-reader"), owner=actor("mixed-owner"), reviewer=actor("mixed-reviewer");
+        login(mixed,"expense:apply");
+        var selfPending=claims.create(request("本人待审批",null)); attachment(selfPending.id());
+        selfPending=claims.submit(selfPending.id(),selfPending.version());
+        var selfPayable=claims.create(request("本人待付款",null)); attachment(selfPayable.id());
+        selfPayable=claims.submit(selfPayable.id(),selfPayable.version());
+        login(owner,"expense:apply");
+        var approvedByMixed=claims.create(request("本人审批后不可付款",null)); attachment(approvedByMixed.id());
+        approvedByMixed=claims.submit(approvedByMixed.id(),approvedByMixed.version());
+        var otherPending=claims.create(request("他人待审批",null)); attachment(otherPending.id());
+        otherPending=claims.submit(otherPending.id(),otherPending.version());
+        var otherPayable=claims.create(request("他人待付款",null)); attachment(otherPayable.id());
+        otherPayable=claims.submit(otherPayable.id(),otherPayable.version());
+        login(mixed,"expense:approve","attachment:view","attachment:download");
+        approvedByMixed=claims.approve(approvedByMixed.id(),approvedByMixed.version());
+        login(reviewer,"expense:approve","attachment:view","attachment:download");
+        selfPayable=claims.approve(selfPayable.id(),selfPayable.version());
+        otherPayable=claims.approve(otherPayable.id(),otherPayable.version());
+        login(mixed,"expense:view","expense:view:all");
+        var readOnly=claims.summary();
+        assertThat(readOnly.actionablePendingCount()).isZero();
+        assertThat(readOnly.actionablePayableCount()).isZero();
+        login(mixed,"expense:view","expense:view:all","expense:approve","expense:pay");
+        var summary=claims.summary();
+        assertThat(summary.pendingCount()).isEqualTo(readOnly.pendingCount());
+        assertThat(summary.payableCount()).isEqualTo(readOnly.payableCount());
+        assertThat(summary.pendingAmount()).isEqualByComparingTo(readOnly.pendingAmount());
+        assertThat(summary.payableAmount()).isEqualByComparingTo(readOnly.payableAmount());
+        assertThat(summary.pendingCount()-summary.actionablePendingCount()).isEqualTo(1);
+        assertThat(summary.payableCount()-summary.actionablePayableCount()).isEqualTo(2);
+        var tasks=claims.counts();
+        assertThat(summary.actionablePendingCount()).isEqualTo(tasks.pendingApprovalCount());
+        assertThat(summary.actionablePayableCount()).isEqualTo(tasks.pendingPaymentCount());
+        UUID ownId=selfPending.id();long ownVersion=selfPending.version();
+        assertThatThrownBy(()->claims.reject(ownId,"不能自审",ownVersion)).hasMessageContaining("不能审批自己");
+        UUID ownPayment=selfPayable.id();
+        UUID reviewedPayment=approvedByMixed.id();
+        assertThatThrownBy(()->claims.pay(ownPayment,null)).hasMessageContaining("不能给自己");
+        assertThatThrownBy(()->claims.pay(reviewedPayment,null)).hasMessageContaining("审批人与打款人必须分离");
+        assertThat(claims.detail(otherPending.id()).status()).isEqualTo("SUBMITTED");
+        assertThat(claims.detail(otherPayable.id()).status()).isEqualTo("APPROVED");
+    }
+
     private ExpenseClaimCreateRequest request(String title,Long version) {
         return new ExpenseClaimCreateRequest(title,"客户拜访的真实住宿费",List.of(new ExpenseClaimItemInput(
             "TRAVEL",new BigDecimal("100.00"),BusinessTime.today(),"客户拜访住宿一晚")),version);

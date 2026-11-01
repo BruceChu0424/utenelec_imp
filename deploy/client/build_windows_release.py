@@ -28,17 +28,20 @@ build_windows_installer.py --local-test directly; this tool refuses them.
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from build_windows_installer import build_windows_setup, find_compiler
 from package_windows import MANIFEST_NAME
 from verify_client_endpoints import missing_endpoints
 from verify_windows_release import verify_pair
+from tool_output import UTF8_TOOL_OUTPUT, save_tool_output
 
 SCRIPT = Path(__file__).resolve()
 REPOSITORY = SCRIPT.parents[2]
@@ -72,7 +75,7 @@ def formal_endpoints(api: str, cloud_api: str) -> tuple[str, str]:
 
 def audit_repository(repository: Path, *, runner=subprocess.run) -> dict:
     def git(*arguments: str) -> str:
-        result = runner(["git", *arguments], cwd=repository, capture_output=True, text=True, check=False)
+        result = runner(["git", *arguments], cwd=repository, capture_output=True, check=False, **UTF8_TOOL_OUTPUT)
         if result.returncode != 0:
             raise ValueError(f"git {' '.join(arguments)} failed: {(result.stderr or '').strip()[:400]}")
         return result.stdout
@@ -91,22 +94,48 @@ def _snapshot_pubspec_lock(repository: Path) -> bytes | None:
     return path.read_bytes() if path.is_file() else None
 
 
+def locked_pub_environment(repository: Path) -> dict:
+    lock = _snapshot_pubspec_lock(repository)
+    if lock is None:
+        raise ValueError("Formal builds require the audited pubspec.lock")
+    hosts = set(re.findall(r'''(?m)^\s+url:\s*["']?([^\s"']+)["']?\s*$''', lock.decode("utf-8")))
+    if len(hosts) != 1:
+        raise ValueError("Formal builds require one unambiguous locked package registry")
+    host = hosts.pop()
+    parsed = urlsplit(host)
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+            or parsed.query or parsed.fragment or parsed.path not in ("", "/")):
+        raise ValueError("The locked package registry must be an HTTPS origin")
+    return {**os.environ, "PUB_HOSTED_URL": host}
+
+
 def default_flutter_build(repository: Path, *, version: str, build_number: int,
                           api: str, cloud_api: str, runner=subprocess.run,
-                          executable: str = "flutter") -> None:
+                          executable: str = "flutter", log_directory: Path | None = None) -> None:
     # Windows ships flutter as flutter.bat; bare CreateProcess cannot resolve
     # PATHEXT, so resolve the real path once (no-op on POSIX).
     resolved = shutil.which(executable) or executable
-    command = [resolved, "build", "windows", "--release",
+    environment = locked_pub_environment(repository)
+    commands = [
+        ("flutter-pub-get", [resolved, "pub", "get", "--enforce-lockfile"]),
+        ("flutter-build", [resolved, "build", "windows", "--release", "--no-pub",
                f"--build-name={version}", f"--build-number={build_number}",
                f"--dart-define=APP_VERSION={version}",
                f"--dart-define=APP_BUILD_ID={build_number}",
                f"--dart-define=API_BASE_URL={api}",
-               f"--dart-define=CLOUD_API_BASE_URL={cloud_api}"]
-    result = runner(command, cwd=repository, capture_output=True, text=True, check=False)
-    if result.returncode != 0:
-        tail = "\n".join((result.stderr or result.stdout or "").splitlines()[-25:])
-        raise ValueError(f"flutter build failed (exit {result.returncode}):\n{tail}")
+               f"--dart-define=CLOUD_API_BASE_URL={cloud_api}"]),
+    ]
+    lock_before = _snapshot_pubspec_lock(repository)
+    for name, command in commands:
+        result = runner(command, cwd=repository, env=environment, capture_output=True,
+                        check=False, **UTF8_TOOL_OUTPUT)
+        if log_directory is not None:
+            save_tool_output(log_directory, name, result)
+        if result.returncode != 0:
+            tail = "\n".join((result.stderr or result.stdout or "").splitlines()[-25:])
+            raise ValueError(f"{name} failed (exit {result.returncode}):\n{tail}")
+        if _snapshot_pubspec_lock(repository) != lock_before:
+            raise ValueError("The locked dependency manifest changed; no formal package may be built")
 
 
 def _sha256(path: Path) -> str:
@@ -138,17 +167,18 @@ def build_formal_release(repository: Path, output_dir: Path, *, api: str, cloud_
     if skip_build:
         build_step = "reused-existing-bundle"
     else:
-        (flutter_build or default_flutter_build)(repository, version=version, build_number=build_number,
-                                                 api=api, cloud_api=cloud_api, runner=runner)
+        build = flutter_build or default_flutter_build
+        log_options = {"log_directory": output_dir / "tool-logs"} if flutter_build is None else {}
+        build(repository, version=version, build_number=build_number,
+              api=api, cloud_api=cloud_api, runner=runner, **log_options)
         build_step = "executed"
-        # CN mirrors rewrite pubspec.lock URL lines on pub get; a build side
-        # effect must not leak into an audited tree. Restore only when the
-        # lock was pristine before the build; with an intentionally dirty
-        # tree keep the operator's bytes and record the change instead.
+        # Restoring a changed lock would conceal the dependencies actually
+        # compiled. A pristine formal build must stop before packaging; an
+        # explicitly dirty custom build keeps its bytes and visible deviation.
         lock_after = _snapshot_pubspec_lock(repository)
         if lock_after != lock_before and lock_before is not None:
             if audit["treeClean"]:
-                (repository / "pubspec.lock").write_bytes(lock_before)
+                raise ValueError("The dependency lock changed during the formal build; inspect it before packaging")
             else:
                 lock_note = "pubspec.lock changed during the build and was left in place (tree was already dirty)"
     snapshot = repository / ENDPOINT_SNAPSHOT
@@ -182,6 +212,8 @@ def build_formal_release(repository: Path, output_dir: Path, *, api: str, cloud_
         "architecture": architecture,
         "runtimeFamily": "flutter",
         "flutterBuild": build_step,
+        "dependencyLockEnforced": flutter_build is None and build_step == "executed",
+        "dependencyLockSha256": hashlib.sha256(lock_before).hexdigest() if lock_before is not None else None,
         "pubspecLockNote": lock_note,
         "endpoints": {"API_BASE_URL": api, "CLOUD_API_BASE_URL": cloud_api,
                       "embeddedVerification": "byte-verified in data/app.so"},

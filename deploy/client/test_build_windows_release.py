@@ -2,6 +2,7 @@ import json
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -66,6 +67,58 @@ class BuildWindowsReleaseTest(unittest.TestCase):
         (self.repository / "pubspec.yaml").write_text("name: uten_imp\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "bump the release version"):
             orchestrator.read_release_version(self.repository)
+
+    def test_default_build_enforces_the_locked_registry_and_keeps_utf8_logs(self):
+        lock = b'packages:\n  fixture:\n    description:\n      url: "https://pub.dev"\n'
+        (self.repository / "pubspec.lock").write_bytes(lock)
+        calls = []
+
+        def tool(command, **options):
+            calls.append(command)
+            self.assertEqual("https://pub.dev", options["env"]["PUB_HOSTED_URL"])
+            return subprocess.CompletedProcess(command, 0, "\u6784\u5efa\u539f\u6587", "")
+
+        logs = self.output_dir / "tool-logs"
+        with patch.dict("os.environ", {"PUB_HOSTED_URL": "https://pub.flutter-io.cn"}):
+            orchestrator.default_flutter_build(
+                self.repository, version="2.5.31", build_number=2531,
+                api=ENDPOINTS[0], cloud_api=ENDPOINTS[1], runner=tool,
+                log_directory=logs)
+        self.assertEqual(["pub", "get", "--enforce-lockfile"], calls[0][1:])
+        self.assertIn("--no-pub", calls[1])
+        self.assertEqual(lock, (self.repository / "pubspec.lock").read_bytes())
+        self.assertEqual("\u6784\u5efa\u539f\u6587", (logs / "flutter-build.stdout.log").read_text(encoding="utf-8"))
+
+    def test_rejected_lock_resolution_never_starts_flutter_compilation(self):
+        (self.repository / "pubspec.lock").write_text(
+            'packages:\n  fixture:\n    description:\n      url: "https://pub.dev"\n', encoding="utf-8")
+        calls = []
+
+        def tool(command, **options):
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 65, "", "locked dependency resolution rejected")
+
+        with self.assertRaisesRegex(ValueError, "flutter-pub-get failed"):
+            orchestrator.default_flutter_build(
+                self.repository, version="2.5.31", build_number=2531,
+                api=ENDPOINTS[0], cloud_api=ENDPOINTS[1], runner=tool)
+        self.assertEqual(1, len(calls))
+
+    def test_manifest_drift_stops_before_compilation_even_if_resolver_returns_success(self):
+        (self.repository / "pubspec.lock").write_text(
+            'packages:\n  fixture:\n    description:\n      url: "https://pub.dev"\n', encoding="utf-8")
+        calls = []
+
+        def tool(command, **options):
+            calls.append(command)
+            (self.repository / "pubspec.lock").write_bytes(b"unreviewed dependency change")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with self.assertRaisesRegex(ValueError, "locked dependency manifest changed"):
+            orchestrator.default_flutter_build(
+                self.repository, version="2.5.31", build_number=2531,
+                api=ENDPOINTS[0], cloud_api=ENDPOINTS[1], runner=tool)
+        self.assertEqual(1, len(calls))
 
     def test_formal_endpoints_must_be_https_company_entries(self):
         self.assertEqual(("https://a.example/api", "https://b.example/api"),
@@ -132,21 +185,22 @@ class BuildWindowsReleaseTest(unittest.TestCase):
                                               iscc=self.compiler)
         self.assertFalse(self.output_dir.exists())
 
-    def test_mirror_rewritten_pubspec_lock_is_restored_on_a_clean_tree(self):
+    def test_changed_manifest_in_a_clean_build_is_rejected_before_packaging(self):
         self.fixture_repository()
         lock_before = (self.repository / "pubspec.lock").read_bytes()
 
         def flutter_build(repository, *, version, build_number, api, cloud_api, runner):
             (repository / "pubspec.lock").write_bytes(b"rewritten by the cn mirror")
 
-        receipt = orchestrator.build_formal_release(self.repository, self.output_dir,
-                                                    api=ENDPOINTS[0], cloud_api=ENDPOINTS[1],
-                                                    runner=self.clean_git,
-                                                    flutter_build=flutter_build,
-                                                    package_pair=self.package_with_fixture_compiler,
-                                                    iscc=self.compiler)
-        self.assertEqual("executed", receipt["flutterBuild"])
-        self.assertEqual(lock_before, (self.repository / "pubspec.lock").read_bytes())
+        with self.assertRaisesRegex(ValueError, "dependency lock changed"):
+            orchestrator.build_formal_release(self.repository, self.output_dir,
+                                              api=ENDPOINTS[0], cloud_api=ENDPOINTS[1],
+                                              runner=self.clean_git,
+                                              flutter_build=flutter_build,
+                                              package_pair=self.package_with_fixture_compiler,
+                                              iscc=self.compiler)
+        self.assertNotEqual(lock_before, (self.repository / "pubspec.lock").read_bytes())
+        self.assertFalse(self.output_dir.exists())
 
     def test_pubspec_lock_change_survives_and_is_recorded_on_a_dirty_tree(self):
         self.fixture_repository()

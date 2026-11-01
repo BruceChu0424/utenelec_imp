@@ -16,6 +16,7 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+from tool_output import UTF8_TOOL_OUTPUT
 import tempfile
 import zipfile
 
@@ -282,7 +283,7 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
                     "buildNumber": build_number, "architecture": architecture, "payloadValidated": True}
                 plan["publication"] = {"atomicAcrossFiles": False, "strategy": "validated-staging-with-task-scoped-rollback"}
             return plan
-        runner(command, check=True, capture_output=True, text=True)
+        runner(command, check=True, capture_output=True, **UTF8_TOOL_OUTPUT)
         generated = compiler_output / output.name
         artifacts = [(generated, output, lambda path: validate_setup(path, version=version,
             build_number=build_number, architecture=architecture, local_test=local_test))]

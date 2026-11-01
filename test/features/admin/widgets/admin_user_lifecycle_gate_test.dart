@@ -7,6 +7,7 @@ import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
 import 'package:uten_imp/features/admin/widgets/admin_user_detail_panel.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 const _permissionCode = 'account:test';
@@ -116,6 +117,22 @@ void main() {
   );
 
   testWidgets(
+    'authorization management alone does not permit temporary password reset',
+    (tester) async {
+      await _pumpPanel(
+        tester,
+        repository: _LifecycleRepository(effective: _effective()),
+        user: _user(status: 'active', currentEmployee: true),
+        actorPermissions: const {},
+      );
+      await tester.tap(find.text('账号安全').first);
+      await tester.pumpAndSettle();
+      expect(_button(tester, '设置临时密码').onPressed, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'resigned account keeps remote and super-admin revoke directions',
     (tester) async {
       final repository = _LifecycleRepository(
@@ -160,6 +177,7 @@ Future<void> _pumpPanel(
   required _LifecycleRepository repository,
   required AdminUserSummary user,
   double width = 375,
+  Set<String> actorPermissions = const {Perm.accountSupport},
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = Size(width, 900);
@@ -174,6 +192,7 @@ Future<void> _pumpPanel(
       overrides: [
         adminRepositoryProvider.overrideWithValue(repository),
         sharedPreferencesProvider.overrideWithValue(preferences),
+        currentPermissionsProvider.overrideWith((ref) => actorPermissions),
       ],
       child: MaterialApp(
         locale: const Locale('zh'),

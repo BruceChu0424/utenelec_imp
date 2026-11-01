@@ -42,7 +42,7 @@ void main() {
         // 账号命令需要检查操作者的支持权限；它不参与目录授权或批量排除。
         // 仅这一入口可引用账号支持码，其余详情及授权页仍不准按码维护名单。
         final accountCommandGate = RegExp(
-          r'bool get _hasAccountSupport\s*=>[^;]*;',
+          r'bool get _hasAccountSupportPermission\s*=>[^;]*;',
         );
         final gates = accountCommandGate.allMatches(source).toList();
         expect(gates, hasLength(1), reason: path);

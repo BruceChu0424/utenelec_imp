@@ -29,6 +29,8 @@ class UtenFloatingWindow extends StatefulWidget {
     this.maxSize,
     this.headerTrailing,
     this.collapseIcon = Icons.post_add_rounded,
+    this.onManualLayout,
+    this.backgroundColor,
   });
 
   final String title;
@@ -50,6 +52,10 @@ class UtenFloatingWindow extends StatefulWidget {
 
   /// 缩小后的悬浮球图标（默认添加组件语义）。
   final IconData collapseIcon;
+
+  /// A host may leave tiled mode when the user moves/resizes/collapses a pane.
+  final VoidCallback? onManualLayout;
+  final Color? backgroundColor;
 
   @override
   State<UtenFloatingWindow> createState() => UtenFloatingWindowState();
@@ -224,6 +230,7 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
   }
 
   void _beginGesture() {
+    widget.onManualLayout?.call();
     // 拖动/缩放前收起焦点，让引用选择框等 Overlay 下拉先关掉。
     FocusManager.instance.primaryFocus?.unfocus();
   }
@@ -484,7 +491,8 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
           child: IgnorePointer(
             child: Material(
               color: Color.lerp(
-                theme.colorScheme.surfaceContainerHigh,
+                widget.backgroundColor ??
+                    theme.colorScheme.surfaceContainerHigh,
                 theme.colorScheme.primary,
                 t,
               ),
@@ -588,7 +596,7 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
         ],
       ),
       child: Material(
-        color: theme.colorScheme.surfaceContainerHigh,
+        color: widget.backgroundColor ?? theme.colorScheme.surfaceContainerHigh,
         borderRadius: UtenRadius.xxlAll,
         clipBehavior: Clip.antiAlias,
         // 外壳必须填满 _windowRect（mainAxisSize 默认 max）：拖拽、四边缩放手柄和
@@ -622,7 +630,10 @@ class UtenFloatingWindowState extends State<UtenFloatingWindow>
         _top += details.delta.dy;
         _clampPosition();
       }),
-      onDoubleTap: () => setState(_centerAtInitial),
+      onDoubleTap: () {
+        widget.onManualLayout?.call();
+        setState(_centerAtInitial);
+      },
       child: MouseRegion(
         cursor: SystemMouseCursors.move,
         child: Padding(

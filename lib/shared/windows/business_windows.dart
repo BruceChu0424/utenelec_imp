@@ -25,6 +25,9 @@ class BusinessWindow {
   final Object? extra;
   final navigatorKey = GlobalKey<NavigatorState>();
   final windowKey = GlobalKey<UtenFloatingWindowState>();
+
+  /// Owned by the mounted window scope; never instantiate its router elsewhere.
+  GoRouter? activeRouter;
 }
 
 class BusinessWindows extends ChangeNotifier {

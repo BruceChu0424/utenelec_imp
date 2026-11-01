@@ -1,0 +1,97 @@
+{
+  "id": "E-GOODS-BOM-COMPARE-20261101",
+  "date": "2026-11-01",
+  "branch": "uimp/goods-bom-comparison-20261101",
+  "baseCommit": "48ca76f731c44c4a786c5b21ef1c4b93e6416843",
+  "classification": [
+    "frontend",
+    "existing-bom-edit-contract-consumer"
+  ],
+  "owningReport": "docs/99-项目治理/2026-11-01-货品BOM并排对比与替换.md",
+  "nativeWpf": {
+    "implemented": false,
+    "targetWin7Accepted": false,
+    "tasks": {
+      "W7-BIZ-025": "Full goods detail/BOM comparison and replacement not migrated. Follow existing snapshot/preview/commit, exact design-copy, source+destination fingerprints, permissions and unknown-receipt recovery contracts.",
+      "W7-BIZ-034": "Goods workspace reading is partial. Resizable comparison windows, source selection, aligned UUID diff and bidirectional selected/all-component replacement remain unported; expose no placeholder writes."
+    }
+  },
+  "companyDatabaseWritten": false,
+  "deployed": false,
+  "formalPackagesBuilt": false,
+  "validation": {
+    "status": "passed_local_with_explicit_native_and_release_boundaries",
+    "broadRegression": {
+      "passed": 1710,
+      "skipped": 1,
+      "scope": "basic_data directory and common window/splitter checks before final table/surface correction",
+      "log": ".test-regression.log"
+    },
+    "finalAcceptance": {
+      "passed": 130,
+      "failed": 0,
+      "log": ".test-final-acceptance.log",
+      "scope": "final shared table, recipe edit/copy/navigation and common window/splitter regressions",
+      "warnings": 0
+    },
+    "staticAnalysis": {
+      "latestTestAnalysis": ".analyze-final-acceptance.log",
+      "log": ".analyze-shared-table-final.log",
+      "issues": 0
+    },
+    "screenshots": [
+      "build/ui-audit/bom-tiled-1600.png",
+      "build/ui-audit/bom-comparison-1600.png",
+      "build/ui-audit/bom-comparison-1280.png",
+      "build/ui-audit/bom-comparison-390.png",
+      "build/ui-audit/bom-comparison-preview-1600.png",
+      "build/ui-audit/bom-comparison-preview-1280.png"
+    ],
+    "interactionCoverage": [
+      "shared MasterDataTableView and UtenTreeTableCell",
+      "unified floating shell, scaffold and app bar surface",
+      "linked scrolling and selection",
+      "explicit pair from three windows",
+      "shared subassembly reads",
+      "resize with retained router/editor identity",
+      "independent source navigation clears old selection",
+      "selected/all replacements in both directions",
+      "exact decimal preservation and null reference clearing",
+      "stale source/destination rejection",
+      "read-only view without edit snapshot",
+      "unknown commit retry uses original request"
+    ],
+    "notRun": [
+      "real server writes or multi-user UAT",
+      "installed Windows client or browser build",
+      "Win7 ERP migration and target PC UAT"
+    ],
+    "globalInventory": "Existing full source inventory differs from current checkout; historical global snapshot retained. Only W7-BIZ-025/034 continuation notes and this current-source evidence updated.",
+    "finalScreenshotRecheck": {
+      "log": ".test-final-table-copy.log",
+      "failed": 0,
+      "passed": 9,
+      "overlapsFinalAcceptance": true,
+      "warnings": 0
+    }
+  },
+  "workingSourceSha256": {
+    "lib/components/feedback/uten_floating_window.dart": "44f730c36c8995f0bea3f1a76013dad1d5e956120dae2380ab78d107dec0b80f",
+    "lib/components/layout/uten_split_handle.dart": "60ceea502d276482433db9d1d0f948e2c1320479808779b32f44c923553d6416",
+    "lib/components/layout/uten_split_view.dart": "c067dceb0a1dccae8c4c6897d8ce65438498a65b5767e8b90cd4f20b78101c72",
+    "lib/core/router/business_window_host.dart": "a2a304bdbeb5da9c8131f0195521c6157946e59d19b1a53fd82e33ac333a0822",
+    "lib/features/basic_data/models/goods_bom_comparison.dart": "33518dab62f0e05624d2620fd037ab1cb6f7435f9f366b5ef0f4590d1b3d9b93",
+    "lib/features/basic_data/models/goods_bom_copy.dart": "72eaf5aa589d6a8a206bfb805531f075d613faad670bedafbb8b397ffb775004",
+    "lib/features/basic_data/pages/goods_detail_page.dart": "67b1d0549b1b98ec7ef6ba1fe50b4582981b0c4eab67e408d6ce47991d09ffbb",
+    "lib/features/basic_data/providers/goods_bom_changes.dart": "b16bec6e2c6f0610edf9ffa4451e4bb41579ffe9b8a20abe517d5f85d6b74d9f",
+    "lib/features/basic_data/widgets/bom_component_quantity_field.dart": "71825069efdef44346bd5a4471481d1836cc2f44d282cc9dec103eb9e344d8da",
+    "lib/features/basic_data/widgets/goods_bom_comparison_table.dart": "8db595ddbe3b8c0bc61076182ca7bf9d49f5a5550c01f91a39f3976ab79c7b56",
+    "lib/features/basic_data/widgets/goods_bom_comparison_workspace.dart": "df53befdc59909d3205189920edaf6c272d7b9ad9de3085e42e82498984cc803",
+    "lib/features/basic_data/widgets/goods_bom_tab.dart": "4dedfd68f45ce9dcf03e1eacb3a2c957a1667ac6f4ca2d30a20996f332bc8ea2",
+    "lib/shared/windows/business_windows.dart": "fd67efbe295c137c4aa5caa131ac33ec4e39c6e8ebd4a35b791277f54e077809",
+    "test/features/basic_data/goods_bom_comparison_test.dart": "89f42e5e81a136ecf479b836f8a5d94965f963c006a34d1f49be3fba387de361",
+    "test/features/basic_data/widgets/goods_bom_comparison_workspace_test.dart": "43bb69e506909c25e491119ac30f0f7bfbfae1d3521119989de70db91f7d3be6",
+    "test/support/bom_comparison_fixture.dart": "df2f05a1778c7e707955b04cfcdb8238068c3f7920f3779b7b4e775535ad4986",
+    "test/support/goods_bom_edit_test_api.dart": "298f390ae406dcac42f41fd6d17410144e24dc5f68151d773b938814c1931053"
+  }
+}

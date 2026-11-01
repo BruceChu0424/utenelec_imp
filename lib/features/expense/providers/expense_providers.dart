@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/legacy.dart';
+import '../../../core/network/authenticated_request_scope.dart';
 
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/paged_result.dart';
@@ -733,7 +734,9 @@ Future<void> approveExpense(
   WidgetRef ref,
   String id, {
   int? expectedVersion,
+  bool Function()? stillCurrent,
 }) async {
+  _checkExpenseCommandOwner(stillCurrent);
   await ref
       .read(expenseRepositoryProvider)
       .approve(
@@ -742,6 +745,7 @@ Future<void> approveExpense(
             expectedVersion ??
             ref.read(expenseDetailProvider(id)).requireValue.version,
       );
+  _checkExpenseCommandOwner(stillCurrent);
   _invalidateExpense(ref, id);
 }
 
@@ -750,7 +754,9 @@ Future<void> rejectExpense(
   String id,
   String reason, {
   int? expectedVersion,
+  bool Function()? stillCurrent,
 }) async {
+  _checkExpenseCommandOwner(stillCurrent);
   await ref
       .read(expenseRepositoryProvider)
       .reject(
@@ -760,6 +766,7 @@ Future<void> rejectExpense(
             expectedVersion ??
             ref.read(expenseDetailProvider(id)).requireValue.version,
       );
+  _checkExpenseCommandOwner(stillCurrent);
   _invalidateExpense(ref, id);
 }
 
@@ -768,7 +775,9 @@ Future<void> payExpense(
   String id,
   ExpensePaymentInput input, {
   int? expectedVersion,
+  bool Function()? stillCurrent,
 }) async {
+  _checkExpenseCommandOwner(stillCurrent);
   await ref
       .read(expenseRepositoryProvider)
       .pay(
@@ -778,7 +787,14 @@ Future<void> payExpense(
             expectedVersion ??
             ref.read(expenseDetailProvider(id)).requireValue.version,
       );
+  _checkExpenseCommandOwner(stillCurrent);
   _invalidateExpense(ref, id);
+}
+
+void _checkExpenseCommandOwner(bool Function()? stillCurrent) {
+  if (stillCurrent != null && !stillCurrent()) {
+    throw AuthenticatedRequestScope.changed();
+  }
 }
 
 ExpensePaymentOptions buildExpensePaymentOptions(

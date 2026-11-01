@@ -1,4 +1,6 @@
 // 报销审批列表（2026-09-10 部门/年月表头筛选接后端 + 批量驳回复用公共弹窗）。
+import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,17 +9,34 @@ import 'package:uten_imp/components/feedback/uten_batch_reject_dialog.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/authenticated_request_scope.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/expense/models/expense_claim.dart';
 import 'package:uten_imp/features/expense/pages/expense_approval_list_page.dart';
+import 'package:uten_imp/features/expense/pages/expense_approval_detail_page.dart';
 import 'package:uten_imp/features/expense/repositories/expense_repository.dart';
 import 'package:uten_imp/features/expense/providers/expense_providers.dart';
+import 'package:uten_imp/features/expense/providers/expense_action_eligibility.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/models/user.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 class _FakeExpenseRepository extends Fake implements ExpenseRepository {
+  List<ExpenseClaim> pendingItems = [_claim('c-1'), _claim('c-2')];
+  ExpenseClaim? detail;
+  final detailCalls = <String>[];
+  Completer<int>? rejectGate;
+
+  @override
+  Future<ExpenseClaim> getById(String id) async {
+    detailCalls.add(id);
+    return detail ?? _claim(id);
+  }
+
   ExpenseQueueSummary queueSummary = const ExpenseQueueSummary(
     pendingCount: 2,
     pendingAmount: 257.0,
@@ -59,6 +78,17 @@ class _FakeExpenseRepository extends Fake implements ExpenseRepository {
 
   final List<Map<String, int>> batchVersions = [];
   final List<List<String>> rejectBatchCalls = [];
+  final List<List<String>> approveBatchCalls = [];
+
+  @override
+  Future<int> approveBatch(
+    Iterable<String> ids, {
+    Map<String, int> expectedVersions = const {},
+  }) async {
+    approveBatchCalls.add(ids.toList());
+    batchVersions.add(expectedVersions);
+    return ids.length;
+  }
 
   @override
   Future<PagedResult<ExpenseClaim>> listPending({
@@ -82,7 +112,7 @@ class _FakeExpenseRepository extends Fake implements ExpenseRepository {
       'order': order,
     });
     return PagedResult(
-      items: [_claim('c-1'), _claim('c-2')],
+      items: pendingItems,
       page: page,
       size: size,
       total: 2,
@@ -144,15 +174,15 @@ class _FakeExpenseRepository extends Fake implements ExpenseRepository {
   }) async {
     rejectBatchCalls.add([ids.toList().join(','), reason]);
     batchVersions.add(expectedVersions);
-    return ids.length;
+    return rejectGate == null ? ids.length : await rejectGate!.future;
   }
 }
 
-ExpenseClaim _claim(String id) => ExpenseClaim(
+ExpenseClaim _claim(String id, {String applicantId = 'emp-1'}) => ExpenseClaim(
   id: id,
   claimNo: 'BX2026073000001$id',
   version: id == 'c-1' ? 3 : 8,
-  applicantId: 'emp-1',
+  applicantId: applicantId,
   applicantName: '王小明',
   departmentId: 'dept-1',
   departmentName: '研发部',
@@ -164,23 +194,94 @@ ExpenseClaim _claim(String id) => ExpenseClaim(
   submittedAt: DateTime(2026, 9, 9, 11),
 );
 
+class _Reviewer extends SessionNotifier {
+  _Reviewer(
+    this.permissions, {
+    this.employeeId = 'reviewer-employee',
+    this.readOnly = false,
+  });
+  final Set<String> permissions;
+  final String? employeeId;
+  final bool readOnly;
+  int intent = 0;
+  @override
+  int get requestIntentEpoch => intent;
+  SessionState identity({
+    String id = 'reviewer-user',
+    String? employee,
+    Set<String>? grants,
+  }) => SessionState(
+    status: AuthStatus.authenticated,
+    user: AppUser(
+      id: id,
+      code: 'R',
+      name: '审批员',
+      employeeId: employee ?? employeeId,
+      permissions: (grants ?? permissions).toList(),
+    ),
+    impersonationReadOnly: readOnly,
+  );
+  @override
+  SessionState build() => identity();
+  void replace(SessionState next) {
+    if (!state.isSameIdentity(next)) intent++;
+    state = next;
+  }
+}
+
+class _Api extends ApiClient {
+  _Api() : super(Dio(BaseOptions(baseUrl: 'https://expense.test/api')));
+  Completer<void>? captureGate;
+  Completer<void>? captureStarted;
+  @override
+  Future<AuthenticatedRequestScope> captureRequestScope({
+    required bool Function() isCurrent,
+  }) async {
+    if (captureGate != null) {
+      if (captureStarted?.isCompleted == false) captureStarted!.complete();
+      await captureGate!.future;
+    }
+    return super.captureRequestScope(isCurrent: isCurrent);
+  }
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => const {};
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async => const {};
+}
+
 Widget _app(
   _FakeExpenseRepository repo,
   SharedPreferences preferences, {
   ApprovalQueue? initialQueue,
   Set<String> permissions = const {Perm.expenseApprove},
-}) => ProviderScope(
-  overrides: [
-    expenseRepositoryProvider.overrideWithValue(repo),
-    sharedPreferencesProvider.overrideWithValue(preferences),
-    currentPermissionsProvider.overrideWithValue(permissions),
-  ],
-  child: MaterialApp(
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
-    supportedLocales: AppLocalizations.supportedLocales,
-    home: ExpenseApprovalListPage(initialQueue: initialQueue),
-  ),
-);
+  _Reviewer? reviewer,
+  _Api? api,
+  Widget? home,
+}) {
+  final session = reviewer ?? _Reviewer(permissions);
+  return ProviderScope(
+    overrides: [
+      expenseRepositoryProvider.overrideWithValue(repo),
+      sharedPreferencesProvider.overrideWithValue(preferences),
+      sessionProvider.overrideWith(() => session),
+      apiClientProvider.overrideWithValue(api ?? _Api()),
+    ],
+    child: MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: home ?? ExpenseApprovalListPage(initialQueue: initialQueue),
+    ),
+  );
+}
 
 MasterDataTableView<ExpenseClaim> _table(WidgetTester tester) =>
     tester.widget<MasterDataTableView<ExpenseClaim>>(
@@ -188,6 +289,261 @@ MasterDataTableView<ExpenseClaim> _table(WidgetTester tester) =>
     );
 
 void main() {
+  testWidgets('确认框等待时撤权再恢复，旧确认不会提交或清掉新选择', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final reviewer = _Reviewer({Perm.expenseView, Perm.expenseApprove});
+    final repo = _FakeExpenseRepository();
+    await tester.pumpWidget(_app(repo, preferences, reviewer: reviewer));
+    await tester.pumpAndSettle();
+    _table(tester).onSelectedIdsChanged!({'c-1'});
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('expense-batch-reject')));
+    await tester.tap(find.byKey(const Key('expense-batch-reject')));
+    await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(ExpenseApprovalListPage)),
+    );
+    reviewer.replace(reviewer.identity(grants: {Perm.expenseView}));
+    container.read(expenseActionEligibilityProvider);
+    reviewer.replace(reviewer.identity());
+    container.read(expenseActionEligibilityProvider);
+    await tester.pumpAndSettle();
+    _table(tester).onSelectedIdsChanged!({'c-2'});
+    await tester.pump();
+    expect(_table(tester).selectedIds, {'c-2'});
+    await tester.enterText(
+      find.byKey(const Key('uten-batch-reject-reason')),
+      '旧意图不应重放',
+    );
+    await tester.tap(find.byKey(const Key('uten-batch-reject-confirm')));
+    await tester.pumpAndSettle();
+    expect(repo.rejectBatchCalls, isEmpty);
+    expect(_table(tester).selectedIds, {'c-2'});
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('批量通过同样全选排除本人并冻结他人原版本', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final reviewer = _Reviewer({
+      Perm.expenseView,
+      Perm.expenseApprove,
+      Perm.attachmentView,
+      Perm.attachmentDownload,
+    });
+    final own = _claim('own', applicantId: 'reviewer-employee');
+    final repo = _FakeExpenseRepository()
+      ..pendingItems = [own, _claim('other')];
+    await tester.pumpWidget(_app(repo, preferences, reviewer: reviewer));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const Key('master-data-table-select-all')),
+    );
+    await tester.tap(find.byKey(const Key('master-data-table-select-all')));
+    await tester.pumpAndSettle();
+    expect(_table(tester).selectedIds, {'other'});
+    await tester.ensureVisible(find.byKey(const Key('expense-batch-approve')));
+    await tester.tap(find.byKey(const Key('expense-batch-approve')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认批量通过'));
+    await tester.pumpAndSettle();
+    expect(repo.approveBatchCalls.single, ['other']);
+    expect(repo.batchVersions.single, {'other': 8});
+    expect(repo.rejectBatchCalls, isEmpty);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('混合本人和他人待审单：真实表头全选只选可审批行，稳定行键和本人详情保留', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final reviewer = _Reviewer({Perm.expenseView, Perm.expenseApprove});
+    final own = _claim('own', applicantId: 'reviewer-employee');
+    final repo = _FakeExpenseRepository()
+      ..pendingItems = [own, _claim('other')];
+    await tester.pumpWidget(_app(repo, preferences, reviewer: reviewer));
+    await tester.pumpAndSettle();
+    expect(_table(tester).idOf!(own), isNull);
+    expect(_table(tester).rowKeyOf!(own), 'own');
+    expect(_table(tester).onRowTap, isNotNull);
+    await tester.ensureVisible(
+      find.byKey(const Key('master-data-table-select-all')),
+    );
+    await tester.tap(find.byKey(const Key('master-data-table-select-all')));
+    await tester.pumpAndSettle();
+    expect(_table(tester).selectedIds, {'other'});
+    await tester.ensureVisible(find.byKey(const Key('expense-batch-reject')));
+    await tester.tap(find.byKey(const Key('expense-batch-reject')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('uten-batch-reject-reason')),
+      '补充凭证',
+    );
+    await tester.tap(find.byKey(const Key('uten-batch-reject-confirm')));
+    await tester.pumpAndSettle();
+    expect(repo.rejectBatchCalls.single.first, 'other');
+    expect(repo.batchVersions.single, {'other': 8});
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    repo.detail = own;
+    await tester.pumpWidget(
+      _app(
+        repo,
+        preferences,
+        reviewer: _Reviewer({Perm.expenseView, Perm.expenseApprove}),
+        home: const ExpenseApprovalDetailPage(claimId: 'own'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(repo.detailCalls, contains('own'));
+    expect(
+      tester.widget<Scaffold>(find.byType(Scaffold)).floatingActionButton,
+      isNull,
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  for (final unresolved in [false, true]) {
+    testWidgets('只读模拟或未解析员工身份不会因approve码开放选择：unresolved=$unresolved', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      final repo = _FakeExpenseRepository();
+      final reviewer = _Reviewer(
+        {Perm.expenseView, Perm.expenseApprove},
+        employeeId: unresolved ? null : 'reviewer-employee',
+        readOnly: !unresolved,
+      );
+      await tester.pumpWidget(_app(repo, preferences, reviewer: reviewer));
+      await tester.pumpAndSettle();
+      expect(_table(tester).items, hasLength(2));
+      expect(_table(tester).selectable, isFalse);
+      expect(_table(tester).idOf!(_table(tester).items.first), isNull);
+      expect(_table(tester).batchActionsBuilder, isNull);
+      expect(repo.rejectBatchCalls, isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  testWidgets('换身份、撤权和重新授权均清除旧选择', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final reviewer = _Reviewer({Perm.expenseView, Perm.expenseApprove});
+    await tester.pumpWidget(
+      _app(_FakeExpenseRepository(), preferences, reviewer: reviewer),
+    );
+    await tester.pumpAndSettle();
+    _table(tester).onSelectedIdsChanged!({'c-1'});
+    await tester.pump();
+    reviewer.replace(
+      reviewer.identity(id: 'second', employee: 'second-employee'),
+    );
+    await tester.pumpAndSettle();
+    expect(_table(tester).selectedIds, isEmpty);
+    _table(tester).onSelectedIdsChanged!({'c-2'});
+    await tester.pump();
+    reviewer.replace(
+      reviewer.identity(
+        id: 'second',
+        employee: 'second-employee',
+        grants: {Perm.expenseView},
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(_table(tester).selectedIds, isEmpty);
+    expect(_table(tester).selectable, isFalse);
+    reviewer.replace(
+      reviewer.identity(id: 'second', employee: 'second-employee'),
+    );
+    await tester.pumpAndSettle();
+    expect(_table(tester).selectedIds, isEmpty);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  for (final identityChange in [false, true]) {
+    testWidgets('凭据等待期间A-B-A或撤权恢复不能复活旧批量意图：identity=$identityChange', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues(const {});
+      final preferences = await SharedPreferences.getInstance();
+      final reviewer = _Reviewer({Perm.expenseView, Perm.expenseApprove});
+      final api = _Api();
+      final repo = _FakeExpenseRepository();
+      await tester.pumpWidget(
+        _app(repo, preferences, reviewer: reviewer, api: api),
+      );
+      await tester.pumpAndSettle();
+      _table(tester).onSelectedIdsChanged!({'c-1'});
+      await tester.pumpAndSettle();
+      api.captureGate = Completer<void>();
+      api.captureStarted = Completer<void>();
+      await tester.ensureVisible(find.byKey(const Key('expense-batch-reject')));
+      await tester.tap(find.byKey(const Key('expense-batch-reject')));
+      await tester.pump();
+      await api.captureStarted!.future;
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ExpenseApprovalListPage)),
+      );
+      reviewer.replace(
+        identityChange
+            ? reviewer.identity(id: 'second', employee: 'second-employee')
+            : reviewer.identity(grants: {Perm.expenseView}),
+      );
+      container.read(expenseActionEligibilityProvider);
+      reviewer.replace(reviewer.identity());
+      container.read(expenseActionEligibilityProvider);
+      await tester.pump();
+      api.captureGate!.complete();
+      await tester.pumpAndSettle();
+      expect(repo.rejectBatchCalls, isEmpty);
+      expect(_table(tester).selectedIds, isEmpty);
+      expect(find.byType(UtenBatchRejectDialog), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
+  testWidgets('旧批量响应不清空新身份选择、不显示旧成功消息', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final reviewer = _Reviewer({Perm.expenseView, Perm.expenseApprove});
+    final repo = _FakeExpenseRepository()..rejectGate = Completer<int>();
+    await tester.pumpWidget(_app(repo, preferences, reviewer: reviewer));
+    await tester.pumpAndSettle();
+    _table(tester).onSelectedIdsChanged!({'c-1'});
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('expense-batch-reject')));
+    await tester.tap(find.byKey(const Key('expense-batch-reject')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('uten-batch-reject-reason')),
+      '补充凭证',
+    );
+    await tester.tap(find.byKey(const Key('uten-batch-reject-confirm')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(repo.rejectBatchCalls, hasLength(1));
+    reviewer.replace(
+      reviewer.identity(id: 'second', employee: 'second-employee'),
+    );
+    await tester.pumpAndSettle();
+    _table(tester).onSelectedIdsChanged!({'c-2'});
+    await tester.pump();
+    repo.rejectGate!.complete(1);
+    await tester.pumpAndSettle();
+    expect(_table(tester).selectedIds, {'c-2'});
+    expect(find.textContaining('已驳回 1 单报销'), findsNothing);
+    expect(repo.rejectBatchCalls, hasLength(1));
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   test('missing task counts never promote legacy browsing totals to tasks', () {
     final summary = ExpenseQueueSummary.fromJson({
       'pendingCount': 7,

@@ -14,12 +14,16 @@ class ToolOutputTest(unittest.TestCase):
         # Embedded Python distributions can report their runtime directory here.
         launcher = sys.executable if Path(sys.executable).is_file() else shutil.which("python")
         self.assertIsNotNone(launcher)
+        child = (
+            f"import sys; sys.stdout.buffer.write(bytes.fromhex('{('中文'.encode('utf-8') + bytes([255])).hex()}')); "
+            f"sys.stderr.buffer.write(bytes.fromhex('{'构建诊断'.encode('utf-8').hex()}')); sys.exit(7)"
+        )
+        self.assertTrue(child.isascii(), "The legacy-locale child argv itself must remain ASCII")
         program = (
             "import json, subprocess, sys; "
             f"sys.path.insert(0, {folder!r}); "
             "from tool_output import UTF8_TOOL_OUTPUT; "
-            "child = \"import sys; sys.stdout.buffer.write('\\u4e2d\\u6587'.encode('utf-8') + bytes([255])); "
-            "sys.stderr.buffer.write('\\u6784\\u5efa\\u8bca\\u65ad'.encode('utf-8')); sys.exit(7)\"; "
+            f"child = {child!r}; "
             f"r = subprocess.run([{launcher!r}, '-c', child], capture_output=True, **UTF8_TOOL_OUTPUT); "
             "sys.stdout.buffer.write(json.dumps({'code':r.returncode,'stdout':r.stdout,'stderr':r.stderr}, "
             "ensure_ascii=True).encode('ascii'))"

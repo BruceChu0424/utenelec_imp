@@ -15,8 +15,11 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
     // Applied inside every scoped list/count query, before pagination. The over-limit
     // event uses current plan-owner access; existing workshop/draw rules stay unchanged.
     String PARTICIPATION_VISIBILITY = """
+              AND """ + SubcontractOutboundNoticePurpose.SUPPORTED_HQL + """
               AND cast(function('fn_notice_participation_visible',n.actionRoute,n.sourceEvent,
-                    :#{#readScope.participationRules},n.type,n.title,n.content,n.audienceUserId,
+                    case when n.sourceEvent='SUBCONTRACT_OUTBOUND_COMPLETED' AND """ + SubcontractOutboundNoticePurpose.ORDINARY_HQL + """
+                    then :#{#readScope.ordinaryReceiptParticipationRules()} else :#{#readScope.participationRules} end,
+                    n.type,n.title,n.content,n.audienceUserId,
                     n.audienceScope,n.audienceSummary,n.audienceCount,n.interactionMode,n.kind,
                     n.aggregateKind,n.aggregateId,n.sourceRevision,n.dueAt,n.topPriority,n.priority,
                     cast(n.attachments as String),cast(n.targetDepartmentIds as String),

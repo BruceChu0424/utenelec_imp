@@ -34,18 +34,15 @@
 // 空间不足时由 UtenAdaptiveHierarchyPane 显示全宽目录，正文保留当前路径入口；
 // 本组件依赖父容器给出有界宽度（页面 body 天然有界）。
 
-import '../../core/theme/uten_tokens.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'uten_page_layout.dart';
-import 'package:flutter/services.dart';
+import 'uten_split_handle.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'uten_adaptive_hierarchy_pane.dart';
 import 'uten_hierarchy_content_width.dart';
 import 'uten_scroll_gutter.dart';
-import '../../core/theme/uten_anim.dart';
-import '../feedback/uten_motion.dart';
 
 /// 左右分栏布局：左面板固定宽（可拖调），右面板占满剩余。
 class UtenSplitView extends StatefulWidget {
@@ -121,15 +118,12 @@ class _UtenSplitViewState extends State<UtenSplitView> {
       widget.controlledLeadingWidth ?? widget.initialLeadingWidth;
   late bool _hasUserWidth = widget.controlledLeadingWidth != null;
   int _widthRevision = 0;
-  bool _hovering = false;
-  bool _dragging = false;
-  final FocusNode _handleFocus = FocusNode();
+
   final _contentWidths = UtenHierarchyContentWidthController();
 
   /// 最近一次布局的总宽（拖动 clamp 用）。build 时刷新。
   double _totalWidth = double.infinity;
 
-  bool get _active => _hovering || _dragging;
   double get _minimumWidth {
     if (!_hasUserWidth) {
       return math.max(widget.minLeadingWidth, _contentWidths.minimumWidth);
@@ -234,12 +228,6 @@ class _UtenSplitViewState extends State<UtenSplitView> {
   double get _dirSign =>
       Directionality.of(context) == TextDirection.rtl ? -1.0 : 1.0;
 
-  void _onDragUpdate(DragUpdateDetails d) =>
-      _applyWidth(_clamp(_width) + d.delta.dx * _dirSign, persist: false);
-
-  void _nudge(double delta) =>
-      _applyWidth(_clamp(_width) + delta * _dirSign, persist: true);
-
   void _reset() {
     setState(() {
       ++_widthRevision;
@@ -252,7 +240,6 @@ class _UtenSplitViewState extends State<UtenSplitView> {
 
   @override
   void dispose() {
-    _handleFocus.dispose();
     _contentWidths.dispose();
     super.dispose();
   }
@@ -295,115 +282,10 @@ class _UtenSplitViewState extends State<UtenSplitView> {
     );
   }
 
-  /// 握把上的抓握纹（2 列 × 3 行小圆点）——通用「可拖拽」标志，方向无关。
-  Widget _gripDots(Color color) {
-    Widget dot() => Container(
-      width: 3,
-      height: 3,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(UtenRadius.xs),
-      ),
-    );
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(
-        3,
-        (_) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 1.5),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [dot(), const SizedBox(width: 2), dot()],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 分割线与拖拽手柄：12px 命中区，1px 视觉线居中，常驻握把提示可拖（悬停/拖动高亮放大）。
-  Widget _buildGutter(BuildContext context) {
-    final theme = Theme.of(context);
-    final active = _active;
-    return UtenMotion(
-      duration: UtenAnim.fast,
-      builder: (context, duration) => MouseRegion(
-        cursor: SystemMouseCursors.resizeColumn,
-        onEnter: (_) => setState(() => _hovering = true),
-        onExit: (_) => setState(() => _hovering = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          // 点击手柄即取焦，保证 ←/→ 键盘微调可用。
-          onTap: _handleFocus.requestFocus,
-          onHorizontalDragStart: (_) => setState(() => _dragging = true),
-          onHorizontalDragUpdate: _onDragUpdate,
-          onHorizontalDragEnd: (_) {
-            setState(() => _dragging = false);
-            _persist(); // 拖动期间只改内存，松手一次落盘
-          },
-          onDoubleTap: _reset,
-          child: Tooltip(
-            message: '拖动调整宽度 · 双击复位', // TODO(l10n): 补 arb
-            child: CallbackShortcuts(
-              bindings: {
-                const SingleActivator(LogicalKeyboardKey.arrowLeft): () =>
-                    _nudge(-16),
-                const SingleActivator(LogicalKeyboardKey.arrowRight): () =>
-                    _nudge(16),
-              },
-              child: Focus(
-                focusNode: _handleFocus,
-                child: SizedBox(
-                  width: UtenSplitView.gutterWidth,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      AnimatedContainer(
-                        duration: duration,
-                        width: active ? 2 : 1,
-                        color: active
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.outlineVariant,
-                      ),
-                      // 握把：常驻可见的「可拖」标记（贴满命中区宽的圆角小块 + 抓握纹），
-                      // 不再只在 hover 浮现——触屏无悬停也能一眼看出可拖。悬停/拖动时
-                      // 染主色并轻微放大，强化「点这里拖」的反馈。
-                      AnimatedScale(
-                        scale: active ? 1.08 : 1.0,
-                        duration: duration,
-                        child: AnimatedContainer(
-                          duration: duration,
-                          width: UtenSplitView.gutterWidth,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            color: active
-                                ? theme.colorScheme.primaryContainer
-                                : theme.colorScheme.surfaceContainerHigh,
-                            borderRadius: BorderRadius.circular(UtenRadius.sm),
-                            border: Border.all(
-                              color: active
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.outlineVariant,
-                              width: active ? 1.5 : 1,
-                            ),
-                          ),
-                          child: Center(
-                            child: _gripDots(
-                              active
-                                  ? theme.colorScheme.primary
-                                  : theme.colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget _buildGutter(BuildContext context) => UtenSplitHandle(
+    onDelta: (delta) =>
+        _applyWidth(_clamp(_width) + delta * _dirSign, persist: false),
+    onReset: _reset,
+    onDragEnd: _persist,
+  );
 }

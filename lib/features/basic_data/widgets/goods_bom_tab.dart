@@ -1,3 +1,4 @@
+import '../providers/goods_bom_changes.dart';
 // 货品详情「组装信息」：默认只读；编辑模式中的每次操作进入会话草稿。
 // 退出编辑时选择保存或丢弃，保存前预览共用组件的影响并一次提交全部变更。
 // 右下固定选择摘要、编辑模式和审计模式；写入口同时检查模式、会话及细分权限。
@@ -1126,6 +1127,9 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    ref.listenManual(goodsBomChangesProvider, (_, _) {
+      if (mounted && !_editMode && !_writeBusy) _load();
+    });
     _boundarySubscription = ref.listenManual(sensitiveReadBoundaryProvider, (
       previous,
       next,

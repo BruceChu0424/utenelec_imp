@@ -4674,10 +4674,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json"
+        "clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json",
+        "clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json"
       ],
-      "notes": "仅分类/分页/选中详情读取部分已有源；其余业务与目标机验收未完成。\n2026-10-31 Web/Flutter now shares full goods/BOM detail from where-used, product code title, UUID previous/next navigation and comparison-window draft guards. Native full detail/BOM remains unported; do not infer WPF parity or expose writes. See E-MOULD-BOM-WINDOWS-20261031.",
-      "lastUpdated": "2026-10-31T16:42:11.122928+00:00"
+      "notes": "2026-11-01 Web/Flutter goods detail gains symmetric window insets and a unified theme surface. BOM comparison uses the SAME MasterDataTableView and UtenTreeTableCell as assembly, with linked scroll/selection and bidirectional selected/all-component replacement through existing snapshot/preview/commit. Native full detail/BOM remains unported. Follow source+target fingerprints, exact decimals, permissions and unknown-commit recovery. See E-GOODS-BOM-COMPARE-20261101; current source hashes belong to that evidence.",
+      "lastUpdated": "2026-11-01T23:31:04.299763+00:00"
     },
     {
       "id": "W7-BIZ-216",
@@ -5049,10 +5050,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json"
+        "clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json",
+        "clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json"
       ],
-      "notes": "仅分类/分页/选中详情读取部分已有源；其余业务与目标机验收未完成。\n2026-10-31 Flutter category shell gains comparison windows; goods list passes actual UUID source order to full detail. WPF candidate goods reading is not full detail/edit/multiwindow migration. See E-MOULD-BOM-WINDOWS-20261031.",
-      "lastUpdated": "2026-10-31T16:42:13.963048+00:00"
+      "notes": "2026-11-01 Web/Flutter goods windows add retained resizable tiling, unified surfaces and comparison including narrow/multiple-window selection. WPF equivalent remains unported; retain partial-read status and follow W7-BIZ-025 contract. See E-GOODS-BOM-COMPARE-20261101.",
+      "lastUpdated": "2026-11-01T23:31:04.742898+00:00"
     },
     {
       "id": "W7-BIZ-035",

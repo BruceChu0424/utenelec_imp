@@ -189,9 +189,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`。
+证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`；`clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json`。
 
-接续/限制：仅分类/分页/选中详情读取部分已有源；其余业务与目标机验收未完成。；2026-10-31 Web/Flutter now shares full goods/BOM detail from where-used, product code title, UUID previous/next navigation and comparison-window draft guards. Native full detail/BOM remains unported; do not infer WPF parity or expose writes. See E-MOULD-BOM-WINDOWS-20261031.。
+接续/限制：2026-11-01 Web/Flutter goods detail gains symmetric window insets and a unified theme surface. BOM comparison uses the SAME MasterDataTableView and UtenTreeTableCell as assembly, with linked scroll/selection and bidirectional selected/all-component replacement through existing snapshot/preview/commit. Native full detail/BOM remains unported. Follow source+target fingerprints, exact decimals, permissions and unknown-commit recovery. See E-GOODS-BOM-COMPARE-20261101; current source hashes belong to that evidence.。
 
 ## W7-BIZ-216
 
@@ -405,9 +405,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`。
+证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`；`clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json`。
 
-接续/限制：仅分类/分页/选中详情读取部分已有源；其余业务与目标机验收未完成。；2026-10-31 Flutter category shell gains comparison windows; goods list passes actual UUID source order to full detail. WPF candidate goods reading is not full detail/edit/multiwindow migration. See E-MOULD-BOM-WINDOWS-20261031.。
+接续/限制：2026-11-01 Web/Flutter goods windows add retained resizable tiling, unified surfaces and comparison including narrow/multiple-window selection. WPF equivalent remains unported; retain partial-read status and follow W7-BIZ-025 contract. See E-GOODS-BOM-COMPARE-20261101.。
 
 ## W7-BIZ-035
 

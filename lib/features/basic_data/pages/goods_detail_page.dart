@@ -31,6 +31,7 @@ import '../models/goods_field_edit_policy.dart';
 import '../repositories/goods_repository.dart';
 import '../repositories/master_status_repository.dart';
 import '../widgets/goods_detail_body.dart';
+import '../providers/goods_bom_changes.dart';
 import '../widgets/master_status_confirmation.dart';
 import '../widgets/master_edit_owner.dart';
 
@@ -87,6 +88,9 @@ class _GoodsDetailPageState extends ConsumerState<GoodsDetailPage> {
   @override
   void initState() {
     super.initState();
+    ref.listenManual(goodsBomChangesProvider, (_, _) {
+      if (mounted && !_isCreate && !_changing) _load();
+    });
     // Existing goods must show their read placeholder on the very first frame.
     // A null detail otherwise mounts the new-goods form (and its draft setup),
     // only to remove it when the post-frame read starts.

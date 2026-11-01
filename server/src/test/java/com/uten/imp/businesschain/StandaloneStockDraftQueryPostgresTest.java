@@ -20,6 +20,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.transaction.TestTransaction;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -237,8 +238,19 @@ class StandaloneStockDraftQueryPostgresTest {
         UUID noView = fixture.createUserWithPerms(world, "no-view-" + UUID.randomUUID(), "notice:read");
         fixture.loginAs(noView);
         assertEquals(0, drafts.counts().stockDocument());
-        read("/api/stock/docs", Map.of("docType", "CHECK", "standaloneDrafts", "true"), 403);
-        read("/api/stock/docs/facets", Map.of("docType", "CHECK", "standaloneDrafts", "true"), 403);
+        assertEquals("FORBIDDEN",read("/api/stock/docs", Map.of("docType", "CHECK", "standaloneDrafts", "true"), 403).path("code").asText());
+        assertEquals("FORBIDDEN",read("/api/stock/docs/facets", Map.of("docType", "CHECK", "standaloneDrafts", "true"), 403).path("code").asText());
+    }
+
+    @Test void committedHttpFixtureStillRejectsARevokedSubmittedPrincipal() throws Exception {
+        read("/api/stock/docs",Map.of("docType","CHECK"),200);
+        db.update("""
+                INSERT INTO user_permission_overrides(user_id,permission_id,effect)
+                SELECT ?,id,'revoke' FROM permissions WHERE code='stock_doc:view'
+                ON CONFLICT (user_id,permission_id) DO UPDATE SET effect='revoke',active=TRUE
+                """,keeper);
+        assertEquals("READ_SCOPE_CHANGED",read("/api/stock/docs",Map.of("docType","CHECK"),403).path("code").asText(),
+                "The same submitted principal must not outlive a committed permission revoke");
     }
 
     private Set<UUID> productionDocuments(UUID maker) {
@@ -301,11 +313,18 @@ class StandaloneStockDraftQueryPostgresTest {
         var actor = SecurityContextHolder.getContext().getAuthentication();
         var request = get(path).with(authentication(actor));
         options.forEach(request::param);
+        // The real publication authority reads in REQUIRES_NEW. Publish this
+        // isolated test's complete fixture first, exactly as a real HTTP caller
+        // sees committed users, grants and owner/warehouse source changes.
+        assertTrue(TestTransaction.isActive(),"This fixture owns a test transaction");
+        TestTransaction.flagForCommit();
+        TestTransaction.end();
         try {
             var response = http.perform(request).andReturn().getResponse();
             assertEquals(expectedStatus, response.getStatus(), response.getContentAsString());
             return json.readTree(response.getContentAsByteArray());
         } finally {
+            TestTransaction.start();
             SecurityContextHolder.getContext().setAuthentication(actor);
         }
     }

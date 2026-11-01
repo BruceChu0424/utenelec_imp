@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.quote;
 
 import com.uten.imp.testsupport.FixtureDatabaseProperties;
+import com.uten.imp.support.SalesManagerReviewFixtures;
 
 import com.uten.imp.application.port.SalesMasterLearningPort;
 import com.uten.imp.application.port.SalesLearningReceiptPort;
@@ -109,6 +110,7 @@ class SalesQuoteFinanceFlowPostgresTest {
     @Autowired private SalesQuoteFinanceService finance;
     @Autowired private SalesOrderService orders;
     @Autowired private SalesOrderFinanceConfirmService orderFinance;
+    @Autowired private com.uten.imp.features.sales.SalesManagerReviewService managers;
     @Autowired private TaskClaimService claims;
     @Autowired private DocumentDraftCountController documentCounts;
     @Autowired private ApplicationEvents events;
@@ -140,9 +142,10 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(quote.getItems().getFirst().getAmountOriginal()).isEqualByComparingTo("25");
         assertThat(quote.getItems().getFirst().getGoodsNameEn()).isEqualTo("Original clip");
         quotes.submit(quote.getId(), new QuoteActionRequest(0));
+        managerApprove(f, quote.getId(), 1); // manager 1 -> 2; finance still independent
         loginAs(f.finance());
         var claim = claims.claim(CLAIM, quote.getId().toString());
-        var review = finance.confirm(quote.getId(), new QuoteFinanceDecisionRequest(1, claim.claimId(), null));
+        var review = finance.confirm(quote.getId(), new QuoteFinanceDecisionRequest(2, claim.claimId(), null));
         assertThat(review.lines().getFirst().extraColumns().getFirst().value()).isEqualTo("5");
         assertThat(review.lines().getFirst().goodsNameEn()).isEqualTo("Original clip");
         jdbc.update("UPDATE goods SET name_en='Renamed master' WHERE id=?", listed);
@@ -187,6 +190,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         loginAs(f.sales());
         var draft = quotes.create(quoteRequest(f.client(), line(item, "2", null, "1", null)));
         quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        managerApprove(f, draft.getId(), 1);
 
         loginAs(rejector);
         var rejectionReview = finance.review(draft.getId());
@@ -202,6 +206,7 @@ class SalesQuoteFinanceFlowPostgresTest {
                 new QuoteFinanceDecisionRequest(rejectionReview.reviewRevision(), rejectClaim.claimId(), "请销售重新确认客户要求"));
         loginAs(f.sales());
         quotes.submit(draft.getId(), new QuoteActionRequest(returned.reviewRevision()));
+        managerApprove(f, draft.getId(), returned.reviewRevision() + 1); // one new submission precedes management
 
         loginAs(confirmer);
         var confirmationReview = finance.review(draft.getId());
@@ -271,6 +276,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(updated.getItems().get(1).getId()).isEqualTo(second.getId());
         assertConflict(() -> quotes.delete(updated.getId(), created.getReviewRevision()));
         quotes.submit(updated.getId(), new QuoteActionRequest(updated.getReviewRevision()));
+        managerApprove(f, updated.getId(), updated.getReviewRevision() + 1);
         assertThat(jdbc.queryForObject("""
                 SELECT title FROM notices WHERE source_event = 'SALES_QUOTE_PENDING_FINANCE_REVIEW'
                   AND audience_user_id = ? AND aggregate_id = ?
@@ -312,14 +318,32 @@ class SalesQuoteFinanceFlowPostgresTest {
         QuoteDetail submitted = quotes.submit(quoteId, new QuoteActionRequest(0));
         assertThat(submitted.getStatus()).isEqualTo((short) 2);
         assertThat(submitted.getReviewRevision()).isEqualTo(1);
-        assertThat(submitted.getStatusBucket()).isEqualTo("PENDING_FINANCE");
+        assertThat(submitted.getStatusBucket()).isEqualTo("PENDING_MANAGER");
         assertThat(submitted.getAllowedActions()).contains("withdraw").doesNotContain("edit", "submit");
-        assertThat(pendingQuoteReviews(f)).isEqualTo(pendingBefore + 1);
+        assertThat(pendingQuoteReviews(f)).isEqualTo(pendingBefore);
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM notices
-                WHERE source_event = 'SALES_QUOTE_PENDING_FINANCE_REVIEW' AND audience_user_id = ?
-                """, Long.class, f.finance())).isPositive();
+                WHERE source_event = 'SALES_QUOTE_PENDING_MANAGER_REVIEW' AND audience_user_id = ?
+                """, Long.class, f.manager())).isPositive();
         assertBusiness(() -> quotes.update(quoteId, copy(submitted, request)));
+
+        // 第一站是负责人；未定价不能批准，负责人先完成定价，财务没有被代替。
+        loginAs(f.finance());
+        assertNotFound(() -> finance.review(quoteId));
+        assertConflict(() -> claims.claim(CLAIM, quoteId.toString()));
+        loginAs(f.manager());
+        var managerClaim = claims.claim("SALES_QUOTE_MANAGER_REVIEW", quoteId.toString());
+        var managerReview = finance.managerReview(quoteId);
+        assertThat(managerReview.reviewRevision()).isEqualTo(1);
+        assertThat(managerReview.blockingLineCount()).isEqualTo(2);
+        assertConflict(() -> finance.confirmManager(quoteId, new QuoteFinanceDecisionRequest(1, managerClaim.claimId(), null)));
+        var managerPriced = finance.editManager(quoteId, edit(1, managerClaim.claimId(), List.of(
+                new QuoteFinanceEditRequest.Line(managerReview.lines().get(1).itemId(), null, new BigDecimal("3.5"), null, null),
+                new QuoteFinanceEditRequest.Line(managerReview.lines().get(2).itemId(), null, null, true, null))));
+        assertThat(managerPriced.reviewRevision()).isEqualTo(2);
+        assertThat(managerPriced.lines().get(1).priceSource()).isEqualTo("MANAGER");
+        managerApprove(f, quoteId, 2); // -> 3, retains the separate manager pricing history
+        assertThat(pendingQuoteReviews(f)).isEqualTo(pendingBefore + 1);
 
         // 财务可读: 列表 + 核价页 + 普通详情(不脱敏)。
         loginAs(f.finance());
@@ -329,7 +353,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(review.lines().getFirst().salesProposedDiscount()).isEqualByComparingTo("0.95");
         assertThat(review.lines().getFirst().unitId()).isEqualTo(unitOf(listed));
         assertThat(review.financeActions()).containsExactly("edit", "return", "confirm");
-        assertThat(review.blockingLineCount()).isEqualTo(2);
+        assertThat(review.blockingLineCount()).isZero();
         assertThat(quotes.detail(quoteId).isPriceMasked()).isFalse();
 
         // 销售撤回: 陈旧修订号 409; 财务正在核价(持有认领) 409; 释放后撤回成功, 财务再也看不到。
@@ -338,44 +362,43 @@ class SalesQuoteFinanceFlowPostgresTest {
         loginAs(f.finance());
         var heldClaim = claims.claim(CLAIM, quoteId.toString());
         loginAs(f.sales());
-        assertConflict(() -> quotes.withdraw(quoteId, new QuoteActionRequest(1)));
+        assertConflict(() -> quotes.withdraw(quoteId, new QuoteActionRequest(3)));
         loginAs(f.finance());
         claims.release(CLAIM, quoteId.toString(), heldClaim.claimId());
         loginAs(f.sales());
-        QuoteDetail withdrawn = quotes.withdraw(quoteId, new QuoteActionRequest(1));
+        QuoteDetail withdrawn = quotes.withdraw(quoteId, new QuoteActionRequest(3));
         assertThat(withdrawn.getStatusBucket()).isEqualTo("DRAFT");
         loginAs(f.finance());
         assertNotFound(() -> finance.review(quoteId));
         assertThat(finance.list("pending", null, 1, 100).getItems()).noneMatch(item -> item.id().equals(quoteId));
 
         loginAs(f.sales());
-        quotes.submit(quoteId, new QuoteActionRequest(2));
+        quotes.submit(quoteId, new QuoteActionRequest(4));
+        managerApprove(f, quoteId, 5); // -> finance review 6
 
         // 非财务部门通过部门矩阵取得核价权限即可认领；改价仍需本人有效占用。
         loginAs(f.outsider());
         assertThat(currentPermissions()).contains("sales_quote_finance:confirm");
         assertThat(finance.pendingCount().get("pending")).isPositive();
-        assertConflict(() -> finance.edit(quoteId, edit(3, null, List.of())));
+        assertConflict(() -> finance.edit(quoteId, edit(6, UUID.randomUUID(), List.of())));
         var outsideClaim = claims.claim(CLAIM, quoteId.toString());
         assertThat(outsideClaim.claimedByMe()).isTrue();
         claims.release(CLAIM, quoteId.toString(), outsideClaim.claimId());
 
-        // 财务: 没认领不能改; 认领后确认被未定价行拦下; 陈旧修订号 409。
+        // 财务: 缺本人认领不能改；经理阶段版本 5 不能冒充当前财务版本 6。
         loginAs(f.finance());
-        assertConflict(() -> finance.edit(quoteId, edit(3, null, List.of())));
+        assertConflict(() -> finance.edit(quoteId, edit(6, UUID.randomUUID(), List.of())));
         var claim = claims.claim(CLAIM, quoteId.toString());
-        assertThatThrownBy(() -> finance.confirm(quoteId, new QuoteFinanceDecisionRequest(3, claim.claimId(), null)))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("还没有单价")
-                .extracting(error -> ((ApiException) error).getCode()).isEqualTo(ErrorCode.CONFLICT);
-        assertConflict(() -> finance.edit(quoteId, edit(2, claim.claimId(), List.of())));
+        assertThat(finance.review(quoteId).blockingLineCount()).isZero();
+        assertConflict(() -> finance.confirm(quoteId, new QuoteFinanceDecisionRequest(5, claim.claimId(), null)));
+        assertConflict(() -> finance.edit(quoteId, edit(5, claim.claimId(), List.of())));
 
         List<UUID> itemIds = finance.review(quoteId).lines().stream().map(QuoteFinanceReviewDto.Line::itemId).toList();
-        QuoteFinanceReviewDto edited = finance.edit(quoteId, edit(3, claim.claimId(), List.of(
+        QuoteFinanceReviewDto edited = finance.edit(quoteId, edit(6, claim.claimId(), List.of(
                 new QuoteFinanceEditRequest.Line(itemIds.get(0), null, new BigDecimal("9.2"), null, null),
                 new QuoteFinanceEditRequest.Line(itemIds.get(1), null, new BigDecimal("3.5"), null, null),
                 new QuoteFinanceEditRequest.Line(itemIds.get(2), null, null, true, null))));
-        assertThat(edited.reviewRevision()).isEqualTo(4);
+        assertThat(edited.reviewRevision()).isEqualTo(7);
         QuoteFinanceReviewDto.Line dealLine = edited.lines().get(0);
         assertThat(dealLine.listPrice()).isEqualByComparingTo("10");
         assertThat(dealLine.discount()).isEqualByComparingTo("0.92");
@@ -387,15 +410,15 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(edited.lines().get(2).priceSource()).isEqualTo("FINANCE");
         assertThat(edited.blockingLineCount()).isZero();
         // 财务不能用 0 当成交单价(要勾赠品), 也不能一行两种改法。
-        assertThatThrownBy(() -> finance.edit(quoteId, edit(4, claim.claimId(), List.of(
+        assertThatThrownBy(() -> finance.edit(quoteId, edit(7, claim.claimId(), List.of(
                 new QuoteFinanceEditRequest.Line(itemIds.get(0), new BigDecimal("0.9"), BigDecimal.ONE, null, null)))))
                 .isInstanceOf(ApiException.class);
 
         // 退回销售: 原因必填; 退回后财务仍可见(已退回), 销售草稿计数不含退回件, 红徽章计 1。
         assertThatThrownBy(() -> finance.returnToSales(quoteId,
-                new QuoteFinanceDecisionRequest(4, claim.claimId(), " "))).isInstanceOf(ApiException.class);
+                new QuoteFinanceDecisionRequest(7, claim.claimId(), " "))).isInstanceOf(ApiException.class);
         QuoteFinanceReviewDto returned = finance.returnToSales(quoteId,
-                new QuoteFinanceDecisionRequest(4, claim.claimId(), "客户要改数量"));
+                new QuoteFinanceDecisionRequest(7, claim.claimId(), "客户要改数量"));
         assertThat(returned.statusBucket()).isEqualTo("FINANCE_REJECTED");
         assertThat(finance.list("returned", null, 1, 100).getItems()).anyMatch(item -> item.id().equals(quoteId));
 
@@ -420,29 +443,39 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(resaved.getItems().get(1).isFinancePriced()).isTrue();
         assertThat(resaved.getItems().get(1).getPrice()).isEqualByComparingTo("3.5");
         assertThat(resaved.getStatusBucket()).isEqualTo("FINANCE_REJECTED");
-        quotes.submit(quoteId, new QuoteActionRequest(6));
+        quotes.submit(quoteId, new QuoteActionRequest(9));
+        managerApprove(f, quoteId, 10); // -> finance review 11
 
         loginAs(f.finance());
         var claim2 = claims.claim(CLAIM, quoteId.toString());
-        QuoteFinanceReviewDto confirmed = finance.confirm(quoteId, new QuoteFinanceDecisionRequest(7, claim2.claimId(), "按 9.2 折"));
+        QuoteFinanceReviewDto confirmed = finance.confirm(quoteId, new QuoteFinanceDecisionRequest(11, claim2.claimId(), "按 9.2 折"));
         assertThat(confirmed.statusBucket()).isEqualTo("APPROVED");
         assertThat(confirmed.financeActions()).containsExactly("reopen");
         assertThat(confirmed.financeRemark()).isEqualTo("按 9.2 折");
         assertThat(claims.activeClaimView(CLAIM, quoteId.toString())).isEmpty();
 
         // 重新核价 → 待核价, 再确认: 上次确认折扣可对照。
-        finance.reopen(quoteId, new QuoteActionRequest(8, "客户追加折扣"));
+        finance.reopen(quoteId, new QuoteActionRequest(12, "客户追加折扣"));
         var claim3 = claims.claim(CLAIM, quoteId.toString());
-        QuoteFinanceReviewDto reconfirmed = finance.confirm(quoteId, new QuoteFinanceDecisionRequest(9, claim3.claimId(), null));
+        QuoteFinanceReviewDto reconfirmed = finance.confirm(quoteId, new QuoteFinanceDecisionRequest(13, claim3.claimId(), null));
         assertThat(reconfirmed.lines().getFirst().lastFinanceConfirmedDiscount()).isEqualByComparingTo("0.92");
         assertThat(reconfirmed.revisions()).extracting(r -> r.action()).containsExactly(
-                "SUBMIT", "WITHDRAW", "SUBMIT", "FINANCE_EDIT", "RETURN", "SALES_EDIT", "SUBMIT", "CONFIRM",
-                "FINANCE_REOPEN", "CONFIRM");
+                "SUBMIT", "MANAGER_EDIT", "MANAGER_CONFIRM", "WITHDRAW", "SUBMIT", "MANAGER_CONFIRM",
+                "FINANCE_EDIT", "RETURN", "SALES_EDIT", "SUBMIT", "MANAGER_CONFIRM", "CONFIRM", "FINANCE_REOPEN", "CONFIRM");
+        assertThat(reconfirmed.revisions()).extracting(r -> r.revision()).containsExactly(1,2,3,4,5,6,7,8,9,10,11,12,13,14);
+        var submittedSnapshot = reconfirmed.revisions().get(0).snapshot();
+        var managerSnapshot = reconfirmed.revisions().get(1).snapshot();
+        var financeSnapshot = reconfirmed.revisions().get(6).snapshot();
+        assertThat(submittedSnapshot.path("lines").get(1).path("price").isMissingNode()).isTrue();
+        assertThat(managerSnapshot.path("lines").get(1).path("priceSource").asText()).isEqualTo("MANAGER");
+        assertThat(financeSnapshot.path("lines").get(1).path("priceSource").asText()).isEqualTo("FINANCE");
+        assertThat(managerSnapshot.path("managerReview").path("state").asText()).isEqualTo("PENDING");
+        assertThat(reconfirmed.revisions().get(2).snapshot().path("managerReview").path("state").asText()).isEqualTo("APPROVED");
 
         loginAs(f.sales());
         assertThat(quotes.counts().awaitingCustomerConfirmation()).isEqualTo(1);
         assertThat(quotes.counts().awaitingConversion()).isZero();
-        QuoteDetail accepted = quotes.customerConfirm(quoteId, new QuoteActionRequest(10));
+        QuoteDetail accepted = quotes.customerConfirm(quoteId, new QuoteActionRequest(14));
         assertThat(quotes.counts().awaitingConversion()).isEqualTo(1);
         QuoteQueryFilter awaiting = new QuoteQueryFilter(null, null, null, null, null, null, "awaiting_conversion");
         assertThat(quotes.list(awaiting, 1, 50, null, null).getItems())
@@ -485,10 +518,10 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(revisedOrder.getItems().getLast().isQuoteLocked()).isFalse();
 
         // 报价已转单: 销售不能重新修改/作废, 财务不能重新核价。
-        assertConflict(() -> quotes.reopen(quoteId, new QuoteActionRequest(9)));
+        assertConflict(() -> quotes.reopen(quoteId, new QuoteActionRequest(15)));
         assertConflict(() -> quotes.reverse(quoteId));
         loginAs(f.finance());
-        assertConflict(() -> finance.reopen(quoteId, new QuoteActionRequest(9)));
+        assertConflict(() -> finance.reopen(quoteId, new QuoteActionRequest(15)));
 
         // 订单财务审核页: 带来源报价与逐行一致标记(报价外新增行不一致)。
         var orderReview = orderFinance.review(order.getId());
@@ -507,12 +540,13 @@ class SalesQuoteFinanceFlowPostgresTest {
         loginAs(f.sales());
         QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(listed, "3", null, null, null)));
         quotes.submit(draft.getId(), new QuoteActionRequest(draft.getReviewRevision()));
+        managerApprove(f, draft.getId(), 1);
         loginAs(f.finance());
         var claim = claims.claim(CLAIM, draft.getId().toString());
-        finance.confirm(draft.getId(), new QuoteFinanceDecisionRequest(1, claim.claimId(), null));
+        finance.confirm(draft.getId(), new QuoteFinanceDecisionRequest(2, claim.claimId(), null));
         loginAs(f.sales());
         assertConflict(() -> quotes.reopen(draft.getId(), new QuoteActionRequest(1)));
-        QuoteDetail reopened = quotes.reopen(draft.getId(), new QuoteActionRequest(2));
+        QuoteDetail reopened = quotes.reopen(draft.getId(), new QuoteActionRequest(3));
         assertThat(reopened.getStatusBucket()).isEqualTo("DRAFT");
         assertThat(reopened.getFinanceConfirmedAt()).isNull();
         loginAs(f.finance());
@@ -700,7 +734,7 @@ class SalesQuoteFinanceFlowPostgresTest {
     // =====================================================================
 
     @Test
-    void confirmIsBlockedByUnpricedAndZeroPricedLinesUntilFinancePricesThem() {
+    void managerMustResolvePricingBlockersBeforeFinanceIndependentlyConfirms() {
         Fixture f = fixture("block");
         UUID listed = goods("阻断标价货品", BigDecimal.TEN);
         UUID noPrice = goods("阻断待定价货品", null);
@@ -715,26 +749,26 @@ class SalesQuoteFinanceFlowPostgresTest {
         UUID id = draft.getId();
         quotes.submit(id, new QuoteActionRequest(0));
 
-        loginAs(f.finance());
-        var claim = claims.claim(CLAIM, id.toString());
-        QuoteFinanceReviewDto review = finance.review(id);
+        loginAs(f.manager());
+        var claim = claims.claim("SALES_QUOTE_MANAGER_REVIEW", id.toString());
+        QuoteFinanceReviewDto review = finance.managerReview(id);
         assertThat(review.lines()).extracting(QuoteFinanceReviewDto.Line::blockingReason).containsExactly(
                 null, "还没有单价, 请先填写成交单价", "标价为 0, 请填写成交单价或勾选赠品/0价", null);
-        assertThatThrownBy(() -> finance.confirm(id, new QuoteFinanceDecisionRequest(1, claim.claimId(), null)))
+        assertThatThrownBy(() -> finance.confirmManager(id, new QuoteFinanceDecisionRequest(1, claim.claimId(), null)))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("还没有单价")
                 .extracting(error -> ((ApiException) error).getCode()).isEqualTo(ErrorCode.CONFLICT);
         List<UUID> ids = review.lines().stream().map(QuoteFinanceReviewDto.Line::itemId).toList();
 
         // 没有单价的行不能直接改折扣(要填成交单价)。
-        assertThatThrownBy(() -> finance.edit(id, edit(1, claim.claimId(), List.of(
+        assertThatThrownBy(() -> finance.editManager(id, edit(1, claim.claimId(), List.of(
                 new QuoteFinanceEditRequest.Line(ids.get(1), new BigDecimal("0.9"), null, null, null)))))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("还没有单价")
                 .extracting(error -> ((ApiException) error).getCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
 
         // 改法一「折扣」: 标价 10 × 0.85; 改法二「成交单价」: 没有标价 → 财务定价 3.5。
-        QuoteFinanceReviewDto edited = finance.edit(id, edit(1, claim.claimId(), List.of(
+        QuoteFinanceReviewDto edited = finance.editManager(id, edit(1, claim.claimId(), List.of(
                 new QuoteFinanceEditRequest.Line(ids.get(0), new BigDecimal("0.85"), null, null, null),
                 new QuoteFinanceEditRequest.Line(ids.get(1), null, new BigDecimal("3.5"), null, null))));
         QuoteFinanceReviewDto.Line discounted = edited.lines().get(0);
@@ -742,9 +776,9 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(discounted.discount()).isEqualByComparingTo("0.85");
         assertThat(discounted.dealPrice()).isEqualByComparingTo("8.5");
         assertThat(discounted.amount()).isEqualByComparingTo("85");
-        assertThat(edited.lines().get(1).priceSource()).isEqualTo("FINANCE");
+        assertThat(edited.lines().get(1).priceSource()).isEqualTo("MANAGER");
         // 标价为 0 而文件有单价的行仍拦着确认。
-        assertThatThrownBy(() -> finance.confirm(id, new QuoteFinanceDecisionRequest(2, claim.claimId(), null)))
+        assertThatThrownBy(() -> finance.confirmManager(id, new QuoteFinanceDecisionRequest(2, claim.claimId(), null)))
                 .isInstanceOf(ApiException.class)
                 .hasMessageContaining("标价为 0")
                 .extracting(error -> ((ApiException) error).getCode()).isEqualTo(ErrorCode.CONFLICT);
@@ -752,7 +786,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         // 改法三「按最新标价」: 货品资料后来维护了标价 4 → 单价改回货品资料价, 不再是财务定价;
         // 改法四「赠品/0价」: 财务定价 0。
         jdbc.update("UPDATE goods SET price = 4 WHERE id = ?", noPrice);
-        QuoteFinanceReviewDto refreshed = finance.edit(id, edit(2, claim.claimId(), List.of(
+        QuoteFinanceReviewDto refreshed = finance.editManager(id, edit(2, claim.claimId(), List.of(
                 new QuoteFinanceEditRequest.Line(ids.get(1), null, null, null, true),
                 new QuoteFinanceEditRequest.Line(ids.get(2), null, null, true, null))));
         QuoteFinanceReviewDto.Line master = refreshed.lines().get(1);
@@ -761,17 +795,23 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(master.financePriceByName()).isNull();
         assertThat(master.discount()).isEqualByComparingTo("1");
         assertThat(master.amount()).isEqualByComparingTo("16");
-        assertThat(refreshed.lines().get(2).priceSource()).isEqualTo("FINANCE");
+        assertThat(refreshed.lines().get(2).priceSource()).isEqualTo("MANAGER");
         assertThat(refreshed.lines().get(2).listPrice()).isEqualByComparingTo("0");
         assertThat(refreshed.blockingLineCount()).isZero();
         // 货品资料没有标价的行不能按标价刷新。
         jdbc.update("UPDATE goods SET price = NULL WHERE id = ?", noPrice);
-        assertThatThrownBy(() -> finance.edit(id, edit(3, claim.claimId(), List.of(
+        assertThatThrownBy(() -> finance.editManager(id, edit(3, claim.claimId(), List.of(
                 new QuoteFinanceEditRequest.Line(ids.get(1), null, null, null, true)))))
                 .isInstanceOf(ApiException.class).hasMessageContaining("还没有标价");
 
-        QuoteFinanceReviewDto confirmed = finance.confirm(id, new QuoteFinanceDecisionRequest(3, claim.claimId(), null));
+        managerApprove(f, id, 3); // manager confirmation is revision 4, not finance approval
+        loginAs(f.finance());
+        var financeClaim = claims.claim(CLAIM, id.toString());
+        assertThat(finance.review(id).reviewRevision()).isEqualTo(4);
+        QuoteFinanceReviewDto confirmed = finance.confirm(id, new QuoteFinanceDecisionRequest(4, financeClaim.claimId(), null));
         assertThat(confirmed.statusBucket()).isEqualTo("APPROVED");
+        assertThat(confirmed.revisions()).extracting(r -> r.action()).containsExactly(
+                "SUBMIT", "MANAGER_EDIT", "MANAGER_EDIT", "MANAGER_CONFIRM", "CONFIRM");
     }
 
     // =====================================================================
@@ -787,20 +827,26 @@ class SalesQuoteFinanceFlowPostgresTest {
         QuoteSaveRequest request = quoteRequest(f.client(),
                 line(listed, "10", null, "0.95", null), line(other, "1", null, "1", null));
         UUID id = quotes.create(request).getId();
-        quotes.submit(id, new QuoteActionRequest(0));                                   // 1 提交(0.95)
+        quotes.submit(id, new QuoteActionRequest(0)); // 1: untouched sales proposal 0.95
+        loginAs(f.manager());
+        var firstManager = claims.claim("SALES_QUOTE_MANAGER_REVIEW", id.toString());
+        UUID managerLine = finance.managerReview(id).lines().getFirst().itemId();
+        finance.editManager(id, edit(1, firstManager.claimId(), List.of(
+                new QuoteFinanceEditRequest.Line(managerLine, new BigDecimal("0.93"), null, null, null)))); // 2
+        managerApprove(f, id, 2); // 3: separate manager result, not a finance baseline
 
         loginAs(f.finance());
         var first = claims.claim(CLAIM, id.toString());
         List<UUID> ids = finance.review(id).lines().stream().map(QuoteFinanceReviewDto.Line::itemId).toList();
-        finance.edit(id, edit(1, first.claimId(), List.of(
-                new QuoteFinanceEditRequest.Line(ids.get(0), new BigDecimal("0.9"), null, null, null))));   // 2
-        finance.confirm(id, new QuoteFinanceDecisionRequest(2, first.claimId(), null));                     // 3 确认(0.9)
+        finance.edit(id, edit(3, first.claimId(), List.of(
+                new QuoteFinanceEditRequest.Line(ids.get(0), new BigDecimal("0.9"), null, null, null))));   // 4
+        finance.confirm(id, new QuoteFinanceDecisionRequest(4, first.claimId(), null));                     // 5 财务确认(0.9)
 
         // 重新核价后财务自己再改: 不是「销售改了」, 也没有新的提交可对照。
-        finance.reopen(id, new QuoteActionRequest(3, "客户再要一点折扣"));                                   // 4
+        finance.reopen(id, new QuoteActionRequest(5, "客户再要一点折扣"));                                   // 6
         var second = claims.claim(CLAIM, id.toString());
-        QuoteFinanceReviewDto.Line afterReopen = finance.edit(id, edit(4, second.claimId(), List.of(
-                new QuoteFinanceEditRequest.Line(ids.get(0), new BigDecimal("0.85"), null, null, null))))  // 5
+        QuoteFinanceReviewDto.Line afterReopen = finance.edit(id, edit(6, second.claimId(), List.of(
+                new QuoteFinanceEditRequest.Line(ids.get(0), new BigDecimal("0.85"), null, null, null))))  // 7
                 .lines().getFirst();
         assertThat(afterReopen.salesProposedDiscount()).isEqualByComparingTo("0.95");
         assertThat(afterReopen.lastFinanceConfirmedDiscount()).isEqualByComparingTo("0.9");
@@ -809,15 +855,32 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(afterReopen.changedSinceFinance()).isFalse();
 
         // 财务退回(当时已改成 0.85, 还没确认); 销售把折扣改回 0.95 重新提交 → 标出来。
-        finance.returnToSales(id, new QuoteFinanceDecisionRequest(5, second.claimId(), "客户要改数量"));    // 6
+        finance.returnToSales(id, new QuoteFinanceDecisionRequest(7, second.claimId(), "客户要改数量"));    // 8
         loginAs(f.sales());
         QuoteSaveRequest undo = copy(quotes.detail(id), request);
         undo.getItems().getFirst().setDiscount(new BigDecimal("0.95"));
         quotes.update(id, undo);
-        quotes.submit(id, new QuoteActionRequest(7));                                                        // 7
+        quotes.submit(id, new QuoteActionRequest(9)); // 10: raw sales proposal remains 0.95
+        loginAs(f.manager());
+        var secondManager = claims.claim("SALES_QUOTE_MANAGER_REVIEW", id.toString());
+        finance.editManager(id, edit(10, secondManager.claimId(), List.of(
+                new QuoteFinanceEditRequest.Line(managerLine, new BigDecimal("0.94"), null, null, null)))); // 11
+        managerApprove(f, id, 11); // 12
         loginAs(f.finance());
         QuoteFinanceReviewDto resubmitted = finance.review(id);
+        assertThat(resubmitted.reviewRevision()).isEqualTo(12);
         QuoteFinanceReviewDto.Line changed = resubmitted.lines().getFirst();
+        assertThat(changed.discount()).isEqualByComparingTo("0.94");
+        var history = resubmitted.revisions();
+        assertThat(history).extracting(r -> r.revision()).containsExactly(1,2,3,4,5,6,7,8,9,10,11,12);
+        assertThat(history).extracting(r -> r.action()).containsExactly(
+                "SUBMIT","MANAGER_EDIT","MANAGER_CONFIRM","FINANCE_EDIT","CONFIRM","FINANCE_REOPEN",
+                "FINANCE_EDIT","RETURN","SALES_EDIT","SUBMIT","MANAGER_EDIT","MANAGER_CONFIRM");
+        assertThat(history.get(0).snapshot().path("lines").get(0).path("discount").asText()).isEqualTo("0.95");
+        assertThat(history.get(1).snapshot().path("lines").get(0).path("discount").asText()).isEqualTo("0.93");
+        assertThat(history.get(4).snapshot().path("lines").get(0).path("discount").asText()).isEqualTo("0.9");
+        assertThat(history.get(9).snapshot().path("lines").get(0).path("discount").asText()).isEqualTo("0.95");
+        assertThat(history.get(10).snapshot().path("lines").get(0).path("discount").asText()).isEqualTo("0.94");
         assertThat(changed.salesProposedDiscount()).isEqualByComparingTo("0.95");
         assertThat(changed.lastFinanceDiscount()).isEqualByComparingTo("0.85");
         assertThat(changed.changedSinceFinance()).isTrue();
@@ -832,19 +895,21 @@ class SalesQuoteFinanceFlowPostgresTest {
         loginAs(f.sales());
         QuoteSaveRequest secondRequest = quoteRequest(f.client(), line(listed, "2", null, "0.95", null));
         UUID withdrawn = quotes.create(secondRequest).getId();
-        quotes.submit(withdrawn, new QuoteActionRequest(0));                                                // 1
+        quotes.submit(withdrawn, new QuoteActionRequest(0)); // 1
+        managerApprove(f, withdrawn, 1); // 2
         loginAs(f.finance());
         var third = claims.claim(CLAIM, withdrawn.toString());
         UUID line = finance.review(withdrawn).lines().getFirst().itemId();
-        finance.edit(withdrawn, edit(1, third.claimId(), List.of(
-                new QuoteFinanceEditRequest.Line(line, new BigDecimal("0.9"), null, null, null))));       // 2
+        finance.edit(withdrawn, edit(2, third.claimId(), List.of(
+                new QuoteFinanceEditRequest.Line(line, new BigDecimal("0.9"), null, null, null))));       // 3
         claims.release(CLAIM, withdrawn.toString(), third.claimId());
         loginAs(f.sales());
-        quotes.withdraw(withdrawn, new QuoteActionRequest(2));                                              // 3
+        quotes.withdraw(withdrawn, new QuoteActionRequest(3));                                              // 4
         QuoteSaveRequest back = copy(quotes.detail(withdrawn), secondRequest);
         back.getItems().getFirst().setDiscount(new BigDecimal("0.95"));
         quotes.update(withdrawn, back);
-        quotes.submit(withdrawn, new QuoteActionRequest(4));                                                // 4
+        quotes.submit(withdrawn, new QuoteActionRequest(5)); // 6
+        managerApprove(f, withdrawn, 6); // 7
         loginAs(f.finance());
         QuoteFinanceReviewDto.Line again = finance.review(withdrawn).lines().getFirst();
         assertThat(again.lastFinanceDiscount()).isEqualByComparingTo("0.9");
@@ -866,12 +931,13 @@ class SalesQuoteFinanceFlowPostgresTest {
         request.getItems().getFirst().setClientModel("GZ23/D");
         QuoteDetail draft = quotes.create(request);
         quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        managerApprove(f, draft.getId(), 1); // submitted 1 -> manager-approved 2
         loginAs(f.finance());
         var claim = claims.claim(CLAIM, draft.getId().toString());
         UUID quoteLine = finance.review(draft.getId()).lines().getFirst().itemId();
-        finance.edit(draft.getId(), edit(1, claim.claimId(), List.of(
+        finance.edit(draft.getId(), edit(2, claim.claimId(), List.of(
                 new QuoteFinanceEditRequest.Line(quoteLine, new BigDecimal("0.92"), null, null, null))));
-        finance.confirm(draft.getId(), new QuoteFinanceDecisionRequest(2, claim.claimId(), null));
+        finance.confirm(draft.getId(), new QuoteFinanceDecisionRequest(3, claim.claimId(), null));
 
         // 转单不学习; 转单后第一次保存(只改数量)也不把报价时已学过的文件原文再记一次。
         loginAs(f.sales());
@@ -897,6 +963,7 @@ class SalesQuoteFinanceFlowPostgresTest {
                 .containsExactly("GZ23/E");
 
         orders.approve(order.getId());
+        managerApproveOrder(f, order.getId(), 0); // -> finance review version 1
         loginAs(f.finance());
         var listed1 = orderFinance.pending(1, 100, null, null, null, null, null, order.getBillNo()).getItems();
         assertThat(listed1).hasSize(1);
@@ -927,6 +994,10 @@ class SalesQuoteFinanceFlowPostgresTest {
         extra.addItem(sameGoods);
         OrderDetail revised = orders.update(order.getId(), extra);
         assertThat(revised.getStatus()).isEqualTo((short) 1);
+        assertThat(revised.getManagerReview().pending()).isTrue();
+        loginAs(f.finance());
+        assertConflict(() -> orderFinance.review(order.getId()));
+        managerApproveOrder(f, order.getId(), 2); // manager approval 1, commercial revision 2, reapproval 3
         assertThat(revised.getItems()).extracting(OrderItemDto::isQuoteLocked).containsExactly(true, false);
 
         loginAs(f.finance());
@@ -996,22 +1067,27 @@ class SalesQuoteFinanceFlowPostgresTest {
         loginAs(f.sales());
         UUID id = quotes.create(quoteRequest(f.client(), line(listed, "1", null, null, null))).getId();
 
-        // 提交 → 财务核价人收到行动卡(聚合 = 报价); 销售撤回 → 撤卡。
+        // 提交 1 先提醒负责人，财务不提前接单；从负责人阶段撤回为 2。
         quotes.submit(id, new QuoteActionRequest(0));
-        assertThat(pendingQuoteCards(id, f.finance())).isEqualTo(1L);
+        assertThat(pendingManagerCards(id, f.manager())).isEqualTo(1L);
+        assertThat(pendingQuoteCards(id, f.finance())).isZero();
         quotes.withdraw(id, new QuoteActionRequest(1));
         assertThat(pendingQuoteCards(id, null)).isZero();
+        assertThat(pendingManagerCards(id, null)).isZero();
         assertThat(jdbc.queryForObject("""
                 SELECT resolved_reason FROM notices
-                WHERE source_event = 'SALES_QUOTE_PENDING_FINANCE_REVIEW' AND aggregate_id = ? AND audience_user_id = ?
-                """, String.class, id, f.finance())).isEqualTo("WITHDRAWN");
+                WHERE source_event = 'SALES_QUOTE_PENDING_MANAGER_REVIEW' AND aggregate_id = ? AND audience_user_id = ?
+                """, String.class, id, f.manager())).isEqualTo("WITHDRAWN");
 
         // 再提交 → 新卡; 财务退回 → 撤卡, 发给销售的退回通知不被撤(不在 SALES_QUOTE 聚合下)。
-        quotes.submit(id, new QuoteActionRequest(2));
+        quotes.submit(id, new QuoteActionRequest(2)); // 3
+        assertThat(pendingQuoteCards(id, f.finance())).isZero();
+        managerApprove(f, id, 3); // 4: handoff only after management
+        assertThat(pendingManagerCards(id, null)).isZero();
         assertThat(pendingQuoteCards(id, f.finance())).isEqualTo(1L);
         loginAs(f.finance());
         var claim = claims.claim(CLAIM, id.toString());
-        finance.returnToSales(id, new QuoteFinanceDecisionRequest(3, claim.claimId(), "客户要改数量"));
+        finance.returnToSales(id, new QuoteFinanceDecisionRequest(4, claim.claimId(), "客户要改数量"));
         assertThat(pendingQuoteCards(id, null)).isZero();
         // ADR-184: 退回通知也绑定报价聚合(SALES_QUOTE_ACTION), 列表可见性按单据状态复核;
         // 核价行动卡的撤卡(SALES_QUOTE 聚合)不会误撤发给销售的退回通知。
@@ -1023,17 +1099,25 @@ class SalesQuoteFinanceFlowPostgresTest {
 
         // 重新提交 → 新卡; 财务确认 → 撤卡。
         loginAs(f.sales());
-        quotes.submit(id, new QuoteActionRequest(4));
+        quotes.submit(id, new QuoteActionRequest(5)); // 6
+        managerApprove(f, id, 6); // 7
         assertThat(pendingQuoteCards(id, f.finance())).isEqualTo(1L);
         loginAs(f.finance());
         var confirmClaim = claims.claim(CLAIM, id.toString());
-        finance.confirm(id, new QuoteFinanceDecisionRequest(5, confirmClaim.claimId(), null));
+        finance.confirm(id, new QuoteFinanceDecisionRequest(7, confirmClaim.claimId(), null));
         assertThat(pendingQuoteCards(id, null)).isZero();
         assertThat(jdbc.queryForObject("""
                 SELECT COUNT(*) FROM notices
                 WHERE source_event = 'SALES_QUOTE_PENDING_FINANCE_REVIEW' AND aggregate_id = ?
                   AND resolved_reason = 'CONFIRMED'
                 """, Long.class, id)).isPositive();
+    }
+
+    private long pendingManagerCards(UUID quoteId, UUID recipient) {
+        return jdbc.queryForObject("SELECT count(*) FROM notices WHERE source_event='SALES_QUOTE_PENDING_MANAGER_REVIEW'"
+                + " AND aggregate_kind='SALES_QUOTE_MANAGER' AND aggregate_id=? AND resolved_at IS NULL"
+                + (recipient == null ? "" : " AND audience_user_id=?"), Long.class,
+                recipient == null ? new Object[]{quoteId} : new Object[]{quoteId,recipient});
     }
 
     /** 某报价未办结的核价行动卡数(recipient 为空 = 所有收件人)。 */
@@ -1173,9 +1257,11 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertConflict(() -> quotes.submit(draft.getId(), null));
         assertConflict(() -> quotes.customerConfirm(draft.getId(), new QuoteActionRequest(0)));
         QuoteDetail submitted = quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        assertThat(submitted.getStatusBucket()).isEqualTo("PENDING_MANAGER");
+        managerApprove(f, draft.getId(), 1);
         loginAs(f.finance());
         var claim = claims.claim(CLAIM, draft.getId().toString());
-        var confirmed = finance.confirm(draft.getId(), new QuoteFinanceDecisionRequest(submitted.getReviewRevision(), claim.claimId(), null));
+        var confirmed = finance.confirm(draft.getId(), new QuoteFinanceDecisionRequest(2, claim.claimId(), null));
         loginAs(f.sales());
         assertConflict(() -> quotes.convertToOrder(draft.getId(), new QuoteActionRequest(confirmed.reviewRevision())));
         assertConflict(() -> quotes.customerConfirm(draft.getId(), new QuoteActionRequest(0)));
@@ -1197,9 +1283,10 @@ class SalesQuoteFinanceFlowPostgresTest {
         loginAs(f.sales());
         QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(goods, "2", "80", "1", null)));
         quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        managerApprove(f, draft.getId(), 1); // submitted 1 -> manager-approved 2
         loginAs(f.finance());
         var claim = claims.claim(CLAIM, draft.getId().toString());
-        var reviewed = finance.edit(draft.getId(), edit(1, claim.claimId(), List.of(
+        var reviewed = finance.edit(draft.getId(), edit(2, claim.claimId(), List.of(
                 new QuoteFinanceEditRequest.Line(draft.getItems().getFirst().getId(), null, new BigDecimal("72"), null, null))));
         assertThat(reviewed.lines().getFirst().listPrice()).isEqualByComparingTo("80");
         assertThat(reviewed.lines().getFirst().discount()).isEqualByComparingTo("0.9");
@@ -1216,11 +1303,12 @@ class SalesQuoteFinanceFlowPostgresTest {
         QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(first, "2", "12", "0.8", null),
                 line(second, "3", "8", "1", null)));
         quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        managerApprove(f, draft.getId(), 1); // submitted 1 -> manager-approved 2
         loginAs(f.finance());
         var claim = claims.claim(CLAIM, draft.getId().toString());
         var firstId = draft.getItems().getFirst().getId();
         var secondId = draft.getItems().getLast().getId();
-        var edited = finance.edit(draft.getId(), edit(1, claim.claimId(), List.of(
+        var edited = finance.edit(draft.getId(), edit(2, claim.claimId(), List.of(
                 new QuoteFinanceEditRequest.Line(firstId, new BigDecimal("0.9"), null, null, null))));
         assertThat(edited.lines()).hasSize(2);
         assertThat(edited.lines().getFirst().amount()).isEqualByComparingTo("21.6");
@@ -1233,8 +1321,8 @@ class SalesQuoteFinanceFlowPostgresTest {
         assertThat(edited.revisions().getLast().snapshot().path("lines").get(0).path("price").asText()).isEqualTo("12");
         assertThat(edited.revisions().getLast().snapshot().path("lines").get(0).path("unitName").asText()).isEqualTo("个");
         assertThat(jdbc.queryForObject("SELECT price FROM goods WHERE id=?", BigDecimal.class, first)).isEqualByComparingTo("10");
-        assertConflict(() -> finance.edit(draft.getId(), edit(1, claim.claimId(), List.of())));
-        finance.returnToSales(draft.getId(), new QuoteFinanceDecisionRequest(2, claim.claimId(), "请确认新方案"));
+        assertConflict(() -> finance.edit(draft.getId(), edit(2, claim.claimId(), List.of())));
+        finance.returnToSales(draft.getId(), new QuoteFinanceDecisionRequest(3, claim.claimId(), "请确认新方案"));
         loginAs(f.sales());
         AuthUser original = (AuthUser) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         var permissions = new java.util.HashSet<>(original.getPermissions());
@@ -1255,15 +1343,16 @@ class SalesQuoteFinanceFlowPostgresTest {
         QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(goods, "2", null, null, null)));
         assertCode(() -> quotes.cancel(draft.getId(), new QuoteActionRequest(0, "  ")), ErrorCode.VALIDATION_FAILED);
         quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        managerApprove(f, draft.getId(), 1); // submitted 1 -> manager-approved 2
         loginAs(f.finance());
         var claim = claims.claim(CLAIM, draft.getId().toString());
         loginAs(f.sales());
-        assertConflict(() -> quotes.cancel(draft.getId(), new QuoteActionRequest(0, "客户放弃")));
-        assertThatThrownBy(() -> quotes.cancel(draft.getId(), new QuoteActionRequest(1, "客户放弃"))).isInstanceOf(ApiException.class);
+        assertConflict(() -> quotes.cancel(draft.getId(), new QuoteActionRequest(1, "客户放弃")));
+        assertThatThrownBy(() -> quotes.cancel(draft.getId(), new QuoteActionRequest(2, "客户放弃"))).isInstanceOf(ApiException.class);
         loginAs(f.finance());
         claims.release(CLAIM, draft.getId().toString(), claim.claimId());
         loginAs(f.sales());
-        QuoteDetail cancelled = quotes.cancel(draft.getId(), new QuoteActionRequest(1, "客户放弃"));
+        QuoteDetail cancelled = quotes.cancel(draft.getId(), new QuoteActionRequest(2, "客户放弃"));
         assertThat(cancelled.getStatus()).isEqualTo((short) -1);
         assertThat(cancelled.getCancelReason()).isEqualTo("客户放弃");
         assertThat(cancelled.getAllowedActions()).doesNotContain("convert", "submit", "edit", "cancel");
@@ -1279,12 +1368,13 @@ class SalesQuoteFinanceFlowPostgresTest {
         loginAs(f.sales());
         QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(goods, "2", "12", "0.8", null)));
         quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        managerApprove(f, draft.getId(), 1); // submitted 1 -> manager-approved 2
         loginAs(f.finance());
         var claim = claims.claim(CLAIM, draft.getId().toString());
-        finance.confirm(draft.getId(), new QuoteFinanceDecisionRequest(1, claim.claimId(), null));
+        finance.confirm(draft.getId(), new QuoteFinanceDecisionRequest(2, claim.claimId(), null));
         jdbc.update("UPDATE sales_quotes SET valid_until=DATE '2020-01-01' WHERE id=?", draft.getId());
         loginAs(f.sales());
-        assertConflict(() -> quotes.customerConfirm(draft.getId(), new QuoteActionRequest(2)));
+        assertConflict(() -> quotes.customerConfirm(draft.getId(), new QuoteActionRequest(3)));
         jdbc.update("UPDATE sales_quotes SET valid_until=NULL WHERE id=?", draft.getId());
         OrderDetail order = acceptAndConvert(draft.getId());
         QuoteDetail original = quotes.detail(draft.getId());
@@ -1352,6 +1442,7 @@ class SalesQuoteFinanceFlowPostgresTest {
         OrderDetail order = quotedOrder(f, goods);
         orders.update(order.getId(), orderRequest(order));
         orders.approve(order.getId());
+        managerApproveOrder(f, order.getId(), 0);
         UUID another = client("LEGACY-OTHER-" + UUID.randomUUID(), employeeOf(f.sales()));
         jdbc.update("UPDATE sales_orders SET client_id=? WHERE id=?", another, order.getId());
         loginAs(f.finance());
@@ -1371,10 +1462,11 @@ class SalesQuoteFinanceFlowPostgresTest {
         OrderDetail order = quotedOrder(f, goods);
         orders.update(order.getId(), orderRequest(order));
         orders.approve(order.getId());
+        managerApproveOrder(f, order.getId(), 0);
         loginAs(f.finance());
         var claim = claims.claim("SALES_ORDER_FINANCE_CONFIRM", order.getId().toString());
         orderFinance.reject(order.getId(), new SalesOrderFinanceConfirmService.FinanceRejectRequest(
-                "条款需重新议价", 0L, claim.claimId()));
+                "条款需重新议价", 1L, claim.claimId()));
         long before = orderFinance.pendingCount().get("count");
         loginAs(f.sales());
         orders.cancel(order.getId());
@@ -1457,11 +1549,12 @@ class SalesQuoteFinanceFlowPostgresTest {
         loginAs(f.sales());
         QuoteDetail source = quotes.create(quoteRequest(f.client(), line(goods, "2", "12", "0.8", null)));
         quotes.submit(source.getId(), new QuoteActionRequest(0));
+        managerApprove(f, source.getId(), 1);
         loginAs(f.finance());
         var claim = claims.claim(CLAIM, source.getId().toString());
-        finance.confirm(source.getId(), new QuoteFinanceDecisionRequest(1, claim.claimId(), null));
+        finance.confirm(source.getId(), new QuoteFinanceDecisionRequest(2, claim.claimId(), null));
         loginAs(f.sales());
-        QuoteDetail accepted = quotes.customerConfirm(source.getId(), new QuoteActionRequest(2));
+        QuoteDetail accepted = quotes.customerConfirm(source.getId(), new QuoteActionRequest(3));
         var results = race(f, () -> { quotes.convertToOrder(source.getId(), new QuoteActionRequest(accepted.getReviewRevision())); return "ORDER"; },
                 () -> { quotes.convertToOrder(source.getId(), new QuoteActionRequest(accepted.getReviewRevision())); return "ORDER"; });
         assertThat(results).containsExactlyInAnyOrder("ORDER", "CONFLICT");
@@ -1525,12 +1618,13 @@ class SalesQuoteFinanceFlowPostgresTest {
         loginAs(f.sales());
         QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(goods, "2", null, null, null)));
         quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        managerApprove(f, draft.getId(), 1); // submitted 1 -> manager-approved 2
         loginAs(f.finance());
         var claim = claims.claim(CLAIM, draft.getId().toString());
-        assertCode(() -> finance.edit(draft.getId(), edit(1, claim.claimId(), List.of(
+        assertCode(() -> finance.edit(draft.getId(), edit(2, claim.claimId(), List.of(
                 new QuoteFinanceEditRequest.Line(draft.getItems().getFirst().getId(), null,
                         new BigDecimal("12.12345678901"), null, null)))), ErrorCode.VALIDATION_FAILED);
-        assertThat(finance.review(draft.getId()).reviewRevision()).isEqualTo(1);
+        assertThat(finance.review(draft.getId()).reviewRevision()).isEqualTo(2);
         assertThat(finance.review(draft.getId()).lines().getFirst().listPrice()).isEqualByComparingTo("10");
     }
 
@@ -1538,14 +1632,15 @@ class SalesQuoteFinanceFlowPostgresTest {
         loginAs(f.sales());
         QuoteDetail draft = quotes.create(quoteRequest(f.client(), line(goods, "2", "12", "0.8", null)));
         quotes.submit(draft.getId(), new QuoteActionRequest(0));
+        managerApprove(f, draft.getId(), 1); // submitted 1 -> manager-approved 2
         loginAs(f.finance());
         var claim = claims.claim(CLAIM, draft.getId().toString());
-        finance.confirm(draft.getId(), new QuoteFinanceDecisionRequest(1, claim.claimId(), null));
+        finance.confirm(draft.getId(), new QuoteFinanceDecisionRequest(2, claim.claimId(), null));
         loginAs(f.sales());
         return acceptAndConvert(draft.getId());
     }
 
-    private record Fixture(UUID sales, UUID masked, UUID finance, UUID outsider,
+    private record Fixture(UUID sales, UUID masked, UUID finance, UUID outsider, UUID manager,
                            UUID client, UUID maskedClient) {
     }
 
@@ -1565,7 +1660,10 @@ class SalesQuoteFinanceFlowPostgresTest {
                 "sales_quote_finance:view", "sales_quote_finance:confirm", "sales_quote_finance:reject", "sales_quote_finance:reverse", "sales_quote:view",
                 "sales_order_finance:view", "sales_order_finance:confirm", "sales_order:view", "notice:read"));
         UUID outsider = user("qx-" + suffix, outsiderDept, List.of("notice:read"));
-        return new Fixture(sales, masked, financeUser, outsider,
+        UUID manager = user("q-manager-" + suffix, department("Q-MANAGER-" + suffix), List.of(
+                "sales_quote_manager:view", "sales_quote_manager:confirm", "sales_quote_manager:reject", "sales_quote_manager:reverse",
+                "sales_order_manager:view", "sales_order_manager:confirm", "sales_order_manager:reject", "sales_order_manager:reverse", "notice:read"));
+        return new Fixture(sales, masked, financeUser, outsider, manager,
                 client("QC-" + suffix, employeeOf(sales)), client("QM-" + suffix, employeeOf(masked)));
     }
 
@@ -1598,8 +1696,10 @@ class SalesQuoteFinanceFlowPostgresTest {
                 """, user, employee, login);
         for (String code : perms) {
             int granted = jdbc.update("""
+                    WITH actor AS (SELECT set_config('app.actor_id',
+                        (SELECT id::text FROM users WHERE is_super_admin AND NOT is_deleted LIMIT 1),true))
                     insert into user_permission_overrides(user_id, permission_id, effect)
-                    select ?, p.id, 'grant' from permissions p where p.code = ?
+                    select ?, p.id, 'grant' from permissions p CROSS JOIN actor where p.code = ?
                     """, user, code);
             assertThat(granted).as("permission %s exists", code).isEqualTo(1);
         }
@@ -1675,6 +1775,21 @@ class SalesQuoteFinanceFlowPostgresTest {
         long count = finance.pendingCount().get("pending");
         if (previous != null) loginAs(previous);
         return count;
+    }
+
+    /** Every call names the version displayed at the manager stage; never read the latest to repair a stale test. */
+    private void managerApprove(Fixture f, UUID id, int displayedRevision) {
+        UUID previous = currentUserId();
+        loginAs(f.manager());
+        try { SalesManagerReviewFixtures.approveQuoteForFinance(jdbc, claims, finance, id, displayedRevision); }
+        finally { if (previous != null) loginAs(previous); }
+    }
+
+    private void managerApproveOrder(Fixture f, UUID id, long displayedRevision) {
+        UUID previous = currentUserId();
+        loginAs(f.manager());
+        try { SalesManagerReviewFixtures.approveOrderForFinance(jdbc, claims, managers, id, displayedRevision); }
+        finally { if (previous != null) loginAs(previous); }
     }
 
     private void loginAs(UUID userId) {

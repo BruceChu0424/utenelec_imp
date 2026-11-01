@@ -1001,7 +1001,9 @@ class WorkshopDirectTransferBatchEndToEndTest {
             qty("30", segmentView.inboundQty());
             qty("30", segmentView.plannedInboundQty());
             qty("0", segmentView.actualSurplusInboundQty());
-            var root = beans.getBean(ProductionPlanService.class).progress(false, "progress", 1, 100, null, null, null, null)
+            // Shared fixture databases can contain more than one page of unrelated plans.
+            String rootPlanBillNo = db.queryForObject("SELECT bill_no FROM production_plans WHERE id=?", String.class, rootPlan);
+            var root = beans.getBean(ProductionPlanService.class).progress(false, "progress", 1, 100, rootPlanBillNo, null, null, null)
                     .getItems().stream().filter(item -> item.planId().equals(rootPlan)).findFirst().orElseThrow();
             if (nested) assertEquals(0.0, root.percent());
             assertFalse(root.closed());

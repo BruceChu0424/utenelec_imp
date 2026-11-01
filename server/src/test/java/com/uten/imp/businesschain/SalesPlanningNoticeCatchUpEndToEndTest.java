@@ -89,6 +89,7 @@ class SalesPlanningNoticeCatchUpEndToEndTest {
     private FullChainEndToEndTest fixture;
     private FullChainEndToEndTest.World world;
     private UUID order;
+    private long initiallyConfirmedRevision;
     private TransactionTemplate transactions;
 
     @BeforeEach void setup() {
@@ -100,6 +101,7 @@ class SalesPlanningNoticeCatchUpEndToEndTest {
         order = sales.create(fixture.orderRequest(world, world.goodsA(), "10", "100")).getId();
         sales.approve(order);
         fixture.confirmInitialSalesFinance(order);
+        initiallyConfirmedRevision=revision();
     }
     @AfterEach void cleanup() {
         for (UUID user : recipients) jdbc.update("UPDATE users SET status='disabled' WHERE id=?", user);
@@ -134,7 +136,7 @@ class SalesPlanningNoticeCatchUpEndToEndTest {
         catchUp.runBatch();
         drain();
         assertEquals(1, count(user));
-        assertEquals(0L, jdbc.queryForObject("SELECT source_revision FROM notices WHERE id=?", Long.class, noticeId(user)));
+        assertEquals(initiallyConfirmedRevision, jdbc.queryForObject("SELECT source_revision FROM notices WHERE id=?", Long.class, noticeId(user)));
         fixture.loginAs(user);
         assertTrue(visible(user));
         catchUp.runBatch(); drain();
@@ -194,7 +196,7 @@ class SalesPlanningNoticeCatchUpEndToEndTest {
         deliver(); catchUp.runBatch(); drain();
 
         assertEquals(1, count(user), "Catch-up and normal delivery must share the same permanent delivery identity");
-        verify(notices, times(1)).publishSalesPlanningHandoff(eq(user), eq(order), eq(0L), anyString(), anyString());
+        verify(notices, times(1)).publishSalesPlanningHandoff(eq(user), eq(order), eq(initiallyConfirmedRevision), anyString(), anyString());
         assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM notice_user_states WHERE notice_id=? AND user_id=?",
                 Integer.class, noticeId(user), user));
         assertEquals(analysesBefore, jdbc.queryForObject("SELECT count(*) FROM production_material_analyses", Long.class));
@@ -307,43 +309,40 @@ class SalesPlanningNoticeCatchUpEndToEndTest {
         assertEquals(1, count(user));
     }
 
-    @Test void sameContentResubmissionKeepsUnansweredPlanningCardAndSingleConfirmationDoesNotMarkItRead() {
-        UUID user = planner();
-        deliver();
-        UUID original = noticeId(user);
-        resubmit("10");
-        assertEquals(0L, revision());
+    @Test void aNewManagerGenerationPreservesTheOriginalUnreadReceiptAndPublishesOneCurrentCard() {
+        UUID user=planner();deliver();UUID original=noticeId(user);
+        resubmit("10");assertEquals(initiallyConfirmedRevision,revision());
         fixture.loginAs(user);
-        assertFalse(visible(user), "Planning cannot act during the finance gate");
-        assertTrue(notices.pendingReviewStatus(List.of(original)).isEmpty(), "An already open popup must also lose actionability");
-        fixture.loginAs(world.superAdminUserId());
-        confirm(false);
-        drain();
-        assertEquals(1, count(user));
-        assertEquals(original, noticeId(user));
-        assertEquals(1, activeCount(user));
-        assertNull(jdbc.queryForObject("SELECT read_at FROM notice_user_states WHERE notice_id=? AND user_id=?",
-                java.sql.Timestamp.class, original, user));
-        fixture.loginAs(user);
-        assertTrue(visible(user));
+        assertFalse(visible(user),"Planning cannot act before manager and finance re-approval");
+        assertTrue(notices.pendingReviewStatus(List.of(original)).isEmpty());
+        fixture.loginAs(world.superAdminUserId());confirm(false);drain();
+        // Even unchanged terms now require a new real manager decision. That
+        // decision advances the public review generation; old receipts remain.
+        assertEquals(initiallyConfirmedRevision+1,revision());
+        assertEquals(2,count(user));UUID current=noticeId(user);assertFalse(original.equals(current));
+        assertEquals(1,activeCount(user));
+        for(UUID id:List.of(original,current)) assertNull(jdbc.queryForObject(
+                "SELECT read_at FROM notice_user_states WHERE notice_id=? AND user_id=?",java.sql.Timestamp.class,id,user));
+        catchUp.runBatch();drain();assertEquals(2,count(user),"Each actual generation is delivered once");
+        fixture.loginAs(user);assertTrue(visible(user));
     }
 
-    @Test void acknowledgedSameRevisionSurvivesBatchConfirmationAndGenuineNewRevisionCanNotifyAgain() {
-        UUID user = planner();
-        deliver();
-        fixture.loginAs(user); notices.markRead(noticeId(user));
+    @Test void acknowledgedOldGenerationsRemainAcknowledgedWhileEachNewManagerApprovalNotifiesOnce() {
+        UUID user=planner();deliver();UUID original=noticeId(user);
+        fixture.loginAs(user);notices.markRead(original);
+        fixture.loginAs(world.superAdminUserId());deliver();catchUp.runBatch();drain();
+        assertEquals(1,count(user),"Replaying the same confirmed generation cannot reset its receipt");
+        fixture.loginAs(user);assertFalse(visible(user));
         fixture.loginAs(world.superAdminUserId());
-        resubmit("10"); assertEquals(0L, revision()); confirm(true); drain();
-        assertEquals(1, count(user));
-        fixture.loginAs(user); assertFalse(visible(user));
-        fixture.loginAs(world.superAdminUserId());
-        resubmit("11"); assertEquals(1L, revision()); confirm(true);
-        transactions.executeWithoutResult(status -> chain.deliverOutboxEvent("SALES_ORDER_FINANCE_CONFIRMED", order,
-                json.createObjectNode().put("reviewRevision", 0L)));
-        assertEquals(1, count(user), "Old revision delivery cannot represent the newly confirmed revision");
-        drain();
-        assertEquals(2, count(user));
-        fixture.loginAs(user); assertTrue(visible(user));
+        resubmit("10");assertEquals(initiallyConfirmedRevision,revision());confirm(true);drain();
+        assertEquals(2,count(user));assertNotNull(jdbc.queryForObject(
+                "SELECT popup_acknowledged_at FROM notice_user_states WHERE notice_id=? AND user_id=?",java.sql.Timestamp.class,original,user));
+        resubmit("11");assertEquals(initiallyConfirmedRevision+2,revision());confirm(true);
+        transactions.executeWithoutResult(status->chain.deliverOutboxEvent("SALES_ORDER_FINANCE_CONFIRMED",order,
+                json.createObjectNode().put("reviewRevision",initiallyConfirmedRevision)));
+        assertEquals(2,count(user),"Old revision delivery cannot represent a newly confirmed revision");
+        drain();assertEquals(3,count(user));
+        fixture.loginAs(user);assertTrue(visible(user));
     }
 
     @Test void cancelledAndFinanceRejectedOrdersCannotBeCaughtUp() {
@@ -375,7 +374,7 @@ class SalesPlanningNoticeCatchUpEndToEndTest {
         UUID newcomer = planner();
         catchUp.runBatch(); drain();
         assertEquals(1, count(newcomer));
-        assertEquals(1L, jdbc.queryForObject("SELECT source_revision FROM notices WHERE id=?", Long.class, noticeId(newcomer)));
+        assertEquals(revision(), jdbc.queryForObject("SELECT source_revision FROM notices WHERE id=?", Long.class, noticeId(newcomer)));
     }
 
     @Test void secondaryPlanningMembershipWorksButDisabledAndDeletedAccountsDoNot() {

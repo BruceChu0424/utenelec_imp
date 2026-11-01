@@ -16,32 +16,32 @@ class BusinessNoticeParticipationPostgresTest {
             postgres.start();
             var jdbc=new JdbcTemplate(new DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()));
             NoticeParticipationSqlFixture.install(jdbc);
-            jdbc.execute("CREATE TABLE receipt(id integer,route text,event text,resolved boolean)");
-            jdbc.update("INSERT INTO receipt VALUES (1,'/sales/orders/123','SALES_ORDER_CANCELED',false),(2,'/sales/orders/456','SALES_ORDER_FINANCE_REJECTED',true),(3,'/production/plans/123',NULL,false),(4,NULL,NULL,false)");
+            jdbc.execute("CREATE TABLE notice_participation_probe_receipt(id integer,route text,event text,resolved boolean)");
+            jdbc.update("INSERT INTO notice_participation_probe_receipt VALUES (1,'/sales/orders/123','SALES_ORDER_CANCELED',false),(2,'/sales/orders/456','SALES_ORDER_FINANCE_REJECTED',true),(3,'/production/plans/123',NULL,false),(4,NULL,NULL,false)");
             for(Set<String> grants:List.of(Set.of("notice:read","sales_order:view"),
                     Set.of("notice:read","sales_order:view","sales_order:edit"),Set.of("notice:read","sales_order:view"))) {
                 String rules=BusinessNoticeParticipation.readRules(grants);
-                for(var row:jdbc.queryForList("SELECT * FROM receipt")) {
+                for(var row:jdbc.queryForList("SELECT * FROM notice_participation_probe_receipt")) {
                     boolean delivered=BusinessNoticeParticipation.allowed((String)row.get("route"),(String)row.get("event"),grants);
-                    assertThat(jdbc.queryForObject("SELECT fn_notice_participation_visible(route,event,?) FROM receipt WHERE id=?",Boolean.class,rules,row.get("id"))).isEqualTo(delivered);
+                    assertThat(jdbc.queryForObject("SELECT fn_notice_participation_visible(route,event,?) FROM notice_participation_probe_receipt WHERE id=?",Boolean.class,rules,row.get("id"))).isEqualTo(delivered);
                 }
-                assertThat(jdbc.queryForObject("SELECT count(*) FROM receipt WHERE fn_notice_participation_visible(route,event,?)",Long.class,rules))
+                assertThat(jdbc.queryForObject("SELECT count(*) FROM notice_participation_probe_receipt WHERE fn_notice_participation_visible(route,event,?)",Long.class,rules))
                         .isEqualTo(grants.contains("sales_order:edit")?3L:1L);
             }
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM receipt",Long.class)).isEqualTo(4L);
-            jdbc.update("INSERT INTO receipt VALUES (5,'/profile/me/changes','PROFILE_CHANGE_APPROVED',true),(6,'/profile/edit','PROFILE_CHANGE_REJECTED',false)");
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM notice_participation_probe_receipt",Long.class)).isEqualTo(4L);
+            jdbc.update("INSERT INTO notice_participation_probe_receipt VALUES (5,'/profile/me/changes','PROFILE_CHANGE_APPROVED',true),(6,'/profile/edit','PROFILE_CHANGE_REJECTED',false)");
             for (Set<String> grants : List.of(Set.of("notice:read", "profile_change:view"),
                     Set.of("notice:read", "profile:edit:self"), Set.of("notice:read", "profile_change:view"))) {
                 String rules=BusinessNoticeParticipation.readRules(grants);
-                assertThat(jdbc.queryForObject("SELECT count(*) FROM receipt WHERE id IN(5,6) AND fn_notice_participation_visible(route,event,?)",
+                assertThat(jdbc.queryForObject("SELECT count(*) FROM notice_participation_probe_receipt WHERE id IN(5,6) AND fn_notice_participation_visible(route,event,?)",
                         Long.class,rules)).isEqualTo(grants.contains("profile:edit:self")?2L:0L);
-                for (var row : jdbc.queryForList("SELECT * FROM receipt WHERE id IN(5,6)")) {
-                    assertThat(jdbc.queryForObject("SELECT fn_notice_participation_visible(route,event,?) FROM receipt WHERE id=?",
+                for (var row : jdbc.queryForList("SELECT * FROM notice_participation_probe_receipt WHERE id IN(5,6)")) {
+                    assertThat(jdbc.queryForObject("SELECT fn_notice_participation_visible(route,event,?) FROM notice_participation_probe_receipt WHERE id=?",
                             Boolean.class,rules,row.get("id"))).isEqualTo(BusinessNoticeParticipation.allowed(
                                     (String)row.get("route"),(String)row.get("event"),grants));
                 }
             }
-            assertThat(jdbc.queryForObject("SELECT count(*) FROM receipt",Long.class)).isEqualTo(6L);
+            assertThat(jdbc.queryForObject("SELECT count(*) FROM notice_participation_probe_receipt",Long.class)).isEqualTo(6L);
             for (var example : LegacyProfileResultNoticeFixture.examples(java.util.UUID.randomUUID())) {
                 for (Set<String> grants : List.of(Set.of("notice:read","profile_change:view"),
                         Set.of("notice:read","profile:edit:self"))) {

@@ -753,6 +753,62 @@ class SubcontractComponentCustodyProjectionPostgresTest {
                 () -> assertThat(tight.securedTotal(large.analysisItemId()+"|large/A")).isEqualByComparingTo("100"));
     }
 
+    @Test
+    void emptyApplicationScopeNeverReadsUnrelatedSubcontractDocuments() throws Exception {
+        PublicWorld unrelated = privateWorld();
+        assertThat(coverage(unrelated.world().analysis).get(unrelated.firstChild())[0]).isEqualByComparingTo("1");
+        assertThat(coverage(unrelated.world().analysis).get(unrelated.secondChild())[0]).isEqualByComparingTo("5");
+        // Ordinary growth between statistics refreshes must not turn an empty analysis into a global scan.
+        execute("ANALYZE subcontract_orders");
+        execute("ANALYZE subcontract_order_items");
+        execute("ANALYZE subcontract_order_item_sources");
+        execute("ANALYZE preplan_supply_actions");
+        execute("ANALYZE preplan_supply_action_allocations");
+        for (int order = 0; order < 33; order++) {
+            World other = new World(UUID.randomUUID());
+            for (int item = 0; item < 13; item++) other.orderItem("1", UUID.randomUUID(), "1");
+        }
+        World actionWithoutApplication = new World(UUID.randomUUID());
+        actionWithoutApplication.action("6", "0");
+
+        for (UUID analysis : List.of(UUID.randomUUID(), actionWithoutApplication.analysis)) {
+            assertThat(coverage(analysis)).isEmpty();
+            String sql = productionSql().replace(":analysisId", "'" + analysis + "'::uuid");
+            connection.setAutoCommit(false);
+            try {
+                execute("SET TRANSACTION READ ONLY");
+                try (var statement = connection.createStatement();
+                     var rows = statement.executeQuery("EXPLAIN (ANALYZE,BUFFERS,FORMAT JSON) " + sql)) {
+                    rows.next();
+                    String explain = rows.getString(1);
+                    Path output = Path.of(System.getProperty("uten.build.directory", "target"))
+                            .resolve("custody-empty-scope-" + analysis + "-explain.json");
+                    Files.createDirectories(output.getParent());
+                    Files.writeString(output, explain);
+                    var plan = new ObjectMapper().readTree(explain).get(0).get("Plan");
+                    assertThat(visitedDocumentRows(plan)).as("No application source can belong to this analysis").isZero();
+                }
+            } finally {
+                connection.rollback();
+                connection.setAutoCommit(true);
+            }
+        }
+        assertThat(coverage(unrelated.world().analysis).get(unrelated.firstChild())[0]).isEqualByComparingTo("1");
+        assertThat(coverage(unrelated.world().analysis).get(unrelated.secondChild())[0]).isEqualByComparingTo("5");
+    }
+
+    private static long visitedDocumentRows(com.fasterxml.jackson.databind.JsonNode plan) {
+        String relation = plan.path("Relation Name").asText();
+        // A legitimate zero-row index probe is allowed. This measures unrelated rows actually
+        // visited by document-origin filters, without prescribing node type, join order or shape.
+        long rows = List.of("subcontract_orders", "subcontract_order_items", "subcontract_receipts",
+                "subcontract_receipt_items", "subcontract_material_issues", "subcontract_material_issue_items")
+                .contains(relation) ? (plan.path("Actual Rows").asLong()
+                    + plan.path("Rows Removed by Filter").asLong()) * plan.path("Actual Loops").asLong() : 0;
+        for (var child : plan.path("Plans")) rows += visitedDocumentRows(child);
+        return rows;
+    }
+
     private Map<UUID, BigDecimal[]> coverage(UUID analysisId) throws SQLException {
         String sql = productionSql().replace(":analysisId", "'" + analysisId + "'::uuid");
         Map<UUID, BigDecimal[]> rows = new LinkedHashMap<>();

@@ -323,9 +323,9 @@
     "kind": "raw-close-icon",
     "path": "lib/features/expense/pages/expense_approval_list_page.dart",
     "owner": "_ExpenseApprovalListPageState._batchActions",
-    "fingerprint": "e874ffab69e225adfaf7c9d98e0775e8d5bf6ba1e0ef583fd5c9c78730079677",
+    "fingerprint": "481020a61c37f648c5fcacacc4450647305a3d8cf260db97928d1a1a29c5c897",
     "count": 1,
-    "reason": "Rejects selected expense approvals through the batch business callback."
+    "reason": "Rejects a frozen selection of expense approvals through _batchReject/_runBatch and repository.rejectBatch with the shown versions; it does not close a window."
   },
   {
     "kind": "semantic-close-button",

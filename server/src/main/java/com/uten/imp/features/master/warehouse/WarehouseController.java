@@ -156,9 +156,11 @@ public class WarehouseController {
      */
     @GetMapping("/my-scope")
     @PreAuthorize("isAuthenticated()")
-    public MyWarehouseScope myScope() {
-        return dataScopeService.myScope();
+    public MyWarehouseScope myScope(@RequestParam(defaultValue="false") boolean forRead) {
+        return dataScopeService.myScope(forRead);
     }
+
+    public MyWarehouseScope myScope() { return myScope(false); }
 
     @GetMapping("/{id}/keepers")
     @PreAuthorize("hasAuthority('warehouse:view')")

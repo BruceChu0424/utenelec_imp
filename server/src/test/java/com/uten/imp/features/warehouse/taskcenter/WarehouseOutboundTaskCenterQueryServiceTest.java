@@ -327,7 +327,8 @@ class WarehouseOutboundTaskCenterQueryServiceTest {
             SecurityContextCurrentUser actor = mock(SecurityContextCurrentUser.class);
             when(actor.get()).thenReturn(Optional.of(user));
             when(actor.employeeId()).thenReturn(Optional.of(ACTOR));
-            when(scopes.current(any())).thenReturn(WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+            org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
+        when(scopes.current(any())).thenReturn(WarehouseTaskScopePort.WarehouseTaskScope.ALL);
             doCallRealMethod().when(scopes).withQueryScopeCache(any());
             ProductionStockTaskAccessPolicy tasks = mock(ProductionStockTaskAccessPolicy.class);
             when(tasks.canAccessWarehouseTasks()).thenReturn(production);

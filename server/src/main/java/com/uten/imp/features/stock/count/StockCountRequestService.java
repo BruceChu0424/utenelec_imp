@@ -79,6 +79,9 @@ public class StockCountRequestService {
         return warehouses(true);
     }
     private List<Map<String,Object>> warehouses(boolean activeOnly) {
+        return warehouses(activeOnly,false);
+    }
+    private List<Map<String,Object>> warehouses(boolean activeOnly,boolean forRead) {
         var rows = db.queryForList("""
                 SELECT w.id,w.name,w.is_line_side,
                        CASE WHEN w.is_line_side THEN 'WORKSHOP' ELSE 'NORMAL' END AS kind,
@@ -92,7 +95,8 @@ public class StockCountRequestService {
                 """:"")+" ORDER BY w.code,w.id",Map.of());
         var lineSide = rows.stream().filter(w -> Boolean.TRUE.equals(w.get("is_line_side")))
                 .map(w -> (UUID)w.get("id")).toList();
-        var accessible = workshop.accessibleWarehouses(lineSide);
+        boolean expanded=forRead && user.get().map(actor->actor.getPermissions().contains("production_workshop_task:view:all")).orElse(false);
+        var accessible = expanded?workshop.accessibleWarehousesForRead(lineSide):workshop.accessibleWarehouses(lineSide);
         return rows.stream().filter(w -> !Boolean.TRUE.equals(w.get("is_line_side"))
                 || accessible.contains((UUID)w.get("id"))).toList();
     }
@@ -395,24 +399,27 @@ public class StockCountRequestService {
     private boolean reviewAllowed(Map<String,Object> h) {
         return has("WAREHOUSE".equals(h.get("review_route"))?WAREHOUSE:FINANCE);
     }
-    private boolean reviewReadable(Map<String,Object> h) {
+    private boolean reviewReadable(Map<String,Object> h,boolean forRead) {
         if(reviewAllowed(h)) return true;
         if("WAREHOUSE".equals(h.get("review_route"))) {
             if(!has("stock:count:warehouse_view")) return false;
-            var scope=warehouseScopes.current(null);
+            var scope=forRead?warehouseScopes.currentForRead(null):warehouseScopes.current(null);
             return !scope.active() || scope.warehouseIds().contains((UUID)h.get("warehouse_id"));
         }
         return has("stock:count:finance_view");
     }
     private void readAllowed(Map<String,Object> h) {
-        if(warehouses(false).stream().noneMatch(w->w.get("id").equals(h.get("warehouse_id"))))
+        readAllowed(h,false);
+    }
+    private void readAllowed(Map<String,Object> h,boolean forRead) {
+        if(warehouses(false,forRead).stream().noneMatch(w->w.get("id").equals(h.get("warehouse_id"))))
             throw new ApiException(ErrorCode.FORBIDDEN,"无权查看此仓库的盘点申请");
-        if(!reviewReadable(h)&&!(has(SUBMIT)&&user.requireId().equals(h.get("submitted_by"))))
+        if(!reviewReadable(h,forRead)&&!(has(SUBMIT)&&user.requireId().equals(h.get("submitted_by"))))
             throw new ApiException(ErrorCode.FORBIDDEN,"无权查看此盘点申请");
     }
     @Transactional(readOnly=true)
     public Map<String,Object> detail(UUID id) {
-        var h=header(id,false);readAllowed(h);Map<String,Object> out=headerView(h);
+        var h=header(id,false);readAllowed(h,true);Map<String,Object> out=headerView(h);
         var rows=db.queryForList("SELECT * FROM stock_count_request_lines WHERE request_id=:id ORDER BY line_no",Map.of("id",id));
         var lines=new ArrayList<Map<String,Object>>();boolean stale=warehouses().stream().noneMatch(w->w.get("id").equals(h.get("warehouse_id")));
         for(var row:rows) {
@@ -443,9 +450,10 @@ public class StockCountRequestService {
             line.put("stale",changed&&"PENDING".equals(h.get("status")));stale|=changed;lines.add(line);
         }
         var actions=new ArrayList<String>();
+        boolean commandObject=commandReviewObject(h);
         if("PENDING".equals(h.get("status"))) {
-            if(reviewAllowed(h)){if(!stale){ actions.add("APPROVE"); }actions.add("REJECT");}
-            if(has(SUBMIT)&&user.requireId().equals(h.get("submitted_by"))){ actions.add("CANCEL"); }
+            if(reviewAllowed(h) && commandObject){if(!stale){ actions.add("APPROVE"); }actions.add("REJECT");}
+            if(commandObject && has(SUBMIT)&&user.requireId().equals(h.get("submitted_by"))){ actions.add("CANCEL"); }
         }
         out.put("lines",lines);out.put("allowedActions",actions);return out;
     }
@@ -456,6 +464,13 @@ public class StockCountRequestService {
                 {"reason","reason"},{"reviewReason","review_reason"},{"stockDocumentId","stock_document_id"}};
         for(var name:names)out.put(name[0],h.get(name[1]));
         out.put("submittedAt",time(h.get("submitted_at")));out.put("reviewedAt",time(h.get("reviewed_at")));return out;
+    }
+
+    private boolean commandReviewObject(Map<String,Object> header) {
+        UUID warehouse=(UUID)header.get("warehouse_id");
+        // The existing posting gateway uses workshop responsibility, not the
+        // task browser's keeper scope. Broader reads cannot replace that check.
+        return warehouses(false).stream().anyMatch(row->warehouse.equals(row.get("id")));
     }
 
     /** Same decision authority and posting chain as single approval; any failure rolls back the batch. */
@@ -598,7 +613,7 @@ public class StockCountRequestService {
         if(route!=null&&!Set.of("FINANCE","WAREHOUSE").contains(route))throw invalid("审核归属不正确");
         if(status!=null&&!Set.of("PENDING","APPROVED","REJECTED","CANCELLED","HISTORY").contains(status))throw invalid("盘点状态不正确");
         if(route!=null && !has("WAREHOUSE".equals(route)?"stock:count:warehouse_view":"stock:count:finance_view")) require("WAREHOUSE".equals(route)?WAREHOUSE:FINANCE);
-        var allowed=warehouses(false).stream().map(w->(UUID)w.get("id")).filter(w->warehouseId==null||warehouseId.equals(w)).toList();
+        var allowed=warehouses(false,true).stream().map(w->(UUID)w.get("id")).filter(w->warehouseId==null||warehouseId.equals(w)).toList();
         var paging=Pageables.of(page,size);if(allowed.isEmpty())return new PageResponse<>(List.of(),paging.getPageNumber()+1,paging.getPageSize(),0,0);
         var params=new MapSqlParameterSource("warehouses",allowed).addValue("actor",user.requireId())
                 .addValue("limit",paging.getPageSize()).addValue("offset",paging.getOffset());

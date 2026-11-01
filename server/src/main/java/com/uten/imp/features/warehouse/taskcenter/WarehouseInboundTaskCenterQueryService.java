@@ -78,7 +78,7 @@ public class WarehouseInboundTaskCenterQueryService {
     }
 
     private Page listScoped(Filter filter, Identity identity, String source, String status, AuthUser actor, Rights rights) {
-        var scope = warehouseScopes.current(filter.scopeWarehouseId());
+        var scope = warehouseScopes.currentForRead(filter.scopeWarehouseId());
         var owner = stockAccess.nativeReadScope("document.maker_id", "stockOwners", rights.owner());
         var access = new WarehouseInboundTaskCenterSql.Access(rights.inbound(),rights.purchaseHistory(),
                 rights.subcontractHistory(),rights.quality(),rights.stock(),rights.canReadProduction(),owner.predicate(),
@@ -117,6 +117,7 @@ public class WarehouseInboundTaskCenterQueryService {
         parameters.addValue("offset",((long)effectivePage-1)*size);
         List<Row> rows = jdbc.query(WarehouseInboundTaskCenterSql.rows(base,filter.sort(),filter.order(),identityFilter),parameters,
                 (rs,index) -> row(rs,rights));
+        rows=physicalCommandRows(rows,rights,filter.scopeWarehouseId()==null);
         if(identity!=null) return new Page(rows,1,1,count,rows.isEmpty()?0:1,Map.of());
         List<StatusFacet> facets = jdbc.query(WarehouseInboundTaskCenterSql.facets(base),parameters,(rs,index) -> {
             String code=rs.getString(1);
@@ -297,7 +298,7 @@ public class WarehouseInboundTaskCenterQueryService {
     private List<UUID> visibleLineItems(Row row,UUID warehouseId,String lineKey) {
         AuthUser actor=currentUser.get().orElseThrow(()->new ApiException(ErrorCode.FORBIDDEN,"没有仓库入库查看权限"));
         Rights rights=new Rights(actor,productionAccess.canAccessWarehouseTasks(),stockAccess.scope());
-        var scope=warehouseScopes.current(warehouseId);
+        var scope=warehouseScopes.currentForRead(warehouseId);
         var owner=stockAccess.nativeReadScope("document.maker_id","stockOwners",rights.owner());
         var access=new WarehouseInboundTaskCenterSql.Access(rights.inbound(),rights.purchaseHistory(),
                 rights.subcontractHistory(),rights.quality(),rights.stock(),rights.canReadProduction(),owner.predicate(),
@@ -320,6 +321,25 @@ public class WarehouseInboundTaskCenterQueryService {
     }
 
     private record Identity(UUID id,String record,String lineKey) {}
+
+    /** One bounded batch through the original relation; no read range is reused as command scope. */
+    private List<Row> physicalCommandRows(List<Row> rows,Rights rights,boolean includeOwnDrafts) {
+        if(rows.isEmpty() || !(rights.actor().getPermissions().contains("warehouse_task:view:all")
+                || rights.actor().getPermissions().contains("production_workshop_task:view:all"))) return rows;
+        var physical=warehouseScopes.current(null);
+        var owner=stockAccess.nativeReadScope("document.maker_id","stockOwners",rights.owner());
+        var access=new WarehouseInboundTaskCenterSql.Access(rights.inbound(),rights.purchaseHistory(),rights.subcontractHistory(),
+                rights.quality(),rights.stock(),rights.canReadProduction(),owner.predicate(),
+                WarehouseWorkshopMaterialTaskProjection.commandScope(rights.workshop(),materialScopes,physical));
+        var parameters=new MapSqlParameterSource("type","ALL").addValue("warehouseScope",physical.idsCsv())
+                .addValue("ownDraftMaker",includeOwnDrafts && rights.actor().getEmployeeId()!=null?rights.actor().getEmployeeId().toString():"")
+                .addValue("eligibleIds",rows.stream().map(Row::id).distinct().toList());
+        parameters.addValues(access.workshop().parameters());
+        if(owner.parameterName()!=null)parameters.addValue(owner.parameterName(),owner.owners());
+        var keys=Set.copyOf(jdbc.queryForList(WarehouseInboundTaskCenterSql.base(access,physical)
+                +" SELECT concat_ws(':',source_type,record_type,id::text,line_data->>'key') FROM inbound_rows WHERE id IN (:eligibleIds)",parameters,String.class));
+        return rows.stream().map(row->WarehouseTaskPhysicalReadEligibility.retain(row,keys.contains(row.rowKey()),false)).toList();
+    }
 
     private Row row(ResultSet rs,Rights rights) throws SQLException {
         UUID id=rs.getObject("id",UUID.class);

@@ -17,6 +17,7 @@ import 'package:uten_imp/core/router/route_names.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_task_center_record.dart';
+import 'package:uten_imp/features/warehouse/widgets/warehouse_task_physical_detail_dialog.dart';
 import 'package:uten_imp/features/warehouse/repositories/warehouse_task_center_repository.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_records_view.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_record_actions.dart';
@@ -468,6 +469,56 @@ Future<void> _doubleTap(WidgetTester tester, String text) async {
 }
 
 void main() {
+  for (final view in WarehouseTaskView.values) {
+    testWidgets(
+      'VIEW-only discovery ${view.name} double click keeps the shared read detail',
+      (tester) async {
+        final row = warehouseTestRecord(
+          source: 'DRAW',
+          record: 'MATERIAL_DISCOVERY',
+          id: 'read-request',
+          billNo: 'VIEW-DISCOVERY',
+          status: view == WarehouseTaskView.active
+              ? 'DRAW_DISCOVERY_PENDING'
+              : 'DRAW_DISCOVERY_CONFIGURED',
+          action: 'HISTORY_DETAIL',
+          data: const {'requestId': 'read-request'},
+          line: const WarehouseTaskLine(
+            key: 'suggestion-1',
+            goodsCode: 'RAW-MATERIAL',
+            quantity: 1,
+          ),
+        );
+        final api = _Api()
+          ..physicalDetail = {
+            'items': [
+              {'goodsCode': 'RAW-MATERIAL', 'quantity': 1},
+            ],
+            'page': 1,
+            'total': 1,
+            'totalPages': 1,
+          };
+        final harness = await _pump(
+          tester,
+          WarehouseTaskRecordsFakeGateway([row]),
+          api: api,
+          permissions: const {Perm.stockDocView, Perm.warehouseTaskViewAll},
+          spec: _ViewSpec(source: 'DRAW', view: view),
+        );
+        expect(_table(tester).selectable, isFalse);
+        await _doubleTap(tester, 'VIEW-DISCOVERY');
+        expect(harness.opened, isEmpty);
+        expect(find.byType(WarehouseTaskPhysicalDetailDialog), findsOneWidget);
+        expect(
+          api.lastPath,
+          '/warehouse/task-center/outbound/${Uri.encodeComponent(row.rowKey)}/detail',
+        );
+        expect(find.text('RAW-MATERIAL'), findsWidgets);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
   for (final navigation in ['go', 'platform']) {
     for (final entry in ['single', 'batch', 'draft']) {
       testWidgets('$navigation return releases warehouse $entry navigation', (

@@ -46,13 +46,19 @@ public interface WarehouseTaskScopePort {
     }
 
     /**
-     * 列表 / 计数用的生效范围。
+     * 原职责范围，供办理、可办计数、徽章及旧办理页使用。
+     * 新的浏览投影应明确调用 {@link #currentForRead}，不能反过来用于命令。
      *
      * @param requestedWarehouseId 页面选的仓(含下级); null = 本人默认范围
      *                             (工作台徽章按任务中心所选仓汇总时, null 取汇总请求所选的仓)
      * @throws com.uten.imp.common.web.ApiException 403 所选仓库不在本人可选范围内
      */
     WarehouseTaskScope current(UUID requestedWarehouseId);
+
+    /** Explicit browsing dimension. Commands, membership, notifications and badges keep {@link #current}. */
+    default WarehouseTaskScope currentForRead(UUID requestedWarehouseId) {
+        return current(requestedWarehouseId);
+    }
 
     /**
      * 在「本次汇总按某仓计」的上下文里执行: 先校验所选仓(越界 403), 执行期间 {@code current(null)}
@@ -84,7 +90,7 @@ public interface WarehouseTaskScopePort {
         T read();
     }
 
-    /** Applies a selected warehouse to a read projection without entering the command callback boundary. */
+    /** Read-only summary callback retaining the original responsibility scope (including badges). */
     <T> T withRequestedWarehouseQuery(UUID requestedWarehouseId, ReadQuery<T> query);
 
     /** Reuses the same scope window for a read projection without adapting it to a command callback. */

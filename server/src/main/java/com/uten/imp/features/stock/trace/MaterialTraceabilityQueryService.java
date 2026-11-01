@@ -117,7 +117,7 @@ public class MaterialTraceabilityQueryService implements MaterialTraceabilityRea
     }
 
     private Context context() {
-        var physical=new GoodsProductionTraceReadScope(stockAccess,warehouseScopes.current(null),has("stock_doc:view"),warehouseScopes.access().warehouseParticipant());
+        var physical=new GoodsProductionTraceReadScope(stockAccess,warehouseScopes.currentForRead(null),has("stock_doc:view"),warehouseScopes.access().warehouseParticipant());
         return new Context(physical.warehouses,physical.parameters,physical);
     }
     private record Context(WarehouseTaskScopePort.WarehouseTaskScope warehouses,Map<String,Object> params,GoodsProductionTraceReadScope physical) {}

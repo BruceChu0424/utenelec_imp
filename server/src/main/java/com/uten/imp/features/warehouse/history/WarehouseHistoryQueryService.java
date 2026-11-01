@@ -76,7 +76,7 @@ public class WarehouseHistoryQueryService {
     public PageResponse<WarehouseHistoryListItem> list(
             WarehouseHistoryType type, String keyword, Short status, LocalDate dateFrom, LocalDate dateTo,
             int page, int size, String sort, String order, String billNo, String sourceDocNo, UUID requestedWarehouse) {
-        WarehouseTaskScope scope = warehouseScopes.current(requestedWarehouse);
+        WarehouseTaskScope scope = warehouseScopes.currentForRead(requestedWarehouse);
         PageRequest pageable = Pageables.of(page, size);
         int safePage = pageable.getPageNumber() + 1;
         int safeSize = pageable.getPageSize();
@@ -136,7 +136,7 @@ public class WarehouseHistoryQueryService {
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public Map<String, List<Map<String, Object>>> facets(
             WarehouseHistoryType type, String keyword, Short status, LocalDate dateFrom, LocalDate dateTo, UUID requestedWarehouse) {
-        WarehouseTaskScope scope = warehouseScopes.current(requestedWarehouse);
+        WarehouseTaskScope scope = warehouseScopes.currentForRead(requestedWarehouse);
         String normalizedKeyword = normalize(keyword);
         return Map.of(
                 "billNo", billBuckets(type, "billNo", "COALESCE(h.bill_no, '')",
@@ -162,7 +162,7 @@ public class WarehouseHistoryQueryService {
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public WarehouseHistoryDetail detail(WarehouseHistoryType type, UUID id, UUID requestedWarehouse) {
-        WarehouseTaskScope scope = warehouseScopes.current(requestedWarehouse);
+        WarehouseTaskScope scope = warehouseScopes.currentForRead(requestedWarehouse);
         List<Object[]> headers = NativeQueryResults.objectArrayRows(
                 bindScope(entityManager.createNativeQuery(
                                 WarehouseHistoryQueries.detailHeaderSql(type, scope)), scope)

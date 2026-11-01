@@ -43,7 +43,7 @@ public class FulfillmentWorkbenchController {
     public FulfillmentWorkbenchPage warehouseOverview(
             @RequestParam(defaultValue = "") String keyword,
             @RequestParam(required = false) UUID scopeWarehouseId) {
-        return queryService.overview("WAREHOUSE", keyword, warehouseScopes.current(scopeWarehouseId));
+        return queryService.overview("WAREHOUSE", keyword, warehouseScopes.currentForRead(scopeWarehouseId));
     }
 
     @GetMapping("/warehouse")
@@ -68,7 +68,7 @@ public class FulfillmentWorkbenchController {
                 : FulfillmentWorkbenchTableQuery.from(sort, order, params, null, null, null, null);
         // 仓库数据范围(ADR-149): 服务端按本人范围强制过滤; scopeWarehouseId = 在可选范围内挑一个仓(含下级)。
         return queryService.query("WAREHOUSE", status, keyword, exception, dateFrom, dateTo, page, size, table,
-                warehouseScopes.current(scopeWarehouseId));
+                warehouseScopes.currentForRead(scopeWarehouseId));
     }
 
     /** 生产待领待办数(徽章来源 productionDraw): 与列表同一仓库范围(ADR-149, 发料仓)。 */

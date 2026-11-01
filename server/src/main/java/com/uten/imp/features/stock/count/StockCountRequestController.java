@@ -63,17 +63,17 @@ public class StockCountRequestController {
             @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="50") int size,
             @RequestParam(required=false) String sort,@RequestParam(required=false) String order,
             jakarta.servlet.http.HttpServletRequest request) {
-        return service.list(reviewRoute,status,warehouseId,page,size,warehouseScopes.current(scopeWarehouseId),keyword,
+        return service.list(reviewRoute,status,warehouseId,page,size,warehouseScopes.currentForRead(scopeWarehouseId),keyword,
                 com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request),sort,order);
     }
     public PageResponse<Map<String,Object>> list(String reviewRoute,String status,UUID warehouseId,
             UUID scopeWarehouseId,String keyword,int page,int size) {
-        return service.list(reviewRoute,status,warehouseId,page,size,warehouseScopes.current(scopeWarehouseId),keyword);
+        return service.list(reviewRoute,status,warehouseId,page,size,warehouseScopes.currentForRead(scopeWarehouseId),keyword);
     }
     /** Java 调用方: 同端点口径(本人仓库数据范围)。 */
     public PageResponse<Map<String,Object>> list(String reviewRoute,String status,UUID warehouseId,
                                                int page,int size) {
-        return service.list(reviewRoute,status,warehouseId,page,size,warehouseScopes.current(null));
+        return service.list(reviewRoute,status,warehouseId,page,size,warehouseScopes.currentForRead(null));
     }
     /** 待办计数; warehousePending(仓库审核红数, 徽章来源 stockCountWarehouse)与仓库审核列表同一仓库范围。 */
     @com.uten.imp.security.BusinessTaskRead

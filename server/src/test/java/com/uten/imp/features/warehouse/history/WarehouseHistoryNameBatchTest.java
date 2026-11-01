@@ -72,6 +72,7 @@ class WarehouseHistoryNameBatchTest {
     @Test void namesAreReadAgainAfterScopeChangesAndNoOutsidePageIdentityIsRequested() {
         UUID ownerA = UUID.randomUUID(), ownerB = UUID.randomUUID();
         Query count = query(), rows = query();
+        org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
         when(scopes.current(null)).thenReturn(WarehouseTaskScope.ALL);
         when(em.createNativeQuery(anyString())).thenAnswer(call -> call.<String>getArgument(0).startsWith("SELECT COUNT(*)") ? count : rows);
         when(count.getSingleResult()).thenReturn(1L);
@@ -89,6 +90,7 @@ class WarehouseHistoryNameBatchTest {
 
     private void stubPage(List<Object[]> page, long total) {
         Query count = query(), rows = query();
+        org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
         when(scopes.current(null)).thenReturn(WarehouseTaskScope.ALL);
         when(em.createNativeQuery(anyString())).thenAnswer(call -> call.<String>getArgument(0).startsWith("SELECT COUNT(*)") ? count : rows);
         when(count.getSingleResult()).thenReturn(total);

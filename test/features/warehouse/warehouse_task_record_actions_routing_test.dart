@@ -279,6 +279,59 @@ class _RouterHarness {
 }
 
 void main() {
+  for (final status in [
+    'DRAW_DISCOVERY_PENDING',
+    'DRAW_DISCOVERY_CONFIGURED',
+  ]) {
+    for (final mount in _Mount.values) {
+      testWidgets(
+        'VIEW-only discovery $status from ${mount.name} opens the shared physical detail',
+        (tester) async {
+          const key = 'DRAW:MATERIAL_DISCOVERY:foreign-request:suggestion-1';
+          final row = WarehouseTaskCenterRecord(
+            rowKey: key,
+            id: 'foreign-request',
+            targetId: 'foreign-request',
+            sourceType: 'DRAW',
+            recordType: 'MATERIAL_DISCOVERY',
+            status: status,
+            statusLabel: status,
+            action: 'HISTORY_DETAIL',
+            actionData: const {
+              'requestId': 'foreign-request',
+              'historyEndpoint': '/warehouse/task-center/outbound/$key/detail',
+            },
+            line: const WarehouseTaskLine(key: 'suggestion-1'),
+          );
+          final harness = _RouterHarness(rows: [row], mount: mount);
+          await harness.pump(tester);
+          await tester.tap(find.byKey(const Key('open-record')));
+          await tester.pumpAndSettle();
+          expect(harness.errors, isEmpty);
+          expect(harness.arrivals, isEmpty);
+          expect(harness.router.state.uri.toString(), _source);
+          expect(
+            find.byType(WarehouseTaskPhysicalDetailDialog),
+            findsOneWidget,
+          );
+          expect(
+            harness.detailApi.calls.single.path,
+            '/warehouse/task-center/outbound/${Uri.encodeComponent(key)}/detail',
+          );
+          expect(find.text('REGISTERED-ONLY'), findsOneWidget);
+          expect(
+            employeePermissionRedirect(
+              harness.user,
+              '/warehouse/material-discovery/foreign-request',
+            ),
+            RouteName.accessDenied,
+          );
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox());
+        },
+      );
+    }
+  }
   for (final actionAndPath in <(String, String)>[
     ('PRODUCTION_DRAW', RouteName.warehouseProductionDrawBatchIssue),
     ('SUBCONTRACT_OUTBOUND', '/warehouse/subcontract-outbound/batch'),

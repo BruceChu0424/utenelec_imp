@@ -116,6 +116,20 @@ class InventoryAiChatToolTest {
         verifyNoInteractions(stock, balances, reservations);
     }
 
+    @Test void explicitWarehouseReadScopeCanReadForeignInventoryWithoutChangingThePhysicalRole() {
+        other();
+        actor(false,Set.of("ai:use","stock:view","warehouse_task:view:all"));
+        var facts=query.read(new InventoryAiChatQueryService.Request("MAT",OTHER));
+        assertFalse(facts.rows().isEmpty());
+        assertEquals(WarehouseTaskScopePort.Role.OTHER,scopes.access().role());
+        // One candidate read and one exact selected-warehouse snapshot.
+        verify(stock,times(2)).instantInventoryRowsInWarehouseScope(any(),eq(Set.of(OTHER)),anyInt(),anyInt(),eq("name"),eq("asc"));
+        actor(false,Set.of("ai:use","stock:view"));
+        var revoked=query.read(new InventoryAiChatQueryService.Request("MAT",OTHER));
+        assertTrue(revoked.rows().isEmpty());assertTrue(revoked.scope().isEmpty());
+        verifyNoMoreInteractions(stock);
+    }
+
     @Test void explicitForeignWarehouseIsDeniedBeforeAnyInventoryRead() {
         assertThrows(ApiException.class, () -> tool.execute(Map.of("keyword", "MAT", "warehouseId", OTHER.toString())));
         verifyNoInteractions(stock, balances, reservations);

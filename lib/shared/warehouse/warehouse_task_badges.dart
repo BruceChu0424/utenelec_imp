@@ -37,6 +37,12 @@ final warehouseScopedBadgesProvider = Provider.autoDispose
     .family<BadgeSummary, WarehouseTaskScope>((ref, scope) {
       final warehouseId = scope.warehouseId;
       if (warehouseId == null) return ref.watch(effectiveBadgeSummaryProvider);
+      final physical = confirmedMyWarehouseScope(
+        ref.watch(myWarehouseScopeProvider),
+      );
+      if (physical == null || !physical.canSelectForTasks(warehouseId)) {
+        return BadgeSummary.empty;
+      }
       return ref.watch(_selectedWarehouseBadgesProvider(warehouseId)).value ??
           BadgeSummary.empty;
     });
@@ -99,6 +105,10 @@ Future<void> refreshSelectedWarehouseBadges(
 }) async {
   final warehouseId = ref.read(warehouseTaskScopeProvider).warehouseId;
   if (warehouseId == null) return;
+  final physical = confirmedMyWarehouseScope(
+    ref.read(myWarehouseScopeProvider),
+  );
+  if (physical == null || !physical.canSelectForTasks(warehouseId)) return;
   final provider = _selectedWarehouseBadgesProvider(warehouseId);
   if (invalidate) ref.invalidate(provider);
   try {

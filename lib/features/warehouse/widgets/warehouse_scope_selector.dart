@@ -35,7 +35,7 @@ class WarehouseScopeSelector extends ConsumerWidget {
           ? l10n.warehouseScopeIncludingChildren(name)
           : name;
     }
-    return mine.isSupervisor
+    return mine.readAllWarehouses || mine.isSupervisor
         ? l10n.warehouseScopeAllWarehouses
         : mine.isKeeper
         ? l10n.warehouseScopeAllMine

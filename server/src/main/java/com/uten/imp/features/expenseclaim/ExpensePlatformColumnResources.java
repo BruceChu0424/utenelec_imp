@@ -26,8 +26,8 @@ public class ExpensePlatformColumnResources {
     private DocumentPlatformColumnAdapter resource(boolean lines) {
         return new DocumentPlatformColumnAdapter(lines ? "expense_claim_item" : "expense_claim",
                 lines ? "报销明细" : "报销单", current, em, json,
-                Set.of("expense:apply", "expense:approve", "expense:pay"), Set.of("expense:apply"),
-                Set.of("expense:apply", "expense:approve", "expense:pay"), ExpenseClaim.class,
+                Set.of("expense:view", "expense:apply", "expense:approve", "expense:pay"), Set.of("expense:apply"),
+                Set.of("expense:view", "expense:apply", "expense:approve", "expense:pay"), ExpenseClaim.class,
                 lines ? "SELECT id, claim_id FROM expense_claim_items WHERE id IN (:ids)" : null,
                 claims::detail, (id, header) -> DocumentPlatformColumnAdapter.draft(header)
                         && current.employeeId().filter(employee -> employee.equals(

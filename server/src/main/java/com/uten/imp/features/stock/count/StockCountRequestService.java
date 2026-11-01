@@ -32,11 +32,13 @@ import java.util.*;
 
 /** Count proposals are immutable snapshots. Only an authorized approval posts stock, atomically. */
 @Service
-@PreAuthorize("hasAnyAuthority('stock:count:submit','stock:count:finance_review','stock:count:warehouse_review')")
+@PreAuthorize("hasAnyAuthority('stock:count:submit','stock:count:finance_review','stock:count:warehouse_review','stock:count:finance_view','stock:count:warehouse_view')")
 public class StockCountRequestService {
     public static final String SUBMIT="stock:count:submit", FINANCE="stock:count:finance_review", WAREHOUSE="stock:count:warehouse_review";
     /** Read-only picker identity for absent/deleted categories; never written back to goods. */
     static final UUID UNCATEGORIZED_CATEGORY=CandidateCategoryTree.UNCATEGORIZED;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.WarehouseTaskScopePort warehouseScopes;
     private final NamedParameterJdbcTemplate db;
     private final SecurityContextCurrentUser user;
     private final WorkshopStockCountPostingPort workshop;
@@ -393,10 +395,19 @@ public class StockCountRequestService {
     private boolean reviewAllowed(Map<String,Object> h) {
         return has("WAREHOUSE".equals(h.get("review_route"))?WAREHOUSE:FINANCE);
     }
+    private boolean reviewReadable(Map<String,Object> h) {
+        if(reviewAllowed(h)) return true;
+        if("WAREHOUSE".equals(h.get("review_route"))) {
+            if(!has("stock:count:warehouse_view")) return false;
+            var scope=warehouseScopes.current(null);
+            return !scope.active() || scope.warehouseIds().contains((UUID)h.get("warehouse_id"));
+        }
+        return has("stock:count:finance_view");
+    }
     private void readAllowed(Map<String,Object> h) {
         if(warehouses(false).stream().noneMatch(w->w.get("id").equals(h.get("warehouse_id"))))
             throw new ApiException(ErrorCode.FORBIDDEN,"无权查看此仓库的盘点申请");
-        if(!reviewAllowed(h)&&!(has(SUBMIT)&&user.requireId().equals(h.get("submitted_by"))))
+        if(!reviewReadable(h)&&!(has(SUBMIT)&&user.requireId().equals(h.get("submitted_by"))))
             throw new ApiException(ErrorCode.FORBIDDEN,"无权查看此盘点申请");
     }
     @Transactional(readOnly=true)
@@ -586,7 +597,7 @@ public class StockCountRequestService {
                                                Map<String,String> columns,String sort,String order) {
         if(route!=null&&!Set.of("FINANCE","WAREHOUSE").contains(route))throw invalid("审核归属不正确");
         if(status!=null&&!Set.of("PENDING","APPROVED","REJECTED","CANCELLED","HISTORY").contains(status))throw invalid("盘点状态不正确");
-        if(route!=null)require("WAREHOUSE".equals(route)?WAREHOUSE:FINANCE);
+        if(route!=null && !has("WAREHOUSE".equals(route)?"stock:count:warehouse_view":"stock:count:finance_view")) require("WAREHOUSE".equals(route)?WAREHOUSE:FINANCE);
         var allowed=warehouses(false).stream().map(w->(UUID)w.get("id")).filter(w->warehouseId==null||warehouseId.equals(w)).toList();
         var paging=Pageables.of(page,size);if(allowed.isEmpty())return new PageResponse<>(List.of(),paging.getPageNumber()+1,paging.getPageSize(),0,0);
         var params=new MapSqlParameterSource("warehouses",allowed).addValue("actor",user.requireId())

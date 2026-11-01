@@ -20,6 +20,7 @@ import '../../../shared/models/retained_async_page.dart';
 import '../../../shared/models/paged_result.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/auth/permissions.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -488,12 +489,20 @@ class _VisitorApprovalListPageState
                   },
                   onFilterChanged: _onFilterChanged,
                   // 待审批段开多选 + 悬浮批量动作；已批准/已拒绝段只读浏览。
-                  selectable: _isPendingTab,
+                  selectable:
+                      _isPendingTab &&
+                      ref
+                          .watch(currentPermissionsProvider)
+                          .contains(Perm.visitorApprove),
                   idOf: (app) => app.id,
                   selectedIds: _selectedIds,
                   onSelectedIdsChanged: (next) =>
                       setState(() => _selectedIds = next),
-                  batchActionsBuilder: _isPendingTab
+                  batchActionsBuilder:
+                      _isPendingTab &&
+                          ref
+                              .watch(currentPermissionsProvider)
+                              .contains(Perm.visitorApprove)
                       ? (context, ids) =>
                             _batchActions(context, ids, _tableRows.items)
                       : null,

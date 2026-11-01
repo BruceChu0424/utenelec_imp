@@ -70,7 +70,9 @@ class ProductionOverLimitHeaderPostgresTest {
             when(em.createNativeQuery(anyString())).thenAnswer(call->query(named,call.getArgument(0)));
             var access=mock(ProductionDocumentAccessPolicy.class);when(access.hasAuthority(ProductionOverLimitDispositionService.APPROVE)).thenReturn(true);
             when(access.nativeReadScope("plan.maker_id","owners")).thenReturn(new NativeReadScope("plan.maker_id IN (:owners)","owners",Set.of(owner)));
-            var service=new ProductionOverLimitDispositionService(em,access,mock(ProductionWorkshopMembership.class),null,null,null,null,null);
+            var membership=mock(ProductionWorkshopMembership.class);
+            when(membership.isActiveOperator()).thenReturn(true);
+            var service=new ProductionOverLimitDispositionService(em,access,membership,null,null,null,null,null);
             var result=service.list("PENDING",2,1,"actual","desc",Map.of("search.actual",">=1200","search.within","=1100","search.over",">=40","search.goodsName","生产","search.reason","多出生产超限"));
             assertThat(result.getTotal()).isEqualTo(2);
             assertThat(result.getItems()).singleElement().satisfies(row->{
@@ -78,7 +80,16 @@ class ProductionOverLimitHeaderPostgresTest {
                 assertThat(row.withinAuthorizationQty()).isEqualByComparingTo("1100");
                 assertThat(row.overLimitQty()).isEqualByComparingTo("40");
                 assertThat(row.unitName()).isEqualTo("件");
+                assertThat(row.canDecide()).isTrue();
             });
+            when(access.hasAuthority("production_plan:view")).thenReturn(true);
+            when(access.hasAuthority(ProductionOverLimitDispositionService.APPROVE)).thenReturn(false);
+            var observed=service.list("PENDING",1,10);
+            assertThat(observed.getItems()).isNotEmpty().allSatisfy(row -> assertThat(row.canDecide()).isFalse());
+            when(access.hasAuthority(ProductionOverLimitDispositionService.APPROVE)).thenReturn(true);
+            when(membership.isActiveOperator()).thenReturn(false);
+            assertThat(service.list("PENDING",1,10).getItems()).isNotEmpty()
+                    .allSatisfy(row -> assertThat(row.canDecide()).isFalse());
             jdbc.update("UPDATE fixture SET sibling_deleted=TRUE WHERE owner_id=? AND actual=1200",owner);
             var withdrawn=service.list("WITHDRAWN",1,10,"actual","asc",Map.of("search.within","=1100","search.reason","多出生产超限"));
             assertThat(withdrawn.getTotal()).isEqualTo(1);

@@ -18,6 +18,8 @@ public class ExpenseClaimAttachmentAccessPolicy implements AttachmentOwnerAccess
     public static final String OWNER_TYPE = "EXPENSE_CLAIM";
 
     private final ExpenseClaimRepository claimRepository;
+    @org.springframework.beans.factory.annotation.Autowired
+    private ExpenseClaimReadPolicy readAccess;
 
     @Override
     public String ownerType() {
@@ -33,21 +35,11 @@ public class ExpenseClaimAttachmentAccessPolicy implements AttachmentOwnerAccess
     }
     @Override public void requireCanViewSensitiveOriginalHistory(UUID ownerId,AuthUser user) { requireCanViewHistory(ownerId,user); }
     private void readable(ExpenseClaim claim,AuthUser user) {
-
-        if (claim.getApplicantId().equals(user.getEmployeeId()) && has(user, "expense:apply")) {
-            return;
+        var scope=user.getPermissions().contains("expense:view") ? readAccess.scope(user)
+                : new com.uten.imp.security.OwnerVisibility.OwnerScope(false,Set.of(),Set.of());
+        if (!ExpenseClaimReadPolicy.canRead(user,claim,scope)) {
+            throw new ApiException(ErrorCode.NOT_FOUND,"报销单不存在");
         }
-        if (has(user,"expense:approve") && (Set.of("SUBMITTED","REVIEWING").contains(claim.getStatus())
-                || java.util.Objects.equals(user.getEmployeeId(),claim.getApprovedBy())
-                || java.util.Objects.equals(user.getEmployeeId(),claim.getRejectedBy()))) {
-            return;
-        }
-        if (Set.of("APPROVED", "PAID").contains(claim.getStatus())
-                && has(user, "expense:pay")) {
-            return;
-        }
-        // 与报销详情一致返回 404，避免用附件接口枚举无权单据。
-        throw new ApiException(ErrorCode.NOT_FOUND, "报销单不存在");
     }
 
     @Override

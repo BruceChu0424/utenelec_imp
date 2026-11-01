@@ -22,6 +22,15 @@ class ProfileChangeAccess {
         return u;
     }
 
+    AuthUser requireReader() {
+        AuthUser user=requireStaff();
+        if (!user.isSuperAdmin() && !user.getPermissions().contains("profile_change:view")
+                && !user.getPermissions().contains("profile:review")) {
+            throw new ApiException(ErrorCode.FORBIDDEN,"没有查看个人信息修改申请的权限");
+        }
+        return user;
+    }
+
     AuthUser requireHr() {
         AuthUser u = requireStaff();
         if (!u.getPermissions().contains("profile:review") && !u.isSuperAdmin()) {

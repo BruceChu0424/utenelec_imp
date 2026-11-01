@@ -33,7 +33,7 @@ public class ProductionOverproductionRateController {
     }
 
     @GetMapping("/segments/{id}")
-    @PreAuthorize("hasAnyAuthority('production_execution:view','production_plan:approve')")
+    @PreAuthorize("hasAnyAuthority('production_execution:view','production_plan:view','production_plan:approve')")
     public RateContext context(@PathVariable UUID id) { return service.context(id); }
 
     @PostMapping("/requests")
@@ -41,7 +41,7 @@ public class ProductionOverproductionRateController {
     public RequestView submit(@Valid @RequestBody SubmitRequest request) { return service.submit(request); }
 
     @GetMapping("/requests")
-    @PreAuthorize("hasAuthority('production_plan:approve')")
+    @PreAuthorize("hasAnyAuthority('production_plan:view','production_plan:approve')")
     public PageResponse<RequestView> list(@RequestParam(defaultValue="PENDING") String status,
             @RequestParam(defaultValue="1") int page, @RequestParam(defaultValue="20") int size,
             // 2026-09-25 单号列统一：计划号/工单号表头排序 + 值筛选（精确匹配）。
@@ -54,7 +54,7 @@ public class ProductionOverproductionRateController {
 
     /** 单号列 facets（2026-09-25 单号列统一）：{plan/segment:[…]}，与列表同一过滤参数。 */
     @org.springframework.web.bind.annotation.RequestMapping(value="/requests/facets", method={org.springframework.web.bind.annotation.RequestMethod.GET, org.springframework.web.bind.annotation.RequestMethod.POST})
-    @PreAuthorize("hasAuthority('production_plan:approve')")
+    @PreAuthorize("hasAnyAuthority('production_plan:view','production_plan:approve')")
     public Map<String, java.util.List<Map<String,Object>>> facets(
             @RequestParam(defaultValue="PENDING") String status) {
         return service.facets(status);
@@ -66,7 +66,7 @@ public class ProductionOverproductionRateController {
     public Map<String,Long> count() { return Map.of("count",service.count()); }
 
     @GetMapping("/requests/{id}")
-    @PreAuthorize("hasAnyAuthority('production_execution:view','production_plan:approve')")
+    @PreAuthorize("hasAnyAuthority('production_execution:view','production_plan:view','production_plan:approve')")
     public RequestView detail(@PathVariable UUID id) {
         RequestView result = service.detail(id);
         auditViews.record(

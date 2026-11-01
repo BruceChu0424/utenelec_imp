@@ -1,5 +1,7 @@
 // 建议箱列表（2026-09-10 状态表头筛选下推后端 status）。
 import 'package:flutter/material.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -71,6 +73,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            currentPermissionsProvider.overrideWithValue({
+              Perm.suggestionSubmit,
+            }),
             suggestionRepositoryProvider.overrideWithValue(repo),
             sharedPreferencesProvider.overrideWithValue(preferences),
           ],
@@ -133,6 +138,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          currentPermissionsProvider.overrideWithValue({Perm.suggestionSubmit}),
           suggestionRepositoryProvider.overrideWithValue(repo),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
@@ -176,6 +182,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          currentPermissionsProvider.overrideWithValue({Perm.suggestionSubmit}),
           suggestionRepositoryProvider.overrideWithValue(repo),
           sharedPreferencesProvider.overrideWithValue(preferences),
         ],
@@ -224,6 +231,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          currentPermissionsProvider.overrideWithValue({Perm.suggestionSubmit}),
           apiClientProvider.overrideWithValue(api),
           suggestionRepositoryProvider.overrideWithValue(
             DioSuggestionRepository(api),

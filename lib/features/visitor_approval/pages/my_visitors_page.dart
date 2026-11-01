@@ -16,6 +16,8 @@ import '../../../shared/models/retained_async_page.dart';
 import '../../../shared/models/paged_result.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/auth/permissions.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -336,18 +338,30 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
               },
               onFilterChanged: _onFilterChanged,
               // 「待我确认」口径开多选 + 悬浮批量确认接待；其余口径只读浏览。
-              selectable: _isHostReviewing,
+              selectable:
+                  _isHostReviewing &&
+                  ref
+                      .watch(currentPermissionsProvider)
+                      .contains(Perm.visitorHostConfirm),
               idOf: (app) => app.id,
               selectedIds: _selectedIds,
               onSelectedIdsChanged: (next) =>
                   setState(() => _selectedIds = next),
-              batchActionsBuilder: _isHostReviewing
+              batchActionsBuilder:
+                  _isHostReviewing &&
+                      ref
+                          .watch(currentPermissionsProvider)
+                          .contains(Perm.visitorHostConfirm)
                   ? (context, ids) =>
                         _batchActions(context, ids, _tableRows.items)
                   : null,
               // 确认接待/拒绝保留为行菜单（右击/长按）；无行详情路由。
+              onRowTap: (app) => context.push('/visitor-approval/${app.id}'),
               rowMenuBuilder: (app) => [
-                if (app.status == VisitorApplicationStatus.hostReviewing) ...[
+                if (ref
+                        .watch(currentPermissionsProvider)
+                        .contains(Perm.visitorHostConfirm) &&
+                    app.status == VisitorApplicationStatus.hostReviewing) ...[
                   UtenMenuItem(
                     label: l10n.myVisitorsConfirm,
                     icon: Icons.check_circle_outline_rounded,

@@ -146,6 +146,7 @@ public final class PermissionDependencyCatalog {
         add(rules, catalog, "sales_quote:convert", "sales_order:view");
         add(rules, catalog, "finance_asset_period:manage", "finance_asset:view");
         add(rules, catalog, "visitor:check_in", "visitor:verify");
+        add(rules, catalog, "expense:view:all", "expense:view");
         return rules;
     }
 

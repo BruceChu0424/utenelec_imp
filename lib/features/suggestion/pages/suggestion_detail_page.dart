@@ -163,15 +163,24 @@ class _Content extends ConsumerWidget {
               borderRadius: UtenRadius.pillAll,
               clipBehavior: Clip.antiAlias,
               child: InkWell(
-                onTap: () async {
-                  try {
-                    await toggleSuggestionLike(ref, suggestion.id);
-                  } catch (error) {
-                    if (context.mounted) {
-                      UtenNotify.apiError(context, error, fallback: '点赞失败，请重试');
-                    }
-                  }
-                },
+                onTap:
+                    !ref
+                        .watch(currentPermissionsProvider)
+                        .contains(Perm.suggestionSubmit)
+                    ? null
+                    : () async {
+                        try {
+                          await toggleSuggestionLike(ref, suggestion.id);
+                        } catch (error) {
+                          if (context.mounted) {
+                            UtenNotify.apiError(
+                              context,
+                              error,
+                              fallback: '点赞失败，请重试',
+                            );
+                          }
+                        }
+                      },
                 borderRadius: UtenRadius.pillAll,
                 child: Container(
                   padding: const EdgeInsets.symmetric(

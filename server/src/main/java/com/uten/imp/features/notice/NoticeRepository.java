@@ -14,7 +14,15 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
 
     // Applied inside every scoped list/count query, before pagination. The over-limit
     // event uses current plan-owner access; existing workshop/draw rules stay unchanged.
-    String SCOPED_VISIBILITY = """
+    String PARTICIPATION_VISIBILITY = """
+              AND cast(function('fn_notice_participation_visible',n.actionRoute,n.sourceEvent,
+                    :#{#readScope.participationRules},n.type,n.title,n.content,n.audienceUserId,
+                    n.audienceScope,n.audienceSummary,n.audienceCount,n.interactionMode,n.kind,
+                    n.aggregateKind,n.aggregateId,n.sourceRevision,n.dueAt,n.topPriority,n.priority,
+                    cast(n.attachments as String),cast(n.targetDepartmentIds as String),
+                    cast(n.targetEmployeeIds as String)) as Boolean) = true
+            """;
+    String SCOPED_VISIBILITY = PARTICIPATION_VISIBILITY + """
               AND (n.resolvedAt IS NOT NULL OR n.type = 'workflow'
                 OR cast(function('fn_notice_business_action_visible', :userId,
                     n.sourceEvent,n.aggregateKind,n.aggregateId,n.actionRoute,
@@ -321,6 +329,7 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
                           ))
                     )
                   )
+            """ + PARTICIPATION_VISIBILITY + """
             ORDER BY
                 CASE WHEN n.interactionMode = 'acknowledge' THEN 0 ELSE 1 END,
                 CASE n.priority
@@ -333,6 +342,7 @@ public interface NoticeRepository extends JpaRepository<Notice, UUID> {
     List<Notice> findVisiblePendingManualNotices(
             @Param("userId") UUID userId,
             @Param("noneModeSince") Instant noneModeSince,
+            @Param("readScope") ReviewNoticeAudience.ReadScope readScope,
             Pageable pageable);
 
     @Query("""

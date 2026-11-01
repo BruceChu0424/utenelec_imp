@@ -41,6 +41,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -670,9 +671,28 @@ class ExpenseClaimServiceTest {
         when(claimRepository.aggregateActionable(Set.of("SUBMITTED","REVIEWING"),actorId,false))
             .thenReturn(new Object[]{new Object[]{2L,new BigDecimal("123.00")}});
         var result=service.summary();assertEquals(2,result.pendingCount());
+        assertEquals(2,result.actionablePendingCount());assertEquals(0,result.actionablePayableCount());
         assertEquals(new BigDecimal("123.00"),result.pendingAmount());assertEquals(0,result.payableCount());
         verify(claimRepository,never()).aggregateActionable(Set.of("APPROVED"),actorId,true);
         verify(claimRepository,never()).aggregatePaidBetween(any(),any());
+    }
+    @Test void summaryUsesTheSharedTaskAudienceInsteadOfPromotingAdministrativeBrowsing() {
+        when(authUser.getPermissions()).thenReturn(Set.of("expense:approve"));
+        when(claimRepository.aggregateActionable(Set.of("SUBMITTED","REVIEWING"),actorId,false))
+            .thenReturn(new Object[]{2L,new BigDecimal("123.00")});
+        var audience=mock(com.uten.imp.application.port.TaskAudiencePort.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"taskAudience",audience);
+        doAnswer(call->{
+            when(authUser.getPermissions()).thenReturn(Set.of());
+            return call.<com.uten.imp.application.port.TaskAudiencePort.ReadQuery<?>>getArgument(0).read();
+        }).when(audience).read(any());
+        when(applicantQuery.queueCounts(actorId,false,false,false))
+            .thenReturn(new ExpenseApplicantQuery.QueueCounts(0,0,0,0,0));
+        var summary=service.summary();
+        assertEquals(2,summary.pendingCount());
+        assertEquals(new BigDecimal("123.00"),summary.pendingAmount());
+        assertEquals(0,summary.actionablePendingCount());
+        assertEquals(0,summary.actionablePayableCount());
     }
     @Test void missingOriginalBlocksSubmissionWithoutChangingStateOrNotifying() {
         when(authUser.getPermissions()).thenReturn(Set.of("expense:apply"));

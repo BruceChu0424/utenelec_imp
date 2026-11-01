@@ -23,6 +23,78 @@ public class ExpenseApplicantQuery {
 
     private final EntityManager entityManager;
 
+    private static String observerVisibility(com.uten.imp.security.AuthUser actor,
+            com.uten.imp.security.OwnerVisibility.OwnerScope scope, String queue) {
+        String visible=scope.seeAll()?"TRUE":scope.visibleOwners().isEmpty()?"FALSE":"c.applicant_id IN (:observerOwners)";
+        boolean approve=actor.getPermissions().contains("expense:approve"), pay=actor.getPermissions().contains("expense:pay");
+        String legacy=switch(queue) {
+            case "pending" -> approve?"c.applicant_id<>:actor":"FALSE";
+            case "payable" -> pay?"c.applicant_id<>:actor AND (c.approved_by IS NULL OR c.approved_by<>:actor)":"FALSE";
+            case "history" -> "("+(approve?"c.approved_by=:actor OR c.rejected_by=:actor":"FALSE")+") OR "+(pay?"c.status='PAID'":"FALSE");
+            default -> "FALSE";
+        };
+        return "("+visible+" OR ("+legacy+"))";
+    }
+
+    private jakarta.persistence.Query observerQuery(String sql, com.uten.imp.security.AuthUser actor,
+            com.uten.imp.security.OwnerVisibility.OwnerScope scope) {
+        var query=entityManager.createNativeQuery(sql);
+        if(sql.contains(":observerOwners")) query.setParameter("observerOwners",scope.visibleOwners());
+        if(sql.contains(":actor")) query.setParameter("actor",actor.getEmployeeId());
+        return query;
+    }
+
+    public com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto observerFacets(
+            com.uten.imp.security.AuthUser actor, com.uten.imp.security.OwnerVisibility.OwnerScope scope, String queue) {
+        String statuses=switch(queue) {
+            case "pending" -> "c.status IN ('SUBMITTED','REVIEWING')";
+            case "payable" -> "c.status='APPROVED'";
+            case "history" -> "c.status IN ('APPROVED','REJECTED','PAID')";
+            case "browse" -> "TRUE";
+            default -> throw new IllegalArgumentException("Unknown expense read queue");
+        };
+        String where=" FROM expense_claims c WHERE NOT c.is_deleted AND "+statuses+" AND "+observerVisibility(actor,scope,queue);
+        var departments=observerBuckets("SELECT c.applicant_department_id::text,COALESCE((SELECT d.name FROM departments d WHERE d.id=c.applicant_department_id),''),count(*)"+where+" GROUP BY 1,2 ORDER BY 2,1",actor,scope);
+        var months=observerBuckets("SELECT to_char(c.created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM'),to_char(c.created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM'),count(*)"+where+" GROUP BY 1,2 ORDER BY 1 DESC",actor,scope);
+        var claims=observerBuckets("SELECT c.claim_no,c.claim_no,count(*)"+where+" GROUP BY 1,2 ORDER BY 1",actor,scope);
+        // Category counts are distinct documents, matching the list's EXISTS predicate.
+        var categories=observerBuckets("SELECT category,category,count(*) FROM (SELECT DISTINCT c.id,i.category "+
+                where.replace(" FROM expense_claims c", " FROM expense_claims c JOIN expense_claim_items i ON i.claim_id=c.id")+
+                ") visible GROUP BY category ORDER BY category",actor,scope);
+        return new com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto(departments,months,categories,claims);
+    }
+
+    private List<com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto.Bucket> observerBuckets(
+            String sql, com.uten.imp.security.AuthUser actor, com.uten.imp.security.OwnerVisibility.OwnerScope scope) {
+        return com.uten.imp.common.util.NativeQueryResults.objectArrayRows(observerQuery(sql,actor,scope)).stream()
+                .filter(row->row[0]!=null).map(row->new com.uten.imp.features.expenseclaim.dto.ExpenseClaimFacetsDto.Bucket(
+                        row[0].toString(),row[1].toString(),((Number)row[2]).longValue())).toList();
+    }
+
+    public com.uten.imp.features.expenseclaim.dto.ExpenseClaimSummaryDto observerSummary(
+            com.uten.imp.security.AuthUser actor, com.uten.imp.security.OwnerVisibility.OwnerScope scope) {
+        String pending="c.status IN ('SUBMITTED','REVIEWING') AND "+observerVisibility(actor,scope,"pending");
+        String payable="c.status='APPROVED' AND "+observerVisibility(actor,scope,"payable");
+        String read="("+observerVisibility(actor,scope,"browse")+" OR (c.status IN ('SUBMITTED','REVIEWING') AND "+observerVisibility(actor,scope,"pending")+") OR (c.status IN ('APPROVED','REJECTED','PAID') AND "+observerVisibility(actor,scope,"history")+"))";
+        String submitted="c.submitted_at>=:monthStart AND c.submitted_at<:monthEnd AND "+read;
+        String paid="c.status='PAID' AND c.paid_at>=:monthStart AND c.paid_at<:monthEnd AND "+read;
+        var fields=new java.util.ArrayList<String>();
+        for(String predicate:List.of(pending,payable,submitted,paid)) {
+            fields.add("count(*) FILTER(WHERE "+predicate+")");
+            fields.add("COALESCE(sum(c.total_amount) FILTER(WHERE "+predicate+"),0)");
+        }
+        var month=java.time.YearMonth.now(com.uten.imp.common.time.BusinessTime.ZONE);
+        var query=observerQuery("SELECT "+String.join(",",fields)+" FROM expense_claims c WHERE NOT c.is_deleted",actor,scope);
+        query.setParameter("monthStart",month.atDay(1).atStartOfDay(com.uten.imp.common.time.BusinessTime.ZONE).toInstant());
+        query.setParameter("monthEnd",month.plusMonths(1).atDay(1).atStartOfDay(com.uten.imp.common.time.BusinessTime.ZONE).toInstant());
+        Object[] row=(Object[])query.getSingleResult();
+        return new com.uten.imp.features.expenseclaim.dto.ExpenseClaimSummaryDto(
+                ((Number)row[0]).longValue(),new java.math.BigDecimal(row[1].toString()),
+                ((Number)row[2]).longValue(),new java.math.BigDecimal(row[3].toString()),
+                ((Number)row[4]).longValue(),new java.math.BigDecimal(row[5].toString()),
+                ((Number)row[6]).longValue(),new java.math.BigDecimal(row[7].toString()));
+    }
+
     public Optional<ApplicantSnapshot> findEligible(UUID employeeId) {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = entityManager.createNativeQuery("""

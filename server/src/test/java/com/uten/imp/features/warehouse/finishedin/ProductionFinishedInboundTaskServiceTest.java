@@ -42,7 +42,7 @@ class ProductionFinishedInboundTaskServiceTest {
         EntityManager em = mock(EntityManager.class);
         ProductionStockTaskAccessPolicy access =
                 mock(ProductionStockTaskAccessPolicy.class);
-        when(access.canAccessWarehouseTasks()).thenReturn(true);
+        when(access.canBrowseWarehouseTasks()).thenReturn(true);
         Query count = query();
         when(count.getSingleResult()).thenReturn(1L);
         Query rows = query();
@@ -110,7 +110,7 @@ class ProductionFinishedInboundTaskServiceTest {
         EntityManager em = mock(EntityManager.class);
         ProductionStockTaskAccessPolicy access =
                 mock(ProductionStockTaskAccessPolicy.class);
-        when(access.canAccessWarehouseTasks()).thenReturn(true);
+        when(access.canBrowseWarehouseTasks()).thenReturn(true);
         Query count = query();
         when(count.getSingleResult()).thenReturn(1L);
         Query rows = query();

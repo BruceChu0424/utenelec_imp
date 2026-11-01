@@ -22,13 +22,16 @@ class ServerStatusWorkbenchBadgeSources implements WorkbenchBadgeSources {
     private static final Set<String> ACTIONABLE = Set.of("WARNING", "CRITICAL");
 
     private final ServerStatusController controller;
+    private final com.uten.imp.security.SecurityContextCurrentUser currentUser;
 
     @Override
     public List<Source> sources() {
-        return List.of(new Source("serverStatus", () -> Map.of(
-                "alerts",
-                controller.current().alerts().stream()
-                        .filter(alert -> ACTIONABLE.contains(alert.status()))
-                        .count())));
+        return List.of(new Source("serverStatus", () -> {
+            // Keep the original controller's exact read gate even when the task count is zero.
+            var status=controller.current();
+            boolean receives=currentUser.get().map(actor -> actor.getPermissions().contains("server_status:alert:receive")).orElse(false);
+            return Map.of("alerts", receives ? status.alerts().stream()
+                    .filter(alert -> ACTIONABLE.contains(alert.status())).count() : 0L);
+        }));
     }
 }

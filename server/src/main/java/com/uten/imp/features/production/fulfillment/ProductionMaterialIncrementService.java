@@ -126,14 +126,17 @@ public class ProductionMaterialIncrementService {
     }
 
     public PageResponse<RequestView> list(String status,int page,int size) {
-        requirePermission(APPROVE_PERMISSION);String filter=status==null?"PENDING":status.strip().toUpperCase(Locale.ROOT);
+        var readScope=access.approvalRequestReadScope("request.target_segment_id");String filter=status==null?"PENDING":status.strip().toUpperCase(Locale.ROOT);
         if(!Set.of("PENDING","APPROVED","RETURNED","CANCELLED","ALL").contains(filter))throw validation("补料申请状态不正确");
         String predicate="ALL".equals(filter)?"TRUE":"(CASE WHEN EXISTS(SELECT 1 FROM production_material_increment_reversals reversed WHERE reversed.request_id=request.id) THEN 'CANCELLED' ELSE request.status END)=:status";
+        predicate+=" AND "+readScope.predicate();
         var count=em.createNativeQuery("SELECT count(*) FROM production_material_increment_requests request WHERE "+predicate);
+        readScope.bind(count);
         if(!"ALL".equals(filter))count.setParameter("status",filter);
         long total=((Number)count.getSingleResult()).longValue();int boundedSize=Math.min(Math.max(size,1),100),boundedPage=Math.max(page,1);
         var query=em.createNativeQuery(PROJECTION+" WHERE "+predicate+" ORDER BY request.submitted_at DESC,request.id DESC LIMIT :size OFFSET :offset")
                 .setParameter("size",boundedSize).setParameter("offset",(long)(boundedPage-1)*boundedSize);
+        readScope.bind(query);
         if(!"ALL".equals(filter))query.setParameter("status",filter);
         return new PageResponse<>(NativeQueryResults.objectArrayRows(query).stream().map(this::view).toList(),boundedPage,boundedSize,total,total==0?0:(int)((total+boundedSize-1)/boundedSize));
     }
@@ -255,7 +258,7 @@ public class ProductionMaterialIncrementService {
     }
     private boolean canRequest(Segment segment){return access.hasAuthority(REQUEST_PERMISSION)&&access.hasAuthority("production_execution:view")&&membership.isActiveOperator()
             &&membership.isWorkshopMember(segment.workshop(),segment.responsible(),currentUser.employeeId().orElse(null));}
-    private void requireReadable(Segment segment){if(access.hasAuthority(APPROVE_PERMISSION))return;
+    private void requireReadable(Segment segment){if(access.hasAuthority(APPROVE_PERMISSION)||access.canObserveRequestSegment(em,segment.id()))return;
         if(access.hasAuthority("production_execution:view")&&membership.isActiveOperator()&&membership.isWorkshopMember(segment.workshop(),segment.responsible(),currentUser.employeeId().orElse(null)))return;throw notFound();}
     private List<Object[]> rows(String sql,UUID actor,String key){return NativeQueryResults.objectArrayRows(em.createNativeQuery(sql).setParameter("actor",actor).setParameter("key",key));}
     private void requirePermission(String permission){if(!access.hasAuthority(permission))throw forbidden("缺少此操作权限");}

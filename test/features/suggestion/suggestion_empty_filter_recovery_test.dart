@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -57,6 +59,9 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            currentPermissionsProvider.overrideWithValue({
+              Perm.suggestionSubmit,
+            }),
             apiClientProvider.overrideWithValue(api),
             sharedPreferencesProvider.overrideWithValue(preferences),
           ],

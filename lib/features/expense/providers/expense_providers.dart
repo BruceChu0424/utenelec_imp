@@ -391,12 +391,13 @@ Future<void> deleteExpenseInvoice(
   ref.invalidate(expenseDetailProvider(claimId));
 }
 
-enum ApprovalQueue { pending, payable, history }
+enum ApprovalQueue { pending, payable, history, browse }
 
 ApprovalQueue? expenseApprovalQueueFromRoute(String? value) => switch (value) {
   'pending' => ApprovalQueue.pending,
   'payable' => ApprovalQueue.payable,
   'history' => ApprovalQueue.history,
+  'browse' => ApprovalQueue.browse,
   _ => null,
 };
 
@@ -404,7 +405,8 @@ ApprovalQueue expenseApprovalInitialQueue(
   Set<String> permissions,
   ApprovalQueue requested,
 ) {
-  if (requested == ApprovalQueue.history ||
+  if (permissions.contains(Perm.expenseView) ||
+      requested == ApprovalQueue.history ||
       (requested == ApprovalQueue.pending &&
           permissions.contains(Perm.expenseApprove)) ||
       (requested == ApprovalQueue.payable &&
@@ -423,6 +425,7 @@ extension ApprovalQueueValue on ApprovalQueue {
     ApprovalQueue.pending => '待审批',
     ApprovalQueue.payable => '待付款',
     ApprovalQueue.history => '已处理',
+    ApprovalQueue.browse => '全部单据',
   };
 }
 
@@ -430,7 +433,9 @@ final approvalQueueProvider = StateProvider.autoDispose<ApprovalQueue>((ref) {
   final permissions = ref.watch(currentPermissionsProvider);
   return permissions.contains(Perm.expenseApprove)
       ? ApprovalQueue.pending
-      : ApprovalQueue.payable;
+      : permissions.contains(Perm.expensePay)
+      ? ApprovalQueue.payable
+      : ApprovalQueue.browse;
 });
 
 /// 审批列表表头筛选（2026-09-10）：部门 id + 年月（yyyy-MM），下推后端
@@ -531,6 +536,7 @@ final expenseApprovalFacetsProvider = FutureProvider.autoDispose
         ApprovalQueue.pending => ApprovalFacetQueue.pending,
         ApprovalQueue.payable => ApprovalFacetQueue.payable,
         ApprovalQueue.history => ApprovalFacetQueue.history,
+        ApprovalQueue.browse => ApprovalFacetQueue.browse,
       });
     });
 
@@ -677,6 +683,16 @@ class ExpenseApprovalListNotifier
           order: order,
         ),
         ApprovalQueue.history => repository.listHistory(
+          page: page,
+          year: filters.year,
+          month: filters.month,
+          departmentId: filters.departmentId,
+          category: filters.category,
+          claimNo: claimNo,
+          sort: sortColumn,
+          order: order,
+        ),
+        ApprovalQueue.browse => repository.listBrowse(
           page: page,
           year: filters.year,
           month: filters.month,

@@ -44,6 +44,8 @@ class ManualNoticePopupPostgresTest {
     @BeforeAll
     static void start() {
         DB.start();
+        NoticeParticipationSqlFixture.install(new org.springframework.jdbc.core.JdbcTemplate(
+                new org.springframework.jdbc.datasource.DriverManagerDataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword())));
         // NoticeRepository 的全部 @Query 在仓库创建时整体校验：车间对象范围子句引用
         // ProductionExecutionSegment/Department，故与 WorkshopNoticeScopePostgresTest 同样注册。
         var fixtureConfiguration = new Configuration()
@@ -94,6 +96,25 @@ class ManualNoticePopupPostgresTest {
 
         assertThat(pending(ME)).as("已打卡即退出").isEmpty();
         assertThat(pending(OTHER)).as("他人打卡不影响我").containsExactly(notice.getId());
+    }
+
+    @Test
+    void exactUnlinkedProfileResultUsesLiveGrantsAndKeepsAllHistoryRows() {
+        var examples=LegacyProfileResultNoticeFixture.examples(ME);
+        tx(()->examples.forEach(example->em.persist(example.notice())));
+        var readOnly=ReviewNoticeAudience.ReadScope.NONE;
+        var submitter=new ReviewNoticeAudience.ReadScope(readOnly.workshop(),false,false,"",
+                "notice:read,profile:edit:self","","{}","{}");
+        for (var scope : List.of(readOnly,submitter,readOnly)) {
+            var visible=notices.findVisiblePendingManualNotices(ME,NONE_SINCE,scope,PageRequest.of(0,20))
+                    .stream().map(Notice::getId).toList();
+            assertThat(visible).containsAll(examples.stream().filter(example->!example.legacyResult())
+                    .map(example->example.notice().getId()).toList());
+            assertThat(visible.contains(examples.getFirst().notice().getId())).isEqualTo(scope==submitter);
+        }
+        assertThat(em.createQuery("SELECT count(n) FROM Notice n",Long.class).getSingleResult()).isEqualTo(7);
+        examples.forEach(example->assertThat(notices.findById(example.notice().getId())).get()
+                .satisfies(n->{assertThat(n.getAggregateId()).isNull();assertThat(n.getSourceEvent()).isNull();}));
     }
 
     @Test
@@ -174,7 +195,7 @@ class ManualNoticePopupPostgresTest {
 
         assertThat(pending(ME)).containsExactly(
                 ackUrgent.getId(), ackNormalTop.getId(), ackNormalOld.getId(), remindNewest.getId());
-        assertThat(notices.findVisiblePendingManualNotices(ME, NONE_SINCE, PageRequest.of(0, 2)))
+        assertThat(notices.findVisiblePendingManualNotices(ME, NONE_SINCE, ReviewNoticeAudience.ReadScope.NONE, PageRequest.of(0, 2)))
                 .extracting(Notice::getId).containsExactly(ackUrgent.getId(), ackNormalTop.getId());
     }
 
@@ -193,7 +214,7 @@ class ManualNoticePopupPostgresTest {
 
     private List<UUID> pending(UUID user) {
         em.clear();
-        return notices.findVisiblePendingManualNotices(user, NONE_SINCE, PageRequest.of(0, 20))
+        return notices.findVisiblePendingManualNotices(user, NONE_SINCE, ReviewNoticeAudience.ReadScope.NONE, PageRequest.of(0, 20))
                 .stream().map(Notice::getId).toList();
     }
 

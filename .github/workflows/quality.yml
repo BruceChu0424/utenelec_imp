@@ -268,7 +268,10 @@ jobs:
   frontend:
     name: Flutter / Web
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    # The complete 14k+ suite was still making progress when the 90-minute
+    # job expired, before browser/font/production-build checks could run.
+    # Keep every check and budget the complete sequence, including those stages.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

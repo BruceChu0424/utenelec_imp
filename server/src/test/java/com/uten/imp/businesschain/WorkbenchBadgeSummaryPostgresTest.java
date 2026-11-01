@@ -366,6 +366,36 @@ class WorkbenchBadgeSummaryPostgresTest {
     }
 
     @Test
+    void allCatalogViewPermissionsLeaveEveryBusinessBadgeAndTodoSilent() throws Exception {
+        var world=fixture.seedWorld("ALLREAD"+tag());
+        List<String> reads=db.queryForList("SELECT code FROM permissions WHERE (action_type='VIEW' OR code='notice:read') AND NOT 'SUPERADMIN_ONLY'=ANY(grant_policy)",String.class);
+        UUID viewer=new TransactionTemplate(new DataSourceTransactionManager(db.getDataSource())).execute(status -> {
+            db.queryForObject("SELECT set_config('app.actor_id',?,true)",String.class,world.superAdminUserId().toString());
+            UUID target=fixture.createUserWithPerms(world,"all-reader-"+tag(),reads.toArray(String[]::new));
+            db.update("""
+                    INSERT INTO user_permission_overrides(user_id,permission_id,effect)
+                    SELECT ?,id,'revoke' FROM permissions WHERE action_type<>'VIEW' AND code<>'notice:read' AND NOT 'SUPERADMIN_ONLY'=ANY(grant_policy)
+                    ON CONFLICT(user_id,permission_id) DO UPDATE SET effect='revoke'
+                    """,target);
+            return target;
+        });
+        Authentication identity=auth(viewer);
+        JsonNode summary=getJson("/api/workbench/badges",identity);
+        summary.path("entries").properties().forEach(entry->{
+            assertThat(entry.getValue().path("todo").asLong()).as(entry.getKey()+" todo").isZero();
+            assertThat(entry.getValue().path("inProgress").asLong()).as(entry.getKey()+" ongoing").isZero();
+        });
+        assertThat(summary.path("total").path("todo").asLong()).isZero();
+        assertThat(summary.path("total").path("inProgress").asLong()).isZero();
+        getJson("/api/operations/workbench/purchase/overview",identity);
+        getJson("/api/operations/workbench/subcontract/overview",identity);
+        getJson("/api/visitor-approval",identity);
+        getJson("/api/hr/profile-changes",identity);
+        getJson("/api/expense-claims/browse",identity);
+        assertThat(getJson("/api/dashboard/overview",identity).path("todos")).isEmpty();
+    }
+
+    @Test
     void oneSummaryUsesOneSnapshotAcrossAnIndependentCommittedWrite() throws Exception {
         var world = fixture.seedWorld("BADGESNAPSHOT" + tag());
         UUID user = fixture.createUserWithPerms(world, "snapshot-" + tag(), "rd_task:view");
@@ -500,7 +530,7 @@ class WorkbenchBadgeSummaryPostgresTest {
     @Test
     void unreadIndexDigestTracksReadAndPopupAcknowledgement() throws Exception {
         var world = fixture.seedWorld("BADGENOTICE" + tag());
-        UUID user = fixture.createUserWithPerms(world, "nt-" + tag(), "notice:read");
+        UUID user = fixture.createUserWithPerms(world, "nt-" + tag(), "notice:read", "sales_order:view", "sales_order:edit");
         Authentication actor = auth(user);
         JsonNode before = getJson("/api/notices/unread-index", actor);
 

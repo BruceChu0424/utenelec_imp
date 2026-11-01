@@ -125,12 +125,13 @@ class _FakeProfileChangeRepository extends Fake
 Widget _app(
   _FakeProfileChangeRepository repo,
   SharedPreferences preferences, {
+  Set<String> permissions = const {Perm.profileReview},
   BadgeSummaryNotifier? badges,
   GoRouter? router,
 }) => ProviderScope(
   overrides: [
     profileChangeRepositoryProvider.overrideWithValue(repo),
-    currentPermissionsProvider.overrideWithValue({Perm.profileReview}),
+    currentPermissionsProvider.overrideWithValue(permissions),
     sharedPreferencesProvider.overrideWithValue(preferences),
     if (badges != null) badgeSummaryProvider.overrideWith(() => badges),
   ],
@@ -173,6 +174,22 @@ class _FakeBadgeSummary extends BadgeSummaryNotifier {
 }
 
 void main() {
+  testWidgets('只读人事变更仍可读列表和详情入口，不出现审核选择或批量动作', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final repo = _FakeProfileChangeRepository();
+    await tester.pumpWidget(
+      _app(repo, preferences, permissions: const {Perm.profileChangeView}),
+    );
+    await tester.pumpAndSettle();
+    expect(_table(tester).items, isNotEmpty);
+    expect(_table(tester).onRowTap, isNotNull);
+    expect(_table(tester).selectable, isFalse);
+    expect(_table(tester).batchActionsBuilder, isNull);
+    expect(repo.reviewCalls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('cancelled requests have a browsing queue and reachable detail', (
     tester,
   ) async {

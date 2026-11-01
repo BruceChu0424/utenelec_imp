@@ -65,12 +65,12 @@ public class FulfillmentWorkbenchAccessPolicy {
     private final OwnerVisibility ownerVisibility;
 
     public boolean canAccessWarehouseTasks() {
-        return productionStockTaskAccess.canAccessWarehouseTasks();
+        return hasAuthority("stock_doc:view");
     }
 
     /** The warehouse task center executes ProductionDrawDiscoveryBatchController.issue. */
     public boolean canHandleWarehouseTasks() {
-        return canAccessWarehouseTasks() && hasAuthority("stock_doc:view")
+        return productionStockTaskAccess.canAccessWarehouseTasks() && hasAuthority("stock_doc:view")
                 && hasAuthority("stock_doc:approve") && hasAuthority("stock_doc:issue");
     }
 

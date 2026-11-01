@@ -4,6 +4,7 @@
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/auth/permissions.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
@@ -46,7 +47,10 @@ class _VisitorApprovalDetailPageState
     String? comment,
     String? rejectReason,
   }) async {
-    if (_busyTitle != null) return;
+    if (_busyTitle != null ||
+        !ref.read(currentPermissionsProvider).contains(Perm.visitorApprove)) {
+      return;
+    }
     final l10n = AppLocalizations.of(context);
     final busyTitle = switch (action) {
       'approve' => l10n.visitorApprovalApprove,
@@ -283,7 +287,11 @@ class _VisitorApprovalDetailPageState
       // 2026-09-14 UI 统一口径：吸底操作条改右下悬浮组（大小/高度/禁用态全站统一）。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: busy
+      floatingActionButton:
+          busy ||
+              !ref
+                  .watch(currentPermissionsProvider)
+                  .contains(Perm.visitorApprove)
           ? null
           : detail.maybeWhen(
               data: (d) {

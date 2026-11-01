@@ -19,6 +19,21 @@ namespace Uten.Legacy.Tests
         {
             try
             {
+                if (args.Length == 1 && args[0] == "--permission-readonly-contracts")
+                {
+                    var readChecks = typeof(SessionCoordinator).Assembly.GetTypes().Single(type => type.Name == "ReadScopeRevisionChecks");
+                    readChecks.GetMethod("Run", BindingFlags.Public | BindingFlags.Static).Invoke(null, null);
+                    int drafts = DurableDraftDialogChecks.Run();
+                    var previous = System.Threading.SynchronizationContext.Current;
+                    int inline;
+                    System.Threading.SynchronizationContext.SetSynchronizationContext(
+                        new System.Windows.Threading.DispatcherSynchronizationContext(System.Windows.Threading.Dispatcher.CurrentDispatcher));
+                    try { inline = UnitInlineWorkspaceChecks.Run(); }
+                    finally { System.Threading.SynchronizationContext.SetSynchronizationContext(previous); }
+                    Console.WriteLine("PASS permission readonly contracts; read scope transitions; durable drafts=" + drafts
+                        + "; inline preservation=" + inline + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
+                    return 0;
+                }
                 if (args.Length == 1 && args[0] == "--ui-contracts-only")
                 {
                     UiContractChecks.Run();

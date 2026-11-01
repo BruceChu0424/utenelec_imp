@@ -56,6 +56,10 @@ public class ProfileChangeMapper {
     }
 
     public ProfileChangeDto.BatchDetail toBatchDetail(List<ProfileChangeRequest> rs) {
+        return toBatchDetail(rs, true);
+    }
+
+    public ProfileChangeDto.BatchDetail toBatchDetail(List<ProfileChangeRequest> rs, boolean sensitiveVisible) {
         ProfileChangeRequest first = rs.get(0);
         // 批量回填姓名：一次查齐 员工本人 + 全部提交人 + 全部审批人
         Set<UUID> peopleIds = new LinkedHashSet<>();
@@ -71,9 +75,10 @@ public class ProfileChangeMapper {
         Employee emp = people.get(first.getEmployeeId());
         List<ProfileChangeDto.Item> items = new ArrayList<>();
         for (ProfileChangeRequest r : rs) {
-            String oldOut = snapshotCodec.decode(
+            boolean masked = !sensitiveVisible && ProfileFieldPolicy.requiresEncryptedSnapshot(r.getFieldCode());
+            String oldOut = masked ? "***" : snapshotCodec.decode(
                     r.getFieldCode(), r.getValueEncoding(), r.getOldValueEnc());
-            String newOut = snapshotCodec.decode(
+            String newOut = masked ? "***" : snapshotCodec.decode(
                     r.getFieldCode(), r.getValueEncoding(), r.getNewValueEnc());
             items.add(new ProfileChangeDto.Item(
                     r.getId(), r.getBatchId(), r.getFieldCode(), r.getFieldLabel(), r.getFieldGroup(),

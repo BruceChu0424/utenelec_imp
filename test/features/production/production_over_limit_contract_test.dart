@@ -182,6 +182,7 @@ void main() {
     'plan queue and scoped detail have separate view gates with the same permission surface',
     () {
       expect(requiredAnyPermFor(RouteName.productionOverLimitDispositions), [
+        Perm.productionPlanView,
         Perm.productionPlanApprove,
       ]);
       final detail = RoutePath.productionOverLimitDisposition('case');

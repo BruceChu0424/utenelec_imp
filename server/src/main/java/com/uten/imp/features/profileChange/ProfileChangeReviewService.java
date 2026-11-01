@@ -133,14 +133,15 @@ public class ProfileChangeReviewService {
                 noticeService.publishForUser(submitterUserId,
                         "个人信息修改已批准",
                         "您提交的 " + rs.size() + " 项个人信息修改(" + fields + ")已批准并生效。",
-                        "approval", publisher);
+                        "approval", publisher, "/profile/me/changes",
+                        "PROFILE_CHANGE_APPROVED", "normal", rs.getFirst().getBatchId());
             } else {
                 noticeService.publishForUser(submitterUserId,
                         "个人信息修改被驳回",
                         "您提交的 " + rs.size() + " 项个人信息修改(" + fields + ")已被驳回。"
                                 + (comment == null || comment.isBlank() ? "" : "驳回意见：" + comment),
                         "approval", publisher, "/profile/edit",
-                        "PROFILE_CHANGE_REJECTED", "important");
+                        "PROFILE_CHANGE_REJECTED", "important", rs.getFirst().getBatchId());
             }
         } catch (Exception e) {
             log.warn("审批结果通知发送失败(不影响审批本身): {}", e.getMessage());

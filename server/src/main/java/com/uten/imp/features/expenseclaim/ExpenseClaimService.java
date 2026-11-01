@@ -109,6 +109,24 @@ public class ExpenseClaimService {
     @org.springframework.beans.factory.annotation.Autowired
     private org.springframework.beans.factory.ObjectProvider<com.uten.imp.common.platformcolumns.PlatformColumnService> platformColumns;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private ExpenseClaimReadPolicy readAccess;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.TaskAudiencePort taskAudience;
+
+    private com.uten.imp.security.OwnerVisibility.OwnerScope observerScope(AuthUser user) {
+        return user.getPermissions().contains("expense:view") ? readAccess.scope(user)
+                : new com.uten.imp.security.OwnerVisibility.OwnerScope(false, Set.of(), Set.of());
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ExpenseClaimDto> listBrowse(Integer year, Integer month, UUID departmentId,
+            String category, int page, int size, String sort, String order, String claimNo) {
+        require(requireStaff(), "expense:view");
+        return listClaims(null, Set.of(), year, month, departmentId, normalizeCategory(category),
+                page, size, true, false, sort, order, claimNo);
+    }
+
     // ---- 查询 -----------------------------------------------------------------
 
     @Transactional(readOnly = true)
@@ -193,7 +211,7 @@ public class ExpenseClaimService {
             String order,
             String claimNo) {
         AuthUser user = requireStaff();
-        require(user, "expense:approve");
+        if (!has(user,"expense:view")) require(user, "expense:approve");
         return listClaims(
                 null,
                 Set.of("SUBMITTED", "REVIEWING"),
@@ -235,7 +253,7 @@ public class ExpenseClaimService {
             String order,
             String claimNo) {
         AuthUser user = requireStaff();
-        require(user, "expense:pay");
+        if (!has(user,"expense:view")) require(user, "expense:pay");
         return listClaims(
                 null,
                 Set.of("APPROVED"),
@@ -275,7 +293,7 @@ public class ExpenseClaimService {
     public PageResponse<ExpenseClaimDto> listHistory(Integer year,Integer month,UUID departmentId,String rawCategory,int page,int size,
             String sort,String order,String claimNo) {
         AuthUser user=requireStaff();
-        if(!has(user,"expense:approve") && !has(user,"expense:pay")) throw new ApiException(ErrorCode.FORBIDDEN);
+        if(!has(user,"expense:view") && !has(user,"expense:approve") && !has(user,"expense:pay")) throw new ApiException(ErrorCode.FORBIDDEN);
         return listClaims(null,Set.of("APPROVED","REJECTED","PAID"),year,month,departmentId,normalizeCategory(rawCategory),page,size,true,true,sort,order,claimNo);
     }
 
@@ -299,21 +317,27 @@ public class ExpenseClaimService {
             UUID departmentId,String category,int page,int size,boolean newestFirst,boolean history,
             String sort,String order,String claimNo,boolean includeDeleted,boolean onlyDeleted) {
         DateRange dateRange = createdAtRange(year, month);
+        AuthUser reader = requireStaff();
+        var observers = applicantId == null ? observerScope(reader) : null;
         Specification<ExpenseClaim> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             if (onlyDeleted) predicates.add(cb.isTrue(root.get("deleted")));
             else if (!includeDeleted) predicates.add(cb.isFalse(root.get("deleted")));
-            if(history) {
-                AuthUser user=requireStaff();UUID actor=user.getEmployeeId();
+            if (applicantId == null) {
+                UUID actor=reader.getEmployeeId();
                 List<Predicate> visible=new ArrayList<>();
-                if(has(user,"expense:approve")) visible.add(cb.or(cb.equal(root.get("approvedBy"),actor),cb.equal(root.get("rejectedBy"),actor)));
-                if(has(user,"expense:pay")) visible.add(cb.equal(root.get("status"),"PAID"));
+                if (observers.seeAll()) visible.add(cb.conjunction());
+                else if (!observers.visibleOwners().isEmpty()) visible.add(root.get("applicantId").in(observers.visibleOwners()));
+                if (history) {
+                    if(has(reader,"expense:approve")) visible.add(cb.or(cb.equal(root.get("approvedBy"),actor),cb.equal(root.get("rejectedBy"),actor)));
+                    if(has(reader,"expense:pay")) visible.add(cb.equal(root.get("status"),"PAID"));
+                } else if (statuses.contains("SUBMITTED") && has(reader,"expense:approve")) {
+                    visible.add(cb.notEqual(root.get("applicantId"),actor));
+                } else if (statuses.contains("APPROVED") && has(reader,"expense:pay")) {
+                    visible.add(cb.and(cb.notEqual(root.get("applicantId"),actor),
+                            cb.or(cb.isNull(root.get("approvedBy")),cb.notEqual(root.get("approvedBy"),actor))));
+                }
                 predicates.add(cb.or(visible.toArray(new Predicate[0])));
-            } else if (applicantId == null) {
-                UUID actor = requireStaff().getEmployeeId();
-                predicates.add(cb.notEqual(root.get("applicantId"), actor));
-                if (statuses.contains("APPROVED")) predicates.add(cb.or(
-                    cb.isNull(root.get("approvedBy")), cb.notEqual(root.get("approvedBy"),actor)));
             }
             if (applicantId != null) {
                 predicates.add(cb.equal(root.get("applicantId"), applicantId));
@@ -468,6 +492,9 @@ public class ExpenseClaimService {
     @Transactional(readOnly = true)
     public ExpenseClaimFacetsDto facets(String queue, boolean includeDeleted, boolean onlyDeleted) {
         AuthUser user = requireStaff();
+        if (has(user,"expense:view") && Set.of("pending","payable","history","browse").contains(queue)) {
+            return applicantQuery.observerFacets(user, observerScope(user), queue);
+        }
         Set<String> statuses;
         String normalizedQueue = queue == null ? "" : queue.trim().toLowerCase(Locale.ROOT);
         switch (normalizedQueue) {
@@ -520,21 +547,31 @@ public class ExpenseClaimService {
     @Transactional(readOnly = true)
     public ExpenseClaimSummaryDto summary() {
         AuthUser user = requireStaff();
-        if (!has(user, "expense:approve") && !has(user, "expense:pay")) {
+        if (!has(user,"expense:view") && !has(user, "expense:approve") && !has(user, "expense:pay")) {
             throw new ApiException(ErrorCode.FORBIDDEN);
         }
+        Object[] pending=has(user,"expense:approve") ? actionable(user,false) : null;
+        Object[] payable=has(user,"expense:pay") ? actionable(user,true) : null;
+        // Browsing keeps the session's read authority; task counts use the same actual-grant
+        // projection as /counts, so administrative capability never becomes a subscription.
+        long[] tasks=taskAudience==null?new long[]{count(pending),count(payable)}:taskAudience.read(()->{
+            AuthUser participant=requireStaff();
+            var counts=applicantQuery.queueCounts(participant.getEmployeeId(),false,
+                    has(participant,"expense:approve"),has(participant,"expense:pay"));
+            return new long[]{counts.pendingApproval(),counts.pendingPayment()};
+        });
+        if (has(user,"expense:view")) return applicantQuery.observerSummary(user, observerScope(user))
+                .withActionableCounts(tasks[0],tasks[1]);
         YearMonth currentMonth = YearMonth.now(BusinessTime.ZONE);
         Instant monthStart = currentMonth.atDay(1)
                 .atStartOfDay(BusinessTime.ZONE).toInstant();
         Instant monthEnd = currentMonth.plusMonths(1).atDay(1)
                 .atStartOfDay(BusinessTime.ZONE).toInstant();
-        Object[] pending=has(user,"expense:approve") ? actionable(user,false) : null;
-        Object[] payable=has(user,"expense:pay") ? actionable(user,true) : null;
         Object[] submitted=claimRepository.aggregateSubmittedVisible(monthStart,monthEnd,user.getEmployeeId(),
                 has(user,"expense:approve"),has(user,"expense:pay"));
         Object[] paid=has(user,"expense:pay") ? claimRepository.aggregatePaidBetween(monthStart,monthEnd) : null;
         return new ExpenseClaimSummaryDto(count(pending),amount(pending),count(payable),amount(payable),
-                count(submitted),amount(submitted),count(paid),amount(paid));
+                count(submitted),amount(submitted),count(paid),amount(paid),tasks[0],tasks[1]);
     }
 
     /**
@@ -1248,18 +1285,9 @@ public class ExpenseClaimService {
 
     private void assertCanRead(ExpenseClaim claim) {
         AuthUser user = requireStaff();
-        if (claim.getApplicantId().equals(user.getEmployeeId()) && has(user, "expense:apply")) {
-            return;
+        if (!ExpenseClaimReadPolicy.canRead(user,claim,observerScope(user))) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "报销单不存在");
         }
-        if (has(user,"expense:approve") && (Set.of("SUBMITTED","REVIEWING").contains(claim.getStatus())
-                || user.getEmployeeId().equals(claim.getApprovedBy()) || user.getEmployeeId().equals(claim.getRejectedBy()))) {
-            return;
-        }
-        if (Set.of("APPROVED", "PAID").contains(claim.getStatus())
-                && has(user, "expense:pay")) {
-            return;
-        }
-        throw new ApiException(ErrorCode.NOT_FOUND, "报销单不存在");
     }
 
     private static void assertOwner(ExpenseClaim claim, AuthUser user) {

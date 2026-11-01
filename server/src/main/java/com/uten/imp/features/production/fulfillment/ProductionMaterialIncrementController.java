@@ -17,18 +17,18 @@ public class ProductionMaterialIncrementController {
     private final ProductionMaterialIncrementService service;
     private final AuditDetailViewRecorder auditViews;
     @GetMapping("/segments/{id}/context")
-    @PreAuthorize("hasAnyAuthority('production_execution:view','production_plan:approve')")
+    @PreAuthorize("hasAnyAuthority('production_execution:view','production_plan:view','production_plan:approve')")
     public Context context(@PathVariable UUID id){return service.context(id);}
     @PostMapping("/requests")
     @PreAuthorize("hasAuthority('production_execution:view') and hasAuthority('production_execution:request_material_increment')")
     public RequestView submit(@Valid @RequestBody SubmitRequest request){return service.submit(request);}
-    @GetMapping("/requests") @PreAuthorize("hasAuthority('production_plan:approve')")
+    @GetMapping("/requests") @PreAuthorize("hasAnyAuthority('production_plan:view','production_plan:approve')")
     public PageResponse<RequestView> list(@RequestParam(defaultValue="PENDING") String status,
             @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size){return service.list(status,page,size);}
     @GetMapping("/count") @PreAuthorize("hasAuthority('production_plan:approve')")
     @com.uten.imp.security.BusinessTaskRead
     public Map<String,Long> count(){return Map.of("count",service.count());}
-    @GetMapping("/requests/{id}") @PreAuthorize("hasAnyAuthority('production_execution:view','production_plan:approve')")
+    @GetMapping("/requests/{id}") @PreAuthorize("hasAnyAuthority('production_execution:view','production_plan:view','production_plan:approve')")
     public RequestView detail(@PathVariable UUID id){
         RequestView result=service.detail(id);
         auditViews.record(

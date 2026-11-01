@@ -315,9 +315,9 @@ public class PlatformDisplayColumnsConfiguration {
         new String[]{"stock_doc:view","stock:view","stock_report:view","warehouse:view","warehouse_inbound:view","warehouse_iqc_stock_in:view",
             "warehouse_purchase_receipt_history:view","warehouse_subcontract_receipt_history:view","warehouse_subcontract_outbound_history:view",
             "warehouse_subcontract_finished_return_history:view","warehouse_subcontract_material_return_history:view",
-            "warehouse_subcontract_waste_history:view","warehouse_iqc_return:view","workshop_material:view"},new String[]{"goods:cost:view"});}
+            "warehouse_subcontract_waste_history:view","warehouse_iqc_return:view","workshop_material:view","stock:count:warehouse_view"},new String[]{"goods:cost:view"});}
     @Bean PlatformColumnResourceAdapter financeDisplayColumns(){return view("finance","财务显示计算",
-        new String[]{"finance_receipt:view","finance_payment:view","finance_expense:view","finance_other_income:view","finance_bank_transfer:view","ar_ap_ledger:view","finance_report:view","finance_asset:view","supplier_settlement:view","subcontract_loss_claim:view"},
+        new String[]{"finance_receipt:view","finance_payment:view","finance_expense:view","finance_other_income:view","finance_bank_transfer:view","ar_ap_ledger:view","finance_report:view","finance_asset:view","supplier_settlement:view","subcontract_loss_claim:view","stock:count:finance_view"},
         new String[]{"finance_receipt:view","finance_payment:view","finance_expense:view","finance_other_income:view","finance_bank_transfer:view","ar_ap_ledger:view","finance_report:view","finance_asset:view","supplier_settlement:view","finance:view:all"});}
     @Bean PlatformColumnResourceAdapter masterDisplayColumns(){return view("master","基础资料显示计算",
         new String[]{"goods:view","client:view","supplier:view","mould:view","warehouse:view","unit:view","color:view","currency:view","account:view"},
@@ -349,17 +349,17 @@ public class PlatformDisplayColumnsConfiguration {
     @Bean PlatformColumnResourceAdapter procurementIqcRejectionDisplayColumns(){return restrictedView("procurement_iqc_rejection","质检退回辅助计算",
         Set.of("procurement_iqc_rejection:view"),"procurement_iqc_rejection:amount:view");}
     @Bean PlatformColumnResourceAdapter employeeDisplayColumns(){return view("employee","人事显示计算",
-        new String[]{"employee:view","department:view","profile:review","profile:edit:self"},new String[]{"employee:compensation:view"});}
+        new String[]{"employee:view","department:view","profile_change:view","profile:review","profile:edit:self"},new String[]{"employee:compensation:view"});}
     @Bean PlatformColumnResourceAdapter payrollDisplayColumns(){return view("payroll","工资显示计算",
         new String[]{"payroll:view:self","payroll:view:all"},new String[]{"payroll:view:self","payroll:view:all"});}
     @Bean PlatformColumnResourceAdapter expenseDisplayColumns(){return view("expense","报销显示计算",
-        new String[]{"expense:apply","expense:approve","expense:pay"},new String[]{"expense:apply","expense:approve","expense:pay"});}
+        new String[]{"expense:view","expense:apply","expense:approve","expense:pay"},new String[]{"expense:view","expense:apply","expense:approve","expense:pay"});}
     @Bean PlatformColumnResourceAdapter qualityDisplayColumns(){return view("quality","品质显示计算",
         new String[]{"production_quality_inspection:view","procurement_iqc_rejection:view","warehouse_iqc_stock_in:view","sales_return_quality:view","stock_doc:view"},new String[]{});}
     @Bean PlatformColumnResourceAdapter visitorDisplayColumns(){return view("visitor","访客显示计算",
-        new String[]{"visitor:approve","visitor:host_confirm","visitor:verify","visitor:check_in","visitor:blacklist"},new String[]{});}
+        new String[]{"visitor_approval:view","visitor:host_view","visitor:approve","visitor:host_confirm","visitor:verify","visitor:check_in","visitor:blacklist"},new String[]{});}
     @Bean PlatformColumnResourceAdapter operationsDisplayColumns(){return view("operations","工作台显示计算",
-        new String[]{"rd_task:view","suggestion:submit","suggestion:reply","notice:read","production_plan:view","production_execution:view",
+        new String[]{"rd_task:view","suggestion:view","suggestion:submit","suggestion:reply","notice:read","production_plan:view","production_execution:view",
             "purchase_request:view","purchase_order:view","subcontract_application:view","subcontract_order:view","sales_order:view","stock_doc:view"},new String[]{});}
     @Bean PlatformColumnResourceAdapter adminDisplayColumns(){return view("admin","系统监控显示计算",
         new String[]{"audit_log:view","server_status:view","authorization:manage","account:support"},new String[]{});}

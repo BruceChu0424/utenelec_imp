@@ -48,6 +48,7 @@ import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../core/network/connection_recovery.dart';
 import '../../../core/router/nav_helpers.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
@@ -316,8 +317,45 @@ class _RdTaskListPanelState extends ConsumerState<_RdTaskListPanel>
       return;
     }
     final goodsId = row.goodsId;
-    if (goodsId == null || goodsId.isEmpty) {
-      context.appInfo('该任务未关联货品，可直接「标记完成」');
+    final canReadGoods =
+        goodsId != null &&
+        goodsId.isNotEmpty &&
+        locationAllowedFor(
+          ref.read(currentPermissionsProvider),
+          ref.read(isSuperAdminProvider),
+          RoutePath.basicinfoGoodsDetail(goodsId),
+        );
+    if (goodsId == null || goodsId.isEmpty || !canReadGoods) {
+      await UtenDialog.show(
+        context,
+        title: '任务详情 · ${row.taskNo}',
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SelectableText(row.title),
+              const SizedBox(height: UtenSpacing.s12),
+              SelectableText('状态：${rdTaskStatusLabel(row.status)}'),
+              if (row.sourceDocNo?.isNotEmpty ?? false)
+                SelectableText('来源：${row.sourceDocNo}'),
+              if (row.goodsCode?.isNotEmpty ?? false)
+                SelectableText('货品：${row.goodsCode} ${row.goodsName ?? ""}'),
+              if (row.assigneeName?.isNotEmpty ?? false)
+                SelectableText('负责人：${row.assigneeName}'),
+              if (row.description?.isNotEmpty ?? false) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                SelectableText(row.description!),
+              ],
+              if (row.closeNote?.isNotEmpty ?? false) ...[
+                const SizedBox(height: UtenSpacing.s12),
+                SelectableText('结束说明：${row.closeNote}'),
+              ],
+            ],
+          ),
+        ),
+        confirmLabel: '关闭',
+        confirmAsClose: true,
+      );
       return;
     }
     final masterIssue = row.sourceDocType == 'MATERIAL_ANALYSIS_MASTER_ISSUE';

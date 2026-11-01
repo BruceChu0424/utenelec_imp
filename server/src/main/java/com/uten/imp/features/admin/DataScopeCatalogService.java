@@ -50,7 +50,9 @@ public class DataScopeCatalogService {
                 definition(
                         "finance", "财务单据",
                         "额外查看所选负责人名下的收付款、费用和转账单据。",
-                        "finance:view:all", true, null, "财务")
+                        "finance:view:all", true, null, "财务"),
+                definition("expense", "报销单据", "额外查看所选申请人的报销单；不授予申请、审批或付款权。",
+                        "expense:view:all", true, null, "财务")
         );
     }
 

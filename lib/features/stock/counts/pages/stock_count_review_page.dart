@@ -1,3 +1,4 @@
+import '../../../../core/router/route_access_policy.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
@@ -129,6 +130,21 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
         ref.read(currentPermissionsProvider).contains(permission);
   }
 
+  bool get _canRead {
+    if (_authorized) return true;
+    final location = widget.reviewRoute == 'FINANCE'
+        ? RouteName.financeStockCountReview
+        : widget.reviewRoute == 'WAREHOUSE'
+        ? RouteName.warehouseStockCountReview
+        : null;
+    return location != null &&
+        locationAllowedFor(
+          ref.read(currentPermissionsProvider),
+          ref.read(isSuperAdminProvider),
+          location,
+        );
+  }
+
   String get _title => switch (widget.reviewRoute) {
     'FINANCE' => '普通仓盘点财务审核',
     'WAREHOUSE' => '车间内料仓盘点审核',
@@ -212,7 +228,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
 
   Future<void> _load([int? page, bool useCache = false]) async {
     final requestedPage = page ?? _refreshPage;
-    if (!_authorized) {
+    if (!_canRead) {
       if (mounted) setState(() => _loading = false);
       return;
     }
@@ -305,7 +321,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
   }
 
   Future<void> _open(String id) async {
-    if (!_authorized || _working) return;
+    if (!_canRead || _working) return;
     final sequence = ++_sequence;
     setState(() {
       _loading = true;
@@ -617,7 +633,7 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
   Widget build(BuildContext context) {
     ref.watch(currentPermissionsProvider);
     ref.watch(isSuperAdminProvider);
-    final allowed = _authorized;
+    final allowed = _canRead;
     final content = !allowed
         ? Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -897,9 +913,11 @@ class _StockCountReviewPageState extends ConsumerState<StockCountReviewPage>
               });
               _load(1);
             },
-            selectable: !_history,
+            selectable: !_history && _authorized,
             showSelectionColumn:
-                !_history && (widget.embedded || widget.reviewRoute != null),
+                !_history &&
+                _authorized &&
+                (widget.embedded || widget.reviewRoute != null),
             singleSelection: !_history && widget.reviewRoute == null,
             showSelectionSummary: false,
             bottomContentPadding: widget.reviewRoute == null

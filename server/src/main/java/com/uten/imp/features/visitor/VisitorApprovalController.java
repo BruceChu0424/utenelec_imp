@@ -45,7 +45,7 @@ public class VisitorApprovalController {
     private final VisitorApprovalFacetQuery facetQuery;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('visitor:approve')")
+    @PreAuthorize("hasAnyAuthority('visitor_approval:view','visitor:approve')")
     public PageResponse<VisitorListItem> list(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) UUID hostDepartmentId,
@@ -60,13 +60,13 @@ public class VisitorApprovalController {
 
     /** HR 审批列表表头筛选桶（状态/接待人部门），status 与列表分段同口径（空=待办）。 */
     @GetMapping("/facets")
-    @PreAuthorize("hasAuthority('visitor:approve')")
+    @PreAuthorize("hasAnyAuthority('visitor_approval:view','visitor:approve')")
     public VisitorApprovalFacets facets(@RequestParam(required = false) String status) {
         return facetQuery.facets(status);
     }
 
     @GetMapping("/as-host")
-    @PreAuthorize("hasAuthority('visitor:host_confirm')")
+    @PreAuthorize("hasAnyAuthority('visitor:host_view','visitor:host_confirm')")
     public PageResponse<VisitorListItem> asHost(
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "1") int page,
@@ -112,7 +112,7 @@ public class VisitorApprovalController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('visitor:approve', 'visitor:host_confirm')")
+    @PreAuthorize("hasAnyAuthority('visitor_approval:view','visitor:approve','visitor:host_view','visitor:host_confirm')")
     public VisitorDetail detail(@PathVariable UUID id) {
         VisitorDetail detail = hrApprovalService.getDetailForStaff(id);
         viewAudit.record(

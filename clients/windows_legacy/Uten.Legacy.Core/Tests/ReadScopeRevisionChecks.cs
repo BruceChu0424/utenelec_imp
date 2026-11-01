@@ -15,6 +15,8 @@ namespace Uten.Legacy.Core.Tests
         public static void Run()
         {
             FirstProofAndChangedProof().GetAwaiter().GetResult();
+            FirstProofAndChangedProof("expense-claims/browse").GetAwaiter().GetResult();
+            FirstProofAndChangedProof("platform-columns/expense_claim/definitions").GetAwaiter().GetResult();
             OlderSequenceCannotRollBackProof().GetAwaiter().GetResult();
             HeaderBodyMismatchRetiresReaders().GetAwaiter().GetResult();
             NativeDomainsAreIndependent().GetAwaiter().GetResult();
@@ -25,7 +27,7 @@ namespace Uten.Legacy.Core.Tests
             ForbiddenDoesNotRetireScope().GetAwaiter().GetResult();
         }
 
-        private static async Task FirstProofAndChangedProof()
+        private static async Task FirstProofAndChangedProof(string path = "master/goods/page")
         {
             var proof = "goods-a";
             var sentBearer = new List<string>();
@@ -42,13 +44,13 @@ namespace Uten.Legacy.Core.Tests
                 var refresh = fixture.Store.Load().RefreshToken;
                 var events = 0;
                 fixture.Session.ReadScopeChanged += (sender, args) => events++;
-                Equal(originalBody, await fixture.Session.GetAsync("master/goods/page", CancellationToken.None), "JSON is delivered unchanged");
+                Equal(originalBody, await fixture.Session.GetAsync(path, CancellationToken.None), "JSON is delivered unchanged");
                 Equal(revision, fixture.Session.ReadScopeRevision, "first proof is accepted");
                 proof = "goods-b";
-                await Changed(() => fixture.Session.GetAsync("master/goods/page", CancellationToken.None));
+                await Changed(() => fixture.Session.GetAsync(path, CancellationToken.None));
                 Equal(revision + 1, fixture.Session.ReadScopeRevision, "changed proof retires readers");
                 Equal(1, events, "one read-scope event");
-                await fixture.Session.GetAsync("master/goods/page", CancellationToken.None);
+                await fixture.Session.GetAsync(path, CancellationToken.None);
                 Equal(revision + 1, fixture.Session.ReadScopeRevision, "new proof remains established");
                 Equal(generation, fixture.Session.Generation, "read proof does not alter authentication generation");
                 Equal(refresh, fixture.Store.Load().RefreshToken, "read proof does not rotate login token");

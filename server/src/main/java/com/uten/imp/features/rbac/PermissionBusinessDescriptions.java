@@ -1,32 +1,50 @@
 package com.uten.imp.features.rbac;
 
-/** Business explanations shared by central and page-level permission settings. */
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** One reviewed plain-language catalog for central, personal and page permission settings. */
 public final class PermissionBusinessDescriptions {
-    private PermissionBusinessDescriptions() {
+    public record Help(String code, String name, String description) { }
+    private record Catalog(int schemaVersion, List<Help> permissions) { }
+    private static final Map<String, Help> HELP = load();
+
+    private PermissionBusinessDescriptions() { }
+
+    public static String nameFor(String code, String catalogName) {
+        Help help=code==null?null:HELP.get(code);
+        return help==null?catalogName:help.name();
     }
 
     public static String descriptionFor(Permission permission) {
-        return descriptionFor(permission.getCode(), permission.getDescription());
+        return descriptionFor(permission.getCode(),permission.getDescription());
     }
 
-    /** Describes existing authority combinations without granting or filtering permissions. */
+    /** Presentation only: never adds, removes or infers any effective authority. */
     public static String descriptionFor(String code, String catalogDescription) {
-        if ("goods:price:edit".equals(code)) {
-            return "允许填写货品售价和折扣。新建时，还须开启「新增货品资料」；"
-                    + "修改已有货品时，还须开启「编辑货品资料」，并符合该货品的可写范围。"
-                    + "本项同时允许查看货品售价；查看折扣须另行开启「查看货品折扣」。";
-        }
-        if ("employee:create".equals(code)) {
-            return "办理员工入职还须开启「编辑员工证件、联系方式和银行资料」；"
-                    + "在入职页面选择部门还须开启「查看部门」。"
-                    + "填写工资、社保、公积金和补贴时，还须另行开启「编辑员工工资、社保公积金和补贴」。";
-        }
-        if ("employee:compensation:edit".equals(code)) {
-            return "允许填写工资、社保、公积金和补贴。"
-                    + "办理入职时，还须开启「办理员工入职」和「编辑员工证件、联系方式和银行资料」；"
-                    + "修改已有员工时，还须开启「编辑员工」。"
-                    + "查看已有薪酬须另行开启「查看员工薪酬资料」。";
-        }
-        return catalogDescription;
+        Help help=code==null?null:HELP.get(code);
+        return help==null?catalogDescription:help.description();
+    }
+
+    public static Map<String, Help> catalog() { return HELP; }
+
+    private static Map<String, Help> load() {
+        try(var input=PermissionBusinessDescriptions.class.getResourceAsStream("/permission-help.json")) {
+            if(input==null) throw new IllegalStateException("Permission help catalog is missing");
+            Catalog catalog=new ObjectMapper().readValue(input,Catalog.class);
+            if(catalog.schemaVersion()!=1) throw new IllegalStateException("Unsupported permission help schema");
+            Map<String,Help> result=new LinkedHashMap<>();
+            for(Help help:catalog.permissions()) {
+                if(help.code()==null || help.name()==null || help.name().isBlank()
+                        || help.description()==null || !help.description().contains("例如：")
+                        || result.putIfAbsent(help.code(),help)!=null) {
+                    throw new IllegalStateException("Invalid or duplicate permission explanation");
+                }
+            }
+            return Map.copyOf(result);
+        } catch(IOException failure) { throw new IllegalStateException("Cannot read permission explanations",failure); }
     }
 }

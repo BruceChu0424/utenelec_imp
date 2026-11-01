@@ -30,6 +30,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         private readonly Button save = new Button(), keep = new Button { Content = "保存草稿并返回" },
             discard = new Button { Content = "取消编辑" }, add = new Button { Content = "新增单位" };
         private bool preserving, closeRequested, ended, disposed;
+        private Task preservationTask = Task.CompletedTask;
         public event EventHandler Finished;
         public bool BusinessChanged { get { return model.BusinessChanged; } }
         public bool CanLeave { get { return ended; } }
@@ -217,7 +218,16 @@ namespace Uten.Legacy.Desktop.Features.Units
         { return Dispatcher.InvokeAsync(new Func<Task<bool>>(() => { if (model.CanSave) debounce.Stop(); return model.SaveAllAsync(); })).Task.Unwrap(); }
         public Task PreserveAndFinishAsync()
         { return Dispatcher.InvokeAsync(new Func<Task>(PreserveOnDispatcherAsync)).Task.Unwrap(); }
-        private async Task PreserveOnDispatcherAsync()
+        private Task PreserveOnDispatcherAsync()
+        {
+            if (ended) return Task.CompletedTask;
+            // A scope retirement and the native close guard can request preservation together.
+            // Every caller must await the same durable attempt instead of observing a completed no-op.
+            if (!preservationTask.IsCompleted) return preservationTask;
+            preservationTask = PreserveCoreOnDispatcherAsync();
+            return preservationTask;
+        }
+        private async Task PreserveCoreOnDispatcherAsync()
         {
             if (ended || preserving) return;
             closeRequested = true; debounce.Stop();

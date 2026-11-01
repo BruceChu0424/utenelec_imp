@@ -90,7 +90,7 @@ public class ProductionOverLimitDispositionService {
 
     @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public PageResponse<View> list(String status,int page,int size,String sort,String order,Map<String,String> parameters) {
-        requireApprover();
+        if(!access.hasAuthority("production_plan:view")) requireApprover();
         String filter=status==null?"PENDING":status.strip().toUpperCase(java.util.Locale.ROOT);
         if(!Set.of("PENDING","HELD","RETURNED","ACCEPTED","WITHDRAWN","ALL").contains(filter))
             throw validation("超限处理状态不正确");
@@ -117,8 +117,8 @@ public class ProductionOverLimitDispositionService {
         long total=((Number)count.getSingleResult()).longValue();
         int actualPage=Math.max(page,1),actualSize=Math.min(Math.max(size,1),100);
         query.setFirstResult(com.uten.imp.common.web.Pageables.checkedOffset(actualPage,actualSize)).setMaxResults(actualSize);
-        boolean active=membership.isActiveOperator();
-        List<View> rows=NativeQueryResults.objectArrayRows(query).stream().map(row->view(row,active,List.of())).toList();
+        boolean reviewer=access.hasAuthority(APPROVE)&&membership.isActiveOperator();
+        List<View> rows=NativeQueryResults.objectArrayRows(query).stream().map(row->view(row,reviewer,List.of())).toList();
         return new PageResponse<>(rows,actualPage,actualSize,total,total==0?0:(int)((total+actualSize-1)/actualSize));
     }
 

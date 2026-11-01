@@ -2415,14 +2415,13 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             return;
         }
         deliverAtomically(()->{
-            // V578：退回通知只要求能看单（view）——此前 view+edit 双门槛导致只读销售
-            // 或归属人为空的“公共单”收不到任何提示，退回后流程在两侧同时失联。
-            // 归属人不可达时回退投递给制单人。
+            // A read-only owner is not a correction recipient. Try the maker only when the
+            // exact correction action is granted; the existing live object scope still applies.
             UUID owner=userIdOfEmployee((UUID)document.get("owner_employee_id"));
             UUID fallback=userIdOfEmployee((UUID)document.get("maker_id"));
             String prefix=direct?"sales_other_shipment":"sales_shipment";
-            UUID recipient = userHasPermissions(owner,NOTICE_READ_AUTHORITY,prefix+":view")
-                    ? owner : (userHasPermissions(fallback,NOTICE_READ_AUTHORITY,prefix+":view") ? fallback : null);
+            UUID recipient = userHasPermissions(owner,NOTICE_READ_AUTHORITY,prefix+":view",prefix+":edit")
+                    ? owner : (userHasPermissions(fallback,NOTICE_READ_AUTHORITY,prefix+":view",prefix+":edit") ? fallback : null);
             if(recipient==null)return;
             sendToUser(recipient,TYPE_URGENT,"发货已退回，请修改："+document.get("bill_no"),
                     "财务退回原因："+Objects.toString(reason,"")+"。请核对修改后重新确认，也可以取消尚未出库的单据。",
@@ -6171,10 +6170,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
         if (aggregateId != null && !TYPE_WORKFLOW.equals(type)
                 && (ReviewNoticeCatalog.isReviewEvent(effectiveSourceEvent) || BusinessNoticeActionCatalog.contains(effectiveSourceEvent))
                 && reviewAudience != null && !reviewAudience.eligibleEventFor(userId, effectiveSourceEvent)) {
-            if (Set.of("SALES_ORDER_FINANCE_REJECTED", "PROCUREMENT_FINANCE_REJECTED").contains(effectiveSourceEvent)) {
-                type=TYPE_WORKFLOW;
-                aggregateId=null;
-            } else return;
+            return;
         }
         if (aggregateId == null) {
             // 无聚合：保持历史调用形态（7/8 参重载），既有测试与语义零变化。

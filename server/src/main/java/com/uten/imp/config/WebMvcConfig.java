@@ -65,6 +65,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/stock/reports/**", "/api/finance/reports/**");
         registry.addInterceptor(new com.uten.imp.common.report.NativeFacetCandidateInterceptor(readScopes,currentUser))
                 .addPathPatterns(com.uten.imp.common.report.NativeFacetRoutes.paths().toArray(String[]::new));
+        registry.addInterceptor(new com.uten.imp.common.report.BusinessDocumentReadScopeInterceptor(readScopes,currentUser))
+                .addPathPatterns("/api/expense-claims/**","/api/platform-columns/expense_claim/**","/api/platform-columns/expense_claim_item/**");
         registry.addInterceptor(new MasterReadScopeInterceptor(readScopes,currentUser))
                 .addPathPatterns("/api/master/**");
         registry.addInterceptor(new com.uten.imp.common.report.PurchasePrintReadScopeInterceptor(readScopes,currentUser))

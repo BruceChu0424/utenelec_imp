@@ -27,6 +27,7 @@ public record PermissionCatalogDto(String module, String category, List<Item> pe
             String sensitivity,
             List<String> requiredPermissions) {
         public Item {
+            name = PermissionBusinessDescriptions.nameFor(code, name);
             description = PermissionBusinessDescriptions.descriptionFor(code, description);
         }
 

@@ -806,6 +806,50 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 0,
     tokens: {'Perm.salesShipmentCreate': 1},
   ),
+  // 2026-10-31: independent readers can now enter existing action-only pages.
+  // These exact display guards mirror ProfileChangeController.review,
+  // VisitorApprovalController.action/hostConfirm, SuggestionController's submit/like
+  // gates and the expense queue read contract. Object scope and command states remain
+  // server-owned; no new business decision is inferred locally. Observer widgets and
+  // grant/revoke tests are recorded in the readonly participation governance receipt.
+  'lib/features/expense/pages/expense_approval_list_page.dart': (
+    legacyCount: 4,
+    tokens: {
+      'Perm.attachmentDownload': 1,
+      'Perm.attachmentView': 1,
+      'Perm.expenseApprove': 1,
+      'Perm.expensePay': 1,
+      'Perm.expenseView': 1,
+    },
+  ),
+  'lib/features/hr_profile/pages/hr_profile_change_detail_page.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.profileReview': 1},
+  ),
+  'lib/features/hr_profile/pages/hr_profile_changes_list_page.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.profileReview': 2},
+  ),
+  'lib/features/suggestion/pages/suggestion_detail_page.dart': (
+    legacyCount: 1,
+    tokens: {'Perm.suggestionReply': 1, 'Perm.suggestionSubmit': 1},
+  ),
+  'lib/features/suggestion/pages/suggestion_list_page.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.suggestionSubmit': 4},
+  ),
+  'lib/features/visitor_approval/pages/my_visitors_page.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.visitorHostConfirm': 3},
+  ),
+  'lib/features/visitor_approval/pages/visitor_approval_detail_page.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.visitorApprove': 2},
+  ),
+  'lib/features/visitor_approval/pages/visitor_approval_list_page.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.visitorApprove': 2},
+  ),
 };
 
 Map<String, int> _permissionTokens(String source) {
@@ -904,7 +948,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      280, // Goods navigation removed one reviewed local grant; cap stays 677.
+      296, // Exact display guards reviewed; global cap stays 677.
     );
   });
 

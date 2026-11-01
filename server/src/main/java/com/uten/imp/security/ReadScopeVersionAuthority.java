@@ -20,7 +20,7 @@ import java.util.*;
  * Call through the Spring proxy for each new publication/checkpoint; no request-local cache is consulted. */
 @Service
 public class ReadScopeVersionAuthority {
-    private static final Set<String> DOMAINS = Set.of("sales", "purchase", "subcontract", "production", "stock", "finance", "client", "supplier",
+    private static final Set<String> DOMAINS = Set.of("sales", "purchase", "subcontract", "production", "stock", "finance", "expense", "client", "supplier",
             "master_goods", "master_goods_cost", "master_account", "master_currency", "master_color", "master_unit", "master_mould", "master_warehouse", "master_settlement_method", "audit",
             "native_feature","native_sales_owner","native_purchase_owner","native_subcontract_owner","native_production_owner",
             "native_fqc_records","native_workshop_tasks","native_warehouse_tasks");
@@ -101,6 +101,7 @@ public class ReadScopeVersionAuthority {
                 case "sales", "native_sales_owner" -> owners.evaluate("sales", "sales:view:all");
                 case "native_purchase_owner" -> owners.evaluate("purchase", "purchase:view:all");
                 case "finance" -> owners.evaluate("finance", "finance:view:all");
+                case "expense" -> owners.evaluate("expense", "expense:view:all");
                 case "client" -> owners.evaluate("client", "client:view:all");
                 case "master_goods", "master_goods_cost" -> goodsReadScope.versionedReadScope();
                 case "native_subcontract_owner" -> required(subcontractAccess).scope();

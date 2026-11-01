@@ -351,13 +351,13 @@ void main() {
   // 草稿态（chain_status 恒为 0，落不进任何链路大类），此前在本页找不到。
   // 草稿段按 stage='DRAFT' 直查；草稿行没有进度可看，行点击直达编辑页继续办单。
   testWidgets(
-    'draft segment queries stage=DRAFT and routes rows to the edit page',
+    'draft segment queries stage=DRAFT and opens detail for a view-only reader',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1200, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       final api = _ProgressApi();
 
-      String? editRouteId;
+      String? detailRouteId;
       final router = GoRouter(
         initialLocation: '/sales/progress',
         routes: [
@@ -366,10 +366,10 @@ void main() {
             builder: (_, _) => const SalesOrderProgressPage(),
           ),
           GoRoute(
-            path: '/sales/orders/:id/edit',
+            path: '/sales/orders/:id',
             builder: (_, state) {
-              editRouteId = state.pathParameters['id'];
-              return const Scaffold(body: Center(child: Text('EDIT-STUB')));
+              detailRouteId = state.pathParameters['id'];
+              return const Scaffold(body: Center(child: Text('DETAIL-STUB')));
             },
           ),
         ],
@@ -415,8 +415,8 @@ void main() {
       await tester.pump(kDoubleTapMinTime);
       await tester.tap(find.text('SO-DRAFT'));
       await tester.pumpAndSettle();
-      expect(editRouteId, 'order-draft');
-      expect(find.text('EDIT-STUB'), findsOneWidget);
+      expect(detailRouteId, 'order-draft');
+      expect(find.text('DETAIL-STUB'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

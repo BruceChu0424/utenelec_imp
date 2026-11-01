@@ -120,7 +120,7 @@ public class ProfileChangeQueryService {
     public ProfileChangeDto.Page<ProfileChangeDto.HrListItem> hrList(
             int page, int size, String status, UUID employeeId, UUID departmentId,
             Map<String, String> columns, String sort, String order) {
-        access.requireHr();
+        access.requireReader();
         Pageable pageable = Pageables.of(page, size);
         // 默认待审队列；指定状态筛选（applied/rejected/cancelled）——之前误用 findAll 导致筛选失效
         String effectiveStatus = normalizeStatus(status);
@@ -157,7 +157,7 @@ public class ProfileChangeQueryService {
     /** HR 队列表头筛选桶：按状态（默认 pending）聚合员工所属部门的批次数。 */
     @Transactional(readOnly = true)
     public ProfileChangeDto.Facets hrFacets(String status) {
-        access.requireHr();
+        access.requireReader();
         String effectiveStatus = (status == null || status.isBlank()) ? "pending" : status;
         List<ProfileChangeDto.FacetBucket> departments = new ArrayList<>();
         for (Object[] row : repo.countBatchesByDepartment(effectiveStatus)) {
@@ -173,10 +173,11 @@ public class ProfileChangeQueryService {
     /** HR 单批详情（含完整 diff）。 */
     @Transactional(readOnly = true)
     public ProfileChangeDto.BatchDetail hrBatchDetail(UUID batchId) {
-        access.requireHr();
+        var reader=access.requireReader();
         List<ProfileChangeRequest> rs = repo.findByBatchId(batchId);
         if (rs.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "申请不存在");
-        return mapper.toBatchDetail(rs);
+        return mapper.toBatchDetail(rs, reader.isSuperAdmin() || reader.getPermissions().contains("profile:review")
+                || reader.getPermissions().contains("employee:pii:view"));
     }
 
     /** 按 batchId 折叠（保持提交顺序）。 */

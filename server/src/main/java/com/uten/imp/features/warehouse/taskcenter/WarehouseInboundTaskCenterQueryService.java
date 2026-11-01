@@ -411,7 +411,7 @@ public class WarehouseInboundTaskCenterQueryService {
         boolean quality() { return has("warehouse_iqc_stock_in:view") || has("warehouse_iqc_return:view"); }
         boolean stock() { return has("stock_doc:view"); }
         boolean workshop() { return has("workshop_material:view"); }
-        boolean productionPool() { return stock() && warehouseParticipant; }
+        boolean productionPool() { return stock(); }
         boolean history(String source) { return source.equals("PURCHASE")?purchaseHistory():source.equals("SUBCONTRACT")&&subcontractHistory(); }
         boolean anyView() { return inbound() || purchaseHistory() || subcontractHistory() || quality() || stock() || workshop(); }
         boolean sourceAllowed(String source) { return switch(source) {

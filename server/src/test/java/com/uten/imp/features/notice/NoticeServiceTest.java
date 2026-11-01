@@ -93,6 +93,7 @@ class NoticeServiceTest {
         reviewAudience = mock(ReviewNoticeAudience.class);
         when(reviewAudience.readScope(any())).thenReturn(ReviewNoticeAudience.ReadScope.NONE);
         when(reviewAudience.eligibleEvents(any())).thenReturn(ReviewNoticeCatalog.events());
+        when(reviewAudience.canReceiveBusinessNotice(any(), org.mockito.ArgumentMatchers.nullable(String.class), org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(true);
         // This service fixture isolates DTO/claim behavior. The live source-state/owner filter is covered by DB tests.
         when(noticeRepository.findScopedVisibleNoticeIds(any(), any(), any()))
                 .thenAnswer(invocation -> List.copyOf(invocation.<Set<UUID>>getArgument(1)));
@@ -130,7 +131,7 @@ class NoticeServiceTest {
     }
 
     @Test
-    void anExistingSubcontractActionLosesDetailVisibilityButItsInformationalReceiptRemains() {
+    void revocationHidesActionWorkflowAndResolvedBusinessNoticesWithoutDeletingHistory() {
         Notice notice = new Notice();
         notice.setAudienceUserId(userId);
         notice.setType("task");
@@ -144,10 +145,13 @@ class NoticeServiceTest {
         assertEquals(ErrorCode.NOT_FOUND, assertThrows(ApiException.class,
                 () -> service.getById(notice.getId())).getCode());
         notice.setType("workflow");
-        assertFalse(service.getById(notice.getId()).interactive());
+        assertEquals(ErrorCode.NOT_FOUND, assertThrows(ApiException.class,
+                () -> service.getById(notice.getId())).getCode());
         notice.setType("task");
         notice.setResolvedAt(Instant.now());
-        assertNotNull(service.getById(notice.getId()));
+        assertEquals(ErrorCode.NOT_FOUND, assertThrows(ApiException.class,
+                () -> service.getById(notice.getId())).getCode());
+        verify(noticeRepository, never()).delete(any(Notice.class));
     }
 
     @Test
@@ -324,7 +328,9 @@ class NoticeServiceTest {
         assertTrue(query.value().contains("n.id > :afterId"));
         assertTrue(query.value().contains("s.readAt IS NULL"));
         assertTrue(query.value().contains("s.popupAcknowledgedAt IS NULL"));
-        assertFalse(query.value().contains("topPriority"));
+        // topPriority is an input to exact legacy-receipt classification, never an arrival sort key.
+        assertTrue(query.value().contains("fn_notice_participation_visible"));
+        assertFalse(query.value().substring(query.value().lastIndexOf("ORDER BY")).contains("topPriority"));
     }
 
     @Test
@@ -556,6 +562,20 @@ class NoticeServiceTest {
     }
 
     @Test
+    void profileResultsKeepTheirExactBatchWithoutBecomingReviewCards() {
+        when(noticeRepository.saveAndFlush(any(Notice.class))).thenAnswer(call -> call.getArgument(0));
+        UUID batch=UUID.randomUUID();
+        for (String event : Set.of("PROFILE_CHANGE_APPROVED", "PROFILE_CHANGE_REJECTED")) {
+            Notice receipt=service.publishForUser(UUID.randomUUID(), "资料变更结果", "正文", "approval", "人事",
+                    "/profile/me/changes", event, "normal", batch);
+            assertEquals("PROFILE_CHANGE_RESULT", receipt.getAggregateKind());
+            assertEquals(batch, receipt.getAggregateId());
+            assertEquals("NORMAL", receipt.getKind());
+            assertFalse(ReviewNoticeCatalog.isReviewEvent(receipt.getSourceEvent()));
+        }
+    }
+
+    @Test
     void pendingReviewsReturnsInteractiveItemsForCurrentUser() {
         // 登录检查口径：仅审核目录注册事件、定向本人；toDto 带 interactive 标志。
         Notice review = new Notice();
@@ -658,7 +678,7 @@ class NoticeServiceTest {
         remind.setInteractionMode("none");
         remind.setPublisher("人事部");
         remind.setPublishedAt(Instant.now());
-        when(noticeRepository.findVisiblePendingManualNotices(eq(userId), any(), any()))
+        when(noticeRepository.findVisiblePendingManualNotices(eq(userId), any(), any(), any()))
                 .thenReturn(List.of(ack, remind));
         when(stateRepository.findByIdUserIdAndIdNoticeIdIn(eq(userId), any()))
                 .thenReturn(List.of());
@@ -681,7 +701,7 @@ class NoticeServiceTest {
 
         ArgumentCaptor<Instant> since = ArgumentCaptor.forClass(Instant.class);
         verify(noticeRepository).findVisiblePendingManualNotices(
-                eq(userId), since.capture(), argThat(page -> page.getPageSize() == 20));
+                eq(userId), since.capture(), any(), argThat(page -> page.getPageSize() == 20));
         Instant expected = Instant.now().minus(NoticeService.NONE_MODE_POPUP_WINDOW);
         assertTrue(Math.abs(java.time.Duration.between(expected, since.getValue()).toSeconds()) < 60,
                 "none 模式窗口应为 14 天");

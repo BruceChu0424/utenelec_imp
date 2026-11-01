@@ -35,7 +35,7 @@ public class DataScopeAdminService {
     /** 合法业务范围（与 user_data_scopes.scope CHECK 一致）。 */
     private static final List<String> SCOPES = List.of(
             "goods", "client", "sales", "finance",
-            "purchase", "subcontract", "production_plan", "stock_doc");
+            "purchase", "subcontract", "production_plan", "stock_doc", "expense");
 
     private final EntityManager em;
     private final TxSessionVars tx;
@@ -254,6 +254,7 @@ public class DataScopeAdminService {
                      UNION ALL SELECT owner_employee_id FROM sales_shipments WHERE owner_employee_id IS NOT NULL AND is_deleted=FALSE
                      UNION ALL SELECT owner_employee_id FROM sales_other_shipments WHERE owner_employee_id IS NOT NULL AND is_deleted=FALSE
                      UNION ALL SELECT owner_employee_id FROM sales_returns WHERE owner_employee_id IS NOT NULL AND is_deleted=FALSE) t""";
+            case "expense" -> "(SELECT applicant_id AS owner_employee_id FROM expense_claims WHERE applicant_id IS NOT NULL AND is_deleted=FALSE) t";
             case "finance" -> """
                     (SELECT maker_id AS owner_employee_id FROM finance_payments WHERE maker_id IS NOT NULL AND is_deleted=FALSE
                      UNION ALL SELECT maker_id FROM finance_receipts WHERE maker_id IS NOT NULL AND is_deleted=FALSE

@@ -15,7 +15,7 @@ import java.util.Set;
 public class SuggestionPlatformColumnAdapters {
     private final SuggestionService suggestions;private final SecurityContextCurrentUser current;private final ObjectMapper json;
     @Bean public PlatformColumnResourceAdapter suggestionPlatformColumns() {
-        return new ReadOnlyPlatformColumnAdapter("suggestion","建议反馈",current,json,Set.of("suggestion:submit"),Set.of(),suggestions::getById,
+        return new ReadOnlyPlatformColumnAdapter("suggestion","建议反馈",current,json,Set.of("suggestion:view","suggestion:submit"),Set.of(),suggestions::getById,
                 List.of(new FactDefinition("likes","点赞数",false),new FactDefinition("replyCount","回复数",false)));
     }
 }

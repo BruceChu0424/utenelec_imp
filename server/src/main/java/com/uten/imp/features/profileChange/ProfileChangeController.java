@@ -75,7 +75,7 @@ public class ProfileChangeController {
 
     @AuditedRead("人事资料变更申请列表含员工个人信息")
     @GetMapping("/api/hr/profile-changes")
-    @PreAuthorize("hasAuthority('profile:review')")
+    @PreAuthorize("hasAnyAuthority('profile_change:view','profile:review')")
     public ProfileChangeDto.Page<ProfileChangeDto.HrListItem> hrList(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -91,13 +91,13 @@ public class ProfileChangeController {
 
     /** HR 队列表头筛选桶（部门），status 与列表分段同口径（空=待审）。 */
     @GetMapping("/api/hr/profile-changes/facets")
-    @PreAuthorize("hasAuthority('profile:review')")
+    @PreAuthorize("hasAnyAuthority('profile_change:view','profile:review')")
     public ProfileChangeDto.Facets hrFacets(@RequestParam(required = false) String status) {
         return queryService.hrFacets(status);
     }
 
     @GetMapping("/api/hr/profile-changes/{batchId}")
-    @PreAuthorize("hasAuthority('profile:review')")
+    @PreAuthorize("hasAnyAuthority('profile_change:view','profile:review')")
     public ProfileChangeDto.BatchDetail hrDetail(@PathVariable UUID batchId) {
         return queryService.hrBatchDetail(batchId);
     }

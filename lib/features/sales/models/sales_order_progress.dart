@@ -5,7 +5,10 @@ import '../../../shared/documents/imported_document_policy.dart';
 import 'sales_doc.dart' show salesQtyText;
 
 class SalesOrderProgressRow {
+  final String? managerReviewState, managerRejectReason;
   const SalesOrderProgressRow({
+    this.managerReviewState,
+    this.managerRejectReason,
     required this.orderId,
     required this.billNo,
     this.billDate,
@@ -121,6 +124,8 @@ class SalesOrderProgressRow {
         stage: json['stage'] as String? ?? 'PENDING',
         financeConfirmed: (json['financeConfirmed'] as bool?) ?? true,
         financeRejected: (json['financeRejected'] as bool?) ?? false,
+        managerReviewState: json['managerReviewState'] as String?,
+        managerRejectReason: json['managerRejectReason'] as String?,
         financeRejectedReason: json['financeRejectedReason'] as String?,
         financeRejectedAt: json['financeRejectedAt'] as String?,
         financeRejectedByName: json['financeRejectedByName'] as String?,

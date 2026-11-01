@@ -42,7 +42,9 @@ public class SalesQuoteRevisionLog {
     public static final String CONVERT = "CONVERT";
 
     private static final Map<String, String> LABELS = Map.ofEntries(
-            Map.entry(SUBMIT, "提交财务核价"), Map.entry(WITHDRAW, "销售撤回"),
+            Map.entry("MANAGER_EDIT", "销售负责人修改报价"), Map.entry("MANAGER_CONFIRM", "销售负责人批准"),
+            Map.entry("MANAGER_REJECT", "销售负责人驳回"), Map.entry("MANAGER_REVERSE", "销售负责人反审核"),
+            Map.entry(SUBMIT, "提交销售负责人审核"), Map.entry(WITHDRAW, "销售撤回"),
             Map.entry(FINANCE_EDIT, "财务修改"), Map.entry(RETURN, "财务退回"),
             Map.entry(CONFIRM, "财务确认"), Map.entry(REOPEN, "销售重新修改"),
             Map.entry(FINANCE_REOPEN, "财务撤销确认"), Map.entry(SALES_EDIT, "销售修改"),
@@ -191,6 +193,7 @@ public class SalesQuoteRevisionLog {
         ObjectNode root = objectMapper.createObjectNode();
         root.put("status", quote.getStatus());
         root.put("reviewRevision", quote.getReviewRevision());
+        root.set("managerReview", objectMapper.valueToTree(quote.getManagerReview()));
         putText(root, "clientId", quote.getClientId());
         putText(root, "billDate", quote.getBillDate());
         putText(root, "sellerId", quote.getSellerId());

@@ -83,7 +83,13 @@ import 'finance_quote_review_list_page.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class FinanceQuoteReviewPage extends ConsumerStatefulWidget {
-  const FinanceQuoteReviewPage({super.key, required this.id});
+  const FinanceQuoteReviewPage({
+    super.key,
+    required this.id,
+    this.managerReview = false,
+  });
+
+  final bool managerReview;
 
   final String id;
 
@@ -116,11 +122,13 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
   @override
   bool get formDraftBusy => _busy;
   @override
-  FormDraftDescriptor get reviewDraftDescriptor =>
-      FormDraftCatalog.financeQuoteReview;
+  FormDraftDescriptor get reviewDraftDescriptor => widget.managerReview
+      ? FormDraftCatalog.salesManagerQuoteReview
+      : FormDraftCatalog.financeQuoteReview;
   @override
-  String get reviewDraftRoute =>
-      '/finance/quote-review/${Uri.encodeComponent(widget.id)}';
+  String get reviewDraftRoute => widget.managerReview
+      ? '/sales/manager-review/quotes/${Uri.encodeComponent(widget.id)}'
+      : '/finance/quote-review/${Uri.encodeComponent(widget.id)}';
   @override
   Map<String, dynamic> get reviewDraftSource => {
     'subjectId': widget.id,
@@ -228,10 +236,16 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
     if (current.quoteId != widget.id) return false;
     final revision = (source['version'] as int) + 1;
     if (current.reviewRevision != revision) return false;
+    if (widget.managerReview &&
+        (current.managerDecisionClaimId == null ||
+            current.managerDecisionClaimId !=
+                (command['request'] as Map?)?['expectedClaimId'])) {
+      return false;
+    }
     final expectedAction = command['action'] == 'confirm'
-        ? 'CONFIRM'
+        ? (widget.managerReview ? 'MANAGER_CONFIRM' : 'CONFIRM')
         : command['action'] == 'return'
-        ? 'RETURN'
+        ? (widget.managerReview ? 'MANAGER_REJECT' : 'RETURN')
         : null;
     if (expectedAction == null ||
         !current.revisions.any(
@@ -240,7 +254,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
         )) {
       return false;
     }
-    return expectedAction == 'CONFIRM'
+    return command['action'] == 'confirm'
         ? current.financeConfirmedAt != null
         : current.financeReturnReason ==
               (command['request'] as Map?)?['reason'];
@@ -305,8 +319,11 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
     _drafts.clear();
   }
 
-  SalesQuoteFinanceReviewRepository get _repo =>
-      ref.read(salesQuoteFinanceReviewRepositoryProvider);
+  SalesQuoteFinanceReviewRepository get _repo => ref.read(
+    widget.managerReview
+        ? salesManagerQuoteReviewRepositoryProvider
+        : salesQuoteFinanceReviewRepositoryProvider,
+  );
 
   bool Function() _captureContext() {
     final generation = _loadGeneration;
@@ -364,12 +381,24 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
   ) {
     final permissions = ref.read(currentPermissionsProvider);
     final actionPermission = switch (action) {
-      SalesQuoteFinanceAction.edit ||
-      SalesQuoteFinanceAction.confirm => Perm.salesQuoteFinanceConfirm,
-      SalesQuoteFinanceAction.returnToSales => Perm.salesQuoteFinanceReject,
-      SalesQuoteFinanceAction.reopen => Perm.salesQuoteFinanceReverse,
+      SalesQuoteFinanceAction.edit || SalesQuoteFinanceAction.confirm =>
+        (widget.managerReview
+            ? Perm.salesQuoteManagerConfirm
+            : Perm.salesQuoteFinanceConfirm),
+      SalesQuoteFinanceAction.returnToSales =>
+        (widget.managerReview
+            ? Perm.salesQuoteManagerReject
+            : Perm.salesQuoteFinanceReject),
+      SalesQuoteFinanceAction.reopen =>
+        (widget.managerReview
+            ? Perm.salesQuoteManagerReverse
+            : Perm.salesQuoteFinanceReverse),
     };
-    return permissions.contains(Perm.salesQuoteFinanceView) &&
+    return permissions.contains(
+          (widget.managerReview
+              ? Perm.salesQuoteManagerView
+              : Perm.salesQuoteFinanceView),
+        ) &&
         permissions.contains(actionPermission) &&
         !ref.read(sessionProvider).impersonationReadOnly &&
         review.allows(action);
@@ -408,7 +437,11 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
     });
     if (!ref
         .read(currentPermissionsProvider)
-        .contains(Perm.salesQuoteFinanceView)) {
+        .contains(
+          (widget.managerReview
+              ? Perm.salesQuoteManagerView
+              : Perm.salesQuoteFinanceView),
+        )) {
       setState(() {
         _loading = false;
         _error = '没有查看报价核价权限';
@@ -431,7 +464,12 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           localizations: AppLocalizations.of(context),
         )..addListener(_claimChanged);
         _claim = claim;
-        await claim.claimAll(kSalesQuoteFinanceClaimType, [widget.id]);
+        await claim.claimAll(
+          (widget.managerReview
+              ? 'SALES_QUOTE_MANAGER_REVIEW'
+              : kSalesQuoteFinanceClaimType),
+          [widget.id],
+        );
         if (!isCurrent() || !claim.isCurrent) {
           await claim.releaseAll();
           return;
@@ -564,8 +602,12 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
     return ok && mounted && isCurrent();
   }
 
-  String? _claimId() =>
-      _claim?.claimIdFor(kSalesQuoteFinanceClaimType, widget.id);
+  String? _claimId() => _claim?.claimIdFor(
+    (widget.managerReview
+        ? 'SALES_QUOTE_MANAGER_REVIEW'
+        : kSalesQuoteFinanceClaimType),
+    widget.id,
+  );
 
   void _setBusy(bool value, [String? title]) {
     if (!mounted) return;
@@ -661,11 +703,17 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
               children: [
                 UtenReviewerResponsibilityNotice(
                   actionLabel: l10n.quoteFinanceConfirmResponsibility,
-                  description: l10n.quoteFinanceConfirmResponsibilityDesc,
+                  description: (widget.managerReview
+                      ? '核对客户、价格、数量与条款，确认本次提交的报价版本。'
+                      : l10n.quoteFinanceConfirmResponsibilityDesc),
                   compact: true,
                 ),
                 const SizedBox(height: UtenSpacing.s12),
-                Text(l10n.quoteFinanceConfirmBody),
+                Text(
+                  (widget.managerReview
+                      ? '批准后转交财务核价，财务确认后才可继续客户确认与转订货。'
+                      : l10n.quoteFinanceConfirmBody),
+                ),
                 const SizedBox(height: UtenSpacing.s12),
                 Text(
                   l10n.quoteFinanceConfirmTotal(
@@ -709,7 +757,9 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
     }
     await _decide(
       l10n,
-      success: l10n.quoteFinanceConfirmedDone,
+      success: (widget.managerReview
+          ? '负责人审核已通过，已转交财务核价'
+          : l10n.quoteFinanceConfirmedDone),
       call: (claimId) => _repo.confirm(
         widget.id,
         expectedRevision: review.reviewRevision,
@@ -783,7 +833,10 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
       await submitReviewCommand(
         action,
         () => call(_claimId()!),
-        request: request,
+        request: {
+          ...?request,
+          if (widget.managerReview) 'expectedClaimId': _claimId(),
+        },
       );
       if (!mounted || !isCurrent()) return;
       await finishReviewDraft();
@@ -820,8 +873,14 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
       context,
       title: l10n.quoteFinanceReopenTitle,
       content: Builder(
-        builder: (context) =>
-            _trackDialog(context, Text(l10n.quoteFinanceReopenBody)),
+        builder: (context) => _trackDialog(
+          context,
+          Text(
+            (widget.managerReview
+                ? '撤销销售负责人的批准，报价将回到待负责人审核。财务正在审核或已经确认时不能撤销。'
+                : l10n.quoteFinanceReopenBody),
+          ),
+        ),
       ),
       confirmLabel: l10n.quoteFinanceActionReopen,
       cancelLabel: l10n.quoteFinanceCancel,
@@ -839,7 +898,11 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
       if (!mounted || !isCurrent()) return;
       refreshBadges(ref);
       bumpListRefresh(ref, kQuoteFinanceListRefreshKey);
-      context.appSuccess(l10n.quoteFinanceReopenedDone);
+      context.appSuccess(
+        (widget.managerReview
+            ? '已反审核，报价回到待负责人审核'
+            : l10n.quoteFinanceReopenedDone),
+      );
     } on ApiException catch (e) {
       if (mounted && isCurrent()) context.appApiError(e);
     } catch (_) {
@@ -864,7 +927,11 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
     if (navigator.canPop()) {
       navigator.pop(changed);
     } else {
-      context.go(RouteName.financeQuoteReview);
+      context.go(
+        widget.managerReview
+            ? '/sales/manager-review?kind=quote'
+            : RouteName.financeQuoteReview,
+      );
     }
   }
 
@@ -941,7 +1008,9 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
     return withFormDraft(
       Scaffold(
         appBar: UtenAppBar(
-          title: l10n.quoteFinanceReviewTitle,
+          title: (widget.managerReview
+              ? '销售负责人报价审核'
+              : l10n.quoteFinanceReviewTitle),
           leading: UtenBackButton(enabled: !_busy, onPressed: _leave),
         ),
         body: SafeArea(
@@ -1114,12 +1183,12 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
       SalesQuoteStage.approved => (
         UtenStatusBadgeType.success,
         Icons.verified_rounded,
-        '已核价',
+        widget.managerReview ? '负责人已批准' : '已核价',
       ),
       SalesQuoteStage.financeRejected => (
         UtenStatusBadgeType.danger,
         Icons.undo_rounded,
-        '财务已退回',
+        widget.managerReview ? '负责人已驳回' : '财务已退回',
       ),
       SalesQuoteStage.draft => (
         UtenStatusBadgeType.neutral,
@@ -1134,7 +1203,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
       _ => (
         UtenStatusBadgeType.warning,
         Icons.pending_actions_rounded,
-        l10n.quoteFinanceStripPending,
+        (widget.managerReview ? '待销售负责人审核' : l10n.quoteFinanceStripPending),
       ),
     };
     return UtenStatusBadge(
@@ -1225,7 +1294,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
             kv(l10n.quoteFinanceFieldRemark, review.remark),
             if (review.financeConfirmedAt != null)
               kv(
-                '核价记录',
+                widget.managerReview ? '负责人审核记录' : '核价记录',
                 l10n.quoteFinanceStripConfirmed(
                   review.financeConfirmedByName ?? '—',
                   utenFmtIsoTime(review.financeConfirmedAt),
@@ -1268,7 +1337,9 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
               onChanged: (_) => setState(() {}),
               decoration: UtenInputDecoration(
                 InputDecoration(
-                  labelText: l10n.quoteFinanceFieldFinanceRemark,
+                  labelText: (widget.managerReview
+                      ? '负责人审核备注'
+                      : l10n.quoteFinanceFieldFinanceRemark),
                   hintText: l10n.quoteFinanceFinanceRemarkHint,
                   counterText: '',
                 ),
@@ -1674,8 +1745,14 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
           )
         : draft.aboveList
         ? (l10n.quoteFinanceAboveListHint, Icons.trending_up_rounded)
-        : draft.source == QuotePriceSource.finance
-        ? (l10n.quoteFinanceFinancePriceChip, Icons.edit_rounded)
+        : (draft.source == QuotePriceSource.finance ||
+              draft.source == QuotePriceSource.manager)
+        ? (
+            widget.managerReview || draft.source == QuotePriceSource.manager
+                ? '负责人定价'
+                : l10n.quoteFinanceFinancePriceChip,
+            Icons.edit_rounded,
+          )
         : (null, Icons.edit_rounded);
     final field = editable && draft.priceEditable
         ? TextField(

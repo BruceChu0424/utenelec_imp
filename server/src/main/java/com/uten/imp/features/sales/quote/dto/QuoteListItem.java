@@ -14,7 +14,7 @@ import java.util.UUID;
 @Getter
 @Setter
 @NoArgsConstructor
-public class QuoteListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
+public class QuoteListItem extends com.uten.imp.features.sales.SalesReviewDocumentMetadata {
     private UUID id;
     private String billNo;
     private LocalDate billDate;

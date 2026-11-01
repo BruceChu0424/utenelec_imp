@@ -17,6 +17,8 @@ import java.util.List;
  * 同一条链内同一件活只计一次(链内去重说明见各入口注释与准则)。
  */
 enum WorkbenchBadgeCatalog {
+    salesQuoteManagerRejected(Module.sales, facts("managerRejected.salesQuote"), none()),
+    salesManagerReview(Module.salesReview, facts("salesManagerReview.count"), none()),
 
     // —— 人事与访客 ——
     /** 我的访客: 红 = 待我确认; 黄 = 我已确认、这趟来访还没走完(HR 审批中 + 已通过待来访)。 */
@@ -178,6 +180,7 @@ enum WorkbenchBadgeCatalog {
 
     /** 徽章容器: 一个容器对应工作台上的一张模块卡 / 一个 hub。 */
     enum Module {
+        salesReview,
         people, finance, production, workshop, rd, warehouse, purchase, subcontract, quality, sales, websiteInquiry, system
     }
 

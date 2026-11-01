@@ -176,6 +176,8 @@ public class ReviewNoticeAudience {
     static boolean eligible(String event, Set<String> permissions) {
         if (!permissions.contains("notice:read")) return false;
         return switch (event) {
+            case "SALES_QUOTE_PENDING_MANAGER_REVIEW" -> permissions.contains("sales_quote_manager:view") && any(permissions,"sales_quote_manager:confirm","sales_quote_manager:reject");
+            case "SALES_ORDER_PENDING_MANAGER_REVIEW" -> permissions.contains("sales_order_manager:view") && any(permissions,"sales_order_manager:confirm","sales_order_manager:reject");
             case "SALES_SHIPMENT_PENDING_FINANCE_AUDIT" -> permissions.contains("sales_shipment_finance:view")
                     && any(permissions, "sales_shipment_finance:approve", "sales_shipment_finance:reject");
             case "SALES_SHIPMENT_PENDING_PICK" -> permissions.containsAll(Set.of("warehouse_sales_outbound:view", "warehouse_sales_outbound:execute"));

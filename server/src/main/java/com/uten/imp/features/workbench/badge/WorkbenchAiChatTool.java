@@ -108,7 +108,7 @@ public class WorkbenchAiChatTool implements AiChatToolPort {
         return switch(entry.module()) {
             case people->"HR"; case finance->"FINANCE"; case production,workshop->"PRODUCTION";
             case rd->"RD"; case warehouse->"WAREHOUSE"; case purchase->"PURCHASE";
-            case subcontract->"SUBCONTRACT"; case quality->"QUALITY"; case sales,websiteInquiry->"SALES"; case system->"ADMIN";
+            case subcontract->"SUBCONTRACT"; case quality->"QUALITY"; case sales,salesReview,websiteInquiry->"SALES"; case system->"ADMIN";
         };
     }
     private static String module(Map<String,Object> args) {
@@ -125,6 +125,8 @@ public class WorkbenchAiChatTool implements AiChatToolPort {
     private record Snapshot(java.time.Instant generatedAt,List<Row> rows) {}
     private static String label(String entry) {
         return switch(WorkbenchBadgeCatalog.valueOf(entry)) {
+            case salesQuoteManagerRejected->"报价负责人驳回";
+            case salesManagerReview->"订单审核";
             case visitorHost->"我的访客"; case visitorApproval->"访客审批"; case hrProfileReview->"员工资料变更审核"; case hrTaskCenter->"人事任务";
             case financeAuditCenter->"业务财务审核"; case financeQuoteReview->"报价财务核价"; case financeStockCountReview->"财务盘点审核"; case financeDrafts->"财务单据草稿";
             case financeExpenseConfirmation->"费用单财务确认";

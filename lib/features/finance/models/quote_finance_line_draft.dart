@@ -46,7 +46,8 @@ class QuoteFinanceLineDraft {
                 )),
     );
     _initialDiscount = normalizeQuoteDiscount(line.discount) ?? '1.0000';
-    directPricing = line.isFinancePriced && !sameDecimal(_initialDiscount, '1');
+    directPricing =
+        line.isReviewerPriced && !sameDecimal(_initialDiscount, '1');
     deal.text = _initialDeal;
     discount.text = financeTrim(_initialDiscount);
   }
@@ -113,7 +114,9 @@ class QuoteFinanceLineDraft {
 
   /// 财务定价且成交单价为 0 = 赠品/0价。
   bool get isGiveaway =>
-      source == QuotePriceSource.finance && isZeroDecimal(deal.text);
+      (source == QuotePriceSource.finance ||
+          source == QuotePriceSource.manager) &&
+      isZeroDecimal(deal.text);
 
   /// 成交单价高于标价, 已按财务定价(提示用, 不是错误)。
   bool get aboveList =>
@@ -280,7 +283,7 @@ class QuoteFinanceLineDraft {
     final derived = quoteDiscountFromDealPrice(deal.text, listPrice);
     final rate = derived.hasDiscount
         ? derived.discount!
-        : (line.isFinancePriced
+        : (line.isReviewerPriced
               ? '1.0000'
               : (normalizeQuoteDiscount(line.discount) ?? '1.0000'));
     discount.text = financeTrim(rate);
@@ -313,7 +316,8 @@ class QuoteFinanceLineDraft {
 
   /// 撤销本行修改。
   void restore() {
-    directPricing = line.isFinancePriced && !sameDecimal(_initialDiscount, '1');
+    directPricing =
+        line.isReviewerPriced && !sameDecimal(_initialDiscount, '1');
     refreshing = false;
     source = _initialSource;
     deal.text = _initialDeal;

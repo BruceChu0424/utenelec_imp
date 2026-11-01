@@ -6351,7 +6351,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesQuoteStatusFieldReturnReason => 'Return reason';
 
   @override
-  String get salesQuoteStatusFieldSubmittedAt => 'Submitted for pricing';
+  String get salesQuoteStatusFieldSubmittedAt => 'Submitted at';
 
   @override
   String get salesQuoteStatusFieldConfirmedBy => 'Priced by';
@@ -6363,7 +6363,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesQuoteStatusFieldFinanceRemark => 'Finance note';
 
   @override
-  String get salesQuoteStatusActionSubmit => 'Submit for finance pricing';
+  String get salesQuoteStatusActionSubmit => 'Submit for sales manager review';
 
   @override
   String get salesQuoteStatusActionWithdraw => 'Withdraw';
@@ -6391,7 +6391,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get salesQuoteStatusSubmitConfirmBody =>
-      'Finance will set the price and discount line by line. You cannot change the quote meanwhile. Submit now?';
+      'The sales manager reviews this quote before finance. You cannot edit it during review. Submit?';
 
   @override
   String get salesQuoteStatusWithdrawConfirmBody =>
@@ -6416,7 +6416,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesQuoteStatusCancel => 'Cancel';
 
   @override
-  String get salesQuoteStatusSubmitted => 'Submitted for finance pricing';
+  String get salesQuoteStatusSubmitted => 'Submitted for sales manager review';
 
   @override
   String get salesQuoteStatusWithdrawn => 'Withdrawn; you can keep editing';
@@ -6447,7 +6447,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get salesQuoteStatusTimelineEmpty => 'No pricing history yet';
 
   @override
-  String get salesQuoteStatusRevisionSubmit => 'Submitted for pricing';
+  String get salesQuoteStatusRevisionSubmit =>
+      'Submitted for sales manager review';
 
   @override
   String get salesQuoteStatusRevisionWithdraw => 'Withdrawn by sales';

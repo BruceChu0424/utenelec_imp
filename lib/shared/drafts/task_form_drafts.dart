@@ -46,6 +46,9 @@ bool isTaskFormDraft(FormDraft draft) {
       ) ||
       FormDraftCatalog.materialReturnBatchReceive.matchesDestination(draft) ||
       FormDraftCatalog.financeSalesOrderReview.matchesDestination(draft) ||
+      FormDraftCatalog.salesManagerOrderReview.matchesDestination(draft) ||
+      FormDraftCatalog.salesManagerOrderBatch.matchesDestination(draft) ||
+      FormDraftCatalog.salesManagerQuoteReview.matchesDestination(draft) ||
       FormDraftCatalog.financeProcurementReview.matchesDestination(draft) ||
       FormDraftCatalog.financeQuoteReview.matchesDestination(draft) ||
       FormDraftCatalog.financeShipmentReview.matchesDestination(draft) ||

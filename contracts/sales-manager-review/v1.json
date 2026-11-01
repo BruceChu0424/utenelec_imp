@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "reviewStage": "SALES_MANAGER",
+  "route": "/sales/manager-review",
+  "api": "/api/sales/manager-review",
+  "permissions": {
+    "quote": ["sales_quote_manager:view", "sales_quote_manager:confirm", "sales_quote_manager:reject", "sales_quote_manager:reverse"],
+    "order": ["sales_order_manager:view", "sales_order_manager:confirm", "sales_order_manager:reject", "sales_order_manager:reverse"]
+  },
+  "claimTypes": {"quote": "SALES_QUOTE_MANAGER_REVIEW", "order": "SALES_ORDER_MANAGER_REVIEW"},
+  "quote": {
+    "reviewContractVersion": 1,
+    "reviewStage": "SALES_MANAGER",
+    "id": "17b1b176-83ed-43b5-b397-c58289f9911e",
+    "billNo": "BJ-20261031-001",
+    "reviewStatus": 2,
+    "reviewStatusBucket": "PENDING",
+    "reviewRevision": 4,
+    "reviewActions": ["edit", "return", "confirm"],
+    "claimType": "SALES_QUOTE_MANAGER_REVIEW",
+    "totalOriginal": "24.2468",
+    "lines": [{
+      "itemId": "e5bfc517-7bda-4aeb-96d4-d66ee7b87e17",
+      "goodsId": "f1e23d61-30f6-47ae-a0ee-7a4e4815a6ce",
+      "qty": "2", "listPrice": "12.1234", "currentMasterPrice": "0",
+      "priceSource": "MANAGER", "dealPrice": "12.1234", "discount": "1.0000", "amount": "24.2468",
+      "reviewPriceByName": "销售负责人", "reviewPriceAt": "2026-10-31T10:00:00Z"
+    }],
+    "revisions": []
+  },
+  "order": {
+    "reviewContractVersion": 1,
+    "reviewStage": "SALES_MANAGER",
+    "orderId": "47b42564-b330-40e6-b744-fe6197f8080c",
+    "billNo": "XS-20261031-001",
+    "reviewRevision": 8,
+    "reviewApproved": true,
+    "reviewApprovedAt": "2026-10-31T10:00:00Z",
+    "reviewApprovedByName": "销售负责人",
+    "reviewRemark": "核对通过",
+    "reviewRejected": false,
+    "managerDecisionClaimId": "719605db-38b3-4655-acf4-6b6fed0181ce",
+    "managerReversible": true,
+    "items": [], "qtyChanges": [], "commercialChanges": [], "managerHistory": []
+  },
+  "rules": [
+    "A management approval does not assert finance approval or release production.",
+    "A decision requires the displayed revision and the live claim ID; reversal has its own authority and downstream guard.",
+    "An amendment resets management approval; retries never automatically replay an unknown write.",
+    "Money and quantity values remain decimal text. Manager pricing keeps MANAGER provenance.",
+    "WPF consumers are not yet migrated and must implement this contract before exposing these actions."
+  ]
+}

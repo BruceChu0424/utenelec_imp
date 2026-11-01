@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | HrReconcilePage @44 (page-class)<br>_HrReconcilePageState @51 (state-class)<br>_HrReconcileRecordsSheet @1500 (supporting-class)<br>_HrReconcileRecordsSheetState @1508 (state-class) |
-| 真实路由绑定 | reconcile；router @2283；builder ['HrReconcilePage']；redirect None |
+| 真实路由绑定 | reconcile；router @2305；builder ['HrReconcilePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | employee:view @287；定义 lib/shared/auth/permissions.dart:12<br>employee:edit @288；定义 lib/shared/auth/permissions.dart:14<br>employee:view @298；定义 lib/shared/auth/permissions.dart:12<br>employee:pii:edit @301；定义 lib/shared/auth/permissions.dart:79<br>employee:view @989；定义 lib/shared/auth/permissions.dart:12<br>employee:edit @990；定义 lib/shared/auth/permissions.dart:14<br>employee:view @1519；定义 lib/shared/auth/permissions.dart:12<br>employee:edit @1520；定义 lib/shared/auth/permissions.dart:14 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -22,14 +22,14 @@
 
 ## W7-BIZ-082 · lib/features/hr_task/pages/hr_task_list_page.dart
 
-模块 `hr_task`；1192 行；SHA256 `2e680bb145852a20dd8c157fd9b9a4f7fb876c18734640488944ad9ed2b894ee`。
+模块 `hr_task`；1192 行；SHA256 `cbacb5afcfccad77b2272f9800a6a1f2112d361eb2ddb79c997146b40c89dfc1`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | HrTaskListPage @136 (page-class)<br>_HrTaskListPageState @145 (state-class) |
-| 真实路由绑定 | :type；router @2288；builder ['HrTaskListPage']；redirect None |
+| 真实路由绑定 | :type；router @2310；builder ['HrTaskListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | notice:publish @183；定义 lib/shared/auth/permissions.dart:495<br>notice:read @186；定义 lib/shared/auth/permissions.dart:494<br>employee:pii:view @188；定义 lib/shared/auth/permissions.dart:78<br>employee:confirm @190；定义 lib/shared/auth/permissions.dart:725<br>employee:view @200；定义 lib/shared/auth/permissions.dart:12<br>employee:edit @201；定义 lib/shared/auth/permissions.dart:14<br>employee:confirm @665；定义 lib/shared/auth/permissions.dart:725<br>employee:task_takeover @670；定义 lib/shared/auth/permissions.dart:729 |
+| 权限 | notice:publish @183；定义 lib/shared/auth/permissions.dart:504<br>notice:read @186；定义 lib/shared/auth/permissions.dart:503<br>employee:pii:view @188；定义 lib/shared/auth/permissions.dart:78<br>employee:confirm @190；定义 lib/shared/auth/permissions.dart:734<br>employee:view @200；定义 lib/shared/auth/permissions.dart:12<br>employee:edit @201；定义 lib/shared/auth/permissions.dart:14<br>employee:confirm @665；定义 lib/shared/auth/permissions.dart:734<br>employee:task_takeover @670；定义 lib/shared/auth/permissions.dart:738 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/employee/repositories/employee_repository.dart；接口：/org/employees、/org/employees/similar、/org/employees/{id}、/org/employees/{id}/account、/org/employees/{id}/account/lock、/org/employees/{id}/account/readiness、/org/employees/{id}/account/reset-password、/org/employees/{id}/account/unlock、/org/employees/{id}/avatar、/org/employees/{id}/change-identity、/org/employees/{id}/change-phone、/org/employees/{id}/confirm、/org/employees/{id}/contracts、/org/employees/{id}/offboard、/org/employees/{id}/rehire、/org/employees/{id}/secondary-departments、/org/employees/{id}/transfer、/profile/me<br>lib/features/hr_task/repositories/hr_task_repository.dart；接口：/org/hr-tasks/celebrations/history、/org/hr-tasks/claims、/org/hr-tasks/claims/{taskType}/{employeeId}、/org/hr-tasks/claims/{taskType}/{employeeId}/takeover、/org/hr-tasks/summary |
 | 动作处理 | hrReconcile @277 [action-like-invocation] 提示 ['reconcile']；RoutePath.hrReconcile(<br>hrReconcileDraftMatchesEmployee @526 [action-like-invocation] 提示 ['reconcile']；matches: (draft) => hrReconcileDraftMatchesEmployee(draft, item.employeeId),<br>remove @593 [action-like-invocation] 提示 ['remove']；next.remove(key); // 选「所有」= 不筛<br>showHrConfirmDialog @691 [action-like-invocation] 提示 ['confirm']；onTap: () => showHrConfirmDialog(context, ref, item),<br>_batchConfirm @780 [action-like-invocation] 提示 ['confirm']；? () => _batchConfirm(Set<String>.of(selectedIds), all)<br>_openIdentityReconcile @805 [action-like-invocation] 提示 ['reconcile']；? () => _openIdentityReconcile(Set<String>.of(selectedIds))<br>_openIdentityReconcile @820 [method-declaration-candidate] 提示 ['reconcile']；Future<void> _openIdentityReconcile(Set<String> ids) async {<br>hrReconcileDraftMatchesEmployee @824 [action-like-invocation] 提示 ['reconcile']；ids.any((id) => hrReconcileDraftMatchesEmployee(draft, id)),<br>hrReconcile @834 [action-like-invocation] 提示 ['reconcile']；RoutePath.hrReconcile(<br>_batchConfirm @848 [method-declaration-candidate] 提示 ['confirm']；Future<void> _batchConfirm(Set<String> ids, List<HrTaskItem> all) async {<br>_pickConfirmDate @865 [action-like-invocation] 提示 ['confirm']；final date = await _pickConfirmDate(targets.length);<br>confirm @875 [action-like-invocation] 提示 ['confirm']；await repo.confirm(id, confirmedDate: date);<br>_pickConfirmDate @904 [method-declaration-candidate] 提示 ['confirm']；Future<String?> _pickConfirmDate(int count) async {<br>copyWith @1040 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>copyWith @1119 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith( |
@@ -45,9 +45,9 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | HrWorkbenchPage @51 (page-class)<br>_EntryCard @442 (supporting-class)<br>_QuickTile @532 (supporting-class) |
-| 真实路由绑定 | /hr/tasks；router @2272；builder ['HrWorkbenchPage']；redirect None |
+| 真实路由绑定 | /hr/tasks；router @2294；builder ['HrWorkbenchPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | notice:publish @66；定义 lib/shared/auth/permissions.dart:495<br>employee:view @123；定义 lib/shared/auth/permissions.dart:12<br>employee:edit @124；定义 lib/shared/auth/permissions.dart:14 |
+| 权限 | notice:publish @66；定义 lib/shared/auth/permissions.dart:504<br>employee:view @123；定义 lib/shared/auth/permissions.dart:12<br>employee:edit @124；定义 lib/shared/auth/permissions.dart:14 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
 | 动作处理 | copyWith @200 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @262 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @269 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @290 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @366 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @427 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @499 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleLarge?.copyWith(<br>copyWith @511 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @520 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @569 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith( |

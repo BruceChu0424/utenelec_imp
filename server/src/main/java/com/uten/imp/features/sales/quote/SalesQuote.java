@@ -125,4 +125,6 @@ public class SalesQuote extends SoftDeletableEntity {
     private OffsetDateTime cancelledAt;
     private UUID cancelledBy;
     private UUID originQuoteId;
+    @jakarta.persistence.Embedded
+    private com.uten.imp.features.sales.SalesManagerReview managerReview = new com.uten.imp.features.sales.SalesManagerReview();
 }

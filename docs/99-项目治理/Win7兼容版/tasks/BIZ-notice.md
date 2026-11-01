@@ -48,7 +48,7 @@
 
 证据：尚未登记，不得推定通过。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：2026-10-31 新增报价/订货销售负责人居中审核提醒。WPF 通知与业务审核仍未迁移；须同步 SALES_QUOTE_PENDING_MANAGER_REVIEW / SALES_ORDER_PENDING_MANAGER_REVIEW、登录及在线授权补发、认领心跳和办结撤回，不能仅显示普通通知。。
 
 ## W7-BIZ-086
 

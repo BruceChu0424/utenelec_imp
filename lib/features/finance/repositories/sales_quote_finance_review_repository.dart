@@ -54,7 +54,12 @@ abstract interface class SalesQuoteFinanceReviewRepository {
 
 class DioSalesQuoteFinanceReviewRepository
     implements SalesQuoteFinanceReviewRepository {
-  const DioSalesQuoteFinanceReviewRepository(this.api);
+  const DioSalesQuoteFinanceReviewRepository(
+    this.api, {
+    this.managerReview = false,
+  });
+
+  final bool managerReview;
 
   final ApiClient api;
 
@@ -83,7 +88,11 @@ class DioSalesQuoteFinanceReviewRepository
 
   @override
   Future<SalesQuoteFinanceReview> review(String quoteId) async {
-    final json = await api.get(ApiEndpoints.salesQuoteFinanceReview(quoteId));
+    final json = await api.get(
+      managerReview
+          ? '/sales/manager-review/quotes/${Uri.encodeComponent(quoteId)}'
+          : ApiEndpoints.salesQuoteFinanceReview(quoteId),
+    );
     return SalesQuoteFinanceReview.fromJson(json);
   }
 
@@ -96,7 +105,9 @@ class DioSalesQuoteFinanceReviewRepository
     List<SalesQuoteFinanceLineEdit> lines = const [],
   }) async {
     final json = await api.put(
-      ApiEndpoints.salesQuoteFinanceEdit(quoteId),
+      managerReview
+          ? '/sales/manager-review/quotes/${Uri.encodeComponent(quoteId)}'
+          : ApiEndpoints.salesQuoteFinanceEdit(quoteId),
       body: quoteFinanceEditBody(
         expectedRevision: expectedRevision,
         expectedClaimId: expectedClaimId,
@@ -115,7 +126,9 @@ class DioSalesQuoteFinanceReviewRepository
     required String reason,
   }) async {
     await api.post(
-      ApiEndpoints.salesQuoteFinanceReturn(quoteId),
+      managerReview
+          ? '/sales/manager-review/quotes/${Uri.encodeComponent(quoteId)}/reject'
+          : ApiEndpoints.salesQuoteFinanceReturn(quoteId),
       body: quoteFinanceDecisionBody(
         expectedRevision: expectedRevision,
         expectedClaimId: expectedClaimId,
@@ -131,7 +144,9 @@ class DioSalesQuoteFinanceReviewRepository
     required String expectedClaimId,
   }) async {
     await api.post(
-      ApiEndpoints.salesQuoteFinanceConfirm(quoteId),
+      managerReview
+          ? '/sales/manager-review/quotes/${Uri.encodeComponent(quoteId)}/confirm'
+          : ApiEndpoints.salesQuoteFinanceConfirm(quoteId),
       body: quoteFinanceDecisionBody(
         expectedRevision: expectedRevision,
         expectedClaimId: expectedClaimId,
@@ -145,7 +160,9 @@ class DioSalesQuoteFinanceReviewRepository
     required int expectedRevision,
   }) async {
     final json = await api.post(
-      ApiEndpoints.salesQuoteFinanceReopen(quoteId),
+      managerReview
+          ? '/sales/manager-review/quotes/${Uri.encodeComponent(quoteId)}/reverse'
+          : ApiEndpoints.salesQuoteFinanceReopen(quoteId),
       body: quoteFinanceReopenBody(expectedRevision: expectedRevision),
     );
     return SalesQuoteFinanceReview.fromJson(json);
@@ -191,3 +208,11 @@ final salesQuoteFinanceReviewRepositoryProvider =
 
 /// 报价核价的认领目标类型(与服务端 TaskClaimPolicy 登记一致)。
 const kSalesQuoteFinanceClaimType = 'SALES_QUOTE_FINANCE_REVIEW';
+
+final salesManagerQuoteReviewRepositoryProvider =
+    Provider<DioSalesQuoteFinanceReviewRepository>(
+      (ref) => DioSalesQuoteFinanceReviewRepository(
+        ref.watch(apiClientProvider),
+        managerReview: true,
+      ),
+    );

@@ -18,6 +18,8 @@ public final class ReviewNoticeCatalog {
 
     /** sourceEvent → 注册项。 */
     private static final Map<String, Entry> ENTRIES = Map.ofEntries(
+            Map.entry("SALES_QUOTE_PENDING_MANAGER_REVIEW", new Entry("SALES_QUOTE_MANAGER", "SALES_QUOTE_MANAGER_REVIEW")),
+            Map.entry("SALES_ORDER_PENDING_MANAGER_REVIEW", new Entry("SALES_ORDER_MANAGER", "SALES_ORDER_MANAGER_REVIEW")),
             Map.entry("WEBSITE_INQUIRY_NEW", new Entry("WEBSITE_INQUIRY", null)),
             Map.entry("PRODUCTION_OVER_LIMIT_PENDING",
                     new Entry("PRODUCTION_OVER_LIMIT_DISPOSITION",null)),
@@ -211,6 +213,8 @@ public final class ReviewNoticeCatalog {
 
     /** sourceEvent → 面向用户的类别名（与 ENTRIES 同键集；新增事件必须两处同步）。 */
     private static final java.util.Map<String, String> EVENT_LABELS = java.util.Map.ofEntries(
+            java.util.Map.entry("SALES_QUOTE_PENDING_MANAGER_REVIEW", "报价待负责人审核"),
+            java.util.Map.entry("SALES_ORDER_PENDING_MANAGER_REVIEW", "订货待负责人审核"),
             java.util.Map.entry("PRODUCTION_OVER_LIMIT_PENDING", "超限产出待处置"),
             java.util.Map.entry("PRODUCTION_OVERPRODUCTION_RATE_SUBMITTED", "超产率待审核"),
             java.util.Map.entry("PRODUCTION_MATERIAL_INCREMENT_SUBMITTED", "追加物料待审核"),

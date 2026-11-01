@@ -106,7 +106,9 @@ public class DocumentStatusCountQueryService {
             // ADR-134 报价核价: 0 草稿(退回原因空) / 0 + 退回原因 = 财务已退回 / 2 待财务核价 / 1 已核价 / -1 作废.
             case "salesQuote" -> List.of(
                     new Bucket(DRAFT, draft),
-                    new Bucket(PENDING_FINANCE, "o.status = 2"),
+                    new Bucket("PENDING_MANAGER", "o.status = 2 AND o.manager_review_state='PENDING'"),
+                    new Bucket("MANAGER_REJECTED", "o.status = 0 AND o.manager_review_state='REJECTED'"),
+                    new Bucket(PENDING_FINANCE, "o.status = 2 AND o.manager_review_state IN ('NOT_REQUIRED','APPROVED')"),
                     new Bucket(FINANCE_REJECTED, "o.status = 0 AND o.finance_return_reason IS NOT NULL"),
                     new Bucket(APPROVED, "o.status = 1"),
                     new Bucket(REVERSED, "o.status = -1"));
@@ -236,7 +238,7 @@ public class DocumentStatusCountQueryService {
             String shipmentKind, String docType, java.util.UUID requestedWarehouse) {
         Map<String, Long> result = new LinkedHashMap<>();
         var taskBuckets = bucketsOf(kind, source).stream().filter(bucket ->
-                List.of(DRAFT, FINANCE_REJECTED, PENDING_GL_CONFIRMATION,
+                List.of(DRAFT, "PENDING_MANAGER", "MANAGER_REJECTED", FINANCE_REJECTED, PENDING_GL_CONFIRMATION,
                         PENDING_FINANCE, FINANCE_APPROVED, EXECUTING).contains(bucket.key())).toList();
         taskBuckets.forEach(bucket -> result.put(taskBucketKey(bucket.key()), 0L));
         AuthUser user = currentUser.get().orElse(null);
@@ -253,10 +255,10 @@ public class DocumentStatusCountQueryService {
         var readScope = policy.nativeReadScope(source.ownerColumn(), "taskStatusReadOwners");
         List<String> projections = new ArrayList<>();
         for (Bucket bucket : taskBuckets) {
-            boolean allowed = FINANCE_REJECTED.equals(bucket.key()) ? rejected
+            boolean allowed = (FINANCE_REJECTED.equals(bucket.key()) || "MANAGER_REJECTED".equals(bucket.key())) ? rejected
                     : PENDING_GL_CONFIRMATION.equals(bucket.key()) ? gl : resume;
             String owner = PENDING_GL_CONFIRMATION.equals(bucket.key()) ? readScope.predicate() : writeScope.predicate();
-            String actions = FINANCE_REJECTED.equals(bucket.key())
+            String actions = (FINANCE_REJECTED.equals(bucket.key()) || "MANAGER_REJECTED".equals(bucket.key()))
                     ? correctionPredicate(user, source) : DocumentDraftCountQueryService.actionPredicate(user, source);
             if (PENDING_GL_CONFIRMATION.equals(bucket.key())) actions = "1=1";
             projections.add(allowed ? "COUNT(*) FILTER (WHERE " + bucket.predicate() + " AND " + owner
@@ -289,7 +291,7 @@ public class DocumentStatusCountQueryService {
     }
 
     private static String taskBucketKey(String bucket) {
-        return (List.of(PENDING_FINANCE, FINANCE_APPROVED, EXECUTING).contains(bucket)
+        return (List.of("PENDING_MANAGER", PENDING_FINANCE, FINANCE_APPROVED, EXECUTING).contains(bucket)
                 ? "RESPONSIBLE_" : "ACTIONABLE_") + bucket;
     }
 
@@ -318,12 +320,18 @@ public class DocumentStatusCountQueryService {
     /** 各类单据的「财务已退回」张数, 一次往返; 无权限的键固定 0. 供 hub 卡徽章与销售待办累加. */
     @Transactional(readOnly = true)
     @com.uten.imp.security.BusinessTaskRead
-    public Map<String, Long> financeRejectedCounts() {
+    public Map<String, Long> financeRejectedCounts() { return rejectedCounts(false); }
+
+    @Transactional(readOnly = true)
+    @com.uten.imp.security.BusinessTaskRead
+    public Map<String, Long> managerRejectedCounts() { return rejectedCounts(true); }
+
+    private Map<String, Long> rejectedCounts(boolean manager) {
         AuthUser user = currentUser.get().orElse(null);
         Map<String, Long> result = new LinkedHashMap<>();
         List<String> projections = new ArrayList<>();
         List<DocumentAccessPolicy.NativeReadScope> scopes = new ArrayList<>();
-        for (String kind : FINANCE_REJECTED_KINDS) {
+        for (String kind : (manager ? List.of("salesQuote") : FINANCE_REJECTED_KINDS)) {
             DraftSource source = KINDS.get(kind);
             result.put(kind, 0L);
             if (!canCorrectRejected(user, source)) {
@@ -337,7 +345,7 @@ public class DocumentStatusCountQueryService {
                             DocumentDraftCountQueryService.writableScope(policy));
             scopes.add(scope);
             String rejected = bucketsOf(kind, source).stream()
-                    .filter(bucket -> FINANCE_REJECTED.equals(bucket.key()))
+                    .filter(bucket -> (manager ? "MANAGER_REJECTED" : FINANCE_REJECTED).equals(bucket.key()))
                     .findFirst().orElseThrow().predicate();
             projections.add("(SELECT count(*) FROM " + source.table() + " o WHERE o.is_deleted = false AND "
                     + DocumentDraftCountQueryService.currentSourcePredicate(source) + " AND "
@@ -350,7 +358,7 @@ public class DocumentStatusCountQueryService {
         Object row = query.getSingleResult();
         Object[] cells = row instanceof Object[] array ? array : new Object[] {row};
         int i = 0;
-        for (String kind : FINANCE_REJECTED_KINDS) {
+        for (String kind : (manager ? List.of("salesQuote") : FINANCE_REJECTED_KINDS)) {
             result.put(kind, i < cells.length && cells[i] instanceof Number number ? number.longValue() : 0L);
             i++;
         }

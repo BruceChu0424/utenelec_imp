@@ -4,14 +4,14 @@
 
 ## W7-BIZ-149 · lib/features/stock/counts/pages/stock_count_review_page.dart
 
-模块 `stock`；1411 行；SHA256 `72257c08c9b526abc8a94cae078da37058e8376b6db2b996f75af5f2a5cb1268`。
+模块 `stock`；1411 行；SHA256 `276d005311557b2676117a34b8346dc10b3e4a908536a98371cc3b63412942c0`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | StockCountReviewPage @44 (page-class)<br>_StockCountReviewPageState @72 (state-class)<br>StockCountOldValue @1306 (supporting-class) |
-| 真实路由绑定 | /warehouse/stock-count-review；router @1667；builder ['StockCountReviewPage']；redirect None<br>/stock/count-requests；router @1705；builder ['StockCountReviewPage']；redirect None<br>/finance/stock-count-review；router @1712；builder ['StockCountReviewPage']；redirect None |
+| 真实路由绑定 | /warehouse/stock-count-review；router @1668；builder ['StockCountReviewPage']；redirect None<br>/stock/count-requests；router @1706；builder ['StockCountReviewPage']；redirect None<br>/finance/stock-count-review；router @1713；builder ['StockCountReviewPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | stock:count:finance_review @124；定义 lib/shared/auth/permissions.dart:222<br>stock:count:warehouse_review @125；定义 lib/shared/auth/permissions.dart:223<br>stock:count:submit @126；定义 lib/shared/auth/permissions.dart:221<br>goods:edit @1277；定义 lib/shared/auth/permissions.dart:135<br>goods:bom:edit @1278；定义 lib/shared/auth/permissions.dart:536 |
+| 权限 | stock:count:finance_review @124；定义 lib/shared/auth/permissions.dart:222<br>stock:count:warehouse_review @125；定义 lib/shared/auth/permissions.dart:223<br>stock:count:submit @126；定义 lib/shared/auth/permissions.dart:221<br>goods:edit @1277；定义 lib/shared/auth/permissions.dart:135<br>goods:bom:edit @1278；定义 lib/shared/auth/permissions.dart:545 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/basic_data/repositories/goods_issue_method_repository.dart；接口：/master/goods/issue-method/batch、/master/goods/{goodsId}/issue-method/preview<br>lib/features/stock/counts/repositories/stock_count_request_repository.dart；接口：/stock/count-requests |
 | 动作处理 | update @94 [action-like-invocation] 提示 ['update']；_readingRows.update(const []);<br>_removeDetailHistory @160 [action-like-invocation] 提示 ['remove']；_removeDetailHistory();<br>_removeDetailHistory @173 [action-like-invocation] 提示 ['remove']；_removeDetailHistory();<br>_removeDetailHistory @181 [action-like-invocation] 提示 ['remove']；_removeDetailHistory();<br>_removeDetailHistory @206 [method-declaration-candidate] 提示 ['remove']；void _removeDetailHistory() {<br>remove @210 [action-like-invocation] 提示 ['remove']；entry?.remove();<br>removeWhere @267 [action-like-invocation] 提示 ['remove']；_selectedRequestIds.removeWhere((id) => !visible.contains(id));<br>remove @393 [action-like-invocation] 提示 ['remove']；_setupPreviews.remove(line.goodsId);<br>remove @394 [action-like-invocation] 提示 ['remove']；_setupErrors.remove(line.goodsId);<br>remove @417 [action-like-invocation] 提示 ['remove']；setState(() => _setupLoading.remove(line.goodsId));<br>_confirmDecision @440 [action-like-invocation] 提示 ['confirm']；reason = await _confirmDecision(<br>approve @468 [action-like-invocation] 提示 ['approve']；'approve' => await repo.approve(<br>reject @474 [action-like-invocation] 提示 ['reject']；'reject' => await repo.reject(<br>cancel @480 [action-like-invocation] 提示 ['cancel']；_ => await repo.cancel(<br>_approveSelected @526 [method-declaration-candidate] 提示 ['approve']；Future<void> _approveSelected() async {<br>approveBatch @564 [action-like-invocation] 提示 ['approve']；.approveBatch(<br>_removeDetailHistory @697 [action-like-invocation] 提示 ['remove']；_removeDetailHistory();<br>canConfirmWorkshopMaterialFirstUse @1284 [action-like-invocation] 提示 ['confirm']；(line) => canConfirmWorkshopMaterialFirstUse(<br>_confirmDecision @1340 [method-declaration-candidate] 提示 ['confirm']；Future<String?> _confirmDecision( |
@@ -22,12 +22,12 @@
 
 ## W7-BIZ-150 · lib/features/stock/counts/pages/stock_count_session_page.dart
 
-模块 `stock`；1070 行；SHA256 `7107a1f2ff0582b27ee83b4bf7b5f6aea6c6d1cf1e59e581531ba12917c31598`。
+模块 `stock`；1070 行；SHA256 `ed70cf719c8be7d60e679e1c24d5cd87084d03a738162f07c55abdcf9132d6f4`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _WarehouseStash @53 (supporting-class)<br>_StashInputRead @60 (supporting-class)<br>StockCountSessionPage @67 (page-class)<br>_StockCountSessionPageState @75 (state-class) |
-| 真实路由绑定 | /stock/count-session；router @1698；builder ['StockCountSessionPage']；redirect None |
+| 真实路由绑定 | /stock/count-session；router @1699；builder ['StockCountSessionPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | InstantInventoryOverviewPage @31 (page-class)<br>_InstantInventoryOverviewPageState @46 (state-class) |
-| 真实路由绑定 | /stock/instant-inventory/overview；router @1183；builder ['InstantInventoryOverviewPage']；redirect None |
+| 真实路由绑定 | /stock/instant-inventory/overview；router @1184；builder ['InstantInventoryOverviewPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | stock_report:view @371；定义 lib/shared/auth/permissions.dart:237 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,8 +63,8 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | InstantInventoryPage @83 (page-class)<br>_InstantInventoryPageState @97 (state-class) |
-| 真实路由绑定 | /stock/instant-inventory；router @1191；builder ['InstantInventoryPage']；redirect None |
-| 重定向/别名候选 | {"routeId":"router:1165","routerLine":1165,"path":"/stock/balance","targetConstants":["stockInstantInventory"],"redirectExpression":"(_, _) => RouteName.stockInstantInventory","status":"possible alias; 需人工核实"}<br>{"routeId":"router:1172","routerLine":1172,"path":"/stock/movement","targetConstants":["stockInstantInventory"],"redirectExpression":"(_, state) {\n              final goodsId =\n                  state.uri.queryParameters['goodsId']?.trim() ?? '';\n              return goodsId.isEmpty\n                  ? RouteName.stockInstantInventory\n                  : RouteName.stockItemDetail(goodsId, tab: 'ledger');\n            }","status":"possible alias; 需人工核实"} |
+| 真实路由绑定 | /stock/instant-inventory；router @1192；builder ['InstantInventoryPage']；redirect None |
+| 重定向/别名候选 | {"routeId":"router:1166","routerLine":1166,"path":"/stock/balance","targetConstants":["stockInstantInventory"],"redirectExpression":"(_, _) => RouteName.stockInstantInventory","status":"possible alias; 需人工核实"}<br>{"routeId":"router:1173","routerLine":1173,"path":"/stock/movement","targetConstants":["stockInstantInventory"],"redirectExpression":"(_, state) {\n              final goodsId =\n                  state.uri.queryParameters['goodsId']?.trim() ?? '';\n              return goodsId.isEmpty\n                  ? RouteName.stockInstantInventory\n                  : RouteName.stockItemDetail(goodsId, tab: 'ledger');\n            }","status":"possible alias; 需人工核实"} |
 | 权限 | material_category:view @118；定义 lib/shared/auth/permissions.dart:130<br>stock:view @177；定义 lib/shared/auth/permissions.dart:217<br>goods:view @178；定义 lib/shared/auth/permissions.dart:134<br>goods:edit @179；定义 lib/shared/auth/permissions.dart:135<br>stock_report:export @978；定义 lib/shared/auth/permissions.dart:238<br>stock_report:export @996；定义 lib/shared/auth/permissions.dart:238 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/basic_data/repositories/master_inline_edit_repository.dart；接口：/master/inline-edit/{entityType}/{Uri.encodeComponent(id)}<br>lib/features/basic_data/repositories/product_category_repository.dart；接口：/master/material-categories、/master/material-categories/prefix-availability、/master/material-categories/tree、/master/material-categories/{id}、/master/material-categories/{id}/delete-preview、/master/material-categories/{id}/prefix-preview、/master/material-categories/{id}/subtree<br>lib/features/stock/repositories/stock_query_repository.dart；接口：/stock/balances、/stock/balances/adjust、/stock/goods/{Uri.encodeComponent(goodsId)}/inventory-context、/stock/shelf-labels、/stock/shelf-labels/layout、/stock/shelf-labels/racks |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | StockItemDetailPage @23 (page-class)<br>_StockItemDetailPageState @44 (state-class) |
-| 真实路由绑定 | /stock/item/:goodsId；router @1204；builder ['StockItemDetailPage']；redirect None |
+| 真实路由绑定 | /stock/item/:goodsId；router @1205；builder ['StockItemDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

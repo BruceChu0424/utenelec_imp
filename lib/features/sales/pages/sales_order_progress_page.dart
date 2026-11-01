@@ -971,7 +971,9 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         key: 'financeRejectedReason',
         label: '驳回原因',
         width: 260,
-        value: (r) => !r.financeRejected
+        value: (r) => r.managerReviewState == 'REJECTED'
+            ? r.managerRejectReason
+            : !r.financeRejected
             ? null
             : (r.financeRejectedReason?.trim().isNotEmpty == true
                   ? r.financeRejectedReason!.trim()
@@ -989,8 +991,10 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     if (r.historyReadOnly) return importedBusinessHistoryLabel;
     if (r.stopped || r.stage == 'CANCELED') return '已中止';
     if (r.closed || r.stage == 'CLOSED') return '已结案';
+    if (r.managerReviewState == 'REJECTED') return '负责人已驳回';
     if (r.financeRejected) return '财务驳回';
     if (r.stage == _kDraftStage) return '草稿';
+    if (r.managerReviewState == 'PENDING') return '等待负责人审核';
     if (!r.financeConfirmed) return '等待财务审核';
     return salesProgressStageText(r);
   }
@@ -1006,7 +1010,9 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     if (r.historyReadOnly) return UtenStatusBadgeType.success;
     if (r.stopped || r.stage == 'CANCELED') return UtenStatusBadgeType.neutral;
     if (r.closed || r.stage == 'CLOSED') return UtenStatusBadgeType.success;
-    if (r.financeRejected) return UtenStatusBadgeType.danger;
+    if (r.financeRejected || r.managerReviewState == 'REJECTED') {
+      return UtenStatusBadgeType.danger;
+    }
     if (r.stage == _kDraftStage) return UtenStatusBadgeType.neutral;
     if (!r.financeConfirmed) return UtenStatusBadgeType.info;
     if (r.stage == 'SHIPMENT_PENDING' &&

@@ -517,6 +517,12 @@ const _allGroups = <_ModuleGroup>[
     color: UtenColors.teal800,
     items: [
       _ModuleItem(
+        icon: Icons.fact_check_outlined,
+        label: '订单审核',
+        location: RouteName.salesManagerReview,
+        badge: WorkbenchBadgeKind.salesManagerReview,
+      ),
+      _ModuleItem(
         icon: Icons.point_of_sale_outlined,
         label: '销售管理',
         location: RouteName.sales,

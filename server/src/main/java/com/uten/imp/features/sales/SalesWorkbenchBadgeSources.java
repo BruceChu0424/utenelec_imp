@@ -30,6 +30,8 @@ class SalesWorkbenchBadgeSources implements WorkbenchBadgeSources {
     private final WarehouseSalesOutboundController warehouseOutbound;
     private final SalesQuoteController quotes;
     private final SalesQuoteFinanceController quoteFinance;
+    @org.springframework.beans.factory.annotation.Autowired
+    private SalesManagerReviewController managerReview;
 
     private static java.util.Map<String, Long> salesTaskFacts(java.util.Map<String, Long> stages) {
         java.util.Map<String, Long> tasks = new java.util.LinkedHashMap<>();
@@ -42,6 +44,7 @@ class SalesWorkbenchBadgeSources implements WorkbenchBadgeSources {
     @Override
     public List<Source> sources() {
         return List.of(
+                new Source("salesManagerReview", () -> WorkbenchBadgeSources.numbers(managerReview.count())),
                 new Source("salesStage", () -> salesTaskFacts(orders.progressStageCounts())),
                 new Source("salesOrderFinance", () -> WorkbenchBadgeSources.numbers(financeConfirmation.pendingCount(null))),
                 new Source("shipmentFinance", () -> WorkbenchBadgeSources.numbers(shipments.pendingFinanceCount())),

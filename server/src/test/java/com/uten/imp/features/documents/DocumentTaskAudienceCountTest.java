@@ -103,8 +103,8 @@ class DocumentTaskAudienceCountTest {
         when(browse.setParameter(anyString(), any())).thenReturn(browse);
         when(tasks.setParameter(anyString(), any())).thenReturn(tasks);
         when(em.createNativeQuery(anyString())).thenReturn(browse, tasks);
-        when(browse.getSingleResult()).thenReturn(new Object[] {9L, 4L, 5L, 8L, 1L});
-        when(tasks.getSingleResult()).thenReturn(new Object[] {2L, 3L, 1L});
+        when(browse.getSingleResult()).thenReturn(new Object[] {9L, 4L, 6L, 8L, 5L, 2L, 1L});
+        when(tasks.getSingleResult()).thenReturn(new Object[] {2L, 1L, 3L, 4L, 1L});
         var service = new DocumentStatusCountQueryService(em, owners, current);
         ReflectionTestUtils.setField(service, "taskAudience", new TaskAudiencePort() {
             @Override public <T> T read(com.uten.imp.application.port.TaskAudiencePort.ReadQuery<T> work) { return work.read(); }
@@ -112,7 +112,9 @@ class DocumentTaskAudienceCountTest {
         });
         var result = service.counts("salesQuote", null, null);
         assertThat(result).containsEntry("DRAFT", 9L).containsEntry("FINANCE_REJECTED", 5L)
-                .containsEntry("ACTIONABLE_DRAFT", 2L).containsEntry("ACTIONABLE_FINANCE_REJECTED", 1L);
+                .containsEntry("ACTIONABLE_DRAFT", 2L).containsEntry("ACTIONABLE_FINANCE_REJECTED", 1L)
+                .containsEntry("MANAGER_REJECTED",6L).containsEntry("ACTIONABLE_MANAGER_REJECTED",3L)
+                .containsEntry("RESPONSIBLE_PENDING_MANAGER",1L).containsEntry("RESPONSIBLE_PENDING_FINANCE",4L);
         verify(browse).setParameter("statusOwners", Set.of(self, observed));
         verify(tasks).setParameter("taskStatusOwners", Set.of(self));
     }

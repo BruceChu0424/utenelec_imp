@@ -61,7 +61,12 @@ abstract interface class SalesOrderFinanceConfirmationRepository {
 
 class DioSalesOrderFinanceConfirmationRepository
     implements SalesOrderFinanceConfirmationRepository {
-  const DioSalesOrderFinanceConfirmationRepository(this.api);
+  const DioSalesOrderFinanceConfirmationRepository(
+    this.api, {
+    this.managerReview = false,
+  });
+
+  final bool managerReview;
 
   final ApiClient api;
 
@@ -134,7 +139,11 @@ class DioSalesOrderFinanceConfirmationRepository
 
   @override
   Future<SalesOrderFinanceReview> review(String orderId) async {
-    final json = await api.get(ApiEndpoints.salesOrderFinanceReview(orderId));
+    final json = await api.get(
+      managerReview
+          ? '/sales/manager-review/orders/${Uri.encodeComponent(orderId)}'
+          : ApiEndpoints.salesOrderFinanceReview(orderId),
+    );
     return SalesOrderFinanceReview.fromJson(json);
   }
 
@@ -146,7 +155,9 @@ class DioSalesOrderFinanceConfirmationRepository
     String? expectedClaimId,
   }) async {
     await api.post(
-      ApiEndpoints.salesOrderFinanceConfirm(orderId),
+      managerReview
+          ? '/sales/manager-review/orders/${Uri.encodeComponent(orderId)}/confirm'
+          : ApiEndpoints.salesOrderFinanceConfirm(orderId),
       body: <String, dynamic>{
         'expectedRevision': ?expectedRevision,
         'expectedClaimId': ?expectedClaimId,
@@ -170,13 +181,26 @@ class DioSalesOrderFinanceConfirmationRepository
             .toList(growable: false)
           ..sort();
     await api.post(
-      ApiEndpoints.salesOrderFinanceConfirmationBatch,
+      managerReview
+          ? '/sales/manager-review/orders/batch'
+          : ApiEndpoints.salesOrderFinanceConfirmationBatch,
       body: <String, dynamic>{
         'orderIds': normalizedIds,
         'expectedRevisions': ?expectedRevisions,
         'expectedClaimIds': ?expectedClaimIds,
         if (remark != null && remark.trim().isNotEmpty) 'remark': remark.trim(),
       },
+    );
+  }
+
+  Future<void> reverseManager(
+    String orderId, {
+    required String reason,
+    required int expectedRevision,
+  }) async {
+    await api.post(
+      '/sales/manager-review/orders/${Uri.encodeComponent(orderId)}/reverse',
+      body: {'reason': reason, 'expectedRevision': expectedRevision},
     );
   }
 
@@ -188,7 +212,9 @@ class DioSalesOrderFinanceConfirmationRepository
     String? expectedClaimId,
   }) async {
     await api.post(
-      ApiEndpoints.salesOrderFinanceReject(orderId),
+      managerReview
+          ? '/sales/manager-review/orders/${Uri.encodeComponent(orderId)}/reject'
+          : ApiEndpoints.salesOrderFinanceReject(orderId),
       body: <String, dynamic>{
         'reason': reason.trim(),
         'expectedRevision': ?expectedRevision,
@@ -202,5 +228,13 @@ final salesOrderFinanceConfirmationRepositoryProvider =
     Provider<SalesOrderFinanceConfirmationRepository>(
       (ref) => DioSalesOrderFinanceConfirmationRepository(
         ref.watch(apiClientProvider),
+      ),
+    );
+
+final salesManagerOrderReviewRepositoryProvider =
+    Provider<DioSalesOrderFinanceConfirmationRepository>(
+      (ref) => DioSalesOrderFinanceConfirmationRepository(
+        ref.watch(apiClientProvider),
+        managerReview: true,
       ),
     );

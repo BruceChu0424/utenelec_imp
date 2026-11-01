@@ -14,6 +14,7 @@ import '../../../shared/badges/effective_badge_summary_provider.dart';
 /// 要么对应一个容器(模块卡 = 该容器全部入口之和); 两个数都由服务端徽章目录算好
 /// (ADR-108), 这里只做「卡片 → 入口/容器」的映射。
 enum WorkbenchBadgeKind {
+  salesManagerReview,
   expenseMine,
   visitorHost, // 我的访客(被访人待确认 / 在办)
   visitorApproval, // 访客审批(HR 待审批 / 已批准待来访)
@@ -59,6 +60,9 @@ BadgeCounts workbenchBadgeCounts(
     WorkbenchBadgeKind.purchase => module(BadgeModule.purchase),
     WorkbenchBadgeKind.finance => module(BadgeModule.finance),
     WorkbenchBadgeKind.subcontract => module(BadgeModule.subcontract),
+    WorkbenchBadgeKind.salesManagerReview => entry(
+      BadgeEntry.salesManagerReview,
+    ),
     WorkbenchBadgeKind.sales => module(BadgeModule.sales),
     WorkbenchBadgeKind.websiteInquiry => entry(BadgeEntry.websiteInquiry),
     WorkbenchBadgeKind.qualityInspection => module(BadgeModule.quality),

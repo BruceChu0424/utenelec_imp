@@ -855,12 +855,12 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     // 销售订单审核只让订单进入库存预留与履约链，不在此形成正式应收；
     // V294 闸门：审核后自动转发财务审核，财务确认通过前计划部不可见、不排产。
     _cfg.type == SalesDocType.order
-        ? '审核通过后订单将生效并形成库存预留，随后自动转发财务审核；财务确认通过后计划部才可见并排产。确认审核？'
+        ? '审核通过后订单将生效并形成库存预留，随后提交销售负责人审核，负责人批准后转交财务；财务确认通过后计划部才可见并排产。确认审核？'
         : _cfg.type.isShipment && _detail?.financeAudit != 1
         ? '该出货单尚未完成财务审核；所有客户都必须先由财务放行，再由仓库确认出库。确认继续审核？'
         : '审核后将驱动下游(库存/应收)，确认审核？',
     (repo) => repo.approve(widget.id),
-    _cfg.type == SalesDocType.order ? '已审核，已转发财务审核' : '已审核',
+    _cfg.type == SalesDocType.order ? '已提交销售负责人审核' : '已审核',
     reviewerResponsibility: true,
   );
   Future<void> _reverse() async => _doAction(
@@ -1178,8 +1178,9 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
   Future<void> _showLineActions(SalesDocItem item) async {
     if (!nativeReadCanWrite) return;
     if (widget.docType != SalesDocType.order) return;
-    if (_detail?.financeRejected ?? false) {
-      context.appInfo('订单已被财务驳回，请先使用“修改订单”完成修订并重新审核');
+    if ((_detail?.financeRejected ?? false) ||
+        _detail?.managerReviewState == 'REJECTED') {
+      context.appInfo('订单已被驳回，请先使用“修改订单”完成修订并重新审核');
       return;
     }
     if (item.id == null) return;
@@ -1841,12 +1842,32 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
               ? '已确认 · ${utenFmtIsoTime(d.partialShipmentConfirmedAt)}'
               : '待客户确认',
         ),
+      if ((_cfg.type == SalesDocType.order ||
+              _cfg.type == SalesDocType.quote) &&
+          d.managerReviewState != null &&
+          d.managerReviewState != 'NOT_REQUIRED') ...[
+        _KV(
+          '销售负责人审核',
+          d.managerReviewState == 'APPROVED'
+              ? '已通过 · ${d.managerApprovedByName ?? ''}'
+              : d.managerReviewState == 'REJECTED'
+              ? '已驳回 · ${d.managerRejectedByName ?? ''}'
+              : d.status == 0
+              ? '保存后重新提交负责人审核'
+              : '待销售负责人审核',
+        ),
+        if (d.managerReviewState == 'REJECTED')
+          _KV('负责人驳回原因', d.managerRejectReason, highlight: true),
+      ],
       // V294 财务确认闸门：已审订单须财务确认后计划部才可见/可排产。
       if (_cfg.type == SalesDocType.order && d.status == kSalesStatusApproved)
         _KV(
           '财务确认',
           d.financeConfirmed
               ? '已确认 · ${utenFmtIsoTime(d.financeConfirmedAt)}'
+              : d.managerReviewState == 'PENDING' ||
+                    d.managerReviewState == 'REJECTED'
+              ? '负责人审核通过后转交财务'
               : '待财务确认(确认后计划部才可见并排产)',
         ),
       // ADR-052 财务驳回：显示原因；受控修订回草稿并重新销售审核后才回财务确认。

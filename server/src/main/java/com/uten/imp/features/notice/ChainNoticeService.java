@@ -4805,6 +4805,7 @@ public class ChainNoticeService implements SubcontractChainNoticePort, com.uten.
             // Serialize with cancellation/requotation and other deliveries: an old
             // outbox row must never recreate an actionable card for a completed order.
             if (!lockActiveOrderForNotice(orderId, false)) return;
+            if (!Boolean.TRUE.equals(jdbc.queryForObject("SELECT manager_review_state IN ('NOT_REQUIRED','APPROVED') FROM sales_orders WHERE id=?", Boolean.class, orderId))) return;
             OrderRef o = orderRef(orderId);
             if (o == null) return;
             // V459 审核待办弹卡：直达单据级财务审核页；aggregate 绑定订单，

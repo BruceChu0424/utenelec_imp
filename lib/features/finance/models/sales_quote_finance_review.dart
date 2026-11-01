@@ -50,6 +50,7 @@ enum SalesQuoteFinanceAction {
 abstract final class QuotePriceSource {
   static const master = 'MASTER';
   static const finance = 'FINANCE';
+  static const manager = 'MANAGER';
   static const sales = 'SALES';
 }
 
@@ -226,9 +227,11 @@ class SalesQuoteFinanceLine {
   final String? blockingReason;
 
   bool get isFinancePriced => priceSource == QuotePriceSource.finance;
+  bool get isReviewerPriced =>
+      isFinancePriced || priceSource == QuotePriceSource.manager;
 
   /// 冻结的货品标价在用: 按标价打折且已有单价。
-  bool get pricedFromFrozenList => !isFinancePriced && storedPrice != null;
+  bool get pricedFromFrozenList => !isReviewerPriced && storedPrice != null;
 
   /// 标价 = 反推折扣的基准, 与服务端 applyDealPrice 取同一个: 冻结标价在用时取它,
   /// 否则(财务定价行 / 还没有单价)取货品资料当前标价。
@@ -250,7 +253,7 @@ class SalesQuoteFinanceLine {
     if (blockingReason != null) return true;
     final sign = quoteDecimalSign(storedPrice);
     if (sign == null) return true;
-    return sign == 0 && !isFinancePriced && isPositiveDecimal(clientPrice);
+    return sign == 0 && !isReviewerPriced && isPositiveDecimal(clientPrice);
   }
 
   factory SalesQuoteFinanceLine.fromJson(
@@ -269,11 +272,16 @@ class SalesQuoteFinanceLine {
     qty: _text(json['qty']),
     storedPrice: _text(json['listPrice']),
     priceSource:
-        (_text(json['priceSource'])?.toUpperCase() == QuotePriceSource.finance)
+        (_text(json['priceSource'])?.toUpperCase() == QuotePriceSource.manager)
+        ? QuotePriceSource.manager
+        : (_text(json['priceSource'])?.toUpperCase() ==
+              QuotePriceSource.finance)
         ? QuotePriceSource.finance
         : QuotePriceSource.master,
-    financePriceByName: _text(json['financePriceByName']),
-    financePriceAt: _text(json['financePriceAt']),
+    financePriceByName: _text(
+      json['reviewPriceByName'] ?? json['financePriceByName'],
+    ),
+    financePriceAt: _text(json['reviewPriceAt'] ?? json['financePriceAt']),
     currentMasterPrice: _text(json['currentMasterPrice']),
     clientPrice: _text(json['clientPrice']),
     clientPriceLocal: _text(json['clientPriceLocal']),
@@ -294,7 +302,9 @@ class SalesQuoteFinanceLine {
 
 /// 核价详情(GET /sales/quotes/{id}/finance-review, 服务端 QuoteFinanceReviewDto)。
 class SalesQuoteFinanceReview {
+  final String? managerDecisionClaimId;
   const SalesQuoteFinanceReview({
+    this.managerDecisionClaimId,
     required this.quoteId,
     required this.billNo,
     this.billDate,
@@ -406,9 +416,28 @@ class SalesQuoteFinanceReview {
   );
 
   factory SalesQuoteFinanceReview.fromJson(Map<String, dynamic> json) {
+    if (json['reviewStage'] == 'SALES_MANAGER') {
+      json = {
+        ...json,
+        'status': json['reviewStatus'],
+        'statusBucket': switch (json['reviewStatusBucket']) {
+          'PENDING' => 'PENDING_FINANCE',
+          'REJECTED' => 'FINANCE_REJECTED',
+          final value => value,
+        },
+        'financeActions': json['reviewActions'],
+        'financeRemark': json['reviewRemark'],
+        'financeReturnReason': json['reviewRejectReason'],
+        'financeReturnedAt': json['reviewRejectedAt'],
+        'financeReturnedByName': json['reviewRejectedByName'],
+        'financeConfirmedAt': json['reviewApprovedAt'],
+        'financeConfirmedByName': json['reviewApprovedByName'],
+      };
+    }
     final rawActions = json['financeActions'];
     final rawLines = json['lines'];
     return SalesQuoteFinanceReview(
+      managerDecisionClaimId: json['managerDecisionClaimId'] as String?,
       quoteId: _text(json['id']) ?? '',
       billNo: _text(json['billNo']) ?? '',
       billDate: _text(json['billDate']),

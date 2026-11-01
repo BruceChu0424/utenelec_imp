@@ -11,7 +11,7 @@ import java.util.UUID;
 /** 销售订货详情（主表全字段 + 明细列表 + BOM 展开只读列表）。 */
 @Getter
 @AllArgsConstructor
-public class OrderDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
+public class OrderDetail extends com.uten.imp.features.sales.SalesReviewDocumentMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;

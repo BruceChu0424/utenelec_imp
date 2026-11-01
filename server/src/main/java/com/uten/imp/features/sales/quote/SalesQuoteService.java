@@ -54,7 +54,7 @@ import java.util.UUID;
 /**
  * 销售报价单服务(ADR-134 报价核价流程)。
  *
- * <p>状态: 0 草稿(财务退回的草稿带退回原因) → 提交财务核价 2 → 财务确认 1 → 转订货单; 1 → -1 作废。
+ * <p>状态: 0 草稿(财务退回的草稿带退回原因) → 提交销售负责人审核 2 → 财务确认 1 → 转订货单; 1 → -1 作废。
  * 待核价期间销售可撤回(财务没在核价时); 已确认未转单时销售可「重新修改」回草稿, 财务可「撤销确认」回待核价。
  * 报价不再由销售自己审核(sales_quote:approve 已退役)。
  *
@@ -78,11 +78,16 @@ public class SalesQuoteService {
     static final short STATUS_PENDING_FINANCE = 2;
     static final short STATUS_REVERSED = -1;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.SalesManagerReviewNoticePort managerNotices;
+
     public static final String FINANCE_VIEW = "sales_quote_finance:view";
     public static final String FINANCE_CONFIRM = "sales_quote_finance:confirm";
     public static final String FINANCE_REJECT = "sales_quote_finance:reject";
     public static final String FINANCE_REVERSE = "sales_quote_finance:reverse";
 
+    public static final String BUCKET_PENDING_MANAGER = "PENDING_MANAGER";
+    public static final String BUCKET_MANAGER_REJECTED = "MANAGER_REJECTED";
     public static final String BUCKET_DRAFT = "DRAFT";
     public static final String BUCKET_FINANCE_REJECTED = "FINANCE_REJECTED";
     public static final String BUCKET_PENDING_FINANCE = "PENDING_FINANCE";
@@ -248,7 +253,7 @@ public class SalesQuoteService {
         if (raw == null || raw.isBlank()) return null;
         String bucket = raw.trim().toUpperCase(java.util.Locale.ROOT);
         return switch (bucket) {
-            case BUCKET_DRAFT, BUCKET_FINANCE_REJECTED, BUCKET_PENDING_FINANCE, BUCKET_APPROVED, BUCKET_REVERSED,
+            case BUCKET_PENDING_MANAGER, BUCKET_MANAGER_REJECTED, BUCKET_DRAFT, BUCKET_FINANCE_REJECTED, BUCKET_PENDING_FINANCE, BUCKET_APPROVED, BUCKET_REVERSED,
                  BUCKET_AWAITING_CONVERSION, BUCKET_AWAITING_CUSTOMER, "ACTIVE" -> bucket;
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "报价分段无效: " + raw);
         };
@@ -270,10 +275,12 @@ public class SalesQuoteService {
                                cb.isNotNull(root.get("financeConfirmedAt")), cb.not(cb.exists(converted))));
             }
             case BUCKET_DRAFT -> cb.and(cb.equal(root.get("status"), STATUS_DRAFT),
-                    cb.isNull(root.get("financeReturnReason")));
+                    cb.notEqual(root.get("managerReview").get("state"), "REJECTED"), cb.isNull(root.get("financeReturnReason")));
             case BUCKET_FINANCE_REJECTED -> cb.and(cb.equal(root.get("status"), STATUS_DRAFT),
                     cb.isNotNull(root.get("financeReturnReason")));
-            case BUCKET_PENDING_FINANCE -> cb.equal(root.get("status"), STATUS_PENDING_FINANCE);
+            case BUCKET_PENDING_MANAGER -> cb.and(cb.equal(root.get("status"), STATUS_PENDING_FINANCE), cb.equal(root.get("managerReview").get("state"), "PENDING"));
+            case BUCKET_MANAGER_REJECTED -> cb.and(cb.equal(root.get("status"), STATUS_DRAFT), cb.equal(root.get("managerReview").get("state"), "REJECTED"));
+            case BUCKET_PENDING_FINANCE -> cb.and(cb.equal(root.get("status"), STATUS_PENDING_FINANCE), root.get("managerReview").get("state").in("NOT_REQUIRED", "APPROVED"));
             case BUCKET_APPROVED -> cb.equal(root.get("status"), STATUS_CONFIRMED);
             case BUCKET_AWAITING_CONVERSION, BUCKET_AWAITING_CUSTOMER -> {
                 jakarta.persistence.criteria.Subquery<Integer> converted = query.subquery(Integer.class);
@@ -337,7 +344,7 @@ public class SalesQuoteService {
         em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE); // 锁行重读, 与提交核价互斥
         if (q.getStatus() == null || q.getStatus() != STATUS_DRAFT || q.isClosed()) {
             throw new ApiException(ErrorCode.BUSINESS, q.getStatus() != null && q.getStatus() == STATUS_PENDING_FINANCE
-                    ? "报价已提交财务核价, 请先撤回再修改" : "仅草稿单据可编辑");
+                    ? "报价已提交销售负责人审核, 请先撤回再修改" : "仅草稿单据可编辑");
         }
         requireRevision(q, req.getExpectedRevision());
         requireNotDeleted(q);
@@ -382,7 +389,7 @@ public class SalesQuoteService {
 
     // ------------------------------------------------------------------ 状态动作(销售)
 
-    /** 提交财务核价: 草稿 → 待财务核价; 清空上次退回原因, 通知全部核价人。 */
+    /** 提交销售负责人审核: 草稿 → 待财务核价; 清空上次退回原因, 通知全部核价人。 */
     @Transactional
     @PreAuthorize("hasAuthority('sales_quote:edit')")
     public QuoteDetail submit(UUID id, QuoteActionRequest req) {
@@ -391,13 +398,13 @@ public class SalesQuoteService {
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",q);
         em.refresh(q, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
         if (q.getStatus() == null || q.getStatus() != STATUS_DRAFT || q.isClosed()) {
-            throw new ApiException(ErrorCode.CONFLICT, "只有草稿报价可以提交财务核价");
+            throw new ApiException(ErrorCode.CONFLICT, "只有草稿报价可以提交销售负责人审核");
         }
         requireNotDeleted(q);
         requireRevision(q, req == null ? null : req.expectedRevision());
         List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
         if (items.isEmpty()) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "报价还没有货品明细, 不能提交财务核价");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "报价还没有货品明细, 不能提交销售负责人审核");
         }
         referenceValidator.validateStoredQuote(q.getClientId(), items);
         if (!isBaseCurrency(q.getCurrencyId())) {
@@ -405,6 +412,7 @@ public class SalesQuoteService {
         }
         UUID actor = currentUser.requireEmployeeId();
         q.setStatus(STATUS_PENDING_FINANCE);
+        q.getManagerReview().submit();
         q.setSubmittedAt(OffsetDateTime.now());
         q.setSubmittedBy(actor);
         q.setFinanceReturnReason(null);
@@ -416,7 +424,8 @@ public class SalesQuoteService {
         q.setReviewRevision(q.getReviewRevision() + 1);
         quoteRepo.save(q);
         revisionLog.append(q, items, SalesQuoteRevisionLog.SUBMIT, actor, null);
-        notices.notifySubmittedForReview(q.getId());
+        em.flush();
+        managerNotices.pending("quote", q.getId());
         return toDetail(q, items, true);
     }
 
@@ -434,6 +443,7 @@ public class SalesQuoteService {
         }
         requireRevision(q, req == null ? null : req.expectedRevision());
         taskClaim.requireNoActiveClaim(SalesQuoteFinanceClaimTargetLocks.TARGET_TYPE, id.toString());
+        taskClaim.requireNoActiveClaim("SALES_QUOTE_MANAGER_REVIEW", id.toString());
         UUID actor = currentUser.requireEmployeeId();
         q.setStatus(STATUS_DRAFT);
         q.setReviewRevision(q.getReviewRevision() + 1);
@@ -441,6 +451,7 @@ public class SalesQuoteService {
         List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
         revisionLog.append(q, items, SalesQuoteRevisionLog.WITHDRAW, actor, req.reason());
         notices.resolveReviewNotices(q.getId(), "WITHDRAWN");
+        managerNotices.resolved("quote", id, "WITHDRAWN");
         return toDetail(q, items, true);
     }
 
@@ -521,6 +532,7 @@ public class SalesQuoteService {
         }
         requireNotConverted(id, "报价已转成订货单，请先处理订货单");
         taskClaim.requireNoActiveClaim(SalesQuoteFinanceClaimTargetLocks.TARGET_TYPE, id.toString());
+        taskClaim.requireNoActiveClaim("SALES_QUOTE_MANAGER_REVIEW", id.toString());
         q.setStatus(STATUS_REVERSED);
         q.setCancelReason(reason);
         q.setCancelledAt(OffsetDateTime.now());
@@ -531,6 +543,7 @@ public class SalesQuoteService {
         List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
         revisionLog.append(q, items, SalesQuoteRevisionLog.CANCEL, currentUser.requireEmployeeId(), reason);
         notices.resolveReviewNotices(id, "CANCELLED");
+        managerNotices.resolved("quote", id, "CANCELLED");
         return toDetail(q, items, true);
     }
 
@@ -559,7 +572,7 @@ public class SalesQuoteService {
         }
         if (q.getFinanceConfirmedAt() == null) {
             throw new ApiException(ErrorCode.BUSINESS,
-                    "报价还没有财务核价确认, 不能转订货单; 请点「重新修改」后提交财务核价");
+                    "报价还没有财务核价确认, 不能转订货单; 请点「重新修改」后提交销售负责人审核");
         }
         if (!customerAccepted(q)) {
             throw new ApiException(ErrorCode.CONFLICT, "请先确认客户已接受本次财务核价，再生成订货单");
@@ -953,6 +966,7 @@ public class SalesQuoteService {
     private QuoteListItem toList(SalesQuote q, boolean writable, boolean masked, ConvertedOrder converted,
                                  com.uten.imp.security.OwnerVisibility.OwnerScope scope) {
         QuoteListItem item = new QuoteListItem();
+        item.setManagerReview(q.getManagerReview());
         item.setId(q.getId());
         item.setBillNo(q.getBillNo());
         item.setBillDate(q.getBillDate());
@@ -988,6 +1002,9 @@ public class SalesQuoteService {
         boolean masked = pricesMasked();
         ConvertedOrder converted = convertedOrders(List.of(q.getId())).get(q.getId());
         QuoteDetail d = new QuoteDetail();
+        d.setManagerReview(q.getManagerReview());
+        d.setManagerApprovedByName(nameResolver.nameOf(q.getManagerReview().getApprovedBy()));
+        d.setManagerRejectedByName(nameResolver.nameOf(q.getManagerReview().getRejectedBy()));
         d.setId(q.getId());
         d.setLegacyId(q.getLegacyId());
         d.setBillNo(q.getBillNo());
@@ -1116,10 +1133,10 @@ public class SalesQuoteService {
     static String statusBucket(SalesQuote q) {
         short status = q.getStatus() == null ? STATUS_DRAFT : q.getStatus();
         return switch (status) {
-            case STATUS_PENDING_FINANCE -> BUCKET_PENDING_FINANCE;
+            case STATUS_PENDING_FINANCE -> q.getManagerReview().pending() ? BUCKET_PENDING_MANAGER : BUCKET_PENDING_FINANCE;
             case STATUS_CONFIRMED -> BUCKET_APPROVED;
             case STATUS_REVERSED -> BUCKET_REVERSED;
-            default -> q.getFinanceReturnReason() != null ? BUCKET_FINANCE_REJECTED : BUCKET_DRAFT;
+            default -> q.getManagerReview().rejected() ? BUCKET_MANAGER_REJECTED : q.getFinanceReturnReason() != null ? BUCKET_FINANCE_REJECTED : BUCKET_DRAFT;
         };
     }
 
@@ -1132,7 +1149,7 @@ public class SalesQuoteService {
     static boolean financeVisible(SalesQuote q, boolean includeDeleted) {
         if (q == null || (!includeDeleted && q.isDeleted()) || q.getStatus() == null) return false;
         short status = q.getStatus();
-        if (status == STATUS_PENDING_FINANCE) return true;
+        if (status == STATUS_PENDING_FINANCE) return q.getManagerReview().financeReady();
         if (status == STATUS_CONFIRMED) return q.getFinanceConfirmedAt() != null;
         if (status == STATUS_REVERSED) return q.getSubmittedAt() != null;
         return status == STATUS_DRAFT
@@ -1209,7 +1226,7 @@ public class SalesQuoteService {
     }
 
     private static void requireUnexpired(SalesQuote q) {
-        if (expired(q)) throw new ApiException(ErrorCode.CONFLICT, "报价已过有效期，请重新修改并提交财务核价");
+        if (expired(q)) throw new ApiException(ErrorCode.CONFLICT, "报价已过有效期，请重新修改并提交销售负责人审核");
     }
 
     private void requireNotDeleted(SalesQuote q) {

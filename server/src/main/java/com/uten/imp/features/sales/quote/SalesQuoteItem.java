@@ -112,4 +112,9 @@ public class SalesQuoteItem extends com.uten.imp.common.columns.ExtraColumnEntit
     public static final String PRICE_SOURCE_MASTER = "MASTER";
     public static final String PRICE_SOURCE_SALES = "SALES";
     public static final String PRICE_SOURCE_FINANCE = "FINANCE";
+    public static final String PRICE_SOURCE_MANAGER = "MANAGER";
+    @Column(name = "manager_price_by")
+    private UUID managerPriceBy;
+    @Column(name = "manager_price_at")
+    private java.time.OffsetDateTime managerPriceAt;
 }

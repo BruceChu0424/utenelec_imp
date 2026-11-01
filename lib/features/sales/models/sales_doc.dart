@@ -87,6 +87,8 @@ UtenStatusBadgeType salesStatusBadgeType(int? code) => switch (code) {
 /// 草稿与财务退回同是 status 0, 区别是有没有退回原因——草稿计数只数没有退回原因的,
 /// 退回件单独一桶(否则一张单在两个红段里各数一次)。
 abstract final class SalesQuoteStage {
+  static const pendingManager = 'PENDING_MANAGER';
+  static const managerRejected = 'MANAGER_REJECTED';
   static const draft = 'DRAFT';
   static const financeRejected = 'FINANCE_REJECTED';
   static const pendingFinance = 'PENDING_FINANCE';
@@ -101,6 +103,8 @@ abstract final class SalesQuoteStage {
   /// (末尾另有「历史记录」)。
   static const segments = [
     draft,
+    managerRejected,
+    pendingManager,
     financeRejected,
     pendingFinance,
     awaitingCustomer,
@@ -645,7 +649,10 @@ class CustomerShipmentWorkflow {
 }
 
 class SalesDocListItem {
+  final String? managerReviewState, managerRejectReason;
   const SalesDocListItem({
+    this.managerReviewState,
+    this.managerRejectReason,
     this.exactDecimals = const {},
     this.shipmentWorkflow = const CustomerShipmentWorkflow(),
     this.quoteWorkflow = SalesQuoteWorkflow.empty,
@@ -757,6 +764,9 @@ class SalesDocListItem {
   factory SalesDocListItem.fromJson(
     Map<String, dynamic> json,
   ) => SalesDocListItem(
+    managerReviewState: (json['managerReview'] as Map?)?['state'] as String?,
+    managerRejectReason:
+        (json['managerReview'] as Map?)?['rejectReason'] as String?,
     exactDecimals: readExactDecimalTexts(json),
     shipmentWorkflow: CustomerShipmentWorkflow.fromJson(json),
     quoteWorkflow: SalesQuoteWorkflow.fromJson(json),
@@ -1097,7 +1107,15 @@ class ScarceReservation {
 }
 
 class SalesDocDetail {
+  final String? managerReviewState,
+      managerRejectReason,
+      managerApprovedByName,
+      managerRejectedByName;
   const SalesDocDetail({
+    this.managerReviewState,
+    this.managerRejectReason,
+    this.managerApprovedByName,
+    this.managerRejectedByName,
     this.exactDecimals = const {},
     this.shipmentWorkflow = const CustomerShipmentWorkflow(),
     this.quoteWorkflow = SalesQuoteWorkflow.empty,
@@ -1298,6 +1316,11 @@ class SalesDocDetail {
       partialShipmentConfirmedAt!.isNotEmpty;
 
   factory SalesDocDetail.fromJson(Map<String, dynamic> json) => SalesDocDetail(
+    managerReviewState: (json['managerReview'] as Map?)?['state'] as String?,
+    managerRejectReason:
+        (json['managerReview'] as Map?)?['rejectReason'] as String?,
+    managerApprovedByName: json['managerApprovedByName'] as String?,
+    managerRejectedByName: json['managerRejectedByName'] as String?,
     exactDecimals: readExactDecimalTexts(json),
     shipmentWorkflow: CustomerShipmentWorkflow.fromJson(json),
     quoteWorkflow: SalesQuoteWorkflow.fromJson(json),

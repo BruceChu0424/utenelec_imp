@@ -10,7 +10,7 @@ import java.util.UUID;
 /** 销售订货列表项。 */
 @Getter
 @AllArgsConstructor
-public class OrderListItem extends com.uten.imp.common.history.DocumentHistoryMetadata {
+public class OrderListItem extends com.uten.imp.features.sales.SalesReviewDocumentMetadata {
     private UUID id;
     private String billNo;
     private LocalDate billDate;

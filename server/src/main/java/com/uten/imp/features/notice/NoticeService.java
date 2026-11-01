@@ -58,6 +58,16 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class NoticeService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.SalesManagerReviewCatchUpPort> managerReviewCatchUp;
+
+    private void catchUpManagerReviews(UUID userId, Set<String> eligible) {
+        if(managerReviewCatchUp!=null && (eligible.contains("SALES_QUOTE_PENDING_MANAGER_REVIEW")
+                || eligible.contains("SALES_ORDER_PENDING_MANAGER_REVIEW"))) {
+            managerReviewCatchUp.getObject().catchUp(userId);
+        }
+    }
+
 
     /** 合法通知类型（与前端 NoticeType 枚举一一对应）。 */
     private static final Set<String> TYPES = Set.of(
@@ -250,6 +260,8 @@ public class NoticeService {
                     "通知到达游标时间与 ID 必须同时提供");
         }
         UUID userId = requireStaffId();
+        Set<String> eligibleReviewEvents=reviewAudience.eligibleEvents(requireStaff());
+        catchUpManagerReviews(userId,eligibleReviewEvents);
         int safeLimit = Math.min(Math.max(limit, 1), MAX_ARRIVAL_ITEMS);
         if (afterPublishedAt == null) {
             afterPublishedAt = Instant.EPOCH;
@@ -269,7 +281,7 @@ public class NoticeService {
                 userId,
                 page.stream().map(Notice::getId).toList());
         Map<UUID, List<NoticeCelebrationSubject>> subjects = subjectsMap(page);
-        Set<String> reviewEvents = reviewEventsFor(page);
+        Set<String> reviewEvents = page.stream().anyMatch(NoticeService::isActionableReview) ? eligibleReviewEvents : Set.of();
         // V833/ADR-171：个人关闭的弹窗类别不再出现在到达流——顶部条与居中弹卡都不再出现。
         Set<String> popupDisabled = Set.copyOf(popupPrefRepo.findDisabledEvents(userId));
         List<NoticeDto> items = page.stream()
@@ -1417,6 +1429,7 @@ public class NoticeService {
     public List<NoticeDto> pendingReviews() {
         UUID userId = requireStaffId();
         Set<String> eligible = reviewAudience.eligibleEvents(requireStaff());
+        catchUpManagerReviews(userId,eligible);
         if (eligible.isEmpty()) return List.of();
         Set<String> reviewEvents = excludePopupDisabled(userId, eligible);
         if (reviewEvents.isEmpty()) return List.of();

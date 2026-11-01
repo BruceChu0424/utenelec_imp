@@ -6,6 +6,8 @@ import java.util.Set;
 /** Ordinary business action reminders. Registration adds live authorization/state checks, never a popup or claim. */
 public final class BusinessNoticeActionCatalog {
     private static final Map<String,String> KINDS = Map.ofEntries(
+            Map.entry("SALES_QUOTE_MANAGER_REJECTED", "SALES_QUOTE_ACTION"),
+            Map.entry("SALES_ORDER_MANAGER_REJECTED", "SALES_ORDER"),
             Map.entry("PRODUCTION_FINISHED_INBOUND_PENDING", "STOCK_DOCUMENT"),
             Map.entry("PRODUCTION_FINISHED_ARRIVAL_PENDING", "PRODUCTION_DAILY_REPORT"),
             Map.entry("PROCUREMENT_IQC_PRE_STOCKED", "IQC_INSPECTION"),
@@ -45,11 +47,11 @@ public final class BusinessNoticeActionCatalog {
                     permissions.containsAll(Set.of("supplier_return_task:view","supplier_return_task:complete"));
             case "RD_TASK_FORWARDED" -> permissions.containsAll(Set.of("rd_task:view","goods:view"))
                     && (permissions.contains("goods:bom:create") || permissions.contains("goods:bom:edit"));
-            case "SALES_QUOTE_FINANCE_RETURNED" ->
+            case "SALES_QUOTE_FINANCE_RETURNED", "SALES_QUOTE_MANAGER_REJECTED" ->
                     permissions.containsAll(Set.of("sales_quote:view","sales_quote:edit"));
             case "SALES_QUOTE_FINANCE_CONFIRMED" -> permissions.contains("sales_quote:view")
                     && (permissions.contains("sales_quote:edit") || permissions.containsAll(Set.of("sales_quote:convert","sales_order:create")));
-            case "SALES_ORDER_FINANCE_REJECTED" -> permissions.containsAll(Set.of("sales_order:view","sales_order:edit"));
+            case "SALES_ORDER_FINANCE_REJECTED", "SALES_ORDER_MANAGER_REJECTED" -> permissions.containsAll(Set.of("sales_order:view","sales_order:edit"));
             case "PROCUREMENT_FINANCE_REJECTED" -> permissions.containsAll(Set.of("purchase_order:view","purchase_order:edit"))
                     || permissions.containsAll(Set.of("subcontract_order:view","subcontract_order:edit"));
             default -> false;

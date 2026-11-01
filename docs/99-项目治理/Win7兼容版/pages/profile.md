@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | MyProfileChangesPage @44 (page-class)<br>_MyProfileChangesPageState @52 (state-class)<br>_MyBatchDetailDialog @369 (supporting-class) |
-| 真实路由绑定 | /profile/me/changes；router @2258；builder ['MyProfileChangesPage']；redirect None |
+| 真实路由绑定 | /profile/me/changes；router @2280；builder ['MyProfileChangesPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -22,12 +22,12 @@
 
 ## W7-BIZ-119 · lib/features/profile/pages/profile_edit_page.dart
 
-模块 `profile`；641 行；SHA256 `a0675de721eae5a8aaeb29782f080d091b12bd91dea0c4a75c1c77fe74dd4384`。
+模块 `profile`；641 行；SHA256 `7cbebe650708b44ce4747a5c3c4b84adc7b7d13510672e3c80f7b24f4936f0bb`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProfileEditPage @51 (page-class)<br>_ProfileEditPageState @62 (state-class) |
-| 真实路由绑定 | /profile/edit；router @2243；builder ['ProfileEditPage']；redirect None |
+| 真实路由绑定 | /profile/edit；router @2265；builder ['ProfileEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -40,12 +40,12 @@
 
 ## W7-BIZ-120 · lib/features/profile/pages/profile_page.dart
 
-模块 `profile`；1228 行；SHA256 `407576c3018405d6975121c0037f81c45664882bbfe7c4ba4e5e59854bed1d1e`。
+模块 `profile`；1228 行；SHA256 `26deef2612461933f653fac4817b571610aa3cd8b5e70620f77b8eeb02b3440e`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProfilePage @55 (page-class)<br>_ProfilePageState @62 (state-class)<br>_ProfileFieldRow @759 (supporting-class)<br>_EditFieldPencil @884 (supporting-class)<br>_PolicyBadge @913 (supporting-class)<br>_IdentityGroup @931 (supporting-class)<br>_HeroCard @943 (supporting-class)<br>_RoleChip @1074 (supporting-class)<br>_MyDepartmentShortcut @1122 (supporting-class)<br>_MyChangesShortcut @1174 (supporting-class) |
-| 真实路由绑定 | /profile；router @608；builder ['ProfilePage']；redirect None |
+| 真实路由绑定 | /profile；router @609；builder ['ProfilePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

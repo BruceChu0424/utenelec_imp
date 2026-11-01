@@ -6201,7 +6201,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get salesQuoteStatusFieldReturnReason => '반려 사유';
 
   @override
-  String get salesQuoteStatusFieldSubmittedAt => '가격 검토 요청 시각';
+  String get salesQuoteStatusFieldSubmittedAt => '검토 요청 시간';
 
   @override
   String get salesQuoteStatusFieldConfirmedBy => '가격 확정자';
@@ -6213,7 +6213,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get salesQuoteStatusFieldFinanceRemark => '재무 메모';
 
   @override
-  String get salesQuoteStatusActionSubmit => '재무 가격 검토 요청';
+  String get salesQuoteStatusActionSubmit => '영업 책임자 검토 요청';
 
   @override
   String get salesQuoteStatusActionWithdraw => '회수';
@@ -6241,7 +6241,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get salesQuoteStatusSubmitConfirmBody =>
-      '재무가 품목별로 가격과 할인을 정합니다. 그동안 견적을 수정할 수 없습니다. 요청할까요?';
+      '영업 책임자 승인 후 재무 검토로 전달됩니다. 검토 중에는 수정할 수 없습니다. 제출할까요?';
 
   @override
   String get salesQuoteStatusWithdrawConfirmBody =>
@@ -6266,7 +6266,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get salesQuoteStatusCancel => '취소';
 
   @override
-  String get salesQuoteStatusSubmitted => '재무 가격 검토를 요청했습니다';
+  String get salesQuoteStatusSubmitted => '영업 책임자 검토를 요청했습니다';
 
   @override
   String get salesQuoteStatusWithdrawn => '회수했습니다. 계속 수정할 수 있습니다';
@@ -6295,7 +6295,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get salesQuoteStatusTimelineEmpty => '아직 가격 검토 기록이 없습니다';
 
   @override
-  String get salesQuoteStatusRevisionSubmit => '가격 검토 요청';
+  String get salesQuoteStatusRevisionSubmit => '영업 책임자 검토 요청';
 
   @override
   String get salesQuoteStatusRevisionWithdraw => '영업 회수';

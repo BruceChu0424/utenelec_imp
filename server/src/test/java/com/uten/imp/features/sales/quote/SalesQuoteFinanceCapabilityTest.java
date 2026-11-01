@@ -43,6 +43,7 @@ class SalesQuoteFinanceCapabilityTest {
         Query lines = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(header, lines);
         when(header.setParameter("id", id)).thenReturn(header);
+        when(header.setParameter("manager", false)).thenReturn(header);
         when(header.getSingleResult()).thenReturn(new Object[]{"客户", "C01", "销售", "销售", "人民币",
                 true, "现结", null, null, null});
         when(lines.setParameter("id", id)).thenReturn(lines);

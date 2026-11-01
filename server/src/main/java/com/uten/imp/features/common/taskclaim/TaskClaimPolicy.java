@@ -55,9 +55,19 @@ public record TaskClaimPolicy(int leaseMinutes, Set<String> claimPermissions, Se
                     Set.of("sales_quote_finance:confirm", "sales_quote_finance:reject"),
                     Set.of("sales_quote_finance:confirm", "sales_quote_finance:reject"), "sales_quote_finance:view"));
 
+    private static TaskClaimPolicy management(String kind) {
+        String prefix = "sales_" + kind + "_manager:";
+        Set<String> actions = Set.of(prefix + "confirm", prefix + "reject");
+        return new TaskClaimPolicy(30, actions, actions, prefix + "view");
+    }
+
     /** 取某类型策略；未登记抛 400（fail-closed）。 */
     public static TaskClaimPolicy of(String targetType) {
-        TaskClaimPolicy p = POLICIES.get(targetType);
+        TaskClaimPolicy p = switch (targetType) {
+            case "SALES_QUOTE_MANAGER_REVIEW" -> management("quote");
+            case "SALES_ORDER_MANAGER_REVIEW" -> management("order");
+            default -> POLICIES.get(targetType);
+        };
         if (p == null) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "未登记的任务认领类型：" + targetType + "(需先在 TaskClaimPolicy 登记)");

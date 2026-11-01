@@ -81,6 +81,12 @@ class SalesOrderReviewNoticeLifecycleTest {
         verify(f.notices).resolveReviewNotices("SALES_ORDER", f.order, "CANCELLED");
     }
 
+    @Test void delayedFinanceReminderStaysClosedDuringManagerReview() {
+        var f=new Fixture(); f.managerReady=false;
+        f.deliver(ChainNoticeService.EVENT_ORDER_PENDING_FINANCE);
+        verifyNoInteractions(f.notices,f.reviewers);
+    }
+
     private static final class Fixture {
         final UUID order = UUID.randomUUID(), employee = UUID.randomUUID(), userId = UUID.randomUUID();
         final JdbcTemplate jdbc = mock(JdbcTemplate.class);
@@ -88,7 +94,7 @@ class SalesOrderReviewNoticeLifecycleTest {
         final BusinessEventPublisher outbox = mock(BusinessEventPublisher.class);
         final SalesOrderFinanceConfirmerEligibility reviewers = mock(SalesOrderFinanceConfirmerEligibility.class);
         final ChainNoticeService service;
-        boolean pending = true, terminated, hasPendingCard, confirmed;
+        boolean pending = true, managerReady = true, terminated, hasPendingCard, confirmed;
 
         Fixture() {
             var users = mock(UserAccountRepository.class);
@@ -97,6 +103,7 @@ class SalesOrderReviewNoticeLifecycleTest {
             when(users.findByEmployeeId(employee)).thenReturn(Optional.of(user));
             when(users.findById(userId)).thenReturn(Optional.of(user));
             when(permissions.grantedPermsOf(user)).thenReturn(Set.of("notice:read"));
+            when(jdbc.queryForObject(contains("manager_review_state"),eq(Boolean.class),eq(order))).thenAnswer(call -> managerReady);
             when(reviewers.eligibleUserIds()).thenReturn(List.of(userId));
             when(jdbc.queryForList(contains("AND finance_confirmed = ? AND NOT finance_rejected"), eq(order), eq(false)))
                     .thenAnswer(call -> pending ? List.of(Map.of("id", order)) : List.of());

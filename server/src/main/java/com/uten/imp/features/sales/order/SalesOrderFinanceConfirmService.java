@@ -68,6 +68,8 @@ public class SalesOrderFinanceConfirmService {
     private final SalesOrderRevisionService revisions;
     // ADR-128: 客户应收只经 finance 的共用余额查询取, 本服务不再自写 ar_ap_ledger 汇总。
     private final PartyOpenBalancePort partyBalances;
+    @org.springframework.beans.factory.annotation.Autowired
+    private SalesOrderTimelineService timeline;
 
 
 
@@ -291,6 +293,7 @@ public class SalesOrderFinanceConfirmService {
         return confirmed ? " AND o.finance_confirmed = TRUE\n" : """
                  AND (o.is_closed = FALSE OR o.finance_review_revision > 0)
                  AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
+                 AND o.manager_review_state IN ('NOT_REQUIRED','APPROVED')
                  AND o.finance_confirmed = FALSE
                 """;
     }
@@ -368,7 +371,8 @@ public class SalesOrderFinanceConfirmService {
                 SELECT COUNT(*) FROM (SELECT * FROM sales_orders archive_origin WHERE NULLIF(to_jsonb(archive_origin)->>'legacy_id','') IS NULL AND NULLIF(to_jsonb(archive_origin)->>'legacy_import_run_id','') IS NULL AND NOT fn_imported_business_document('sales_orders',archive_origin.id)) o
                 WHERE o.status = 1 AND o.is_deleted = FALSE
                   AND (o.is_closed = FALSE OR o.finance_review_revision > 0) AND o.is_stopped = FALSE AND o.requoted_to_id IS NULL
-                  AND o.finance_confirmed = FALSE AND o.finance_rejected = FALSE
+                  AND o.manager_review_state IN ('NOT_REQUIRED','APPROVED')
+                 AND o.finance_confirmed = FALSE AND o.finance_rejected = FALSE
                 """ + changesFilter).getSingleResult();
         return Map.of("count", n.longValue());
     }
@@ -380,11 +384,24 @@ public class SalesOrderFinanceConfirmService {
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('sales_order_finance:view')")
     public SalesOrderFinanceReviewDto review(UUID orderId) {
+        return review(orderId, false);
+    }
+
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('sales_order_manager:view')")
+    public SalesOrderFinanceReviewDto managerReview(UUID orderId) {
+        return review(orderId, true);
+    }
+
+    private SalesOrderFinanceReviewDto review(UUID orderId, boolean manager) {
         SalesOrder order = orderRepo.findById(orderId)
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "销售订货单不存在"));
         if (order.isDeleted()) {
             throw new ApiException(ErrorCode.NOT_FOUND, "销售订货单不存在或已删除");
         }
+        if (!manager) order.getManagerReview().requireFinanceReady();
+        else if (com.uten.imp.features.sales.SalesManagerReview.NOT_REQUIRED.equals(order.getManagerReview().getState()))
+            throw new ApiException(ErrorCode.NOT_FOUND, "销售负责人审核不存在");
         Object[] h = (Object[]) em.createNativeQuery("""
                 SELECT COALESCE(c.name, ''), COALESCE(c.code, ''),
                        COALESCE(e.full_name, ''), COALESCE(m.full_name, ''),
@@ -399,11 +416,11 @@ public class SalesOrderFinanceConfirmService {
                 LEFT JOIN employees m ON m.id = o.maker_id
                 LEFT JOIN currencies cur ON cur.id = o.currency_id
                 LEFT JOIN settlement_methods sm ON sm.id = o.settlement_method_id
-                LEFT JOIN employees fc ON fc.id = o.finance_confirmed_by
-                LEFT JOIN employees fr ON fr.id = o.finance_rejected_by
+                LEFT JOIN employees fc ON fc.id = CASE WHEN :manager THEN o.manager_approved_by ELSE o.finance_confirmed_by END
+                LEFT JOIN employees fr ON fr.id = CASE WHEN :manager THEN o.manager_rejected_by ELSE o.finance_rejected_by END
                 WHERE o.id = :id
                 """)
-                .setParameter("id", orderId)
+                .setParameter("id", orderId).setParameter("manager", manager)
                 .getSingleResult();
         @SuppressWarnings("unchecked")
         List<Object[]> itemRows = em.createNativeQuery("""
@@ -511,14 +528,14 @@ public class SalesOrderFinanceConfirmService {
                 order.getTotalOriginal(),
                 clientBalance,
                 creditFloor,
-                order.isFinanceConfirmed(),
-                order.getFinanceConfirmedAt(),
+                (manager ? order.getManagerReview().approved() : order.isFinanceConfirmed()),
+                (manager ? order.getManagerReview().getApprovedAt() : order.getFinanceConfirmedAt()),
                 (String) h[9],
-                order.getFinanceConfirmRemark(),
-                order.isFinanceRejected(),
-                order.getFinanceRejectedReason(),
+                (manager ? order.getManagerReview().getRemark() : order.getFinanceConfirmRemark()),
+                (manager ? order.getManagerReview().rejected() : order.isFinanceRejected()),
+                (manager ? order.getManagerReview().getRejectReason() : order.getFinanceRejectedReason()),
                 (String) h[10],
-                order.getFinanceRejectedAt(),
+                (manager ? order.getManagerReview().getRejectedAt() : order.getFinanceRejectedAt()),
                 lines,
                 qtyChanges,
                 revisions.pendingChanges(orderId),
@@ -530,7 +547,19 @@ public class SalesOrderFinanceConfirmService {
                 order.getClientFileCurrency(),
                 quoteTrace == null ? null : quoteTrace.match().allLinesMatch(),
                 order.getRequotedToId(), order.getRequotedAt(),
-                order.getRequotedToId() == null ? null : SalesOrderService.REQUOTED_READ_ONLY_REASON);
+                order.getRequotedToId() != null ? SalesOrderService.REQUOTED_READ_ONLY_REASON
+                    : manager ? managerReadOnlyReason(order) : null,
+                manager ? order.getManagerReview().getDecisionClaimId() : null,
+                manager && order.getManagerReview().approved() && !order.isFinanceConfirmed() && !order.isFinanceRejected()
+                    && order.getRequotedToId() == null && order.getStatus() != null && order.getStatus() == 1 && !order.isStopped(),
+                manager ? timeline.managerEvents(order) : List.of());
+    }
+
+    private static String managerReadOnlyReason(SalesOrder order) {
+        if(order.getStatus()==null || order.getStatus()!=1) return "订单已撤回或正在由销售修订，重新提交后再审核";
+        if(order.isStopped()) return "订单已中止，不再等待负责人审核";
+        if(order.isClosed() && order.getFinanceReviewRevision()==0) return "订单已结案，不再等待负责人审核";
+        return null;
     }
 
     /**
@@ -786,6 +815,7 @@ public class SalesOrderFinanceConfirmService {
         requireEligibleConfirmer();
         SalesOrder order = requireDecisionOrderForUpdate(orderId);
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",order);
+        order.getManagerReview().requireFinanceReady();
         if (request == null) throw new ApiException(ErrorCode.VALIDATION_FAILED,"请填写财务驳回原因");
         requireReviewRevision(order, request.expectedRevision());
         if (order.getStatus() == null || order.getStatus() != 1) {
@@ -834,6 +864,7 @@ public class SalesOrderFinanceConfirmService {
     }
 
     private void requireConfirmable(SalesOrder order) {
+        order.getManagerReview().requireFinanceReady();
         if (order.getStatus() == null || order.getStatus() != 1) {
             throw new ApiException(ErrorCode.BUSINESS, "仅已审核的销售订货单可做财务确认");
         }

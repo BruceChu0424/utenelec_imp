@@ -407,9 +407,11 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   static UtenSegmentCountForm _quoteStageCountForm(String stage) =>
       switch (stage) {
         SalesQuoteStage.draft ||
+        SalesQuoteStage.managerRejected ||
         SalesQuoteStage.financeRejected ||
         SalesQuoteStage.awaitingCustomer ||
         SalesQuoteStage.awaitingConversion => UtenSegmentCountForm.actionable,
+        SalesQuoteStage.pendingManager ||
         SalesQuoteStage.pendingFinance => UtenSegmentCountForm.inProgress,
         _ => UtenSegmentCountForm.browsing,
       };
@@ -784,7 +786,17 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     final status = it.rejected ? '已驳回' : salesStatusLabel(it.status);
     final gated = _financeGated(it);
     final financeRejected = gated && it.financeRejected;
-    final withGate = financeRejected
+    final managerRejected =
+        _isOrder &&
+        !it.closed &&
+        !it.stopped &&
+        it.status != kSalesStatusReversed &&
+        it.managerReviewState == 'REJECTED';
+    final withGate = managerRejected
+        ? '$status · 负责人已驳回'
+        : gated && it.managerReviewState == 'PENDING'
+        ? '$status · 待负责人审核'
+        : financeRejected
         ? '$status · 财务已驳回'
         : gated
         ? '$status · 待财务确认'
@@ -817,6 +829,13 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
       };
     }
     final gated = _financeGated(it);
+    if (_isOrder &&
+        !it.closed &&
+        !it.stopped &&
+        it.status != kSalesStatusReversed &&
+        it.managerReviewState == 'REJECTED') {
+      return UtenStatusBadgeType.danger;
+    }
     if (gated && it.financeRejected) return UtenStatusBadgeType.danger;
     if (gated) return UtenStatusBadgeType.warning;
     return docStatusBadgeType(it.status);

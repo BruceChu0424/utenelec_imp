@@ -1,3 +1,4 @@
+import '../../../components/feedback/uten_progress_timeline.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
@@ -68,8 +69,10 @@ class FinanceSalesOrderReviewPage extends ConsumerStatefulWidget {
     super.key,
     required this.id,
     this.returnTo,
+    this.managerReview = false,
   });
 
+  final bool managerReview;
   final String id;
   final String? returnTo;
 
@@ -89,11 +92,18 @@ class _FinanceSalesOrderReviewPageState
   bool _busy = false;
   bool _authorityStale = false;
   @override
-  Set<String> get reviewAuthorityPermissionCodes => const {
-    Perm.salesOrderFinanceView,
-    Perm.salesOrderFinanceConfirm,
-    Perm.salesOrderReverse,
-  };
+  Set<String> get reviewAuthorityPermissionCodes => widget.managerReview
+      ? const {
+          Perm.salesOrderManagerView,
+          Perm.salesOrderManagerConfirm,
+          Perm.salesOrderManagerReject,
+          Perm.salesOrderManagerReverse,
+        }
+      : const {
+          Perm.salesOrderFinanceView,
+          Perm.salesOrderFinanceConfirm,
+          Perm.salesOrderReverse,
+        };
   @override
   bool get reviewAuthorityRefreshBlocked =>
       _loading ||
@@ -117,11 +127,13 @@ class _FinanceSalesOrderReviewPageState
   @override
   bool get formDraftBusy => _busy;
   @override
-  FormDraftDescriptor get reviewDraftDescriptor =>
-      FormDraftCatalog.financeSalesOrderReview;
+  FormDraftDescriptor get reviewDraftDescriptor => widget.managerReview
+      ? FormDraftCatalog.salesManagerOrderReview
+      : FormDraftCatalog.financeSalesOrderReview;
   @override
-  String get reviewDraftRoute =>
-      '/finance/sales-order-confirmations/${Uri.encodeComponent(widget.id)}';
+  String get reviewDraftRoute => widget.managerReview
+      ? '/sales/manager-review/orders/${Uri.encodeComponent(widget.id)}'
+      : '/finance/sales-order-confirmations/${Uri.encodeComponent(widget.id)}';
   @override
   Map<String, dynamic> get reviewDraftSource => {
     'subjectId': widget.id,
@@ -133,15 +145,22 @@ class _FinanceSalesOrderReviewPageState
   @override
   bool get reviewDraftEditable =>
       _review != null &&
-      _canConfirm &&
-      !_review!.financeConfirmed &&
-      !_review!.financeRejected &&
-      _review!.requotedToId == null;
+      (_canReverseManager ||
+          (_canReview &&
+              !_review!.financeConfirmed &&
+              !_review!.financeRejected &&
+              _review!.requotedToId == null));
   @override
   bool canDispatchReviewCommand(String action) =>
-      reviewDraftEditable &&
-      _reviewClaim?.isReady == true &&
-      (action == 'confirm' || action == 'reject');
+      formDraftIdentityIsCurrent &&
+      !formDraftRestorationBlocked &&
+      (action == 'reverse'
+          ? _canReverseManager
+          : reviewDraftEditable &&
+                _reviewClaim?.isReady == true &&
+                (action == 'confirm'
+                    ? _canConfirm
+                    : action == 'reject' && _canReject));
   @override
   Iterable<Listenable> get formDraftListenables => [
     _confirmRemark,
@@ -169,13 +188,24 @@ class _FinanceSalesOrderReviewPageState
   @override
   Future<bool> recoverReviewCommand(Map<String, dynamic> command) async {
     final current = await ref
-        .read(salesOrderFinanceConfirmationRepositoryProvider)
+        .read(
+          widget.managerReview
+              ? salesManagerOrderReviewRepositoryProvider
+              : salesOrderFinanceConfirmationRepositoryProvider,
+        )
         .review(widget.id);
     final source = command['source'];
     if (source is! Map ||
         source['subjectId'] != widget.id ||
         current.orderId != widget.id ||
-        source['version'] != current.financeReviewRevision) {
+        (source['version'] as int?) !=
+            current.financeReviewRevision - (widget.managerReview ? 1 : 0)) {
+      return false;
+    }
+    if (widget.managerReview &&
+        (current.managerDecisionClaimId == null ||
+            current.managerDecisionClaimId !=
+                (command['request'] as Map?)?['expectedClaimId'])) {
       return false;
     }
     return switch (command['action']) {
@@ -195,13 +225,112 @@ class _FinanceSalesOrderReviewPageState
   @override
   void closeRecoveredReview() => _closeAfterDecision();
   bool get _canConfirm =>
+      !ref.read(sessionProvider).impersonationReadOnly &&
+      _review?.readOnlyReason == null &&
       !_authorityStale &&
       _review?.requotedToId == null &&
       (ref.read(isSuperAdminProvider) ||
           ref.read(currentPermissionsProvider).containsAll({
-            Perm.salesOrderFinanceView,
-            Perm.salesOrderFinanceConfirm,
+            widget.managerReview
+                ? Perm.salesOrderManagerView
+                : Perm.salesOrderFinanceView,
+            widget.managerReview
+                ? Perm.salesOrderManagerConfirm
+                : Perm.salesOrderFinanceConfirm,
           }));
+
+  bool get _canReverseManager =>
+      widget.managerReview &&
+      !ref.read(sessionProvider).impersonationReadOnly &&
+      _review?.readOnlyReason == null &&
+      !_authorityStale &&
+      _review?.managerReversible == true &&
+      (ref.read(isSuperAdminProvider) ||
+          ref.read(currentPermissionsProvider).containsAll({
+            Perm.salesOrderManagerView,
+            Perm.salesOrderManagerReverse,
+          }));
+
+  Future<void> _reverseManager() async {
+    if (!_canReverseManager || _busy) return;
+    final reviewed = _review!;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => UtenAlertDialog(
+        title: const Text('撤销负责人批准'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('订单将回到待负责人审核。财务正在办理或已通过时不能反审核。'),
+            TextField(
+              controller: _rejectReason,
+              maxLength: 500,
+              decoration: const InputDecoration(labelText: '反审核原因'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认反审核'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true ||
+        !mounted ||
+        !_canReverseManager ||
+        !identical(reviewed, _review)) {
+      return;
+    }
+    final reason = _rejectReason.text.trim();
+    if (reason.isEmpty) {
+      context.appWarning('请填写反审核原因');
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      await submitReviewCommand(
+        'reverse',
+        () => ref
+            .read(salesManagerOrderReviewRepositoryProvider)
+            .reverseManager(
+              widget.id,
+              reason: reason,
+              expectedRevision: reviewed.financeReviewRevision,
+            ),
+        request: {'reason': reason},
+      );
+      if (!mounted || !formDraftIdentityIsCurrent) return;
+      await finishReviewDraft(keepEditing: true);
+      refreshBadges(ref);
+      if (mounted) {
+        context.appSuccess('已反审核，订单回到待负责人审核');
+        await _load();
+      }
+    } catch (error) {
+      if (mounted) context.appError(error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  bool get _canReject => widget.managerReview
+      ? !ref.read(sessionProvider).impersonationReadOnly &&
+            _review?.readOnlyReason == null &&
+            !_authorityStale &&
+            _review?.requotedToId == null &&
+            (ref.read(isSuperAdminProvider) ||
+                ref.read(currentPermissionsProvider).containsAll({
+                  Perm.salesOrderManagerView,
+                  Perm.salesOrderManagerReject,
+                }))
+      : _canConfirm;
+  bool get _canReview => _canConfirm || _canReject;
 
   @override
   void initState() {
@@ -257,21 +386,30 @@ class _FinanceSalesOrderReviewPageState
         return;
       }
       _reviewClaim = null;
-      if (_canConfirm) {
+      if (_canReview) {
         final claim = financeReviewClaim(
           container,
           localizations: AppLocalizations.of(context),
         )..addListener(_claimChanged);
         _reviewClaim = claim;
         // Claim before reading the commercial facts protected by the lease.
-        await claim.claimAll('SALES_ORDER_FINANCE_CONFIRM', [widget.id]);
+        await claim.claimAll(
+          (widget.managerReview
+              ? 'SALES_ORDER_MANAGER_REVIEW'
+              : 'SALES_ORDER_FINANCE_CONFIRM'),
+          [widget.id],
+        );
         if (!mounted || generation != _loadGeneration || !claim.isCurrent) {
           await claim.releaseAll();
           return;
         }
       }
       final review = await ref
-          .read(salesOrderFinanceConfirmationRepositoryProvider)
+          .read(
+            widget.managerReview
+                ? salesManagerOrderReviewRepositoryProvider
+                : salesOrderFinanceConfirmationRepositoryProvider,
+          )
           .review(widget.id);
       if (!mounted ||
           generation != _loadGeneration ||
@@ -327,7 +465,9 @@ class _FinanceSalesOrderReviewPageState
 
   Future<void> _confirm() async {
     if (!_canConfirm) {
-      context.appWarning('您没有销售订单财务确认权限');
+      context.appWarning(
+        widget.managerReview ? '您没有本次销售负责人审核权限' : '您没有销售订单财务确认权限',
+      );
       return;
     }
     final claim = _reviewClaim;
@@ -348,12 +488,18 @@ class _FinanceSalesOrderReviewPageState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const UtenReviewerResponsibilityNotice(
-                actionLabel: '销售订单财务确认',
-                description: '确认后系统将记录当前审核员，并由该审核员承担本次财务放行责任。',
+              UtenReviewerResponsibilityNotice(
+                actionLabel: widget.managerReview ? '销售负责人批准订货' : '销售订单财务确认',
+                description: widget.managerReview
+                    ? '系统将记录当前审核员及本次批准的订单版本，随后转交财务审核。'
+                    : '确认后系统将记录当前审核员，并由该审核员承担本次财务放行责任。',
               ),
               const SizedBox(height: UtenSpacing.s12),
-              const Text('确认通过后，该订单将对计划部可见并可排产。可填写确认备注(选填)：'),
+              Text(
+                widget.managerReview
+                    ? '批准后进入财务审核。财务通过后才可排产。可填写审核备注(选填)：'
+                    : '确认通过后，该订单将对计划部可见并可排产。可填写确认备注(选填)：',
+              ),
               const SizedBox(height: UtenSpacing.s12),
               TextField(
                 key: const Key('finance-review-confirm-remark'),
@@ -402,22 +548,37 @@ class _FinanceSalesOrderReviewPageState
       await submitReviewCommand(
         'confirm',
         () => ref
-            .read(salesOrderFinanceConfirmationRepositoryProvider)
+            .read(
+              widget.managerReview
+                  ? salesManagerOrderReviewRepositoryProvider
+                  : salesOrderFinanceConfirmationRepositoryProvider,
+            )
             .confirm(
               widget.id,
               remark: remark,
               expectedRevision: reviewed.financeReviewRevision,
               expectedClaimId: claim.claimIdFor(
-                'SALES_ORDER_FINANCE_CONFIRM',
+                (widget.managerReview
+                    ? 'SALES_ORDER_MANAGER_REVIEW'
+                    : 'SALES_ORDER_FINANCE_CONFIRM'),
                 widget.id,
               )!,
             ),
-        request: {'remark': remark.trim()},
+        request: {
+          'remark': remark.trim(),
+          if (widget.managerReview)
+            'expectedClaimId': claim.claimIdFor(
+              'SALES_ORDER_MANAGER_REVIEW',
+              widget.id,
+            ),
+        },
       );
       if (!mounted) return;
       await finishReviewDraft();
       if (!mounted || !formDraftIdentityIsCurrent) return;
-      context.appSuccess('已确认通过，计划部已可接手排产');
+      context.appSuccess(
+        widget.managerReview ? '负责人审核已通过，已转交财务' : '已确认通过，计划部已可接手排产',
+      );
       refreshBadges(ref);
       _closeAfterDecision();
     } on ApiException catch (e) {
@@ -470,8 +631,10 @@ class _FinanceSalesOrderReviewPageState
   }
 
   Future<void> _reject() async {
-    if (!_canConfirm) {
-      context.appWarning('您没有销售订单财务确认权限');
+    if (!_canReject) {
+      context.appWarning(
+        widget.managerReview ? '您没有本次销售负责人审核权限' : '您没有销售订单财务确认权限',
+      );
       return;
     }
     final claim = _reviewClaim;
@@ -494,8 +657,8 @@ class _FinanceSalesOrderReviewPageState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const UtenReviewerResponsibilityNotice(
-                  actionLabel: '销售订单财务驳回',
+                UtenReviewerResponsibilityNotice(
+                  actionLabel: widget.managerReview ? '销售负责人驳回订货' : '销售订单财务驳回',
                   description: '确认后系统将记录当前审核员、驳回原因和时间，请对本次决定负责。',
                 ),
                 const SizedBox(height: UtenSpacing.s12),
@@ -560,17 +723,30 @@ class _FinanceSalesOrderReviewPageState
       await submitReviewCommand(
         'reject',
         () => ref
-            .read(salesOrderFinanceConfirmationRepositoryProvider)
+            .read(
+              widget.managerReview
+                  ? salesManagerOrderReviewRepositoryProvider
+                  : salesOrderFinanceConfirmationRepositoryProvider,
+            )
             .reject(
               widget.id,
               reason: reason,
               expectedRevision: reviewed.financeReviewRevision,
               expectedClaimId: claim.claimIdFor(
-                'SALES_ORDER_FINANCE_CONFIRM',
+                (widget.managerReview
+                    ? 'SALES_ORDER_MANAGER_REVIEW'
+                    : 'SALES_ORDER_FINANCE_CONFIRM'),
                 widget.id,
               )!,
             ),
-        request: {'reason': reason.trim()},
+        request: {
+          'reason': reason.trim(),
+          if (widget.managerReview)
+            'expectedClaimId': claim.claimIdFor(
+              'SALES_ORDER_MANAGER_REVIEW',
+              widget.id,
+            ),
+        },
       );
       if (!mounted) return;
       await finishReviewDraft();
@@ -615,7 +791,11 @@ class _FinanceSalesOrderReviewPageState
     return withFormDraft(
       Scaffold(
         appBar: UtenAppBar(
-          title: _review?.revisionDiff != null ? '销售订单修改审核' : '销售订单财务审核',
+          title: widget.managerReview
+              ? '销售负责人订货审核'
+              : _review?.revisionDiff != null
+              ? '销售订单修改审核'
+              : '销售订单财务审核',
           leading: UtenBackButton(onPressed: _leaveReview),
         ),
         body: SafeArea(
@@ -663,7 +843,7 @@ class _FinanceSalesOrderReviewPageState
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              if (_canConfirm &&
+                              if (_canReview &&
                                   !_review!.financeConfirmed &&
                                   !_review!.financeRejected &&
                                   _reviewClaim?.isReady != true) ...[
@@ -679,6 +859,18 @@ class _FinanceSalesOrderReviewPageState
                                 canViewMoneySummary: canViewMoneySummary,
                               ),
                               const SizedBox(height: UtenSpacing.s12),
+                              if (widget.managerReview &&
+                                  _review!.managerHistory.isNotEmpty)
+                                Card(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(
+                                      UtenSpacing.s12,
+                                    ),
+                                    child: UtenProgressTimeline(
+                                      events: _review!.managerHistory,
+                                    ),
+                                  ),
+                                ),
                               if (_review!
                                       .revisionDiff
                                       ?.headerChanges
@@ -757,11 +949,19 @@ class _FinanceSalesOrderReviewPageState
   Widget _floatingActions() {
     final claimReady = _reviewClaim?.isReady == true;
     final canDecide =
-        _canConfirm && !_review!.financeConfirmed && !_review!.financeRejected;
+        _canReview && !_review!.financeConfirmed && !_review!.financeRejected;
     if (!canDecide) {
       return UtenFloatingActionGroup(
         children: [
-          if (_review!.financeConfirmed &&
+          if (_canReverseManager)
+            UtenButton(
+              key: const Key('sales-manager-order-reverse'),
+              type: UtenButtonType.secondary,
+              onPressed: _busy ? null : _reverseManager,
+              child: const Text('反审核'),
+            ),
+          if (!widget.managerReview &&
+              _review!.financeConfirmed &&
               _review!.requotedToId == null &&
               (ref.watch(isSuperAdminProvider) ||
                   ref.watch(currentPermissionsProvider).containsAll({
@@ -775,7 +975,11 @@ class _FinanceSalesOrderReviewPageState
               revision: _review!,
               validateReview: () async {
                 final current = await ref
-                    .read(salesOrderFinanceConfirmationRepositoryProvider)
+                    .read(
+                      widget.managerReview
+                          ? salesManagerOrderReviewRepositoryProvider
+                          : salesOrderFinanceConfirmationRepositoryProvider,
+                    )
                     .review(widget.id);
                 return current.financeConfirmed &&
                     current.requotedToId == null &&
@@ -818,7 +1022,7 @@ class _FinanceSalesOrderReviewPageState
           type: UtenButtonType.danger,
           size: UtenButtonSize.large,
           icon: Icons.undo_rounded,
-          onPressed: claimReady && !_busy ? _reject : null,
+          onPressed: _canReject && claimReady && !_busy ? _reject : null,
           onDisabledTap: claimReady
               ? null
               : () => context.appWarning('请先完成审核认领，再驳回'),
@@ -829,7 +1033,7 @@ class _FinanceSalesOrderReviewPageState
           size: UtenButtonSize.large,
           icon: Icons.fact_check_outlined,
           isLoading: _busy,
-          onPressed: claimReady && !_busy ? _confirm : null,
+          onPressed: _canConfirm && claimReady && !_busy ? _confirm : null,
           onDisabledTap: claimReady
               ? null
               : () => context.appWarning('请先完成审核认领，再确认'),
@@ -845,12 +1049,12 @@ class _FinanceSalesOrderReviewPageState
       label: r.readOnlyReason != null
           ? '只读'
           : r.financeConfirmed
-          ? '已财务确认'
+          ? (widget.managerReview ? '负责人已批准' : '已财务确认')
           : r.financeRejected
           ? '已驳回 · 待销售修改'
           : r.revisionDiff != null
           ? '修改后待复审'
-          : '待财务确认',
+          : (widget.managerReview ? '待销售负责人审核' : '待财务确认'),
       type: r.readOnlyReason != null
           ? UtenStatusBadgeType.neutral
           : r.financeConfirmed
@@ -1033,10 +1237,13 @@ class _FinanceSalesOrderReviewPageState
             UtenSummaryField(label: '制单时间', value: utenFmtIsoTime(r.createdAt)),
             UtenSummaryField(label: '合同号', value: r.contractNo),
             if (r.financeConfirmed)
-              UtenSummaryField(label: '财务确认人', value: r.financeConfirmedByName),
+              UtenSummaryField(
+                label: widget.managerReview ? '负责人审核人' : '财务确认人',
+                value: r.financeConfirmedByName,
+              ),
             if (r.financeConfirmedAt != null)
               UtenSummaryField(
-                label: '财务确认时间',
+                label: widget.managerReview ? '负责人审核时间' : '财务确认时间',
                 value: utenFmtIsoTime(r.financeConfirmedAt),
               ),
           ],

@@ -30,6 +30,8 @@ export 'badge_summary_provider.dart';
 ///
 /// 名字即服务端入口键; 只声明归属容器, 数字口径全部在服务端。
 enum BadgeEntry {
+  salesQuoteManagerRejected(BadgeModule.sales),
+  salesManagerReview(BadgeModule.salesReview),
   // —— 人事与访客 ——
   /// 我的访客: 红 = 待我确认; 黄 = 我已确认、这趟来访还没走完。
   visitorHost(BadgeModule.people),

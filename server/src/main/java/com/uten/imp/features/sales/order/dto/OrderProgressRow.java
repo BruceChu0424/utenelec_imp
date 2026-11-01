@@ -49,7 +49,7 @@ public record OrderProgressRow(
         double shipmentPendingFinanceQty,
         double shipmentFinanceRejectedQty,
         double shipmentApprovedQty,
-        boolean legacyImported) {
+        boolean legacyImported, String managerReviewState, String managerRejectReason) {
 
     @com.fasterxml.jackson.annotation.JsonProperty("historyReadOnly")
     public boolean historyReadOnly() {

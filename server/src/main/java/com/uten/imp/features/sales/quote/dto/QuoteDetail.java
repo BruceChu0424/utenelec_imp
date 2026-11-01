@@ -20,7 +20,7 @@ import java.util.UUID;
 @Getter
 @Setter
 @NoArgsConstructor
-public class QuoteDetail extends com.uten.imp.common.history.DocumentHistoryMetadata {
+public class QuoteDetail extends com.uten.imp.features.sales.SalesReviewDocumentMetadata {
     private UUID id;
     private Integer legacyId;
     private String billNo;

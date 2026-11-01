@@ -84,6 +84,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SalesOrderService {
     @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.SalesManagerReviewNoticePort managerNotices;
+    @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.application.port.TaskAudiencePort taskAudience;
 
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
@@ -492,10 +494,12 @@ public class SalesOrderService {
             double shipmentApprovedQty = pgNum(row, 21);
             boolean financeConfirmed = Boolean.TRUE.equals(row[10]);
             boolean financeRejected = Boolean.TRUE.equals(row[11]);
+            String managerState = row.length > 25 ? pgStr(row, 25) : null;
+            boolean managerRejected = "REJECTED".equals(managerState);
             boolean stopped = Boolean.TRUE.equals(row[15]);
             boolean closed = Boolean.TRUE.equals(row[16]);
             // 草稿单（bill_status=0 且未驳回）：只有 stage='DRAFT' 才会进本查询。
-            boolean draft = !financeRejected && row[22] != null
+            boolean draft = !financeRejected && !managerRejected && row[22] != null
                     && ((Number) row[22]).intValue() == 0;
             boolean legacyImported = Boolean.TRUE.equals(row[24]);
             return new OrderProgressRow(
@@ -504,7 +508,7 @@ public class SalesOrderService {
                     null, legacyImported ? "CLOSED" : progressStageOf(
                             orderQty, producedQty,
                             reservedQty, plannedQty, unplannedQty,
-                            financeRejected, stopped, closed,
+                            financeRejected || managerRejected, stopped, closed,
                             shipmentDraftQty, shipmentPendingFinanceQty,
                             shipmentFinanceRejectedQty, shipmentApprovedQty, draft, outstandingQty),
                     financeConfirmed,
@@ -518,7 +522,7 @@ public class SalesOrderService {
                     shipmentPendingFinanceQty,
                     shipmentFinanceRejectedQty,
                     shipmentApprovedQty,
-                    legacyImported);
+                    legacyImported, managerState, row.length > 26 ? pgStr(row, 26) : null);
         }).toList();
         int totalPages = (int) Math.ceil((double) total / safeSize);
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
@@ -768,10 +772,10 @@ public class SalesOrderService {
                     o.status = 1
                     OR (o.status = 0
                         AND o.finance_confirmed = false
-                        AND o.finance_rejected = true)
+                        AND (o.finance_rejected = true OR o.manager_review_state='REJECTED'))
                     OR (:stage = 'DRAFT'
                         AND o.status = 0
-                        AND o.finance_rejected = false)
+                        AND (o.finance_rejected = false AND o.manager_review_state<>'REJECTED'))
                   ))
                 """.formatted(imported, originPredicate, importedHistory) + " AND " + ownerScope.predicate();
         return """
@@ -793,14 +797,14 @@ public class SalesOrderService {
                        ship.approved_qty AS shipment_approved_qty,
                        o.status AS bill_status,
                        COALESCE(SUM(GREATEST(%s,0)),0) AS outstanding_qty,
-                       fn_imported_business_document('sales_orders',o.id) AS legacy_imported
+                       fn_imported_business_document('sales_orders',o.id) AS legacy_imported, o.manager_review_state, o.manager_reject_reason
                 """.formatted(taskResponsibility ? physicalShipmentReservationSql("i") : "i.reserved_qty",
                         SalesOrderChainSql.unplannedQtySql("i"),
                         SalesOrderChainSql.outstandingSql("i")) + base + "\n" + """
                 GROUP BY o.id, o.bill_no, o.bill_date, o.deliver_date, c.name,
                          o.finance_confirmed, o.finance_rejected,
                          o.finance_rejected_reason, finance_reviewer.full_name,
-                         o.finance_rejected_at, o.is_stopped, o.is_closed,
+                         o.finance_rejected_at, o.is_stopped, o.is_closed, o.manager_review_state, o.manager_reject_reason,
                          ship.draft_qty, ship.pending_finance_qty,
                          ship.finance_rejected_qty, ship.approved_qty, o.status
                 """;
@@ -817,7 +821,7 @@ public class SalesOrderService {
         return """
                 CASE
                   WHEN t.legacy_imported THEN 'CLOSED'
-                  WHEN t.finance_rejected THEN 'REJECTED'
+                  WHEN t.finance_rejected OR t.manager_review_state='REJECTED' THEN 'REJECTED'
                   WHEN t.bill_status = 0 THEN 'DRAFT'
                   WHEN t.is_stopped THEN 'CANCELED'
                   WHEN t.is_closed THEN 'CLOSED'
@@ -1429,7 +1433,7 @@ public class SalesOrderService {
                     .map(line -> new com.uten.imp.application.concurrency.FulfillmentMutationLockPlan.InventoryDimension(
                             line.getGoodsId(), line.getColorId())).toList());
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_orders",o);
-        boolean rejectedRevision = o.isFinanceRejected()
+        boolean rejectedRevision = (o.isFinanceRejected() || o.getManagerReview().rejected())
                 && !o.isFinanceConfirmed()
                 && (o.getStatus() == STATUS_APPROVED || o.getStatus() == STATUS_DRAFT);
         boolean approvedRevision = o.getStatus() == STATUS_APPROVED;
@@ -1842,6 +1846,7 @@ public class SalesOrderService {
                 items, SalesGoodsSnapshot.MASTER_AT_APPROVAL, OffsetDateTime.now());
         reserveOnApprove(o, items);
         o.setStatus(STATUS_APPROVED);
+        o.getManagerReview().submit();
         o.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         o.setApprovedAt(OffsetDateTime.now());
         if (o.isFinanceRejected()) {
@@ -1849,12 +1854,8 @@ public class SalesOrderService {
             o.setFinanceRejected(false);
         }
         orderRepo.save(o);
-        // V294 闸门：审核后先通知财务确认；财务确认后才通知计划部接手物料分析。
-        if (o.getFinanceReviewRevision() > 0) {
-            chainNotice.notifyOrderPendingFinanceConfirmation(id, true);
-        } else {
-            chainNotice.notifyOrderPendingFinanceConfirmation(id);
-        }
+        em.flush();
+        managerNotices.pending("order", id);
         return detail(id);
     }
 
@@ -1927,6 +1928,8 @@ public class SalesOrderService {
         o.setReversedBy(currentUser.requireEmployeeId());
         clearPartialShipmentConfirmation(o);
         orderRepo.save(o);
+        managerNotices.resolved("order", id, "REVERSED");
+        chainNotice.resolveSalesFinanceReviewNotices(id, "REVERSED");
         return detail(id);
     }
 
@@ -2159,7 +2162,7 @@ public class SalesOrderService {
             }
             em.createNativeQuery("""
                     UPDATE sales_orders
-                    SET finance_review_revision = finance_review_revision + 1
+                    SET finance_review_revision = finance_review_revision + 1, manager_review_state = 'PENDING', manager_decision_claim_id = NULL, finance_confirmed = FALSE, finance_rejected = FALSE
                     WHERE id = :id
                     """).setParameter("id", id).executeUpdate();
             if (wasFinanceConfirmed || wasFinanceRejected) {
@@ -2171,7 +2174,8 @@ public class SalesOrderService {
                         WHERE id = :id
                         """).setParameter("id", id).executeUpdate();
             }
-            chainNotice.notifyOrderPendingFinanceConfirmation(id, true);
+            chainNotice.resolveSalesFinanceReviewNotices(id, "RESUBMITTED_TO_MANAGER");
+            managerNotices.pending("order", id);
         }
         recalcTotalsAndClosed(id);
         if (beforeRevision != null) revisions.record(id, beforeRevision);
@@ -2241,6 +2245,7 @@ public class SalesOrderService {
         }
         clearPartialShipmentConfirmation(o);
         orderRepo.save(o);
+        managerNotices.resolved("order", id, "CANCELLED");
         chainNotice.notifyOrderCanceled(id); // 旁路通知：取消确认→销售 + 无需排产→调度，提交后发送
         return detail(id);
     }
@@ -2648,7 +2653,7 @@ public class SalesOrderService {
             }
             if (!stopped && o.isStopped()) {
                 if (!o.isFinanceConfirmed()
-                        && o.getFinanceRejectedAt() != null) {
+                        && (o.getFinanceRejectedAt() != null || o.getManagerReview().rejected())) {
                     throw new ApiException(
                             ErrorCode.CONFLICT,
                             "曾被财务驳回的取消订单不能直接恢复，请重新修订并走销售/财务审核");
@@ -2656,7 +2661,9 @@ public class SalesOrderService {
                 List<SalesOrderItem> items = lockOrderItems(id);
                 reserveOnApprove(o, items); // 重预留（行状态 7/1/2 自动重算）
                 o.setStopped(false);
-                orderRepo.save(o);
+                orderRepo.saveAndFlush(o);
+                if (o.getManagerReview().pending()) managerNotices.pending("order", id);
+                else if (!o.isFinanceConfirmed()) chainNotice.notifyOrderPendingFinanceConfirmation(id);
                 return detail(id);
             }
         }
@@ -3306,6 +3313,7 @@ public class SalesOrderService {
                 o.isFinanceConfirmed(), o.isFinanceRejected(), o.getRequotedToId(), o.getRequotedAt(),
                 o.getRequotedToId() == null ? null : REQUOTED_READ_ONLY_REASON);
         if (o.getRequotedToId() != null) result.setHistoryReadOnly(true);
+        result.setManagerReview(o.getManagerReview());
         return result;
     }
 
@@ -3365,6 +3373,9 @@ public class SalesOrderService {
                 : nameResolver.historicalWorkerNameWithCodeOf(null, o.getId(), o.getLegacyId(),
                         HistoricalWorkerRole.SALES_ORDER_SELLER));
         if (o.getRequotedToId() != null) result.setHistoryReadOnly(true);
+        result.setManagerReview(o.getManagerReview());
+        result.setManagerApprovedByName(nameResolver.nameOf(o.getManagerReview().getApprovedBy()));
+        result.setManagerRejectedByName(nameResolver.nameOf(o.getManagerReview().getRejectedBy()));
         return result;
     }
 
@@ -3510,6 +3521,7 @@ public class SalesOrderService {
                 operationAuthorities);
         requireNotRequoted(locked);
         taskClaim.requireNoActiveClaim("SALES_ORDER_FINANCE_CONFIRM", id.toString());
+        taskClaim.requireNoActiveClaim("SALES_ORDER_MANAGER_REVIEW", id.toString());
         return locked;
     }
 
@@ -3552,6 +3564,7 @@ public class SalesOrderService {
                 throw new ApiException(ErrorCode.CONFLICT, "请先按原订单流程取消、红冲或删除订货单，再重新报价");
             }
             taskClaim.requireNoActiveClaim("SALES_ORDER_FINANCE_CONFIRM", id.toString());
+        taskClaim.requireNoActiveClaim("SALES_ORDER_MANAGER_REVIEW", id.toString());
             List<SalesOrderItem> items = lockOrderItems(id);
             Map<UUID, List<PlanOrderItemLink>> links = lockActivePlanLinks(items);
             for (SalesOrderItem item : items) {
@@ -3589,6 +3602,7 @@ public class SalesOrderService {
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"sales_quotes",replacement);
         List<SalesOrder> orders = lockRequotableOrders(sourceQuoteId);
         for (SalesOrder order : orders) {
+            managerNotices.resolved("order", order.getId(), "REQUOTED");
             chainNotice.resolveReviewNotices("SALES_ORDER", order.getId(), "REQUOTED");
             if (order.getRequotedToId() != null) continue; // The first fact survives later cancelled negotiations.
             order.setRequotedToId(replacementQuoteId);

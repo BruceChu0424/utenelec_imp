@@ -58,7 +58,9 @@ class WarehouseNoticeSupervisorUnionPostgresTest {
         UUID dept=department("UNION-ORDINARY");
         UUID wh=db.queryForList("SELECT id FROM departments WHERE code='SUB_WH' AND NOT is_deleted",UUID.class).getFirst();
         root=db.queryForObject("SELECT fn_warehouse_root_id()",UUID.class);
-        if(root==null)root=warehouse("001",null);
+        if(root==null) {
+            root=warehouse("001",null);
+        }
         a=warehouse("UNION-A",root);b=warehouse("UNION-B",root);
         supervisor=actor("supervisor",wh,false);mainKeeper=actor("root-keeper",dept,false);
         keeperA=actor("a",dept,false);keeperB=actor("b",dept,false);
@@ -100,10 +102,17 @@ class WarehouseNoticeSupervisorUnionPostgresTest {
         try(Connection c=connection()) {
             c.setAutoCommit(false);
             try(Statement s=c.createStatement()) {s.execute("SET LOCAL track_functions='all'");}
-            var pool=new ArrayList<UUID>();for(int i=0;i<128;i++)pool.add(UUID.randomUUID());pool.add(supervisor.user());
+            var pool=new ArrayList<UUID>();
+            for(int i=0;i<128;i++) {
+                pool.add(UUID.randomUUID());
+            }
+            pool.add(supervisor.user());
             recipients(c,List.of(a),pool);
             try(Statement s=c.createStatement();ResultSet r=s.executeQuery("SELECT funcname,calls FROM pg_stat_xact_user_functions WHERE funcname IN ('fn_warehouse_keeper_user_ids','fn_warehouse_designated_supervisor_user_ids')")) {
-                Map<String,Long> calls=new HashMap<>();while(r.next())calls.put(r.getString(1),r.getLong(2));
+                Map<String,Long> calls=new HashMap<>();
+                while(r.next()) {
+                    calls.put(r.getString(1),r.getLong(2));
+                }
                 assertThat(calls).containsEntry("fn_warehouse_keeper_user_ids",1L).containsEntry("fn_warehouse_designated_supervisor_user_ids",1L);
             } finally {c.rollback();}
         }
@@ -115,8 +124,29 @@ class WarehouseNoticeSupervisorUnionPostgresTest {
     static List<UUID> recipients(Connection c,List<UUID> warehouses,List<UUID> pool)throws Exception {
         try(PreparedStatement p=c.prepareStatement("SELECT public.fn_warehouse_notice_recipients(CAST(? AS uuid[]),CAST(? AS uuid[]))")) {
             Array w=warehouses==null?null:c.createArrayOf("uuid",warehouses.toArray());Array a=pool==null?null:c.createArrayOf("uuid",pool.toArray());
-            try {p.setArray(1,w);p.setArray(2,a);try(ResultSet r=p.executeQuery()){r.next();Array value=r.getArray(1);if(value==null)return List.of();try{return Arrays.stream((Object[])value.getArray()).map(id->id==null?null:UUID.fromString(id.toString())).toList();}finally{value.free();}}}
-            finally {if(w!=null)w.free();if(a!=null)a.free();}
+            try {
+                p.setArray(1,w);
+                p.setArray(2,a);
+                try(ResultSet r=p.executeQuery()) {
+                    r.next();
+                    Array value=r.getArray(1);
+                    if(value==null) {
+                        return List.of();
+                    }
+                    try {
+                        return Arrays.stream((Object[])value.getArray()).map(id->id==null?null:UUID.fromString(id.toString())).toList();
+                    } finally {
+                        value.free();
+                    }
+                }
+            } finally {
+                if(w!=null) {
+                    w.free();
+                }
+                if(a!=null) {
+                    a.free();
+                }
+            }
         }
     }
     static List<UUID> sorted(UUID... ids){return Arrays.stream(ids).sorted(Comparator.comparing(UUID::toString)).toList();}

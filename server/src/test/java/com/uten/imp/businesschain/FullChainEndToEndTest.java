@@ -8872,6 +8872,7 @@ class FullChainEndToEndTest {
         assertEquals("美元资金链",salesMoneyQuery.salesOrderSummary(order).currencyName());
         UUID pendingOrder=salesOrderService.create(orderRequest(w,w.goodsC(),"1","100")).getId();
         salesOrderService.approve(pendingOrder);
+        approveSalesManagerReview(pendingOrder,0L);
         String pendingNo=jdbc.queryForObject("SELECT bill_no FROM sales_orders WHERE id=?",String.class,pendingOrder);
         var listed=financeConfirmService.pending(1,20,false,null,null,null,null,pendingNo).getItems();
         assertEquals(1,listed.size());

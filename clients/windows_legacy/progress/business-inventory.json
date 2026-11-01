@@ -10,7 +10,7 @@
     "pagesWithDirectRouterBinding": 174,
     "pagesWithPossibleAliases": 26,
     "directPartUnits": 19,
-    "methodDeclarationActionCandidates": 531,
+    "methodDeclarationActionCandidates": 532,
     "actionUiFactoryCandidates": 20,
     "retiredPortalPagesNeedingScopeConfirmation": 5
   },
@@ -2461,7 +2461,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -4111,7 +4111,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -5572,7 +5572,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -18759,7 +18759,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -23094,7 +23094,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -24500,7 +24500,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -27482,7 +27482,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -29643,7 +29643,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -35878,7 +35878,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -40808,7 +40808,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -43862,7 +43862,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -45526,7 +45526,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -55396,7 +55396,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -58363,36 +58363,36 @@
       "id": "page:expense/pages/expense_approval_detail_page.dart",
       "feature": "expense",
       "source": "lib/features/expense/pages/expense_approval_detail_page.dart",
-      "sha256": "1117b8d6699828369314825734a0f4f06d3417f3ac590172e12e6f1112bc9f5f",
-      "lineCount": 765,
+      "sha256": "d6b3d3098a8b716b7ce5a83af206c4ffc7bb38c1f1faeb598b005757c7e41439",
+      "lineCount": 828,
       "classes": [
         {
           "name": "ExpenseApprovalDetailPage",
-          "line": 53,
+          "line": 55,
           "role": "page-class",
           "extends": "ConsumerStatefulWidget"
         },
         {
           "name": "_ExpenseApprovalDetailPageState",
-          "line": 62,
+          "line": 64,
           "role": "state-class",
           "extends": "ConsumerState<ExpenseApprovalDetailPage>"
         },
         {
           "name": "_ExpensePaymentDialog",
-          "line": 487,
+          "line": 550,
           "role": "supporting-class",
           "extends": "ConsumerStatefulWidget"
         },
         {
           "name": "_ExpensePaymentDialogState",
-          "line": 495,
+          "line": 558,
           "role": "state-class",
           "extends": "ConsumerState<_ExpensePaymentDialog>"
         },
         {
           "name": "_Hero",
-          "line": 686,
+          "line": 749,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         }
@@ -58628,21 +58628,9 @@
         },
         {
           "directive": "import",
-          "uri": "../../../shared/providers/session_provider.dart",
-          "source": "lib/shared/providers/session_provider.dart",
-          "line": 31,
-          "role": "sharedComponents",
-          "importAlias": null,
-          "showSymbols": [],
-          "hideSymbols": [],
-          "existsInRepository": true,
-          "targetSha256": "08ea011dd1dfef676076bda9ccc0e32b18ebc2cb518cd3ad5989f27404d3777c"
-        },
-        {
-          "directive": "import",
           "uri": "../models/expense_invoice.dart",
           "source": "lib/features/expense/models/expense_invoice.dart",
-          "line": 32,
+          "line": 31,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -58654,7 +58642,7 @@
           "directive": "import",
           "uri": "../../../core/l10n/gen/app_localizations.dart",
           "source": "lib/core/l10n/gen/app_localizations.dart",
-          "line": 33,
+          "line": 32,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -58666,7 +58654,7 @@
           "directive": "import",
           "uri": "../../../core/theme/uten_tokens.dart",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 34,
+          "line": 33,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -58678,7 +58666,7 @@
           "directive": "import",
           "uri": "../../../core/ui/app_notification.dart",
           "source": "lib/core/ui/app_notification.dart",
-          "line": 35,
+          "line": 34,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -58690,7 +58678,7 @@
           "directive": "import",
           "uri": "../../../core/utils/china_datetime.dart",
           "source": "lib/core/utils/china_datetime.dart",
-          "line": 36,
+          "line": 35,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -58702,7 +58690,7 @@
           "directive": "import",
           "uri": "../../../core/utils/rmb_amount.dart",
           "source": "lib/core/utils/rmb_amount.dart",
-          "line": 37,
+          "line": 36,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -58714,7 +58702,7 @@
           "directive": "import",
           "uri": "../../../shared/attachments/attachment_section.dart",
           "source": "lib/shared/attachments/attachment_section.dart",
-          "line": 38,
+          "line": 37,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -58724,15 +58712,27 @@
         },
         {
           "directive": "import",
-          "uri": "../../../shared/auth/permissions.dart",
-          "source": "lib/shared/auth/permissions.dart",
-          "line": 39,
+          "uri": "../../../shared/auth/sensitive_write.dart",
+          "source": "lib/shared/auth/sensitive_write.dart",
+          "line": 38,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "f71921e92f0912db849bbf5ccd68db721ed741c873d88472585bcad9779ce7b9"
+          "targetSha256": "a4cf0ab7ef36bf01844e22e6ac082aae3b9bb6b196d107f0a2e5d79b0156805f"
+        },
+        {
+          "directive": "import",
+          "uri": "../../../core/network/read_scope_revision.dart",
+          "source": "lib/core/network/read_scope_revision.dart",
+          "line": 39,
+          "role": "core",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "2f415e6bde855af2cb3f5fc4595336f7e22c69ab92f73dd65005c50a52cde8f3"
         },
         {
           "directive": "import",
@@ -58828,13 +58828,37 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1ef652f28ac3d046d7b6396034a2c9714fc96b7f5541d448380f2010dd4abce2"
+          "targetSha256": "ce13fa68dd4ce1c8a5a443ad183184eb10fa4ada6294833af9e2d6cafa607355"
+        },
+        {
+          "directive": "import",
+          "uri": "../providers/expense_action_eligibility.dart",
+          "source": "lib/features/expense/providers/expense_action_eligibility.dart",
+          "line": 48,
+          "role": "providers",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "ca193e6e34bc0d2db57d2acc883e12bb897f42e1f32928b14628a0f10ebcb703"
+        },
+        {
+          "directive": "import",
+          "uri": "../repositories/expense_repository.dart",
+          "source": "lib/features/expense/repositories/expense_repository.dart",
+          "line": 49,
+          "role": "repositories",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "d834b8850037b5490853d81011b0cbee0ea955b1d7fa3f83629bd3f6e0f76275"
         },
         {
           "directive": "import",
           "uri": "../widgets/expense_claim_print.dart",
           "source": "lib/features/expense/widgets/expense_claim_print.dart",
-          "line": 48,
+          "line": 50,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -58846,7 +58870,7 @@
           "directive": "import",
           "uri": "../widgets/expense_claim_timeline.dart",
           "source": "lib/features/expense/widgets/expense_claim_timeline.dart",
-          "line": 49,
+          "line": 51,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -58858,7 +58882,7 @@
           "directive": "import",
           "uri": "../widgets/expense_invoice_section.dart",
           "source": "lib/features/expense/widgets/expense_invoice_section.dart",
-          "line": 50,
+          "line": 52,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -58870,7 +58894,7 @@
           "directive": "import",
           "uri": "../widgets/expense_submission_revision.dart",
           "source": "lib/features/expense/widgets/expense_submission_revision.dart",
-          "line": 51,
+          "line": 53,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -58880,43 +58904,39 @@
         }
       ],
       "partUnits": [],
-      "permissionReferences": [
+      "permissionReferences": [],
+      "apiEndpointReferences": [],
+      "directRepositoryEvidence": [
         {
-          "symbol": "Perm.expenseApprove",
-          "literal": "expense:approve",
-          "line": 88,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 58
-        },
-        {
-          "symbol": "Perm.attachmentView",
-          "literal": "attachment:view",
-          "line": 98,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 91
-        },
-        {
-          "symbol": "Perm.attachmentDownload",
-          "literal": "attachment:download",
-          "line": 99,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 747
-        },
-        {
-          "symbol": "Perm.expensePay",
-          "literal": "expense:pay",
-          "line": 104,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 59
+          "source": "lib/features/expense/repositories/expense_repository.dart",
+          "sha256": "d834b8850037b5490853d81011b0cbee0ea955b1d7fa3f83629bd3f6e0f76275",
+          "lineCount": 557,
+          "apiEndpointReferences": [
+            {
+              "source": "lib/features/expense/repositories/expense_repository.dart",
+              "line": 168,
+              "template": "/expense-claims",
+              "symbol": null,
+              "basis": "repository path literal; verify actual request call"
+            }
+          ]
         }
       ],
-      "apiEndpointReferences": [],
-      "directRepositoryEvidence": [],
       "actionHandlers": [
+        {
+          "symbol": "canPayClaim",
+          "receiver": null,
+          "line": 126,
+          "kind": "action-like-invocation",
+          "actionNameHints": [
+            "pay"
+          ],
+          "evidenceLine": "return ref.read(expenseActionEligibilityProvider).canPayClaim(_claim);"
+        },
         {
           "symbol": "_approve",
           "receiver": null,
-          "line": 110,
+          "line": 129,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "approve"
@@ -58926,17 +58946,17 @@
         {
           "symbol": "approveExpense",
           "receiver": null,
-          "line": 123,
+          "line": 144,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "approve"
           ],
-          "evidenceLine": "await approveExpense(ref, widget.claimId);"
+          "evidenceLine": "await approveExpense("
         },
         {
           "symbol": "_reject",
           "receiver": null,
-          "line": 135,
+          "line": 159,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "reject"
@@ -58946,17 +58966,17 @@
         {
           "symbol": "rejectExpense",
           "receiver": null,
-          "line": 144,
+          "line": 171,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "reject"
           ],
-          "evidenceLine": "await rejectExpense(ref, widget.claimId, reason);"
+          "evidenceLine": "await rejectExpense("
         },
         {
           "symbol": "_pay",
           "receiver": null,
-          "line": 156,
+          "line": 187,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "pay"
@@ -58966,7 +58986,7 @@
         {
           "symbol": "payExpense",
           "receiver": null,
-          "line": 173,
+          "line": 205,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "pay"
@@ -58976,7 +58996,7 @@
         {
           "symbol": "showExpenseClaimPrintPreview",
           "receiver": null,
-          "line": 205,
+          "line": 268,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "print"
@@ -58986,7 +59006,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 385,
+          "line": 448,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -58996,7 +59016,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 422,
+          "line": 485,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -59006,7 +59026,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 434,
+          "line": 497,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -59016,7 +59036,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 465,
+          "line": 528,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -59026,7 +59046,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 471,
+          "line": 534,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -59036,7 +59056,7 @@
         {
           "symbol": "_submit",
           "receiver": null,
-          "line": 533,
+          "line": 596,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "submit"
@@ -59046,7 +59066,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 658,
+          "line": 721,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -59056,7 +59076,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 741,
+          "line": 804,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -59078,7 +59098,21 @@
         }
       ],
       "possibleRedirectAliases": [],
-      "candidateBackendControllers": [],
+      "candidateBackendControllers": [
+        {
+          "source": "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseClaimController.java",
+          "status": "需人工核实",
+          "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
+          "endpointEvidence": [
+            {
+              "source": "lib/features/expense/repositories/expense_repository.dart",
+              "line": 168,
+              "template": "/expense-claims",
+              "controllerBase": "/api/expense-claims"
+            }
+          ]
+        }
+      ],
       "reviewFlags": [
         "存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。"
       ]
@@ -59087,18 +59121,18 @@
       "id": "page:expense/pages/expense_approval_list_page.dart",
       "feature": "expense",
       "source": "lib/features/expense/pages/expense_approval_list_page.dart",
-      "sha256": "276d70f2f343487663a9f5648a7caa703121f9f660ccba3044099648ba5fbf7d",
-      "lineCount": 601,
+      "sha256": "c512b72663bd94de7fc738308fb7bfba03023ecd7f46f02f44fc8318d89b5cef",
+      "lineCount": 673,
       "classes": [
         {
           "name": "ExpenseApprovalListPage",
-          "line": 48,
+          "line": 51,
           "role": "page-class",
           "extends": "ConsumerStatefulWidget"
         },
         {
           "name": "_ExpenseApprovalListPageState",
-          "line": 57,
+          "line": 60,
           "role": "state-class",
           "extends": "ConsumerState<ExpenseApprovalListPage>"
         }
@@ -59430,9 +59464,33 @@
         },
         {
           "directive": "import",
+          "uri": "../../../shared/auth/sensitive_write.dart",
+          "source": "lib/shared/auth/sensitive_write.dart",
+          "line": 39,
+          "role": "sharedComponents",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "a4cf0ab7ef36bf01844e22e6ac082aae3b9bb6b196d107f0a2e5d79b0156805f"
+        },
+        {
+          "directive": "import",
+          "uri": "../../../core/network/read_scope_revision.dart",
+          "source": "lib/core/network/read_scope_revision.dart",
+          "line": 40,
+          "role": "core",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "2f415e6bde855af2cb3f5fc4595336f7e22c69ab92f73dd65005c50a52cde8f3"
+        },
+        {
+          "directive": "import",
           "uri": "../../basic_data/widgets/master_data_table_view.dart",
           "source": "lib/features/basic_data/widgets/master_data_table_view.dart",
-          "line": 39,
+          "line": 41,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -59444,7 +59502,7 @@
           "directive": "import",
           "uri": "../models/expense_claim.dart",
           "source": "lib/features/expense/models/expense_claim.dart",
-          "line": 40,
+          "line": 42,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -59456,19 +59514,31 @@
           "directive": "import",
           "uri": "../providers/expense_providers.dart",
           "source": "lib/features/expense/providers/expense_providers.dart",
-          "line": 41,
+          "line": 43,
           "role": "providers",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1ef652f28ac3d046d7b6396034a2c9714fc96b7f5541d448380f2010dd4abce2"
+          "targetSha256": "ce13fa68dd4ce1c8a5a443ad183184eb10fa4ada6294833af9e2d6cafa607355"
+        },
+        {
+          "directive": "import",
+          "uri": "../providers/expense_action_eligibility.dart",
+          "source": "lib/features/expense/providers/expense_action_eligibility.dart",
+          "line": 44,
+          "role": "providers",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "ca193e6e34bc0d2db57d2acc883e12bb897f42e1f32928b14628a0f10ebcb703"
         },
         {
           "directive": "import",
           "uri": "../repositories/expense_repository.dart",
           "source": "lib/features/expense/repositories/expense_repository.dart",
-          "line": 42,
+          "line": 45,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
@@ -59480,7 +59550,7 @@
           "directive": "import",
           "uri": "../../../shared/badges/badge_registry.dart",
           "source": "lib/shared/badges/badge_registry.dart",
-          "line": 43,
+          "line": 46,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -59494,35 +59564,35 @@
         {
           "symbol": "Perm.expenseView",
           "literal": "expense:view",
-          "line": 152,
+          "line": 207,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 56
         },
         {
           "symbol": "Perm.expenseApprove",
           "literal": "expense:approve",
-          "line": 153,
+          "line": 208,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 58
         },
         {
           "symbol": "Perm.expensePay",
           "literal": "expense:pay",
-          "line": 154,
+          "line": 209,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 59
         },
         {
           "symbol": "Perm.attachmentView",
           "literal": "attachment:view",
-          "line": 433,
+          "line": 480,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 91
         },
         {
           "symbol": "Perm.attachmentDownload",
           "literal": "attachment:download",
-          "line": 434,
+          "line": 481,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 747
         }
@@ -59548,7 +59618,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 99,
+          "line": 112,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -59556,9 +59626,19 @@
           "evidenceLine": "WidgetsBinding.instance.addPostFrameCallback((_) {"
         },
         {
+          "symbol": "removeWhere",
+          "receiver": "_selectedClaims",
+          "line": 158,
+          "kind": "action-like-invocation",
+          "actionNameHints": [
+            "remove"
+          ],
+          "evidenceLine": "_selectedClaims.removeWhere((id, _) => !next.contains(id));"
+        },
+        {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 243,
+          "line": 297,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -59566,19 +59646,9 @@
           "evidenceLine": "style: theme.textTheme.bodySmall?.copyWith("
         },
         {
-          "symbol": "removeWhere",
-          "receiver": "_selectedVersions",
-          "line": 295,
-          "kind": "action-like-invocation",
-          "actionNameHints": [
-            "remove"
-          ],
-          "evidenceLine": "_selectedVersions.removeWhere((id, _) => !next.contains(id));"
-        },
-        {
           "symbol": "_batchApprove",
           "receiver": null,
-          "line": 442,
+          "line": 489,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "approve"
@@ -59588,7 +59658,7 @@
         {
           "symbol": "_batchReject",
           "receiver": null,
-          "line": 453,
+          "line": 500,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "reject"
@@ -59596,54 +59666,84 @@
           "evidenceLine": "? () => _batchReject(Set<String>.of(selectedIds))"
         },
         {
+          "symbol": "_confirmBatchApproval",
+          "receiver": null,
+          "line": 516,
+          "kind": "method-declaration-candidate",
+          "actionNameHints": [
+            "confirm"
+          ],
+          "evidenceLine": "Future<String?> _confirmBatchApproval(int count) async {"
+        },
+        {
           "symbol": "_batchApprove",
           "receiver": null,
-          "line": 469,
+          "line": 555,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "approve"
           ],
-          "evidenceLine": "Future<void> _batchApprove(Set<String> ids) async {"
+          "evidenceLine": "Future<void> _batchApprove(Set<String> ids) => _runBatch("
         },
         {
-          "symbol": "approveBatch",
+          "symbol": "_confirmBatchApproval",
           "receiver": null,
-          "line": 512,
+          "line": 558,
           "kind": "action-like-invocation",
           "actionNameHints": [
-            "approve"
+            "confirm"
           ],
-          "evidenceLine": ".approveBatch("
+          "evidenceLine": "confirm: () => _confirmBatchApproval(ids.length),"
         },
         {
           "symbol": "_batchReject",
           "receiver": null,
-          "line": 537,
+          "line": 561,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "reject"
           ],
-          "evidenceLine": "Future<void> _batchReject(Set<String> ids) async {"
+          "evidenceLine": "Future<void> _batchReject(Set<String> ids) => _runBatch("
         },
         {
           "symbol": "showUtenBatchRejectDialog",
           "receiver": null,
-          "line": 539,
+          "line": 564,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "reject"
           ],
-          "evidenceLine": "final reason = await showUtenBatchRejectDialog("
+          "evidenceLine": "confirm: () => showUtenBatchRejectDialog("
+        },
+        {
+          "symbol": "confirm",
+          "receiver": null,
+          "line": 608,
+          "kind": "action-like-invocation",
+          "actionNameHints": [
+            "confirm"
+          ],
+          "evidenceLine": "final reason = await confirm();"
+        },
+        {
+          "symbol": "approveBatch",
+          "receiver": "repository",
+          "line": 617,
+          "kind": "action-like-invocation",
+          "actionNameHints": [
+            "approve"
+          ],
+          "evidenceLine": "? repository.approveBatch(ids, expectedVersions: versions)"
         },
         {
           "symbol": "rejectBatch",
-          "receiver": null,
-          "line": 550,
+          "receiver": "repository",
+          "line": 618,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "reject"
           ],
-          "evidenceLine": ".rejectBatch("
+          "evidenceLine": ": repository.rejectBatch(ids, reason, expectedVersions: versions);"
         }
       ],
       "routerBindings": [
@@ -60022,7 +60122,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1ef652f28ac3d046d7b6396034a2c9714fc96b7f5541d448380f2010dd4abce2"
+          "targetSha256": "ce13fa68dd4ce1c8a5a443ad183184eb10fa4ada6294833af9e2d6cafa607355"
         },
         {
           "directive": "import",
@@ -60962,7 +61062,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1ef652f28ac3d046d7b6396034a2c9714fc96b7f5541d448380f2010dd4abce2"
+          "targetSha256": "ce13fa68dd4ce1c8a5a443ad183184eb10fa4ada6294833af9e2d6cafa607355"
         },
         {
           "directive": "import",
@@ -61529,7 +61629,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -61577,7 +61677,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1ef652f28ac3d046d7b6396034a2c9714fc96b7f5541d448380f2010dd4abce2"
+          "targetSha256": "ce13fa68dd4ce1c8a5a443ad183184eb10fa4ada6294833af9e2d6cafa607355"
         },
         {
           "directive": "import",
@@ -63173,7 +63273,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -64432,7 +64532,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -66329,7 +66429,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "111540b65f12b8676637cc22f341f2eaf41a5ac9360d2cef087f41cf33fcdaee"
+          "targetSha256": "da89a434fbce756e91dc5c62636e1b69ed6d6deed8b3a1cc031589243ad7dc8b"
         },
         {
           "directive": "import",
@@ -66365,7 +66465,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "f4b58a801d21c7151e03112196d380be0adcd64b8c4b97966f968a5dd2d517c5"
+          "targetSha256": "e0130d4e31574ff1f08456ce1ac150d7e817175fc2193ed26af466b9f9b5315a"
         },
         {
           "directive": "import",
@@ -71816,7 +71916,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -75102,7 +75202,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -76514,18 +76614,18 @@
       "id": "page:finance/pages/finance_quote_review_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_quote_review_page.dart",
-      "sha256": "7ed2ce8367461fb45d3a5052c32a7ebe196492f1866435fec6e7737e811d3afe",
-      "lineCount": 2004,
+      "sha256": "6082ab27e9db3d0b8a774dce77b9613883514318516d9b5a270d1335cea21a4e",
+      "lineCount": 1992,
       "classes": [
         {
           "name": "FinanceQuoteReviewPage",
-          "line": 85,
+          "line": 86,
           "role": "page-class",
           "extends": "ConsumerStatefulWidget"
         },
         {
           "name": "_FinanceQuoteReviewPageState",
-          "line": 101,
+          "line": 102,
           "role": "state-class",
           "extends": "ConsumerState<FinanceQuoteReviewPage>\n    with\n        FormDraftMixin<FinanceQuoteReviewPage>,\n        ReviewTaskDraftMixin<FinanceQuoteReviewPage>"
         }
@@ -76533,9 +76633,21 @@
       "directImports": [
         {
           "directive": "import",
+          "uri": "../../../shared/sales_review/sales_review_permissions.dart",
+          "source": "lib/shared/sales_review/sales_review_permissions.dart",
+          "line": 1,
+          "role": "sharedComponents",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "de9a6dd846e83bda04a4aaaa6b3d99710be69667ae4e8feb25f585039886c1f1"
+        },
+        {
+          "directive": "import",
           "uri": "package:uten_imp/components/inputs/uten_editor_tooltip.dart",
           "source": "lib/components/inputs/uten_editor_tooltip.dart",
-          "line": 1,
+          "line": 2,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76547,7 +76659,7 @@
           "directive": "import",
           "uri": "../../../shared/platform_tables/platform_table_binding.dart",
           "source": "lib/shared/platform_tables/platform_table_binding.dart",
-          "line": 2,
+          "line": 3,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76559,7 +76671,7 @@
           "directive": "import",
           "uri": "../../../shared/business_columns/business_columns_table.dart",
           "source": "lib/shared/business_columns/business_columns_table.dart",
-          "line": 3,
+          "line": 4,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76571,7 +76683,7 @@
           "directive": "import",
           "uri": "dart:async",
           "source": null,
-          "line": 21,
+          "line": 22,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -76583,7 +76695,7 @@
           "directive": "import",
           "uri": "package:flutter/material.dart",
           "source": null,
-          "line": 23,
+          "line": 24,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -76595,7 +76707,7 @@
           "directive": "import",
           "uri": "package:flutter/foundation.dart",
           "source": null,
-          "line": 24,
+          "line": 25,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -76607,7 +76719,7 @@
           "directive": "import",
           "uri": "../../../core/network/server_config.dart",
           "source": "lib/core/network/server_config.dart",
-          "line": 25,
+          "line": 26,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -76619,7 +76731,7 @@
           "directive": "import",
           "uri": "package:flutter/services.dart",
           "source": null,
-          "line": 26,
+          "line": 27,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -76631,7 +76743,7 @@
           "directive": "import",
           "uri": "package:flutter_riverpod/flutter_riverpod.dart",
           "source": null,
-          "line": 27,
+          "line": 28,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -76643,7 +76755,7 @@
           "directive": "import",
           "uri": "package:go_router/go_router.dart",
           "source": null,
-          "line": 28,
+          "line": 29,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -76655,7 +76767,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_back_button.dart",
           "source": "lib/components/buttons/uten_back_button.dart",
-          "line": 30,
+          "line": 31,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76667,7 +76779,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_button.dart",
           "source": "lib/components/buttons/uten_button.dart",
-          "line": 31,
+          "line": 32,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76679,7 +76791,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_goods_identity_cell.dart",
           "source": "lib/components/data_display/uten_goods_identity_cell.dart",
-          "line": 32,
+          "line": 33,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76691,7 +76803,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_selection_summary_pill.dart",
           "source": "lib/components/data_display/uten_selection_summary_pill.dart",
-          "line": 33,
+          "line": 34,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76703,7 +76815,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_status_badge.dart",
           "source": "lib/components/data_display/uten_status_badge.dart",
-          "line": 34,
+          "line": 35,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76715,7 +76827,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_totals_summary_bar.dart",
           "source": "lib/components/data_display/uten_totals_summary_bar.dart",
-          "line": 35,
+          "line": 36,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76727,7 +76839,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_detail_summary_card.dart",
           "source": "lib/components/data_display/uten_detail_summary_card.dart",
-          "line": 36,
+          "line": 37,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76739,7 +76851,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_review_input_cell.dart",
           "source": "lib/components/data_display/uten_review_input_cell.dart",
-          "line": 37,
+          "line": 38,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76751,7 +76863,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_busy_overlay.dart",
           "source": "lib/components/feedback/uten_busy_overlay.dart",
-          "line": 38,
+          "line": 39,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76763,7 +76875,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_context_menu.dart",
           "source": "lib/components/feedback/uten_context_menu.dart",
-          "line": 39,
+          "line": 40,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76775,7 +76887,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_dialog.dart",
           "source": "lib/components/feedback/uten_dialog.dart",
-          "line": 40,
+          "line": 41,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76787,7 +76899,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_inline_notice.dart",
           "source": "lib/components/feedback/uten_inline_notice.dart",
-          "line": 41,
+          "line": 42,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76799,7 +76911,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_reviewer_responsibility_notice.dart",
           "source": "lib/components/feedback/uten_reviewer_responsibility_notice.dart",
-          "line": 42,
+          "line": 43,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76811,7 +76923,7 @@
           "directive": "import",
           "uri": "../../../components/forms/maker_audit_fields.dart",
           "source": "lib/components/forms/maker_audit_fields.dart",
-          "line": 43,
+          "line": 44,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76823,7 +76935,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_date_field.dart",
           "source": "lib/components/inputs/uten_date_field.dart",
-          "line": 44,
+          "line": 45,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76835,7 +76947,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_dropdown_field.dart",
           "source": "lib/components/inputs/uten_dropdown_field.dart",
-          "line": 45,
+          "line": 46,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76847,7 +76959,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_field_message.dart",
           "source": "lib/components/inputs/uten_field_message.dart",
-          "line": 46,
+          "line": 47,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76859,7 +76971,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_input_decoration.dart",
           "source": "lib/components/inputs/uten_input_decoration.dart",
-          "line": 47,
+          "line": 48,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76871,7 +76983,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_app_bar.dart",
           "source": "lib/components/layout/uten_app_bar.dart",
-          "line": 48,
+          "line": 49,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76883,7 +76995,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_collapsing_header_scroll_view.dart",
           "source": "lib/components/layout/uten_collapsing_header_scroll_view.dart",
-          "line": 49,
+          "line": 50,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76895,7 +77007,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_content_container.dart",
           "source": "lib/components/layout/uten_content_container.dart",
-          "line": 50,
+          "line": 51,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76907,7 +77019,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_floating_action_group.dart",
           "source": "lib/components/layout/uten_floating_action_group.dart",
-          "line": 51,
+          "line": 52,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -76919,7 +77031,7 @@
           "directive": "import",
           "uri": "../../../core/l10n/gen/app_localizations.dart",
           "source": "lib/core/l10n/gen/app_localizations.dart",
-          "line": 52,
+          "line": 53,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -76931,7 +77043,7 @@
           "directive": "import",
           "uri": "../../../core/network/api_endpoints.dart",
           "source": "lib/core/network/api_endpoints.dart",
-          "line": 53,
+          "line": 54,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -76943,7 +77055,7 @@
           "directive": "import",
           "uri": "../../../core/network/api_exception.dart",
           "source": "lib/core/network/api_exception.dart",
-          "line": 54,
+          "line": 55,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -76955,7 +77067,7 @@
           "directive": "import",
           "uri": "../../../core/router/route_names.dart",
           "source": "lib/core/router/route_names.dart",
-          "line": 55,
+          "line": 56,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -76967,7 +77079,7 @@
           "directive": "import",
           "uri": "../../../core/theme/uten_colors.dart",
           "source": "lib/core/theme/uten_colors.dart",
-          "line": 56,
+          "line": 57,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -76979,7 +77091,7 @@
           "directive": "import",
           "uri": "../../../core/theme/uten_tokens.dart",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 57,
+          "line": 58,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -76991,7 +77103,7 @@
           "directive": "import",
           "uri": "../../../core/ui/app_notification.dart",
           "source": "lib/core/ui/app_notification.dart",
-          "line": 58,
+          "line": 59,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -77003,7 +77115,7 @@
           "directive": "import",
           "uri": "../../../core/utils/currency_display.dart",
           "source": "lib/core/utils/currency_display.dart",
-          "line": 59,
+          "line": 60,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -77015,7 +77127,7 @@
           "directive": "import",
           "uri": "../../../shared/attachments/business_attachment_section.dart",
           "source": "lib/shared/attachments/business_attachment_section.dart",
-          "line": 60,
+          "line": 61,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -77027,7 +77139,7 @@
           "directive": "import",
           "uri": "../../../shared/auth/permissions.dart",
           "source": "lib/shared/auth/permissions.dart",
-          "line": 61,
+          "line": 62,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -77039,7 +77151,7 @@
           "directive": "import",
           "uri": "../../../shared/auth/session_snapshot_provider.dart",
           "source": "lib/shared/auth/session_snapshot_provider.dart",
-          "line": 62,
+          "line": 63,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -77051,7 +77163,7 @@
           "directive": "import",
           "uri": "../../../shared/badges/badge_registry.dart",
           "source": "lib/shared/badges/badge_registry.dart",
-          "line": 63,
+          "line": 64,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -77063,7 +77175,7 @@
           "directive": "import",
           "uri": "../../../shared/concurrency/task_claim_session.dart",
           "source": "lib/shared/concurrency/task_claim_session.dart",
-          "line": 64,
+          "line": 65,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -77075,7 +77187,7 @@
           "directive": "import",
           "uri": "../../../shared/formatters/exact_decimal.dart",
           "source": "lib/shared/formatters/exact_decimal.dart",
-          "line": 65,
+          "line": 66,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -77087,7 +77199,7 @@
           "directive": "import",
           "uri": "../../../shared/formatters/money_display.dart",
           "source": "lib/shared/formatters/money_display.dart",
-          "line": 66,
+          "line": 67,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -77099,7 +77211,7 @@
           "directive": "import",
           "uri": "../../../shared/formatters/quantity_display.dart",
           "source": "lib/shared/formatters/quantity_display.dart",
-          "line": 67,
+          "line": 68,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -77111,7 +77223,7 @@
           "directive": "import",
           "uri": "../../../shared/measurement/measurement_totals.dart",
           "source": "lib/shared/measurement/measurement_totals.dart",
-          "line": 68,
+          "line": 69,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -77123,7 +77235,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/list_refresh_provider.dart",
           "source": "lib/shared/providers/list_refresh_provider.dart",
-          "line": 69,
+          "line": 70,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -77135,7 +77247,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/session_provider.dart",
           "source": "lib/shared/providers/session_provider.dart",
-          "line": 70,
+          "line": 71,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -77147,7 +77259,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/review_task_draft.dart",
           "source": "lib/shared/drafts/review_task_draft.dart",
-          "line": 71,
+          "line": 72,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -77159,7 +77271,7 @@
           "directive": "import",
           "uri": "../../../shared/widgets/finance_review_claim_notice.dart",
           "source": "lib/shared/widgets/finance_review_claim_notice.dart",
-          "line": 72,
+          "line": 73,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -77171,7 +77283,7 @@
           "directive": "import",
           "uri": "../../basic_data/widgets/master_data_table_view.dart",
           "source": "lib/features/basic_data/widgets/master_data_table_view.dart",
-          "line": 73,
+          "line": 74,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -77183,7 +77295,7 @@
           "directive": "import",
           "uri": "../../sales/models/sales_doc.dart",
           "source": "lib/features/sales/models/sales_doc.dart",
-          "line": 74,
+          "line": 75,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -77195,7 +77307,7 @@
           "directive": "import",
           "uri": "../../sales/providers/master_name_provider.dart",
           "source": "lib/features/sales/providers/master_name_provider.dart",
-          "line": 75,
+          "line": 76,
           "role": "providers",
           "importAlias": null,
           "showSymbols": [],
@@ -77207,7 +77319,7 @@
           "directive": "import",
           "uri": "../../sales/widgets/sales_quote_status_chip.dart",
           "source": "lib/features/sales/widgets/sales_quote_status_chip.dart",
-          "line": 76,
+          "line": 77,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -77219,7 +77331,7 @@
           "directive": "import",
           "uri": "../models/quote_finance_line_draft.dart",
           "source": "lib/features/finance/models/quote_finance_line_draft.dart",
-          "line": 77,
+          "line": 78,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -77231,7 +77343,7 @@
           "directive": "import",
           "uri": "../models/quote_finance_pricing.dart",
           "source": "lib/features/finance/models/quote_finance_pricing.dart",
-          "line": 78,
+          "line": 79,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -77243,7 +77355,7 @@
           "directive": "import",
           "uri": "../models/sales_quote_finance_review.dart",
           "source": "lib/features/finance/models/sales_quote_finance_review.dart",
-          "line": 79,
+          "line": 80,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -77255,7 +77367,7 @@
           "directive": "import",
           "uri": "../repositories/sales_quote_finance_review_repository.dart",
           "source": "lib/features/finance/repositories/sales_quote_finance_review_repository.dart",
-          "line": 80,
+          "line": 81,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
@@ -77267,7 +77379,7 @@
           "directive": "import",
           "uri": "../widgets/quote_finance_dialogs.dart",
           "source": "lib/features/finance/widgets/quote_finance_dialogs.dart",
-          "line": 81,
+          "line": 82,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -77279,7 +77391,7 @@
           "directive": "import",
           "uri": "finance_quote_review_list_page.dart",
           "source": "lib/features/finance/pages/finance_quote_review_list_page.dart",
-          "line": 82,
+          "line": 83,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -77291,7 +77403,7 @@
           "directive": "import",
           "uri": "package:uten_imp/components/layout/uten_page_layout.dart",
           "source": "lib/components/layout/uten_page_layout.dart",
-          "line": 83,
+          "line": 84,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -77303,79 +77415,9 @@
       "partUnits": [],
       "permissionReferences": [
         {
-          "symbol": "Perm.salesQuoteManagerConfirm",
-          "literal": "sales_quote_manager:confirm",
-          "line": 386,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 465
-        },
-        {
-          "symbol": "Perm.salesQuoteFinanceConfirm",
-          "literal": "sales_quote_finance:confirm",
-          "line": 387,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 479
-        },
-        {
-          "symbol": "Perm.salesQuoteManagerReject",
-          "literal": "sales_quote_manager:reject",
-          "line": 390,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 466
-        },
-        {
-          "symbol": "Perm.salesQuoteFinanceReject",
-          "literal": "sales_quote_finance:reject",
-          "line": 391,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 480
-        },
-        {
-          "symbol": "Perm.salesQuoteManagerReverse",
-          "literal": "sales_quote_manager:reverse",
-          "line": 394,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 467
-        },
-        {
-          "symbol": "Perm.salesQuoteFinanceReverse",
-          "literal": "sales_quote_finance:reverse",
-          "line": 395,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 481
-        },
-        {
-          "symbol": "Perm.salesQuoteManagerView",
-          "literal": "sales_quote_manager:view",
-          "line": 399,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 464
-        },
-        {
-          "symbol": "Perm.salesQuoteFinanceView",
-          "literal": "sales_quote_finance:view",
-          "line": 400,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 478
-        },
-        {
-          "symbol": "Perm.salesQuoteManagerView",
-          "literal": "sales_quote_manager:view",
-          "line": 442,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 464
-        },
-        {
-          "symbol": "Perm.salesQuoteFinanceView",
-          "literal": "sales_quote_finance:view",
-          "line": 443,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 478
-        },
-        {
           "symbol": "Perm.attachmentView",
           "literal": "attachment:view",
-          "line": 1151,
+          "line": 1139,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 91
         }
@@ -77383,7 +77425,7 @@
       "apiEndpointReferences": [
         {
           "symbol": "ApiEndpoints.settlementMethods",
-          "line": 568,
+          "line": 556,
           "source": "lib/features/finance/pages/finance_quote_review_page.dart",
           "template": "/master/reference-methods/settlement",
           "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -77493,7 +77535,7 @@
         {
           "symbol": "canDispatchReviewCommand",
           "receiver": null,
-          "line": 146,
+          "line": 147,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "dispatch"
@@ -77503,7 +77545,7 @@
         {
           "symbol": "restoreReviewInputs",
           "receiver": null,
-          "line": 179,
+          "line": 180,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "restore"
@@ -77513,7 +77555,7 @@
         {
           "symbol": "closeRecoveredReview",
           "receiver": null,
-          "line": 264,
+          "line": 265,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "close"
@@ -77523,7 +77565,7 @@
         {
           "symbol": "_close",
           "receiver": null,
-          "line": 264,
+          "line": 265,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "close"
@@ -77533,7 +77575,7 @@
         {
           "symbol": "startFormDraftIdentityGuard",
           "receiver": null,
-          "line": 270,
+          "line": 271,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -77543,7 +77585,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 291,
+          "line": 292,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -77553,7 +77595,7 @@
         {
           "symbol": "removeListener",
           "receiver": null,
-          "line": 303,
+          "line": 304,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -77563,7 +77605,7 @@
         {
           "symbol": "removeWhere",
           "receiver": "_privateDialogs",
-          "line": 344,
+          "line": 345,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -77573,7 +77615,7 @@
         {
           "symbol": "removeListener",
           "receiver": null,
-          "line": 353,
+          "line": 354,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -77583,7 +77625,7 @@
         {
           "symbol": "removeRoute",
           "receiver": null,
-          "line": 357,
+          "line": 358,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -77593,7 +77635,7 @@
         {
           "symbol": "removeListener",
           "receiver": null,
-          "line": 454,
+          "line": 442,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -77603,7 +77645,7 @@
         {
           "symbol": "removeWhere",
           "receiver": "_selected",
-          "line": 509,
+          "line": 497,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -77613,7 +77655,7 @@
         {
           "symbol": "cancelReviewReload",
           "receiver": null,
-          "line": 530,
+          "line": 518,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "cancel"
@@ -77623,7 +77665,7 @@
         {
           "symbol": "remove",
           "receiver": "kept",
-          "line": 551,
+          "line": 539,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -77633,7 +77675,7 @@
         {
           "symbol": "removeWhere",
           "receiver": "_selected",
-          "line": 556,
+          "line": 544,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -77643,7 +77685,7 @@
         {
           "symbol": "_save",
           "receiver": null,
-          "line": 620,
+          "line": 608,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "save"
@@ -77653,7 +77695,7 @@
         {
           "symbol": "toEdit",
           "receiver": "draft",
-          "line": 632,
+          "line": 620,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "edit"
@@ -77663,7 +77705,7 @@
         {
           "symbol": "submitReviewCommand",
           "receiver": null,
-          "line": 640,
+          "line": 628,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -77673,7 +77715,7 @@
         {
           "symbol": "saveEdits",
           "receiver": "repository",
-          "line": 642,
+          "line": 630,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -77683,7 +77725,7 @@
         {
           "symbol": "finishReviewDraft",
           "receiver": null,
-          "line": 657,
+          "line": 645,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -77693,7 +77735,7 @@
         {
           "symbol": "_confirm",
           "receiver": null,
-          "line": 671,
+          "line": 659,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "confirm"
@@ -77703,7 +77745,7 @@
         {
           "symbol": "quoteFinanceConfirmBlocked",
           "receiver": "l10n",
-          "line": 684,
+          "line": 672,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -77713,7 +77755,7 @@
         {
           "symbol": "quoteFinanceConfirmTitle",
           "receiver": "l10n",
-          "line": 697,
+          "line": 685,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -77723,7 +77765,7 @@
         {
           "symbol": "quoteFinanceConfirmTotal",
           "receiver": "l10n",
-          "line": 719,
+          "line": 707,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -77733,7 +77775,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 727,
+          "line": 715,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -77743,7 +77785,7 @@
         {
           "symbol": "confirm",
           "receiver": "_repo",
-          "line": 763,
+          "line": 751,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -77753,7 +77795,7 @@
         {
           "symbol": "canDispatchReviewCommand",
           "receiver": null,
-          "line": 829,
+          "line": 817,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "dispatch"
@@ -77763,7 +77805,7 @@
         {
           "symbol": "submitReviewCommand",
           "receiver": null,
-          "line": 833,
+          "line": 821,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -77773,7 +77815,7 @@
         {
           "symbol": "finishReviewDraft",
           "receiver": null,
-          "line": 842,
+          "line": 830,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -77783,7 +77825,7 @@
         {
           "symbol": "_close",
           "receiver": null,
-          "line": 851,
+          "line": 839,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "close"
@@ -77793,7 +77835,7 @@
         {
           "symbol": "confirmFormDraftExit",
           "receiver": null,
-          "line": 919,
+          "line": 907,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -77803,7 +77845,7 @@
         {
           "symbol": "_close",
           "receiver": null,
-          "line": 922,
+          "line": 910,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "close"
@@ -77813,7 +77855,7 @@
         {
           "symbol": "_close",
           "receiver": null,
-          "line": 925,
+          "line": 913,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "close"
@@ -77823,7 +77865,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 1380,
+          "line": 1368,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -77833,7 +77875,7 @@
         {
           "symbol": "quoteFinanceCheckedEditHint",
           "receiver": "l10n",
-          "line": 1862,
+          "line": 1850,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "edit"
@@ -77911,7 +77953,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/finance/pages/finance_quote_review_page.dart",
-              "line": 568,
+              "line": 556,
               "template": "/master/reference-methods/settlement",
               "controllerBase": "/api/master"
             }
@@ -77924,7 +77966,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/finance/pages/finance_quote_review_page.dart",
-              "line": 568,
+              "line": 556,
               "template": "/master/reference-methods/settlement",
               "controllerBase": "/api/master"
             }
@@ -77937,7 +77979,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/finance/pages/finance_quote_review_page.dart",
-              "line": 568,
+              "line": 556,
               "template": "/master/reference-methods/settlement",
               "controllerBase": "/api/master"
             }
@@ -77950,7 +77992,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/finance/pages/finance_quote_review_page.dart",
-              "line": 568,
+              "line": 556,
               "template": "/master/reference-methods/settlement",
               "controllerBase": "/api/master/reference-methods"
             }
@@ -78466,7 +78508,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -79883,7 +79925,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -80289,7 +80331,7 @@
       "id": "page:finance/pages/finance_sales_order_confirmation_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
-      "sha256": "f4b58a801d21c7151e03112196d380be0adcd64b8c4b97966f968a5dd2d517c5",
+      "sha256": "e0130d4e31574ff1f08456ce1ac150d7e817175fc2193ed26af466b9f9b5315a",
       "lineCount": 1408,
       "classes": [
         {
@@ -80302,7 +80344,7 @@
           "name": "_FinanceSalesOrderConfirmationPageState",
           "line": 95,
           "role": "state-class",
-          "extends": "ConsumerState<FinanceSalesOrderConfirmationPage>\r\n    with ScopedPagedReadViewMixin<FinanceSalesOrderConfirmationPage>"
+          "extends": "ConsumerState<FinanceSalesOrderConfirmationPage>\n    with ScopedPagedReadViewMixin<FinanceSalesOrderConfirmationPage>"
         },
         {
           "name": "_ClientBalanceCell",
@@ -80858,7 +80900,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -80886,15 +80928,15 @@
         },
         {
           "directive": "import",
-          "uri": "../models/sales_order_finance_confirmation.dart",
-          "source": "lib/features/finance/models/sales_order_finance_confirmation.dart",
+          "uri": "package:uten_imp/shared/sales_review/sales_order_review.dart",
+          "source": "lib/shared/sales_review/sales_order_review.dart",
           "line": 51,
-          "role": "models",
+          "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a057094efdf6c2163e645068f3bf1dc68ecd58829ab690ba28426340d98d76dc"
+          "targetSha256": "8718fd46178a4768efa773f653176e427841aa2aa378e41a2220ed129543aab2"
         },
         {
           "directive": "import",
@@ -80918,19 +80960,19 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "111540b65f12b8676637cc22f341f2eaf41a5ac9360d2cef087f41cf33fcdaee"
+          "targetSha256": "da89a434fbce756e91dc5c62636e1b69ed6d6deed8b3a1cc031589243ad7dc8b"
         },
         {
           "directive": "import",
-          "uri": "../repositories/sales_order_finance_confirmation_repository.dart",
-          "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+          "uri": "package:uten_imp/shared/sales_review/sales_order_review_repository.dart",
+          "source": "lib/shared/sales_review/sales_order_review_repository.dart",
           "line": 54,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "bc87a23d3b7cced4ee857fa7db59a463d63c6e0270d6fb88180ca4b02f4def6c"
+          "targetSha256": "ca51d7da0e263b45c1714f5f196879159c56a0435c8508a55fb41fa7cd097765"
         },
         {
           "directive": "import",
@@ -81003,14 +81045,14 @@
       "apiEndpointReferences": [],
       "directRepositoryEvidence": [
         {
-          "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-          "sha256": "bc87a23d3b7cced4ee857fa7db59a463d63c6e0270d6fb88180ca4b02f4def6c",
+          "source": "lib/shared/sales_review/sales_order_review_repository.dart",
+          "sha256": "ca51d7da0e263b45c1714f5f196879159c56a0435c8508a55fb41fa7cd097765",
           "lineCount": 245,
           "apiEndpointReferences": [
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirmationPending",
               "line": 87,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/finance-confirmation/pending",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 37,
@@ -81019,7 +81061,7 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirmationFacets",
               "line": 114,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/finance-confirmation/pending/facets",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 39,
@@ -81028,7 +81070,7 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirmationCount",
               "line": 129,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/finance-confirmation/count",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 41,
@@ -81037,7 +81079,7 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceReview",
               "line": 145,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/{orderId}/finance-confirmation/review",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 47,
@@ -81046,7 +81088,7 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirm",
               "line": 160,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/{orderId}/finance-confirmation",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 45,
@@ -81055,7 +81097,7 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirmationBatch",
               "line": 186,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/finance-confirmation/batch",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 43,
@@ -81064,42 +81106,42 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceReject",
               "line": 222,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 49,
               "definitionExpression": "'/sales/orders/$orderId/finance-confirmation/reject'"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 144,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 159,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/confirm",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 185,
               "template": "/sales/manager-review/orders/batch",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "symbol": null,
@@ -81298,25 +81340,25 @@
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
           "endpointEvidence": [
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 144,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 159,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/confirm",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
@@ -81329,31 +81371,31 @@
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
           "endpointEvidence": [
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 144,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}",
               "controllerBase": "/api/sales/manager-review"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 159,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/confirm",
               "controllerBase": "/api/sales/manager-review"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 185,
               "template": "/sales/manager-review/orders/batch",
               "controllerBase": "/api/sales/manager-review"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/manager-review"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/manager-review"
@@ -81366,25 +81408,25 @@
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
           "endpointEvidence": [
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 144,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 159,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/confirm",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
@@ -81397,43 +81439,43 @@
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
           "endpointEvidence": [
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 87,
               "template": "/sales/orders/finance-confirmation/pending",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 114,
               "template": "/sales/orders/finance-confirmation/pending/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 129,
               "template": "/sales/orders/finance-confirmation/count",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 145,
               "template": "/sales/orders/{orderId}/finance-confirmation/review",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 160,
               "template": "/sales/orders/{orderId}/finance-confirmation",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 186,
               "template": "/sales/orders/finance-confirmation/batch",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 222,
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "controllerBase": "/api/sales/orders"
@@ -81446,43 +81488,43 @@
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
           "endpointEvidence": [
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 87,
               "template": "/sales/orders/finance-confirmation/pending",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 114,
               "template": "/sales/orders/finance-confirmation/pending/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 129,
               "template": "/sales/orders/finance-confirmation/count",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 145,
               "template": "/sales/orders/{orderId}/finance-confirmation/review",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 160,
               "template": "/sales/orders/{orderId}/finance-confirmation",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 186,
               "template": "/sales/orders/finance-confirmation/batch",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 222,
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "controllerBase": "/api/sales/orders"
@@ -81499,18 +81541,18 @@
       "id": "page:finance/pages/finance_sales_order_review_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_sales_order_review_page.dart",
-      "sha256": "2cd784814d9ffb8092c444041722e15eb03ed24c4eb53abd18ed6f76d983c421",
-      "lineCount": 1578,
+      "sha256": "6ee746c16c2677c79ae5f69d1853edf18b00205678b9c5e0fb863011cc4b104a",
+      "lineCount": 1566,
       "classes": [
         {
           "name": "FinanceSalesOrderReviewPage",
-          "line": 68,
+          "line": 69,
           "role": "page-class",
           "extends": "ConsumerStatefulWidget"
         },
         {
           "name": "_FinanceSalesOrderReviewPageState",
-          "line": 85,
+          "line": 86,
           "role": "state-class",
           "extends": "ConsumerState<FinanceSalesOrderReviewPage>\n    with\n        FormDraftMixin<FinanceSalesOrderReviewPage>,\n        ReviewTaskDraftMixin<FinanceSalesOrderReviewPage>,\n        ReviewAuthorityRefreshMixin<FinanceSalesOrderReviewPage>"
         }
@@ -81518,9 +81560,21 @@
       "directImports": [
         {
           "directive": "import",
+          "uri": "../../../shared/sales_review/sales_review_permissions.dart",
+          "source": "lib/shared/sales_review/sales_review_permissions.dart",
+          "line": 1,
+          "role": "sharedComponents",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "de9a6dd846e83bda04a4aaaa6b3d99710be69667ae4e8feb25f585039886c1f1"
+        },
+        {
+          "directive": "import",
           "uri": "../../../components/feedback/uten_progress_timeline.dart",
           "source": "lib/components/feedback/uten_progress_timeline.dart",
-          "line": 1,
+          "line": 2,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81532,7 +81586,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_field_hint_icon.dart",
           "source": "lib/components/inputs/uten_field_hint_icon.dart",
-          "line": 2,
+          "line": 3,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81544,7 +81598,7 @@
           "directive": "import",
           "uri": "package:uten_imp/components/feedback/uten_dialog.dart",
           "source": "lib/components/feedback/uten_dialog.dart",
-          "line": 3,
+          "line": 4,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81556,7 +81610,7 @@
           "directive": "import",
           "uri": "../../../shared/business_columns/business_columns_table.dart",
           "source": "lib/shared/business_columns/business_columns_table.dart",
-          "line": 4,
+          "line": 5,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81568,7 +81622,7 @@
           "directive": "import",
           "uri": "../../../shared/attachments/business_attachment_section.dart",
           "source": "lib/shared/attachments/business_attachment_section.dart",
-          "line": 19,
+          "line": 20,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81580,7 +81634,7 @@
           "directive": "import",
           "uri": "package:flutter/material.dart",
           "source": null,
-          "line": 20,
+          "line": 21,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -81592,7 +81646,7 @@
           "directive": "import",
           "uri": "../../../shared/presentation/workflow_field_guidance.dart",
           "source": "lib/shared/presentation/workflow_field_guidance.dart",
-          "line": 21,
+          "line": 22,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81604,7 +81658,7 @@
           "directive": "import",
           "uri": "package:flutter_riverpod/flutter_riverpod.dart",
           "source": null,
-          "line": 22,
+          "line": 23,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -81616,7 +81670,7 @@
           "directive": "import",
           "uri": "package:go_router/go_router.dart",
           "source": null,
-          "line": 23,
+          "line": 24,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -81628,7 +81682,7 @@
           "directive": "import",
           "uri": "package:uuid/uuid.dart",
           "source": null,
-          "line": 24,
+          "line": 25,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -81640,7 +81694,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_back_button.dart",
           "source": "lib/components/buttons/uten_back_button.dart",
-          "line": 26,
+          "line": 27,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81652,7 +81706,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_button.dart",
           "source": "lib/components/buttons/uten_button.dart",
-          "line": 27,
+          "line": 28,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81664,7 +81718,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_totals_summary_bar.dart",
           "source": "lib/components/data_display/uten_totals_summary_bar.dart",
-          "line": 28,
+          "line": 29,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81676,7 +81730,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_detail_summary_card.dart",
           "source": "lib/components/data_display/uten_detail_summary_card.dart",
-          "line": 29,
+          "line": 30,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81688,7 +81742,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_revision_table.dart",
           "source": "lib/components/data_display/uten_revision_table.dart",
-          "line": 30,
+          "line": 31,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81700,7 +81754,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_status_badge.dart",
           "source": "lib/components/data_display/uten_status_badge.dart",
-          "line": 31,
+          "line": 32,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81712,19 +81766,19 @@
           "directive": "import",
           "uri": "../widgets/sales_order_revision_table.dart",
           "source": "lib/features/finance/widgets/sales_order_revision_table.dart",
-          "line": 32,
+          "line": 33,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "d44efc9001cf160d2c7c51fe3502b9cc674d34a5779a71170948a07d0ca38fd9"
+          "targetSha256": "821ab26bbe13120967474e735673a1fe580d5ac666ea961f573b6a0b3f8c6d0b"
         },
         {
           "directive": "import",
           "uri": "../../../components/feedback/uten_reviewer_responsibility_notice.dart",
           "source": "lib/components/feedback/uten_reviewer_responsibility_notice.dart",
-          "line": 33,
+          "line": 34,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81736,7 +81790,7 @@
           "directive": "import",
           "uri": "../../../components/forms/maker_audit_fields.dart",
           "source": "lib/components/forms/maker_audit_fields.dart",
-          "line": 34,
+          "line": 35,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81748,7 +81802,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_field_message.dart",
           "source": "lib/components/inputs/uten_field_message.dart",
-          "line": 35,
+          "line": 36,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81760,7 +81814,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_input_decoration.dart",
           "source": "lib/components/inputs/uten_input_decoration.dart",
-          "line": 36,
+          "line": 37,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81772,7 +81826,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_busy_overlay.dart",
           "source": "lib/components/feedback/uten_busy_overlay.dart",
-          "line": 37,
+          "line": 38,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81784,7 +81838,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_app_bar.dart",
           "source": "lib/components/layout/uten_app_bar.dart",
-          "line": 38,
+          "line": 39,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81796,7 +81850,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_collapsing_header_scroll_view.dart",
           "source": "lib/components/layout/uten_collapsing_header_scroll_view.dart",
-          "line": 39,
+          "line": 40,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81808,7 +81862,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_content_container.dart",
           "source": "lib/components/layout/uten_content_container.dart",
-          "line": 40,
+          "line": 41,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81820,7 +81874,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_floating_action_group.dart",
           "source": "lib/components/layout/uten_floating_action_group.dart",
-          "line": 41,
+          "line": 42,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81832,7 +81886,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_goods_identity_cell.dart",
           "source": "lib/components/data_display/uten_goods_identity_cell.dart",
-          "line": 42,
+          "line": 43,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81844,7 +81898,7 @@
           "directive": "import",
           "uri": "../../../core/l10n/gen/app_localizations.dart",
           "source": "lib/core/l10n/gen/app_localizations.dart",
-          "line": 43,
+          "line": 44,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -81856,7 +81910,7 @@
           "directive": "import",
           "uri": "../../../core/network/api_exception.dart",
           "source": "lib/core/network/api_exception.dart",
-          "line": 44,
+          "line": 45,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -81868,7 +81922,7 @@
           "directive": "import",
           "uri": "../../../core/theme/uten_tokens.dart",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 45,
+          "line": 46,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -81880,7 +81934,7 @@
           "directive": "import",
           "uri": "../../../core/ui/app_notification.dart",
           "source": "lib/core/ui/app_notification.dart",
-          "line": 46,
+          "line": 47,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -81892,7 +81946,7 @@
           "directive": "import",
           "uri": "../../../shared/auth/permissions.dart",
           "source": "lib/shared/auth/permissions.dart",
-          "line": 47,
+          "line": 48,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81904,7 +81958,7 @@
           "directive": "import",
           "uri": "../../../shared/concurrency/task_claim_session.dart",
           "source": "lib/shared/concurrency/task_claim_session.dart",
-          "line": 48,
+          "line": 49,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81916,7 +81970,7 @@
           "directive": "import",
           "uri": "../../../shared/measurement/exact_measurement_totals.dart",
           "source": "lib/shared/measurement/exact_measurement_totals.dart",
-          "line": 49,
+          "line": 50,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81928,7 +81982,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/session_provider.dart",
           "source": "lib/shared/providers/session_provider.dart",
-          "line": 50,
+          "line": 51,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81940,7 +81994,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/list_refresh_provider.dart",
           "source": "lib/shared/providers/list_refresh_provider.dart",
-          "line": 51,
+          "line": 52,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81952,7 +82006,7 @@
           "directive": "import",
           "uri": "../../../shared/widgets/finance_review_claim_notice.dart",
           "source": "lib/shared/widgets/finance_review_claim_notice.dart",
-          "line": 52,
+          "line": 53,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81964,7 +82018,7 @@
           "directive": "import",
           "uri": "../../../shared/widgets/sales_document_layout.dart",
           "source": "lib/shared/widgets/sales_document_layout.dart",
-          "line": 53,
+          "line": 54,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81976,7 +82030,7 @@
           "directive": "import",
           "uri": "../../basic_data/widgets/master_data_table_view.dart",
           "source": "lib/features/basic_data/widgets/master_data_table_view.dart",
-          "line": 54,
+          "line": 55,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -81986,33 +82040,33 @@
         },
         {
           "directive": "import",
-          "uri": "../models/sales_order_finance_confirmation.dart",
-          "source": "lib/features/finance/models/sales_order_finance_confirmation.dart",
-          "line": 55,
-          "role": "models",
+          "uri": "package:uten_imp/shared/sales_review/sales_order_review.dart",
+          "source": "lib/shared/sales_review/sales_order_review.dart",
+          "line": 56,
+          "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a057094efdf6c2163e645068f3bf1dc68ecd58829ab690ba28426340d98d76dc"
+          "targetSha256": "8718fd46178a4768efa773f653176e427841aa2aa378e41a2220ed129543aab2"
         },
         {
           "directive": "import",
-          "uri": "../repositories/sales_order_finance_confirmation_repository.dart",
-          "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-          "line": 56,
+          "uri": "package:uten_imp/shared/sales_review/sales_order_review_repository.dart",
+          "source": "lib/shared/sales_review/sales_order_review_repository.dart",
+          "line": 57,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "bc87a23d3b7cced4ee857fa7db59a463d63c6e0270d6fb88180ca4b02f4def6c"
+          "targetSha256": "ca51d7da0e263b45c1714f5f196879159c56a0435c8508a55fb41fa7cd097765"
         },
         {
           "directive": "import",
           "uri": "../widgets/finance_document_unapproval_action.dart",
           "source": "lib/features/finance/widgets/finance_document_unapproval_action.dart",
-          "line": 57,
+          "line": 58,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -82024,7 +82078,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/review_task_draft.dart",
           "source": "lib/shared/drafts/review_task_draft.dart",
-          "line": 58,
+          "line": 59,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82036,7 +82090,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/review_authority_refresh_mixin.dart",
           "source": "lib/shared/drafts/review_authority_refresh_mixin.dart",
-          "line": 59,
+          "line": 60,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82048,7 +82102,7 @@
           "directive": "import",
           "uri": "../../../shared/widgets/sales_order_money_summary_card.dart",
           "source": "lib/shared/widgets/sales_order_money_summary_card.dart",
-          "line": 60,
+          "line": 61,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82060,7 +82114,7 @@
           "directive": "import",
           "uri": "../../../shared/badges/badge_registry.dart",
           "source": "lib/shared/badges/badge_registry.dart",
-          "line": 61,
+          "line": 62,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82072,7 +82126,7 @@
           "directive": "import",
           "uri": "../../../shared/formatters/exact_decimal.dart",
           "source": "lib/shared/formatters/exact_decimal.dart",
-          "line": 62,
+          "line": 63,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82084,7 +82138,7 @@
           "directive": "import",
           "uri": "../../../shared/formatters/money_display.dart",
           "source": "lib/shared/formatters/money_display.dart",
-          "line": 63,
+          "line": 64,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82096,7 +82150,7 @@
           "directive": "import",
           "uri": "../../../shared/formatters/quantity_display.dart",
           "source": "lib/shared/formatters/quantity_display.dart",
-          "line": 64,
+          "line": 65,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82108,7 +82162,7 @@
           "directive": "import",
           "uri": "../widgets/finance_party_snapshot_card.dart",
           "source": "lib/features/finance/widgets/finance_party_snapshot_card.dart",
-          "line": 65,
+          "line": 66,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -82120,7 +82174,7 @@
           "directive": "import",
           "uri": "package:uten_imp/components/layout/uten_page_layout.dart",
           "source": "lib/components/layout/uten_page_layout.dart",
-          "line": 66,
+          "line": 67,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82132,164 +82186,59 @@
       "partUnits": [],
       "permissionReferences": [
         {
-          "symbol": "Perm.salesOrderManagerView",
-          "literal": "sales_order_manager:view",
-          "line": 98,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 468
-        },
-        {
-          "symbol": "Perm.salesOrderManagerConfirm",
-          "literal": "sales_order_manager:confirm",
-          "line": 99,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 469
-        },
-        {
-          "symbol": "Perm.salesOrderManagerReject",
-          "literal": "sales_order_manager:reject",
-          "line": 100,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 470
-        },
-        {
-          "symbol": "Perm.salesOrderManagerReverse",
-          "literal": "sales_order_manager:reverse",
-          "line": 101,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 471
-        },
-        {
-          "symbol": "Perm.salesOrderFinanceView",
-          "literal": "sales_order_finance:view",
-          "line": 104,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 473
-        },
-        {
-          "symbol": "Perm.salesOrderFinanceConfirm",
-          "literal": "sales_order_finance:confirm",
-          "line": 105,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 474
-        },
-        {
-          "symbol": "Perm.salesOrderReverse",
-          "literal": "sales_order:reverse",
-          "line": 106,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 595
-        },
-        {
-          "symbol": "Perm.salesOrderManagerView",
-          "literal": "sales_order_manager:view",
-          "line": 259,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 468
-        },
-        {
-          "symbol": "Perm.salesOrderFinanceView",
-          "literal": "sales_order_finance:view",
-          "line": 260,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 473
-        },
-        {
-          "symbol": "Perm.salesOrderManagerConfirm",
-          "literal": "sales_order_manager:confirm",
-          "line": 262,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 469
-        },
-        {
-          "symbol": "Perm.salesOrderFinanceConfirm",
-          "literal": "sales_order_finance:confirm",
-          "line": 263,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 474
-        },
-        {
-          "symbol": "Perm.salesOrderManagerView",
-          "literal": "sales_order_manager:view",
-          "line": 274,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 468
-        },
-        {
-          "symbol": "Perm.salesOrderManagerReverse",
-          "literal": "sales_order_manager:reverse",
-          "line": 275,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 471
-        },
-        {
-          "symbol": "Perm.salesOrderManagerView",
-          "literal": "sales_order_manager:view",
-          "line": 364,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 468
-        },
-        {
-          "symbol": "Perm.salesOrderManagerReject",
-          "literal": "sales_order_manager:reject",
-          "line": 365,
-          "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 470
-        },
-        {
           "symbol": "Perm.financeViewAll",
           "literal": "finance:view:all",
-          "line": 824,
+          "line": 812,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 502
         },
         {
           "symbol": "Perm.customerPrepaymentView",
           "literal": "customer_prepayment:view",
-          "line": 825,
+          "line": 813,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 484
         },
         {
           "symbol": "Perm.attachmentView",
           "literal": "attachment:view",
-          "line": 941,
+          "line": 929,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 91
         },
         {
           "symbol": "Perm.salesQuoteView",
           "literal": "sales_quote:view",
-          "line": 1029,
+          "line": 1017,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 304
         },
         {
           "symbol": null,
           "literal": "sales_order:view",
-          "line": 1003,
+          "line": 991,
           "definitionSource": "lib/features/finance/pages/finance_sales_order_review_page.dart",
-          "definitionLine": 1003
+          "definitionLine": 991
         },
         {
           "symbol": null,
           "literal": "sales_order:reverse",
-          "line": 1004,
+          "line": 992,
           "definitionSource": "lib/features/finance/pages/finance_sales_order_review_page.dart",
-          "definitionLine": 1004
+          "definitionLine": 992
         }
       ],
       "apiEndpointReferences": [],
       "directRepositoryEvidence": [
         {
-          "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-          "sha256": "bc87a23d3b7cced4ee857fa7db59a463d63c6e0270d6fb88180ca4b02f4def6c",
+          "source": "lib/shared/sales_review/sales_order_review_repository.dart",
+          "sha256": "ca51d7da0e263b45c1714f5f196879159c56a0435c8508a55fb41fa7cd097765",
           "lineCount": 245,
           "apiEndpointReferences": [
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirmationPending",
               "line": 87,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/finance-confirmation/pending",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 37,
@@ -82298,7 +82247,7 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirmationFacets",
               "line": 114,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/finance-confirmation/pending/facets",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 39,
@@ -82307,7 +82256,7 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirmationCount",
               "line": 129,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/finance-confirmation/count",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 41,
@@ -82316,7 +82265,7 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceReview",
               "line": 145,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/{orderId}/finance-confirmation/review",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 47,
@@ -82325,7 +82274,7 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirm",
               "line": 160,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/{orderId}/finance-confirmation",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 45,
@@ -82334,7 +82283,7 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirmationBatch",
               "line": 186,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/finance-confirmation/batch",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 43,
@@ -82343,42 +82292,42 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceReject",
               "line": 222,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 49,
               "definitionExpression": "'/sales/orders/$orderId/finance-confirmation/reject'"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 144,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 159,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/confirm",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 185,
               "template": "/sales/manager-review/orders/batch",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "symbol": null,
@@ -82391,7 +82340,7 @@
         {
           "symbol": "canDispatchReviewCommand",
           "receiver": null,
-          "line": 155,
+          "line": 147,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "dispatch"
@@ -82401,7 +82350,7 @@
         {
           "symbol": "restoreReviewInputs",
           "receiver": null,
-          "line": 176,
+          "line": 168,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "restore"
@@ -82411,7 +82360,7 @@
         {
           "symbol": "closeRecoveredReview",
           "receiver": null,
-          "line": 250,
+          "line": 242,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "close"
@@ -82421,7 +82370,7 @@
         {
           "symbol": "_closeAfterDecision",
           "receiver": null,
-          "line": 250,
+          "line": 242,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "close"
@@ -82431,7 +82380,7 @@
         {
           "symbol": "_reverseManager",
           "receiver": null,
-          "line": 278,
+          "line": 266,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "reverse"
@@ -82441,7 +82390,7 @@
         {
           "symbol": "submitReviewCommand",
           "receiver": null,
-          "line": 327,
+          "line": 315,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -82451,7 +82400,7 @@
         {
           "symbol": "reverseManager",
           "receiver": null,
-          "line": 331,
+          "line": 319,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "reverse"
@@ -82461,7 +82410,7 @@
         {
           "symbol": "finishReviewDraft",
           "receiver": null,
-          "line": 344,
+          "line": 332,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -82471,7 +82420,7 @@
         {
           "symbol": "startFormDraftIdentityGuard",
           "receiver": null,
-          "line": 374,
+          "line": 362,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -82481,7 +82430,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 375,
+          "line": 363,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -82491,7 +82440,7 @@
         {
           "symbol": "removeListener",
           "receiver": null,
-          "line": 381,
+          "line": 369,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -82501,7 +82450,7 @@
         {
           "symbol": "removeListener",
           "receiver": null,
-          "line": 416,
+          "line": 404,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -82511,7 +82460,7 @@
         {
           "symbol": "_confirm",
           "receiver": null,
-          "line": 501,
+          "line": 489,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "confirm"
@@ -82521,7 +82470,7 @@
         {
           "symbol": "submitReviewCommand",
           "receiver": null,
-          "line": 583,
+          "line": 571,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -82531,7 +82480,7 @@
         {
           "symbol": "confirm",
           "receiver": null,
-          "line": 591,
+          "line": 579,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -82541,7 +82490,7 @@
         {
           "symbol": "finishReviewDraft",
           "receiver": null,
-          "line": 612,
+          "line": 600,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -82551,7 +82500,7 @@
         {
           "symbol": "_closeAfterDecision",
           "receiver": null,
-          "line": 618,
+          "line": 606,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "close"
@@ -82561,7 +82510,7 @@
         {
           "symbol": "confirmFormDraftExit",
           "receiver": null,
-          "line": 637,
+          "line": 625,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -82571,7 +82520,7 @@
         {
           "symbol": "_closeAfterDecision",
           "receiver": null,
-          "line": 658,
+          "line": 646,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "close"
@@ -82581,7 +82530,7 @@
         {
           "symbol": "_reject",
           "receiver": null,
-          "line": 668,
+          "line": 656,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "reject"
@@ -82591,7 +82540,7 @@
         {
           "symbol": "submitReviewCommand",
           "receiver": null,
-          "line": 758,
+          "line": 746,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -82601,7 +82550,7 @@
         {
           "symbol": "reject",
           "receiver": null,
-          "line": 766,
+          "line": 754,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "reject"
@@ -82611,7 +82560,7 @@
         {
           "symbol": "finishReviewDraft",
           "receiver": null,
-          "line": 787,
+          "line": 775,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -82621,7 +82570,7 @@
         {
           "symbol": "_closeAfterDecision",
           "receiver": null,
-          "line": 791,
+          "line": 779,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "close"
@@ -82631,7 +82580,7 @@
         {
           "symbol": "removeListener",
           "receiver": null,
-          "line": 810,
+          "line": 798,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -82641,7 +82590,7 @@
         {
           "symbol": "_rejectRecordCard",
           "receiver": null,
-          "line": 947,
+          "line": 935,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "reject"
@@ -82651,7 +82600,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 1142,
+          "line": 1130,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -82661,7 +82610,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 1223,
+          "line": 1211,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -82671,7 +82620,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 1259,
+          "line": 1247,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -82681,7 +82630,7 @@
         {
           "symbol": "_rejectRecordCard",
           "receiver": null,
-          "line": 1527,
+          "line": 1515,
           "kind": "action-ui-factory",
           "actionNameHints": [
             "reject"
@@ -82691,7 +82640,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 1542,
+          "line": 1530,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -82701,7 +82650,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 1552,
+          "line": 1540,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -82710,7 +82659,7 @@
         },
         {
           "symbol": "_closeAfterDecision",
-          "line": 1024,
+          "line": 1012,
           "kind": "callback-reference",
           "callback": "onCompleted",
           "actionNameHints": [
@@ -82719,7 +82668,7 @@
         },
         {
           "symbol": "_canReject",
-          "line": 1060,
+          "line": 1048,
           "kind": "callback-reference",
           "callback": "onPressed",
           "actionNameHints": [
@@ -82728,7 +82677,7 @@
         },
         {
           "symbol": "_canConfirm",
-          "line": 1071,
+          "line": 1059,
           "kind": "callback-reference",
           "callback": "onPressed",
           "actionNameHints": [
@@ -82768,25 +82717,25 @@
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
           "endpointEvidence": [
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 144,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 159,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/confirm",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
@@ -82799,31 +82748,31 @@
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
           "endpointEvidence": [
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 144,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}",
               "controllerBase": "/api/sales/manager-review"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 159,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/confirm",
               "controllerBase": "/api/sales/manager-review"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 185,
               "template": "/sales/manager-review/orders/batch",
               "controllerBase": "/api/sales/manager-review"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/manager-review"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/manager-review"
@@ -82836,25 +82785,25 @@
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
           "endpointEvidence": [
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 144,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 159,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/confirm",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
@@ -82867,43 +82816,43 @@
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
           "endpointEvidence": [
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 87,
               "template": "/sales/orders/finance-confirmation/pending",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 114,
               "template": "/sales/orders/finance-confirmation/pending/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 129,
               "template": "/sales/orders/finance-confirmation/count",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 145,
               "template": "/sales/orders/{orderId}/finance-confirmation/review",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 160,
               "template": "/sales/orders/{orderId}/finance-confirmation",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 186,
               "template": "/sales/orders/finance-confirmation/batch",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 222,
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "controllerBase": "/api/sales/orders"
@@ -82916,43 +82865,43 @@
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
           "endpointEvidence": [
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 87,
               "template": "/sales/orders/finance-confirmation/pending",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 114,
               "template": "/sales/orders/finance-confirmation/pending/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 129,
               "template": "/sales/orders/finance-confirmation/count",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 145,
               "template": "/sales/orders/{orderId}/finance-confirmation/review",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 160,
               "template": "/sales/orders/{orderId}/finance-confirmation",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 186,
               "template": "/sales/orders/finance-confirmation/batch",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 222,
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "controllerBase": "/api/sales/orders"
@@ -84972,7 +84921,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -87238,7 +87187,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -89170,7 +89119,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -92563,7 +92512,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -94629,7 +94578,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -95660,7 +95609,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -108250,7 +108199,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -113006,7 +112955,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -126794,7 +126743,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -129575,7 +129524,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -130436,7 +130385,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -134297,7 +134246,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -135661,7 +135610,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -141638,7 +141587,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -145898,7 +145847,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -147758,7 +147707,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -149592,7 +149541,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -150472,7 +150421,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -152147,7 +152096,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -159149,7 +159098,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -160245,7 +160194,7 @@
       "id": "page:sales/pages/sales_manager_review_page.dart",
       "feature": "sales",
       "source": "lib/features/sales/pages/sales_manager_review_page.dart",
-      "sha256": "147138cc8190237c212b594123e078004675921b573e3744e3bca287149db77c",
+      "sha256": "1ccbd148d4e90e8723b8a032b633e43e38db74f1e728e8f543f3a4b5b8930a06",
       "lineCount": 649,
       "classes": [
         {
@@ -160548,15 +160497,15 @@
         },
         {
           "directive": "import",
-          "uri": "../../finance/repositories/sales_order_finance_confirmation_repository.dart",
-          "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+          "uri": "package:uten_imp/shared/sales_review/sales_order_review_repository.dart",
+          "source": "lib/shared/sales_review/sales_order_review_repository.dart",
           "line": 24,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "bc87a23d3b7cced4ee857fa7db59a463d63c6e0270d6fb88180ca4b02f4def6c"
+          "targetSha256": "ca51d7da0e263b45c1714f5f196879159c56a0435c8508a55fb41fa7cd097765"
         }
       ],
       "partUnits": [],
@@ -160564,14 +160513,14 @@
       "apiEndpointReferences": [],
       "directRepositoryEvidence": [
         {
-          "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-          "sha256": "bc87a23d3b7cced4ee857fa7db59a463d63c6e0270d6fb88180ca4b02f4def6c",
+          "source": "lib/shared/sales_review/sales_order_review_repository.dart",
+          "sha256": "ca51d7da0e263b45c1714f5f196879159c56a0435c8508a55fb41fa7cd097765",
           "lineCount": 245,
           "apiEndpointReferences": [
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirmationPending",
               "line": 87,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/finance-confirmation/pending",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 37,
@@ -160580,7 +160529,7 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirmationFacets",
               "line": 114,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/finance-confirmation/pending/facets",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 39,
@@ -160589,7 +160538,7 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirmationCount",
               "line": 129,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/finance-confirmation/count",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 41,
@@ -160598,7 +160547,7 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceReview",
               "line": 145,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/{orderId}/finance-confirmation/review",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 47,
@@ -160607,7 +160556,7 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirm",
               "line": 160,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/{orderId}/finance-confirmation",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 45,
@@ -160616,7 +160565,7 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirmationBatch",
               "line": 186,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/finance-confirmation/batch",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 43,
@@ -160625,42 +160574,42 @@
             {
               "symbol": "ApiEndpoints.salesOrderFinanceReject",
               "line": 222,
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "definitionSource": "lib/core/network/api_endpoints.dart",
               "definitionLine": 49,
               "definitionExpression": "'/sales/orders/$orderId/finance-confirmation/reject'"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 144,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 159,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/confirm",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 185,
               "template": "/sales/manager-review/orders/batch",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "symbol": null,
@@ -160852,25 +160801,25 @@
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
           "endpointEvidence": [
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 144,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 159,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/confirm",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
@@ -160883,31 +160832,31 @@
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
           "endpointEvidence": [
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 144,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}",
               "controllerBase": "/api/sales/manager-review"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 159,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/confirm",
               "controllerBase": "/api/sales/manager-review"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 185,
               "template": "/sales/manager-review/orders/batch",
               "controllerBase": "/api/sales/manager-review"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/manager-review"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/manager-review"
@@ -160920,25 +160869,25 @@
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
           "endpointEvidence": [
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 144,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 159,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/confirm",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
@@ -160951,43 +160900,43 @@
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
           "endpointEvidence": [
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 87,
               "template": "/sales/orders/finance-confirmation/pending",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 114,
               "template": "/sales/orders/finance-confirmation/pending/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 129,
               "template": "/sales/orders/finance-confirmation/count",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 145,
               "template": "/sales/orders/{orderId}/finance-confirmation/review",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 160,
               "template": "/sales/orders/{orderId}/finance-confirmation",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 186,
               "template": "/sales/orders/finance-confirmation/batch",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 222,
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "controllerBase": "/api/sales/orders"
@@ -161000,43 +160949,43 @@
           "matchBasis": "declared controller-prefix vs direct page/repository endpoint evidence",
           "endpointEvidence": [
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 87,
               "template": "/sales/orders/finance-confirmation/pending",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 114,
               "template": "/sales/orders/finance-confirmation/pending/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 129,
               "template": "/sales/orders/finance-confirmation/count",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 145,
               "template": "/sales/orders/{orderId}/finance-confirmation/review",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 160,
               "template": "/sales/orders/{orderId}/finance-confirmation",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 186,
               "template": "/sales/orders/finance-confirmation/batch",
               "controllerBase": "/api/sales/orders"
             },
             {
-              "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
+              "source": "lib/shared/sales_review/sales_order_review_repository.dart",
               "line": 222,
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "controllerBase": "/api/sales/orders"
@@ -161565,7 +161514,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -162563,7 +162512,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -167049,7 +166998,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -169574,7 +169523,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -171307,7 +171256,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -179589,7 +179538,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -180241,7 +180190,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -181140,7 +181089,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -182686,7 +182635,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -183790,7 +183739,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -185077,7 +185026,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -206894,7 +206843,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -211159,7 +211108,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -218201,7 +218150,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -218865,7 +218814,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44"
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         },
         {
           "directive": "import",
@@ -234667,13 +234616,13 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/documents/DocumentDraftCountController.java",
-      "sha256": "0b19fbf5fcff584214ff5ef61d3c9ea52d1a43fdab80056da2670f05614edcca",
-      "lineCount": 57,
+      "sha256": "c76e2123a34e8a64c16c416961e923914670a0a6e294d4389d7c458fc23ebe00",
+      "lineCount": 65,
       "class": "DocumentDraftCountController",
       "declaredBasePaths": [
         "/api/documents"
       ],
-      "methodMappingAnnotationCount": 3,
+      "methodMappingAnnotationCount": 4,
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
@@ -234703,6 +234652,16 @@
           ],
           "fullPathCandidates": [
             "/api/documents/finance-rejected/count"
+          ]
+        },
+        {
+          "httpMethod": "GET",
+          "line": 59,
+          "declaredPathLiterals": [
+            "/manager-rejected/count"
+          ],
+          "fullPathCandidates": [
+            "/api/documents/manager-rejected/count"
           ]
         }
       ],
@@ -251843,8 +251802,8 @@
     },
     {
       "source": "lib/features/basic_data/models/master_facet.dart",
-      "sha256": "ca4bd6d7768d5d3ec3e490e56f5c35b422294a32b71dc106bbbf301382f8de44",
-      "lineCount": 142
+      "sha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018",
+      "lineCount": 130
     },
     {
       "source": "lib/features/basic_data/models/mould_node.dart",
@@ -252788,13 +252747,13 @@
     },
     {
       "source": "lib/features/expense/pages/expense_approval_detail_page.dart",
-      "sha256": "1117b8d6699828369314825734a0f4f06d3417f3ac590172e12e6f1112bc9f5f",
-      "lineCount": 765
+      "sha256": "d6b3d3098a8b716b7ce5a83af206c4ffc7bb38c1f1faeb598b005757c7e41439",
+      "lineCount": 828
     },
     {
       "source": "lib/features/expense/pages/expense_approval_list_page.dart",
-      "sha256": "276d70f2f343487663a9f5648a7caa703121f9f660ccba3044099648ba5fbf7d",
-      "lineCount": 601
+      "sha256": "c512b72663bd94de7fc738308fb7bfba03023ecd7f46f02f44fc8318d89b5cef",
+      "lineCount": 673
     },
     {
       "source": "lib/features/expense/pages/expense_claim_edit_page.dart",
@@ -252822,14 +252781,19 @@
       "lineCount": 260
     },
     {
+      "source": "lib/features/expense/providers/expense_action_eligibility.dart",
+      "sha256": "ca193e6e34bc0d2db57d2acc883e12bb897f42e1f32928b14628a0f10ebcb703",
+      "lineCount": 63
+    },
+    {
       "source": "lib/features/expense/providers/expense_counts_provider.dart",
       "sha256": "277425d87c98d180035318891e3cf365afa42529c20c85069be4cb1304cfbac8",
       "lineCount": 54
     },
     {
       "source": "lib/features/expense/providers/expense_providers.dart",
-      "sha256": "1ef652f28ac3d046d7b6396034a2c9714fc96b7f5541d448380f2010dd4abce2",
-      "lineCount": 861
+      "sha256": "ce13fa68dd4ce1c8a5a443ad183184eb10fa4ada6294833af9e2d6cafa607355",
+      "lineCount": 877
     },
     {
       "source": "lib/features/expense/providers/expense_settings_provider.dart",
@@ -252937,11 +252901,6 @@
       "lineCount": 189
     },
     {
-      "source": "lib/features/finance/models/sales_order_finance_confirmation.dart",
-      "sha256": "a057094efdf6c2163e645068f3bf1dc68ecd58829ab690ba28426340d98d76dc",
-      "lineCount": 687
-    },
-    {
       "source": "lib/features/finance/models/sales_quote_finance_review.dart",
       "sha256": "3ae6d47c8afde2e3dc793e23076fe0a6f4d575febbaeee7f2d0cdabf638a8c71",
       "lineCount": 581
@@ -253013,8 +252972,8 @@
     },
     {
       "source": "lib/features/finance/pages/finance_quote_review_page.dart",
-      "sha256": "7ed2ce8367461fb45d3a5052c32a7ebe196492f1866435fec6e7737e811d3afe",
-      "lineCount": 2004
+      "sha256": "6082ab27e9db3d0b8a774dce77b9613883514318516d9b5a270d1335cea21a4e",
+      "lineCount": 1992
     },
     {
       "source": "lib/features/finance/pages/finance_reconciliation_page.dart",
@@ -253028,13 +252987,13 @@
     },
     {
       "source": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
-      "sha256": "f4b58a801d21c7151e03112196d380be0adcd64b8c4b97966f968a5dd2d517c5",
+      "sha256": "e0130d4e31574ff1f08456ce1ac150d7e817175fc2193ed26af466b9f9b5315a",
       "lineCount": 1408
     },
     {
       "source": "lib/features/finance/pages/finance_sales_order_review_page.dart",
-      "sha256": "2cd784814d9ffb8092c444041722e15eb03ed24c4eb53abd18ed6f76d983c421",
-      "lineCount": 1578
+      "sha256": "6ee746c16c2677c79ae5f69d1853edf18b00205678b9c5e0fb863011cc4b104a",
+      "lineCount": 1566
     },
     {
       "source": "lib/features/finance/pages/finance_sales_shipment_audit_page.dart",
@@ -253093,7 +253052,7 @@
     },
     {
       "source": "lib/features/finance/providers/sales_order_finance_confirmation_count_provider.dart",
-      "sha256": "111540b65f12b8676637cc22f341f2eaf41a5ac9360d2cef087f41cf33fcdaee",
+      "sha256": "da89a434fbce756e91dc5c62636e1b69ed6d6deed8b3a1cc031589243ad7dc8b",
       "lineCount": 21
     },
     {
@@ -253115,11 +253074,6 @@
       "source": "lib/features/finance/repositories/finance_repository.dart",
       "sha256": "80c258f51dad33dea78557ce95e0f413f434539ba9b2becd108bf3d4b1fcd5b3",
       "lineCount": 472
-    },
-    {
-      "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-      "sha256": "bc87a23d3b7cced4ee857fa7db59a463d63c6e0270d6fb88180ca4b02f4def6c",
-      "lineCount": 245
     },
     {
       "source": "lib/features/finance/repositories/sales_quote_finance_review_repository.dart",
@@ -253238,7 +253192,7 @@
     },
     {
       "source": "lib/features/finance/widgets/sales_order_revision_table.dart",
-      "sha256": "d44efc9001cf160d2c7c51fe3502b9cc674d34a5779a71170948a07d0ca38fd9",
+      "sha256": "821ab26bbe13120967474e735673a1fe580d5ac666ea961f573b6a0b3f8c6d0b",
       "lineCount": 191
     },
     {
@@ -254548,7 +254502,7 @@
     },
     {
       "source": "lib/features/sales/pages/sales_manager_review_page.dart",
-      "sha256": "147138cc8190237c212b594123e078004675921b573e3744e3bca287149db77c",
+      "sha256": "1ccbd148d4e90e8723b8a032b633e43e38db74f1e728e8f543f3a4b5b8930a06",
       "lineCount": 649
     },
     {
@@ -256517,6 +256471,21 @@
       "lineCount": 102
     },
     {
+      "source": "lib/shared/sales_review/sales_order_review.dart",
+      "sha256": "8718fd46178a4768efa773f653176e427841aa2aa378e41a2220ed129543aab2",
+      "lineCount": 687
+    },
+    {
+      "source": "lib/shared/sales_review/sales_order_review_repository.dart",
+      "sha256": "ca51d7da0e263b45c1714f5f196879159c56a0435c8508a55fb41fa7cd097765",
+      "lineCount": 245
+    },
+    {
+      "source": "lib/shared/sales_review/sales_review_permissions.dart",
+      "sha256": "de9a6dd846e83bda04a4aaaa6b3d99710be69667ae4e8feb25f585039886c1f1",
+      "lineCount": 48
+    },
+    {
       "source": "lib/shared/search/calendar_column_query.dart",
       "sha256": "0735f1d3b5f460829e8bac0ac90fe8f3a6ec68770bfed0bfd7364ff990384685",
       "lineCount": 58
@@ -256988,8 +256957,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/documents/DocumentDraftCountController.java",
-      "sha256": "0b19fbf5fcff584214ff5ef61d3c9ea52d1a43fdab80056da2670f05614edcca",
-      "lineCount": 57
+      "sha256": "c76e2123a34e8a64c16c416961e923914670a0a6e294d4389d7c458fc23ebe00",
+      "lineCount": 65
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/documents/DocumentUnapprovalController.java",

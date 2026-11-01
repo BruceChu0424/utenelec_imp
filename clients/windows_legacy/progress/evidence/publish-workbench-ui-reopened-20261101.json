@@ -1,0 +1,111 @@
+{
+  "evidenceId": "E-W7-BIZ-215-UI-REOPEN-20261101",
+  "recordedAtUtc": "2026-11-01T06:35:53.475958+00:00",
+  "branch": "main",
+  "sourceHead": "e138c428d15b1b81985c07e6ec93e381e7ef1021",
+  "workItems": [
+    "W7-BIZ-215"
+  ],
+  "environment": "Developer Windows .NET Framework WPF STA; not Win7 target acceptance",
+  "source": {
+    "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleasePublishView.cs",
+    "gitContentSha256": "d66815a19367c8633da87415b334ba585dbecbb8ccbafce0e32d7c23288299ed",
+    "gitBlob": "e0b137e710b36bfe1fe88473859e330affcd6fa8",
+    "worktreeCrlfSha256": "4cdd5c02da8dfa579947ca579086048532e6d6ca3ee3f6e604c22d72e87710af",
+    "identicalTo9477": true
+  },
+  "statusChange": {
+    "from": "verified_local",
+    "to": "in_progress",
+    "reason": "Current main WPF view cannot construct/arrange"
+  },
+  "reproductionBoundary": "The three real View stacks were collected while progressively removing preceding blockers in the isolated next worktree; they are not three successful executions of an unchanged main View. The independent STA script reproduces the two original logical-parent relationships without next wrappers or network. The original WrapCard binding and the real Arrange exception establish the separate radius-type defect.",
+  "findings": [
+    {
+      "originalLine": 145,
+      "cause": "TargetEditor.Root already owns the fields, then fields.Children.Add re-parents them without detaching.",
+      "exception": "InvalidOperationException: Specified element is already the logical child of another element. Disconnect it first."
+    },
+    {
+      "originalLines": [
+        105,
+        114
+      ],
+      "cause": "page is added first to content and again to host without detaching.",
+      "exception": "InvalidOperationException: Specified element is already the logical child of another element. Disconnect it first."
+    },
+    {
+      "originalLine": 235,
+      "cause": "WrapCard binds Double Uten.Radius.CardValue to Border.CornerRadiusProperty.",
+      "exception": "InvalidOperationException: 16 is not a valid value for CornerRadius."
+    }
+  ],
+  "independentStaProof": {
+    "Baseline": "9477b9c7a50677f524048736d844ccbeafccacae",
+    "OriginalMainAndBaselineViewSha256": "d66815a19367c8633da87415b334ba585dbecbb8ccbafce0e32d7c23288299ed",
+    "Engine": "Windows .NET Framework WPF; STA; original parent relationships only",
+    "ProductionRequestsExecuted": false,
+    "Cases": [
+      {
+        "Source": "9477/main ClientReleasePublishView.cs:145; TargetEditor.cs:54-60",
+        "Exception": "System.InvalidOperationException",
+        "Message": "Specified element is already the logical child of another element. Disconnect it first."
+      },
+      {
+        "Source": "9477/main ClientReleasePublishView.cs:105,114",
+        "Exception": "System.InvalidOperationException",
+        "Message": "Specified element is already the logical child of another element. Disconnect it first."
+      }
+    ]
+  },
+  "rawProofs": [
+    {
+      "source": "D:\\Projects\\uten_imp_worktrees\\client-publish-workbench-next-20261101\\build\\client-publish-next\\original-main-line-comparison.json",
+      "copiedTo": "output/wpf215-reopen/original-main-line-comparison.json",
+      "sha256": "b5e310423df7f60f75bc39ee8c579c74c5696588659c2d6097e6a8a58aa2c778"
+    },
+    {
+      "source": "D:\\Projects\\uten_imp_worktrees\\client-publish-workbench-next-20261101\\build\\client-publish-next\\original-parent-proof.ps1",
+      "copiedTo": "output/wpf215-reopen/original-parent-proof.ps1",
+      "sha256": "8dc7c6b9d6b6b3a7fd413a147ef80ca659c3bfeddfe56ccfaa1bf3b120ab4a69"
+    },
+    {
+      "source": "D:\\Projects\\uten_imp_worktrees\\client-publish-workbench-next-20261101\\build\\client-publish-next\\original-parent-proof.json",
+      "copiedTo": "output/wpf215-reopen/original-parent-proof.json",
+      "sha256": "d50964bd575ca81632a527b80ea15acc2c7f8cd2efb8910801a3f1bcc0dfc07d"
+    },
+    {
+      "source": "D:\\Projects\\uten_imp_worktrees\\client-publish-workbench-next-20261101\\build\\windows-wpf\\verification\\3dbe483b-5d19-4b81-9990-bfbf1905fbb8\\x86-tests.log",
+      "copiedTo": "output/wpf215-reopen/view-context-parent.log",
+      "sha256": "571642904287e8fbaf462fdf1ff6d323c50b1cf2603cc03ac85a001e02ceaf2d"
+    },
+    {
+      "source": "D:\\Projects\\uten_imp_worktrees\\client-publish-workbench-next-20261101\\build\\windows-wpf\\verification\\fc4b84a9-3694-4eae-b1e6-458441143153\\x86-tests.log",
+      "copiedTo": "output/wpf215-reopen/view-page-parent.log",
+      "sha256": "c5febfa11aad3311ce20049cf6136de4c710caa73cbb317f04294d1599db8594"
+    },
+    {
+      "source": "D:\\Projects\\uten_imp_worktrees\\client-publish-workbench-next-20261101\\build\\windows-wpf\\verification\\3d1e2e52-038b-489d-bf73-9d972f98bb6e\\x86-tests.log",
+      "copiedTo": "output/wpf215-reopen/view-corner-radius.log",
+      "sha256": "df0808558ed53de3c2c1c0f46f5b9d3b19c2001a6933addbedcc204b51d6700e"
+    }
+  ],
+  "historicalEvidencePreserved": [
+    "clients/windows_legacy/progress/evidence/software-download-publish-20261028.json",
+    "clients/windows_legacy/progress/evidence/publish-workbench-20261030.json"
+  ],
+  "historicalScope": "Original 75 protocol assertions and prior runner facts are retained; they did not exercise real View construction/Arrange and cannot establish current UI usability.",
+  "nextFix": {
+    "branch": "uimp/client-publish-workbench-next-20261101",
+    "committedHeadAtProof": "9477b9c7a50677f524048736d844ccbeafccacae",
+    "state": "Uncommitted isolated fix, not merged into main; no next source imported by this status correction"
+  },
+  "notCovered": [
+    "Current main UI usability (failed)",
+    "Win7 SP1 x86/x64 UAT",
+    "Real server prepare/upload/publish/withdraw",
+    "Formal Setup/ZIP delivery"
+  ],
+  "productionRequestsExecuted": false,
+  "countCorrection": "done 11 is final DoD count, not local verification count. Only verified_local 21->20 and in_progress 29->30; other 352 statuses unchanged."
+}

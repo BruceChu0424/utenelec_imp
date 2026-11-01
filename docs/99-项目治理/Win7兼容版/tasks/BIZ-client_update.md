@@ -4,7 +4,7 @@
 
 ## W7-BIZ-215
 
-- [ ] **客户端下载与更新 / client release publish** — 本机验证/待本项最终验收
+- [ ] **客户端下载与更新 / client release publish** — 进行中
 
 影响：`frontend+shared-contract`；负责人：Codex；依赖：W7-GOV-005, W7-GOV-006, W7-CORE-011, W7-CORE-012, W7-CORE-013, W7-CORE-014, W7-UI-001。
 
@@ -22,9 +22,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/software-download-publish-20261028.json`；`clients/windows_legacy/progress/evidence/publish-workbench-20261030.json`。
+证据：`clients/windows_legacy/progress/evidence/software-download-publish-20261028.json`；`clients/windows_legacy/progress/evidence/publish-workbench-20261030.json`；`clients/windows_legacy/progress/evidence/publish-workbench-ui-reopened-20261101.json`。
 
-接续/限制：原生发布工作台已完整迁移（非只读壳）：Core 队列状态机/流式上传 sink/wire PUT 放行/DPAPI 草稿 CAS/step-up 协调器+Desktop 页面/目标编辑器/草稿租约/step-up 密码弹窗/下载页入口。三条铁律与失败三分支 75+9 断言钉住；x86/x64 Debug runner 全绿且既有计数保持。未验：真实服务器发布链、Win7 真机 UAT、正式双包（见证据 notCovered）。。
+接续/限制：原生发布工作台已完整迁移（非只读壳）：Core 队列状态机/流式上传 sink/wire PUT 放行/DPAPI 草稿 CAS/step-up 协调器+Desktop 页面/目标编辑器/草稿租约/step-up 密码弹窗/下载页入口。三条铁律与失败三分支 75+9 断言钉住；x86/x64 Debug runner 全绿且既有计数保持。未验：真实服务器发布链、Win7 真机 UAT、正式双包（见证据 notCovered）。；2026-11-01 复核失效并重开：当前main与9477的View Git内容SHA256均为d66815a19367c8633da87415b334ba585dbecbb8ccbafce0e32d7c23288299ed。真实View构造/Arrange三栈及无next包装的STA最小证明确认：原145编辑器字段重复托管、105/114页面重复托管、235把Double CardValue绑定CornerRadius，当前UI不可用。旧75协议断言和原证据保留，但未覆盖真实View构造/布局，不能继续标本机验证。next分支修复尚未合入main；Win7真机、真实server发布链及正式双包仍未验。本次仅回退状态，未导入next代码。。
 
 ## W7-BIZ-039
 

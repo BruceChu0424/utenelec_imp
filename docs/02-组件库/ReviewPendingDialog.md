@@ -1,5 +1,15 @@
 # ReviewPendingDialog —— 可操作待办居中弹窗
 
+## 2026-10-31：销售负责人审核接入（源码已完成，未部署）
+
+新增 `SALES_QUOTE_PENDING_MANAGER_REVIEW` 与 `SALES_ORDER_PENDING_MANAGER_REVIEW`。复用本组件的居中弹窗、通知中心、在线到达、认领心跳、稍后再看、个人偏好与办结移除，不另建一套审批弹窗。
+
+`workbenchRouteFor` 将单种任务分别送到 `/sales/manager-review?kind=quote`、`?kind=order`；混合时按共同 path 合并至 `/sales/manager-review`。页面已读按负责人事件登记，不能误清财务事件；已读和审批完成仍分开。
+
+通知接收池为实际拥有对应查看与批准或驳回权限的在职启用账号。新授权者在登录或在线到达检查中有界补齐未办待审提醒（每类每轮最多20张），原单锁与已存在提醒判断防止重复投递。仅查看或反审核不生成待审弹窗；权限撤销、办结、撤回、中止/取消后不再弹出旧待办。
+
+后台入口为 `SalesManagerReviewNoticeService`、`SalesManagerReviewCatchUpPort` 和通用 `NoticeService`；阶段可见性由现有数据库通知函数同步判断。权限及完整业务链见[负责人审核页](../03-页面/销售负责人订单审核页.md)。源码与组件回归不代表公司环境已启用。
+
 > 位置：`lib/features/notice/widgets/review_pending_dialog.dart` · 新增于 2026-09-02
 > （V459 / [ADR-063](../99-决策记录-ADR/ADR-063-部门定向审核待办弹窗与通知办结撤回.md) 第二轮）
 > 文档同步：本文件 + [UtenNotify.md](UtenNotify.md) §七 + [工作台首页](../03-页面/工作台首页.md)。

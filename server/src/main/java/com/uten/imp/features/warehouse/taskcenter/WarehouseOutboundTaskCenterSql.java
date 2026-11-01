@@ -28,11 +28,16 @@ final class WarehouseOutboundTaskCenterSql {
 
     record Access(boolean sales, boolean subcontractTasks, boolean subcontractHistory,
                   boolean stock, boolean production, OwnerScope stockOwners,
-                  WarehouseWorkshopMaterialTaskProjection.Scope workshop) {
+                  WarehouseWorkshopMaterialTaskProjection.Scope workshop, boolean productionParticipant) {
         Access(boolean sales, boolean subcontractTasks, boolean subcontractHistory,
                boolean stock, boolean production, OwnerScope stockOwners) {
             this(sales, subcontractTasks, subcontractHistory, stock, production, stockOwners,
-                    WarehouseWorkshopMaterialTaskProjection.Scope.NONE);
+                    WarehouseWorkshopMaterialTaskProjection.Scope.NONE, production);
+        }
+        Access(boolean sales, boolean subcontractTasks, boolean subcontractHistory,
+               boolean stock, boolean production, OwnerScope stockOwners,
+               WarehouseWorkshopMaterialTaskProjection.Scope workshop) {
+            this(sales, subcontractTasks, subcontractHistory, stock, production, stockOwners, workshop, production);
         }
     }
 

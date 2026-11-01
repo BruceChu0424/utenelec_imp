@@ -133,6 +133,7 @@ class WorkbenchBadgeSummaryPostgresTest {
         // ADR-134 报价核价: 新入口, 原端点即本次新增的计数端点。
         ORIGINAL_ENDPOINTS.put("salesQuote", "/api/sales/quotes/counts");
         ORIGINAL_ENDPOINTS.put("salesQuoteFinance", "/api/sales/quotes/finance-review/count");
+        ORIGINAL_ENDPOINTS.put("salesManagerReview", "/api/sales/manager-review/count");
         ORIGINAL_ENDPOINTS.put("procurementApproval", "/api/finance/procurement-approvals/count");
         ORIGINAL_ENDPOINTS.put("iqcRejection", "/api/procurement/iqc-rejections/counts");
         ORIGINAL_ENDPOINTS.put("warehouseInboundExpectation", "/api/warehouse/inbound/expectations/count");
@@ -163,6 +164,7 @@ class WorkbenchBadgeSummaryPostgresTest {
         ORIGINAL_ENDPOINTS.put("drafts", "/api/documents/drafts/count");
         ORIGINAL_ENDPOINTS.put("financeExpenseConfirmation", "/api/finance/expenses/gl-confirmation-count");
         ORIGINAL_ENDPOINTS.put("financeRejected", "/api/documents/finance-rejected/count");
+        ORIGINAL_ENDPOINTS.put("managerRejected", "/api/documents/manager-rejected/count");
         ORIGINAL_ENDPOINTS.put("subcontractShortDelivery", "/api/subcontract/short-deliveries/count");
         // ADR-131 车间内料仓: 新入口, 没有迁移前的旧口径, 原端点即本次新增的计数端点。
         ORIGINAL_ENDPOINTS.put("workshopMaterial", "/api/workshop-material/badge-counts");
@@ -242,6 +244,8 @@ class WorkbenchBadgeSummaryPostgresTest {
                 "salesStage.SHIPMENT_PENDING", "salesStage.WAREHOUSE_PENDING"));
         legacy("salesShipmentFinanceRejected", List.of("financeRejected.salesShipment"), List.of());
         legacy("salesQuoteFinanceRejected", List.of("financeRejected.salesQuote"), List.of());
+        legacy("salesQuoteManagerRejected", List.of("managerRejected.salesQuote"), List.of());
+        legacy("salesManagerReview", List.of("salesManagerReview.count"), List.of());
         legacy("salesQuoteAwaitingConversion", List.of("salesQuote.awaitingConversion"), List.of());
         // V788 报价议价：客户确认待办（红=待客户确认的报价）。
         legacy("salesQuoteAwaitingCustomerConfirmation", List.of("salesQuote.awaitingCustomerConfirmation"), List.of());

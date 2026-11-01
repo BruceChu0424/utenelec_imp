@@ -163,18 +163,44 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
 
     @Test
     void confirmedOrderQtyChangeRequeuesFinanceAndKeepsAnOldToNewLedger() {
-        loginAsSuperAdmin("qtyreconfirm");
+        UUID actor=loginAsSuperAdmin("qtyreconfirm");
         UUID clientId = client();
         UUID goodsId = goods();
-        jdbc.update("UPDATE goods SET price=10 WHERE id=?",goodsId);
-        var created=service.create(orderRequest(clientId,goodsId));
-        UUID orderId=created.getId();
-        UUID itemId=created.getItems().getFirst().getId();
-        service.approve(orderId);
-        long initialFinanceRevision=approveManager(orderId,0L);
-        var initialClaim=claims.claim("SALES_ORDER_FINANCE_CONFIRM",orderId.toString());
-        financeService.confirm(orderId,new SalesOrderFinanceConfirmService.FinanceConfirmRequest(
-                null,initialFinanceRevision,initialClaim.claimId()));
+        // Exact retained projection input from before V978: already finance-confirmed,
+        // chain_status=0 and no fabricated manager decision. Current amendments below
+        // must pass real manager claim/approval before any finance re-confirmation.
+        UUID orderId = UUID.randomUUID();
+        UUID itemId = UUID.randomUUID();
+        OffsetDateTimeLike confirmedAt = OffsetDateTimeLike.hoursAgo(1);
+
+        jdbc.update("""
+                INSERT INTO sales_orders(
+                    id, bill_no, bill_date, client_id, status,
+                    owner_employee_id, maker_id,
+                    finance_confirmed, finance_confirmed_at, finance_confirmed_by,
+                    created_at, updated_at)
+                VALUES (?, ?, DATE '2026-09-05', ?, 1,
+                        (SELECT employee_id FROM users WHERE id = ?),
+                        (SELECT employee_id FROM users WHERE id = ?),
+                        TRUE, ?, ?,
+                        now(), now())
+                """, orderId, historicalBillNo(), clientId, actor, actor,
+                confirmedAt.value, actorEmployeeOf(actor));
+        jdbc.update("""
+                INSERT INTO sales_order_items(
+                    id, bill_no, bill_date, order_id, goods_id,
+                    goods_code_snapshot, goods_name_snapshot,
+                    goods_snapshot_source, goods_snapshot_locked_at,
+                    qty, chain_status)
+                VALUES (?, ?, DATE '2026-09-05', ?, ?,
+                        'QTY-RC-001', '改量复核测试货品',
+                        'MASTER_AT_APPROVAL', now(),
+                        10, 0)
+                """, itemId, historicalBillNo(), orderId, goodsId);
+
+        long initialFinanceRevision=0L;
+        assertThat(jdbc.queryForObject("SELECT manager_review_state FROM sales_orders WHERE id=?",String.class,orderId))
+                .isEqualTo("NOT_REQUIRED");
 
         // 改量：10 → 6。
         OrderChangeQtyRequest request = new OrderChangeQtyRequest();
@@ -263,6 +289,21 @@ class SalesOrderQtyChangeReconfirmPostgresTest {
     }
 
     // ---- 夹具 -------------------------------------------------------------
+
+    private static final java.util.concurrent.atomic.AtomicInteger HISTORICAL_BILL_SEQUENCE=
+            new java.util.concurrent.atomic.AtomicInteger();
+    private static String historicalBillNo() {
+        return "XD20260905%06d".formatted(HISTORICAL_BILL_SEQUENCE.incrementAndGet());
+    }
+    private UUID actorEmployeeOf(UUID userId) {
+        return jdbc.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,userId);
+    }
+    private record OffsetDateTimeLike(java.sql.Timestamp value) {
+        static OffsetDateTimeLike hoursAgo(long hours) {
+            return new OffsetDateTimeLike(java.sql.Timestamp.from(java.time.Instant.now()
+                    .minus(java.time.Duration.ofHours(hours))));
+        }
+    }
 
     private long approveManager(UUID orderId,long reviewedRevision) {
         return com.uten.imp.support.SalesManagerReviewFixtures.approveOrderForFinance(

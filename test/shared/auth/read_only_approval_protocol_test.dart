@@ -22,7 +22,7 @@ void main() {
       'lib/features/purchase/repositories/purchase_repository.dart',
       'lib/features/subcontract/repositories/subcontract_repository.dart',
       'lib/features/finance/repositories/finance_repository.dart',
-      'lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart',
+      'lib/shared/sales_review/sales_order_review_repository.dart',
       'lib/features/warehouse/repositories/stock_doc_repository.dart',
     ]) {
       final source = File(path).readAsStringSync();

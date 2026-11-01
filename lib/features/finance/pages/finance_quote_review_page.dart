@@ -1,3 +1,4 @@
+import '../../../shared/sales_review/sales_review_permissions.dart';
 import 'package:uten_imp/components/inputs/uten_editor_tooltip.dart';
 import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../shared/business_columns/business_columns_table.dart';
@@ -370,6 +371,9 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
     });
   }
 
+  SalesReviewPermissions get _reviewPermissions =>
+      SalesReviewPermissions.forQuote(managerReview: widget.managerReview);
+
   bool get _claimReady => _claim?.isReady == true;
 
   bool _allows(SalesQuoteFinanceAction action) =>
@@ -381,24 +385,12 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
   ) {
     final permissions = ref.read(currentPermissionsProvider);
     final actionPermission = switch (action) {
-      SalesQuoteFinanceAction.edit || SalesQuoteFinanceAction.confirm =>
-        (widget.managerReview
-            ? Perm.salesQuoteManagerConfirm
-            : Perm.salesQuoteFinanceConfirm),
-      SalesQuoteFinanceAction.returnToSales =>
-        (widget.managerReview
-            ? Perm.salesQuoteManagerReject
-            : Perm.salesQuoteFinanceReject),
-      SalesQuoteFinanceAction.reopen =>
-        (widget.managerReview
-            ? Perm.salesQuoteManagerReverse
-            : Perm.salesQuoteFinanceReverse),
+      SalesQuoteFinanceAction.edit ||
+      SalesQuoteFinanceAction.confirm => _reviewPermissions.confirm,
+      SalesQuoteFinanceAction.returnToSales => _reviewPermissions.reject,
+      SalesQuoteFinanceAction.reopen => _reviewPermissions.reverse,
     };
-    return permissions.contains(
-          (widget.managerReview
-              ? Perm.salesQuoteManagerView
-              : Perm.salesQuoteFinanceView),
-        ) &&
+    return permissions.contains(_reviewPermissions.view) &&
         permissions.contains(actionPermission) &&
         !ref.read(sessionProvider).impersonationReadOnly &&
         review.allows(action);
@@ -437,11 +429,7 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
     });
     if (!ref
         .read(currentPermissionsProvider)
-        .contains(
-          (widget.managerReview
-              ? Perm.salesQuoteManagerView
-              : Perm.salesQuoteFinanceView),
-        )) {
+        .contains(_reviewPermissions.view)) {
       setState(() {
         _loading = false;
         _error = '没有查看报价核价权限';

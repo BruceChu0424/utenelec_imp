@@ -9,7 +9,7 @@ import '../../../shared/widgets/sales_document_layout.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../models/sales_order_finance_confirmation.dart';
+import 'package:uten_imp/shared/sales_review/sales_order_review.dart';
 
 List<UtenRevisionRow<SalesOrderRevisionLine>> salesOrderRevisionRows(
   SalesOrderRevisionDiff diff,

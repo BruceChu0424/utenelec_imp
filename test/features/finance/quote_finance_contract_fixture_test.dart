@@ -11,7 +11,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:uten_imp/features/finance/models/sales_order_finance_confirmation.dart';
+import 'package:uten_imp/shared/sales_review/sales_order_review.dart';
 import 'package:uten_imp/features/finance/models/sales_quote_finance_review.dart';
 import 'package:uten_imp/features/finance/repositories/sales_quote_finance_review_repository.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
@@ -196,6 +196,31 @@ Set<String> _dartJsonKeys(String source, String from, String to) {
 const _modelPath =
     'lib/features/finance/models/sales_quote_finance_review.dart';
 
+// Exact wire names from SalesManagerReviewProjection; the record remains the
+// finance wire contract. Both stages feed the same precision-preserving model.
+const _managerQuoteHeaderNames = {
+  'status': 'reviewStatus',
+  'statusBucket': 'reviewStatusBucket',
+  'financeActions': 'reviewActions',
+  'financeRemark': 'reviewRemark',
+  'financeReturnReason': 'reviewRejectReason',
+  'financeReturnedAt': 'reviewRejectedAt',
+  'financeReturnedByName': 'reviewRejectedByName',
+  'financeConfirmedAt': 'reviewApprovedAt',
+  'financeConfirmedByName': 'reviewApprovedByName',
+};
+const _managerQuoteLineNames = {
+  'financePriceByName': 'reviewPriceByName',
+  'financePriceAt': 'reviewPriceAt',
+};
+
+Map<String, dynamic> _renamed(
+  Map<String, dynamic> value,
+  Map<String, String> names,
+) => {
+  for (final entry in value.entries) names[entry.key] ?? entry.key: entry.value,
+};
+
 void main() {
   group('fixtures copied from the server records', () {
     test('queue row', () {
@@ -261,6 +286,62 @@ void main() {
       expect(line.listPrice, '120.0000');
       expect(line.canRefreshFromMaster, isFalse);
     });
+
+    test(
+      'neutral manager projection preserves stage, author, claim and exact amounts',
+      () {
+        const pricedAt = '2026-10-31T10:00:00+08:00';
+        final line = _renamed({
+          ..._lineJson,
+          'priceSource': 'MANAGER',
+          'financePriceByName': '朱负责人',
+          'financePriceAt': pricedAt,
+        }, _managerQuoteLineNames);
+        expect(line.containsKey('financePriceByName'), isFalse);
+        expect(line.containsKey('financePriceAt'), isFalse);
+        final review = SalesQuoteFinanceReview.fromJson({
+          ..._renamed(_reviewJson, _managerQuoteHeaderNames),
+          'reviewStage': 'SALES_MANAGER',
+          'reviewContractVersion': 1,
+          'reviewStatusBucket': 'PENDING',
+          'reviewRemark': '负责人核对',
+          'reviewApprovedByName': '朱负责人',
+          'claimType': 'SALES_QUOTE_MANAGER_REVIEW',
+          'lines': [line],
+        });
+        expect(review.statusBucket, 'PENDING_FINANCE');
+        expect(review.financeRemark, '负责人核对');
+        expect(review.financeConfirmedByName, '朱负责人');
+        expect(review.claimType, 'SALES_QUOTE_MANAGER_REVIEW');
+        expect(review.needsClaim, isTrue);
+        expect(review.allows(SalesQuoteFinanceAction.confirm), isTrue);
+        expect(review.lines.single.priceSource, 'MANAGER');
+        expect(review.lines.single.isReviewerPriced, isTrue);
+        expect(review.lines.single.isFinancePriced, isFalse);
+        expect(review.lines.single.financePriceByName, '朱负责人');
+        expect(review.lines.single.financePriceAt, pricedAt);
+        expect(review.lines.single.dealPrice, '95.00000000');
+        expect(review.lines.single.amount, '950.00000000');
+        expect(review.lines.single.unitKey, _lineJson['unitId']);
+
+        final financeLine = SalesQuoteFinanceLine.fromJson({
+          ..._lineJson,
+          'priceSource': 'FINANCE',
+          'financePriceByName': '王会计',
+          'financePriceAt': pricedAt,
+        });
+        expect(financeLine.isFinancePriced, isTrue);
+        expect(financeLine.financePriceByName, '王会计');
+        expect(financeLine.financePriceAt, pricedAt);
+        final mixed = SalesQuoteFinanceLine.fromJson({
+          ...line,
+          'financePriceByName': '旧字段不能覆盖当前负责人',
+          'financePriceAt': '2000-01-01T00:00:00Z',
+        });
+        expect(mixed.financePriceByName, '朱负责人');
+        expect(mixed.financePriceAt, pricedAt);
+      },
+    );
 
     test('edit body: whole header state + one change per line', () {
       final body = quoteFinanceEditBody(
@@ -342,6 +423,32 @@ void main() {
 
     test('line and header keys exist on QuoteFinanceReviewDto', () {
       final source = _java('$dto/QuoteFinanceReviewDto.java');
+      final projection = _java(
+        'features/sales/SalesManagerReviewProjection.java',
+      );
+      final quoteProjection = projection.substring(
+        projection.indexOf('public Map<String,Object> quote('),
+        projection.indexOf('public Map<String,Object> order('),
+      );
+      final headerRenames = {
+        for (final match in RegExp(
+          r'Map\.entry\("(\w+)"\s*,\s*"(\w+)"\)',
+        ).allMatches(quoteProjection))
+          match.group(1)!: match.group(2)!,
+      };
+      expect(headerRenames, _managerQuoteHeaderNames);
+      final lineRename = RegExp(
+        r'rename\(line,\s*Map\.of\(([^;]+)\)\)',
+      ).firstMatch(quoteProjection);
+      expect(lineRename, isNotNull);
+      final lineRenames = {
+        for (final match in RegExp(
+          r'"(\w+)"\s*,\s*"(\w+)"',
+        ).allMatches(lineRename!.group(1)!))
+          match.group(1)!: match.group(2)!,
+      };
+      expect(lineRenames, _managerQuoteLineNames);
+      expect(projection, contains('result.put("reviewStage","SALES_MANAGER")'));
       final model = File(_modelPath).readAsStringSync();
       final lineKeys = _dartJsonKeys(
         model,
@@ -349,9 +456,12 @@ void main() {
         'class SalesQuoteFinanceReview',
       );
       expect(
-        lineKeys.difference(_recordComponents(source, 'Line')),
+        lineKeys.difference({
+          ..._recordComponents(source, 'Line'),
+          ...lineRenames.values,
+        }),
         isEmpty,
-        reason: '核价行的每个键(含数量合计分组用的 unitId)都在服务端 Line 上',
+        reason: '每个行键须属于财务 record 或精确锁定的负责人投影，数量单位键仍为 unitId',
       );
       final headerKeys = _dartJsonKeys(
         model,
@@ -359,9 +469,11 @@ void main() {
         'class SalesQuoteFinanceLineEdit',
       );
       expect(
-        headerKeys.difference(
-          _recordComponents(source, 'QuoteFinanceReviewDto'),
-        ),
+        headerKeys.difference({
+          ..._recordComponents(source, 'QuoteFinanceReviewDto'),
+          ...headerRenames.values,
+          'reviewStage',
+        }),
         isEmpty,
       );
       final revisionServer = _recordComponents(
@@ -492,7 +604,7 @@ void main() {
       );
       // 前端两处(列表行 / 审核详情)都读同级 matchesQuote。
       final dart = File(
-        'lib/features/finance/models/sales_order_finance_confirmation.dart',
+        'lib/shared/sales_review/sales_order_review.dart',
       ).readAsStringSync();
       expect(dart, contains("json['matchesQuote']"));
     });

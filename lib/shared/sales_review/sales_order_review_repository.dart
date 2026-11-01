@@ -1,12 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/api_client.dart';
-import '../../../core/network/api_endpoints.dart';
-import '../../basic_data/models/master_facet.dart';
-import '../models/sales_order_finance_confirmation.dart';
+import '../../core/network/api_client.dart';
+import '../../core/network/api_endpoints.dart';
+import '../models/master_facet_bucket.dart';
+import 'package:uten_imp/shared/sales_review/sales_order_review.dart';
 
-/// 销售订货单财务确认（V294 闸门，V300 补驳回与审核详情）：
-/// 待确认列表 / 徽标计数 / 审核详情 / 确认 / 驳回。
+/// 销售订货两级审核共用传输入口；managerReview 明确选择负责人独立端点。
+/// 财务待确认列表与计数仍属于财务阶段，不因复用详情与决策请求而更换权限或状态。
 abstract interface class SalesOrderFinanceConfirmationRepository {
   /// 待确认任务分页。[rejected]：false=仅未驳回待办（默认）；true=仅已驳回；null=全部。
   Future<SalesOrderFinancePendingPage> pending({

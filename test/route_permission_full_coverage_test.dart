@@ -88,7 +88,8 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 原守卫基数 204，新增路径另由下方精确登记；当前 245 条守卫 / 20 条豁免。
+/// 原守卫基数 204，新增路径另由下方精确登记；当前 247 条守卫 / 19 条豁免。
+/// 2026-10-31 销售负责人队列与报价/订货详情独立登记三条路径，各自查看码不授予决策动作。
 /// 2026-10-29 客户端发布工作台 /settings/software-publish 上线（client-updates
 /// 批次），any=[client_release:publish]（V946 INDIVIDUAL_ONLY），守卫 244→245；
 /// 页面权限面按独立系统管理边界豁免负责人转授。
@@ -185,6 +186,12 @@ const _masterHistoryViewPermissions = <String>[
 ];
 
 const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
+  '/sales/manager-review': [
+    Perm.salesQuoteManagerView,
+    Perm.salesOrderManagerView,
+  ],
+  '/sales/manager-review/quotes/:id': [Perm.salesQuoteManagerView],
+  '/sales/manager-review/orders/:id': [Perm.salesOrderManagerView],
   // V925: entering the library requires view; folder ACL and mutations remain
   // independent server decisions, even for an employee holding this grant.
   '/company-files': [Perm.companyFileView],

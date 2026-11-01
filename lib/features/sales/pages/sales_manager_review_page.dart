@@ -21,7 +21,7 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../../finance/repositories/sales_order_finance_confirmation_repository.dart';
+import 'package:uten_imp/shared/sales_review/sales_order_review_repository.dart';
 
 class SalesManagerReviewTask {
   SalesManagerReviewTask.fromJson(Map<String, dynamic> json)

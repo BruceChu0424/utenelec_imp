@@ -39,8 +39,8 @@ void main() {
         "actionLabel: '报销审批'",
       ],
       'lib/features/finance/pages/finance_sales_order_review_page.dart': [
-        "actionLabel: '销售订单财务确认'",
-        "actionLabel: '销售订单财务驳回'",
+        "actionLabel: widget.managerReview ? '销售负责人批准订货' : '销售订单财务确认'",
+        "actionLabel: widget.managerReview ? '销售负责人驳回订货' : '销售订单财务驳回'",
       ],
       'lib/features/payroll/pages/payroll_review_page.dart': [
         "actionLabel: '工资审核'",

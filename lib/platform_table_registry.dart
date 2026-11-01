@@ -22,7 +22,7 @@ import 'features/finance/models/finance_doc.dart';
 import 'features/finance/models/finance_procurement_workflow.dart';
 import 'features/finance/models/finance_asset_models.dart';
 import 'features/finance/models/sales_quote_finance_review.dart';
-import 'features/finance/models/sales_order_finance_confirmation.dart';
+import 'package:uten_imp/shared/sales_review/sales_order_review.dart';
 import 'features/finance/widgets/finance_grid_columns.dart';
 import 'features/warehouse/models/stock_doc.dart';
 import 'features/warehouse/widgets/stock_grid_columns.dart';

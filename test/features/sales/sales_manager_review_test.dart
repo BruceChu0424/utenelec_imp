@@ -4,7 +4,7 @@ import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
 import 'dart:convert';
 import 'dart:io';
-import 'package:uten_imp/features/finance/models/sales_order_finance_confirmation.dart';
+import 'package:uten_imp/shared/sales_review/sales_order_review.dart';
 import 'package:uten_imp/features/finance/models/sales_quote_finance_review.dart';
 import 'package:flutter/foundation.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';

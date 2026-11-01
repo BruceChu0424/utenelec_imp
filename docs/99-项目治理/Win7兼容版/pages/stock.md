@@ -22,7 +22,7 @@
 
 ## W7-BIZ-150 · lib/features/stock/counts/pages/stock_count_session_page.dart
 
-模块 `stock`；1070 行；SHA256 `ed70cf719c8be7d60e679e1c24d5cd87084d03a738162f07c55abdcf9132d6f4`。
+模块 `stock`；1070 行；SHA256 `7107a1f2ff0582b27ee83b4bf7b5f6aea6c6d1cf1e59e581531ba12917c31598`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

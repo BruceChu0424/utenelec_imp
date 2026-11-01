@@ -4,7 +4,7 @@
 
 ## W7-BIZ-045 · lib/features/disaster_recovery/disaster_recovery_page.dart
 
-模块 `disaster_recovery`；265 行；SHA256 `6bcb88e907a0d5fe81a1e8ce358bc62bc05396ad5c6f5fa22354e4f7567d4208`。
+模块 `disaster_recovery`；265 行；SHA256 `fc1276d80848070e8fc3f112511b58daf7a99b8c954f9d7aa80c8f6bb55d5271`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

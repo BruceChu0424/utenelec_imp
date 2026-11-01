@@ -22,7 +22,7 @@
 
 ## W7-BIZ-129 · lib/features/quality/pages/production_fqc_inspections_page.dart
 
-模块 `quality`；697 行；SHA256 `b437092317366bfdbeea74c2cb9d85bdf04b1a1990968c1f80e4902aaee1c57e`。
+模块 `quality`；697 行；SHA256 `0c3b878c126bf686fb702475f42cc1448e076d3a6b37f1ffb50a53ce1587c686`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -58,7 +58,7 @@
 
 ## W7-BIZ-131 · lib/features/quality/pages/quality_inspection_records_page.dart
 
-模块 `quality`；1328 行；SHA256 `39441d6103effabf7a7c02286832a8d9d7c03b1c43ea44ffc575aab352ccd850`。
+模块 `quality`；1328 行；SHA256 `9b4a63d0a79d87d8ea472d3cfa9ebec4d024a03e2b2f81e7a36b3a2f42ddf7c3`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -76,7 +76,7 @@
 
 ## W7-BIZ-132 · lib/features/quality/pages/quality_pending_disposal_page.dart
 
-模块 `quality`；2067 行；SHA256 `b75488fd2696859af55bdcda0afa9f5d892ce442b1f3d670364e4222547d7895`。
+模块 `quality`；2067 行；SHA256 `4497450e1302dffe87666c6e03659a3d270193d5fdbc0742d690243cb93546a5`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

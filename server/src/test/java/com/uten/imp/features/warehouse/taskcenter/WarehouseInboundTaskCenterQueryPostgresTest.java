@@ -433,7 +433,9 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         var scopeA=new WarehouseTaskScope(true,List.of(warehouseA),false);
         var scopeB=new WarehouseTaskScope(true,List.of(warehouseB),false);
         var scopes=mock(WarehouseTaskScopePort.class);
+        org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
         when(scopes.current(null)).thenReturn(scopeA);
+        org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
         when(scopes.current(warehouseB)).thenReturn(scopeB);
         var quality=new com.uten.imp.features.warehouse.inbound.WarehouseQualityResultService(
                 executingEntityManager(),mock(SecurityContextCurrentUser.class));
@@ -937,6 +939,7 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
                 mock(com.uten.imp.common.concurrency.ProcurementMutationLocks.class));
         var scope=new WarehouseTaskScope(true,List.of(warehouse),false);
         var scopes=mock(WarehouseTaskScopePort.class);
+        org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
         when(scopes.current(warehouse)).thenReturn(scope);
         var controller=new com.uten.imp.features.warehouse.inbound.WarehouseInboundController(actual,
                 mock(com.uten.imp.features.purchase.receipt.PurchaseReceiptService.class),
@@ -1017,6 +1020,7 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         var current=mock(SecurityContextCurrentUser.class);
         when(current.get()).thenReturn(Optional.of(actor));
         var scopes=mock(WarehouseTaskScopePort.class);
+        org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
         when(scopes.current(any())).thenReturn(scope);
         doCallRealMethod().when(scopes).withQueryScopeCache(any());
         var stock=mock(StockDocAccessPolicy.class);

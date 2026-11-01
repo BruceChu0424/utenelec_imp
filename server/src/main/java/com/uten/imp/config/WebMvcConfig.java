@@ -59,12 +59,18 @@ public class WebMvcConfig implements WebMvcConfigurer {
         // 已进入的审计拦截器仍会在 afterCompletion 记录 429 结果。
         registry.addInterceptor(userOperationAuditInterceptor)
                 .addPathPatterns("/api/**");
+        // Typed where-used reads also match /production/reports/**. Capture
+        // their physical/owner profile before the report opens its read plan.
+        registry.addInterceptor(new com.uten.imp.common.report.NativeTaskReadScopeInterceptor(readScopes,currentUser))
+                .addPathPatterns("/api/**");
         registry.addInterceptor(new ReportReadPlanInterceptor(readScopes,currentUser))
                 .addPathPatterns("/api/sales/reports/**", "/api/purchase/reports/**",
                         "/api/subcontract/reports/**", "/api/production/reports/**",
                         "/api/stock/reports/**", "/api/finance/reports/**");
         registry.addInterceptor(new com.uten.imp.common.report.NativeFacetCandidateInterceptor(readScopes,currentUser))
                 .addPathPatterns(com.uten.imp.common.report.NativeFacetRoutes.paths().toArray(String[]::new));
+        registry.addInterceptor(new com.uten.imp.common.report.NativeTaskReadScopeInterceptor(readScopes,currentUser))
+                .addPathPatterns("/api/**");
         registry.addInterceptor(new com.uten.imp.common.report.BusinessDocumentReadScopeInterceptor(readScopes,currentUser))
                 .addPathPatterns("/api/expense-claims/**","/api/platform-columns/expense_claim/**","/api/platform-columns/expense_claim_item/**");
         registry.addInterceptor(new MasterReadScopeInterceptor(readScopes,currentUser))

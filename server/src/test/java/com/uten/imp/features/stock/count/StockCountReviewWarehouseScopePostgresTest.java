@@ -87,6 +87,7 @@ class StockCountReviewWarehouseScopePostgresTest {
                 mock(com.uten.imp.application.concurrency.FulfillmentMutationLocks.class),
                 mock(com.uten.imp.application.port.ProductionMutationFootprintPort.class));
         var scopes=mock(WarehouseTaskScopePort.class);
+        org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
         when(scopes.current(any())).thenAnswer(call->{
             UUID requested=call.getArgument(0);
             return requested==null?defaultScope:new WarehouseTaskScope(true,subtree(requested),false);

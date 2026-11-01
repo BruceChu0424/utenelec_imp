@@ -388,6 +388,40 @@ class WorkshopApprovedStockCountPostgresTest {
         assertEquals(java.util.Set.of(),posting.accessibleWarehouses(List.of()));
     }
 
+    @Test void allWarehouseAndWorkshopReadsDoNotExpandTheOriginalStockCountReviewObjectSet() {
+        Shop own=shop(false),foreign=shop(false);
+        fixture.loginAs(own.world().superAdminUserId());
+        UUID member=fixture.createUserWithPerms(own.world(),"count-reader-"+UUID.randomUUID(),
+                "stock:count:warehouse_review","production_execution:view","workshop_material:view","workshop_material:setup");
+        db.update("UPDATE employees SET department_id=? WHERE id=(SELECT employee_id FROM users WHERE id=?)",own.workshop(),member);
+        Request ownRequest=request(own,"0",null,"2","2",null);
+        Request foreignRequest=request(foreign,"0",null,"2","2",null);
+        String ownNumber=db.queryForObject("SELECT request_no FROM stock_count_requests WHERE id=?",String.class,ownRequest.id());
+        String foreignNumber=db.queryForObject("SELECT request_no FROM stock_count_requests WHERE id=?",String.class,foreignRequest.id());
+        fixture.loginAs(member);
+        var before=stockCountRequests.counts(null);
+        assertThrows(ApiException.class,()->stockCountRequests.detail(foreignRequest.id()));
+        fixture.loginAs(own.world().superAdminUserId());
+        new TransactionTemplate(transactions).executeWithoutResult(status->{
+            tx.bind();
+            for(String code:List.of("warehouse_task:view:all","production_workshop_task:view:all"))
+                db.update("INSERT INTO user_permission_overrides(user_id,permission_id,effect,active,authority_source,source_actor_user_id) SELECT ?,id,'grant',true,'SUPER_ADMIN_CONFIRMED',? FROM permissions WHERE code=?",member,own.world().superAdminUserId(),code);
+        });
+        fixture.loginAs(member);
+        assertEquals(java.util.Set.of(own.bin(),foreign.bin()),posting.accessibleWarehousesForRead(List.of(own.bin(),foreign.bin())));
+        assertEquals(java.util.Set.of(own.bin()),posting.accessibleWarehouses(List.of(own.bin(),foreign.bin())));
+        var taskStatuses=settings.taskStatus(com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope.ALL);
+        var foreignSettings=taskStatuses.stream().filter(row->row.workshopDepartmentId().equals(foreign.workshop())).findFirst().orElseThrow();
+        var ownSettings=taskStatuses.stream().filter(row->row.workshopDepartmentId().equals(own.workshop())).findFirst().orElseThrow();
+        assertTrue(foreignSettings.allowedActions().isEmpty());assertFalse(ownSettings.allowedActions().isEmpty());
+        assertTrue(stockCountRequests.list("WAREHOUSE","PENDING",null,null,foreignNumber,1,100).getItems().stream().anyMatch(row->foreignRequest.id().equals(row.get("id"))));
+        assertEquals(List.of(),stockCountRequests.detail(foreignRequest.id()).get("allowedActions"));
+        assertThrows(ApiException.class,()->stockCountRequests.reject(foreignRequest.id(),new StockCountDtos.Decision(0L,key(),"仅可查看")));
+        assertEquals(before,stockCountRequests.counts(null));
+        assertEquals("PENDING",db.queryForObject("SELECT status FROM stock_count_requests WHERE id=?",String.class,foreignRequest.id()));
+        assertTrue(stockCountRequests.list("WAREHOUSE","PENDING",null,null,ownNumber,1,100).getItems().stream().anyMatch(row->ownRequest.id().equals(row.get("id"))));
+    }
+
     private Shop shop(boolean order) {
         return shop(order,BusinessTime.today());
     }

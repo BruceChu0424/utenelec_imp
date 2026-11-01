@@ -26,6 +26,8 @@ public class WorkshopMaterialScope {
 
     private final NamedParameterJdbcTemplate db;
     private final SecurityContextCurrentUser currentUser;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.security.ProductionWorkshopReadScopePolicy taskReads;
 
     public WorkshopMaterialScope(NamedParameterJdbcTemplate db, SecurityContextCurrentUser currentUser) {
         this.db = db;
@@ -103,6 +105,31 @@ public class WorkshopMaterialScope {
         }
     }
 
+    /** Task stock facts may be observed across workshops; commands and ordinary
+     * bin operations continue to call requireWorkshop, without this read grant. */
+    public void requireTaskReadableWorkshop(UUID workshopDepartmentId) {
+        var actor=currentUser.get().orElse(null);
+        if(actor==null || !(actor.isSuperAdmin() || actor.getPermissions().contains("workshop_material:view")))
+            throw new ApiException(ErrorCode.FORBIDDEN,"缺少车间内料仓查看权限");
+        if(workshopDepartmentId!=null && canSee(workshopDepartmentId))return;
+        if(workshopDepartmentId!=null && allTaskReads())return;
+        throw new ApiException(ErrorCode.FORBIDDEN,"只能查看当前授权范围内的车间任务物料");
+    }
+
+    private boolean allTaskReads() {
+        var actor=currentUser.get().orElse(null);
+        if(actor==null || !actor.getPermissions().contains("workshop_material:view")
+                || !com.uten.imp.security.ProductionWorkshopReadScopePolicy.hasAllReadGrant(actor))return false;
+        if(taskReads==null)throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"车间读取范围不可用");
+        return taskReads.snapshot(actor).all();
+    }
+
+    /** Read-only task projections may widen workshops, not the command scope. */
+    public String readPredicate(String column,MapSqlParameterSource params) {
+        if(column==null || !column.matches("[a-zA-Z_][a-zA-Z0-9_.]*"))throw new IllegalArgumentException("invalid internal column");
+        return allTaskReads()?"TRUE":predicate(column,params);
+    }
+
     /** Receipt replay rechecks current object scope, without rechecking the old command's state/version. */
     public void requireMachine(UUID machineId) {
         requireObjectWorkshop("SELECT workshop_department_id FROM workshop_machines WHERE id=:id",machineId,"机台不存在");
@@ -145,6 +172,20 @@ public class WorkshopMaterialScope {
     public String requisitionWarehouseFilter(WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
                                              MapSqlParameterSource params) {
         if (warehouseScope == null || !warehouseScope.active() || restrictedWorkshops().isPresent()) return "";
+        return pendingWarehousePredicate(warehouseScope,params);
+    }
+
+    public String readRequisitionWarehouseFilter(WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
+                                                 MapSqlParameterSource params) {
+        if(warehouseScope==null || !warehouseScope.active())return "";
+        if(!allTaskReads())return requisitionWarehouseFilter(warehouseScope,params);
+        String physical=pendingWarehousePredicate(warehouseScope,params);
+        return restrictedWorkshops().isPresent()
+                ?"("+predicate("requisition.workshop_department_id",params)+" OR "+physical+")":physical;
+    }
+
+    private String pendingWarehousePredicate(WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
+                                               MapSqlParameterSource params) {
         params.addValue("warehouseScope", warehouseScope.idsCsv());
         return warehouseScope.predicateAny("""
                 ARRAY(SELECT scoped_line.suggested_leaf_warehouse_id
@@ -158,8 +199,47 @@ public class WorkshopMaterialScope {
         if (warehouseColumn == null || !warehouseColumn.matches("[a-zA-Z_][a-zA-Z0-9_.]*"))
             throw new IllegalArgumentException("invalid internal column");
         if (warehouseScope == null || !warehouseScope.active() || restrictedWorkshops().isPresent()) return "";
+        return physicalWarehousePredicate(warehouseScope,params,warehouseColumn);
+    }
+
+    public String readRequisitionPhysicalWarehouseFilter(WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
+            MapSqlParameterSource params,String warehouseColumn,String workshopColumn) {
+        if(warehouseColumn==null || !warehouseColumn.matches("[a-zA-Z_][a-zA-Z0-9_.]*")
+                || workshopColumn==null || !workshopColumn.matches("[a-zA-Z_][a-zA-Z0-9_.]*"))
+            throw new IllegalArgumentException("invalid internal column");
+        if(warehouseScope==null || !warehouseScope.active())return "";
+        if(!allTaskReads())return requisitionPhysicalWarehouseFilter(warehouseScope,params,warehouseColumn);
+        String physical=physicalWarehousePredicate(warehouseScope,params,warehouseColumn);
+        return restrictedWorkshops().isPresent()?"("+predicate(workshopColumn,params)+" OR "+physical+")":physical;
+    }
+
+    private String physicalWarehousePredicate(WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
+            MapSqlParameterSource params,String warehouseColumn) {
         params.addValue("warehouseScope", warehouseScope.idsCsv());
         return warehouseScope.predicate(warehouseColumn, ":warehouseScope");
+    }
+
+    public String readRequisitionPhysicalWarehouseFilter(WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
+            MapSqlParameterSource params,String warehouseColumn,UUID workshop) {
+        if(warehouseColumn==null || !warehouseColumn.matches("[a-zA-Z_][a-zA-Z0-9_.]*"))
+            throw new IllegalArgumentException("invalid internal column");
+        if(warehouseScope==null || !warehouseScope.active())return "";
+        if(!allTaskReads())return requisitionPhysicalWarehouseFilter(warehouseScope,params,warehouseColumn);
+        if(restrictedWorkshops().map(workshops->workshops.contains(workshop)).orElse(false))return "";
+        return physicalWarehousePredicate(warehouseScope,params,warehouseColumn);
+    }
+
+    public String readWorkshopWarehouseArrayFilter(WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
+            MapSqlParameterSource params,String warehouseColumn,String workshopColumn) {
+        if(warehouseColumn==null || !warehouseColumn.matches("[a-zA-Z_][a-zA-Z0-9_.]*")
+                || workshopColumn==null || !workshopColumn.matches("[a-zA-Z_][a-zA-Z0-9_.]*"))
+            throw new IllegalArgumentException("invalid internal column");
+        if(warehouseScope==null || !warehouseScope.active())return "";
+        var original=restrictedWorkshops();
+        if(original.isPresent() && !allTaskReads())return "";
+        params.addValue("warehouseScope",warehouseScope.idsCsv());
+        String physical=warehouseScope.predicateAny("ARRAY["+warehouseColumn+"]",":warehouseScope");
+        return original.isPresent()?"("+predicate(workshopColumn,params)+" OR "+physical+")":physical;
     }
 
     /**

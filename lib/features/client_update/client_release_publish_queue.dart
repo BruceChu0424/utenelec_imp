@@ -189,7 +189,7 @@ class ClientReleaseQueueItem {
   int sizeBytes;
   ClientReleaseQueueStage stage = ClientReleaseQueueStage.ready;
   ClientReleaseQueueOperation? pendingOperation;
-  double progress = 0;
+  double? progress;
   ClientRelease? publishedRelease;
   bool retentionPending = false;
   bool publishAcknowledged = false;
@@ -762,16 +762,19 @@ class ClientReleasePublishQueue extends ChangeNotifier {
     await _save();
     if (!item.metadata.isStore) {
       item.stage = ClientReleaseQueueStage.uploading;
+      item.progress = null;
       item.pendingOperation = ClientReleaseQueueOperation.upload;
       item._dispatched = false;
       _notify();
       await _save();
       item._dispatched = true;
       await gateway.upload(draft.id, bytes!, (sent, total) {
-        if (current &&
-            item.stage == ClientReleaseQueueStage.uploading &&
-            total > 0) {
-          item.progress = (sent / total).clamp(0, 1);
+        if (current && item.stage == ClientReleaseQueueStage.uploading) {
+          // Fetch has no wire progress events. An initial zero (or unknown
+          // total) is indeterminate, never a claim that the upload is stalled.
+          item.progress = sent > 0 && total > 0
+              ? (sent / total).clamp(0, 1)
+              : null;
           _notify();
         }
       });

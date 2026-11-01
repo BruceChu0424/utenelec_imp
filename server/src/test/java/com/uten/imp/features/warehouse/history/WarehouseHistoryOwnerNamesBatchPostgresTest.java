@@ -211,6 +211,7 @@ class WarehouseHistoryOwnerNamesBatchPostgresTest {
         when(count.getSingleResult()).thenReturn((long) facts.size());
         when(rows.getResultList()).thenAnswer(call -> facts.subList(Math.min(offset.get(), facts.size()), Math.min(offset.get() + limit.get(), facts.size())));
         var scopes = mock(WarehouseTaskScopePort.class);
+        org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
         when(scopes.current(any())).thenReturn(WarehouseTaskScopePort.WarehouseTaskScope.ALL);
         return new Fixture(new WarehouseHistoryQueryService(projection, names, scopes), projection, count, rows, scopes);
     }

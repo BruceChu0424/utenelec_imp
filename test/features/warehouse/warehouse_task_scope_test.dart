@@ -19,8 +19,10 @@ import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_task_center_scaffold.dart';
+import 'package:uten_imp/features/warehouse/widgets/warehouse_scope_selector.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
+import 'package:uten_imp/shared/warehouse/warehouse_task_badges.dart';
 
 // Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
 // ignore_for_file: invalid_use_of_internal_member
@@ -108,6 +110,50 @@ Widget _app({
 );
 
 void main() {
+  test(
+    'all-warehouse browsing preserves the keeper role and physical badge selection',
+    () async {
+      final mine = MyWarehouseScope.fromJson(const {
+        'role': 'KEEPER',
+        'warehouseParticipant': true,
+        'readAllWarehouses': true,
+        'canSelectAll': true,
+        'selectable': [
+          {'id': 'own', 'name': '本仓'},
+          {'id': 'other', 'name': '别仓'},
+        ],
+        'commandSelectable': [
+          {'id': 'own', 'name': '本仓'},
+        ],
+      });
+      expect(mine.isKeeper, isTrue);
+      expect(mine.isSupervisor, isFalse);
+      expect(mine.canSelect('other'), isTrue);
+      expect(mine.canSelectForTasks('other'), isFalse);
+      expect(mine.canSelectForTasks('own'), isTrue);
+      final l10n = await AppLocalizations.delegate.load(const Locale('zh'));
+      expect(
+        WarehouseScopeSelector.labelOf(
+          l10n,
+          mine,
+          const WarehouseTaskScope.all(),
+        ),
+        l10n.warehouseScopeAllWarehouses,
+      );
+      final container = ProviderContainer(
+        overrides: [myWarehouseScopeProvider.overrideWith((ref) async => mine)],
+      );
+      addTearDown(container.dispose);
+      await container.read(myWarehouseScopeProvider.future);
+      final summary = container.read(
+        warehouseScopedBadgesProvider(
+          const WarehouseTaskScope.warehouse('other'),
+        ),
+      );
+      expect(summary.entries, isEmpty);
+      expect(summary.facts, isEmpty);
+    },
+  );
   test('warehouse participation is an explicit server capability', () {
     expect(
       MyWarehouseScope.fromJson(const {'role': 'OTHER'}).warehouseParticipant,

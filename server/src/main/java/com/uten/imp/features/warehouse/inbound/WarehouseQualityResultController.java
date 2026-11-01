@@ -51,7 +51,7 @@ public class WarehouseQualityResultController {
         // 2026-09-25 单号列统一：sort/order 表头排序 + 收货单号表头值筛选。
         // ADR-149：服务端按本人仓库数据范围强制过滤(收货单仓或检验目标仓), 越界选仓 403。
         return service.list(keyword, receiptType, status, dateFrom, dateTo,
-                page, size, sort, order, billNo, warehouseScopes.current(scopeWarehouseId),
+                page, size, sort, order, billNo, warehouseScopes.currentForRead(scopeWarehouseId),
                 TaskView.requested(view));
     }
 
@@ -67,7 +67,7 @@ public class WarehouseQualityResultController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) UUID scopeWarehouseId) {
         return service.facets(keyword, receiptType, status, dateFrom, dateTo,
-                warehouseScopes.current(scopeWarehouseId),
+                warehouseScopes.currentForRead(scopeWarehouseId),
                 TaskView.requested(view));
     }
 
@@ -78,7 +78,7 @@ public class WarehouseQualityResultController {
             @RequestParam(defaultValue = "") String keyword,
             @RequestParam(required = false) UUID scopeWarehouseId) {
         Map<String, Long> counts = new java.util.LinkedHashMap<>(
-                service.statusCounts(receiptType, keyword, warehouseScopes.current(scopeWarehouseId)));
+                service.statusCounts(receiptType, keyword, warehouseScopes.currentForRead(scopeWarehouseId)));
         service.taskStatusCounts(receiptType, keyword, scopeWarehouseId)
                 .forEach((status, count) -> counts.put("TASK_" + status, count));
         return counts;
@@ -99,7 +99,7 @@ public class WarehouseQualityResultController {
             @PathVariable String receiptType,
             @PathVariable UUID receiptId,
             @RequestParam(required=false) UUID scopeWarehouseId) {
-        return service.detail(receiptType, receiptId,warehouseScopes.current(scopeWarehouseId));
+        return service.detail(receiptType, receiptId,warehouseScopes.currentForRead(scopeWarehouseId));
     }
 
     public TaskDetail detail(String receiptType,UUID receiptId) { return detail(receiptType,receiptId,null); }

@@ -9,12 +9,19 @@ import java.util.UUID;
 /** Authorization dimensions for the exact shared assignment predicate, never business task filters. */
 @Component
 public final class ProductionWorkshopReadScopePolicy {
+    public static final String VIEW_ALL = "production_workshop_task:view:all";
     private final NamedParameterJdbcTemplate jdbc;
     public ProductionWorkshopReadScopePolicy(NamedParameterJdbcTemplate jdbc) { this.jdbc=jdbc; }
     public record Snapshot(boolean all,UUID responsibleEmployee,List<UUID> workshops) {
         public Snapshot { workshops=List.copyOf(workshops); }
     }
-    public Snapshot snapshot(AuthUser actor) {
+    public static boolean hasAllReadGrant(AuthUser actor) {
+        return actor != null && !actor.isVisitor() && actor.getEmployeeId() != null
+                && actor.isAccountNonLocked() && !actor.isMustChangePassword()
+                && actor.getPermissions().containsAll(java.util.Set.of("production_execution:view", VIEW_ALL));
+    }
+    public Snapshot snapshot(AuthUser actor) { return snapshot(actor,false); }
+    public Snapshot snapshot(AuthUser actor,boolean businessTasks) {
         if(actor.isSuperAdmin())return new Snapshot(true,null,List.of());
         UUID employee=actor.getEmployeeId();
         if(employee==null)return new Snapshot(false,null,List.of());
@@ -26,6 +33,8 @@ public final class ProductionWorkshopReadScopePolicy {
         // original predicate against virtual workshop roots; don't enumerate
         // every historical execution segment or maintain another tree algorithm.
         List<UUID> workshops=jdbc.queryForList("SELECT department.id FROM departments department CROSS JOIN LATERAL (SELECT department.id AS workshop_department_id,NULL::uuid AS responsible_employee_id) read_task WHERE "+predicate+" ORDER BY department.id",parameters,UUID.class);
-        return new Snapshot(false,employee,workshops);
+        // Read-all never erases the actual assignment dimensions: mixed readers
+        // still publish row command eligibility for their original workshops.
+        return new Snapshot(!businessTasks && hasAllReadGrant(actor),employee,workshops);
     }
 }

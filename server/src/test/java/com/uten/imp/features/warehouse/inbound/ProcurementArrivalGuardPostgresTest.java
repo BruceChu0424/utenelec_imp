@@ -875,6 +875,110 @@ class ProcurementArrivalGuardPostgresTest {
                         com.uten.imp.support.FulfillmentMutationLockTestSupport.procurementLocks());
     }
 
+    private record ScopeCases(Identity owner,Identity other,Identity reader,ReturnFixture first,ReturnFixture second,String marker) { }
+    private static JdbcTemplate scopeDb(){return new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(),POSTGRES.getUsername(),POSTGRES.getPassword()));}
+    private static ScopeCases scopeCases() throws Exception {
+        try(Connection c=connection()) {
+            c.setAutoCommit(false);
+            var owner=loadIdentity(c);var other=loadIdentity(c);var reader=loadIdentity(c);
+            var first=insertAdjustedException(c,owner,"10","5","0","REJECT_EXCESS");
+            var second=insertAdjustedException(c,other,"10","5","0","REJECT_EXCESS");
+            insertPendingReturnTask(c,first,owner,"5");insertPendingReturnTask(c,second,other,"5");c.commit();
+            String marker="return-read-"+UUID.randomUUID();
+            scopeDb().update("UPDATE goods SET name=? WHERE id IN (SELECT goods_id FROM procurement_arrival_exceptions WHERE id IN (?,?))",marker,first.exceptionId(),second.exceptionId());
+            return new ScopeCases(owner,other,reader,first,second,marker);
+        }
+    }
+    private static com.uten.imp.security.AuthUser subject(Identity actor,String... permissions) {
+        return new com.uten.imp.security.AuthUser(actor.userId(),actor.employeeId(),"return-reader",java.util.Set.of(permissions),false,true,false);
+    }
+    private static ProcurementArrivalControlService serviceAs(com.uten.imp.security.AuthUser actor) {
+        var current=mock(SecurityContextCurrentUser.class);
+        org.mockito.Mockito.when(current.get()).thenReturn(java.util.Optional.of(actor));
+        org.mockito.Mockito.when(current.requireId()).thenReturn(actor.getId());
+        org.mockito.Mockito.when(current.requireEmployeeId()).thenReturn(actor.getEmployeeId());
+        return new ProcurementArrivalControlService(scopeDb(),new ObjectMapper(),mock(BusinessEventPublisher.class),current,
+                mock(TxSessionVars.class),mock(FinanceReviewerEligibilityPort.class),mock(ReceiptPriceMasker.class),
+                com.uten.imp.support.FulfillmentMutationLockTestSupport.procurementLocks());
+    }
+
+    @Test void explicitSupplierReturnReadAllDoesNotGrantCompletionPricesOrOtherOwnersCount() throws Exception {
+        var f=scopeCases();
+        var ordinary=serviceAs(subject(f.reader(),"supplier_return_task:view"));
+        assertEquals(0L,ordinary.ownerTasks(null,1,20,null,null,null,f.marker()).getTotal());
+        var scopeOnly=serviceAs(subject(f.reader(),"supplier_return_task:view:all"));
+        assertEquals(0L,scopeOnly.ownerTasks(null,1,20,null,null,null,f.marker()).getTotal());
+        assertThrows(com.uten.imp.common.web.ApiException.class,()->scopeOnly.ownerDetail(f.second().exceptionId()));
+        var ownObserver=serviceAs(subject(f.owner(),"supplier_return_task:view"));
+        assertTrue(ownObserver.ownerDetail(f.first().exceptionId()).allowedActions().isEmpty());
+        var observer=serviceAs(subject(f.reader(),"supplier_return_task:view","supplier_return_task:view:all"));
+        var all=observer.ownerTasks(null,1,20,null,null,null,f.marker());assertEquals(2L,all.getTotal());
+        assertTrue(all.getItems().stream().allMatch(row->row.allowedActions().isEmpty() && row.unitPrice()==null));
+        assertEquals(0L,observer.countOwnerTasks(null));
+        assertEquals(f.second().exceptionId(),observer.ownerDetail(f.second().exceptionId()).id());
+        var mixed=serviceAs(subject(f.owner(),"supplier_return_task:view","supplier_return_task:view:all","supplier_return_task:complete"));
+        assertTrue(mixed.ownerDetail(f.first().exceptionId()).allowedActions().contains("COMPLETE_RETURN"));
+        var foreign=mixed.ownerDetail(f.second().exceptionId());assertTrue(foreign.allowedActions().isEmpty());
+        assertEquals(1L,mixed.countOwnerTasks(null));
+        assertThrows(com.uten.imp.common.web.ApiException.class,()->mixed.completeReturn(foreign.returnTask().id(),
+                new ProcurementArrivalContracts.ReturnCompletionRequest(1L,"must not complete another owner")));
+        assertEquals("PENDING_RETURN",scopeDb().queryForObject("SELECT status FROM supplier_return_tasks WHERE id=?",String.class,foreign.returnTask().id()));
+    }
+
+    @Test void supplierOwnerLedgerIgnoresBusinessEditsButRetiresOwnerAndExceptionBindingAba() throws Exception {
+        var f=scopeCases();var db=scopeDb();
+        long a=db.queryForObject("SELECT generation FROM read_scope_generations WHERE domain='native_feature'",Long.class);
+        db.update("UPDATE supplier_return_tasks SET completion_note='ordinary note',version=version+1,owner_user_id=owner_user_id WHERE arrival_exception_id=?",f.first().exceptionId());
+        assertEquals(a,db.queryForObject("SELECT generation FROM read_scope_generations WHERE domain='native_feature'",Long.class));
+        db.update("UPDATE supplier_return_tasks SET owner_user_id=?,owner_employee_id=? WHERE arrival_exception_id=?",f.other().userId(),f.other().employeeId(),f.first().exceptionId());
+        long b=db.queryForObject("SELECT generation FROM read_scope_generations WHERE domain='native_feature'",Long.class);assertTrue(b>a);
+        db.update("UPDATE supplier_return_tasks SET owner_user_id=?,owner_employee_id=? WHERE arrival_exception_id=?",f.owner().userId(),f.owner().employeeId(),f.first().exceptionId());
+        long back=db.queryForObject("SELECT generation FROM read_scope_generations WHERE domain='native_feature'",Long.class);assertTrue(back>b);
+        ReturnFixture third;
+        try(Connection c=connection()) {c.setAutoCommit(false);third=insertAdjustedException(c,f.owner(),"10","5","0","REJECT_EXCESS");c.commit();}
+        UUID task=db.queryForObject("SELECT id FROM supplier_return_tasks WHERE arrival_exception_id=?",UUID.class,f.first().exceptionId());
+        // Synthetic datastore repair: keep all linked source IDs coherent while
+        // proving that rebinding the readable exception cannot revive old proof.
+        db.update("UPDATE supplier_return_tasks SET arrival_exception_id=?,order_id=?,order_item_id=?,receipt_id=?,receipt_item_id=? WHERE id=?",third.exceptionId(),third.orderId(),third.orderItemId(),third.receiptId(),third.receiptItemId(),task);
+        long rebound=db.queryForObject("SELECT generation FROM read_scope_generations WHERE domain='native_feature'",Long.class);assertTrue(rebound>back);
+        db.update("UPDATE supplier_return_tasks SET arrival_exception_id=?,order_id=?,order_item_id=?,receipt_id=?,receipt_item_id=? WHERE id=?",f.first().exceptionId(),f.first().orderId(),f.first().orderItemId(),f.first().receiptId(),f.first().receiptItemId(),task);
+        back=db.queryForObject("SELECT generation FROM read_scope_generations WHERE domain='native_feature'",Long.class);assertTrue(back>rebound);
+        final long settledGeneration=back;
+        var transactions=new org.springframework.transaction.support.TransactionTemplate(new org.springframework.jdbc.datasource.DataSourceTransactionManager(db.getDataSource()));
+        transactions.executeWithoutResult(status->{db.update("DELETE FROM supplier_return_tasks WHERE arrival_exception_id=?",f.first().exceptionId());status.setRollbackOnly();});
+        assertEquals(settledGeneration,db.queryForObject("SELECT generation FROM read_scope_generations WHERE domain='native_feature'",Long.class));
+        db.update("DELETE FROM supplier_return_tasks WHERE arrival_exception_id=?",f.first().exceptionId());
+        assertTrue(db.queryForObject("SELECT generation FROM read_scope_generations WHERE domain='native_feature'",Long.class)>back);
+    }
+
+    @Test void lateSupplierReturnReadCannotPublishAfterOwnerChangeOrReadAllRevocation() throws Exception {
+        var f=scopeCases();
+        var original=subject(f.owner(),"supplier_return_task:view","supplier_return_task:view:all","supplier_return_task:complete");
+        var actual=new java.util.concurrent.atomic.AtomicReference<>(original);
+        var restored=mock(com.uten.imp.security.SubmitterPrincipalRestorer.class);
+        org.mockito.Mockito.when(restored.currentStamps(original.getId())).thenReturn(java.util.Optional.of(new com.uten.imp.security.SubmitterPrincipalRestorer.AuthorizationStamps(7L,0L)));
+        org.mockito.Mockito.when(restored.restore(original.getId(),7L,0L)).thenAnswer(call->actual.get());
+        var users=mock(SecurityContextCurrentUser.class);org.mockito.Mockito.when(users.get()).thenReturn(java.util.Optional.of(original));
+        var authority=new com.uten.imp.security.ReadScopeVersionAuthority(new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(scopeDb()),restored,mock(com.uten.imp.security.OwnerVisibility.class));
+        var interceptor=new com.uten.imp.common.report.NativeTaskReadScopeInterceptor(authority,users);
+        var advice=new com.uten.imp.common.report.ReportReadScopeAdvice(authority);
+        var request=new org.springframework.mock.web.MockHttpServletRequest("GET","/api/procurement/arrival-exceptions/tasks");
+        var response=new org.springframework.mock.web.MockHttpServletResponse();
+        assertTrue(interceptor.preHandle(request,response,new Object()));
+        var rows=serviceAs(original).ownerTasks(null,1,20,null,null,null,f.marker());assertEquals(2L,rows.getTotal());
+        scopeDb().update("UPDATE supplier_return_tasks SET owner_user_id=?,owner_employee_id=? WHERE arrival_exception_id=?",f.other().userId(),f.other().employeeId(),f.first().exceptionId());
+        var changed=assertThrows(com.uten.imp.common.web.ApiException.class,()->advice.beforeBodyWrite(rows,null,org.springframework.http.MediaType.APPLICATION_JSON,
+                org.springframework.http.converter.json.JacksonJsonHttpMessageConverter.class,
+                new org.springframework.http.server.ServletServerHttpRequest(request),new org.springframework.http.server.ServletServerHttpResponse(response)));
+        assertEquals(com.uten.imp.common.web.ErrorCode.READ_SCOPE_CHANGED,changed.getCode());
+        var second=new org.springframework.mock.web.MockHttpServletRequest("GET","/api/procurement/arrival-exceptions/"+f.second().exceptionId());
+        assertTrue(interceptor.preHandle(second,response,new Object()));
+        actual.set(subject(f.owner(),"supplier_return_task:view","supplier_return_task:complete"));
+        assertThrows(com.uten.imp.common.web.ApiException.class,()->advice.beforeBodyWrite(rows,null,org.springframework.http.MediaType.APPLICATION_JSON,
+                org.springframework.http.converter.json.JacksonJsonHttpMessageConverter.class,
+                new org.springframework.http.server.ServletServerHttpRequest(second),new org.springframework.http.server.ServletServerHttpResponse(response)));
+    }
+
     private static void executeSql(
             Connection connection, String sql, Object... values) throws Exception {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {

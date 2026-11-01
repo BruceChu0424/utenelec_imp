@@ -716,8 +716,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
         boolean history = "COMPLETED".equalsIgnoreCase(
                 status == null ? "" : status.trim());
         List<Object> args = new ArrayList<>();
-        args.add(actor);
-        StringBuilder where = new StringBuilder("return_task.owner_user_id = ?");
+        boolean readAll=canReadAllOwnerTasks();
+        if(!readAll)args.add(actor);
+        StringBuilder where = new StringBuilder(readAll?"return_task.id IS NOT NULL":"return_task.owner_user_id = ?");
         where.append(history
                 ? " AND return_task.status = 'COMPLETED'"
                 : " AND return_task.status = 'PENDING_RETURN'");
@@ -779,12 +780,12 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
     @PreAuthorize("hasAuthority('supplier_return_task:view')")
     public ArrivalExceptionTask ownerDetail(UUID id) {
         UUID actor = currentUser.requireId();
+        boolean readAll=canReadAllOwnerTasks();
         List<ArrivalExceptionTask> rows = queryExceptions(
-                "exception.id = ? AND return_task.owner_user_id = ?",
+                "exception.id = ? AND " + (readAll?"return_task.id IS NOT NULL":"return_task.owner_user_id = ?"),
                 ActionScope.OWNER,
                 "",
-                id,
-                actor);
+                readAll?new Object[]{id}:new Object[]{id,actor});
         if (rows.isEmpty()) {
             if (existsException(id)) {
                 throw new ApiException(ErrorCode.FORBIDDEN, "该供应商退回任务未分配给当前用户");
@@ -792,6 +793,13 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             throw new ApiException(ErrorCode.NOT_FOUND, "供应商退回任务不存在");
         }
         return rows.getFirst();
+    }
+
+    private boolean canReadAllOwnerTasks() {
+        return currentUser.get().filter(user->!user.isVisitor() && user.getEmployeeId()!=null
+                        && user.isAccountNonLocked() && !user.isMustChangePassword())
+                .map(user->user.getPermissions().containsAll(java.util.Set.of(
+                        "supplier_return_task:view","supplier_return_task:view:all"))).orElse(false);
     }
 
     @Transactional(readOnly = true)
@@ -2163,7 +2171,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                        return_task.id AS return_task_id, return_task.qty AS return_qty,
                        return_task.status AS return_status,
                        return_task.version AS return_version,
-                       return_task.completion_note, return_task.completed_at
+                        return_task.completion_note, return_task.completed_at,
+                        return_task.owner_user_id AS return_owner_user_id,
+                        return_task.owner_employee_id AS return_owner_employee_id
                 FROM procurement_arrival_exceptions exception
                 LEFT JOIN suppliers supplier ON supplier.id = exception.supplier_id
                 LEFT JOIN warehouses warehouse ON warehouse.id = exception.warehouse_id
@@ -2188,6 +2198,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                             rs.getObject("completed_at", OffsetDateTime.class));
             List<String> actions = new ArrayList<>(3);
             String status = rs.getString("status");
+            var actor=currentUser.get().orElse(null);
+            UUID returnOwnerUser=rs.getObject("return_owner_user_id",UUID.class);
+            UUID returnOwnerEmployee=rs.getObject("return_owner_employee_id",UUID.class);
             if (actionScope == ActionScope.FINANCE
                     && PENDING_FINANCE.equals(status)) {
                 actions.add("APPROVE_ALL");
@@ -2196,7 +2209,12 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
             }
             if (actionScope == ActionScope.OWNER
                     && returnTask != null
-                    && "PENDING_RETURN".equals(returnTask.status())) {
+                    && "PENDING_RETURN".equals(returnTask.status())
+                    && actor!=null && actor.getEmployeeId()!=null
+                    && (actor.isSuperAdmin() || actor.getAuthorities().stream().anyMatch(authority->
+                            "supplier_return_task:complete".equals(authority.getAuthority())))
+                    && java.util.Objects.equals(actor.getId(),returnOwnerUser)
+                    && java.util.Objects.equals(actor.getEmployeeId(),returnOwnerEmployee)) {
                 actions.add("COMPLETE_RETURN");
             }
             BigDecimal declared = rs.getBigDecimal("declared_qty");

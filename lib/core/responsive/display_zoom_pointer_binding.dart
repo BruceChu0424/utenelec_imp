@@ -2,6 +2,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
+import 'view_focus_binding.dart';
+
 /// Marks the canvas scale on the hit-test path without taking pointer input.
 class UtenDisplayZoomPointerRegion extends SingleChildRenderObjectWidget {
   const UtenDisplayZoomPointerRegion({
@@ -79,4 +81,4 @@ mixin UtenDisplayZoomPointerEvents on GestureBinding {
 
 /// Production binding. Tests of zoomed input use the same mixin on their binding.
 class UtenWidgetsFlutterBinding extends WidgetsFlutterBinding
-    with UtenDisplayZoomPointerEvents {}
+    with UtenDisplayZoomPointerEvents, UtenViewFocusEvents {}

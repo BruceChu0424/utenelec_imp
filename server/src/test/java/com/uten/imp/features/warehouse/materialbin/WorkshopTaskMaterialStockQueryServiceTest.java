@@ -3,7 +3,6 @@ package com.uten.imp.features.warehouse.materialbin;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.PositionRow;
-import com.uten.imp.features.warehouse.materialbin.WorkshopMaterialDtos.PositionView;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
@@ -47,6 +46,7 @@ class WorkshopTaskMaterialStockQueryServiceTest {
         when(bins.settings(workshop)).thenReturn(new WorkshopMaterialBinSupport.Settings(
                 workshop, "注塑车间", true, bin, LocalDate.of(2026, 9, 30), 1));
         when(permissions.has(WorkshopMaterialPermissions.REQUEST)).thenReturn(true);
+        when(scope.canSee(workshop)).thenReturn(true);
         when(db.queryForList(anyString(), any(MapSqlParameterSource.class)))
                 .thenReturn(List.of(material("0.0086", "kg")));
         withStock(stock("100", "50", 0, 0, color));
@@ -134,7 +134,7 @@ class WorkshopTaskMaterialStockQueryServiceTest {
         assertTrue(service.readiness(segment).allowedActions().isEmpty());
         clearInvocations(bins, positions);
         doThrow(new ApiException(ErrorCode.FORBIDDEN, "只能查看本车间"))
-                .when(scope).requireWorkshop(workshop);
+                .when(scope).requireTaskReadableWorkshop(workshop);
         assertThrows(ApiException.class, () -> service.readiness(segment));
         verifyNoInteractions(bins, positions);
     }
@@ -169,8 +169,14 @@ class WorkshopTaskMaterialStockQueryServiceTest {
     }
 
     private void withStock(PositionRow... rows) {
-        when(positions.position(bin)).thenReturn(new PositionView(bin, "注塑内料仓", workshop, "注塑车间",
-                "OPEN", "NONE", List.of(), null, null, null, List.of(rows), List.of("REQUEST")));
+        when(positions.positionRowsForTask(bin)).thenReturn(List.of(rows));
+    }
+
+    @Test void crossWorkshopTaskObservationKeepsQuantitiesButHasNoRequestAction() {
+        when(scope.canSee(workshop)).thenReturn(false);
+        var result=service.readiness(segment);
+        assertFalse(result.rows().isEmpty());assertTrue(result.allowedActions().isEmpty());
+        verify(scope).requireTaskReadableWorkshop(workshop);
     }
 
     private static void assertDecimal(String expected, BigDecimal actual) {

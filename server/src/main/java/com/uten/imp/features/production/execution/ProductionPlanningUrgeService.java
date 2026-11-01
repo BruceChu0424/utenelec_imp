@@ -70,7 +70,7 @@ public class ProductionPlanningUrgeService {
     public UrgeResult urge(UUID segmentId) {
         tx.bind();
         membership.requireActiveOperator();
-        workbench.requireVisibleWorkshopTask(segmentId);
+        workbench.requireAssignedWorkshopTask(segmentId);
         Object[] segment = segmentRow(segmentId);
         if (segment == null) throw new ApiException(ErrorCode.NOT_FOUND, "车间任务不存在");
         String status = (String) segment[1];

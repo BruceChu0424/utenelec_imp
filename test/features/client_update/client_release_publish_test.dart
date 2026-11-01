@@ -114,6 +114,8 @@ class _Api extends ApiClient {
   int listCalls = 0, withdrawCalls = 0;
   String? rejectKind, losePublishKind;
   Completer<void>? delayedUpload;
+  bool measurableUpload = true;
+  void Function(int, int)? uploadProgress;
   Map<String, dynamic> _view(Map<String, dynamic> body) => {
     ...body,
     'id': body['requestId'],
@@ -211,7 +213,8 @@ class _Api extends ApiClient {
     uploadedBytes.add(Uint8List.fromList(bytes));
     records[id]!['sha256'] = sha256.convert(bytes).toString();
     records[id]!['sizeBytes'] = bytes.length;
-    onProgress(bytes.length, bytes.length);
+    uploadProgress = onProgress;
+    onProgress(measurableUpload ? bytes.length : 0, bytes.length);
     await delayedUpload?.future;
   }
 }
@@ -524,6 +527,76 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'unobservable file upload uses indeterminate progress until real bytes',
+    (tester) async {
+      final api = _Api()
+        ..measurableUpload = false
+        ..delayedUpload = Completer<void>();
+      await _pump(
+        tester,
+        api,
+        _Session(_identity()),
+        files: [_file('setup.exe')],
+      );
+      await _fill(tester);
+      await _add(tester, single: true);
+      final publish = find.byKey(
+        const ValueKey('client-release-publish-batch'),
+      );
+      await _reveal(tester, publish);
+      await tester.tap(publish);
+      for (var frame = 0; frame < 100 && api.packages.isEmpty; frame++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(api.packages, hasLength(1));
+      final originalId = api.packages.single;
+      expect(
+        tester
+            .widget<LinearProgressIndicator>(
+              find.byType(LinearProgressIndicator),
+            )
+            .value,
+        isNull,
+      );
+      api.uploadProgress!(2, 8);
+      await tester.pump();
+      expect(
+        tester
+            .widget<LinearProgressIndicator>(
+              find.byType(LinearProgressIndicator),
+            )
+            .value,
+        0.25,
+      );
+      api.uploadProgress!(0, 0);
+      await tester.pump();
+      expect(
+        tester
+            .widget<LinearProgressIndicator>(
+              find.byType(LinearProgressIndicator),
+            )
+            .value,
+        isNull,
+      );
+      api.delayedUpload!.complete();
+      for (var frame = 0; frame < 100 && api.publishIds.isEmpty; frame++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      await tester.pumpAndSettle();
+      expect(api.packages, [originalId]);
+      expect(api.publishIds, [originalId]);
+      expect(api.creates, hasLength(1));
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'shared page navigation and alert close preserve the former popup close protection',
     (tester) async {

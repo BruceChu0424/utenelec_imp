@@ -24,6 +24,6 @@ public class WorkshopMaterialTaskStatusController {
     @GetMapping
     @PreAuthorize("hasAuthority('workshop_material:view')")
     public List<WorkshopMaterialDtos.SettingsView> list(@RequestParam(required = false) UUID scopeWarehouseId) {
-        return warehouseScopes.withQueryScopeCache(() -> settings.taskStatus(warehouseScopes.current(scopeWarehouseId)));
+        return warehouseScopes.withQueryScopeCache(() -> settings.taskStatus(warehouseScopes.currentForRead(scopeWarehouseId)));
     }
 }

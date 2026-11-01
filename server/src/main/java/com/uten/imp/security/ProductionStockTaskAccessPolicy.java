@@ -42,7 +42,7 @@ public class ProductionStockTaskAccessPolicy {
 
     /** Same live warehouse restriction for read projections; does not grant a task or document authority. */
     public WarehouseTaskScopePort.WarehouseTaskScope readWarehouseScope() {
-        return warehouseScopes.current(null);
+        return warehouseScopes.currentForRead(null);
     }
 
     public void requireWarehouseTaskAccess(String message) {

@@ -75,6 +75,27 @@ class PermissionConfigurationTransferPostgresTest {
     }
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
 
+    @Test void explicitTaskReadAllDepartmentImportRequiresConfirmationAndResolvesForOrdinaryMembers() {
+        List<String> ranges=List.of("warehouse_task:view:all","production_workshop_task:view:all","supplier_return_task:view:all");
+        UUID department=department(),member=account(department,"任务范围普通成员");
+        assertThat(effective(member)).doesNotContainAnyElementsOf(ranges);
+        var backup=new Backup(PermissionConfigurationTransferService.FORMAT,1,java.time.Instant.now().toString(),List.of(),
+                List.of(new DepartmentConfiguration("range-department","RANGE","任务范围部门",ranges)),List.of(),List.of());
+        var request=new ImportRequest(backup,false,List.of(new Mapping("range-department",department)),List.of(),false,List.of());
+        var preview=transfer.previewImport(request);
+        assertThat(preview.canApply()).isTrue();
+        assertThat(preview.sensitiveAdditions()).extracting(SensitiveAddition::permissionCode).containsExactlyInAnyOrderElementsOf(ranges);
+        assertThatThrownBy(()->transfer.importConfiguration(new ImportCommit(request,preview.fingerprint(),List.of())))
+                .isInstanceOf(ApiException.class).hasMessageContaining("逐项确认");
+        assertThat(effective(member)).doesNotContainAnyElementsOf(ranges);
+        transfer.importConfiguration(new ImportCommit(request,preview.fingerprint(),confirmations(preview)));
+        assertThat(effective(member)).containsAll(ranges).doesNotContain("stock_doc:view","production_execution:view","supplier_return_task:view");
+        assertThat(resolver.grantedPermissionsFor(List.of(member),Set.copyOf(ranges)).get(member)).containsExactlyInAnyOrderElementsOf(ranges);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_permission_overrides WHERE user_id=?",Integer.class,member)).isZero();
+        assertThat(jdbc.queryForObject("SELECT is_super_admin FROM users WHERE id=?",Boolean.class,member)).isFalse();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM permissions WHERE code IN (?,?,?) AND high_risk AND sensitivity='NORMAL' AND explicit_grant_required",Integer.class,ranges.toArray())).isEqualTo(3);
+    }
+
     @Test void copyMatchesEffectivePermissionsAndRevokesExtraInheritanceWithoutAddingOptionalNavigation() {
         UUID source=account(department(),"源"),targetDept=department(),target=account(targetDept,"目标");
         personal(source,"goods:edit");

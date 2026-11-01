@@ -139,11 +139,32 @@ public class ReadScopeVersionAuthority {
                 atom(hash,businessTasks);
                 if("native_fqc_records".equals(domain))atom(hash,scope==null?"QUALITY_POOL":"PLAN_OWNER");
                 if("native_workshop_tasks".equals(domain)) {
-                    var assignment=required(workshopAccess).snapshot(effective);
+                    var assignment=required(workshopAccess).snapshot(effective,businessTasks);
                     atom(hash,"WORKSHOP_ASSIGNMENT");atom(hash,assignment.all());atom(hash,assignment.responsibleEmployee());
                     uuids(hash,assignment.workshops());
                 }
                 if("native_warehouse_tasks".equals(domain)) {
+                    atom(hash,"WAREHOUSE_BROWSE_ALL");
+                    atom(hash,!businessTasks && effective.getPermissions().contains("warehouse_task:view:all"));
+                    var stockOwners=owners.evaluate("stock_doc","stock_doc:view:all");
+                    atom(hash,"WAREHOUSE_STOCK_OWNERS");atom(hash,stockOwners.seeAll());
+                    uuids(hash,stockOwners.visibleOwners());uuids(hash,stockOwners.writableOwners());
+                    // Typed physical trace combines the original commercial
+                    // owner readers. Reuse their existing ledgers and policies;
+                    // the physical range never becomes an owner or write grant.
+                    for(var pair:List.of(new String[]{"purchase","purchase:view:all","native_purchase_owner"},
+                            new String[]{"subcontract","subcontract:view:all","native_subcontract_owner"},
+                            new String[]{"production_plan","production_plan:view:all","native_production_owner"})) {
+                        Long ownerGeneration=jdbc.queryForObject("SELECT generation FROM read_scope_generations WHERE domain=:domain",Map.of("domain",pair[2]),Long.class);
+                        if(ownerGeneration==null || ownerGeneration<0)throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"关联业务读取范围版本不可用");
+                        var linkedOwners=owners.evaluate(pair[0],pair[1]);
+                        atom(hash,pair[2]);atom(hash,ownerGeneration);atom(hash,linkedOwners.seeAll());
+                        uuids(hash,linkedOwners.visibleOwners());uuids(hash,linkedOwners.writableOwners());
+                    }
+                    var assigned=required(workshopAccess).snapshot(effective,true);
+                    Long workshopGeneration=jdbc.queryForObject("SELECT generation FROM read_scope_generations WHERE domain=:domain",Map.of("domain","native_workshop_tasks"),Long.class);
+                    if(workshopGeneration==null || workshopGeneration<0)throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"车间读取范围版本不可用");
+                    atom(hash,"WAREHOUSE_WORKSHOP_ASSIGNMENT");atom(hash,workshopGeneration);atom(hash,assigned.responsibleEmployee());uuids(hash,assigned.workshops());
                     var access=required(warehouseAccess).freshAccess(effective.getId(),businessTasks);
                     if(access==null)throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"仓库读取范围不可用");
                     atom(hash,"WAREHOUSE_UNIVERSE");atom(hash,access.role());atom(hash,access.warehouseMember());

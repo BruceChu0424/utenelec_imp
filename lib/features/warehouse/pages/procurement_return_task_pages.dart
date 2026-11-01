@@ -30,8 +30,9 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../shared/auth/native_read_view_scope_mixin.dart'
-    show nativeReadAccessDenied;
+import '../../../shared/auth/native_read_view_scope_mixin.dart';
+import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../shared/models/procurement_inbound.dart';
 import '../repositories/procurement_inbound_repository.dart';
 import '../../../shared/badges/badge_registry.dart';
@@ -57,7 +58,8 @@ class ProcurementReturnTasksPage extends ConsumerStatefulWidget {
 enum _ReturnSeg { pending, history }
 
 class _ProcurementReturnTasksPageState
-    extends ConsumerState<ProcurementReturnTasksPage> {
+    extends ConsumerState<ProcurementReturnTasksPage>
+    with ScopedPagedReadViewMixin<ProcurementReturnTasksPage> {
   PagedResult<ProcurementArrivalException>? _result;
   Object? _acceptedQuery;
   bool _loading = false;
@@ -79,37 +81,54 @@ class _ProcurementReturnTasksPageState
   /// 「返回即刷新」登记用的本页路径（build 首次捕获）。
   String? _myLocation;
 
+  Object get _readQuery => (
+    _seg,
+    _historyTime,
+    _keyword,
+    widget.orderType,
+    ref.read(procurementInboundRepositoryProvider),
+  );
+
   @override
-  void initState() {
-    super.initState();
-  }
+  void scopedPagedReadOwnerChanged() => setState(() {
+    _requestVersion++;
+    _result = null;
+    _acceptedQuery = null;
+    _selected.clear();
+    _loading = false;
+    _error = scopedPagedReadRejection?.message;
+  });
 
   bool get _shouldLoad =>
       _seg != null && (_seg != _ReturnSeg.history || !_historyTime.isNone);
 
   Future<void> _load(int page) async {
-    if (!_shouldLoad) return;
+    if (!mounted || !_shouldLoad) return;
     final requestVersion = ++_requestVersion;
     final range = _seg == _ReturnSeg.history ? _historyTime.range : null;
-    final query = (_seg, _historyTime, _keyword, widget.orderType);
+    final query = _readQuery;
     setState(() {
       if (_acceptedQuery != query) _result = null;
       _loading = true;
       _error = null;
     });
     try {
-      final result = await ref
-          .read(procurementInboundRepositoryProvider)
-          .ownerTasks(
-            page: page,
-            orderType: widget.orderType,
-            status: _seg == _ReturnSeg.history ? 'COMPLETED' : null,
-            dateFrom: range == null
-                ? null
-                : ChinaDateTime.formatDate(range.start),
-            dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
-            keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
-          );
+      final repo = ref.read(procurementInboundRepositoryProvider);
+      final result = await readScopedPage<ProcurementArrivalException>(
+        page,
+        query: query,
+        currentQuery: () => _readQuery,
+        fetchPage: (page) => repo.ownerTasks(
+          page: page,
+          orderType: widget.orderType,
+          status: _seg == _ReturnSeg.history ? 'COMPLETED' : null,
+          dateFrom: range == null
+              ? null
+              : ChinaDateTime.formatDate(range.start),
+          dateTo: range == null ? null : ChinaDateTime.formatDate(range.end),
+          keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
+        ),
+      );
       if (!mounted || requestVersion != _requestVersion) return;
       setState(() {
         _result = result;
@@ -165,6 +184,9 @@ class _ProcurementReturnTasksPageState
 
   /// 批量确认退回（物流凭证）：超量未入库，确认即记录实物已退并关闭任务，不冲库存/应付。
   Future<void> _batchConfirmReturn() async {
+    if (!mounted || _batchSaving) return;
+    final epoch = ref.read(exportContextEpochProvider);
+    bool current() => mounted && epoch == ref.read(exportContextEpochProvider);
     final tasks = _selectedTasks
         .where((t) => t.canCompleteReturn)
         .toList(growable: false);
@@ -216,39 +238,45 @@ class _ProcurementReturnTasksPageState
     } finally {
       noteCtl.dispose();
     }
-    if (note == null || !mounted) return;
+    if (note == null || !current()) return;
     setState(() {
       _batchSaving = true;
       _loading = true;
     });
-    final repo = ref.read(procurementInboundRepositoryProvider);
-    var ok = 0;
-    var fail = 0;
-    for (final task in tasks) {
-      final returnTask = task.returnTask;
-      if (returnTask == null) continue;
-      try {
-        await repo.completeReturn(
-          returnTaskId: returnTask.id,
-          expectedVersion: returnTask.version,
-          completionNote: note,
-        );
-        ok++;
-      } catch (_) {
-        fail++;
+    try {
+      final repo = ref.read(procurementInboundRepositoryProvider);
+      var ok = 0;
+      var fail = 0;
+      for (final task in tasks) {
+        if (!current()) break;
+        final returnTask = task.returnTask;
+        if (returnTask == null) continue;
+        try {
+          await repo.completeReturn(
+            returnTaskId: returnTask.id,
+            expectedVersion: returnTask.version,
+            completionNote: note,
+          );
+          ok++;
+        } catch (_) {
+          fail++;
+        }
       }
+      if (!current()) return;
+      _selected.clear();
+      refreshBadges(ref);
+      await _load(_result?.page ?? 1);
+      if (!mounted || !current()) return;
+      if (fail == 0) {
+        context.appSuccess('已确认退回 $ok 条');
+      } else {
+        context.appWarning('已确认 $ok 条，$fail 条失败(可能已被处理，请刷新)');
+      }
+    } finally {
+      // The submitted operation keeps its lock through read/identity changes.
+      // Only its settlement clears the busy flag; no old DTO is republished.
+      if (mounted) setState(() => _batchSaving = false);
     }
-    _selected.clear();
-    if (!mounted) return;
-    refreshBadges(ref);
-    await _load(_result?.page ?? 1);
-    if (!mounted) return;
-    if (fail == 0) {
-      context.appSuccess('已确认退回 $ok 条');
-    } else {
-      context.appWarning('已确认 $ok 条，$fail 条失败(可能已被处理，请刷新)');
-    }
-    if (mounted) setState(() => _batchSaving = false);
   }
 
   String get _defaultBack =>
@@ -585,7 +613,8 @@ class ProcurementReturnTaskDetailPage extends ConsumerStatefulWidget {
 }
 
 class _ProcurementReturnTaskDetailPageState
-    extends ConsumerState<ProcurementReturnTaskDetailPage> {
+    extends ConsumerState<ProcurementReturnTaskDetailPage>
+    with NativeReadViewScopeMixin<ProcurementReturnTaskDetailPage> {
   ProcurementArrivalException? _task;
   bool _loading = false;
   bool _saving = false;
@@ -594,10 +623,33 @@ class _ProcurementReturnTaskDetailPageState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    initializeNativeReadScope();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
+  @override
+  void nativeReadOwnerChanged() => setState(() {
+    _task = null;
+    _loading = false;
+    _error = '登录身份或服务器已变化，原任务信息已隐藏';
+  });
+  @override
+  void nativeReadPermissionChanged() => setState(() {
+    _loading = false;
+  });
+  @override
+  Future<void> nativeReadReload() => _load();
+
   Future<void> _load() async {
+    if (!mounted) return;
+    final current = captureNativeRead(
+      widget.id,
+      () => widget.id,
+      retainAccepted: true,
+    );
+    if (!current()) return;
     setState(() {
       _loading = true;
       _error = null;
@@ -606,20 +658,25 @@ class _ProcurementReturnTaskDetailPageState
       final task = await ref
           .read(procurementInboundRepositoryProvider)
           .ownerTaskDetail(widget.id);
-      if (!mounted) return;
+      if (!current()) return;
+      acceptNativeRead();
       setState(() {
         _task = task;
         _loading = false;
       });
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!current()) return;
+      final retained = failNativeRead(error, message: error.message);
       setState(() {
+        if (!retained) _task = null;
         _error = error.message;
         _loading = false;
       });
-    } catch (_) {
-      if (!mounted) return;
+    } catch (error) {
+      if (!current()) return;
+      final retained = failNativeRead(error, message: '退回任务加载失败，请检查网络后重试');
       setState(() {
+        if (!retained) _task = null;
         _error = '退回任务加载失败，请检查网络后重试';
         _loading = false;
       });
@@ -630,59 +687,65 @@ class _ProcurementReturnTaskDetailPageState
     final task = _task;
     final returnTask = task?.returnTask;
     if (_saving ||
+        !nativeReadCanWrite ||
         task == null ||
         returnTask == null ||
         !task.canCompleteReturn) {
       return;
     }
     final noteController = TextEditingController();
+    final current = captureNativeOwnership();
     late final String? note;
     try {
       note = await UtenDialog.showAndWaitForExit<String>(
         context,
-        builder: (dialogContext) => UtenAlertDialog(
-          title: const Text('确认已退回供应商'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '请确认 ${procurementQty(returnTask.qty)} ${task.unitName ?? ''} 已实际交还供应商。',
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              TextField(
-                controller: noteController,
-                minLines: 2,
-                maxLines: 4,
-                maxLength: 1000,
-                decoration: const UtenInputDecoration(
-                  InputDecoration(
-                    labelText: '退回说明(可选)',
-                    hintText: '例如：供应商司机已带回',
+        builder: (dialogContext) => trackNativeReadDialog(
+          dialogContext,
+          UtenAlertDialog(
+            title: const Text('确认已退回供应商'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '请确认 ${procurementQty(returnTask.qty)} ${task.unitName ?? ''} 已实际交还供应商。',
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                TextField(
+                  controller: noteController,
+                  minLines: 2,
+                  maxLines: 4,
+                  maxLength: 1000,
+                  decoration: const UtenInputDecoration(
+                    InputDecoration(
+                      labelText: '退回说明(可选)',
+                      hintText: '例如：供应商司机已带回',
+                    ),
                   ),
                 ),
+              ],
+            ),
+            actionsAlignment: MainAxisAlignment.center,
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('取消'),
+              ),
+              FilledButton.icon(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, noteController.text.trim()),
+                icon: const Icon(Icons.assignment_return_outlined),
+                label: const Text('确认已退回'),
               ),
             ],
           ),
-          actionsAlignment: MainAxisAlignment.center,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('取消'),
-            ),
-            FilledButton.icon(
-              onPressed: () =>
-                  Navigator.pop(dialogContext, noteController.text.trim()),
-              icon: const Icon(Icons.assignment_return_outlined),
-              label: const Text('确认已退回'),
-            ),
-          ],
+          inlineNotice: true,
         ),
       );
     } finally {
       noteController.dispose();
     }
-    if (note == null || !mounted) return;
+    if (note == null || !current() || !nativeReadCanWrite) return;
     setState(() => _saving = true);
     try {
       final updated = await ref
@@ -692,16 +755,16 @@ class _ProcurementReturnTaskDetailPageState
             expectedVersion: returnTask.version,
             completionNote: note,
           );
-      if (!mounted) return;
+      if (!mounted || !current()) return;
       setState(() => _task = updated);
       refreshBadges(ref);
       context.appSuccess('已记录退回供应商');
     } on ApiException catch (error) {
-      if (!mounted) return;
+      if (!mounted || !current()) return;
       context.appError(error.message);
       if (error.code == 'CONFLICT') await _load();
     } catch (_) {
-      if (mounted) context.appError('确认退回失败，请稍后重试');
+      if (mounted && current()) context.appError('确认退回失败，请先刷新核对原任务');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -741,8 +804,10 @@ class _ProcurementReturnTaskDetailPageState
                     actionLabel: '重新加载',
                     onAction: _load,
                   )
+                : !nativeReadAccessConfirmed
+                ? nativeReadAccessNotice()
                 : task == null
-                ? UtenEmpty.error(message: '任务不存在或并非由您下单')
+                ? UtenEmpty.error(message: '任务不存在或当前没有查看权限')
                 // 2026-09-15 宽度口径（用户反馈）：弃 narrow（1120 两侧大留白），
                 // 改默认容器对齐新建销售订货单页。
                 : UtenContentContainer(
@@ -755,6 +820,7 @@ class _ProcurementReturnTaskDetailPageState
                         UtenFloatingActionGroup.scrollClearance,
                       ),
                       children: [
+                        nativeReadRefreshFeedback(onRetry: _load),
                         _ReturnStatusBanner(task: task),
                         const SizedBox(height: UtenSpacing.s12),
                         _ReturnFactsCard(task: task),
@@ -774,7 +840,8 @@ class _ProcurementReturnTaskDetailPageState
       // 2026-09-14 UI 统一口径：吸底操作按钮改右下悬浮组（按钮已是 large）。
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
-      floatingActionButton: task?.canCompleteReturn != true
+      floatingActionButton:
+          !nativeReadCanWrite || task?.canCompleteReturn != true
           ? null
           : UtenFloatingActionGroup(
               children: [

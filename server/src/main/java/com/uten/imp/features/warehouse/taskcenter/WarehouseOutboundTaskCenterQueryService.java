@@ -67,7 +67,7 @@ public class WarehouseOutboundTaskCenterQueryService {
     }
 
     private Page listScoped(Filter filter) {
-        var scope = warehouseScopes.current(filter.scopeWarehouseId());
+        var scope = warehouseScopes.currentForRead(filter.scopeWarehouseId());
         var access = access(scope);
         Set<String> allowed = allowedSources(access);
         if (allowed.isEmpty() || (!"ALL".equals(filter.source()) && !allowed.contains(filter.source()))) {
@@ -83,6 +83,7 @@ public class WarehouseOutboundTaskCenterQueryService {
                 .setParameter("limit", filter.size()).setParameter("offset", (long) (page - 1) * filter.size());
         List<Row> items = NativeQueryResults.objectArrayRows(rows).stream()
                 .map(row -> map(row, access)).toList();
+        items=physicalCommandRows(items,filter,ownDraftMaker);
         Map<String, Long> counts = new LinkedHashMap<>();
         for (Object[] row : NativeQueryResults.objectArrayRows(bind(em.createNativeQuery(sql.facetsSql()), sql))) {
             counts.put(String.valueOf(row[0]), ((Number) row[1]).longValue());
@@ -109,12 +110,37 @@ public class WarehouseOutboundTaskCenterQueryService {
     private boolean has(String permission) { return stockAccess.hasAuthority(permission); }
 
     private WarehouseOutboundTaskCenterSql.Access access(WarehouseTaskScopePort.WarehouseTaskScope scope) {
+        return access(scope,false);
+    }
+
+    private WarehouseOutboundTaskCenterSql.Access access(WarehouseTaskScopePort.WarehouseTaskScope scope,boolean command) {
         return new WarehouseOutboundTaskCenterSql.Access(
                 has("warehouse_sales_outbound:view"), has("subcontract_outbound:view"),
                 has("warehouse_subcontract_outbound_history:view"), has("stock_doc:view"),
                 has("stock_doc:view") && productionAccess.canBrowseWarehouseTasks(), stockAccess.scope(),
-                WarehouseWorkshopMaterialTaskProjection.scope(has("workshop_material:view"),materialScopes,scope),
+                command?WarehouseWorkshopMaterialTaskProjection.commandScope(has("workshop_material:view"),materialScopes,scope)
+                        :WarehouseWorkshopMaterialTaskProjection.scope(has("workshop_material:view"),materialScopes,scope),
                 productionAccess.canAccessWarehouseTasks());
+    }
+
+    private List<Row> physicalCommandRows(List<Row> rows,Filter filter,String ownDraftMaker) {
+        Set<String> keys=physicalCommandKeys(rows,filter,ownDraftMaker);
+        if(keys==null)return rows;
+        return rows.stream().map(row->WarehouseTaskPhysicalReadEligibility.retain(row,keys.contains(row.rowKey()),true)).toList();
+    }
+
+    private Set<String> physicalCommandKeys(List<Row> rows,Filter filter,String ownDraftMaker) {
+        boolean expanded=currentUser.get().map(actor->actor.getPermissions().contains("warehouse_task:view:all")
+                || actor.getPermissions().contains("production_workshop_task:view:all")).orElse(false);
+        if(rows.isEmpty() || !expanded) return null;
+        var physical=warehouseScopes.current(null);
+        var sql=WarehouseOutboundTaskCenterSql.build(filter,access(physical,true),physical,ownDraftMaker);
+        var query=bind(em.createNativeQuery(sql.cte()+" SELECT concat_ws(':',source_type,record_type,id::text,COALESCE(line_key,'null'))"
+                +" FROM filtered WHERE id IN (:eligibleIds)"),sql)
+                .setParameter("eligibleIds",rows.stream().map(Row::id).distinct().toList());
+        Set<String> keys=new java.util.HashSet<>();
+        for(Object key:query.getResultList())keys.add(String.valueOf(key));
+        return Set.copyOf(keys);
     }
 
     public record PhysicalLine(UUID id, Integer lineNo, String goodsCode, String goodsName,
@@ -151,7 +177,7 @@ public class WarehouseOutboundTaskCenterQueryService {
         } catch (IllegalArgumentException ex) { throw notFound(); }
         UUID documentId = id;
         return warehouseScopes.withQueryScopeCache(() -> {
-            var scope = warehouseScopes.current(requestedWarehouse);
+            var scope = warehouseScopes.currentForRead(requestedWarehouse);
             var access = access(scope);
             if (!allowedSources(access).contains(parts[0])) throw notFound();
             var filter = normalize(new Filter(parts[0], null, null, null, null, null, requestedWarehouse, 1, 1,
@@ -163,7 +189,11 @@ public class WarehouseOutboundTaskCenterQueryService {
             if (parts.length == 4) rowQuery.setParameter("identityLineKey", parts[3]);
             List<Object[]> found = NativeQueryResults.objectArrayRows(rowQuery);
             if (found.isEmpty()) throw notFound();
-            Row document = map(java.util.Arrays.copyOf(found.getFirst(), 19), access);
+            Row physicalRow=map(found.getFirst(),access);
+            Set<String> commandKeys=physicalCommandKeys(List.of(physicalRow),filter,
+                    requestedWarehouse==null?currentUser.employeeId().map(UUID::toString).orElse(""):"");
+            Row document = WarehouseTaskPhysicalReadEligibility.retain(map(java.util.Arrays.copyOf(found.getFirst(),19),access),
+                    commandKeys==null || commandKeys.contains(physicalRow.rowKey()),true);
             if (document.recordType().equals("WORKSHOP_REQUISITION")) {
                 Object warehouses=bindDetail(em.createNativeQuery(sql.cte()+"""
                          SELECT string_agg(DISTINCT warehouse_name,'、' ORDER BY warehouse_name) FROM filtered visible

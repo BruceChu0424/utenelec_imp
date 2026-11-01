@@ -101,6 +101,7 @@ class WarehouseDataScopeEndToEndTest {
     @Autowired WarehouseKeeperService keepers;
     @Autowired WarehouseNoticeRouter router;
     @Autowired ProductionStockTaskAccessPolicy productionTaskAccess;
+    @Autowired com.uten.imp.security.ReadScopeVersionAuthority readVersions;
     @Autowired WorkbenchBadgeController badges;
     @Autowired com.uten.imp.application.port.TaskAudiencePort taskAudience;
     @Autowired StockDocController stockDocs;
@@ -122,6 +123,7 @@ class WarehouseDataScopeEndToEndTest {
      */
     @TestConfiguration(proxyBeanMethods = false)
     static class HostBridgeFixture {
+        @Bean SourceMutationBeforePublication sourceMutationBeforePublication(){return new SourceMutationBeforePublication();}
         @Bean
         @Primary
         HostOperationsClient warehouseScopeHostOperations(ObjectMapper mapper) {
@@ -137,6 +139,23 @@ class WarehouseDataScopeEndToEndTest {
                         .put("serverTimeZone", "UTC")
                         .put("serverTime", java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC).toString());
             };
+        }
+    }
+
+    @org.springframework.boot.test.context.TestComponent
+    @org.springframework.web.bind.annotation.RestControllerAdvice
+    @org.springframework.core.annotation.Order(org.springframework.core.Ordered.HIGHEST_PRECEDENCE+25)
+    static class SourceMutationBeforePublication implements org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice<Object> {
+        static final ThreadLocal<Runnable> PENDING=new ThreadLocal<>();
+        public boolean supports(org.springframework.core.MethodParameter parameter,Class<? extends org.springframework.http.converter.HttpMessageConverter<?>> converter){return true;}
+        public Object beforeBodyWrite(Object body,org.springframework.core.MethodParameter parameter,org.springframework.http.MediaType media,
+                Class<? extends org.springframework.http.converter.HttpMessageConverter<?>> converter,
+                org.springframework.http.server.ServerHttpRequest request,org.springframework.http.server.ServerHttpResponse response) {
+            Runnable mutation=PENDING.get();
+            if(mutation!=null && request.getURI().getPath().equals("/api/warehouse/task-center/inbound")) {
+                PENDING.remove();mutation.run();
+            }
+            return body;
         }
     }
 
@@ -188,6 +207,7 @@ class WarehouseDataScopeEndToEndTest {
     }
 
     @AfterEach void clear() {
+        SourceMutationBeforePublication.PENDING.remove();
         ProductionJdbcMeasurement.end();
         db.update("DELETE FROM warehouse_keepers WHERE warehouse_id IN (?,?,?) OR employee_id IN "
                         + "(SELECT employee_id FROM users WHERE id IN (?,?,?,?,?,?))",
@@ -356,6 +376,105 @@ class WarehouseDataScopeEndToEndTest {
         assertBadgeEqualsLists(member, null);
     }
 
+    @Test void explicitAllWarehouseReadsKeepRealRolesPhysicalRowActionsAndTaskCountsIndependent() throws Exception {
+        var source=mixedWarehousePurchase();
+        fixture.loginAs(admin);
+        UUID reader=fixture.createUserWithPerms(world,"warehouse-read-only-"+UUID.randomUUID(),
+                "warehouse_inbound:view");
+        UUID scopeOnly=fixture.createUserWithPerms(world,"warehouse-range-only-"+UUID.randomUUID(),"notice:read");
+        grantWarehouseReadRange(reader);grantWarehouseReadRange(scopeOnly);
+        fixture.loginAs(scopeOnly);
+        var onlyAuth=SecurityContextHolder.getContext().getAuthentication();
+        assertThat(http.perform(get("/api/warehouse/task-center/inbound").with(authentication(onlyAuth)))
+                .andReturn().getResponse().getStatus()).isEqualTo(403);
+
+        fixture.loginAs(reader);
+        assertThat(scopes.access().role()).isEqualTo(Role.OTHER);
+        assertThat(scopes.access().warehouseParticipant()).isFalse();
+        assertThat(scopes.currentForRead(null).active()).isFalse();
+        var first=inboundCenter.list("PURCHASE","ACTIVE","","",source.billNo(),null,null,null,null,null,1,2);
+        var second=inboundCenter.list("PURCHASE","ACTIVE","","",source.billNo(),null,null,null,null,null,2,2);
+        assertThat(first.total()).isEqualTo(3);assertThat(first.totalPages()).isEqualTo(2);
+        var all=new ArrayList<>(first.items());all.addAll(second.items());
+        assertThat(all).hasSize(3).allSatisfy(row->{assertThat(row.canHandle()).isFalse();assertThat(row.action()).isEqualTo("HISTORY_DETAIL");});
+        assertThat(all).extracting(row->row.rowKey()).doesNotHaveDuplicates();
+        assertThat(inboundCenter.detail(all.getFirst().rowKey(),null,1,1).get("items")).isInstanceOf(List.class);
+        assertThat(badges.badges(null).facts().getOrDefault("warehouseInboundExpectation.PURCHASE",0L)).isZero();
+
+        fixture.loginAs(admin);
+        grantWarehouseReadRange(keeperA);
+        fixture.loginAs(keeperA);
+        assertThat(scopes.access().role()).isEqualTo(Role.KEEPER);
+        assertThat(scopes.current(null).warehouseIds()).contains(warehouseA).doesNotContain(warehouseB);
+        var selector=dataScope.myScope(true);
+        assertThat(selector.role()).isEqualTo("KEEPER");assertThat(selector.readAllWarehouses()).isTrue();
+        assertThat(selector.selectable()).extracting(MyWarehouseScope.Option::id).contains(warehouseB);
+        assertThat(selector.commandSelectable()).extracting(MyWarehouseScope.Option::id).doesNotContain(warehouseB);
+        var mixed=inboundCenter.list("PURCHASE","ACTIVE","","",source.billNo(),null,null,null,null,null,1,100);
+        assertThat(mixed.items().stream().filter(row->row.canHandle()).count()).isEqualTo(2);
+        var foreign=mixed.items().stream().filter(row->!row.canHandle()).findFirst().orElseThrow();
+        assertThat(foreign.action()).isEqualTo("HISTORY_DETAIL");
+        assertThat(((com.uten.imp.features.warehouse.taskcenter.WarehouseTaskCenterContracts.Row)
+                inboundCenter.detail(foreign.rowKey(),warehouseB,1,100).get("row")).canHandle()).isFalse();
+        assertForbidden(()->badges.badges(warehouseB));
+        assertThat(inboundCenter.list("PURCHASE","ACTIVE","","",source.billNo(),null,null,warehouseB,null,null,1,100).total()).isEqualTo(1);
+        fixture.loginAs(admin);
+        db.update("DELETE FROM user_permission_overrides WHERE user_id=? AND permission_id=(SELECT id FROM permissions WHERE code='warehouse_task:view:all')",keeperA);
+        fixture.loginAs(keeperA);
+        assertThat(inboundCenter.list("PURCHASE","ACTIVE","","",source.billNo(),null,null,null,null,null,1,100).total()).isEqualTo(2);
+        assertThatThrownBy(()->inboundCenter.detail(foreign.rowKey(),null,1,100)).isInstanceOf(ApiException.class);
+    }
+
+    private void grantWarehouseReadRange(UUID target) {
+        new TransactionTemplate(transactions).executeWithoutResult(status->{
+            db.queryForObject("SELECT set_config('app.actor_id',?,true)",String.class,admin.toString());
+            db.update("INSERT INTO user_permission_overrides(user_id,permission_id,effect,authority_source,source_actor_user_id) SELECT ?,id,'grant','SUPER_ADMIN_CONFIRMED',? FROM permissions WHERE code='warehouse_task:view:all'",target,admin);
+        });
+    }
+
+    @Test void stockPhysicalDimensionsAdvanceTheLedgerAndAnAbaCannotPublishALateWarehouseRead() throws Exception {
+        var purchase=mixedWarehousePurchase();fixture.loginAs(admin);
+        UUID document=otherOutDraft(warehouseA);
+        UUID item=db.queryForObject("SELECT id FROM stock_document_items WHERE doc_id=? AND NOT is_deleted",UUID.class,document);
+        UUID originalWarehouse=db.queryForObject("SELECT warehouse_id FROM stock_document_items WHERE id=?",UUID.class,item);
+        var principal=(com.uten.imp.security.AuthUser)SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String initial=readVersions.scopeFor("native_warehouse_tasks",principal);
+        long before=db.queryForObject("SELECT generation FROM read_scope_generations WHERE domain='native_warehouse_tasks'",Long.class);
+        SourceMutationBeforePublication.PENDING.set(()->{
+            db.update("UPDATE stock_document_items SET warehouse_id=? WHERE id=?",warehouseB,item);
+            db.update("UPDATE stock_document_items SET warehouse_id=? WHERE id=?",originalWarehouse,item);
+        });
+        try {
+            var result=http.perform(get("/api/warehouse/task-center/inbound").param("source","PURCHASE")
+                    .param("billNo",purchase.billNo()).with(authentication(SecurityContextHolder.getContext().getAuthentication())))
+                    .andReturn().getResponse();
+            assertThat(result.getStatus()).isEqualTo(403);
+            assertThat(result.getContentAsString()).doesNotContain(purchase.billNo());
+            assertThat(result.getHeader("X-Uten-Read-Scope-Version")).isNull();
+        } finally { SourceMutationBeforePublication.PENDING.remove(); }
+        assertThat(db.queryForObject("SELECT warehouse_id FROM stock_document_items WHERE id=?",UUID.class,item)).isEqualTo(originalWarehouse);
+        assertThat(db.queryForObject("SELECT generation FROM read_scope_generations WHERE domain='native_warehouse_tasks'",Long.class)).isEqualTo(before+2);
+        assertThat(readVersions.scopeFor("native_warehouse_tasks",principal)).isNotEqualTo(initial);
+        String stable=readVersions.scopeFor("native_warehouse_tasks",principal);
+        db.update("UPDATE stock_documents SET maker_id=maker_id,to_warehouse_id=to_warehouse_id,remark='非授权维度' WHERE id=?",document);
+        assertThat(readVersions.scopeFor("native_warehouse_tasks",principal)).isEqualTo(stable);
+        UUID owner=db.queryForObject("SELECT maker_id FROM stock_documents WHERE id=?",UUID.class,document);
+        UUID other=db.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,keeperA);
+        db.update("UPDATE stock_documents SET maker_id=? WHERE id=?",other,document);
+        db.update("UPDATE stock_documents SET maker_id=? WHERE id=?",owner,document);
+        assertThat(readVersions.scopeFor("native_warehouse_tasks",principal)).isNotEqualTo(stable);
+        fixture.loginAs(admin);
+        UUID transfer=stockDraft("TRANSFER",warehouseA,warehouseB);
+        String originalTransfer=readVersions.scopeFor("native_warehouse_tasks",principal);
+        db.update("UPDATE stock_documents SET to_warehouse_id=? WHERE id=?",warehouseC,transfer);
+        db.update("UPDATE stock_documents SET to_warehouse_id=? WHERE id=?",warehouseB,transfer);
+        assertThat(readVersions.scopeFor("native_warehouse_tasks",principal)).isNotEqualTo(originalTransfer);
+        var trace=http.perform(get("/api/production/reports/where-used/subjects").param("kind","goods")
+                .with(authentication(SecurityContextHolder.getContext().getAuthentication()))).andReturn().getResponse();
+        assertThat(trace.getStatus()).as(trace.getContentAsString()).isEqualTo(200);
+        assertThat(trace.getHeader("X-Uten-Read-Scope-Domain")).isEqualTo("native_warehouse_tasks:browse");
+    }
+
     @Test void readableManualDrawNeverInflatesTheActionableProductionBadge() {
         fixture.loginAs(admin);
         keepers.replaceKeepers(root, keepersOf(mainKeeper, admin));
@@ -402,9 +521,9 @@ class WarehouseDataScopeEndToEndTest {
 
     @Test void noticeRecipientsFollowTheSameResponsibilityAsTheLists() {
         List<UUID> pool = List.of(keeperA, keeperAB, member, mainKeeper, manager);
-        // 该仓链上的子仓负责人 ∩ 池。
-        assertThat(router.recipients(pool, List.of(warehouseA))).containsExactly(keeperA, keeperAB);
-        assertThat(router.recipients(pool, List.of(warehouseB))).containsExactly(keeperAB);
+        // V982：该仓链上的子仓负责人和真实指定主管，在精确权限池内取并集。
+        assertThat(router.recipients(pool, List.of(warehouseA))).containsExactly(keeperA, keeperAB, mainKeeper, manager);
+        assertThat(router.recipients(pool, List.of(warehouseB))).containsExactly(keeperAB, mainKeeper, manager);
         // 没有子仓负责人(主仓上的登记不算) → 主管 ∩ 池。
         assertThat(router.recipients(pool, List.of(warehouseC))).containsExactlyInAnyOrder(mainKeeper, manager);
         // 未定仓的任务 → 主管 ∩ 池。
@@ -465,9 +584,9 @@ class WarehouseDataScopeEndToEndTest {
 
     /**
      * 只读请求整请求一个范围快照(ADR-149 §2.1): 非超管经真实过滤链 GET 仓库单据列表——控制器解析默认范围、
-     * 列表谓词再判一次仓库任务参与者——一次请求只调一次 fn_user_warehouse_access。
+     * 列表谓词复用发布前探测结果；发布后再独立核验一次，查询行数不增加解析次数。
      */
-    @Test void aReadRequestThroughTheFilterChainResolvesTheScopeOnce() {
+    @Test void aFencedReadReusesOneQueryScopeBetweenTwoFreshPublicationProbes() {
         fixture.loginAs(admin);
         UUID docA = otherOutDraft(warehouseA);
         UUID docC = otherOutDraft(warehouseC);
@@ -486,7 +605,10 @@ class WarehouseDataScopeEndToEndTest {
                     throw new IllegalStateException(failure);
                 }
             });
-            assertThat(resolutions).as(user.toString()).isEqualTo(1);
+            // The new native publication protocol freshly probes before and
+            // after delivery. Every row still reuses the first probe's WINDOW;
+            // this exact bound must not grow with the number of visible rows.
+            assertThat(resolutions).as(user.toString()).isEqualTo(2);
             // 同一请求里的范围仍是本人的: 子仓负责人只看自己的仓, 其他人只看没人负责的仓。
             UUID visible = user.equals(keeperA) ? docA : docC;
             UUID hidden = user.equals(keeperA) ? docC : docA;
@@ -610,9 +732,14 @@ class WarehouseDataScopeEndToEndTest {
     }
 
     private UUID otherOutDraft(UUID warehouse) {
+        return stockDraft("OTHER_OUT",warehouse,null);
+    }
+
+    private UUID stockDraft(String type,UUID warehouse,UUID target) {
         var request = new StockDocSaveRequest();
-        request.setDocType("OTHER_OUT");
+        request.setDocType(type);
         request.setWarehouseId(warehouse);
+        request.setToWarehouseId(target);
         request.setBillDate(BusinessTime.today());
         var line = new StockDocItemLine();
         line.setGoodsId(world.goodsA());

@@ -43,7 +43,15 @@ Future<void> main(List<String> args) async {
       if (path == '/') {
         request.response.headers.contentType = ContentType.html;
         request.response.write(
-          '<!doctype html><html><body>Running browser transport checks<script src="/probe.js"></script></body></html>',
+          '''<!doctype html><html><body>Running browser transport checks<script>
+const nativeFetch = window.fetch.bind(window), aborts = new Map();
+window.utenFetchAbortCount = path => aborts.get(path) || 0;
+window.fetch = (input, init) => {
+  const path = new URL(input.url || input, window.location.href).pathname;
+  init?.signal?.addEventListener('abort', () => aborts.set(path, (aborts.get(path) || 0) + 1), {once:true});
+  return nativeFetch(input, init);
+};
+</script><script src="/probe.js"></script></body></html>''',
         );
       } else if (path == '/probe.js') {
         request.response.headers.contentType = ContentType(
@@ -54,6 +62,12 @@ Future<void> main(List<String> args) async {
       } else if (path == '/report') {
         final body = await utf8.decoder.bind(request).join();
         if (!report.isCompleted) report.complete(body);
+        request.response.write('ok');
+      } else if (path == '/case-event') {
+        final body = await utf8.decoder.bind(request).join();
+        await File(
+          '${output.path}/progress.jsonl',
+        ).writeAsString('$body\n', mode: FileMode.append);
         request.response.write('ok');
       } else if (path.startsWith('/api/redirect/')) {
         await request.drain<void>();
@@ -75,6 +89,38 @@ Future<void> main(List<String> args) async {
             'contentType': request.headers.contentType.toString(),
           }),
         );
+      } else if (path == '/api/upload/slow') {
+        final started = barriers.putIfAbsent('slow-file', Completer<void>.new);
+        if (!started.isCompleted) started.complete();
+        final watch = Stopwatch()..start();
+        var bytes = 0, chunks = 0;
+        await for (final chunk in request) {
+          bytes += chunk.length;
+          chunks++;
+          await Future<void>.delayed(const Duration(milliseconds: 8));
+        }
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(
+          jsonEncode({
+            'bytes': bytes,
+            'chunks': chunks,
+            'readMillis': watch.elapsedMilliseconds,
+          }),
+        );
+      } else if (path == '/api/upload/no-response-body') {
+        await request.drain<void>();
+        request.response.statusCode = 204;
+      } else if (path.startsWith('/api/upload/slow-response')) {
+        await request.drain<void>();
+        request.response.headers.contentType = ContentType.json;
+        request.response.write('{"value":"');
+        await request.response.flush();
+        for (var index = 0; index < 10; index++) {
+          await Future<void>.delayed(const Duration(milliseconds: 70));
+          request.response.write('chunk');
+          await request.response.flush();
+        }
+        request.response.write('"}');
       } else if (path.startsWith('/api/wait/')) {
         await request.drain<void>();
         final key = path.split('/').last;

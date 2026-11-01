@@ -46,13 +46,19 @@ public interface WarehouseTaskScopePort {
     }
 
     /**
-     * 列表 / 计数用的生效范围。
+     * 原职责范围，供办理、可办计数、徽章及旧办理页使用。
+     * 新的浏览投影应明确调用 {@link #currentForRead}，不能反过来用于命令。
      *
      * @param requestedWarehouseId 页面选的仓(含下级); null = 本人默认范围
      *                             (工作台徽章按任务中心所选仓汇总时, null 取汇总请求所选的仓)
      * @throws com.uten.imp.common.web.ApiException 403 所选仓库不在本人可选范围内
      */
     WarehouseTaskScope current(UUID requestedWarehouseId);
+
+    /** Explicit browsing dimension. Commands, membership, notifications and badges keep {@link #current}. */
+    default WarehouseTaskScope currentForRead(UUID requestedWarehouseId) {
+        return current(requestedWarehouseId);
+    }
 
     /**
      * 在「本次汇总按某仓计」的上下文里执行: 先校验所选仓(越界 403), 执行期间 {@code current(null)}
@@ -84,7 +90,7 @@ public interface WarehouseTaskScopePort {
         T read();
     }
 
-    /** Applies a selected warehouse to a read projection without entering the command callback boundary. */
+    /** Read-only summary callback retaining the original responsibility scope (including badges). */
     <T> T withRequestedWarehouseQuery(UUID requestedWarehouseId, ReadQuery<T> query);
 
     /** Reuses the same scope window for a read projection without adapting it to a command callback. */
@@ -119,8 +125,9 @@ public interface WarehouseTaskScopePort {
     List<UUID> noticeCandidateUserIds(Collection<UUID> warehouseIds);
 
     /**
-     * 仓库类通知收件人唯一规则: 该仓链上子仓负责人 ∩ 池; 没有则指定的主管 ∩ 池(超管不因超管身份算在这一级,
-     * 否则「还没配置」那一级永远到不了); 再没有(还没配置)才发整个池。仓库为空 = 未定仓的任务, 直接走主管那一级。
+     * 仓库类通知收件人唯一规则: (该仓链上有效子仓负责人 ∪ 指定的主管) ∩ 精确资格池。
+     * 仅超管身份不构成指定主管；两个集合在池内均为空时才保留原整池 fallback。
+     * 仓库为空时没有子仓负责人，仍向池内指定主管投递；不重写旧通知或回执。
      */
     List<UUID> noticeRecipients(Collection<UUID> pool, Collection<UUID> warehouseIds);
 

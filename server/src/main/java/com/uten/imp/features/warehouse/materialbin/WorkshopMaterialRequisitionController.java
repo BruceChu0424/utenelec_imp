@@ -53,7 +53,7 @@ public class WorkshopMaterialRequisitionController {
                                               @RequestParam(defaultValue = "1") int page,
                                               @RequestParam(defaultValue = "20") int size,
                                               @RequestParam(required = false) String keyword) {
-        return requisitions.list(status, kind, workshopId, warehouseScopes.current(scopeWarehouseId),
+        return requisitions.list(status, kind, workshopId, warehouseScopes.currentForRead(scopeWarehouseId),
                 page, size, TaskView.requested(view), keyword);
     }
 

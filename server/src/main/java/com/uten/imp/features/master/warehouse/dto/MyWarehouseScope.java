@@ -20,7 +20,14 @@ public record MyWarehouseScope(
         List<Option> selectable,
         List<Option> keeperWarehouses,
         UUID defaultWarehouseId,
-        boolean warehouseParticipant) {
+        boolean warehouseParticipant,
+        List<Option> commandSelectable,
+        boolean readAllWarehouses) {
+
+    public MyWarehouseScope(String role,boolean canSelectAll,List<Option> selectable,List<Option> keeperWarehouses,
+            UUID defaultWarehouseId,boolean warehouseParticipant) {
+        this(role,canSelectAll,selectable,keeperWarehouses,defaultWarehouseId,warehouseParticipant,selectable,false);
+    }
 
     /** 一个仓库选项。 */
     public record Option(UUID id, String code, String name, UUID parentId) {

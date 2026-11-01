@@ -56,6 +56,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static com.uten.imp.support.BusinessNoticeFixtures.grant;
 
 /**
  * 委外件只有一种直属物料时(ADR-143 §二.2: 与多种物料同一流程, 计划行只有一条; 发出去的是直属物料
@@ -216,6 +217,8 @@ class SubcontractComponentReturnLegEndToEndTest {
     @ValueSource(booleans = {true, false})
     void severeShortReturnOf800ThenWaitMoreThenFinal150AccumulatesIntoToleranceAndAutoSettlesTheWaitingCase(boolean overdue) {
         var w = fixture.seedWorld("sc-comp-return-split-" + overdue);
+        // The owner performs the decision; the SA marker alone never subscribes to business cards.
+        grant(db, w.superAdminUserId(), "notice:read", "subcontract_order:view", "subcontract_short_delivery:decide");
         fixture.loginAs(w.superAdminUserId());
         bindDirectMaterialBom(w);
         receiveChildStock(w, "1000", w.warehouseId());
@@ -352,6 +355,34 @@ class SubcontractComponentReturnLegEndToEndTest {
                 SELECT COUNT(*) FROM subcontract_short_delivery_cases
                 WHERE order_item_id=? AND status IN ('PENDING_OWNER','WAITING_MORE')
                 """, ordered.itemId()), "不得残留开放案件");
+    }
+
+    @ParameterizedTest(name = "短交制单人无动作订阅不收卡, 仅查看={0}")
+    @ValueSource(booleans = {false, true})
+    void shortDeliveryDoesNotSubscribeAnImplicitSuperAdminOrReadOnlyOwner(boolean readOnly) {
+        var w = fixture.seedWorld("sc-comp-unsubscribed-" + readOnly);
+        if (readOnly) grant(db, w.superAdminUserId(), "notice:read", "subcontract_order:view");
+        fixture.loginAs(w.superAdminUserId());
+        bindDirectMaterialBom(w);
+        receiveChildStock(w, "1000", w.warehouseId());
+        Ordered ordered = orderApproveAndIssueAll(w, "1000");
+        WarehouseArrivalRegisterResult arrived = registerReturn(w, ordered.itemId(), "800", "unsubscribed-800", true);
+        assertEquals("SUBMITTED_FOR_INSPECTION", arrived.outcome());
+        Map<String, Object> detected = caseRow(ordered.itemId());
+        assertEquals("PENDING_OWNER", detected.get("status"));
+        assertEquals("SEVERE", detected.get("severity"));
+        qty("800", (BigDecimal) detected.get("delivered_qty"), "真实短交累计回厂");
+        assertNotNull(shortDeliveries.stockInHoldReason(arrived.receiptId()), "未判定的入库闸仍生效");
+        drainOutbox("SUBCONTRACT_SHORT_DELIVERY_%");
+        assertEquals(0, count("""
+                SELECT COUNT(*) FROM notices WHERE source_event='SUBCONTRACT_SHORT_DELIVERY_DETECTED'
+                  AND audience_user_id=?
+                """, w.superAdminUserId()),
+                "超级管理员隐式目录或仅查看权限都不能订阅短交判定卡");
+        CaseDetail closed = shortDeliveries.decide((UUID) detected.get("id"),
+                new DecisionRequest("ACCEPT_LOSS", null, "供方确认实际损耗，按真实业务结案",
+                        ((Number) detected.get("version")).longValue()));
+        assertEquals("ACCEPTED_LOSS", closed.row().status(), "反例也走真实结案，不污染共享待判定计数");
     }
 
     // ===================== T3 =====================

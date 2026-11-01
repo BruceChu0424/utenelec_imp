@@ -21,6 +21,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.AutowireCapableBeanFactory;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -53,6 +55,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import static com.uten.imp.support.BusinessNoticeFixtures.grant;
 
 /**
  * ADR-143 §二.3 缺 BOM 的委外件真库全链验收: 委外件必须先有可发外的直属物料(唯一判定
@@ -125,10 +128,16 @@ class SubcontractNoBomGateEndToEndTest {
     // 主链: 缺 BOM 挡住分析下达 / 委外送财务 / 计划包确认 → 研发保存 BOM → 分析自动刷新 → 全部放行
     // =====================================================================================
 
-    @Test
-    void aSubcontractNodeWithoutBomBlocksEveryIssuePathUntilRdSavesTheBomAndTheAnalysesRefreshThemselves() {
-        String tag = "scnobom";
+    @ParameterizedTest(name = "缺BOM完整链, 回执订阅={0}")
+    @ValueSource(strings = {"OPERATOR", "IMPLICIT_SUPERADMIN", "VIEW_ONLY"})
+    void aSubcontractNodeWithoutBomBlocksEveryIssuePathUntilRdSavesTheBomAndTheAnalysesRefreshThemselves(String subscription) {
+        String tag = "scnobom-" + subscription;
         var w = fixture.seedWorld(tag);
+        if ("OPERATOR".equals(subscription)) {
+            grant(db, w.superAdminUserId(), "notice:read", "subcontract_order:view", "subcontract_order:submit_finance");
+        } else if ("VIEW_ONLY".equals(subscription)) {
+            grant(db, w.superAdminUserId(), "notice:read", "subcontract_order:view");
+        }
         fixture.loginAs(w.superAdminUserId());
         UUID f = goods(w, "F-" + tag, "成品F-" + tag, "自制");
         UUID s = goods(w, "S-" + tag, "委外件S-" + tag, "委外");
@@ -219,6 +228,11 @@ class SubcontractNoBomGateEndToEndTest {
 
         // ⑤ 旧生产计划确认执行计划包: 按缺口生成委外申请前同样 409, 确认人进等待名单。
         var planWorld = fixture.seedWorld(tag + "-plan");
+        if ("OPERATOR".equals(subscription)) {
+            grant(db, planWorld.superAdminUserId(), "notice:read", "production_plan:view", "production_planning_package:generate");
+        } else if ("VIEW_ONLY".equals(subscription)) {
+            grant(db, planWorld.superAdminUserId(), "notice:read", "production_plan:view");
+        }
         fixture.loginAs(planWorld.superAdminUserId());
         UUID planId = ReflectionTestUtils.invokeMethod(fixture, "approvedPlan", planWorld, f, "10", "10");
         mine.add(planId);
@@ -276,8 +290,13 @@ class SubcontractNoBomGateEndToEndTest {
         // 等待名单里每个人都收到「BOM 已完善」通知, 直达自己被挡住的单据。
         assertBomReadyNotice(planner1, s, "/production/material-analysis?analysisId=" + analysis1);
         assertBomReadyNotice(planner2, s, "/production/material-analysis?analysisId=" + analysis2);
-        assertBomReadyNotice(w.superAdminUserId(), s, "/subcontract/orders/" + subcontractOrderId);
-        assertBomReadyNotice(planWorld.superAdminUserId(), s, "/production/plans/" + planId);
+        if ("OPERATOR".equals(subscription)) {
+            assertBomReadyNotice(w.superAdminUserId(), s, "/subcontract/orders/" + subcontractOrderId);
+            assertBomReadyNotice(planWorld.superAdminUserId(), s, "/production/plans/" + planId);
+        } else {
+            assertNoBomReadyNotice(w.superAdminUserId(), s, "/subcontract/orders/" + subcontractOrderId);
+            assertNoBomReadyNotice(planWorld.superAdminUserId(), s, "/production/plans/" + planId);
+        }
 
         // ⑦ 放行: 甲下达委外建出委外申请。
         fixture.loginAs(planner1);
@@ -456,6 +475,15 @@ class SubcontractNoBomGateEndToEndTest {
                 """, audienceUserId, "%" + code + "%");
         assertTrue(notices.stream().anyMatch(notice -> route.equals(notice.get("action_route"))),
                 "等待人收到「BOM 已完善」通知且直达被挡住的单据 " + route + ", 现状 " + notices);
+    }
+
+    private void assertNoBomReadyNotice(UUID audienceUserId, UUID goodsId, String route) {
+        String code = db.queryForObject("SELECT code FROM goods WHERE id=?", String.class, goodsId);
+        assertEquals(0, count("""
+                SELECT COUNT(*) FROM notices
+                WHERE audience_user_id=? AND title LIKE '%BOM%' AND content LIKE ? AND action_route=?
+                """, audienceUserId, "%" + code + "%", route),
+                "隐式超级管理员目录和仅查看权限不订阅BOM业务回执：" + route);
     }
 
     /**

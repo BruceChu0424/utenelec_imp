@@ -17,11 +17,13 @@ class WarehouseObserverAccessTest {
         when(current.get()).thenReturn(Optional.of(actor));
         when(warehouses.access()).thenReturn(new WarehouseTaskScopePort.WarehouseAccess(
                 WarehouseTaskScopePort.Role.OTHER,List.of(),WarehouseTaskScopePort.WarehouseTaskScope.NONE,false));
-        when(warehouses.current(null)).thenReturn(WarehouseTaskScopePort.WarehouseTaskScope.NONE);
+        when(warehouses.currentForRead(null)).thenReturn(WarehouseTaskScopePort.WarehouseTaskScope.NONE);
         var policy=new ProductionStockTaskAccessPolicy(current,warehouses);
         assertThat(policy.canBrowseWarehouseTasks()).isTrue();
         assertThat(policy.canAccessWarehouseTasks()).isFalse();
         assertThat(policy.readWarehouseScope()).isSameAs(WarehouseTaskScopePort.WarehouseTaskScope.NONE);
+        verify(warehouses).currentForRead(null);
+        verify(warehouses,never()).current(null);
         when(current.get()).thenReturn(Optional.of(new AuthUser(actor.getId(),actor.getEmployeeId(),"observer",Set.of(),false,true,false)));
         assertThat(policy.canBrowseWarehouseTasks()).isFalse();
     }

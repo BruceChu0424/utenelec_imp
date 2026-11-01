@@ -75,7 +75,8 @@ public class InventoryAiChatQueryService {
         // 其他人的「没人负责的仓」是任务兜底, 不是 AI 查库存的授权。
         var access = actor.isSuperAdmin() ? null : scopes.access();
         Set<UUID> authorized;
-        if (access == null || access.role() == WarehouseTaskScopePort.Role.SUPERVISOR) {
+        if (access == null || access.role() == WarehouseTaskScopePort.Role.SUPERVISOR
+                || actor.getPermissions().contains("warehouse_task:view:all")) {
             authorized = all.stream().map(WarehouseReference::id).collect(Collectors.toSet());
         } else if (access.role() == WarehouseTaskScopePort.Role.KEEPER) {
             authorized = all.stream().map(WarehouseReference::id)

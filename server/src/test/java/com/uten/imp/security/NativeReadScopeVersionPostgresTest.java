@@ -174,6 +174,85 @@ class NativeReadScopeVersionPostgresTest {
             assertThatThrownBy(()->db.update(statement)).isInstanceOf(org.springframework.dao.DataAccessException.class);
         assertThat(authority.scopeFor("native_feature",subject)).isEqualTo(initial);
     }
+
+    @Test void stockOwnerGrantAbaAdvancesWarehouseLedgerButDoesNotGrantOwnerWriting() {
+        var before=owners.evaluate("stock_doc","stock_doc:view:all");
+        String original=authority.scopeFor("native_warehouse_tasks",subject);
+        grant(actor,"stock_doc",other);
+        var expanded=owners.evaluate("stock_doc","stock_doc:view:all");
+        assertThat(expanded.visibleOwners()).contains(other);
+        assertThat(expanded.writableOwners()).doesNotContain(other);
+        String wide=authority.scopeFor("native_warehouse_tasks",subject);
+        assertThat(wide).isNotEqualTo(original);
+        db.update("DELETE FROM user_data_scopes WHERE user_id=? AND scope='stock_doc'",actor);
+        assertThat(owners.evaluate("stock_doc","stock_doc:view:all")).isEqualTo(before);
+        assertThat(authority.scopeFor("native_warehouse_tasks",subject)).isNotEqualTo(original).isNotEqualTo(wide);
+    }
+
+    @Test void warehouseReadAllKeepsPhysicalRoleAndRevokeCannotKeepTheExpandedView() {
+        UUID own=warehouse(),foreign=warehouse();
+        db.update("INSERT INTO warehouse_keepers(warehouse_id,employee_id) VALUES(?,?),(?,?)",own,employee,foreign,other);
+        String original=authority.scopeFor("native_warehouse_tasks",subject);
+        var physical=warehouse.access();
+        permissions.add("warehouse_task:view:all");login();
+        assertThat(warehouse.currentForRead(null).active()).isFalse();
+        assertThat(warehouse.currentForRead(foreign).warehouseIds()).contains(foreign);
+        assertThat(warehouse.access()).isEqualTo(physical);
+        assertThatThrownBy(()->warehouse.current(foreign)).isInstanceOf(com.uten.imp.common.web.ApiException.class);
+        assertThat(authority.scopeFor("native_warehouse_tasks",subject)).isNotEqualTo(original);
+        permissions.remove("warehouse_task:view:all");login();
+        assertThat(warehouse.currentForRead(null)).isEqualTo(physical.defaultScope());
+        assertThatThrownBy(()->warehouse.currentForRead(foreign)).isInstanceOf(com.uten.imp.common.web.ApiException.class);
+    }
+
+    @Test void stockHandoverAndRehireSourcesFollowTheCanonicalEffectiveConditions() {
+        String before=authority.scopeFor("native_warehouse_tasks",subject);
+        UUID first=stockHandover(other,employee,false);
+        assertThat(authority.scopeFor("native_warehouse_tasks",subject)).isEqualTo(before);
+        db.update("UPDATE employee_data_handovers SET status='COMPLETED',result_summary='{\"history.stock_doc\":0}'::jsonb WHERE id=?",first);
+        var initial=owners.evaluate("stock_doc","stock_doc:view:all");
+        assertThat(initial.visibleOwners()).contains(other);assertThat(initial.writableOwners()).contains(other);
+        String handed=authority.scopeFor("native_warehouse_tasks",subject);
+        assertThat(handed).isNotEqualTo(before);
+        UUID alternative=employee("stock handover target");
+        stockHandover(other,alternative,true);
+        assertThat(owners.evaluate("stock_doc","stock_doc:view:all").writableOwners()).doesNotContain(other);
+        stockHandover(other,employee,true);
+        assertThat(owners.evaluate("stock_doc","stock_doc:view:all")).isEqualTo(initial);
+        assertThat(authority.scopeFor("native_warehouse_tasks",subject)).isNotEqualTo(handed);
+        String stable=authority.scopeFor("native_warehouse_tasks",subject);
+        db.update("INSERT INTO employment_history(id,employee_id,event_type,event_date,remark) VALUES(?,?,'transfer',current_date,'non-generation event')",UUID.randomUUID(),other);
+        assertThat(authority.scopeFor("native_warehouse_tasks",subject)).isEqualTo(stable);
+        db.update("INSERT INTO employment_history(id,employee_id,event_type,event_date,remark) VALUES(?,?,'rehire',current_date,'new employment generation')",UUID.randomUUID(),other);
+        assertThat(owners.evaluate("stock_doc","stock_doc:view:all").writableOwners()).doesNotContain(other);
+        assertThat(authority.scopeFor("native_warehouse_tasks",subject)).isNotEqualTo(stable);
+    }
+
+    private UUID stockHandover(UUID sourceEmployee,UUID targetEmployee,boolean completed) {
+        UUID id=UUID.randomUUID();
+        db.update("INSERT INTO employee_data_handovers(id,request_id,source_employee_id,target_employee_id,mode,effective_date,reason,requested_scopes,status,result_summary,source_employment_generation,target_employment_generation,created_by_user_id)"
+                +" VALUES(?,?,?,?,'MANUAL',current_date,'stock owner scope fixture',ARRAY['stock_doc']::text[],'EXECUTING','{}'::jsonb,0,0,?)",id,UUID.randomUUID(),sourceEmployee,targetEmployee,actor);
+        db.update("INSERT INTO employee_data_handover_scopes(handover_id,scope) VALUES(?,'stock_doc')",id);
+        if(completed)db.update("UPDATE employee_data_handovers SET status='COMPLETED',result_summary='{\"history.stock_doc\":0}'::jsonb WHERE id=?",id);
+        return id;
+    }
+
+    @Test void warehouseSourceRegistrationKeepsEveryOriginalAndAssociatedPhysicalIdentityEnabled() {
+        for(var rule:List.of(new String[]{"stock_documents","warehouse_id,to_warehouse_id,maker_id"},
+                new String[]{"stock_document_items","doc_id,warehouse_id"},
+                new String[]{"sales_shipments","warehouse_id"},new String[]{"sales_shipment_items","shipment_id,warehouse_id"},
+                new String[]{"production_finished_arrival_registrations","warehouse_id"},
+                new String[]{"production_material_discovery_lines","request_id,warehouse_id"},
+                new String[]{"workshop_material_requisitions","workshop_department_id"},
+                new String[]{"workshop_material_requisition_lines","requisition_id,suggested_leaf_warehouse_id"},
+                new String[]{"workshop_bins","workshop_department_id,source_warehouse_id"},
+                new String[]{"workshop_material_settings","workshop_department_id,periodic_bin_warehouse_id"},
+                new String[]{"stock_count_requests","warehouse_id,review_route,submitted_by"})) {
+            var definitions=db.queryForList("SELECT pg_get_triggerdef(t.oid) FROM pg_trigger t JOIN pg_proc p ON p.oid=t.tgfoid WHERE t.tgrelid=CAST(? AS regclass) AND t.tgenabled='A' AND p.proname='fn_mark_native_scope_columns'",String.class,"public."+rule[0]);
+            for(String column:rule[1].split(","))assertThat(definitions).as(rule[0]+"."+column)
+                    .anyMatch(definition->definition.contains("'native_warehouse_tasks'") && definition.contains("'"+column+"'"));
+        }
+    }
     @Test void purchasePrintProfileAndSharedNativeGrantMapPreserveTheirSeparateOriginalAuthorities(){
         String companyReport=authority.scopeFor("purchase",subject);
         var stamps=restorer.currentStamps(actor).orElseThrow();

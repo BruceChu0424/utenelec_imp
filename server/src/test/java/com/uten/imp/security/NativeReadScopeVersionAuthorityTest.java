@@ -19,6 +19,13 @@ class NativeReadScopeVersionAuthorityTest {
     final ReadScopeVersionAuthority authority=new ReadScopeVersionAuthority(jdbc,restorer,owners);
     AuthUser subject;
     @BeforeEach void setup(){
+        when(owners.evaluate("stock_doc","stock_doc:view:all")).thenReturn(new OwnerVisibility.OwnerScope(false,Set.of(employee)));
+        for(var pair:List.of(new String[]{"purchase","purchase:view:all"},new String[]{"subcontract","subcontract:view:all"},
+                new String[]{"production_plan","production_plan:view:all"}))
+            when(owners.evaluate(pair[0],pair[1])).thenReturn(new OwnerVisibility.OwnerScope(false,Set.of(employee)));
+        var warehouseWorkshop=mock(ProductionWorkshopReadScopePolicy.class);
+        when(warehouseWorkshop.snapshot(any(),eq(true))).thenReturn(new ProductionWorkshopReadScopePolicy.Snapshot(false,employee,List.of()));
+        port("workshopAccess",warehouseWorkshop);
         subject=user(false,Set.of("production_quality_inspection:view","production_quality_inspection:approve","subcontract_short_delivery:view"));
         when(restorer.currentStamps(actor)).thenReturn(Optional.of(new SubmitterPrincipalRestorer.AuthorizationStamps(1,7)));
         when(restorer.restore(actor,1,7L)).thenAnswer(call->subject);

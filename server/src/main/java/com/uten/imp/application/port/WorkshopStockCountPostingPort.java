@@ -12,6 +12,10 @@ public interface WorkshopStockCountPostingPort {
     default java.util.Set<UUID> accessibleWarehouses(List<UUID> warehouseIds) {
         return warehouseIds.stream().filter(this::canAccessWarehouse).collect(java.util.stream.Collectors.toSet());
     }
+    /** Read projections only; posting and review use the unchanged command relationship. */
+    default java.util.Set<UUID> accessibleWarehousesForRead(List<UUID> warehouseIds) {
+        return accessibleWarehouses(warehouseIds);
+    }
     boolean canAccessWarehouseForUser(UUID warehouseId, UUID userId);
     /** Locks and revalidates workshop settings in stable order before the inventory prefix. */
     void prelockApprovalWarehouses(List<UUID> warehouseIds);

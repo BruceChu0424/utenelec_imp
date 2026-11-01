@@ -53,7 +53,8 @@ class WarehousePhysicalDetailHeaderPostgresTest {
         execute("INSERT INTO warehouses(id,name) VALUES(:id,'原料仓')","id",warehouse);
         var user=new AuthUser(UUID.randomUUID(),actor,"warehouse",Set.of("stock_doc:view"),false,true,false);
         var current=mock(SecurityContextCurrentUser.class);when(current.get()).thenReturn(Optional.of(user));when(current.employeeId()).thenReturn(Optional.of(actor));
-        var scopes=mock(WarehouseTaskScopePort.class);when(scopes.current(any())).thenReturn(new WarehouseTaskScope(true,List.of(warehouse),false));
+        var scopes=mock(WarehouseTaskScopePort.class);org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
+        when(scopes.current(any())).thenReturn(new WarehouseTaskScope(true,List.of(warehouse),false));
         doCallRealMethod().when(scopes).withQueryScopeCache(any());
         var stock=mock(StockDocAccessPolicy.class);var owners=new OwnerScope(false,Set.of(actor));when(stock.scope()).thenReturn(owners);
         when(stock.hasAuthority(anyString())).thenAnswer(call->call.getArgument(0).equals("stock_doc:view"));

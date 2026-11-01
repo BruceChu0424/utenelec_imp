@@ -99,6 +99,7 @@ class DocumentListNameBatchPostgresTest {
                     UUID.randomUUID(), header);
         }
         var scopes = mock(WarehouseTaskScopePort.class);
+        org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
         when(scopes.current(null)).thenReturn(WarehouseTaskScope.ALL);
         var service = new WarehouseHistoryQueryService(em, new EmployeeNameResolver(em), scopes);
 

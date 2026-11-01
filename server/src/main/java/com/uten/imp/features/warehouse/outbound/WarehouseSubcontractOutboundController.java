@@ -49,7 +49,7 @@ public class WarehouseSubcontractOutboundController {
             @RequestParam(required = false) UUID scopeWarehouseId) {
         // 仓库数据范围(ADR-149)：服务端按本人范围强制过滤；scopeWarehouseId = 在可选范围内挑一个仓(含下级)。
         // 一张领料草稿的「所在仓」= 草稿发出仓(仓库发料单所在仓)。
-        return planService.tasks(page, size, keyword, warehouseScopes.current(scopeWarehouseId));
+        return planService.tasks(page, size, keyword, warehouseScopes.currentForRead(scopeWarehouseId));
     }
 
     /** 委外出库红数: 待仓库发出的领料实物行数(与合并任务中心列表同一仓库数据范围及明细关系)。 */

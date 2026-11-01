@@ -55,7 +55,7 @@ public class WarehouseSalesOutboundController {
         // 仓库数据范围(ADR-149)：服务端按本人范围强制过滤；scopeWarehouseId = 在可选范围内挑一个仓(含下级)。
         // sort/order/billNo（2026-09-25 单号列统一）透传给出货列表（billNo 白名单排序/精确筛选）。
         return service.list(keyword, warehouseWorkStatus, dateFrom, dateTo, page, size,
-                warehouseScopes.current(scopeWarehouseId), sort, order, billNo);
+                warehouseScopes.currentForRead(scopeWarehouseId), sort, order, billNo);
     }
 
     /** 待出库任务计数（出库任务中心/工作台角标：未交接出库的放行单）, 与列表同一仓库范围。 */
@@ -75,7 +75,7 @@ public class WarehouseSalesOutboundController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(required = false) UUID scopeWarehouseId) {
         return service.facets(keyword, warehouseWorkStatus, dateFrom, dateTo,
-                warehouseScopes.current(scopeWarehouseId));
+                warehouseScopes.currentForRead(scopeWarehouseId));
     }
 
     /** 仓库作业状态分组计数(出库任务中心「销售出库」小类行: 待出库红徽章 / 已出库中性计数), 键为 warehouse_work_status;

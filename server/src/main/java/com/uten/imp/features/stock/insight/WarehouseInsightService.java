@@ -298,7 +298,7 @@ public class WarehouseInsightService {
      * 内挑一个仓(含下级), 越界 403。不限范围(主管、或还没登记任何子仓负责人)时 = 默认范围。
      */
     private Scope scope(UUID scopeWarehouseId) {
-        WarehouseTaskScopePort.WarehouseTaskScope resolved = warehouseScopes.current(scopeWarehouseId);
+        WarehouseTaskScopePort.WarehouseTaskScope resolved = warehouseScopes.currentForRead(scopeWarehouseId);
         return resolved.active() ? new Scope(Set.copyOf(resolved.warehouseIds())) : Scope.defaultScope();
     }
 

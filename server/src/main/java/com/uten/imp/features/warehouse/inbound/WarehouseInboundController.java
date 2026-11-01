@@ -57,7 +57,7 @@ public class WarehouseInboundController {
         // 仓库数据范围(ADR-149)：服务端按本人范围强制过滤；scopeWarehouseId = 在可选范围内挑一个仓(含下级), 越界 403。
         // 2026-09-25 单号列统一：sort/order 表头排序 + billNo 订货单号表头值筛选。
         return service.expectations(page, size, orderType, keyword, supplierId,
-                warehouseScopes.current(scopeWarehouseId), sort, order, billNo);
+                warehouseScopes.currentForRead(scopeWarehouseId), sort, order, billNo);
     }
 
     /** 预计到货 facets（2026-09-25 单号列统一）：{billNo:[各订货单号]}——
@@ -69,7 +69,7 @@ public class WarehouseInboundController {
             @RequestParam(required = false) UUID supplierId,
             @RequestParam(required = false) UUID scopeWarehouseId) {
         return service.expectationFacets(orderType, keyword, supplierId,
-                warehouseScopes.current(scopeWarehouseId));
+                warehouseScopes.currentForRead(scopeWarehouseId));
     }
 
     /**
@@ -108,7 +108,7 @@ public class WarehouseInboundController {
         // 2026-09-25 单号列统一：sort/order 表头排序 + 收货单号/订货单号表头值筛选。
         return service.warehouseExceptions(page, size, keyword, includeHistory,
                 supplierId, warehouseId, status,
-                warehouseScopes.current(scopeWarehouseId),
+                warehouseScopes.currentForRead(scopeWarehouseId),
                 sort, order, receiptBillNo, orderBillNo);
     }
 
@@ -124,7 +124,7 @@ public class WarehouseInboundController {
             @RequestParam(required = false) UUID scopeWarehouseId) {
         return service.warehouseExceptionFacets(keyword, includeHistory,
                 supplierId, warehouseId, status,
-                warehouseScopes.current(scopeWarehouseId));
+                warehouseScopes.currentForRead(scopeWarehouseId));
     }
 
     /** 到货异常待办数(徽章来源 warehouseArrivalException): 与列表同一仓库范围(ADR-149)。 */

@@ -24,6 +24,7 @@ class WarehouseTaskRowCountControllerTest {
         UUID warehouse=UUID.randomUUID();
         var scope=new WarehouseTaskScope(true,List.of(warehouse),false);
         var scopes=mock(WarehouseTaskScopePort.class);
+        org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
         when(scopes.current(warehouse)).thenReturn(scope);
         var rows=mock(WarehouseTaskRowCountPort.class);
         when(rows.inboundExpectations(scope)).thenReturn(Map.of("PURCHASE",2L,"SUBCONTRACT",3L));

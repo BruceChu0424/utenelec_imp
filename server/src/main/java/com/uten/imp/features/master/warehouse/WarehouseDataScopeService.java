@@ -94,6 +94,25 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
     }
 
     @Override
+    public WarehouseTaskScope currentForRead(UUID requestedWarehouseId) {
+        if (!readAllWarehouses()) return current(requestedWarehouseId);
+        if (requestedWarehouseId == null) return WarehouseTaskScope.ALL;
+        String key="read-scope:"+currentUser.id().map(UUID::toString).orElse("-")+":"+requestedWarehouseId;
+        return reuse(key,WarehouseTaskScope.class,()->{
+            if (!existingWarehouse(requestedWarehouseId)) {
+                throw new ApiException(ErrorCode.FORBIDDEN,OUT_OF_SCOPE_MESSAGE);
+            }
+            return new WarehouseTaskScope(true,subtree(requestedWarehouseId),false);
+        });
+    }
+
+    private boolean readAllWarehouses() {
+        return !BusinessTaskContext.active() && currentUser.get()
+                .filter(actor->!actor.isVisitor() && actor.getEmployeeId()!=null)
+                .map(actor->actor.getPermissions().contains("warehouse_task:view:all")).orElse(false);
+    }
+
+    @Override
     public <T> T withRequestedWarehouse(UUID requestedWarehouseId, Supplier<T> work) {
         if (requestedWarehouseId == null) return work.get();
         return withScopeCache(() -> {
@@ -212,17 +231,23 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
 
     /** 当前账号的仓库数据范围(任务中心仓库选择器只依赖它)。 */
     public MyWarehouseScope myScope() {
+        return myScope(false);
+    }
+
+    public MyWarehouseScope myScope(boolean forRead) {
         WarehouseAccess access = access();
         List<MyWarehouseScope.Option> keepers = options(access.keeperWarehouseIds(), false);
-        List<MyWarehouseScope.Option> selectable = options(
+        List<MyWarehouseScope.Option> commandSelectable = options(
                 access.defaultScope().active() ? access.defaultScope().warehouseIds() : null, true);
-        UUID defaultWarehouseId = access.role() == Role.KEEPER && selectable.size() == 1
+        boolean readAll=forRead && readAllWarehouses();
+        List<MyWarehouseScope.Option> selectable = readAll ? options(null,true) : commandSelectable;
+        UUID defaultWarehouseId = !readAll && access.role() == Role.KEEPER && selectable.size() == 1
                 ? selectable.getFirst().id() : null;
         boolean participant = currentUser.get().map(actor -> !actor.isVisitor()
                 && (actor.isSuperAdmin() || actor.getEmployeeId() != null && access.warehouseParticipant()))
                 .orElse(false);
-        return new MyWarehouseScope(access.role().name(), access.role() == Role.SUPERVISOR,
-                selectable, keepers, defaultWarehouseId, participant);
+        return new MyWarehouseScope(access.role().name(), access.role() == Role.SUPERVISOR || readAll,
+                selectable, keepers, defaultWarehouseId, participant,commandSelectable,readAll);
     }
 
     // ---- helpers -------------------------------------------------------------------
@@ -261,6 +286,10 @@ public class WarehouseDataScopeService implements WarehouseTaskScopePort {
         if (access.defaultScope().active()) {
             return access.defaultScope().warehouseIds().contains(warehouseId);
         }
+        return existingWarehouse(warehouseId);
+    }
+
+    private boolean existingWarehouse(UUID warehouseId) {
         return Boolean.TRUE.equals(jdbc.sql(
                         "SELECT EXISTS (SELECT 1 FROM warehouses WHERE id = :id AND NOT is_deleted)")
                 .param("id", warehouseId).query(Boolean.class).single());

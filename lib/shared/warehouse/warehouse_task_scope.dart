@@ -54,12 +54,21 @@ class MyWarehouseScope {
     this.keeperWarehouses = const [],
     this.defaultWarehouseId,
     this.warehouseParticipant = false,
-  });
+    List<WarehouseScopeOption>? commandSelectable,
+    this.readAllWarehouses = false,
+  }) : commandSelectable = commandSelectable ?? selectable;
 
   static const empty = MyWarehouseScope();
 
   final WarehouseScopeRole role;
   final bool warehouseParticipant;
+  final bool readAllWarehouses;
+
+  /// Physical responsibility is independent of the browsing selector.
+  final List<WarehouseScopeOption> commandSelectable;
+
+  bool canSelectForTasks(String warehouseId) =>
+      commandSelectable.any((option) => option.id == warehouseId);
 
   /// 能选「全部仓库」(只有主管)。
   final bool canSelectAll;
@@ -107,6 +116,10 @@ class MyWarehouseScope {
       warehouseParticipant: json['warehouseParticipant'] == true,
       selectable: options(json['selectable']),
       keeperWarehouses: options(json['keeperWarehouses']),
+      commandSelectable: json['commandSelectable'] is List
+          ? options(json['commandSelectable'])
+          : options(json['selectable']),
+      readAllWarehouses: json['readAllWarehouses'] == true,
       defaultWarehouseId: json['defaultWarehouseId']?.toString(),
     );
   }
@@ -195,7 +208,10 @@ final warehouseTaskScopePrefProvider =
 final myWarehouseScopeProvider = FutureProvider<MyWarehouseScope>((ref) async {
   final boundary = ref.watch(sensitiveReadBoundaryProvider);
   if (boundary.identity == null) return MyWarehouseScope.empty;
-  final json = await boundary.api.get(ApiEndpoints.myWarehouseScope);
+  final json = await boundary.api.get(
+    ApiEndpoints.myWarehouseScope,
+    query: const {'forRead': 'true'},
+  );
   return MyWarehouseScope.fromJson(json);
 });
 

@@ -17,6 +17,17 @@ final class WarehouseWorkshopMaterialTaskProjection {
 
     static Scope scope(boolean enabled, WorkshopMaterialScope materials, WarehouseTaskScope warehouses) {
         if (!enabled) return Scope.NONE;
+        var parameters=new MapSqlParameterSource();
+        String predicate=materials.readPredicate("requisition.workshop_department_id",parameters);
+        String pending=materials.readRequisitionWarehouseFilter(warehouses,parameters);
+        String posted=materials.readRequisitionPhysicalWarehouseFilter(warehouses,parameters,"physical.leaf_warehouse_id","requisition.workshop_department_id");
+        if (!pending.isEmpty()) predicate+=" AND ((physical.posting_id IS NULL AND "+pending
+                +") OR (physical.posting_id IS NOT NULL AND "+posted+"))";
+        return new Scope(true,predicate,Map.copyOf(parameters.getValues()));
+    }
+
+    static Scope commandScope(boolean enabled, WorkshopMaterialScope materials, WarehouseTaskScope warehouses) {
+        if (!enabled) return Scope.NONE;
         var parameters = new MapSqlParameterSource();
         String predicate = materials.predicate("requisition.workshop_department_id", parameters);
         String pending = materials.requisitionWarehouseFilter(warehouses, parameters);

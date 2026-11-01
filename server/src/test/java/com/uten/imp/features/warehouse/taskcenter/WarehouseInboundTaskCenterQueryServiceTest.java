@@ -45,6 +45,7 @@ class WarehouseInboundTaskCenterQueryServiceTest {
         when(current.get()).thenReturn(Optional.of(new AuthUser(UUID.randomUUID(),UUID.randomUUID(),"warehouse",
                 Set.of("warehouse_purchase_receipt_history:view"),false,true,false)));
         var scopes=mock(WarehouseTaskScopePort.class);
+        org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
         when(scopes.current(null)).thenReturn(WarehouseTaskScope.ALL);
         org.mockito.Mockito.doCallRealMethod().when(scopes).withQueryScopeCache(org.mockito.ArgumentMatchers.any());
         var stock=mock(StockDocAccessPolicy.class);

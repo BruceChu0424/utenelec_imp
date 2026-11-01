@@ -21,6 +21,7 @@ class WarehouseHistoryScopeContractTest {
         var em = mock(EntityManager.class);
         var scopes = mock(WarehouseTaskScopePort.class);
         var scope = new WarehouseTaskScopePort.WarehouseTaskScope(true, List.of(UUID.randomUUID()), false);
+        org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
         when(scopes.current(null)).thenReturn(scope);
         var service = new WarehouseHistoryQueryService(em, mock(EmployeeNameResolver.class), scopes);
         Query count = mock(Query.class, RETURNS_SELF);
@@ -43,6 +44,7 @@ class WarehouseHistoryScopeContractTest {
         var em = mock(EntityManager.class);
         var scopes = mock(WarehouseTaskScopePort.class);
         UUID outside = UUID.randomUUID();
+        org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
         when(scopes.current(outside)).thenThrow(new ApiException(ErrorCode.FORBIDDEN, "outside"));
         var service = new WarehouseHistoryQueryService(em, mock(EmployeeNameResolver.class), scopes);
         assertThatThrownBy(() -> service.list(WarehouseHistoryType.SUBCONTRACT_WASTE, null, null, null, null,
@@ -58,6 +60,7 @@ class WarehouseHistoryScopeContractTest {
         var em = mock(EntityManager.class);
         var scopes = mock(WarehouseTaskScopePort.class);
         var scope = new WarehouseTaskScopePort.WarehouseTaskScope(true, List.of(UUID.randomUUID()), false);
+        org.mockito.Mockito.doCallRealMethod().when(scopes).currentForRead(org.mockito.ArgumentMatchers.any());
         when(scopes.current(null)).thenReturn(scope);
         var header = mock(Query.class, RETURNS_SELF);
         when(header.getResultList()).thenReturn(List.of());

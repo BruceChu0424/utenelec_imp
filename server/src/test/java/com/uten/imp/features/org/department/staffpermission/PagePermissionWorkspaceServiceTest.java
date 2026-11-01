@@ -218,7 +218,10 @@ class PagePermissionWorkspaceServiceTest {
                 .containsExactly("stock:view", "stock:balance:adjust");
         assertThat(flat).allMatch(state -> state.editable());
         assertEquals("VIEW", flat.getFirst().actionType());
-        assertEquals("查看当前库存余额", flat.getFirst().description());
+        var expectedHelp = com.uten.imp.features.rbac.PermissionBusinessDescriptions.catalog().get("stock:view");
+        assertEquals(expectedHelp.name(), flat.getFirst().name());
+        assertEquals(expectedHelp.description(), flat.getFirst().description());
+        assertThat(flat.getFirst().description()).isNotEqualTo(flat.getFirst().name());
         // 超管在页面上写的是中央个人覆盖：个人专属码同样可以逐人授予(只有超管专属码不行)。
         assertThat(flat)
                 .allMatch(state -> !state.grantPolicy().contains("SUPERADMIN_ONLY"));

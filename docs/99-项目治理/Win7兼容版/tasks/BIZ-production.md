@@ -386,6 +386,81 @@
 
 接续/限制：尚未迁移；先做动作/合同审计。。
 
+## W7-BIZ-218
+
+- [ ] **生产 / production material increment** — 未开始
+
+影响：`frontend+shared-contract`；负责人：待认领；依赖：W7-GOV-005, W7-GOV-006, W7-CORE-011, W7-CORE-012, W7-CORE-013, W7-CORE-014, W7-UI-001。
+
+源入口：`lib/features/production/pages/production_material_increment_pages.dart`。
+
+完成条件：
+
+1. 核实本页有效入口、路由/别名/内嵌/退役分类，以及静态发现之外的所有实际动作。
+2. 同一伴随源内每个真实页面构造、直接路由和动态factory分支须逐项核实；文件/路由数量不是workflow完成数量。
+3. 逐一对照 owning Flutter UI/公共组件及后端DTO/权限/动作合同；缺失接口单独登记必要增量，不能猜测。
+4. 原生WPF实现全部适用读取、筛选/排序/分页、详情/导航与业务动作，不能只做菜单或只读代替写流程。
+5. 源码发现的动作线索须逐项核实：cancel、complete、confirm、create、restore、submit、update（仅静态线索，不等于完整动作清单）。
+6. 若源有新增/编辑/审核/批量/附件/导入导出/打印/历史，逐项迁移，保留币种/单位/来源/归属及精度/未知语义。
+7. 权限/数据集/读范围、草稿、版本/幂等、未知提交、取消/断网/重启/升级行为有合同及恢复证据。
+8. 复用同源Uten圆角/控件/字体/间距，完成键盘/IME/缩放/状态/焦点与现版本实际对照。
+9. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
+10. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
+
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
+
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 新登记未迁移伴随源：生产增补申请列表/创建/详情三个真实productionRoutes构造；须逐入口迁移原基本VIEW、申请/审核权限、来源数量、版本及未知提交，不把三个路由当作三个已完成workflow。。
+
+## W7-BIZ-219
+
+- [ ] **生产 / production over limit** — 未开始
+
+影响：`frontend+shared-contract`；负责人：待认领；依赖：W7-GOV-005, W7-GOV-006, W7-CORE-011, W7-CORE-012, W7-CORE-013, W7-CORE-014, W7-UI-001。
+
+源入口：`lib/features/production/pages/production_over_limit_pages.dart`。
+
+完成条件：
+
+1. 核实本页有效入口、路由/别名/内嵌/退役分类，以及静态发现之外的所有实际动作。
+2. 同一伴随源内每个真实页面构造、直接路由和动态factory分支须逐项核实；文件/路由数量不是workflow完成数量。
+3. 逐一对照 owning Flutter UI/公共组件及后端DTO/权限/动作合同；缺失接口单独登记必要增量，不能猜测。
+4. 原生WPF实现全部适用读取、筛选/排序/分页、详情/导航与业务动作，不能只做菜单或只读代替写流程。
+5. 源码发现的动作线索须逐项核实：confirm、remove、update（仅静态线索，不等于完整动作清单）。
+6. 若源有新增/编辑/审核/批量/附件/导入导出/打印/历史，逐项迁移，保留币种/单位/来源/归属及精度/未知语义。
+7. 权限/数据集/读范围、草稿、版本/幂等、未知提交、取消/断网/重启/升级行为有合同及恢复证据。
+8. 复用同源Uten圆角/控件/字体/间距，完成键盘/IME/缩放/状态/焦点与现版本实际对照。
+9. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
+10. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
+
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
+
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 新登记未迁移伴随源：生产超限处置列表/详情两个真实productionRoutes构造；数量原文、状态、权限、审核理由及并发版本须依owning合同迁移。。
+
+## W7-BIZ-220
+
+- [ ] **生产 / production overproduction rate** — 未开始
+
+影响：`frontend+shared-contract`；负责人：待认领；依赖：W7-GOV-005, W7-GOV-006, W7-CORE-011, W7-CORE-012, W7-CORE-013, W7-CORE-014, W7-UI-001。
+
+源入口：`lib/features/production/pages/production_overproduction_rate_pages.dart`。
+
+完成条件：
+
+1. 核实本页有效入口、路由/别名/内嵌/退役分类，以及静态发现之外的所有实际动作。
+2. 同一伴随源内每个真实页面构造、直接路由和动态factory分支须逐项核实；文件/路由数量不是workflow完成数量。
+3. 逐一对照 owning Flutter UI/公共组件及后端DTO/权限/动作合同；缺失接口单独登记必要增量，不能猜测。
+4. 原生WPF实现全部适用读取、筛选/排序/分页、详情/导航与业务动作，不能只做菜单或只读代替写流程。
+5. 源码发现的动作线索须逐项核实：confirm、update（仅静态线索，不等于完整动作清单）。
+6. 若源有新增/编辑/审核/批量/附件/导入导出/打印/历史，逐项迁移，保留币种/单位/来源/归属及精度/未知语义。
+7. 权限/数据集/读范围、草稿、版本/幂等、未知提交、取消/断网/重启/升级行为有合同及恢复证据。
+8. 复用同源Uten圆角/控件/字体/间距，完成键盘/IME/缩放/状态/焦点与现版本实际对照。
+9. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
+10. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
+
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
+
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 新登记未迁移伴随源：超产率申请列表/详情两个真实productionRoutes构造；申请editor是另一个widget来源，须单独沿调用核对，不把文件数/静态动作当成完整workflow。。
+
 ## W7-BIZ-110
 
 - [ ] **生产 / production plan detail** — 未开始
@@ -526,9 +601,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
 
-接续/限制：尚未迁移；2026-10-31 Flutter已接入workshop-tasks Excel公共后台导出，须同步production_execution:view与production_report:export、原任务范围/筛选及native_workshop_tasks下载围栏；见2026-10-31仓库选仓与车间任务导出记录。 2026-10-31整合复核：导出状态须消费workshop-task-stage-v1共享样例，区分报完/待检/点收入库及备料阶段；不得仅映射底层segmentStatus，本地报工草稿不作为已审核事实导出。。
+接续/限制：尚未迁移；2026-10-31 Flutter已接入workshop-tasks Excel公共后台导出，须同步production_execution:view与production_report:export、原任务范围/筛选及native_workshop_tasks下载围栏；见2026-10-31仓库选仓与车间任务导出记录。 2026-10-31整合复核：导出状态须消费workshop-task-stage-v1共享样例，区分报完/待检/点收入库及备料阶段；不得仅映射底层segmentStatus，本地报工草稿不作为已审核事实导出。；2026-11-01 必要合同增量仍未迁移：production_execution:view + production_workshop_task:view:all只扩列表/历史/详情/材料阅读；assignment、原动作、count/徽章不扩大，缓存弹窗及迟到响应须按Me/范围ABA失效。原状态和DoD保留。。
 
 ## W7-BIZ-116
 

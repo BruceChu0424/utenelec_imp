@@ -4,14 +4,14 @@
 
 ## W7-BIZ-092 · lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_detail_page.dart
 
-模块 `procurement_iqc_rejection`；872 行；SHA256 `94efae5219ec2ade9d151fcf3ff1f1c37d69f9948a67b2a94ae68ba1557243da`。
+模块 `procurement_iqc_rejection`；872 行；SHA256 `4102a1357259ef8eaea1af2ae155def49f3dbab54245ca38241df6f915009b2f`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProcurementIqcRejectionDetailPage @32 (page-class)<br>_ProcurementIqcRejectionDetailPageState @49 (state-class)<br>_ActionSpec @737 (supporting-class)<br>_Fact @755 (supporting-class)<br>_FactTile @761 (supporting-class)<br>_EventTile @793 (supporting-class) |
 | 真实路由绑定 | /procurement/iqc-rejections/:id；router @1053；builder ['ProcurementIqcRejectionDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | procurement_iqc_rejection:view @248；定义 lib/shared/auth/permissions.dart:296<br>procurement_iqc_rejection:amount:view @250；定义 lib/shared/auth/permissions.dart:299<br>procurement_iqc_rejection:record_return @492；定义 lib/shared/auth/permissions.dart:766<br>procurement_iqc_rejection:confirm_credit @502；定义 lib/shared/auth/permissions.dart:768<br>procurement_iqc_rejection:amount:view @503；定义 lib/shared/auth/permissions.dart:299<br>procurement_iqc_rejection:close_no_credit @520；定义 lib/shared/auth/permissions.dart:770<br>procurement_iqc_rejection:confirm_credit @530；定义 lib/shared/auth/permissions.dart:768<br>procurement_iqc_rejection:amount:view @531；定义 lib/shared/auth/permissions.dart:299<br>procurement_iqc_rejection:reverse @541；定义 lib/shared/auth/permissions.dart:772<br>procurement_iqc_rejection:amount:view @545；定义 lib/shared/auth/permissions.dart:299 |
+| 权限 | procurement_iqc_rejection:view @248；定义 lib/shared/auth/permissions.dart:297<br>procurement_iqc_rejection:amount:view @250；定义 lib/shared/auth/permissions.dart:300<br>procurement_iqc_rejection:record_return @492；定义 lib/shared/auth/permissions.dart:769<br>procurement_iqc_rejection:confirm_credit @502；定义 lib/shared/auth/permissions.dart:771<br>procurement_iqc_rejection:amount:view @503；定义 lib/shared/auth/permissions.dart:300<br>procurement_iqc_rejection:close_no_credit @520；定义 lib/shared/auth/permissions.dart:773<br>procurement_iqc_rejection:confirm_credit @530；定义 lib/shared/auth/permissions.dart:771<br>procurement_iqc_rejection:amount:view @531；定义 lib/shared/auth/permissions.dart:300<br>procurement_iqc_rejection:reverse @541；定义 lib/shared/auth/permissions.dart:775<br>procurement_iqc_rejection:amount:view @545；定义 lib/shared/auth/permissions.dart:300 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/procurement_iqc_rejection/repositories/procurement_iqc_rejection_repository.dart；接口：/procurement/iqc-rejections |
 | 动作处理 | confirmCredit @119 [action-like-invocation] 提示 ['confirm']；_repository.confirmCredit(widget.id, command),<br>_submit @130 [action-like-invocation] 提示 ['submit']；onSubmit: (command) => _submit(kind, command),<br>_submit @142 [method-declaration-candidate] 提示 ['submit']；Future<ProcurementIqcRejectionDetail> _submit(<br>confirmCredit @151 [action-like-invocation] 提示 ['confirm']；_repository.confirmCredit(<br>closeNoCredit @156 [action-like-invocation] 提示 ['close']；_repository.closeNoCredit(<br>reverse @160 [action-like-invocation] 提示 ['reverse']；ProcurementIqcRejectionActionKind.reverse => _repository.reverse(<br>copyWith @352 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @362 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @413 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @579 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @587 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @781 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelSmall?.copyWith(<br>copyWith @823 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>copyWith @839 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith( |
@@ -22,14 +22,14 @@
 
 ## W7-BIZ-093 · lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart
 
-模块 `procurement_iqc_rejection`；703 行；SHA256 `0644800b9384b3dff9abc061971ddc24c99f239ad4ef258bc848b3534c39cae7`。
+模块 `procurement_iqc_rejection`；703 行；SHA256 `b103e33decbc67ef8f9e3d0f8101174977cf66dd2742ac8c08eadbbea5006742`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProcurementIqcRejectionListPage @34 (page-class)<br>_ProcurementIqcRejectionListPageState @65 (state-class) |
 | 真实路由绑定 | /procurement/iqc-rejections；router @1046；builder ['ProcurementIqcRejectionListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | procurement_iqc_rejection:amount:view @91；定义 lib/shared/auth/permissions.dart:299 |
+| 权限 | procurement_iqc_rejection:amount:view @91；定义 lib/shared/auth/permissions.dart:300 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/procurement_iqc_rejection/repositories/procurement_iqc_rejection_repository.dart；接口：/procurement/iqc-rejections |
 | 动作处理 | update @100 [action-like-invocation] 提示 ['update']；_tableRows.update(const []);<br>whenComplete @132 [action-like-invocation] 提示 ['complete']；await _load(1).whenComplete(() {<br>complete @134 [action-like-invocation] 提示 ['complete']；completion.complete();<br>whenComplete @145 [action-like-invocation] 提示 ['complete']；_load(_tableRows.visiblePage ?? _result?.page ?? 1).whenComplete(() {<br>complete @147 [action-like-invocation] 提示 ['complete']；completion.complete();<br>complete @156 [action-like-invocation] 提示 ['complete']；if (completion != null && !completion.isCompleted) completion.complete(); |

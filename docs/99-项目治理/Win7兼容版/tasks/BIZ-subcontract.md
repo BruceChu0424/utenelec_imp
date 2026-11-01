@@ -2,6 +2,31 @@
 
 由唯一进度登记表生成。
 
+## W7-BIZ-221
+
+- [ ] **委外 / subcontract business list** — 未开始
+
+影响：`frontend+shared-contract`；负责人：待认领；依赖：W7-GOV-005, W7-GOV-006, W7-CORE-011, W7-CORE-012, W7-CORE-013, W7-CORE-014, W7-UI-001。
+
+源入口：`lib/features/subcontract/pages/subcontract_business_list_pages.dart`。
+
+完成条件：
+
+1. 核实本页有效入口、路由/别名/内嵌/退役分类，以及静态发现之外的所有实际动作。
+2. 同一伴随源内每个真实页面构造、直接路由和动态factory分支须逐项核实；文件/路由数量不是workflow完成数量。
+3. 逐一对照 owning Flutter UI/公共组件及后端DTO/权限/动作合同；缺失接口单独登记必要增量，不能猜测。
+4. 原生WPF实现全部适用读取、筛选/排序/分页、详情/导航与业务动作，不能只做菜单或只读代替写流程。
+5. 源码发现的动作线索须逐项核实：delete、issue、post（仅静态线索，不等于完整动作清单）。
+6. 若源有新增/编辑/审核/批量/附件/导入导出/打印/历史，逐项迁移，保留币种/单位/来源/归属及精度/未知语义。
+7. 权限/数据集/读范围、草稿、版本/幂等、未知提交、取消/断网/重启/升级行为有合同及恢复证据。
+8. 复用同源Uten圆角/控件/字体/间距，完成键盘/IME/缩放/状态/焦点与现版本实际对照。
+9. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
+10. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
+
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
+
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 新登记未迁移伴随源：七个public列表页面由SubcontractPageFactory.list按seg/type/legacyOnly动态分派。静态路由候选须逐分支确认；applications重定向、receipts现行legacyOnly历史builder、原数量/商业权限/来源不得混并。。
+
 ## W7-BIZ-154
 
 - [ ] **委外 / subcontract decomposition** — 未开始

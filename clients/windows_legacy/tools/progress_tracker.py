@@ -58,7 +58,7 @@ def page_task(page: dict, identifier: str, labels: dict) -> dict:
     source = page["source"]
     feature = page["feature"]
     actions = sorted({hint for item in page.get("actionHandlers", []) for hint in item.get("actionNameHints", [])})
-    title = source.rsplit("/", 1)[-1].replace("_page.dart", "").replace("_", " ")
+    title = re.sub(r"_pages?\.dart$", "", source.rsplit("/", 1)[-1]).replace("_", " ")
     partial = source in {"lib/features/basic_data/pages/product_category_page.dart", "lib/features/basic_data/pages/goods_detail_page.dart"}
     criteria = [
         "核实本页有效入口、路由/别名/内嵌/退役分类，以及静态发现之外的所有实际动作。",
@@ -72,6 +72,8 @@ def page_task(page: dict, identifier: str, labels: dict) -> dict:
     ]
     if actions:
         criteria.insert(3, "源码发现的动作线索须逐项核实：" + "、".join(actions) + "（仅静态线索，不等于完整动作清单）。")
+    if source.endswith("_pages.dart"):
+        criteria.insert(1, "同一伴随源内每个真实页面构造、直接路由和动态factory分支须逐项核实；文件/路由数量不是workflow完成数量。")
     return {"id": identifier, "title": labels.get(feature, feature) + " / " + title,
             "group": "BIZ", "groupLabel": "全部业务页面迁移", "phase": "D", "feature": feature,
             "businessSource": source, "sourceSha256": page["sha256"],
@@ -82,7 +84,7 @@ def page_task(page: dict, identifier: str, labels: dict) -> dict:
             "dependencies": ["W7-GOV-005", "W7-GOV-006", "W7-CORE-011", "W7-CORE-012", "W7-CORE-013", "W7-CORE-014", "W7-UI-001"],
             "definitionOfDone": criteria, "evidence": [],
             "notes": "仅分类/分页/选中详情读取部分已有源；其余业务与目标机验收未完成。" if partial else "尚未迁移；先做动作/合同审计。",
-            "lastUpdated": "2026-10-28"}
+            "lastUpdated": datetime.now(timezone.utc).date().isoformat()}
 
 
 def inventory() -> dict:
@@ -137,6 +139,7 @@ def build_registry(previous=None) -> dict:
             "constraints": {"mergeMainAllowed": False, "productionDeploymentAllowed": False},
             "inventorySha256": hashlib.sha256((STATE / "business-inventory.json").read_bytes()).hexdigest(),
             "baselineCounts": {"businessPagePackages": len(source["pages"]),
+                               "retainedBusinessPagePackages": len(set(old_pages) - current_sources),
                                "commonAndFlowPackages": len(catalog["tasks"]), "workPackages": len(tasks)},
             "groups": catalog["groups"] + [{"id": "BIZ", "title": "全部业务页面迁移", "phase": "D"}],
             "tasks": tasks}
@@ -244,7 +247,8 @@ def _source_hint(kind, item):
             text = text[:300] + "…（完整内容按源码行号核查）"
         return md(f"{item.get('symbol')} @{item.get('line')} [{item.get('kind')}] 提示 {item.get('actionNameHints', [])}；{text}")
     if kind == "routerBindings":
-        return md(f"{item.get('path') or item.get('pathExpression')}；router @{item.get('routerLine')}；builder {item.get('builderClasses')}；redirect {item.get('redirectExpression')}")
+        owner = item.get("routerSource", "router")
+        return md(f"{item.get('path') or item.get('pathExpression')}；{owner} @{item.get('routerLine')}；builder {item.get('builderClasses')}；redirect {item.get('redirectExpression')}")
     return md(json.dumps(item, ensure_ascii=False, separators=(",", ":")))
 
 
@@ -276,9 +280,9 @@ def render(registry: dict) -> dict[Path, str]:
         lines.append("")
     source = inventory()
     page_lines = ["# 业务页面 owning 来源逐项清单", "", "静态盘点是审计起点，不是已迁移证明；候选控制器/动作必须按02矩阵人工核对。", "",
-                  f"本基线共 {len(source['pages'])} 页。完整数据见 `clients/windows_legacy/progress/business-inventory.json`。", ""]
+                  f"本基线共 {len(source['pages'])} 个页面源文件（可含多个构造/路由，不是workflow数量）。完整数据见 `clients/windows_legacy/progress/business-inventory.json`。", ""]
     ids = {item["businessSource"]: item["id"] for item in tasks if item.get("businessSource")}
-    page_lines += ["| 模块 | 页面数 | 逐页来源 |", "|---|---:|---|"]
+    page_lines += ["| 模块 | 页面源文件数 | 逐页来源 |", "|---|---:|---|"]
     page_documents = {}
     for page in source["pages"]:
         feature = page["feature"]
@@ -316,8 +320,10 @@ def write_rendered(registry: dict, check=False) -> None:
     stats = summary(registry)
     main = DOCS / "00-总实施计划与交接入口.md"
     text = main.read_text(encoding="utf-8")
+    retained = registry['baselineCounts'].get('retainedBusinessPagePackages', 0)
+    retained_note = f" + {retained} 个来源已退役/移除但保留待复核的历史页面工作包" if retained else ""
     message = (f"已登记 **{stats['totalWorkPackages']} 个稳定工作包**：{registry['baselineCounts']['commonAndFlowPackages']} 个公共/治理/业务闭环/交付验收工作包 + "
-               f"{registry['baselineCounts']['businessPagePackages']} 个页面迁移工作包。DoD完成 **{stats['done']}**；尚待实施或验证 **{stats['remainingIncludingUnverified']}**；"
+               f"{registry['baselineCounts']['businessPagePackages']} 个当前页面源文件迁移工作包{retained_note}。DoD完成 **{stats['done']}**；尚待实施或验证 **{stats['remainingIncludingUnverified']}**；"
                f"已核实不适用 **{stats['notApplicable']}**。源码已实现但待验证的项目不算已完成。\n")
     updated = re.sub(r"(?s)(<!-- PROGRESS_SUMMARY:START -->\n).*?(<!-- PROGRESS_SUMMARY:END -->)",
                      lambda match: match.group(1) + message + match.group(2), text)

@@ -29,7 +29,7 @@
 | 页面/状态类 | ExpenseApprovalListPage @51 (page-class)<br>_ExpenseApprovalListPageState @60 (state-class) |
 | 真实路由绑定 | /expense/approval；router @699；builder ['ExpenseApprovalListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | expense:view @207；定义 lib/shared/auth/permissions.dart:56<br>expense:approve @208；定义 lib/shared/auth/permissions.dart:58<br>expense:pay @209；定义 lib/shared/auth/permissions.dart:59<br>attachment:view @480；定义 lib/shared/auth/permissions.dart:91<br>attachment:download @481；定义 lib/shared/auth/permissions.dart:747 |
+| 权限 | expense:view @207；定义 lib/shared/auth/permissions.dart:56<br>expense:approve @208；定义 lib/shared/auth/permissions.dart:58<br>expense:pay @209；定义 lib/shared/auth/permissions.dart:59<br>attachment:view @480；定义 lib/shared/auth/permissions.dart:91<br>attachment:download @481；定义 lib/shared/auth/permissions.dart:749 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/expense/repositories/expense_repository.dart；接口：/expense-claims |
 | 动作处理 | addPostFrameCallback @112 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>removeWhere @158 [action-like-invocation] 提示 ['remove']；_selectedClaims.removeWhere((id, _) => !next.contains(id));<br>copyWith @297 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>_batchApprove @489 [action-like-invocation] 提示 ['approve']；? () => _batchApprove(Set<String>.of(selectedIds))<br>_batchReject @500 [action-like-invocation] 提示 ['reject']；? () => _batchReject(Set<String>.of(selectedIds))<br>_confirmBatchApproval @516 [method-declaration-candidate] 提示 ['confirm']；Future<String?> _confirmBatchApproval(int count) async {<br>_batchApprove @555 [method-declaration-candidate] 提示 ['approve']；Future<void> _batchApprove(Set<String> ids) => _runBatch(<br>_confirmBatchApproval @558 [action-like-invocation] 提示 ['confirm']；confirm: () => _confirmBatchApproval(ids.length),<br>_batchReject @561 [method-declaration-candidate] 提示 ['reject']；Future<void> _batchReject(Set<String> ids) => _runBatch(<br>showUtenBatchRejectDialog @564 [action-like-invocation] 提示 ['reject']；confirm: () => showUtenBatchRejectDialog(<br>confirm @608 [action-like-invocation] 提示 ['confirm']；final reason = await confirm();<br>approveBatch @617 [action-like-invocation] 提示 ['approve']；? repository.approveBatch(ids, expectedVersions: versions)<br>rejectBatch @618 [action-like-invocation] 提示 ['reject']；: repository.rejectBatch(ids, reason, expectedVersions: versions); |
@@ -94,7 +94,7 @@
 
 ## W7-BIZ-056 · lib/features/expense/pages/expense_settings_page.dart
 
-模块 `expense`；260 行；SHA256 `52ce06ed66c0020894cf68ea5a50e4c4a08499427bd1ca6dcda299acd697dc69`。
+模块 `expense`；260 行；SHA256 `c1fafc1a71f695bb0cd2b2b5e9eb75916c4c0f0e58c6773dcb564f97373301f2`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

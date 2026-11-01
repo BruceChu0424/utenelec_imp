@@ -1,0 +1,591 @@
+{
+  "recordedAtUtc": "2026-11-01T14:23:26.443975+00:00",
+  "baseCommit": "0e149bb696700b67a4371447ecfa15137a1c4a0b",
+  "scope": "Source inventory completeness only; no WPF business implementation or target-machine acceptance.",
+  "inventorySha256": "d1d9b10ee30ed77b6dd9fc89bd7c62f18b6fb926e0af153e6860e6010f40dae1",
+  "beforeRegistrySha256": "fa6f2063614c0ecb6f5dd7b8a53c035256327fbcf4d7b8a12868c269e2bfb88c",
+  "historyPrefixSha256": "5e7742f1ccd08ce41df945f4c62c101b6c6192da1486b6abad2f35bc9ed05317",
+  "newWorkItems": [
+    {
+      "id": "W7-BIZ-218",
+      "businessSource": "lib/features/production/pages/production_material_increment_pages.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-219",
+      "businessSource": "lib/features/production/pages/production_over_limit_pages.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-220",
+      "businessSource": "lib/features/production/pages/production_overproduction_rate_pages.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-221",
+      "businessSource": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-222",
+      "businessSource": "lib/features/warehouse/pages/finance_arrival_exception_pages.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-223",
+      "businessSource": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
+      "status": "todo"
+    }
+  ],
+  "pluralSources": [
+    {
+      "source": "lib/features/production/pages/production_material_increment_pages.dart",
+      "sha256": "7d2c0bc31f2b3337a91228535bba98736847b3aae5b030284d46adf0e2a24870",
+      "classes": [
+        {
+          "name": "ProductionMaterialIncrementListPage",
+          "line": 43,
+          "role": "page-class",
+          "extends": "ConsumerStatefulWidget"
+        },
+        {
+          "name": "_IncrementListState",
+          "line": 50,
+          "role": "state-class",
+          "extends": "ConsumerState<ProductionMaterialIncrementListPage>\n    with ScopedPagedReadViewMixin<ProductionMaterialIncrementListPage>"
+        },
+        {
+          "name": "ProductionMaterialIncrementCreatePage",
+          "line": 219,
+          "role": "page-class",
+          "extends": "ConsumerStatefulWidget"
+        },
+        {
+          "name": "_IncrementCreateState",
+          "line": 230,
+          "role": "state-class",
+          "extends": "ConsumerState<ProductionMaterialIncrementCreatePage>\n    with FormDraftMixin<ProductionMaterialIncrementCreatePage>"
+        },
+        {
+          "name": "ProductionMaterialIncrementDetailPage",
+          "line": 525,
+          "role": "page-class",
+          "extends": "ConsumerStatefulWidget"
+        },
+        {
+          "name": "_IncrementDetailState",
+          "line": 533,
+          "role": "state-class",
+          "extends": "ConsumerState<ProductionMaterialIncrementDetailPage>"
+        }
+      ],
+      "routerBindings": [
+        {
+          "routeId": "router:lib/features/production/production_routes.dart:63",
+          "routerLine": 63,
+          "path": "/production/material-increment-requests",
+          "pathExpression": "RouteName.productionMaterialIncrementRequests",
+          "builderClasses": [
+            "ProductionMaterialIncrementListPage"
+          ],
+          "builderExpression": "(_, _) => const ProductionMaterialIncrementListPage()",
+          "redirectExpression": null,
+          "routerSource": "lib/features/production/production_routes.dart"
+        },
+        {
+          "routeId": "router:lib/features/production/production_routes.dart:67",
+          "routerLine": 67,
+          "path": "/production/material-increment-requests/new",
+          "pathExpression": "'/production/material-increment-requests/new'",
+          "builderClasses": [
+            "ProductionMaterialIncrementCreatePage"
+          ],
+          "builderExpression": "(_, state) => ProductionMaterialIncrementCreatePage(\n      segmentId: state.uri.queryParameters['segmentId'] ?? '',\n    )",
+          "redirectExpression": null,
+          "routerSource": "lib/features/production/production_routes.dart"
+        },
+        {
+          "routeId": "router:lib/features/production/production_routes.dart:73",
+          "routerLine": 73,
+          "path": "/production/material-increment-requests/:id",
+          "pathExpression": "'/production/material-increment-requests/:id'",
+          "builderClasses": [
+            "ProductionMaterialIncrementDetailPage"
+          ],
+          "builderExpression": "(_, state) =>\n        ProductionMaterialIncrementDetailPage(id: state.pathParameters['id']!)",
+          "redirectExpression": null,
+          "routerSource": "lib/features/production/production_routes.dart"
+        }
+      ],
+      "reviewFlags": [
+        "同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。",
+        "复数伴随源包含多个页面构造或共享实现；文件数、构造数和路由数均不等于workflow数。",
+        "存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。"
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_over_limit_pages.dart",
+      "sha256": "fa1b4ee2575dbcb5b9cfc0ec995c2a3477a81b48b4c125fa16d27f11a3094afb",
+      "classes": [
+        {
+          "name": "ProductionOverLimitListPage",
+          "line": 49,
+          "role": "page-class",
+          "extends": "ConsumerStatefulWidget"
+        },
+        {
+          "name": "_OverLimitListState",
+          "line": 56,
+          "role": "state-class",
+          "extends": "ConsumerState<ProductionOverLimitListPage>\n    with ScopedPagedReadViewMixin<ProductionOverLimitListPage>"
+        },
+        {
+          "name": "ProductionOverLimitDetailPage",
+          "line": 385,
+          "role": "page-class",
+          "extends": "ConsumerStatefulWidget"
+        },
+        {
+          "name": "_OverLimitDetailState",
+          "line": 393,
+          "role": "state-class",
+          "extends": "ConsumerState<ProductionOverLimitDetailPage>"
+        }
+      ],
+      "routerBindings": [
+        {
+          "routeId": "router:lib/features/production/production_routes.dart:89",
+          "routerLine": 89,
+          "path": "/production/over-limit-dispositions",
+          "pathExpression": "RouteName.productionOverLimitDispositions",
+          "builderClasses": [
+            "ProductionOverLimitListPage"
+          ],
+          "builderExpression": "(_, _) => const ProductionOverLimitListPage()",
+          "redirectExpression": null,
+          "routerSource": "lib/features/production/production_routes.dart"
+        },
+        {
+          "routeId": "router:lib/features/production/production_routes.dart:93",
+          "routerLine": 93,
+          "path": "/production/over-limit-dispositions/:id",
+          "pathExpression": "'/production/over-limit-dispositions/:id'",
+          "builderClasses": [
+            "ProductionOverLimitDetailPage"
+          ],
+          "builderExpression": "(_, state) =>\n        ProductionOverLimitDetailPage(id: state.pathParameters['id']!)",
+          "redirectExpression": null,
+          "routerSource": "lib/features/production/production_routes.dart"
+        }
+      ],
+      "reviewFlags": [
+        "同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。",
+        "复数伴随源包含多个页面构造或共享实现；文件数、构造数和路由数均不等于workflow数。",
+        "存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。"
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_overproduction_rate_pages.dart",
+      "sha256": "4393a51d33caccb63dbdb94e9d5f2ed40e915d4d104383d56383e485f2c1edb3",
+      "classes": [
+        {
+          "name": "ProductionOverproductionRateListPage",
+          "line": 32,
+          "role": "page-class",
+          "extends": "ConsumerStatefulWidget"
+        },
+        {
+          "name": "_RateListState",
+          "line": 39,
+          "role": "state-class",
+          "extends": "ConsumerState<ProductionOverproductionRateListPage>\n    with ScopedPagedReadViewMixin<ProductionOverproductionRateListPage>"
+        },
+        {
+          "name": "ProductionOverproductionRateDetailPage",
+          "line": 316,
+          "role": "page-class",
+          "extends": "ConsumerStatefulWidget"
+        },
+        {
+          "name": "_RateDetailState",
+          "line": 324,
+          "role": "state-class",
+          "extends": "ConsumerState<ProductionOverproductionRateDetailPage>"
+        }
+      ],
+      "routerBindings": [
+        {
+          "routeId": "router:lib/features/production/production_routes.dart:85",
+          "routerLine": 85,
+          "path": "/production/overproduction-rate-requests",
+          "pathExpression": "RouteName.productionOverproductionRateRequests",
+          "builderClasses": [
+            "ProductionOverproductionRateListPage"
+          ],
+          "builderExpression": "(_, _) => const ProductionOverproductionRateListPage()",
+          "redirectExpression": null,
+          "routerSource": "lib/features/production/production_routes.dart"
+        },
+        {
+          "routeId": "router:lib/features/production/production_routes.dart:98",
+          "routerLine": 98,
+          "path": "/production/overproduction-rate-requests/:id",
+          "pathExpression": "'/production/overproduction-rate-requests/:id'",
+          "builderClasses": [
+            "ProductionOverproductionRateDetailPage"
+          ],
+          "builderExpression": "(_, state) =>\n        ProductionOverproductionRateDetailPage(id: state.pathParameters['id']!)",
+          "redirectExpression": null,
+          "routerSource": "lib/features/production/production_routes.dart"
+        }
+      ],
+      "reviewFlags": [
+        "同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。",
+        "复数伴随源包含多个页面构造或共享实现；文件数、构造数和路由数均不等于workflow数。",
+        "存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。"
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "sha256": "b58dffcb12b766e04c654238e683775069a6f465d72d69fd72b00aa692bd3596",
+      "classes": [
+        {
+          "name": "SubcontractLegacyHistoryPage",
+          "line": 66,
+          "role": "page-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "SubcontractOrderWorkspacePage",
+          "line": 87,
+          "role": "page-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "SubcontractMaterialIssueListPage",
+          "line": 123,
+          "role": "page-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "SubcontractFinishedReturnHistoryPage",
+          "line": 139,
+          "role": "page-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "SubcontractMaterialReturnHistoryPage",
+          "line": 173,
+          "role": "page-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "SubcontractWasteResponsibilityPage",
+          "line": 207,
+          "role": "page-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "SubcontractInquiryArchivePage",
+          "line": 241,
+          "role": "page-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "_ListPresentation",
+          "line": 262,
+          "role": "supporting-class",
+          "extends": null
+        },
+        {
+          "name": "_PageAction",
+          "line": 280,
+          "role": "supporting-class",
+          "extends": null
+        },
+        {
+          "name": "_SubcontractBusinessListPage",
+          "line": 294,
+          "role": "page-class",
+          "extends": "ConsumerStatefulWidget"
+        },
+        {
+          "name": "_BizSeg",
+          "line": 315,
+          "role": "supporting-class",
+          "extends": null
+        },
+        {
+          "name": "_SubcontractBusinessListPageState",
+          "line": 344,
+          "role": "state-class",
+          "extends": "ConsumerState<_SubcontractBusinessListPage>\n    with\n        DraftBulkDeleteMixin<_SubcontractBusinessListPage>,\n        UtenRefreshParticipant<_SubcontractBusinessListPage>"
+        }
+      ],
+      "routerBindings": [],
+      "reviewFlags": [
+        "未找到直接路由builder构造；可能由动态factory、共享页面或内部导航进入，需核实。",
+        "复数伴随源包含多个页面构造或共享实现；文件数、构造数和路由数均不等于workflow数。",
+        "存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。"
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/finance_arrival_exception_pages.dart",
+      "sha256": "522e6e3b02767a217e337ade58c194a4a3de9f5b2b14797d46d37af6c7b5fbe2",
+      "classes": [
+        {
+          "name": "FinanceArrivalExceptionTasksPage",
+          "line": 42,
+          "role": "page-class",
+          "extends": "ConsumerStatefulWidget"
+        },
+        {
+          "name": "_FinanceArrivalExceptionTasksPageState",
+          "line": 68,
+          "role": "state-class",
+          "extends": "ConsumerState<FinanceArrivalExceptionTasksPage>"
+        },
+        {
+          "name": "_FinanceTaskCard",
+          "line": 309,
+          "role": "supporting-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "FinanceArrivalExceptionDetailPage",
+          "line": 397,
+          "role": "page-class",
+          "extends": "ConsumerStatefulWidget"
+        },
+        {
+          "name": "_FinanceArrivalExceptionDetailPageState",
+          "line": 407,
+          "role": "state-class",
+          "extends": "ConsumerState<FinanceArrivalExceptionDetailPage>"
+        },
+        {
+          "name": "_FinanceStatusBanner",
+          "line": 713,
+          "role": "supporting-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "_ArrivalFactsCard",
+          "line": 759,
+          "role": "supporting-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "_FinanceDecisionPanel",
+          "line": 845,
+          "role": "supporting-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "_DecisionOption",
+          "line": 949,
+          "role": "supporting-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "_Fact",
+          "line": 1034,
+          "role": "supporting-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "_Pager",
+          "line": 1055,
+          "role": "supporting-class",
+          "extends": "StatelessWidget"
+        }
+      ],
+      "routerBindings": [
+        {
+          "routeId": "router:2093",
+          "routerLine": 2093,
+          "path": "/finance/procurement-arrival-exceptions",
+          "pathExpression": "RouteName.financeArrivalExceptions",
+          "builderClasses": [
+            "FinanceArrivalExceptionTasksPage"
+          ],
+          "builderExpression": "(_, _) => const FinanceArrivalExceptionTasksPage()",
+          "redirectExpression": null
+        },
+        {
+          "routeId": "router:2098",
+          "routerLine": 2098,
+          "path": "/finance/procurement-arrival-exceptions/:id",
+          "pathExpression": "'${RouteName.financeArrivalExceptions}/:id'",
+          "builderClasses": [
+            "FinanceArrivalExceptionDetailPage"
+          ],
+          "builderExpression": "(_, state) => FinanceArrivalExceptionDetailPage(\n              id: state.pathParameters['id']!,\n            )",
+          "redirectExpression": null
+        }
+      ],
+      "reviewFlags": [
+        "同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。",
+        "复数伴随源包含多个页面构造或共享实现；文件数、构造数和路由数均不等于workflow数。",
+        "存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。"
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
+      "sha256": "5a5d54e0c0a04706ef2f8079664833360880f40b7d9f33f85f7bf4895c89d123",
+      "classes": [
+        {
+          "name": "ProcurementReturnTasksPage",
+          "line": 47,
+          "role": "page-class",
+          "extends": "ConsumerStatefulWidget"
+        },
+        {
+          "name": "_ProcurementReturnTasksPageState",
+          "line": 60,
+          "role": "state-class",
+          "extends": "ConsumerState<ProcurementReturnTasksPage>\n    with ScopedPagedReadViewMixin<ProcurementReturnTasksPage>"
+        },
+        {
+          "name": "_ReturnTaskListCard",
+          "line": 525,
+          "role": "supporting-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "ProcurementReturnTaskDetailPage",
+          "line": 605,
+          "role": "page-class",
+          "extends": "ConsumerStatefulWidget"
+        },
+        {
+          "name": "_ProcurementReturnTaskDetailPageState",
+          "line": 615,
+          "role": "state-class",
+          "extends": "ConsumerState<ProcurementReturnTaskDetailPage>\n    with NativeReadViewScopeMixin<ProcurementReturnTaskDetailPage>"
+        },
+        {
+          "name": "_ReturnStatusBanner",
+          "line": 863,
+          "role": "supporting-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "_ReturnFactsCard",
+          "line": 903,
+          "role": "supporting-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "_Fact",
+          "line": 956,
+          "role": "supporting-class",
+          "extends": "StatelessWidget"
+        },
+        {
+          "name": "_Pager",
+          "line": 977,
+          "role": "supporting-class",
+          "extends": "StatelessWidget"
+        }
+      ],
+      "routerBindings": [
+        {
+          "routeId": "router:1030",
+          "routerLine": 1030,
+          "path": "/procurement/arrival-exceptions",
+          "pathExpression": "RouteName.procurementArrivalExceptions",
+          "builderClasses": [
+            "ProcurementReturnTasksPage"
+          ],
+          "builderExpression": "(_, state) => ProcurementReturnTasksPage(\n              orderType: procurementInboundOrderTypeFrom(\n                state.uri.queryParameters['orderType'],\n              ),\n            )",
+          "redirectExpression": null
+        },
+        {
+          "routeId": "router:1039",
+          "routerLine": 1039,
+          "path": "/procurement/arrival-exceptions/:id",
+          "pathExpression": "'${RouteName.procurementArrivalExceptions}/:id'",
+          "builderClasses": [
+            "ProcurementReturnTaskDetailPage"
+          ],
+          "builderExpression": "(_, state) => ProcurementReturnTaskDetailPage(\n              id: state.pathParameters['id']!,\n            )",
+          "redirectExpression": null
+        }
+      ],
+      "reviewFlags": [
+        "同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。",
+        "复数伴随源包含多个页面构造或共享实现；文件数、构造数和路由数均不等于workflow数。",
+        "存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。"
+      ]
+    }
+  ],
+  "oldItemOrderPreserved": true,
+  "preservedOldFields": [
+    "id",
+    "title",
+    "owner",
+    "evidence",
+    "definitionOfDone",
+    "nativeTargets"
+  ],
+  "reopenReason": {
+    "id": "W7-GOV-002",
+    "from": "done",
+    "to": "in_progress",
+    "reason": "Historical 214-file planning proof omitted six plural page companions and production route fragment; keep old proof and append current incomplete-to-review record."
+  },
+  "newTaskStatus": "todo",
+  "wpfComplete": false,
+  "win7Accepted": false,
+  "productionWrites": 0,
+  "next877Changed": false,
+  "toolChecks": {
+    "businessInventory": {
+      "tests": 5,
+      "failures": 0,
+      "errors": 0
+    },
+    "progressTracker": {
+      "tests": 15,
+      "failures": 0,
+      "errors": 0
+    },
+    "collectWriteSyncRenderCheck": "passed",
+    "repeatSyncByteIdentical": true
+  },
+  "finalSummary": {
+    "currentSourceFiles": 220,
+    "retainedSourcePackages": 3,
+    "commonAndFlowPackages": 136,
+    "workPackages": 359,
+    "done": 10,
+    "verified_local": 20,
+    "implemented": 26,
+    "in_progress": 31,
+    "todo": 272
+  },
+  "finalHistorySha256": "a89e864e9d49112544b3b7f6c38f13b48fea8d6196dcfa7399d1fa2cb41c8509",
+  "finalRegistrySha256": "30b27c59cfa82e15466118880c98c30b5daf6635e97663ba6515f0b2fd5be03d",
+  "integrationCorrection": {
+    "source": "server/src/main/java/com/uten/imp/config/WebMvcConfig.java",
+    "reason": "Remove duplicate NativeTaskReadScopeInterceptor registration left after moving the first registration before ReportReadPlan; preserve audit first and the pre-report native capture.",
+    "sqlOrBusinessAuthorizationChanged": false,
+    "verification": {
+      "classes": 5,
+      "tests": 26,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "actualRegistryUniqueAndOrdered": true,
+      "nativeTypedAndOrdinaryReportPublication": true
+    }
+  },
+  "toolSourceHashes": {
+    "clients/windows_legacy/tools/business_inventory.py": "2e81c665c9c7377e66b104dcff9eea2eb8b7ff90ec6528d4195dd1e1edada11a",
+    "clients/windows_legacy/tools/module_coverage.py": "60994228e9b6c6cbf34987ca01b0ec1d0a2668764b9a395914ef8953f5d67033",
+    "clients/windows_legacy/tools/progress_tracker.py": "b8f00de3ecd70aa7b9fef97f54f6109dcce0c9356f997e8fd4d7406450fd5a6c",
+    "clients/windows_legacy/tools/test_business_inventory.py": "a2778ae880217ae5fcabf3002d1185bea4af9fcce6236dd91a2a45572c4cbd9e",
+    "clients/windows_legacy/tools/test_progress_tracker.py": "49bfa1e46634e52050abdadaeb6e484f5ad0c7036eb9120d83ac400fe48fe34a"
+  }
+}

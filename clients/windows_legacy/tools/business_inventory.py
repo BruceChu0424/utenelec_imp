@@ -36,6 +36,12 @@ ACTION_WORDS = {"save", "submit", "approve", "reject", "confirm", "cancel", "del
     "login", "logout", "send", "pay", "settle", "copy", "paste", "unapprove", "unaudit"}
 
 
+def page_source_paths(root: Path | None = None) -> list[Path]:
+    """Page source files, including multi-page companions; never workflow units."""
+    return sorted(path for path in ((root or ROOT) / "lib/features").rglob("*.dart")
+                  if path.name.endswith(("_page.dart", "_pages.dart")))
+
+
 def _string_end(text: str, start: int) -> tuple[int, int, int]:
     raw = text[start] in "rR" and start + 1 < len(text) and text[start + 1] in "'\""
     quote_at = start + 1 if raw else start
@@ -293,7 +299,7 @@ def _named_arguments(unit: Unit, opening: int, closing: int) -> dict:
     return result
 
 
-def _routes(router: Unit, constants: dict, sources: Sources) -> list[dict]:
+def _routes(router: Unit, constants: dict, sources: Sources, allowed_ranges=None) -> list[dict]:
     imports = _imports(router, sources)
     class_sources = defaultdict(list)
     for entry in imports:
@@ -307,15 +313,21 @@ def _routes(router: Unit, constants: dict, sources: Sources) -> list[dict]:
             class_sources[name].append(imported.source)
     routes = []
     for match in re.finditer(r"\b(GoRoute|DraftAwareGoRoute|ShellRoute)\s*\(", router.mask):
+        if allowed_ranges is not None and not any(start <= match.start() < end for start, end in allowed_ranges):
+            continue
         opening = router.mask.find("(", match.start(), match.end())
         closing = _balanced(router.mask, opening)
         args = _named_arguments(router, opening, closing)
         builder = args.get("builder", args.get("pageBuilder", {})).get("expression")
         constructed = []
         if builder:
-            for name in sorted(set(re.findall(r"\b([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)\s*\(", _lex(builder)[1]))):
-                if name in class_sources:
-                    constructed.append({"class": name, "sources": sorted(set(class_sources[name]))})
+            for name in sorted(set(re.findall(r"\b([A-Za-z_]\w*(?:\.[A-Za-z_]\w*){0,2})\s*\(", _lex(builder)[1]))):
+                owner = name if name in class_sources else name.rsplit(".", 1)[0]
+                if owner in class_sources:
+                    # A static factory remains a candidate source (its class is
+                    # not a page). Named page constructors keep their owning
+                    # class and original builder expression as evidence.
+                    constructed.append({"class": owner, "sources": sorted(set(class_sources[owner]))})
         expression = args.get("path", {}).get("expression")
         path = None
         if expression:
@@ -323,12 +335,43 @@ def _routes(router: Unit, constants: dict, sources: Sources) -> list[dict]:
             else:
                 literals = _lex(expression)[2]
                 if len(literals) == 1: path = _expand(literals[0][2], {"RouteName." + key: value for key, value in constants.items()})
-        routes.append({"id": "router:" + str(router.line(match.start())), "source": ROUTER,
+        route_id = ("router:" if router.source == ROUTER else "router:" + router.source + ":") + str(router.line(match.start()))
+        routes.append({"id": route_id, "source": router.source,
                        "line": router.line(match.start()), "constructor": match.group(1), "path": path,
                        "pathExpression": expression, "builderExpression": builder, "constructedClasses": constructed,
                        "redirectExpression": args.get("redirect", {}).get("expression"),
                        "status": "static-constructor-evidence; effective reachability requires review"})
     return routes
+
+
+def _registered_route_units(router: Unit, sources: Sources) -> list[tuple[Unit, list | None]]:
+    """Only route libraries explicitly imported and spread by registered code.
+
+    This does not infer dynamic factories or execute navigation. An imported
+    but unregistered route list must not become a real route binding.
+    """
+    result, seen = [(router, None)], {router.source}
+    for owner, ranges in result:
+        spreads = {match.group(1) for match in re.finditer(r"\.\.\.\??\s*([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)?)", owner.mask)
+                   if ranges is None or any(start <= match.start() < end for start, end in ranges)}
+        for entry in _imports(owner, sources):
+            if entry["directive"] != "import" or not entry["source"]:
+                continue
+            target = sources.get(entry["source"])
+            if not target or target.source in seen:
+                continue
+            prefix = (entry["importAlias"] + ".") if entry["importAlias"] else ""
+            registered = []
+            for declaration in re.finditer(r"\b(?:final|const)\s+(?:List\s*<\s*RouteBase\s*>\s+)?([A-Za-z_]\w*)\s*=\s*(?:const\s*)?\[", target.mask):
+                name = declaration.group(1)
+                if (prefix + name in spreads and name not in entry["hideSymbols"]
+                        and (not entry["showSymbols"] or name in entry["showSymbols"])):
+                    opening = declaration.end() - 1
+                    registered.append((opening, _balanced(target.mask, opening, "[", "]")))
+            if registered:
+                seen.add(target.source)
+                result.append((target, registered))
+    return result
 
 
 def _controllers(sources: Sources) -> list[dict]:
@@ -387,7 +430,8 @@ def collect() -> dict:
     # RouteName constants and RoutePaths helpers can share a member name. Only
     # constant declarations describe registered path values; helpers add query.
     _, route_values = _definitions(names, constants_only=True)
-    routes = _routes(router, route_values, sources)
+    route_units = _registered_route_units(router, sources)
+    routes = [route for unit, ranges in route_units for route in _routes(unit, route_values, sources, ranges)]
     global_redirect = None
     global_router = re.search(r"\bGoRouter\s*\(", router.mask)
     if global_router:
@@ -397,7 +441,7 @@ def collect() -> dict:
             global_redirect = {"source": ROUTER, **args["redirect"], "status": "source policy; manually verify reachability"}
     controllers = _controllers(sources)
     pages = []
-    for path in sorted((ROOT / "lib/features").rglob("*_page.dart")):
+    for path in page_source_paths():
         unit = sources.get(path.relative_to(ROOT).as_posix())
         feature = path.relative_to(ROOT / "lib/features").parts[0]
         imports = _imports(unit, sources)
@@ -425,6 +469,8 @@ def collect() -> dict:
                 direct_routes.append({"routeId": route["id"], "routerLine": route["line"], "path": route["path"],
                     "pathExpression": route["pathExpression"], "builderClasses": classes,
                     "builderExpression": route["builderExpression"], "redirectExpression": route["redirectExpression"]})
+                if route["source"] != ROUTER:
+                    direct_routes[-1]["routerSource"] = route["source"]
         direct_paths = {route["path"] for route in direct_routes if route["path"]}
         redirects = []
         for route in routes:
@@ -440,6 +486,8 @@ def collect() -> dict:
         if feature == "visitor": review_flags.append("访客门户前端已被全局redirect下线；保留源码不等于本次需要恢复该门户，需确认范围。")
         if not direct_routes: review_flags.append("未找到直接路由builder构造；可能由动态factory、共享页面或内部导航进入，需核实。")
         if len(direct_routes) > 1: review_flags.append("同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。")
+        if path.name.endswith("_pages.dart"):
+            review_flags.append("复数伴随源包含多个页面构造或共享实现；文件数、构造数和路由数均不等于workflow数。")
         if any(entry["role"] in {"featureWidgets", "providers", "sharedComponents"} for entry in imports):
             review_flags.append("存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。")
         if parts: review_flags.append("已附直接part文件证据；part及共享依赖不能作为新增独立workflow计数。")

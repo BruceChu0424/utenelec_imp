@@ -21,7 +21,7 @@
 
 ## W7-GOV-002
 
-- [x] **完整页面/路由/动作来源盘点** — 本项DoD完成
+- [ ] **完整页面/路由/动作来源盘点** — 进行中
 
 影响：`documentation`；负责人：Codex；依赖：无。
 
@@ -32,9 +32,9 @@
 1. 214页/34模块及路由分类有行号、SHA和明确的静态解析边界；退役与员工访客功能分开。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：`clients/windows_legacy/progress/evidence/planning-verification.json`。
+证据：`clients/windows_legacy/progress/evidence/planning-verification.json`；`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
 
-接续/限制：214页/34模块/245控制器/1465引用源完成静态盘点和来源检查；动作与控制器候选仍明确需人工合同审计，不计业务完成。。
+接续/限制：214页/34模块/245控制器/1465引用源完成静态盘点和来源检查；动作与控制器候选仍明确需人工合同审计，不计业务完成。；2026-11-01 证明失效重开：原214文件来源盘点遗漏六个*_pages.dart和已注册productionRoutes片段。旧DoD/214页规划证据保留为历史；新增220当前源+3历史保留项的完整性候选待复审，不以hash刷新冒充旧证明仍完整。见15-复数页面来源补漏与权限范围增量。。
 
 ## W7-GOV-003
 

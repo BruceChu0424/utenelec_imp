@@ -1,6 +1,6 @@
 package com.uten.imp.common.report;
 
-import com.uten.imp.common.web.BusinessTaskRead;
+import com.uten.imp.security.BusinessTaskRead;
 import com.uten.imp.security.ReadScopeVersionAuthority;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.SecurityRequestPath;

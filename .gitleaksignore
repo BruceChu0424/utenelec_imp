@@ -463,3 +463,7 @@ d1e83824a4e765b8859be5cbf509d4434d06ef21:clients/windows_legacy/tools/test_desig
 202385d398a5223ce030ebfa8de5497793f6fcea:docs/99-项目治理/2026-10-31-只读查单与业务参与统一.evidence.json:generic-api-key:108
 202385d398a5223ce030ebfa8de5497793f6fcea:docs/99-项目治理/2026-10-31-只读查单与业务参与统一.evidence.json:generic-api-key:116
 327d968469c18b98fa2b8ea34003793b2a7770ee:server/src/test/java/com/uten/imp/features/sales/quote/SalesManagerReviewFlowPostgresTest.java:generic-api-key:76
+# Reviewed BOM comparison false positives: a source-file SHA-256 and screenshot name.
+# Restrict each exception to the original commit, path, rule and line.
+996fa53b880c90519df272e2f83a6ce0ec33d800:clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json:generic-api-key:95
+996fa53b880c90519df272e2f83a6ce0ec33d800:test/features/basic_data/widgets/goods_bom_comparison_workspace_test.dart:generic-api-key:307

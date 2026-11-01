@@ -16,6 +16,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_date_range_picker.dart';
 import '../../../components/inputs/uten_multi_value_cell.dart';
+import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../core/network/api_exception.dart';
@@ -936,6 +937,22 @@ class _WarehouseTaskRecordsViewState
       label: '货品名称',
       width: 200,
       value: (row) => row.line?.goodsName ?? '—',
+      cellBuilder: (_, row) {
+        if (row.recordType == 'MATERIAL_DISCOVERY' &&
+            row.status == 'DRAW_DISCOVERY_PENDING' &&
+            (row.line == null || row.line!.key == 'empty')) {
+          return UtenTableCellAction(
+            label: '待仓库填写材料',
+            tooltip: '此申请尚未指定材料和数量，请打开申请核对生产工单并填写；不会自动猜测或出库。',
+            onPressed: _busy || _loading ? null : () => _open(row),
+          );
+        }
+        return Text(
+          row.line?.goodsName ?? '—',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        );
+      },
     ),
     MasterColumnDef(
       key: 'goodsCode',

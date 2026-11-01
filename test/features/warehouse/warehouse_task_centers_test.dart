@@ -1,3 +1,5 @@
+import 'package:uten_imp/features/warehouse/pages/warehouse_hub_page.dart';
+import 'package:uten_imp/components/cards/uten_hub_card.dart';
 // 仓库任务中心三页（2026-09-01 重组）的权限/分段/角标契约测试。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -113,6 +115,7 @@ void main() {
     Set<String> permissions, {
     bool withDrafts = false,
     int subcontractOutboundCount = 2,
+    int waitingQuality = 0,
     ApiClient? api,
   }) {
     return ProviderScope(
@@ -127,10 +130,15 @@ void main() {
         // 委外出库红数 = 待发料的委外领料单张数(ADR-143 §4.3), 没有黄数.
         fixedBadgeSummaryOverride(
           badgeSummaryFixture(
+            entries: {
+              if (waitingQuality > 0)
+                BadgeEntry.warehouseQualityResult: (1, waitingQuality),
+            },
             facts: {
               BadgeFact.warehouseSalesOutboundPendingPick: 5,
               BadgeFact.warehouseSalesOutboundShipped: 12,
               BadgeFact.productionDraw: 3,
+              BadgeFact.qualityResultInProgress('PURCHASE'): waitingQuality,
               BadgeFact.productionReturn: 0,
               BadgeFact.subcontractOutbound: subcontractOutboundCount,
               BadgeFact.warehouseArrivalException: 0,
@@ -152,6 +160,30 @@ void main() {
       ),
     );
   }
+
+  testWidgets(
+    'warehouse hub task card retains its yellow inspection badge beside red work',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        app(const WarehouseHubPage(), {Perm.stockDocView}, waitingQuality: 4),
+      );
+      await tester.pumpAndSettle();
+      final badge = find.descendant(
+        of: find.byType(UtenHubCard),
+        matching: find.byType(UtenInProgressBadge),
+      );
+      expect(badge, findsOneWidget);
+      expect(tester.widget<UtenInProgressBadge>(badge).count, 4);
+      final red = find.descendant(
+        of: find.byType(UtenHubCard),
+        matching: find.byType(UtenNotificationBadge),
+      );
+      expect(tester.widget<UtenNotificationBadge>(red).count, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   for (final entry in <(String, Widget, Set<String>)>[
     ('root', const WarehouseTaskCenterPage(), {Perm.stockDocView}),

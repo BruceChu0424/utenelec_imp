@@ -490,7 +490,7 @@ public class WarehouseQualityResultService {
                 ProcurementIqcStockInPermissions.CONFIRM);
         boolean canReturn = hasWarehouseWriteAuthority(WarehouseQualityResultPermissions.RETURN_VIEW,
                 WarehouseQualityResultPermissions.RECORD_RETURN);
-        if (!canStockIn && !canReturn) return counts;
+        if (!canStockIn && !canReturn && !canFollowInspection()) return counts;
         WarehouseTaskScope warehouseScope = warehouseScopes.current(selectedWarehouseId);
         String taskStatus = STATUS_CASE
                 .replace("pending_release.pending_slice_count", "CASE WHEN :taskCanStockIn THEN pending_release.pending_slice_count ELSE 0 END")
@@ -538,7 +538,7 @@ public class WarehouseQualityResultService {
                 ProcurementIqcStockInPermissions.CONFIRM);
         boolean canReturn = hasWarehouseWriteAuthority(WarehouseQualityResultPermissions.RETURN_VIEW,
                 WarehouseQualityResultPermissions.RECORD_RETURN);
-        if (!canStockIn && !canReturn) {
+        if (!canStockIn && !canReturn && !canFollowInspection()) {
             return new TypeCounts(Map.of(PURCHASE, 0L, SUBCONTRACT, 0L),
                     Map.of(PURCHASE, 0L, SUBCONTRACT, 0L));
         }
@@ -1183,6 +1183,15 @@ public class WarehouseQualityResultService {
 
     private static String normalizeSearch(String value) {
         return com.uten.imp.common.util.KeywordSearch.phrase(value);
+    }
+
+    private boolean canFollowInspection() {
+        if (hasWarehouseWriteAuthority(ProcurementIqcStockInPermissions.VIEW,
+                ProcurementIqcStockInPermissions.BEFORE_INSPECTION)) return true;
+        // Waiting on quality is a yellow responsibility fact, not a stock-in command.
+        // Keep view-only all-warehouse browsers out of the personal task audience.
+        return warehouseScopes != null && hasAuthority(ProcurementIqcStockInPermissions.VIEW)
+                && warehouseScopes.access().role() != WarehouseTaskScopePort.Role.OTHER;
     }
 
     private static boolean hasWarehouseWriteAuthority(String viewAuthority, String actionAuthority) {

@@ -505,7 +505,7 @@ public class SalesOrderService {
             return new OrderProgressRow(
                     pgStr(row, 0), pgStr(row, 1), pgStr(row, 2), pgStr(row, 3), pgStr(row, 4),
                     orderQty, producedQty, shippedQty, reservedQty, plannedQty, unplannedQty,
-                    null, legacyImported ? "CLOSED" : progressStageOf(
+                    null, legacyImported ? "CLOSED" : (!financeConfirmed && !financeRejected && !managerRejected && !draft && !stopped && !closed) ? "PENDING" : progressStageOf(
                             orderQty, producedQty,
                             reservedQty, plannedQty, unplannedQty,
                             financeRejected || managerRejected, stopped, closed,
@@ -663,8 +663,7 @@ public class SalesOrderService {
                 new com.uten.imp.security.OwnerVisibility.OwnerScope(owners.seeAll(), owners.writableOwners()));
         var scope = new NativeReadScope("o.owner_employee_id IS NOT NULL AND " + writable.predicate(),
                 writable.parameterName(), writable.owners());
-        String taskStage = "CASE WHEN NOT t.finance_confirmed AND (" + progressStageExpr()
-                + ") = 'SHIPPABLE' THEN 'PENDING' ELSE (" + progressStageExpr() + ") END";
+        String taskStage = progressStageExpr();
         var query = em.createNativeQuery("SELECT (" + taskStage + "), COUNT(*) FROM ("
                 + progressGroupedSql(scope, true) + ") t GROUP BY 1");
         scope.bind(query);
@@ -825,6 +824,7 @@ public class SalesOrderService {
                   WHEN t.bill_status = 0 THEN 'DRAFT'
                   WHEN t.is_stopped THEN 'CANCELED'
                   WHEN t.is_closed THEN 'CLOSED'
+                  WHEN NOT t.finance_confirmed THEN 'PENDING'
                   WHEN t.order_qty <= 0 THEN 'PENDING'
                   WHEN t.outstanding_qty <= 0.000001 THEN 'SHIPPED'
                   WHEN t.reserved_qty - (t.shipment_draft_qty + t.shipment_pending_finance_qty

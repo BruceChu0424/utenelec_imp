@@ -421,6 +421,10 @@ Future<_Harness> _pump(
         builder: (_, state) => target(state),
       ),
       GoRoute(
+        path: '/warehouse/material-discovery/:id',
+        builder: (_, state) => target(state),
+      ),
+      GoRoute(
         path: '/warehouse/sales-outbound/:id',
         builder: (_, state) => target(state),
       ),
@@ -469,6 +473,46 @@ Future<void> _doubleTap(WidgetTester tester, String text) async {
 }
 
 void main() {
+  for (final line in <WarehouseTaskLine?>[
+    null,
+    const WarehouseTaskLine(key: 'empty'),
+  ]) {
+    testWidgets(
+      'discovery without requested material explains empty goods (${line?.key})',
+      (tester) async {
+        final row = warehouseTestRecord(
+          source: 'DRAW',
+          record: 'MATERIAL_DISCOVERY',
+          id: 'empty-request',
+          billNo: 'LQ-EMPTY',
+          status: 'DRAW_DISCOVERY_PENDING',
+          action: 'MATERIAL_DISCOVERY',
+          canHandle: true,
+          line: line,
+        );
+        final harness = await _pump(
+          tester,
+          WarehouseTaskRecordsFakeGateway([row]),
+          spec: const _ViewSpec(source: 'DRAW'),
+        );
+        expect(find.text('待仓库填写材料'), findsOneWidget);
+        expect(
+          _table(
+            tester,
+          ).columns.firstWhere((c) => c.key == 'quantity').value(row),
+          '—',
+        );
+        await tester.tap(find.text('待仓库填写材料'));
+        await tester.pumpAndSettle();
+        expect(
+          harness.opened.single.path,
+          '/warehouse/material-discovery/empty-request',
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final view in WarehouseTaskView.values) {
     testWidgets(
       'VIEW-only discovery ${view.name} double click keeps the shared read detail',

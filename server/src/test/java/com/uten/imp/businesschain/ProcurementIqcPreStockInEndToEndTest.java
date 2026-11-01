@@ -156,6 +156,29 @@ class ProcurementIqcPreStockInEndToEndTest {
         assertEquals(1, events(c.receipt(), "RECEIPT_RESOLVED"));
     }
 
+    @Test
+    void designatedKeeperSeesWaitingBadgeAndCanStockBeforeInspectionWithoutFinalConfirmPermission() {
+        Case c=prepare("PURCHASE");
+        var masters=new FullChainEndToEndTest(); beans.autowireBean(masters);
+        UUID keeper=masters.createUserWithPerms(c.world(),"keeper-prestock-"+UUID.randomUUID(),
+                "warehouse_iqc_stock_in:view","warehouse_iqc_stock_in:before_inspection");
+        UUID employee=jdbc.queryForObject("SELECT employee_id FROM users WHERE id=?",UUID.class,keeper);
+        UUID leaf=c.leaves().getFirst();
+        beans.getBean(com.uten.imp.features.master.warehouse.WarehouseKeeperService.class).replaceKeepers(leaf,
+                new com.uten.imp.features.master.warehouse.dto.WarehouseKeeperSaveRequest(List.of(employee)));
+        masters.loginAs(keeper);
+        var controller=beans.getBean(com.uten.imp.features.warehouse.inbound.WarehouseQualityResultController.class);
+        var counts=controller.typeCounts(leaf);
+        assertEquals((long)c.rows().size(),counts.inProgress().get("PURCHASE"));
+        assertEquals(0L,counts.actionable().get("PURCHASE"));
+        assertTrue(controller.detail("PURCHASE",c.receipt(),leaf).allowedActions().contains(TaskDetail.ACTION_PRE_STOCK_IN));
+        assertEquals(ErrorCode.FORBIDDEN,assertThrows(ApiException.class,()->controller.typeCounts(c.leaves().get(1))).getCode());
+        preStock.preStockIn("PURCHASE",c.receipt(),new PreStockInRequest(c.rows().stream()
+                .map(row->new PreStockInItem(row.inspectionId(),leaf,"KEEPER-01")).toList()));
+        assertEquals(c.rows().size(),jdbc.queryForObject("SELECT count(*) FROM procurement_inspection_items WHERE receipt_id=? AND pre_stocked_warehouse_id=?",
+                Integer.class,c.receipt(),leaf));
+    }
+
     // ------------------------------------------------------------------ 采购：上架 → 合格自动转正 / 不合格不进库存
 
     @Test

@@ -399,6 +399,7 @@ class _AdminBaselinePermViewState extends ConsumerState<AdminBaselinePermView> {
                 description: permission.description,
                 grantPolicy: permission.grantPolicy,
                 sensitivity: permission.sensitivity,
+                managerReview: isSalesManagerReviewPermission(permission.code),
                 nameStyle: Theme.of(
                   context,
                 ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),

@@ -6,6 +6,10 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permission_action_type.dart';
 import '../../../shared/auth/permission_grant_policy.dart';
 
+bool isSalesManagerReviewPermission(String code) =>
+    code.startsWith('sales_quote_manager:') ||
+    code.startsWith('sales_order_manager:');
+
 /// 由后端权限目录动作分类驱动的紧凑徽标。
 class PermissionActionBadge extends StatelessWidget {
   const PermissionActionBadge({super.key, required this.actionType});
@@ -32,6 +36,7 @@ class PermissionTitleBlock extends StatelessWidget {
     this.grantPolicy = PermissionGrantPolicy.normalOnly,
     this.baseline = false,
     this.sensitivity = 'NORMAL',
+    this.managerReview = false,
   });
 
   final String name;
@@ -45,6 +50,7 @@ class PermissionTitleBlock extends StatelessWidget {
   /// 是否在全员基础包里。
   final bool baseline;
   final String sensitivity;
+  final bool managerReview;
 
   @override
   Widget build(BuildContext context) {
@@ -67,6 +73,13 @@ class PermissionTitleBlock extends StatelessWidget {
                 label: '商业敏感数据',
                 type: UtenStatusBadgeType.danger,
                 icon: Icons.lock_outline_rounded,
+                size: UtenStatusBadgeSize.small,
+              ),
+            if (managerReview)
+              const UtenStatusBadge(
+                label: '销售负责人权限',
+                type: UtenStatusBadgeType.warning,
+                icon: Icons.verified_user_outlined,
                 size: UtenStatusBadgeSize.small,
               ),
             for (final label in grantPolicy.labels)

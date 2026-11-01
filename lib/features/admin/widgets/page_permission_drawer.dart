@@ -1729,6 +1729,9 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
                     description: permission.description,
                     grantPolicy: permission.grantPolicy,
                     sensitivity: permission.sensitivity,
+                    managerReview: isSalesManagerReviewPermission(
+                      permission.code,
+                    ),
                   ),
                   Text(
                     permission.reason?.trim().isNotEmpty == true

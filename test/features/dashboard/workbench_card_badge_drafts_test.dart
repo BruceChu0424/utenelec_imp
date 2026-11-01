@@ -100,4 +100,23 @@ void main() {
     );
     expect(count, 7);
   });
+  testWidgets('sales manager review card uses its own pending queue count', (
+    tester,
+  ) async {
+    expect(
+      await badgeCount(
+        tester,
+        WorkbenchBadgeKind.salesManagerReview,
+        entries: {
+          BadgeEntry.salesManagerReview: (3, 0),
+          BadgeEntry.salesAttention: (9, 0),
+        },
+        permissions: {
+          Perm.salesOrderManagerView,
+          Perm.salesOrderManagerConfirm,
+        },
+      ),
+      3,
+    );
+  });
 }

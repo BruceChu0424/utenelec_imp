@@ -158,6 +158,53 @@ class SalesManagerReviewFlowPostgresTest {
         managers.confirmOrder(id,new SalesOrderFinanceConfirmService.FinanceConfirmRequest("已核对",revision(id),claim.claimId()));
     }
 
+    @Test void combinedQueueUsesActualDocumentKindsAndFiltersBeforePagination() {
+        Fixture f=fixture("queue-headers"); UUID manager=manager();
+        var order=submittedOrder(f); var quote=submitted(f);
+        loginAs(manager);
+        var rows=managers.list("all","PENDING","",1,100,Map.of("billNo",order.getBillNo()));
+        assertThat(rows.getTotal()).isEqualTo(1);
+        assertThat(rows.getItems()).singleElement().satisfies(task -> {
+            assertThat(task.kind()).isEqualTo("order");
+            assertThat(task.state()).isEqualTo("PENDING");
+            assertThat(task.totalOriginal()).isEqualByComparingTo("50");
+        });
+        assertThat(managers.list("all","PENDING","",2,1,Map.of("billNo",order.getBillNo())).getItems())
+                .extracting(com.uten.imp.features.sales.SalesManagerReviewService.Task::id).containsExactly(order.getId());
+        assertThat(managers.list("all","PENDING","",1,20,Map.of("billNo",order.getBillNo(),"amount",">50")).getTotal()).isZero();
+        assertThat(managers.list("all","PENDING","",1,20,Map.of("billNo",quote.getBillNo(),"kind","报价单")).getItems())
+                .extracting(com.uten.imp.features.sales.SalesManagerReviewService.Task::kind).containsExactly("quote");
+        assertThat(managers.list("all","HISTORY",order.getBillNo(),1,20).getTotal()).isZero();
+        approveOrder(order.getId(),manager);
+        assertThat(managers.list("all","HISTORY",order.getBillNo(),1,20).getItems())
+                .extracting(com.uten.imp.features.sales.SalesManagerReviewService.Task::state).containsExactly("APPROVED");
+        UUID orderOnly=user("order-only-"+SEQ.incrementAndGet(),department("ORDER-ONLY-"+SEQ.incrementAndGet()),List.of("sales_order_manager:view"));
+        loginAs(orderOnly);
+        assertThat(managers.list("all","PENDING",quote.getBillNo(),1,20).getTotal()).isZero();
+    }
+
+    @Test void pendingReviewWithReservedStockRemainsInProgressUntilFinanceApproval() {
+        Fixture f=fixture("queue-in-progress"); var order=submittedOrder(f);
+        // The stage must not depend on whether stock happens to be available at submission.
+        jdbc.update("UPDATE sales_order_items SET reserved_qty=qty WHERE order_id=?",order.getId());
+        loginAs(f.sales());
+        var rows=orders.progress(1,20,"IN_PROGRESS",order.getBillNo(),null,null,null,null,null);
+        assertThat(rows.getItems()).singleElement().satisfies(row -> {
+            assertThat(row.stage()).isEqualTo("PENDING");
+            assertThat(row.managerReviewState()).isEqualTo("PENDING");
+        });
+        assertThat(orders.progress(1,20,"READY_TO_SHIP",order.getBillNo(),null,null,null,null,null).getTotal()).isZero();
+    }
+
+    @Test void staleApplicationSubmissionCannotLeaveNewOrderOutsideManagerGate() {
+        Fixture f=fixture("stale-submitter"); var order=submittedOrder(f);
+        jdbc.update("UPDATE sales_orders SET status=0,manager_review_state='NOT_REQUIRED' WHERE id=?",order.getId());
+        jdbc.update("UPDATE sales_orders SET status=1 WHERE id=?",order.getId());
+        assertThat(jdbc.queryForObject("SELECT manager_review_state FROM sales_orders WHERE id=?",String.class,order.getId())).isEqualTo("PENDING");
+        loginAs(f.finance());
+        assertConflict(() -> orderFinance.review(order.getId()));
+    }
+
     @Test void missingOrderDecisionInputsAreValidationFailuresWithoutMutationOrLeaseReuse() {
         Fixture f=fixture("manager-order-inputs"); UUID manager=manager(); var order=submittedOrder(f);
         loginAs(manager); var claim=claims.claim(MANAGER_ORDER,order.getId().toString());

@@ -993,7 +993,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     if (r.managerReviewState == 'REJECTED') return '负责人已驳回';
     if (r.financeRejected) return '财务驳回';
     if (r.stage == _kDraftStage) return '草稿';
-    if (r.managerReviewState == 'PENDING') return '等待负责人审核';
+    if (r.managerReviewState == 'PENDING') return '等待销售负责人审核';
     if (!r.financeConfirmed) return '等待财务审核';
     return salesProgressStageText(r);
   }

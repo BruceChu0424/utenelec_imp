@@ -409,6 +409,7 @@ class _PermissionBatchState extends ConsumerState<PermissionBatchDialog> {
                 description: permission.description,
                 grantPolicy: permission.grantPolicy,
                 sensitivity: permission.sensitivity,
+                managerReview: isSalesManagerReviewPermission(permission.code),
               ),
               value: _codes.contains(permission.code),
               onChanged:

@@ -59,5 +59,37 @@
     "Order reversal persists its client decisionId before sending. Recovery requires the exact immutable event ID, next revision, REVERSED action, employee actorId and reason; current status alone proves nothing. Reusing an event ID fails atomically.",
     "Money and quantity values remain decimal text. Manager pricing keeps MANAGER provenance.",
     "WPF consumers are not yet migrated and must implement this contract before exposing these actions."
-  ]
+  ],
+  "queue": {
+    "kinds": [
+      "all",
+      "quote",
+      "order"
+    ],
+    "states": [
+      "PENDING",
+      "HISTORY",
+      "APPROVED",
+      "REJECTED"
+    ],
+    "historyStates": [
+      "APPROVED",
+      "REJECTED"
+    ],
+    "rowKindField": "kind",
+    "filtersBeforePagination": true,
+    "columnSearchKeys": [
+      "state",
+      "kind",
+      "billNo",
+      "client",
+      "seller",
+      "billDate",
+      "amount",
+      "reason",
+      "approver",
+      "approvedAt"
+    ],
+    "visibility": "The all queue includes only document kinds the current actor may view. Only pending orders with confirm authority are batch-selectable."
+  }
 }

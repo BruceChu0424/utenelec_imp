@@ -26,7 +26,8 @@ public class SalesManagerReviewController {
     public PageResponse<SalesManagerReviewService.Task> list(@RequestParam String kind,
             @RequestParam(defaultValue="PENDING") String state,@RequestParam(required=false) String keyword,
             @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size) {
-        return service.list(kind,state,keyword,page,size);
+        return service.list(kind,state,keyword,page,size,com.uten.imp.common.util.ColumnKeywordSearch.requestValues(
+                com.uten.imp.common.util.ColumnKeywordSearch.currentRequest()));
     }
     @GetMapping("/count") @PreAuthorize("hasAnyAuthority('sales_quote_manager:view','sales_order_manager:view')")
     @com.uten.imp.security.BusinessTaskRead

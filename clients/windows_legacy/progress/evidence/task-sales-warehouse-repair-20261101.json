@@ -1,0 +1,37 @@
+{
+  "date": "2026-11-01",
+  "branch": "uimp/task-sales-warehouse-repair-20261101",
+  "classification": [
+    "frontend",
+    "backend",
+    "shared-contract"
+  ],
+  "supportedConsumers": [
+    "Web / Flutter",
+    "Windows 10/11 / flutter",
+    "existing Flutter desktop consumers"
+  ],
+  "nativeUnmigratedWorkItems": [
+    "W7-BIZ-115",
+    "W7-BIZ-217",
+    "W7-BIZ-139",
+    "W7-BIZ-192",
+    "W7-BIZ-210"
+  ],
+  "nativeStatusChanged": false,
+  "nativeWritesEnabled": false,
+  "sharedContract": "contracts/sales-manager-review/v1.json",
+  "receipt": "docs/99-项目治理/2026-11-01-仓库销售任务闭环与表格修复.md",
+  "fullErpEquivalent": false,
+  "win7Accepted": false,
+  "verification": {
+    "frontendUniqueCases": 195,
+    "latestSalesCases": 22,
+    "latestWarehousePhysicalCases": 84,
+    "backendCases": 55,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "logs": "output/task-sales-warehouse-repair/verification-summary.json"
+  }
+}

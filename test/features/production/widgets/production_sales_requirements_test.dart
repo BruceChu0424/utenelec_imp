@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -25,6 +26,46 @@ const _b = ProductionSalesRequirement(
 );
 
 void main() {
+  testWidgets(
+    'requirements action fits a single desktop table row and opens complete notes',
+    (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildLightTheme(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+          home: const Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: 190,
+                child: ProductionSalesRequirementsButton(
+                  requirements: [_a, _b],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSize(find.byType(ProductionSalesRequirementsButton)).height,
+        lessThan(32),
+      );
+      await tester.tap(find.byType(ProductionSalesRequirementsButton));
+      await tester.pumpAndSettle();
+      expect(find.text('这个产品使用白色面板'), findsOneWidget);
+      expect(find.text('这个产品使用灰色面板'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
+
   test(
     'analysis, plan and workshop preserve both remark scopes from the same contract',
     () {

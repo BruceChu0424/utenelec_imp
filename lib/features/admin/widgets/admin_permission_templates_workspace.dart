@@ -847,6 +847,9 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
                               description: permission.description,
                               grantPolicy: permission.grantPolicy,
                               sensitivity: permission.sensitivity,
+                              managerReview: isSalesManagerReviewPermission(
+                                permission.code,
+                              ),
                             ),
                           ),
                           const SizedBox(width: UtenSpacing.s8),

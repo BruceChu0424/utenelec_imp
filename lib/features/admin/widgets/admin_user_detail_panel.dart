@@ -1233,6 +1233,7 @@ class AdminUserDetailPanelState extends ConsumerState<AdminUserDetailPanel> {
           grantPolicy: permission.grantPolicy,
           baseline: permission.baseline,
           sensitivity: permission.sensitivity,
+          managerReview: isSalesManagerReviewPermission(permission.code),
           nameStyle: theme.textTheme.bodyMedium?.copyWith(
             fontWeight: FontWeight.w600,
             color: revoked ? UtenColors.error : null,

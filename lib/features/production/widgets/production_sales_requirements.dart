@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../models/production_sales_requirement.dart';
@@ -89,9 +90,9 @@ class ProductionSalesRequirementsButton extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!requirements.any((row) => row.hasContent)) return const Text('—');
     final l10n = AppLocalizations.of(context);
-    return TextButton.icon(
-      icon: const Icon(Icons.assignment_outlined),
-      label: Text(l10n.productionSalesRequirements),
+    return UtenTableCellAction(
+      icon: Icons.assignment_outlined,
+      label: l10n.productionSalesRequirements,
       onPressed: () => showDialog<void>(
         context: context,
         builder: (context) => UtenAlertDialog(

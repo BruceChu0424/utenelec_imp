@@ -14,8 +14,8 @@
 //
 // 卡片统一 UtenHubCard；显隐只走 hub_catalog 登记的落点 + 路由守卫同一份 any/all 契约
 // (hubCardAllowed，ADR-109)。计数口径(准则 14-徽章与计数口径)：
-//   · 任务中心卡只显示 BadgeModule.warehouse 待办累计（含盘点审核与仓库草稿），
-//     服务端徽章目录求和，页面里不做加法；进行中不与待办重复展示。
+//   · 任务中心卡显示 BadgeModule.warehouse 红色待办和黄色在办（含盘点审核与仓库草稿），
+//     服务端徽章目录分别求和，由公共组件显示黄左红右，页面里不做加法。
 //   · 新建区六张卡不挂数（新建入口不是待办；草稿仍在新页「草稿(N)」按钮与
 //     任务中心各草稿分段可见）。
 //   · 库存查询与报表区是浏览型入口，不挂任何计数。
@@ -25,7 +25,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/feedback/uten_module_badges.dart';
-import '../../../components/feedback/uten_notification_badge.dart';
+import '../../../components/feedback/uten_scoped_badges.dart';
+import '../../../shared/badges/badge_scope.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_hub_card.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -66,7 +67,7 @@ class WarehouseHubPage extends ConsumerWidget {
     bool canOpen(String location) =>
         hubCardAllowed(RouteName.warehouse, location, perms, isSuperAdmin);
 
-    // 唯一任务中心入口只展示待办。进行中是另一种状态，不能与待办相加造成重复。
+    // 唯一任务中心入口分别展示待办与进行中，两类数字不相加。
     final taskEntries =
         <({IconData icon, String label, String description, String location})>[
           if (canOpen(RouteName.warehouseTasks))
@@ -211,10 +212,8 @@ class WarehouseHubPage extends ConsumerWidget {
                       icon: e.icon,
                       label: e.label,
                       description: e.description,
-                      badge: UtenNotificationBadge(
-                        count: ref.watch(
-                          badgeModuleTodoProvider(BadgeModule.warehouse),
-                        ),
+                      badge: const UtenScopedBadges(
+                        scope: BadgeScope.module(BadgeModule.warehouse),
                         showLabel: true,
                       ),
                       onTap: () => goFrom(context, e.location),

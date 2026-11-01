@@ -72,8 +72,7 @@ class UtenMultiValueCell extends StatelessWidget {
   }
 
   Future<void> _openList(BuildContext context, List<String> distinct) async {
-    final navigator = Navigator.of(context);
-    await showDialog<void>(
+    final selected = await showDialog<String>(
       context: context,
       builder: (dialogContext) => UtenAlertDialog(
         scrollable: false,
@@ -100,8 +99,7 @@ class UtenMultiValueCell extends StatelessWidget {
                           key: ValueKey('multi-value-detail-$value'),
                           label: detailLabel,
                           onPressed: () {
-                            navigator.pop();
-                            onDetail!(value);
+                            Navigator.of(dialogContext).pop(value);
                           },
                         ),
                     ],
@@ -119,5 +117,6 @@ class UtenMultiValueCell extends StatelessWidget {
         ],
       ),
     );
+    if (selected != null && context.mounted) onDetail?.call(selected);
   }
 }

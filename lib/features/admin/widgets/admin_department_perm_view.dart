@@ -836,6 +836,9 @@ class _AdminDepartmentPermViewState
                   grantPolicy: permission.grantPolicy,
                   baseline: permission.baseline,
                   sensitivity: permission.sensitivity,
+                  managerReview: isSalesManagerReviewPermission(
+                    permission.code,
+                  ),
                   nameStyle: Theme.of(
                     context,
                   ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),

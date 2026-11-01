@@ -4,7 +4,6 @@ import '../../../core/ui/human_error_message.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/drafts/review_task_draft.dart';
 import '../../../shared/concurrency/task_claim_session.dart';
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +11,9 @@ import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_filter_toolbar.dart';
+import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
@@ -26,6 +28,8 @@ import 'package:uten_imp/shared/sales_review/sales_order_review_repository.dart'
 class SalesManagerReviewTask {
   SalesManagerReviewTask.fromJson(Map<String, dynamic> json)
     : id = json['id'] as String,
+      kind = json['kind'] as String? ?? 'order',
+      state = json['state'] as String? ?? 'PENDING',
       billNo = json['billNo'] as String? ?? '',
       billDate = json['billDate'] as String? ?? '',
       client = json['clientName'] as String? ?? '',
@@ -36,11 +40,26 @@ class SalesManagerReviewTask {
       reason = json['reason'] as String? ?? '',
       approver = json['approvedByName'] as String? ?? '',
       approvedAt = json['approvedAt'] as String? ?? '';
-  final String id, billNo, billDate, client, seller, currency, amount;
+  final String id,
+      kind,
+      state,
+      billNo,
+      billDate,
+      client,
+      seller,
+      currency,
+      amount;
+  String get stateLabel => switch (state) {
+    'APPROVED' => '负责人已通过',
+    'REJECTED' => '负责人已驳回',
+    _ => '等待销售负责人审核',
+  };
   final String reason, approver, approvedAt;
   final int revision;
   Map<String, dynamic> toJson() => {
     'id': id,
+    'kind': kind,
+    'state': state,
     'billNo': billNo,
     'billDate': billDate,
     'clientName': client,
@@ -85,9 +104,7 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
   };
   @override
   bool get reviewDraftEditable =>
-      _kind == 'order' &&
-      _batchTasks.isNotEmpty &&
-      _allowed('order', 'confirm');
+      _batchTasks.isNotEmpty && _allowed('order', 'confirm');
   @override
   bool canDispatchReviewCommand(String action) =>
       action == 'confirmBatch' &&
@@ -157,8 +174,9 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
   }
 
   final _search = TextEditingController();
-  Timer? _debounce;
-  String _kind = 'quote', _state = 'PENDING';
+  final String _kind = 'all';
+  String _state = 'PENDING';
+  final Map<String, String> _filters = {};
   PagedResult<SalesManagerReviewTask>? _result;
   final Set<String> _selected = {};
   int _generation = 0;
@@ -176,7 +194,6 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
   void initState() {
     super.initState();
     startFormDraftIdentityGuard();
-    _kind = widget.initialKind == 'order' ? 'order' : 'quote';
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _reload(clear: true);
       if (mounted) await bindReviewDraft();
@@ -186,7 +203,6 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
   @override
   void dispose() {
     ++_generation;
-    _debounce?.cancel();
     _batchClaim?.releaseAll().ignore();
     _batchRemark.dispose();
     _search.dispose();
@@ -195,9 +211,6 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
 
   Future<void> _reload({int page = 1, bool clear = false}) async {
     if (!mounted) return;
-    if (!_allowed(_kind, 'view')) {
-      _kind = _allowed('quote', 'view') ? 'quote' : 'order';
-    }
     final generation = ++_generation;
     final identity = ref.read(sessionProvider);
     final server = ref.read(apiBaseUrlProvider);
@@ -231,18 +244,20 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
               'keyword': _search.text.trim(),
               'page': page,
               'size': 30,
+              ..._filters,
             },
           );
       final result = await PagedResult.fromJsonResponsive(
         json,
         SalesManagerReviewTask.fromJson,
       );
-      if (!current() || !_allowed(kind, 'view')) {
+      if (!current() ||
+          !(_allowed('quote', 'view') || _allowed('order', 'view'))) {
         return;
       }
       setState(() {
         _result = result;
-        for (final row in result.items) {
+        for (final row in result.items.where((row) => row.kind == 'order')) {
           if (_selected.contains(row.id) &&
               _taskCache[row.id]?.revision != row.revision) {
             _selected.remove(row.id);
@@ -273,11 +288,13 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
 
   Future<void> _open(SalesManagerReviewTask task) async {
     await context.push(
-      '/sales/manager-review/${_kind}s/${Uri.encodeComponent(task.id)}',
+      '/sales/manager-review/${task.kind}s/${Uri.encodeComponent(task.id)}',
     );
     if (mounted) {
-      _selected.remove(task.id);
-      _taskCache.remove(task.id);
+      if (task.kind == 'order') {
+        _selected.remove(task.id);
+        _taskCache.remove(task.id);
+      }
       _tableRevision++;
       refreshBadges(ref);
       await _reload(page: _result?.page ?? 1);
@@ -453,6 +470,25 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
     });
     final columns = <MasterColumnDef<SalesManagerReviewTask>>[
       MasterColumnDef(
+        key: 'state',
+        label: '状态',
+        width: 180,
+        columnSearchEnabled: true,
+        value: (r) => r.stateLabel,
+        cellColor: (_, r) => utenStatusBadgeCellColor(switch (r.state) {
+          'APPROVED' => UtenStatusBadgeType.success,
+          'REJECTED' => UtenStatusBadgeType.danger,
+          _ => UtenStatusBadgeType.warning,
+        }),
+      ),
+      MasterColumnDef(
+        key: 'kind',
+        label: '单据类型',
+        width: 100,
+        columnSearchEnabled: true,
+        value: (r) => r.kind == 'quote' ? '报价单' : '订货单',
+      ),
+      MasterColumnDef(
         key: 'billNo',
         label: '单据号',
         width: 165,
@@ -472,25 +508,29 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
       ),
       MasterColumnDef(
         key: 'billDate',
+        type: 'date',
+        columnSearchEnabled: true,
         label: '单据日期',
         width: 110,
         value: (r) => r.billDate,
       ),
       MasterColumnDef(
         key: 'amount',
-        label: '订单金额',
+        label: '单据金额',
+        type: 'money',
+        columnSearchEnabled: true,
         width: 145,
         value: (r) => '${r.currency} ${r.amount}',
         aiSensitive: true,
       ),
-      if (_state == 'REJECTED')
+      if (_state == 'HISTORY')
         MasterColumnDef(
           key: 'reason',
           label: '驳回原因',
           width: 300,
           value: (r) => r.reason,
         ),
-      if (_state == 'APPROVED') ...[
+      if (_state == 'HISTORY') ...[
         MasterColumnDef(
           key: 'approver',
           label: '负责人审核人',
@@ -499,6 +539,8 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
         ),
         MasterColumnDef(
           key: 'approvedAt',
+          type: 'date',
+          columnSearchEnabled: true,
           label: '批准时间',
           width: 190,
           value: (r) => r.approvedAt,
@@ -516,58 +558,34 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
                 message: '销售提交 → 销售负责人审核 → 财务审核。需要销售修改时请驳回并写明原因。',
               ),
               const SizedBox(height: UtenSpacing.s12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Wrap(
-                  spacing: UtenSpacing.s12,
-                  runSpacing: UtenSpacing.s8,
+              UtenFilterToolbar<String>(
+                enabled: !_busy,
+                autoSelectBadge: false,
+                segmentsKey: const Key('sales-review-categories'),
+                searchKey: const Key('sales-review-search'),
+                segments: const [
+                  UtenFilterSegment(value: 'PENDING', label: '待审核'),
+                  UtenFilterSegment(value: 'HISTORY', label: '历史记录'),
+                ],
+                selected: {_state},
+                onSelectionChanged: (value) {
+                  if (_busy) return;
+                  _state = value;
+                  _filters.clear();
+                  _reload(clear: true);
+                },
+                searchController: _search,
+                searchHint: '搜索单据号、客户或业务员',
+                onSearchInputChanged: (_) {
+                  if (!_busy) ++_generation;
+                },
+                onSearchChanged: (_) {
+                  if (!_busy) _reload(clear: true);
+                },
+                trailing: Wrap(
+                  spacing: UtenSpacing.s8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    for (final kind in ['quote', 'order'])
-                      if (_allowed(kind, 'view'))
-                        ChoiceChip(
-                          label: Text(kind == 'quote' ? '报价单' : '订货单'),
-                          selected: _kind == kind,
-                          onSelected: _busy
-                              ? null
-                              : (_) {
-                                  _kind = kind;
-                                  _reload(clear: true);
-                                },
-                        ),
-                    for (final state in const {
-                      'PENDING': '待审核',
-                      'APPROVED': '已通过',
-                      'REJECTED': '已驳回',
-                    }.entries)
-                      ChoiceChip(
-                        label: Text(state.value),
-                        selected: _state == state.key,
-                        onSelected: _busy
-                            ? null
-                            : (_) {
-                                _state = state.key;
-                                _reload(clear: true);
-                              },
-                      ),
-                    SizedBox(
-                      width: 260,
-                      child: TextField(
-                        enabled: !_busy,
-                        controller: _search,
-                        decoration: const InputDecoration(
-                          hintText: '搜索单据号、客户或业务员',
-                          prefixIcon: Icon(Icons.search),
-                        ),
-                        onChanged: (_) {
-                          _debounce?.cancel();
-                          _debounce = Timer(
-                            const Duration(milliseconds: 300),
-                            () => _reload(clear: true),
-                          );
-                        },
-                      ),
-                    ),
                     IconButton(
                       tooltip: '刷新',
                       onPressed: _busy
@@ -575,9 +593,7 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
                           : () => _reload(page: _result?.page ?? 1),
                       icon: const Icon(Icons.refresh),
                     ),
-                    if (_kind == 'order' &&
-                        _state == 'PENDING' &&
-                        _allowed('order', 'confirm'))
+                    if (_state == 'PENDING' && _allowed('order', 'confirm'))
                       TextButton.icon(
                         onPressed:
                             _busy ||
@@ -601,13 +617,26 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
                   items: _result?.items ?? [],
                   facets: const {},
                   nullCounts: const {},
-                  filters: const {},
-                  onFilterChanged: (_, _) {},
-                  idOf: (r) => r.id,
+                  filters: _filters,
+                  serverColumnSearch: true,
+                  onFilterChanged: (key, value) {
+                    if (_busy || !key.startsWith('search.')) return;
+                    if (value == null || value.isEmpty) {
+                      _filters.remove(key);
+                    } else {
+                      _filters[key] = value;
+                    }
+                    _reload(clear: true);
+                  },
+                  rowKeyOf: (r) => '${r.kind}:${r.id}',
+                  idOf: (r) =>
+                      r.kind == 'order' &&
+                          r.state == 'PENDING' &&
+                          _allowed('order', 'confirm')
+                      ? r.id
+                      : null,
                   selectable:
-                      _kind == 'order' &&
-                      _state == 'PENDING' &&
-                      _allowed('order', 'confirm'),
+                      _state == 'PENDING' && _allowed('order', 'confirm'),
                   selectedIds: _selected,
                   onSelectedIdsChanged: _busy
                       ? null
@@ -628,6 +657,9 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
                     _kind,
                     _state,
                     _search.text.trim(),
+                    Object.hashAll(
+                      _filters.entries.map((e) => '${e.key}:${e.value}'),
+                    ),
                     ref.watch(apiBaseUrlProvider),
                     ref.watch(authenticatedScopeProvider),
                     _allowed('quote', 'view'),
@@ -637,7 +669,7 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
                   totalPages: _result?.totalPages ?? 1,
                   onPageChange: _busy ? null : (page) => _reload(page: page),
                   emptyMessage: '当前分类没有需要处理的单据',
-                  tableKey: 'sales_manager_review_$_kind',
+                  tableKey: 'sales_manager_review_all.2',
                 ),
               ),
             ],

@@ -50,6 +50,7 @@ class _Session extends SessionNotifier {
 class _Api extends ApiClient {
   _Api() : super(Dio());
   final reads = <String>[];
+  final queueQueries = <Map<String, dynamic>>[];
   final writes = <({String path, Map<String, dynamic> body})>[];
   bool reverseAvailable = false;
   bool loseReverseResponse = false;
@@ -58,6 +59,7 @@ class _Api extends ApiClient {
   Map<String, dynamic>? reversalDecision;
   bool loseBatchResponse = false;
   bool multiPage = false;
+  bool mixedKinds = false;
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {
@@ -70,6 +72,7 @@ class _Api extends ApiClient {
   }) async {
     reads.add(path);
     if (path == '/sales/manager-review') {
+      queueQueries.add(Map.of(query ?? {}));
       final page = multiPage ? (query?['page'] as int? ?? 1) : 1;
       return {
         'page': page,
@@ -87,7 +90,16 @@ class _Api extends ApiClient {
             'totalOriginal': '123456.7891',
             'revision': 6 + page,
             'state': 'PENDING',
+            'kind': 'order',
           },
+          if (mixedKinds)
+            {
+              'id': 'order-$page',
+              'kind': 'quote',
+              'state': 'PENDING',
+              'billNo': 'BJ-SAME-ID-$page',
+              'revision': 99,
+            },
         ],
       };
     }
@@ -336,6 +348,59 @@ void main() {
     ]);
   });
   testWidgets(
+    'review queue uses platform categories and sends all header conditions before paging',
+    (tester) async {
+      final api = _Api()..multiPage = true;
+      await _pump(tester, api, '/sales/manager-review?kind=order', {
+        Perm.salesOrderManagerView,
+        Perm.salesOrderManagerConfirm,
+      });
+      expect(find.byType(ChoiceChip), findsNothing);
+      final categories = tester.getRect(
+        find.byKey(const Key('sales-review-categories')),
+      );
+      final searchBorder = find.descendant(
+        of: find.byKey(const Key('sales-review-search')),
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is CustomPaint &&
+              w.foregroundPainter?.runtimeType.toString() ==
+                  '_InputBorderPainter',
+        ),
+      );
+      final search = tester.getRect(searchBorder);
+      expect(search.top, closeTo(categories.top, 0.01));
+      expect(search.height, closeTo(categories.height, 0.01));
+
+      expect(find.text('历史记录'), findsOneWidget);
+      var table = tester.widget<MasterDataTableView<SalesManagerReviewTask>>(
+        find.byType(MasterDataTableView<SalesManagerReviewTask>),
+      );
+      expect(table.columns.first.key, 'state');
+      expect(table.serverColumnSearch, isTrue);
+      expect(api.queueQueries.last['kind'], 'all');
+      table.onFilterChanged('search.seller', '销售员');
+      await tester.pumpAndSettle();
+      expect(api.queueQueries.last['search.seller'], '销售员');
+      table = tester.widget(
+        find.byType(MasterDataTableView<SalesManagerReviewTask>),
+      );
+      table.onPageChange!(2);
+      await tester.pumpAndSettle();
+      expect(api.queueQueries.last['page'], 2);
+      expect(api.queueQueries.last['search.seller'], '销售员');
+      await tester.tap(find.text('历史记录'));
+      await tester.pumpAndSettle();
+      expect(api.queueQueries.last['state'], 'HISTORY');
+      expect(api.queueQueries.last.containsKey('search.seller'), isFalse);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      debugDefaultTargetPlatformOverride = null;
+    },
+  );
+
+  testWidgets(
     'quote manager uses independent lease and does not require finance permissions',
     (tester) async {
       final api = _Api();
@@ -549,7 +614,9 @@ void main() {
   testWidgets(
     'batch review includes selected orders on previous pages and their shown versions',
     (tester) async {
-      final api = _Api()..multiPage = true;
+      final api = _Api()
+        ..multiPage = true
+        ..mixedKinds = true;
       await _pump(tester, api, '/sales/manager-review?kind=order', {
         Perm.salesOrderManagerView,
         Perm.salesOrderManagerConfirm,

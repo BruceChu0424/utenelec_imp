@@ -318,18 +318,6 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 0,
     tokens: {'Perm.stockDocView': 1, 'Perm.stockDocApprove': 1},
   ),
-  // V896 splits return/reopen from pricing confirmation. These guards only
-  // narrow the server's financeActions and are rechecked before claim/write.
-  'lib/features/finance/pages/finance_quote_review_page.dart': (
-    legacyCount: 4,
-    tokens: {
-      'Perm.attachmentView': 1,
-      'Perm.salesQuoteFinanceConfirm': 1,
-      'Perm.salesQuoteFinanceReject': 1,
-      'Perm.salesQuoteFinanceReverse': 1,
-      'Perm.salesQuoteFinanceView': 2,
-    },
-  ),
   'lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart': (
     legacyCount: 2,
     tokens: {
@@ -338,18 +326,6 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.salesShipmentFinanceView': 3,
       'Perm.salesShipmentFinanceReverse': 2,
       'Perm.salesShipmentView': 1,
-    },
-  ),
-  'lib/features/finance/pages/finance_sales_order_review_page.dart': (
-    legacyCount: 5,
-    tokens: {
-      'Perm.salesOrderFinanceView': 2,
-      'Perm.salesOrderFinanceConfirm': 2,
-      'Perm.salesOrderReverse': 1,
-      'Perm.financeViewAll': 1,
-      'Perm.customerPrepaymentView': 1,
-      'Perm.attachmentView': 1,
-      'Perm.salesQuoteView': 1,
     },
   ),
   // Create rechecks the existing warehouse:create grant and binds MasterEditOwner to the current actor/route.
@@ -948,7 +924,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      296, // Exact display guards reviewed; global cap stays 677.
+      290, // Retired two review-page allowances; global cap stays 677.
     );
   });
 

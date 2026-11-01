@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/finance/providers/sales_order_finance_confirmation_count_provider.dart';
-import 'package:uten_imp/features/finance/repositories/sales_order_finance_confirmation_repository.dart';
+import 'package:uten_imp/shared/sales_review/sales_order_review_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
 class _Repository implements SalesOrderFinanceConfirmationRepository {

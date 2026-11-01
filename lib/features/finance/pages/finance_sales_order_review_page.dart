@@ -1,3 +1,4 @@
+import '../../../shared/sales_review/sales_review_permissions.dart';
 import '../../../components/feedback/uten_progress_timeline.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
@@ -52,8 +53,8 @@ import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/widgets/finance_review_claim_notice.dart';
 import '../../../shared/widgets/sales_document_layout.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
-import '../models/sales_order_finance_confirmation.dart';
-import '../repositories/sales_order_finance_confirmation_repository.dart';
+import 'package:uten_imp/shared/sales_review/sales_order_review.dart';
+import 'package:uten_imp/shared/sales_review/sales_order_review_repository.dart';
 import '../widgets/finance_document_unapproval_action.dart';
 import '../../../shared/drafts/review_task_draft.dart';
 import '../../../shared/drafts/review_authority_refresh_mixin.dart';
@@ -92,19 +93,10 @@ class _FinanceSalesOrderReviewPageState
   bool _loading = true;
   bool _busy = false;
   bool _authorityStale = false;
+  SalesReviewPermissions get _reviewPermissions =>
+      SalesReviewPermissions.forOrder(managerReview: widget.managerReview);
   @override
-  Set<String> get reviewAuthorityPermissionCodes => widget.managerReview
-      ? const {
-          Perm.salesOrderManagerView,
-          Perm.salesOrderManagerConfirm,
-          Perm.salesOrderManagerReject,
-          Perm.salesOrderManagerReverse,
-        }
-      : const {
-          Perm.salesOrderFinanceView,
-          Perm.salesOrderFinanceConfirm,
-          Perm.salesOrderReverse,
-        };
+  Set<String> get reviewAuthorityPermissionCodes => _reviewPermissions.observed;
   @override
   bool get reviewAuthorityRefreshBlocked =>
       _loading ||
@@ -255,12 +247,8 @@ class _FinanceSalesOrderReviewPageState
       _review?.requotedToId == null &&
       (ref.read(isSuperAdminProvider) ||
           ref.read(currentPermissionsProvider).containsAll({
-            widget.managerReview
-                ? Perm.salesOrderManagerView
-                : Perm.salesOrderFinanceView,
-            widget.managerReview
-                ? Perm.salesOrderManagerConfirm
-                : Perm.salesOrderFinanceConfirm,
+            _reviewPermissions.view,
+            _reviewPermissions.confirm,
           }));
 
   bool get _canReverseManager =>
@@ -271,8 +259,8 @@ class _FinanceSalesOrderReviewPageState
       _review?.managerReversible == true &&
       (ref.read(isSuperAdminProvider) ||
           ref.read(currentPermissionsProvider).containsAll({
-            Perm.salesOrderManagerView,
-            Perm.salesOrderManagerReverse,
+            _reviewPermissions.view,
+            _reviewPermissions.reverse,
           }));
 
   Future<void> _reverseManager() async {
@@ -361,8 +349,8 @@ class _FinanceSalesOrderReviewPageState
             _review?.requotedToId == null &&
             (ref.read(isSuperAdminProvider) ||
                 ref.read(currentPermissionsProvider).containsAll({
-                  Perm.salesOrderManagerView,
-                  Perm.salesOrderManagerReject,
+                  _reviewPermissions.view,
+                  _reviewPermissions.reject,
                 }))
       : _canConfirm;
   bool get _canReview => _canConfirm || _canReject;

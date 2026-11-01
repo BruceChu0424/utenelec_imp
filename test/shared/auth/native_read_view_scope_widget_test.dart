@@ -279,7 +279,7 @@ bool _hasEditing(WidgetTester tester) => tester
       (button) =>
           button.onPressed != null &&
           button.child is Text &&
-          ['编辑', '审核', '删除', '提交财务核价'].contains((button.child as Text).data),
+          ['编辑', '审核', '删除', '提交负责人审核'].contains((button.child as Text).data),
     );
 
 void main() {
@@ -362,10 +362,13 @@ void main() {
       final container = await _pump(tester, api);
       await tester.tap(find.byKey(const ValueKey('sales-quote-submit')));
       await tester.pumpAndSettle();
+      final submitLabel = AppLocalizations.of(
+        tester.element(find.byType(AlertDialog)),
+      ).salesQuoteStatusActionSubmit;
       final originalConfirm = tester.widget<UtenButton>(
         find.descendant(
           of: find.byType(AlertDialog),
-          matching: find.widgetWithText(UtenButton, '提交财务核价'),
+          matching: find.widgetWithText(UtenButton, submitLabel),
         ),
       );
       container.read(readScopeRevisionProvider.notifier).state++;
@@ -539,10 +542,13 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('sales-quote-submit')));
       await tester.pumpAndSettle();
       expect(find.byType(AlertDialog), findsOneWidget);
+      final submitLabel = AppLocalizations.of(
+        tester.element(find.byType(AlertDialog)),
+      ).salesQuoteStatusActionSubmit;
       final originalConfirm = tester.widget<UtenButton>(
         find.descendant(
           of: find.byType(AlertDialog),
-          matching: find.widgetWithText(UtenButton, '提交财务核价'),
+          matching: find.widgetWithText(UtenButton, submitLabel),
         ),
       );
       _loading(container);

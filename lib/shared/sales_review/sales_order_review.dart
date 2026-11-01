@@ -1,5 +1,5 @@
-import '../../../shared/models/progress_timeline_event.dart';
-import '../../../shared/business_columns/business_column.dart';
+import '../models/progress_timeline_event.dart';
+import '../business_columns/business_column.dart';
 // 销售订货单财务确认任务模型（V294 闸门，V300 补驳回与审核详情）。
 //
 // 后端 SalesOrderFinanceConfirmService 返回的待确认列表行：已审核但未财务确认的
@@ -8,8 +8,8 @@ import '../../../shared/business_columns/business_column.dart';
 // 客户应收余额快照，审核详情另见 [SalesOrderFinanceReview]（含产品明细与客户财务快照）。
 // ADR-128(2026-09-27)：客户应收改为服务端共用余额视图 [PartyOpenBalance]，按本单币种显示。
 
-import '../../../shared/formatters/money_display.dart';
-import '../../../shared/models/party_open_balance.dart';
+import '../formatters/money_display.dart';
+import '../models/party_open_balance.dart';
 
 /// 订单的来源报价(ADR-134)：报价须财务核价确认后才能转订货单，
 /// 这里带出核价人/时间，列表与审核页据此显示「报价已核价」。

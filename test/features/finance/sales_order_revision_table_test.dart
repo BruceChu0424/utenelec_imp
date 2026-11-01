@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/uten_revision_table.dart';
-import 'package:uten_imp/features/finance/models/sales_order_finance_confirmation.dart';
+import 'package:uten_imp/shared/sales_review/sales_order_review.dart';
 import 'package:uten_imp/features/finance/widgets/sales_order_revision_table.dart';
 
 SalesOrderRevisionLine line(String id, String qty) => SalesOrderRevisionLine(

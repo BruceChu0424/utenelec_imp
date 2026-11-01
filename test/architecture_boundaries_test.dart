@@ -217,6 +217,10 @@ void main() {
       'shared/repositories/department_repository.dart',
       'shared/widgets/uten_department_picker.dart',
       'shared/widgets/uten_department_tree_view.dart',
+      'shared/sales_review/sales_order_review.dart',
+      'shared/sales_review/sales_order_review_repository.dart',
+      'shared/sales_review/sales_review_permissions.dart',
+      'shared/models/master_facet_bucket.dart',
     ]) {
       final source = File.fromUri(libRoot.uri.resolve(path));
       expect(

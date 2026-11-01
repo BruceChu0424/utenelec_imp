@@ -25,6 +25,7 @@ import 'interceptors/device_audit_interceptor.dart';
 import 'interceptors/safe_request_retry_interceptor.dart';
 import 'interceptors/step_up_interceptor.dart';
 import 'interceptors/write_deadline_interceptor.dart';
+import 'file_upload_contract.dart';
 import 'network_policy.dart';
 import 'responsive_json_decoder.dart';
 import 'responsive_json_transformer.dart';
@@ -32,6 +33,9 @@ import 'streaming_download_adapter.dart';
 import 'streaming_download_contract.dart';
 import 'read_scope_revision.dart';
 import 'interceptors/read_scope_revision_interceptor.dart';
+
+const _clientPackageSendTimeout = Duration(minutes: 30);
+const _clientPackageReceiveTimeout = Duration(minutes: 5);
 
 class ApiClient {
   ApiClient(
@@ -389,6 +393,7 @@ class ApiClient {
   /// [headers] 追加请求头(如 AI 作业的 X-Uten-File-Name，值须调用方先编码为 ASCII)；
   /// [sendTimeout] 覆盖全局 30s 上传时限(IO 端是整段上传的总时长，大文件慢网要放宽)；
   /// [receiveTimeout] 覆盖全局 45s 接收时限。均为可选，既有调用方不受影响。
+  /// Web显式文件使用有效send+receive的有限整体预算；IO保留原分阶段值。
   Future<Map<String, dynamic>> postBytes(
     String path,
     Uint8List bytes, {
@@ -408,6 +413,13 @@ class ApiClient {
           headers: headers,
           sendTimeout: sendTimeout,
           receiveTimeout: receiveTimeout,
+          extra: {
+            safeRequestRetryDisabledKey: true,
+            fileUploadOverallTimeoutKey: fileUploadOverallTimeout(
+              sendTimeout: sendTimeout ?? _dio.options.sendTimeout,
+              receiveTimeout: receiveTimeout ?? _dio.options.receiveTimeout,
+            ),
+          },
         ),
       );
       return _objectResponse(r);
@@ -417,6 +429,7 @@ class ApiClient {
   });
 
   /// multipart 文件上传并返回 JSON（报销发票 OCR 识别等单文件直传后端端点）。
+  /// 与原始文件/客户端包共用有限Web整体上传合同，不扩大普通JSON请求预算。
   Future<Map<String, dynamic>> postMultipartFile(
     String path,
     Uint8List bytes,
@@ -438,6 +451,13 @@ class ApiClient {
         options: Options(
           responseType: ResponseType.json,
           receiveTimeout: receiveTimeout,
+          extra: {
+            safeRequestRetryDisabledKey: true,
+            fileUploadOverallTimeoutKey: fileUploadOverallTimeout(
+              sendTimeout: _dio.options.sendTimeout,
+              receiveTimeout: receiveTimeout ?? _dio.options.receiveTimeout,
+            ),
+          },
         ),
       );
       return _objectResponse(r);
@@ -529,9 +549,15 @@ class ApiClient {
         options: Options(
           contentType: 'application/octet-stream',
           headers: {'Content-Length': bytes.length},
-          sendTimeout: const Duration(minutes: 30),
-          receiveTimeout: const Duration(minutes: 5),
-          extra: const {safeRequestRetryDisabledKey: true},
+          sendTimeout: _clientPackageSendTimeout,
+          receiveTimeout: _clientPackageReceiveTimeout,
+          extra: {
+            safeRequestRetryDisabledKey: true,
+            fileUploadOverallTimeoutKey: fileUploadOverallTimeout(
+              sendTimeout: _clientPackageSendTimeout,
+              receiveTimeout: _clientPackageReceiveTimeout,
+            ),
+          },
         ),
       );
     } on DioException catch (e) {

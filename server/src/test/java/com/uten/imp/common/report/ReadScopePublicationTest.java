@@ -16,6 +16,44 @@ class ReadScopePublicationTest {
     final SecurityContextCurrentUser users=mock(SecurityContextCurrentUser.class);
     ReportReadPlanInterceptor interceptor;
     @BeforeEach void setup() {when(users.get()).thenReturn(Optional.of(subject));interceptor=new ReportReadPlanInterceptor(authority,users);}
+    @Test void typedWhereUsedKeepsTheFirstNativeProfileAndRechecksItBeforePublishing() {
+        when(authority.scopeFor("native_warehouse_tasks",subject,false)).thenReturn("a".repeat(64),"b".repeat(64));
+        var request=new MockHttpServletRequest("GET","/api/production/reports/where-used/trace");
+        var response=new MockHttpServletResponse();
+        new NativeTaskReadScopeInterceptor(authority,users).preHandle(request,response,null);
+        interceptor.preHandle(request,response,null);
+        try {
+            var proof=(ReadScopePublication.Proof)request.getAttribute(ReadScopePublication.ATTRIBUTE);
+            assertEquals("native_warehouse_tasks",proof.domain());
+            assertFalse(proof.businessTasks());
+            assertEquals("a".repeat(64),ReportReadPlan.current().readScopeVersion());
+            var error=assertThrows(ApiException.class,()->new ReportReadScopeAdvice(authority).beforeBodyWrite(
+                    Map.of("items",List.of()),null,MediaType.APPLICATION_JSON,null,
+                    new ServletServerHttpRequest(request),new ServletServerHttpResponse(response)));
+            assertEquals(ErrorCode.READ_SCOPE_CHANGED,error.getCode());
+            assertNull(response.getHeader(ReadScopePublication.HEADER));
+            verify(authority,times(2)).scopeFor("native_warehouse_tasks",subject,false);
+            verify(authority,never()).scopeFor("production",subject);
+        } finally {interceptor.afterCompletion(request,response,null,null);}
+        assertEquals(ReportReadPlan.ALL,ReportReadPlan.current());
+    }
+    @Test void ordinaryProductionReportsKeepTheirOriginalDomainWhenTheNativeFenceDoesNotMatch() {
+        when(authority.scopeFor("production",subject)).thenReturn("a".repeat(64));
+        var request=new MockHttpServletRequest("GET","/api/production/reports/plan/summary");
+        var response=new MockHttpServletResponse();
+        new NativeTaskReadScopeInterceptor(authority,users).preHandle(request,response,null);
+        interceptor.preHandle(request,response,null);
+        try {
+            assertEquals("production",((ReadScopePublication.Proof)request.getAttribute(ReadScopePublication.ATTRIBUTE)).domain());
+            var body=Map.of("items",List.of());
+            assertSame(body,new ReportReadScopeAdvice(authority).beforeBodyWrite(body,null,MediaType.APPLICATION_JSON,null,
+                    new ServletServerHttpRequest(request),new ServletServerHttpResponse(response)));
+            assertEquals("a".repeat(64),response.getHeader(ReadScopePublication.HEADER));
+            verify(authority,times(2)).scopeFor("production",subject);
+            verify(authority,never()).scopeFor("native_warehouse_tasks",subject,false);
+        } finally {interceptor.afterCompletion(request,response,null,null);}
+        assertEquals(ReportReadPlan.ALL,ReportReadPlan.current());
+    }
     @Test void costVersionPagesUseTheCompositeGoodsAndCustomerPublicationProof() {
         for(String suffix:List.of("","/versions","/00000000-0000-4000-8000-000000000001",
                 "/00000000-0000-4000-8000-000000000001/snapshots","/snapshots/00000000-0000-4000-8000-000000000001","/templates")) {

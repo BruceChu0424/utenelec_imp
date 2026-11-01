@@ -60,6 +60,11 @@ class ReadScopeRevisionInterceptor extends Interceptor {
             ? 'master_settlement_method'
             : null) ??
         reportDomain ??
+        (RegExp(
+              r'^/(?:api/)?(?:expense-claims|platform-columns/expense_claim(?:_item)?)(?:/|$)',
+            ).hasMatch(options.path)
+            ? 'expense'
+            : null) ??
         const {
           'clients': 'client',
           'suppliers': 'supplier',

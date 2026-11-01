@@ -38,7 +38,7 @@ class ProductionFinishedInboundTaskColumnFilterTest {
         when(query.getSingleResult()).thenReturn(0L);
         when(query.getResultList()).thenReturn(List.of());
         when(em.createNativeQuery(anyString())).thenReturn(query);
-        lenient().when(access.canAccessWarehouseTasks()).thenReturn(true);
+        lenient().when(access.canBrowseWarehouseTasks()).thenReturn(true);
 
         UUID warehouseId = UUID.randomUUID();
         service.list("", "final_count ", warehouseId, 1, 40);
@@ -56,7 +56,7 @@ class ProductionFinishedInboundTaskColumnFilterTest {
 
     @Test
     void unknownTaskStageFailsClosed() {
-        lenient().when(access.canAccessWarehouseTasks()).thenReturn(true);
+        lenient().when(access.canBrowseWarehouseTasks()).thenReturn(true);
         assertThatThrownBy(() -> service.list("", "SHIPPED", null, 1, 40))
                 .isInstanceOf(ApiException.class);
     }

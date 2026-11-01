@@ -44,6 +44,8 @@ class ManualNoticePopupPostgresTest {
     @BeforeAll
     static void start() {
         DB.start();
+        NoticeParticipationSqlFixture.install(new org.springframework.jdbc.core.JdbcTemplate(
+                new org.springframework.jdbc.datasource.DriverManagerDataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword())));
         // NoticeRepository 的全部 @Query 在仓库创建时整体校验：车间对象范围子句引用
         // ProductionExecutionSegment/Department，故与 WorkshopNoticeScopePostgresTest 同样注册。
         var fixtureConfiguration = new Configuration()
@@ -174,7 +176,7 @@ class ManualNoticePopupPostgresTest {
 
         assertThat(pending(ME)).containsExactly(
                 ackUrgent.getId(), ackNormalTop.getId(), ackNormalOld.getId(), remindNewest.getId());
-        assertThat(notices.findVisiblePendingManualNotices(ME, NONE_SINCE, PageRequest.of(0, 2)))
+        assertThat(notices.findVisiblePendingManualNotices(ME, NONE_SINCE, ReviewNoticeAudience.ReadScope.NONE, PageRequest.of(0, 2)))
                 .extracting(Notice::getId).containsExactly(ackUrgent.getId(), ackNormalTop.getId());
     }
 
@@ -193,7 +195,7 @@ class ManualNoticePopupPostgresTest {
 
     private List<UUID> pending(UUID user) {
         em.clear();
-        return notices.findVisiblePendingManualNotices(user, NONE_SINCE, PageRequest.of(0, 20))
+        return notices.findVisiblePendingManualNotices(user, NONE_SINCE, ReviewNoticeAudience.ReadScope.NONE, PageRequest.of(0, 20))
                 .stream().map(Notice::getId).toList();
     }
 

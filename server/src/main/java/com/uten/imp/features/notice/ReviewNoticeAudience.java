@@ -44,7 +44,15 @@ public class ReviewNoticeAudience {
     /** Bounded department/owner scopes; never materialize all visible notice or disposition IDs. */
     public record ReadScope(WorkshopScope workshop, boolean overLimitAllowed,
                             boolean overLimitSeeAll, String overLimitOwners,
-                            String permissions, String actionEvents, String ownerScopes, String warehousePools) {
+                            String permissions, String actionEvents, String ownerScopes, String warehousePools,
+                            String participationRules) {
+        public ReadScope(WorkshopScope workshop, boolean overLimitAllowed, boolean overLimitSeeAll,
+                         String overLimitOwners, String permissions, String actionEvents,
+                         String ownerScopes, String warehousePools) {
+            this(workshop, overLimitAllowed, overLimitSeeAll, overLimitOwners, permissions, actionEvents,
+                    ownerScopes, warehousePools, BusinessNoticeParticipation.readRules(
+                            permissions == null || permissions.isBlank() ? Set.of() : Set.copyOf(List.of(permissions.split(",")))));
+        }
         public ReadScope(WorkshopScope workshop, boolean overLimitAllowed,
                          boolean overLimitSeeAll, String overLimitOwners) {
             this(workshop, overLimitAllowed, overLimitSeeAll, overLimitOwners, "", "", "{}", "{}");
@@ -77,9 +85,16 @@ public class ReviewNoticeAudience {
                     ? "," + scopeJson("purchase", ownerVisibility.evaluate("purchase", "purchase:view:all")) : "")
                 + (events.stream().anyMatch(event -> event.startsWith("SALES_") || event.equals("DIRECT_CUSTOMER_SHIPMENT_FINANCE_REJECTED"))
                     ? "," + scopeJson("sales", ownerVisibility.evaluate("sales", "sales:view:all")) : "") + "}";
+        Set<String> subscriptions = new java.util.HashSet<>(permissions);
+        // Operational safety notices retain their existing administrator audience, separate from business jobs.
+        if (user != null && user.isSuperAdmin()) {
+            subscriptions.add("server_status:alert:receive");
+            subscriptions.add("server:update");
+        }
         return new ReadScope(workshop, overLimitAllowed, owners.seeAll(), owners.visibleOwners().stream()
                 .map(UUID::toString).sorted().collect(Collectors.joining(",")),
-                String.join(",", permissions), String.join(",", events), scopes, warehousePools(permissions, events));
+                String.join(",", permissions), String.join(",", events), scopes, warehousePools(permissions, events),
+                BusinessNoticeParticipation.readRules(subscriptions));
     }
 
     /** One live batch for every relevant warehouse pool; SQL then uses the canonical routing function per object. */
@@ -159,6 +174,20 @@ public class ReviewNoticeAudience {
     /** Final delivery guard for direct/owner recipients as well as preselected pools. */
     public boolean eligibleEventFor(UUID userId, String event) {
         return userId != null && actionEligible(event, permissionResolver.grantedPermsOf(userId));
+    }
+
+    /** All system business publishers share the same live-grant subscription gate. */
+    public boolean canReceiveBusinessNotice(UUID userId, String route, String event) {
+        if (userId == null) return false;
+        if (!BusinessNoticeParticipation.requiresPermission(route, event)) return true;
+        Set<String> permissions = new java.util.HashSet<>(permissionResolver.grantedPermsOf(userId));
+        if (route != null && (route.equals("/admin/server-status") || route.equals("/admin/server-operations"))
+                && Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM users WHERE id=? AND is_super_admin AND NOT is_deleted AND status='active')",Boolean.class,userId))) {
+            permissions.add("notice:read");
+            permissions.add("server_status:alert:receive");
+            permissions.add("server:update");
+        }
+        return BusinessNoticeParticipation.allowed(route, event, permissions);
     }
 
     private static boolean actionEligible(String event,Set<String> permissions) {

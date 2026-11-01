@@ -498,6 +498,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
       ];
     }
     final draft = r.stage == _kDraftStage;
+    final canEditOrder = _hasPerm(Perm.salesOrderEdit);
     final canShip =
         !draft &&
         r.shippable &&
@@ -507,11 +508,11 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         r.stage != 'SHIPPED' &&
         _hasPerm(Perm.salesShipmentCreate);
     return [
-      if (draft)
+      if (draft && canEditOrder)
         UtenMenuItem(
           label: '打开编辑',
           icon: Icons.edit_outlined,
-          enabled: _hasPerm(Perm.salesOrderEdit),
+          enabled: canEditOrder,
           onTap: () =>
               context.push(RoutePath.salesDocEdit('orders', r.orderId)),
         )
@@ -527,7 +528,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         UtenMenuItem(
           label: '修改订单',
           icon: Icons.edit_outlined,
-          enabled: _hasPerm(Perm.salesOrderEdit),
+          enabled: canEditOrder,
           onTap: () =>
               context.push(RoutePath.salesDocEdit('orders', r.orderId)),
         ),
@@ -840,11 +841,9 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         rowColor: (r) => !r.historyReadOnly && r.financeRejected
             ? theme.colorScheme.errorContainer.withValues(alpha: 0.30)
             : null,
-        // 草稿行去编辑页继续办单；其余行进订货单详情页（履约进度时间线在
-        // 表格上方折叠卡，产品进度与「去发货」同页——进度详情整页已退役）。
-        onRowTap: (r) => !r.historyReadOnly && r.stage == _kDraftStage
-            ? context.push(RoutePath.salesDocEdit('orders', r.orderId))
-            : context.push(RoutePath.salesDocDetail('orders', r.orderId)),
+        // Every state opens the readable detail. Editing remains an independently authorized action.
+        onRowTap: (r) =>
+            context.push(RoutePath.salesDocDetail('orders', r.orderId)),
         rowMenuBuilder: _rowMenuItems,
         isLoading: _loading && _result == null,
         loadingMore: _loading && _result != null,

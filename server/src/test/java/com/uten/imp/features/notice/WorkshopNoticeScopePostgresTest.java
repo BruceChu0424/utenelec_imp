@@ -67,6 +67,7 @@ class WorkshopNoticeScopePostgresTest {
         DB.start();
         jdbc=new JdbcTemplate(new DriverManagerDataSource(DB.getJdbcUrl(),DB.getUsername(),DB.getPassword()));
         // Isolate leadership/assignment and draw-request SQL; V876's live domain-state matrix runs on the migrated schema.
+        NoticeParticipationSqlFixture.install(jdbc);
         jdbc.execute("CREATE FUNCTION fn_notice_business_action_visible(uuid,text,text,uuid,text,text,text,text,text,text) RETURNS boolean LANGUAGE sql AS 'SELECT TRUE'");
         // NoticeAcknowledgment：findVisiblePendingManualNotices（人工通知登录弹窗）的 JPQL 引用，
         // 仓库创建时整体校验所有 @Query，故须一并注册。
@@ -184,7 +185,8 @@ class WorkshopNoticeScopePostgresTest {
         requested.setAggregateId(id(301));
         unrequested.setAggregateId(id(303));
         em.getTransaction().commit();
-        var scope=audience.readScope(actor.auth());
+        var scope=new ReviewNoticeAudience.ReadScope(ReviewNoticeAudience.WorkshopScope.NONE,false,false,"",
+                "notice:read,stock_doc:view,stock_doc:approve,stock_doc:issue",ChainNoticeService.EVENT_PRODUCTION_DRAW_PENDING,"{}","{}");
         assertThat(notices.findVisible(actor.user(),false,scope,PageRequest.of(0,1))).isEmpty();
         assertThat(notices.countVisibleUnread(actor.user(),scope)).isZero();
         assertThatThrownBy(() -> service(actor.auth()).getById(requested.getId()))

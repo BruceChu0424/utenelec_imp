@@ -293,7 +293,7 @@ public class ProductionFinishedInboundTaskService {
                 requestedPage, requestedSize);
         int page = pageable.getPageNumber() + 1;
         int size = pageable.getPageSize();
-        if (!access.canAccessWarehouseTasks()) {
+        if (!access.canBrowseWarehouseTasks()) {
             return new PageResponse<>(
                     List.of(), page, size, 0, 0);
         }
@@ -360,7 +360,7 @@ public class ProductionFinishedInboundTaskService {
     public java.util.Map<String, List<java.util.Map<String, Object>>> facets(
             String keyword,String taskStage,UUID warehouseId,WarehouseTaskScope warehouseScope,
             String taskNo,String planNo,java.util.Map<String,String> columns) {
-        if (!access.canAccessWarehouseTasks()) {
+        if (!access.canBrowseWarehouseTasks()) {
             return java.util.Map.of(
                     "taskNo", List.of(), "planNo", List.of());
         }

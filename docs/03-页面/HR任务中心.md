@@ -1,5 +1,7 @@
 # HR 工作台（原「任务中心」，2026-08-05 v2 重构）
 
+> **2026-10-31 只读查单修订**：员工资料变更读取可单独授权 `profile_change:view`；审批仍需 `profile:review`。新观察者没有 PII 查看权时不解密敏感修改值。访客申请读取可单独授权 `visitor_approval:view`，本人接待读取可授权 `visitor:host_view`；确认、转交、审批保留独立操作权。只查看不进入待办或收业务通知。
+
 > 别名：HR任务中心、转正提醒、转正办理、试用期到期、生日关怀、生日提醒、入职周年、新近入职
 
 > 路由：`/hr/tasks`（工作台主页）· `/hr/tasks/:type`（事务子页：confirm/birthday/anniversary/newhire）· `/hr/tasks/identity`(证件核对，另需 `employee:pii:edit`，见 §八)· `/hr/tasks/reconcile`(员工资料核对更正页，ADR-160，见 §八与[人事花名册核对与员工资料更正页](人事花名册核对与员工资料更正页.md))

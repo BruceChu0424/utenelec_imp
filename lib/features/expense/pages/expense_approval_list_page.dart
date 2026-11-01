@@ -149,6 +149,7 @@ class _ExpenseApprovalListPageState
         );
     final summaryAsync = ref.watch(expenseQueueSummaryProvider);
     final permissions = ref.watch(currentPermissionsProvider);
+    final canView = permissions.contains(Perm.expenseView);
     final canApprove = permissions.contains(Perm.expenseApprove);
     final canPay = permissions.contains(Perm.expensePay);
     final isPendingQueue = queue == ApprovalQueue.pending;
@@ -168,19 +169,28 @@ class _ExpenseApprovalListPageState
             UtenFilterToolbar<ApprovalQueue>(
               segmentsKey: const Key('expense-approval-segments'),
               segments: [
-                if (canApprove)
+                if (canView)
+                  const UtenFilterSegment(
+                    value: ApprovalQueue.browse,
+                    label: '全部单据',
+                  ),
+                if (canView || canApprove)
                   UtenFilterSegment(
                     value: ApprovalQueue.pending,
                     label: '待审批',
                     count: summary?.pendingCount,
-                    countForm: UtenSegmentCountForm.actionable,
+                    countForm: canApprove
+                        ? UtenSegmentCountForm.actionable
+                        : UtenSegmentCountForm.browsing,
                   ),
-                if (canPay)
+                if (canView || canPay)
                   UtenFilterSegment(
                     value: ApprovalQueue.payable,
                     label: '待付款',
                     count: summary?.payableCount,
-                    countForm: UtenSegmentCountForm.actionable,
+                    countForm: canPay
+                        ? UtenSegmentCountForm.actionable
+                        : UtenSegmentCountForm.browsing,
                   ),
                 UtenFilterSegment(
                   value: ApprovalQueue.history,
@@ -274,7 +284,7 @@ class _ExpenseApprovalListPageState
           },
           // 待审批段开多选 + 悬浮批量通过/驳回；待付款段只读浏览
           //（打款参数逐单不同，打款在详情页完成）。
-          selectable: isPendingQueue,
+          selectable: isPendingQueue && canApprove,
           idOf: (claim) => claim.id,
           selectedIds: _selectedIds,
           onSelectedIdsChanged: (next) => setState(() {
@@ -286,7 +296,9 @@ class _ExpenseApprovalListPageState
             }
             _selectedIds = next;
           }),
-          batchActionsBuilder: isPendingQueue ? _batchActions : null,
+          batchActionsBuilder: isPendingQueue && canApprove
+              ? _batchActions
+              : null,
           // 双击行进入审批详情：push（2026-09-24 起），审批后详情 pop 回本页，
           // 列表实例与筛选/页码保留，数据由 provider 失效自动换新；
           // 原来 go 直达会把列表实例抹掉，详情返回只能落 default。
@@ -295,6 +307,7 @@ class _ExpenseApprovalListPageState
             ApprovalQueue.pending => '暂无待审批报销',
             ApprovalQueue.payable => '暂无待付款报销',
             ApprovalQueue.history => '暂无已处理报销',
+            ApprovalQueue.browse => '授权范围内暂无报销单',
           },
           currentPage: page.page,
           totalPages: page.totalPages,

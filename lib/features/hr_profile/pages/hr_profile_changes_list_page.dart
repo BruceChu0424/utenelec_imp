@@ -25,6 +25,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/retained_async_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/auth/permissions.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -447,11 +448,17 @@ class _HrProfileChangesListPageState
       },
       onFilterChanged: _onFilterChanged,
       // 待审段开多选 + 悬浮批量通过/驳回；已生效/已驳回段只读浏览。
-      selectable: _isPendingSegment,
+      selectable:
+          _isPendingSegment &&
+          ref.watch(currentPermissionsProvider).contains(Perm.profileReview),
       idOf: (item) => item.batchId,
       selectedIds: _selectedIds,
       onSelectedIdsChanged: (next) => setState(() => _selectedIds = next),
-      batchActionsBuilder: _isPendingSegment ? _batchActions : null,
+      batchActionsBuilder:
+          _isPendingSegment &&
+              ref.watch(currentPermissionsProvider).contains(Perm.profileReview)
+          ? _batchActions
+          : null,
       // 双击行进入批次详情审阅（goFrom 写 returnTo，详情返回键回本队列）。
       onRowTap: (item) =>
           goFrom(context, RoutePath.hrProfileChangeDetail(item.batchId)),

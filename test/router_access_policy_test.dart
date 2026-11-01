@@ -349,12 +349,14 @@ void main() {
       expect(requiredAnyPermFor('/notice/notice-1'), const [Perm.noticeRead]);
       expect(requiredAnyPermFor('/notice/publish'), const [Perm.noticePublish]);
       expect(requiredAnyPermFor(RouteName.suggestion), const [
+        Perm.suggestionView,
         Perm.suggestionSubmit,
       ]);
       expect(requiredAnyPermFor('/suggestion/new'), const [
         Perm.suggestionSubmit,
       ]);
       expect(requiredAnyPermFor('/suggestion/suggestion-1'), const [
+        Perm.suggestionView,
         Perm.suggestionSubmit,
       ]);
     });
@@ -470,16 +472,19 @@ void main() {
         Perm.payrollGenerate,
       ]);
       expect(requiredAnyPermFor('/payroll/review'), const [
+        Perm.payrollViewAll,
         Perm.payrollReview,
         Perm.payrollPublish,
       ]);
       expect(requiredAnyPermFor('/expense'), const [Perm.expenseApply]);
       expect(requiredAnyPermFor('/expense/claim-1'), const [Perm.expenseApply]);
       expect(requiredAnyPermFor('/expense/approval'), const [
+        Perm.expenseView,
         Perm.expenseApprove,
         Perm.expensePay,
       ]);
       expect(requiredAnyPermFor('/expense/approval/claim-1'), const [
+        Perm.expenseView,
         Perm.expenseApprove,
         Perm.expensePay,
       ]);

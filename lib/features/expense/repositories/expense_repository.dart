@@ -15,6 +15,7 @@ enum ApprovalFacetQueue {
   pending,
   payable,
   history,
+  browse,
   mine,
   mineActive,
   mineHistory,
@@ -58,6 +59,17 @@ abstract interface class ExpenseRepository {
     String? claimNo,
   });
   Future<PagedResult<ExpenseClaim>> listHistory({
+    int page = 1,
+    int size = 24,
+    int? year,
+    int? month,
+    String? departmentId,
+    String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
+  });
+  Future<PagedResult<ExpenseClaim>> listBrowse({
     int page = 1,
     int size = 24,
     int? year,
@@ -242,6 +254,30 @@ class DioExpenseRepository implements ExpenseRepository {
     String? claimNo,
   }) => _list(
     '$_claims/history',
+    page: page,
+    size: size,
+    year: year,
+    month: month,
+    departmentId: departmentId,
+    category: category,
+    sort: sort,
+    order: order,
+    claimNo: claimNo,
+  );
+
+  @override
+  Future<PagedResult<ExpenseClaim>> listBrowse({
+    int page = 1,
+    int size = 24,
+    int? year,
+    int? month,
+    String? departmentId,
+    String? category,
+    String? sort,
+    String? order,
+    String? claimNo,
+  }) => _list(
+    '$_claims/browse',
     page: page,
     size: size,
     year: year,

@@ -42,6 +42,7 @@ class UtenFieldHintIcon extends StatefulWidget {
 class _UtenFieldHintIconState extends State<UtenFieldHintIcon> {
   final _tooltipKey = GlobalKey<TooltipState>();
   final _focusNode = FocusNode(debugLabel: 'uten-field-hint');
+  final _helpScrollController = ScrollController();
   UtenTableCellHintRegistration? _cellHints;
 
   @override
@@ -65,6 +66,7 @@ class _UtenFieldHintIconState extends State<UtenFieldHintIcon> {
   @override
   void dispose() {
     _cellHints?.removeMessage(this);
+    _helpScrollController.dispose();
     _focusNode
       ..removeListener(_onFocusChanged)
       ..dispose();
@@ -170,12 +172,27 @@ class _UtenFieldHintIconState extends State<UtenFieldHintIcon> {
                     width: helpWidth,
                     child: ConstrainedBox(
                       constraints: BoxConstraints(maxHeight: helpHeight),
-                      child: SingleChildScrollView(
-                        primary: false,
-                        child: Text(
-                          message,
-                          style: helpStyle,
-                          textScaler: media.textScaler,
+                      child: ScrollbarTheme(
+                        data: theme.scrollbarTheme.copyWith(
+                          thumbColor: WidgetStatePropertyAll(helpStyle.color),
+                        ),
+                        child: Scrollbar(
+                          controller: _helpScrollController,
+                          thumbVisibility: true,
+                          child: SingleChildScrollView(
+                            controller: _helpScrollController,
+                            primary: false,
+                            child: Padding(
+                              padding: const EdgeInsets.only(
+                                right: UtenSpacing.s12,
+                              ),
+                              child: Text(
+                                message,
+                                style: helpStyle,
+                                textScaler: media.textScaler,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),

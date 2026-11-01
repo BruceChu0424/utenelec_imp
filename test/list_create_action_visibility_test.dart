@@ -98,6 +98,7 @@ Widget _suggestionApp(List<Suggestion> items, {bool enlargedDark = false}) {
   return ProviderScope(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(_preferences),
+      currentPermissionsProvider.overrideWithValue({Perm.suggestionSubmit}),
       suggestionRepositoryProvider.overrideWithValue(
         _SuggestionRepository(items),
       ),

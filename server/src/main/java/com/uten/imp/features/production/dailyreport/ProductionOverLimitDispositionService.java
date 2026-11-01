@@ -90,7 +90,7 @@ public class ProductionOverLimitDispositionService {
 
     @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public PageResponse<View> list(String status,int page,int size,String sort,String order,Map<String,String> parameters) {
-        requireApprover();
+        if(!access.hasAuthority("production_plan:view")) requireApprover();
         String filter=status==null?"PENDING":status.strip().toUpperCase(java.util.Locale.ROOT);
         if(!Set.of("PENDING","HELD","RETURNED","ACCEPTED","WITHDRAWN","ALL").contains(filter))
             throw validation("超限处理状态不正确");

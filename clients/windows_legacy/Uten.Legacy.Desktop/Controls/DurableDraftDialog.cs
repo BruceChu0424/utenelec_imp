@@ -25,6 +25,7 @@ namespace Uten.Legacy.Desktop.Controls
         private string initialBody, persistedBody;
         private long draftRevision;
         private bool initialized, ended, retired, submitting, preservingClose, allowedClose, unresolved, closeRequested;
+        private bool preserveRetryRequested;
         private int auxiliaryOperations;
         private bool recoveryJournalConfirmed;
         private MutationResult result;
@@ -217,11 +218,27 @@ namespace Uten.Legacy.Desktop.Controls
         }
         private async Task PreserveAndCloseAsync()
         {
-            if (ended || preservingClose || submitting || auxiliaryOperations != 0) return;
+            if (ended || submitting || auxiliaryOperations != 0) return;
+            if (preservingClose) { preserveRetryRequested = true; return; }
+            preserveRetryRequested = false;
             preservingClose = true; debounce.Stop(); RefreshDraftActions();
             try { await FlushDraftAsync(); allowedClose = true; Close(); }
             catch (Exception) { ShowStatus("草稿未能保存，原输入仍保留。请恢复本机存储后再次点击“保存草稿并关闭”。", true); }
-            finally { preservingClose = false; if (!ended) RefreshDraftActions(); }
+            finally
+            {
+                preservingClose = false;
+                if (!ended)
+                {
+                    RefreshDraftActions();
+                    // A close/retry arriving during a failing write is a new preservation intent.
+                    // Keep one retry after the current attempt, always under the original lease.
+                    if (preserveRetryRequested)
+                    {
+                        preserveRetryRequested = false;
+                        _ = Dispatcher.BeginInvoke(new Action(() => { if (!ended) _ = PreserveAndCloseAsync(); }));
+                    }
+                }
+            }
         }
         protected override void OnClosing(CancelEventArgs args)
         {

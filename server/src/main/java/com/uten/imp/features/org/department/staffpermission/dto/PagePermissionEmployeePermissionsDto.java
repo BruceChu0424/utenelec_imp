@@ -48,6 +48,7 @@ public record PagePermissionEmployeePermissionsDto(
             List<String> missingDependencies,
             boolean configuredEnabled) {
         public PermissionState {
+            name = PermissionBusinessDescriptions.nameFor(code, name);
             description = PermissionBusinessDescriptions.descriptionFor(code, description);
         }
 

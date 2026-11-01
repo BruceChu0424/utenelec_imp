@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "generator": "clients/windows_legacy/tools/sync_design_tokens.py",
-  "generatorSha256": "d1385b546bc55ea10cf5c7512639a98582d147d473c158df86570f17a42f2d90",
+  "generatorSha256": "599ce223e82733ef513a8e1f591180b23a69412a5f4c4095196c99aa369deb2b",
   "resource": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Tokens.g.xaml",
   "resourceSha256": "6b447d491fe2f99aa5fa8ea1b13d3dbb3f261a2e5e57ce5b4c37009948a64581",
   "scope": "Default Flutter light theme before platform branding or display zoom; WPF device-independent units.",
@@ -33,7 +33,7 @@
     },
     {
       "path": "lib/components/buttons/uten_close_button.dart",
-      "sha256": "54d120f4ef7ede567dee287300dea1898921f49013759487a46a9f09561904db"
+      "sha256": "9c15ac5e78dadfbb09bb08c4e6a8f660786863e3532431b53cefa395e8d5cdb6"
     }
   ],
   "roleMappings": [
@@ -914,7 +914,7 @@
         {
           "symbol": "Caption.minimize.backgroundColor",
           "source": "lib/components/buttons/uten_close_button.dart",
-          "line": 112,
+          "line": 134,
           "expression": "UtenColors.warning"
         },
         {
@@ -934,7 +934,7 @@
         {
           "symbol": "Caption.close.backgroundColor",
           "source": "lib/components/buttons/uten_close_button.dart",
-          "line": 111,
+          "line": 133,
           "expression": "UtenColors.error"
         },
         {
@@ -1066,7 +1066,7 @@
         {
           "symbol": "Caption.hit.width",
           "source": "lib/components/buttons/uten_close_button.dart",
-          "line": 129,
+          "line": 151,
           "expression": "UtenWindowControlButton.nativeWidth"
         },
         {
@@ -1086,7 +1086,7 @@
         {
           "symbol": "Caption.circle.width",
           "source": "lib/components/buttons/uten_close_button.dart",
-          "line": 174,
+          "line": 197,
           "expression": "UtenWindowControlButton.nativeCircleExtent"
         },
         {
@@ -1106,7 +1106,7 @@
         {
           "symbol": "Caption.icon.size",
           "source": "lib/components/buttons/uten_close_button.dart",
-          "line": 185,
+          "line": 210,
           "expression": "14"
         }
       ]

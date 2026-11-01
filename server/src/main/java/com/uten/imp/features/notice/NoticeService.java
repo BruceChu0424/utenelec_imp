@@ -1146,8 +1146,8 @@ public class NoticeService {
     }
 
     private static boolean requiresScopedNoticeVisibility(Notice notice) {
-        return !"workflow".equals(notice.getType()) && notice.getResolvedAt() == null
-                && (ReviewNoticeCatalog.isReviewEvent(notice.getSourceEvent()) || BusinessNoticeActionCatalog.contains(notice.getSourceEvent()));
+        // The query also checks ordinary workflow receipts and revoked recipients.
+        return true;
     }
 
     /**
@@ -1205,6 +1205,7 @@ public class NoticeService {
         if (!TYPES.contains(type)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "通知类型不正确: " + type);
         }
+        if (!reviewAudience.canReceiveBusinessNotice(audienceUserId, actionRoute, sourceEvent)) return null;
         Notice n = new Notice();
         n.setTitle(title);
         n.setContent(content);
@@ -1244,6 +1245,7 @@ public class NoticeService {
         Notice n = publishForUser(
                 audienceUserId, title, content, type, publisher, actionRoute,
                 sourceEvent, explicitPriority);
+        if (n == null) return null;
         var entry = ReviewNoticeCatalog.of(sourceEvent);
         if (aggregateId != null && entry.isPresent()) {
             n.setAggregateKind(entry.get().aggregateKind());
@@ -1264,6 +1266,7 @@ public class NoticeService {
     public Notice publishSalesPlanningHandoff(UUID userId, UUID orderId, long revision, String title, String content) {
         Notice notice = publishForUser(userId, title, content, "task", "系统",
                 "/production/material-analysis", "SALES_ORDER_APPROVED", "normal", orderId);
+        if (notice == null) return null;
         notice.setSourceRevision(revision);
         return noticeRepo.saveAndFlush(notice);
     }
@@ -1452,7 +1455,7 @@ public class NoticeService {
         UUID userId = requireStaffId();
         Instant noneModeSince = Instant.now().minus(NONE_MODE_POPUP_WINDOW);
         List<Notice> notices = noticeRepo.findVisiblePendingManualNotices(
-                userId, noneModeSince, PageRequest.of(0, MAX_PENDING_POPUP_ITEMS));
+                userId, noneModeSince, reviewAudience.readScope(requireStaff()), PageRequest.of(0, MAX_PENDING_POPUP_ITEMS));
         Map<UUID, NoticeUserState> states = stateMap(
                 userId,
                 notices.stream().map(Notice::getId).toList());

@@ -242,7 +242,7 @@ class DartTokens:
                 raise TokenError("Unsupported public window-control color: " + role)
             match = matches[0]
             self.bind("Caption." + role + ".backgroundColor", public, start + match.start(1), match.group(1))
-        circle = self.call(public, r"icon\s*:\s*Container\s*\(", (start, end))
+        circle = self.call(public, r"(?:icon|circle)\s*:\s*Container\s*\(", (start, end))
         icon = self.call(public, r"child\s*:\s*Icon\s*\(", (start, end))
         for arguments, argument, symbol in ((circle, "width", "Caption.circle.width"),
                 (circle, "height", "Caption.circle.height"), (icon, "size", "Caption.icon.size")):

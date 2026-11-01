@@ -115,10 +115,10 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     return const [Perm.stockCountSubmit];
   }
   if (location == RouteName.financeStockCountReview) {
-    return const [Perm.stockCountFinanceReview];
+    return const [Perm.stockCountFinanceView, Perm.stockCountFinanceReview];
   }
   if (location == RouteName.warehouseStockCountReview) {
-    return const [Perm.stockCountWarehouseReview];
+    return const [Perm.stockCountWarehouseView, Perm.stockCountWarehouseReview];
   }
   if (location == RouteName.workshopMaterialCount) {
     return const [Perm.workshopMaterialCount, Perm.stockCountWarehouseReview];
@@ -172,7 +172,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   }
   if (location == '/expense/approval' ||
       location.startsWith('/expense/approval/')) {
-    return const [Perm.expenseApprove, Perm.expensePay];
+    return const [Perm.expenseView, Perm.expenseApprove, Perm.expensePay];
   }
   if (location == '/expense' ||
       location == '/expense/new' ||
@@ -180,7 +180,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     return const [Perm.expenseApply];
   }
   if (location == '/payroll/review') {
-    return const [Perm.payrollReview, Perm.payrollPublish];
+    return const [Perm.payrollViewAll, Perm.payrollReview, Perm.payrollPublish];
   }
   if (location == '/payroll/generate') return const [Perm.payrollGenerate];
   if (location == '/payroll/slip' || location.startsWith('/payroll/slip/')) {
@@ -494,7 +494,10 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     return const [Perm.noticeRead];
   }
   if (location == RouteName.suggestion || location.startsWith('/suggestion/')) {
-    return const [Perm.suggestionSubmit];
+    if (location == RouteName.suggestionNew) {
+      return const [Perm.suggestionSubmit];
+    }
+    return const [Perm.suggestionView, Perm.suggestionSubmit];
   }
   // 官网询盘：按权限点收口（部门授权，非全员基础包）。
   if (location == RouteName.websiteManagement) {
@@ -635,7 +638,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
 
   // ===== 生产管理（生产部）=====
   if (location == RouteName.productionOverLimitDispositions) {
-    return const [Perm.productionPlanApprove];
+    return const [Perm.productionPlanView, Perm.productionPlanApprove];
   }
   if (location.startsWith('${RouteName.productionOverLimitDispositions}/')) {
     return const [
@@ -646,23 +649,35 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     ];
   }
   if (location == RouteName.productionMaterialIncrementRequests) {
-    return const [Perm.productionPlanApprove];
+    return const [Perm.productionPlanView, Perm.productionPlanApprove];
   }
   if (location.startsWith(
     '${RouteName.productionMaterialIncrementRequests}/',
   )) {
-    return const [Perm.productionPlanApprove, Perm.productionExecutionView];
+    return const [
+      Perm.productionPlanView,
+      Perm.productionPlanApprove,
+      Perm.productionExecutionView,
+    ];
   }
   if (location.startsWith('/production/actual-output-supplements/')) {
-    return const [Perm.productionPlanApprove, Perm.productionExecutionView];
+    return const [
+      Perm.productionPlanView,
+      Perm.productionPlanApprove,
+      Perm.productionExecutionView,
+    ];
   }
   if (location == RouteName.productionOverproductionRateRequests) {
-    return const [Perm.productionPlanApprove];
+    return const [Perm.productionPlanView, Perm.productionPlanApprove];
   }
   if (location.startsWith(
     '${RouteName.productionOverproductionRateRequests}/',
   )) {
-    return const [Perm.productionPlanApprove, Perm.productionExecutionView];
+    return const [
+      Perm.productionPlanView,
+      Perm.productionPlanApprove,
+      Perm.productionExecutionView,
+    ];
   }
   if (location.startsWith('/production/reports')) {
     return const [Perm.productionReportView];
@@ -746,9 +761,19 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   // 访客审批 / 被访人 / 保安
   if (location == '/visitor-approval' ||
       location.startsWith('/visitor-approval/')) {
-    return const [Perm.visitorApprove];
+    if (Uri.parse(location).path.split('/').length == 3) {
+      return const [
+        Perm.visitorApprovalView,
+        Perm.visitorApprove,
+        Perm.visitorHostView,
+        Perm.visitorHostConfirm,
+      ];
+    }
+    return const [Perm.visitorApprovalView, Perm.visitorApprove];
   }
-  if (location == '/my-visitors') return const [Perm.visitorHostConfirm];
+  if (location == '/my-visitors') {
+    return const [Perm.visitorHostView, Perm.visitorHostConfirm];
+  }
   // 黑名单管理页独立权限（须在 /security/ 通配之前判定）。
   if (location == '/security/blacklist') return const [Perm.visitorBlacklist];
   if (location == '/security/scan' || location.startsWith('/security/')) {
@@ -760,7 +785,7 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   // HR 端：员工修改审批
   if (location == '/hr/profile-changes' ||
       location.startsWith('/hr/profile-changes/')) {
-    return const [Perm.profileReview];
+    return const [Perm.profileChangeView, Perm.profileReview];
   }
   // 基础资料（/profile）不在此映射 = 登录即可访问
   return null;

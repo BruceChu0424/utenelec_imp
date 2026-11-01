@@ -111,7 +111,8 @@ public class VisitorHrApprovalService {
         AuthUser user = guard.requireStaffUser();
         VisitorApplication app = appService.load(id);
         boolean canApprove = user.isSuperAdmin()
-                || user.getPermissions().contains("visitor:approve");
+                || user.getPermissions().contains("visitor:approve")
+                || user.getPermissions().contains("visitor_approval:view");
         if (!canApprove && (user.getEmployeeId() == null
                 || !user.getEmployeeId().equals(app.getHostEmployeeId()))) {
             // Hide another host's application instead of confirming that the UUID exists.

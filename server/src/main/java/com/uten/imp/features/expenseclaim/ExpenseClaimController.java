@@ -42,6 +42,16 @@ public class ExpenseClaimController {
     private final InvoiceRecognitionService recognition;
     private final AuditDetailViewRecorder detailViewAudit;
 
+    @GetMapping("/browse")
+    @PreAuthorize("hasAuthority('expense:view')")
+    public PageResponse<ExpenseClaimDto> browse(@RequestParam(required=false) Integer year,
+            @RequestParam(required=false) Integer month, @RequestParam(required=false) UUID departmentId,
+            @RequestParam(required=false) String category, @RequestParam(defaultValue="1") int page,
+            @RequestParam(defaultValue="20") int size, @RequestParam(required=false) String sort,
+            @RequestParam(required=false) String order, @RequestParam(required=false) String claimNo) {
+        return service.listBrowse(year,month,departmentId,category,page,size,sort,order,claimNo);
+    }
+
     @GetMapping("/mine")
     @PreAuthorize("hasAuthority('expense:apply')")
     public PageResponse<ExpenseClaimDto> mine(
@@ -63,7 +73,7 @@ public class ExpenseClaimController {
     }
 
     @GetMapping("/pending")
-    @PreAuthorize("hasAuthority('expense:approve')")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:approve')")
     public PageResponse<ExpenseClaimDto> pending(
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) Integer month,
@@ -80,7 +90,7 @@ public class ExpenseClaimController {
     }
 
     @GetMapping("/payable")
-    @PreAuthorize("hasAuthority('expense:pay')")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:pay')")
     public PageResponse<ExpenseClaimDto> payable(
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) Integer month,
@@ -102,7 +112,7 @@ public class ExpenseClaimController {
      * mine 为我的报销单号桶，2026-09-25 单号列统一）。
      */
     @GetMapping("/facets")
-    @PreAuthorize("hasAnyAuthority('expense:approve','expense:pay','expense:apply')")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:approve','expense:pay','expense:apply')")
     public ExpenseClaimFacetsDto facets(@RequestParam String queue,
             @RequestParam(defaultValue="false") boolean includeDeleted,
             @RequestParam(defaultValue="false") boolean onlyDeleted) {
@@ -111,7 +121,7 @@ public class ExpenseClaimController {
 
     /** 队列汇总（V608 审批页统计卡）：两队列单数/金额 + 本月提交 + 本月打款。 */
     @GetMapping("/summary")
-    @PreAuthorize("hasAnyAuthority('expense:approve','expense:pay')")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:approve','expense:pay')")
     public ExpenseClaimSummaryDto summary() {
         return service.summary();
     }
@@ -136,7 +146,7 @@ public class ExpenseClaimController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyAuthority('expense:apply','expense:approve','expense:pay')")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:apply','expense:approve','expense:pay')")
     public ExpenseClaimDto detail(@PathVariable UUID id) {
         ExpenseClaimDto result = service.detail(id);
         detailViewAudit.record(
@@ -150,7 +160,7 @@ public class ExpenseClaimController {
     }
 
     @GetMapping("/{id}/history")
-    @PreAuthorize("hasAnyAuthority('expense:apply','expense:approve','expense:pay')")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:apply','expense:approve','expense:pay')")
     public ExpenseClaimDto history(@PathVariable UUID id) {
         ExpenseClaimDto result = service.detailHistory(id);
         detailViewAudit.recordHistory("view_expense_claim_detail", "expense_claims", id,
@@ -159,7 +169,7 @@ public class ExpenseClaimController {
     }
 
     @GetMapping("/{id}/history/rows")
-    @PreAuthorize("hasAnyAuthority('expense:apply','expense:approve','expense:pay')")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:apply','expense:approve','expense:pay')")
     public java.util.List<com.uten.imp.common.history.RetainedRecordReader.RetainedRow> historyRows(
             @PathVariable UUID id,@RequestParam(required=false) Long beforeId,
             @RequestParam(defaultValue="50") int size) {
@@ -265,7 +275,7 @@ public class ExpenseClaimController {
     }
 
     @GetMapping("/history")
-    @PreAuthorize("hasAnyAuthority('expense:approve','expense:pay')")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:approve','expense:pay')")
     public PageResponse<ExpenseClaimDto> history(@RequestParam(required=false) Integer year,@RequestParam(required=false) Integer month,
             @RequestParam(required=false) UUID departmentId,@RequestParam(required=false) String category,
             @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size,

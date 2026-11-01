@@ -10,7 +10,7 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/stock/count-requests")
-@PreAuthorize("hasAnyAuthority('stock:count:submit','stock:count:finance_review','stock:count:warehouse_review')")
+@PreAuthorize("hasAnyAuthority('stock:count:submit','stock:count:finance_review','stock:count:warehouse_review','stock:count:finance_view','stock:count:warehouse_view')")
 public class StockCountRequestController {
     private final StockCountRequestService service;
     private final AuditDetailViewRecorder auditViews;

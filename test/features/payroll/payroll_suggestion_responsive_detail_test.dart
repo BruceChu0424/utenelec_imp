@@ -299,7 +299,9 @@ Future<void> _pump(
     ProviderScope(
       overrides: [
         sharedPreferencesProvider.overrideWithValue(preferences),
-        currentPermissionsProvider.overrideWithValue({}),
+        currentPermissionsProvider.overrideWithValue({
+          if (suggestions != null) Perm.suggestionSubmit,
+        }),
         if (payroll != null)
           payrollRepositoryProvider.overrideWithValue(payroll),
         if (suggestions != null)

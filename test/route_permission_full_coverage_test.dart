@@ -208,7 +208,10 @@ const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
     Perm.serverUpdate,
     Perm.serverCleanup,
   ],
-  '/production/over-limit-dispositions': [Perm.productionPlanApprove],
+  '/production/over-limit-dispositions': [
+    Perm.productionPlanView,
+    Perm.productionPlanApprove,
+  ],
   '/production/over-limit-dispositions/:id': [
     Perm.productionPlanApprove,
     Perm.productionPlanView,
@@ -220,8 +223,14 @@ const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
     Perm.stockCountWarehouseReview,
   ],
   '/stock/count-requests': [Perm.stockCountSubmit],
-  '/finance/stock-count-review': [Perm.stockCountFinanceReview],
-  '/warehouse/stock-count-review': [Perm.stockCountWarehouseReview],
+  '/finance/stock-count-review': [
+    Perm.stockCountFinanceView,
+    Perm.stockCountFinanceReview,
+  ],
+  '/warehouse/stock-count-review': [
+    Perm.stockCountWarehouseView,
+    Perm.stockCountWarehouseReview,
+  ],
   // 即时库存两页：列表页走 /stock/ 前缀的 stockView 守卫，总览页同码精确登记。
   '/stock/instant-inventory': [Perm.stockView],
   '/stock/instant-inventory/overview': [Perm.stockView],

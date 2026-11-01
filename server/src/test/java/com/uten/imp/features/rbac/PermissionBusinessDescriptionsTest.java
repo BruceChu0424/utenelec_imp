@@ -16,18 +16,19 @@ class PermissionBusinessDescriptionsTest {
         Permission compensation = permission("employee:compensation:edit", "旧薪酬说明");
 
         assertThat(PermissionBusinessDescriptions.descriptionFor(price))
-                .contains("允许填写货品售价和折扣", "「新增货品资料」", "修改已有货品", "「编辑货品资料」",
+                .contains("允许填写货品售价和折扣", "「新增货品资料」", "修改已有货品", "「编辑货品基础资料」",
                         "同时允许查看货品售价", "查看折扣须另行开启「查看货品折扣」")
                 .doesNotContain("goods:", "employee:");
         assertThat(PermissionBusinessDescriptions.descriptionFor(compensation))
                 .contains("允许填写工资、社保、公积金和补贴", "「办理员工入职」和「编辑员工证件、联系方式和银行资料」", "「编辑员工」",
-                        "查看已有薪酬须另行开启「查看员工薪酬资料」")
+                        "查看已有金额须另行开启「查看员工工资、社保公积金和补贴」")
                 .doesNotContain("goods:", "employee:");
         assertThat(price.getDescription()).isEqualTo("旧价格说明");
         assertThat(compensation.getDescription()).isEqualTo("旧薪酬说明");
         assertThat(PermissionBusinessDescriptions.descriptionFor(permission("goods:cost:view", "成本可见范围")))
-                .isEqualTo("成本可见范围");
-        assertThat(PermissionBusinessDescriptions.descriptionFor("goods:view", null)).isNull();
+                .contains("能做什么：", "范围与限制：", "例如：");
+        assertThat(PermissionBusinessDescriptions.descriptionFor("goods:view", null)).contains("例如：");
+        assertThat(PermissionBusinessDescriptions.descriptionFor("unregistered:fixture", null)).isNull();
     }
 
     @Test

@@ -112,7 +112,7 @@ public class WarehouseOutboundTaskCenterQueryService {
         return new WarehouseOutboundTaskCenterSql.Access(
                 has("warehouse_sales_outbound:view"), has("subcontract_outbound:view"),
                 has("warehouse_subcontract_outbound_history:view"), has("stock_doc:view"),
-                has("stock_doc:view") && productionAccess.canAccessWarehouseTasks(), stockAccess.scope(),
+                has("stock_doc:view") && productionAccess.canBrowseWarehouseTasks(), stockAccess.scope(),
                 WarehouseWorkshopMaterialTaskProjection.scope(has("workshop_material:view"),materialScopes,scope));
     }
 

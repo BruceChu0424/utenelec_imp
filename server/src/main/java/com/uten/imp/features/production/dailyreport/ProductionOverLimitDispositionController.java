@@ -17,7 +17,7 @@ public class ProductionOverLimitDispositionController {
     private final ProductionOverLimitDispositionService service;
     private final AuditDetailViewRecorder auditViews;
     @GetMapping
-    @PreAuthorize("hasAuthority('production_plan:approve')")
+    @PreAuthorize("hasAnyAuthority('production_plan:view','production_plan:approve')")
     public PageResponse<View> list(@RequestParam(defaultValue="PENDING") String status,
             @RequestParam(defaultValue="1") int page,@RequestParam(defaultValue="20") int size,
             @RequestParam(required=false) String sort,@RequestParam(required=false) String order,

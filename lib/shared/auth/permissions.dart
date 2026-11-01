@@ -53,6 +53,8 @@ abstract final class Perm {
   static const payrollPublish = 'payroll:publish';
   static const payrollExport = 'payroll:export';
   static const expenseApply = 'expense:apply';
+  static const expenseView = 'expense:view';
+  static const expenseViewAll = 'expense:view:all';
   static const expenseApprove = 'expense:approve';
   static const expensePay = 'expense:pay';
   static const expenseSettings = 'expense:settings';
@@ -64,6 +66,8 @@ abstract final class Perm {
   static const companyFileDelete = 'company_file:delete';
   static const companyFileRestore = 'company_file:restore';
   static const companyFileManagePermissions = 'company_file:manage_permissions';
+  static const visitorApprovalView = 'visitor_approval:view';
+  static const visitorHostView = 'visitor:host_view';
   static const visitorApprove = 'visitor:approve';
   static const visitorHostConfirm = 'visitor:host_confirm';
   static const visitorCheckIn = 'visitor:check_in';
@@ -71,6 +75,7 @@ abstract final class Perm {
 
   // 个人信息自助修改
   static const profileEditSelf = 'profile:edit:self';
+  static const profileChangeView = 'profile_change:view';
   static const profileReview = 'profile:review';
 
   /// 查看员工薪资/补偿字段（HR/finance/admin）；
@@ -218,6 +223,8 @@ abstract final class Perm {
 
   /// 领导或库存负责人明确授权后，可直接把库存余额修正为目标值。
   static const stockBalanceAdjust = 'stock:balance:adjust';
+  static const stockCountFinanceView = 'stock:count:finance_view';
+  static const stockCountWarehouseView = 'stock:count:warehouse_view';
   static const stockCountSubmit = 'stock:count:submit';
   static const stockCountFinanceReview = 'stock:count:finance_review';
   static const stockCountWarehouseReview = 'stock:count:warehouse_review';
@@ -493,6 +500,7 @@ abstract final class Perm {
   // ===== 通知、建议与报表导出 =====
   static const noticeRead = 'notice:read';
   static const noticePublish = 'notice:publish';
+  static const suggestionView = 'suggestion:view';
   static const suggestionSubmit = 'suggestion:submit';
   static const suggestionReply = 'suggestion:reply';
   // 官网询盘（综合营销统一收件箱；部门授权非全员基础包）

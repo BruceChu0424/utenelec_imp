@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_drafts_page.dart';
 import 'package:go_router/go_router.dart';
 
@@ -82,7 +83,10 @@ class _SuggestionListPageState extends ConsumerState<SuggestionListPage> {
     final createAction = UtenListCreateAction(
       emptyIcon: Icons.lightbulb_outline_rounded,
       emptyMessage: scope == SuggestionScope.mine ? '您还没有提交过建议' : '暂无建议',
-      emptyDescription: '提交第一条建议，与同事一起推动改进',
+      emptyDescription:
+          ref.watch(currentPermissionsProvider).contains(Perm.suggestionSubmit)
+          ? '提交第一条建议，与同事一起推动改进'
+          : '当前查看范围内还没有建议',
       fabLabel: '提建议',
       actionIcon: Icons.edit_rounded,
       // push 进新建页（2026-09-24 起，原来 go 抹掉列表）：提交后新建页 replace 成
@@ -140,13 +144,16 @@ class _SuggestionListPageState extends ConsumerState<SuggestionListPage> {
         onRowTap: (s) => context.push(RoutePath.suggestionDetail(s.id)),
         // 行右键/长按菜单：点赞/取消点赞（原卡片点赞按钮能力移入此处）。
         rowMenuBuilder: (s) => [
-          UtenMenuItem(
-            label: s.likedByMe ? '取消点赞' : '点赞',
-            icon: s.likedByMe
-                ? Icons.favorite_rounded
-                : Icons.favorite_border_rounded,
-            onTap: () => _toggleLike(context, ref, s.id),
-          ),
+          if (ref
+              .watch(currentPermissionsProvider)
+              .contains(Perm.suggestionSubmit))
+            UtenMenuItem(
+              label: s.likedByMe ? '取消点赞' : '点赞',
+              icon: s.likedByMe
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
+              onTap: () => _toggleLike(context, ref, s.id),
+            ),
         ],
         emptyMessage: hasColumnFilters ? '当前筛选下暂无建议，可调整表头筛选' : '暂无建议',
         currentPage: page.page,
@@ -190,7 +197,10 @@ class _SuggestionListPageState extends ConsumerState<SuggestionListPage> {
       ),
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: createAction.floatingActionButton(context),
+      floatingActionButton:
+          ref.watch(currentPermissionsProvider).contains(Perm.suggestionSubmit)
+          ? createAction.floatingActionButton(context)
+          : null,
       body: body,
     );
   }
@@ -225,6 +235,9 @@ void _onFilterChanged(WidgetRef ref, String key, String? value) {
 }
 
 Future<void> _toggleLike(BuildContext context, WidgetRef ref, String id) async {
+  if (!ref.read(currentPermissionsProvider).contains(Perm.suggestionSubmit)) {
+    return;
+  }
   try {
     await ref.read(suggestionListProvider.notifier).toggleLike(id);
   } catch (error) {

@@ -16,7 +16,7 @@ import java.util.Map;
 public class ProfileChangePlatformColumnAdapters {
     private final ProfileChangeQueryService changes;private final SecurityContextCurrentUser current;private final ObjectMapper json;
     @Bean public PlatformColumnResourceAdapter profileChangePlatformColumns() {
-        return new ReadOnlyPlatformColumnAdapter("profile_change","人事资料变更批次",current,json,Set.of("profile:review"),Set.of(),
+        return new ReadOnlyPlatformColumnAdapter("profile_change","人事资料变更批次",current,json,Set.of("profile_change:view","profile:review"),Set.of(),
                 id->{var batch=changes.hrBatchDetail(id);return Map.of("id",batch.batchId(),"itemCount",batch.itemCount());},List.of(new FactDefinition("itemCount","变更项数",false)));
     }
     @Bean public PlatformColumnResourceAdapter ownProfileChangePlatformColumns() {

@@ -94,6 +94,24 @@ void main() {
     await Future.wait(adapter.started.values.map((start) => start.future));
   }
 
+  test('报销查看范围撤销会使旧读请求失效且不借用财务单据范围', () async {
+    final firstExpense = request('expenseA', path: '/expense-claims/browse');
+    await sent();
+    reply('expenseA', 'A');
+    await firstExpense;
+    final finance = request('financeA', path: '/finance/reports/balance');
+    await sent();
+    reply('financeA', 'finance');
+    await finance;
+    expect(revision, 0);
+    final changed = request('expenseB', path: '/expense-claims/pending');
+    await sent();
+    final check = expectLater(changed, throwsA(isA<DioException>()));
+    reply('expenseB', 'B');
+    await check;
+    expect(revision, 1);
+  });
+
   test(
     'same-role scope change retires derived reads once and old replies cannot roll it back',
     () async {

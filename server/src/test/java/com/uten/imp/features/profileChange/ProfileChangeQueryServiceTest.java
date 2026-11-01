@@ -42,7 +42,7 @@ class ProfileChangeQueryServiceTest {
         repo = mock(ProfileChangeRepository.class);
         mapper = mock(ProfileChangeMapper.class);
         access = mock(ProfileChangeAccess.class);
-        when(access.requireHr()).thenReturn(mock(AuthUser.class));
+        when(access.requireReader()).thenReturn(mock(AuthUser.class));
         service = new ProfileChangeQueryService(
                 repo,
                 mapper,
@@ -97,7 +97,7 @@ class ProfileChangeQueryServiceTest {
         assertEquals("研发部", item.departmentName());
         assertEquals(List.of("phone", "email"), item.fieldCodes());
         assertEquals(1, result.totalElements(), "总数与表格一样按批次数，不按字段数");
-        verify(access).requireHr();
+        verify(access).requireReader();
     }
 
     @Test

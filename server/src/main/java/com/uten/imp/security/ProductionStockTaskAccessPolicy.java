@@ -25,6 +25,13 @@ public class ProductionStockTaskAccessPolicy {
     private final SecurityContextCurrentUser currentUser;
     private final WarehouseTaskScopePort warehouseScopes;
 
+    /** Browsing is constrained by the caller's warehouse read scope, not by task membership. */
+    public boolean canBrowseWarehouseTasks() {
+        return currentUser.get().filter(actor -> !actor.isVisitor() && actor.getEmployeeId() != null)
+                .map(actor -> actor.isSuperAdmin() || actor.getPermissions().contains("stock_doc:view"))
+                .orElse(false);
+    }
+
     public boolean canAccessWarehouseTasks() {
         AuthUser actor = currentUser.get().orElse(null);
         if (actor == null || actor.isVisitor()) return false;

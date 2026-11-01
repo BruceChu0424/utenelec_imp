@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permission_action_type.dart';
 import '../../../shared/auth/permission_grant_policy.dart';
@@ -50,6 +51,7 @@ class PermissionTitleBlock extends StatelessWidget {
     final theme = Theme.of(context);
     final detail = description?.trim() ?? '';
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Wrap(
@@ -58,15 +60,7 @@ class PermissionTitleBlock extends StatelessWidget {
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Text(name, style: nameStyle ?? theme.textTheme.bodyMedium),
-            if (detail.isNotEmpty)
-              Tooltip(
-                message: detail,
-                child: Icon(
-                  Icons.info_outline_rounded,
-                  size: 15,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
+            if (detail.isNotEmpty) UtenFieldHintIcon(info: detail, dense: true),
             PermissionActionBadge(actionType: actionType),
             if (sensitivity == 'SENSITIVE_COMMERCIAL')
               const UtenStatusBadge(

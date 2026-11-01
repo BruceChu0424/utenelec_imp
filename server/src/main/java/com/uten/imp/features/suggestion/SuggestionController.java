@@ -38,7 +38,7 @@ public class SuggestionController {
     private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping
-    @PreAuthorize("hasAuthority('suggestion:submit')")
+    @PreAuthorize("hasAnyAuthority('suggestion:view','suggestion:submit')")
     public PageResponse<SuggestionDto> list(
             @RequestParam(required = false) String scope,
             @RequestParam(required = false) String category,
@@ -53,7 +53,7 @@ public class SuggestionController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAuthority('suggestion:submit')")
+    @PreAuthorize("hasAnyAuthority('suggestion:view','suggestion:submit')")
     public SuggestionDto detail(@PathVariable UUID id) {
         SuggestionDto result = service.getById(id);
         detailViewAudit.record(

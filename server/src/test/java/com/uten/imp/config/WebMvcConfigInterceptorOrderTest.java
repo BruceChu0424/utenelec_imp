@@ -28,6 +28,7 @@ class WebMvcConfigInterceptorOrderTest {
                 mock(InterceptorRegistration.class);
         InterceptorRegistration reportRegistration = mock(InterceptorRegistration.class);
         InterceptorRegistration masterRegistration = mock(InterceptorRegistration.class);
+        InterceptorRegistration businessRegistration = mock(InterceptorRegistration.class);
         InterceptorRegistration candidateRegistration=mock(InterceptorRegistration.class);
         InterceptorRegistration printRegistration=mock(InterceptorRegistration.class);
         InterceptorRegistration legacyRegistration=mock(InterceptorRegistration.class);
@@ -35,6 +36,8 @@ class WebMvcConfigInterceptorOrderTest {
         when(registry.addInterceptor(export)).thenReturn(exportRegistration);
         when(registry.addInterceptor(any(ReportReadPlanInterceptor.class))).thenReturn(reportRegistration);
         when(reportRegistration.addPathPatterns(any(String[].class))).thenReturn(reportRegistration);
+        when(registry.addInterceptor(any(com.uten.imp.common.report.BusinessDocumentReadScopeInterceptor.class))).thenReturn(businessRegistration);
+        when(businessRegistration.addPathPatterns(any(String[].class))).thenReturn(businessRegistration);
         when(registry.addInterceptor(any(MasterReadScopeInterceptor.class))).thenReturn(masterRegistration);
         when(registry.addInterceptor(any(com.uten.imp.common.report.NativeFacetCandidateInterceptor.class))).thenReturn(candidateRegistration);
         when(candidateRegistration.addPathPatterns(any(String[].class))).thenReturn(candidateRegistration);
@@ -54,10 +57,12 @@ class WebMvcConfigInterceptorOrderTest {
         order.verify(registry).addInterceptor(audit);
         order.verify(registry).addInterceptor(any(ReportReadPlanInterceptor.class));
         order.verify(registry).addInterceptor(any(com.uten.imp.common.report.NativeFacetCandidateInterceptor.class));
+        order.verify(registry).addInterceptor(any(com.uten.imp.common.report.BusinessDocumentReadScopeInterceptor.class));
         order.verify(registry).addInterceptor(any(MasterReadScopeInterceptor.class));
         order.verify(registry).addInterceptor(any(com.uten.imp.common.report.PurchasePrintReadScopeInterceptor.class));
         order.verify(registry).addInterceptor(any(com.uten.imp.common.report.LegacyExportReadScopeInterceptor.class));
         order.verify(registry).addInterceptor(export);
+        org.mockito.Mockito.verify(businessRegistration).addPathPatterns("/api/expense-claims/**","/api/platform-columns/expense_claim/**","/api/platform-columns/expense_claim_item/**");
         org.mockito.Mockito.verify(masterRegistration).addPathPatterns("/api/master/**");
         org.mockito.Mockito.verify(printRegistration).addPathPatterns(
                 "/api/purchase/orders/*/print-data", "/api/subcontract/orders/*/print-data");

@@ -88,20 +88,23 @@ VisitorApplication _application(String id, VisitorApplicationStatus status) =>
       hostDepartment: '研发部',
     );
 
-Widget _app(_FakeVisitorStaffRepository repo, SharedPreferences preferences) =>
-    ProviderScope(
-      overrides: [
-        visitorStaffRepositoryProvider.overrideWithValue(repo),
-        sharedPreferencesProvider.overrideWithValue(preferences),
-        currentPermissionsProvider.overrideWithValue({Perm.visitorApprove}),
-      ],
-      child: const MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: Locale('zh'),
-        home: VisitorApprovalListPage(),
-      ),
-    );
+Widget _app(
+  _FakeVisitorStaffRepository repo,
+  SharedPreferences preferences, {
+  Set<String> permissions = const {Perm.visitorApprove},
+}) => ProviderScope(
+  overrides: [
+    visitorStaffRepositoryProvider.overrideWithValue(repo),
+    sharedPreferencesProvider.overrideWithValue(preferences),
+    currentPermissionsProvider.overrideWithValue(permissions),
+  ],
+  child: const MaterialApp(
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    locale: Locale('zh'),
+    home: VisitorApprovalListPage(),
+  ),
+);
 
 MasterDataTableView<VisitorApplication> _table(WidgetTester tester) =>
     tester.widget<MasterDataTableView<VisitorApplication>>(
@@ -111,6 +114,22 @@ MasterDataTableView<VisitorApplication> _table(WidgetTester tester) =>
     );
 
 void main() {
+  testWidgets('只读访客申请可浏览待审记录，不取得审批或转交动作', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final repo = _FakeVisitorStaffRepository();
+    await tester.pumpWidget(
+      _app(repo, preferences, permissions: const {Perm.visitorApprovalView}),
+    );
+    await tester.pumpAndSettle();
+    expect(_table(tester).items, hasLength(2));
+    expect(_table(tester).onRowTap, isNotNull);
+    expect(_table(tester).selectable, isFalse);
+    expect(_table(tester).batchActionsBuilder, isNull);
+    expect(repo.actionCalls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('status/department header facets are pushed to the backend', (
     tester,
   ) async {

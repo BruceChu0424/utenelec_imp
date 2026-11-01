@@ -1,0 +1,302 @@
+{
+  "schemaVersion": 1,
+  "recordedAtUtc": "2026-11-01T03:20:22.720902+00:00",
+  "scope": "Readonly document access, business participation isolation, plain permission names/help; tests restricted to changed behavior by user request.",
+  "source": {
+    "branch": "uimp/readonly-task-unification-20261031",
+    "baseline": "3d8fa37b6267fd7f2ee93f2c434bd281eeb9fa3c",
+    "concurrentMainAtReview": "97c054d1d72772edf9d35fa0ad3d8ec0e838e724",
+    "sourceAndTestsSha256": {
+      "clients/windows_legacy/Uten.Legacy.Core/ReadScopeRevisionState.cs": "62f5751b905952658d4793ac46935fc5a788e4d5467efbd13fe818cd4ec35434",
+      "clients/windows_legacy/Uten.Legacy.Core/Tests/ReadScopeRevisionChecks.cs": "5e878ff419dd66e44c14d6a68cdf541010fc8ed0bcbfcfd0ad45403fa3534a99",
+      "clients/windows_legacy/Uten.Legacy.Desktop/Controls/DurableDraftDialog.cs": "13289173786d2c803d117f4044ed7400185eaff44a393daadc0788eb1e941884",
+      "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitInlineWorkspace.cs": "52369aba9d0a7494888b14dd176bfa2fc5b150e3c9edf7f34bc563f6e5eb655a",
+      "clients/windows_legacy/Uten.Legacy.Tests/Program.cs": "a1cbab589d48595f1716865ef55d1fb3c74b47cf62a6ea6bcd36cb0a6483f389",
+      "clients/windows_legacy/tools/sync_design_tokens.py": "599ce223e82733ef513a8e1f591180b23a69412a5f4c4095196c99aa369deb2b",
+      "lib/components/inputs/uten_field_hint_icon.dart": "53b941f41e233d82b71cfdc3d6f16c77679291e63e9a0d82adc746c8fb831c58",
+      "lib/core/network/interceptors/read_scope_revision_interceptor.dart": "fe71d550dfa0db01e244c3e4920b11efabbf34dd21a95268ba0bb4a01f769a1f",
+      "lib/core/router/permission_by_path.dart": "6af14981e4f26a254c763cb1d9ec3b928c8993a45f6a7cc80e908a93a973992e",
+      "lib/features/admin/widgets/permission_action_badge.dart": "1916400084cfbb8cbdc9f3a54f7d8536adbd0e3bd55c887ae8d4967b96b3e172",
+      "lib/features/expense/pages/expense_approval_list_page.dart": "065591724a6b3118f8c25d19d65b5de4be97e6243f703e49443e57a5bb680e3b",
+      "lib/features/expense/providers/expense_providers.dart": "a7a0fcfecad610d776224488e4ccbe4eeeca51749b303f4078cfc34964cad726",
+      "lib/features/expense/repositories/expense_repository.dart": "13a0761e040913f0ccee83d0e2e2612a1ab6ce38f84f51fa43c3a12f91bc4d3d",
+      "lib/features/hr_profile/pages/hr_profile_change_detail_page.dart": "53c5988f4500f3cee3204650dd1788a2beb63ba2b2b59c582a1b46c1ea2c9d2d",
+      "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart": "29a88eca5ecf55f0fa955e3f1b57f96288e35b5813b8ca97250b46615e457a49",
+      "lib/features/rd_task/pages/rd_task_page.dart": "012e8a63a0f2ed3ce6d45d877204902416bbd9e97d44d4e1510fe290ebc29363",
+      "lib/features/sales/pages/sales_order_progress_page.dart": "477ed0c479a7a7071e76c084e027cc1f7d136e2a7b635d60df5c71ee3c922e89",
+      "lib/features/stock/counts/pages/stock_count_review_page.dart": "3d4e387e33be63905c9a91bd9bad27c78ae9f45081a3be351854e853db875793",
+      "lib/features/suggestion/pages/suggestion_detail_page.dart": "0191b9cbf0854e0b82a72b861cd4e3069e110d57b8d7ef363d0ee3a22a63a7b0",
+      "lib/features/suggestion/pages/suggestion_list_page.dart": "b41c32eb326d37d035f15ee3f148d1c28abe8e0706187514ee89b3bcfdf3ec79",
+      "lib/features/visitor_approval/pages/my_visitors_page.dart": "64fce1474be445731abbe67e2e4568d5fbbb99086ff9afd53dc9976a6f1ce9b7",
+      "lib/features/visitor_approval/pages/visitor_approval_detail_page.dart": "51b9476dfc3bad80ceda65834b70cdd14f1b7cb478a2296effbb248f1524b7e0",
+      "lib/features/visitor_approval/pages/visitor_approval_list_page.dart": "76c17a09d54c42d0f1fca0f9439e51f79474940c9465152445c3133bd3017343",
+      "lib/shared/auth/permissions.dart": "ace6e448fe50359c36654309cf6ef7369fac17e97916e04e4f92c8eb22575d0f",
+      "scripts/generate_permission_help_migration.py": "dfb95124ca22821a168096e2fc74198ca856ac065b6fe971861fccbb67c31498",
+      "server/src/main/java/com/uten/imp/common/report/BusinessDocumentReadScopeInterceptor.java": "2e4a535f84c94a1232967eb2679915dbbd76ec8c1ba14a564f4b3f23a9ef626a",
+      "server/src/main/java/com/uten/imp/config/PlatformDisplayColumnsConfiguration.java": "4a1dd7d933764441c19f12def78255c0dbed6bb9a9768505eb52723885ebc1f2",
+      "server/src/main/java/com/uten/imp/config/WebMvcConfig.java": "ba3ec3a2d26bc9c3371f44838d16fcfbc8ed995ff8a1f6c6e1f4530f99365315",
+      "server/src/main/java/com/uten/imp/features/admin/DataScopeAdminService.java": "5d8f2bf20bb0d897edce83c44f4ed6e576aad55685882e4457ca32e0ab735642",
+      "server/src/main/java/com/uten/imp/features/admin/DataScopeCatalogService.java": "cbf5eeab39f48d8e8d0ae90ec5b00f666f3405b7cd1cbdc51fdc6a56c88d5fe2",
+      "server/src/main/java/com/uten/imp/features/admin/dto/PermissionCatalogDto.java": "6e9fd6ac7890441ee9b4b332387df7e0b798509d9d7b228df3f758f54ee7b5f0",
+      "server/src/main/java/com/uten/imp/features/admin/serverstatus/ServerStatusWorkbenchBadgeSources.java": "bde0cb03ba083b4a2d445adf3fb277dbf4a39d296998a9a6995679d76d881b4c",
+      "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseApplicantQuery.java": "5e9b4a214212680c62ef455572c8aea3221dbdd60dcca289affe61fef4b79e21",
+      "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseClaimAttachmentAccessPolicy.java": "030f7647583930944677bb87c34969e2769c66e320219b7bb5fba78819d35ac4",
+      "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseClaimController.java": "2b86967c46ffbde5e2d3e71893b9d477e99e0999c1bc663efff56678ef0c4f8c",
+      "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseClaimReadPolicy.java": "4527ea1b7185815407df500ad4c5823b1f53a891933928c74e1119aba0b7e177",
+      "server/src/main/java/com/uten/imp/features/expenseclaim/ExpenseClaimService.java": "0261c15429195748fbfc95db1d7e811d74a6c91c9baa336c3a09305d91ac9d53",
+      "server/src/main/java/com/uten/imp/features/expenseclaim/ExpensePlatformColumnResources.java": "eb2db62b4852a6280da67a02f8d5c63ea04a4061f1943d5bae021552682a3cd9",
+      "server/src/main/java/com/uten/imp/features/notice/BusinessNoticeParticipation.java": "ddab0884c66ce8843119cf71f7b8b85d89a98a427fbce97f106655d39bf95172",
+      "server/src/main/java/com/uten/imp/features/notice/ChainNoticeService.java": "3b557e9e2fe5d057db090a61bac0c381264b8112b304d344ca35556284c8fb7e",
+      "server/src/main/java/com/uten/imp/features/notice/NoticeRepository.java": "2e990657681e9a3831b98c8aadb7e4d9e46eddf4f7941ed186d4cbc8d396dd12",
+      "server/src/main/java/com/uten/imp/features/notice/NoticeService.java": "2a0ae6092cc179d7f945a0681880197b7d7de5489ce0e0ab0e920403aea93dcd",
+      "server/src/main/java/com/uten/imp/features/notice/ReviewNoticeAudience.java": "97dff2fffbd8b7f17b102a280bc1bc169bc8e036f82d21c62cbd2c5e368ca643",
+      "server/src/main/java/com/uten/imp/features/operations/workbench/FulfillmentWorkbenchAccessPolicy.java": "5e362bfbc63cda7ac5064987202fe809dd5703dceccf6f38f24efa4765e5e330",
+      "server/src/main/java/com/uten/imp/features/org/department/staffpermission/dto/PagePermissionEmployeePermissionsDto.java": "a9c0f19444db3d3ffcc9f5b6edffb6554686cdc349e89f030c7e3f7a81e03090",
+      "server/src/main/java/com/uten/imp/features/production/ProductionDocumentAccessPolicy.java": "1cb6d274a75b87aae42fb2fd530e1cfaa24c4affc84228e24ab6be844365bc68",
+      "server/src/main/java/com/uten/imp/features/production/dailyreport/ProductionOverLimitDispositionController.java": "2cf1ef90fdeae1dc0e1a0b6542a355a4f3160df2a95194966a1063163a504f95",
+      "server/src/main/java/com/uten/imp/features/production/dailyreport/ProductionOverLimitDispositionService.java": "4562c4cb49bd0c47f65cbe265a29f8f92f3d462b49f2eec4a59913e587f1b324",
+      "server/src/main/java/com/uten/imp/features/production/execution/ProductionOverproductionRateController.java": "01febb805d183f3688c8132bddad07c1a9a4289699131675e46dac1af5b12a1c",
+      "server/src/main/java/com/uten/imp/features/production/execution/ProductionOverproductionRateService.java": "a919f4e82935203059ba65070207fdaac75cc4e8b4e9344d52e521df9f17a387",
+      "server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionMaterialIncrementController.java": "7a542603aeb8d7e960e4f111976084997b426314469e6969a71ba2fd8e6d41ad",
+      "server/src/main/java/com/uten/imp/features/production/fulfillment/ProductionMaterialIncrementService.java": "287ef6c2d4bb9312458ec3253f3888826d38adedaa843449c3cf5410e7ca746c",
+      "server/src/main/java/com/uten/imp/features/profileChange/ProfileChangeAccess.java": "dd97d99c3108b9506a6e6a83cf3f0fc738b4980224bdbac908b90a0f7b67f848",
+      "server/src/main/java/com/uten/imp/features/profileChange/ProfileChangeController.java": "9b58e8d552b767f69f7b70a72712347eb37fee711a9c9f36cf9f226b76e510ca",
+      "server/src/main/java/com/uten/imp/features/profileChange/ProfileChangeMapper.java": "0ee16f756f52200d5e6e029325164e99ed47aeec6affbe7df194e61d6c6ee613",
+      "server/src/main/java/com/uten/imp/features/profileChange/ProfileChangePlatformColumnAdapters.java": "80f01ff1b0269324e2d111140e0535988afd1d155018ea8f5c1c57d008b7f726",
+      "server/src/main/java/com/uten/imp/features/profileChange/ProfileChangeQueryService.java": "5cf6cba4c18d8891e1c7bb6b565f7635eef412162016b8fc2bfa65c94ae12a2b",
+      "server/src/main/java/com/uten/imp/features/rbac/PermissionBusinessDescriptions.java": "dfe5b4b715e8844271e76817276418ae349f38c7d99685fcf435cc9a37fbcbf2",
+      "server/src/main/java/com/uten/imp/features/rbac/PermissionDependencyCatalog.java": "af495833a96b876a25dd72b4c5608e3054dd3257b575261145430d62497c94cb",
+      "server/src/main/java/com/uten/imp/features/stock/count/StockCountRequestController.java": "9bcf8d5ad7e811bc0714d575b8659cb64fe0451e26f27daea37d94069a5e6f82",
+      "server/src/main/java/com/uten/imp/features/stock/count/StockCountRequestService.java": "0aad1b034ad1d1da4ebf1e22775e56c7af9de9731ae3cba599434530f0e34c61",
+      "server/src/main/java/com/uten/imp/features/suggestion/SuggestionController.java": "05417d7baebede6b15621036ac5afc06c353c94a048fe81c5003896f7f382e1f",
+      "server/src/main/java/com/uten/imp/features/suggestion/SuggestionPlatformColumnAdapters.java": "0bc0f9be6a7a43cf038153e3e8942c8729addcdec99424658b7c912c78e0b8b5",
+      "server/src/main/java/com/uten/imp/features/visitor/VisitorApprovalController.java": "db3f1a50011ad42cf5b1dbc13e8f497b4682d6d251649e1c81b10d4d3178b2e3",
+      "server/src/main/java/com/uten/imp/features/visitor/VisitorHrApprovalService.java": "d0c5486b380399839000d9205156e7b3052a0a6df5cb6533eaf77f4a90d5475d",
+      "server/src/main/java/com/uten/imp/features/visitor/VisitorPlatformColumnAdapters.java": "0dfd2e5037b5d89a23ba4449ae1b2bcb15315cea1d33c5f290476d360fb62d5b",
+      "server/src/main/java/com/uten/imp/features/warehouse/finishedin/ProductionFinishedInboundTaskService.java": "e4b0f331b9005d5bbeae31acef1892d665161e10a684d5517b7c47ce3f408590",
+      "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterQueryService.java": "bdaab2a6cda80791566a3342abef098be36b48f6140e3f1d3f63585cb3d2c1ed",
+      "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseOutboundTaskCenterQueryService.java": "af737c6a3e1ac09ba2b701551c43ae5629b45db78f8a945872d4efbe8d5cf5a5",
+      "server/src/main/java/com/uten/imp/security/ProductionStockTaskAccessPolicy.java": "39a7bedac4104f83b2baac9c2a481e1b976a246471c30fa9a2fbceb82cd7ae22",
+      "server/src/main/java/com/uten/imp/security/ReadScopeVersionAuthority.java": "aa227f507f75fc0d0d106fef3b16c84fd32cf97937e0e4c09d15b45acbe4fe76",
+      "server/src/main/resources/ai-feature-map.json": "5008635ca2b5ab790205f03d46dae9b0185b856c0d7268d820164a28e28d997d",
+      "server/src/main/resources/db/migration/V978__readonly_business_participation.sql": "fff9490b10f4d16f227b6ddaeaa5dd13141bbc1a6aee0e47cfc5c54f54573357",
+      "server/src/main/resources/db/migration/V979__plain_permission_names_and_examples.sql": "5a16600319cc07ec220cb95ac4ce1620bcf86a9ff1d754b5623d96ed53f48bcb",
+      "server/src/main/resources/permission-help.json": "afcbfce52bedc5bfb98212b2216f83852e8ba4d15fdc8b7d2a396b17d273e03f",
+      "server/src/test/java/com/uten/imp/businesschain/WorkbenchBadgeSummaryPostgresTest.java": "b352beb5c31ea8b73a40a808b7bc268b225d981e249dcc66d10fcb5f10f4e783",
+      "server/src/test/java/com/uten/imp/config/WebMvcConfigInterceptorOrderTest.java": "877796cd430670bddff9cbf6023cca18fcd64e798f732222dc956ec2f4eba62b",
+      "server/src/test/java/com/uten/imp/features/expenseclaim/ExpenseClaimChainPostgresTest.java": "642df446838e238ea111a3b2bfee3e8053e9c86143fcd3a7617c0ff58be04d80",
+      "server/src/test/java/com/uten/imp/features/notice/BusinessNoticeParticipationPostgresTest.java": "be4cb1a1661d31c24b0528720a6649fac0a6ab9689f6ec2bd8ba02a239add1bb",
+      "server/src/test/java/com/uten/imp/features/notice/BusinessNoticeParticipationTest.java": "930b2dab2432e63142365c64410ab67418e2bdaf1a5784ed2b4eb4a83dd0fe0f",
+      "server/src/test/java/com/uten/imp/features/notice/ManualNoticePopupPostgresTest.java": "231a79ddfaca1761e1fcca2a7d11541d4222520f15fa221991d2da86b11fd7f9",
+      "server/src/test/java/com/uten/imp/features/notice/NoticeParticipationSqlFixture.java": "def1a955ee457913dbfdb6b1db2a9d6d28e724fd6a9f35ed645a566513291352",
+      "server/src/test/java/com/uten/imp/features/notice/NoticeServiceTest.java": "59b8f7e69a1fdea6e9548509e2eb48db047fae3084e30f3ee47b35b2b6e0e27f",
+      "server/src/test/java/com/uten/imp/features/notice/ReviewPendingLoginPopupPostgresTest.java": "2aa1953d9fa613b046b2e01462965960c6444111b8de41c13b69dfd0078e0fcf",
+      "server/src/test/java/com/uten/imp/features/notice/WorkshopNoticeScopePostgresTest.java": "bfb59cc0aa827e2735fba64bf5c221601b82d3f0936e67d41d75ac656ceb3091",
+      "server/src/test/java/com/uten/imp/features/profileChange/ProfileChangeObserverTest.java": "13386bb22edad17bd7ceecc16c7b07b30c138371ab9cdab3b261329f278dad2f",
+      "server/src/test/java/com/uten/imp/features/profileChange/ProfileChangeQueryServiceTest.java": "e804fda2d43f46e214cc9e019f5524adb7c4175419717f9e6bae6d741b281154",
+      "server/src/test/java/com/uten/imp/features/rbac/PermissionBusinessDescriptionsTest.java": "63d6aaf94ac04db78c5eacc066fa56350a980b46bfcad2b7af29e814c4964018",
+      "server/src/test/java/com/uten/imp/features/warehouse/finishedin/ProductionFinishedInboundTaskColumnFilterTest.java": "e0d79af2270f640c0af604bba2a8613c0a68fb0308c9a79dbef18a20242289be",
+      "server/src/test/java/com/uten/imp/features/warehouse/finishedin/ProductionFinishedInboundTaskServiceTest.java": "878a786dbfa29a7ecd50f2465a01a919cb3a78f4d7e90e873e2a9b49c5fddd43",
+      "server/src/test/java/com/uten/imp/security/PermissionHelpCatalogTest.java": "d57b2a7ed154f1a365f3cb290cacb7b2b1c8d0025dca9fb2ae3a3ec9c4f9e17d",
+      "server/src/test/java/com/uten/imp/security/WarehouseObserverAccessTest.java": "c31c164c46192abed3d49ad5707d7361f0b1bdd4df5e6fb7967eab7eb377fcb8",
+      "test/core/network/read_scope_revision_test.dart": "012b097680e794c1c28a5ccae8fbfdd62a69595f69e1771ff51ff11b77da07fb",
+      "test/features/admin/widgets/permission_help_test.dart": "1ceeb86e79d3a2ca88745e66b834f5bb91410db4614a877c8269ff4b5fdf85bb",
+      "test/features/expense/expense_approval_list_page_test.dart": "174f159bd2b04afae8d553e31f37d123ac91ad747dc363f7b80edeaa0fff8908",
+      "test/features/hr_profile/hr_profile_changes_list_page_test.dart": "126a8d961ff24eaea546af50e5ec3421b8f82f6d3f3379c893a2dee6ca274c84",
+      "test/features/payroll/payroll_suggestion_responsive_detail_test.dart": "1f281b0f3af275cf07052bbe024c69916f8cd1b982a7e261b658c1a05da6f6f0",
+      "test/features/production/production_over_limit_contract_test.dart": "6a107044b719b5ee6a817be51a32fc940ca88a201501bbfa2b25cdb82aa7f923",
+      "test/features/production/production_over_limit_route_access_test.dart": "5f410ce78d54a2237780a2af193f53ab16cde0285b55f6d1ee065d367dfaf359",
+      "test/features/sales/pages/sales_order_progress_rejected_test.dart": "4a0427013d4d5cf4df6c1817cf906f15a8a425e45fdc20412b8bbd8bd3538f38",
+      "test/features/suggestion/suggestion_empty_filter_recovery_test.dart": "bb307a624603586c802ea5da3875259fd22600bb71e3cb4710ac37897fa35b40",
+      "test/features/suggestion/suggestion_list_status_filter_test.dart": "82026378b3d33635a41770a8e17c38d80cc01bbc1f74d4b2dc81a7026421a678",
+      "test/features/visitor_approval/visitor_approval_list_page_test.dart": "6dc522da19ca77e99b6cea7fd1b86ba55abb7ef270f1f7a62140069171fd7867",
+      "test/list_create_action_visibility_test.dart": "0231795179f7e05e5097a9b9a4c9d3006d56763b59e12c1053b98ef0c6de56ac",
+      "test/page_permission_literal_baseline_test.dart": "6008595001ca1ff1d39370f0ea24bb3e4279daf59ac49f3dd5e5c1c44d984373",
+      "test/route_permission_full_coverage_test.dart": "310e1b0a4d20d094eac28d3fd1b300664a7c8351e78b5ec1833c5c0a6b3e6b00",
+      "test/router_access_policy_test.dart": "1b576ba7c61fa8cf53fd146fba958ecfffcc8dc9fbb911bf026220d1694710fa"
+    }
+  },
+  "permissionHelp": {
+    "catalogEntries": 514,
+    "renamedEntries": 119,
+    "singleSource": "server/src/main/resources/permission-help.json",
+    "migrationHead": "V979",
+    "migrationCount": 905,
+    "changesAuthority": false
+  },
+  "verification": {
+    "backend": {
+      "uniqueInScopePassed": 319,
+      "initialRun": {
+        "total": 331,
+        "failures": 0,
+        "errors": 1,
+        "skipped": 0
+      },
+      "excludedFromEvidence": {
+        "count": 12,
+        "class": "AuditTriggerCoverageMigrationContractTest",
+        "reason": "Unrelated V977 audit classification patch reverted; its transient pass does not describe final source."
+      },
+      "failedFixtureCorrectedAndPassed": {
+        "count": 1,
+        "test": "WorkbenchBadgeSummaryPostgresTest#allCatalogViewPermissionsLeaveEveryBusinessBadgeAndTodoSilent",
+        "fix": "Test-only explicit-grant actor configured in the same transaction."
+      }
+    },
+    "flutter": {
+      "passingBatches": [
+        {
+          "log": "output-readonly-frontend-recheck.log",
+          "passed": 101
+        },
+        {
+          "log": "output-readonly-last-frontend-fixes.log",
+          "passed": 22
+        },
+        {
+          "log": "output-readonly-final-guards.log",
+          "passed": 57
+        },
+        {
+          "log": "output-readonly-ai-map-final.log",
+          "passed": 4
+        }
+      ],
+      "overlap": true,
+      "analysis": "No issues found for changed Dart files"
+    },
+    "native": {
+      "architectures": [
+        "x86",
+        "x64"
+      ],
+      "testFlag": "--permission-readonly-contracts",
+      "result": "passed",
+      "checks": [
+        "read scope transitions",
+        "durable drafts:16",
+        "inline preservation:70"
+      ],
+      "warnAsErrorBuild": true,
+      "win7TargetMachineUat": false
+    },
+    "visual": {
+      "widths": [
+        1440,
+        375
+      ],
+      "narrowTextScale": 1.6,
+      "checked": [
+        "hover and click opens explanation",
+        "authorization checkbox unchanged",
+        "long explanation scrolls to examples",
+        "visible scrollbar"
+      ]
+    },
+    "generation": {
+      "permissionHelpSql": "passed",
+      "businessInventory": "passed",
+      "progressTracker": "passed; statuses retained and unported pages not marked complete",
+      "designTokens": "passed; generated values and provenance match owning Dart sources"
+    }
+  },
+  "earlierWholeProjectResultsNotCompletionEvidence": {
+    "backend": {
+      "run": 13623,
+      "failures": 10,
+      "errors": 3,
+      "skipped": 4244
+    },
+    "flutter": {
+      "passed": 14255,
+      "skipped": 69,
+      "failed": 15
+    },
+    "remainingOutOfScope": "V977 employee_code_numbering_receipts audit policy classification in isolated baseline; no claim of all-project green.",
+    "policy": "Keep original results; do not rerun whole-project verification until integration."
+  },
+  "delivery": {
+    "localOnly": true,
+    "pushed": false,
+    "deployed": false,
+    "formalPackagesProduced": false,
+    "fullRegression": "deferred per user request",
+    "nativeUnportedBusinessPagesRemainUnported": true,
+    "w7Biz007Status": "todo"
+  },
+  "artifacts": {
+    "server/target-readonly-verified.log": {
+      "sha256": "d4a4d204e3e9c25c0698e727e214926e64aacf3aac1d30bd4d26df5568ec17d5",
+      "bytes": 1232774
+    },
+    "server/target-readonly-last-badge.log": {
+      "sha256": "0e8ffafec63f3e82f6251fc71cad9826a1ca59bc2e18e6788a2470109c962f7c",
+      "bytes": 314148
+    },
+    "server/target-readonly-full.log": {
+      "sha256": "87a8732330575726fa2ab37057b7ee5a8184edc757164e52d273476868e9cd75",
+      "bytes": 6246123
+    },
+    "output-readonly-frontend-full.log": {
+      "sha256": "30795d01c672332510f81cd49e6acd1bffcf66ea8285e4b08458ebd9bac1055a",
+      "bytes": 3335363
+    },
+    "output-readonly-frontend-recheck.log": {
+      "sha256": "8399480bad29099bd291296be994546a44e1770f42cfe33007248a91486e633c",
+      "bytes": 21407
+    },
+    "output-readonly-last-frontend-fixes.log": {
+      "sha256": "79fde6951ba535d62fd3a1ec3f2bcb21345b32b3061faf26af0b137263bf1cd0",
+      "bytes": 4998
+    },
+    "output-readonly-final-guards.log": {
+      "sha256": "00d8967fbdcf91d355983aad9a739fc5264bb50cb04bcd1acf4ddd0ebc032d0c",
+      "bytes": 12808
+    },
+    "output-readonly-owned-recheck.log": {
+      "sha256": "538895f3dd636ee7aaad98cf3799fedddc22016d726fdfc528dfc60dcf3bb197",
+      "bytes": 23700
+    },
+    "output-readonly-owned-analysis-final.log": {
+      "sha256": "97e8b38714fcd6b67b38a9ffce18e3db16dac8dae1b766c0c5aedd82d8accb63",
+      "bytes": 1145
+    },
+    "output-readonly-ai-map-final.log": {
+      "sha256": "d5e874d1b8f55fd0a95ad9527613d1c332219b28759e356e0649a4498aa07160",
+      "bytes": 550
+    },
+    "output-readonly-wpf-token-tests.log": {
+      "sha256": "3ed7c02c0ab90e82837f2c7aa58b7686c0d54520bf5bf0c2d71dceb9203fd268",
+      "bytes": 118
+    },
+    "output/readonly-permission-unification/permission-help-1440.png": {
+      "sha256": "89d2d831c8b2b09b9a0b33b80ed9cd02a94479f28066fb9bd1cf5dc594582610",
+      "bytes": 51311
+    },
+    "output/readonly-permission-unification/permission-help-375.png": {
+      "sha256": "43a25bbe7d858c51cda4cfb059db9a9d5cf18f514375c961b4ea906029eebed7",
+      "bytes": 53301
+    },
+    "output/readonly-permission-unification/old-capture-harness-termination.json": {
+      "sha256": "a39d42c691fad85b5699353df9ec80218846225a9c5cfc401d77e2c63c0cb66d",
+      "bytes": 352
+    },
+    "build/windows-wpf/readonly-owned/x86/build.log": {
+      "sha256": "b4254eb705f3f62c3fab90c87e8fbd65f3a277e7d5ff51c58865f7bb3c97cc22",
+      "bytes": 608
+    },
+    "build/windows-wpf/readonly-owned/x86/tests.log": {
+      "sha256": "235f6e6140df8272a681929d5095c3300d884a69a4feff7c2de24e954a490a37",
+      "bytes": 116
+    },
+    "build/windows-wpf/readonly-owned/x64/build.log": {
+      "sha256": "7d483d1592dd7d131b61145af2d77e4e44577218126453897d78c5317e14932c",
+      "bytes": 608
+    },
+    "build/windows-wpf/readonly-owned/x64/tests.log": {
+      "sha256": "13f90c8ea2663018b66a43f20fdb424fdaf0c84516879898b3d00de8004a5a48",
+      "bytes": 116
+    }
+  }
+}

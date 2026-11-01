@@ -331,6 +331,40 @@ class ExpenseClaimChainPostgresTest {
         assertThatThrownBy(()->claims.detailHistory(draft.id())).isInstanceOf(ApiException.class);
     }
 
+    @Test void observersBrowseEveryStateWithinGrantedApplicantsWithoutGettingCommands() {
+        Actor owner=actor("observer-owner"), other=actor("observer-outside"), observer=actor("observer-reader");
+        login(owner,"expense:apply");
+        var draft=claims.create(request("观察草稿",null));
+        var pending=claims.create(request("观察待审",null));
+        attachment(pending.id()); pending=claims.submit(pending.id(),pending.version());
+        login(other,"expense:apply"); var outside=claims.create(request("范围外草稿",null));
+        jdbc.update("INSERT INTO user_data_scopes(user_id,scope,owner_employee_id,created_by) VALUES(?,'expense',?,?)",
+                observer.user(),owner.employee(),observer.user());
+        login(observer,"expense:view");
+        assertThat(claims.listBrowse(null,null,null,null,1,100,null,null,null).getItems())
+                .extracting(ExpenseClaimDto::id).contains(draft.id(),pending.id()).doesNotContain(outside.id());
+        assertThat(claims.listPending(null,null,null,null,1,100).getItems()).extracting(ExpenseClaimDto::id).contains(pending.id());
+        assertThat(claims.detail(draft.id()).id()).isEqualTo(draft.id());
+        assertThatThrownBy(()->claims.detail(outside.id())).isInstanceOf(ApiException.class);
+        UUID pendingId=pending.id(); long pendingVersion=pending.version();
+        assertThatThrownBy(()->claims.approve(pendingId,pendingVersion)).isInstanceOf(ApiException.class);
+        assertThat(claims.facets("browse").claimNos()).extracting(ExpenseClaimFacetsDto.Bucket::value).contains(draft.claimNo());
+        assertThat(claims.summary().pendingCount()).isGreaterThanOrEqualTo(1);
+        jdbc.update("DELETE FROM user_data_scopes WHERE user_id=? AND scope='expense'",observer.user());
+        assertThat(claims.listBrowse(null,null,null,null,1,100,null,null,null).getItems()).isEmpty();
+        assertThatThrownBy(()->claims.detail(draft.id())).isInstanceOf(ApiException.class);
+        login(observer,"expense:view","expense:view:all");
+        assertThat(claims.listBrowse(null,null,null,null,1,100,null,null,null).getItems()).extracting(ExpenseClaimDto::id).contains(outside.id());
+        assertThatThrownBy(()->claims.approve(pendingId,pendingVersion)).isInstanceOf(ApiException.class);
+        login(observer,"expense:view","expense:approve");
+        // The independent evidence permissions remain mandatory; reading alone never adds them.
+        assertThatThrownBy(()->claims.approve(pendingId,pendingVersion)).isInstanceOf(ApiException.class);
+        login(observer,"expense:view","expense:approve","attachment:view","attachment:download");
+        assertThat(claims.approve(pendingId,pendingVersion).status()).isEqualTo("APPROVED");
+        login(observer,"expense:view");
+        assertThatThrownBy(()->claims.approve(pendingId,pendingVersion)).isInstanceOf(ApiException.class);
+    }
+
     private ExpenseClaimCreateRequest request(String title,Long version) {
         return new ExpenseClaimCreateRequest(title,"客户拜访的真实住宿费",List.of(new ExpenseClaimItemInput(
             "TRAVEL",new BigDecimal("100.00"),BusinessTime.today(),"客户拜访住宿一晚")),version);

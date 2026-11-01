@@ -156,7 +156,11 @@ class _HrProfileChangeDetailPageState
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton: async.maybeWhen(
-        data: (batch) => batch.status == ProfileChangeStatus.pending
+        data: (batch) =>
+            ref
+                    .watch(currentPermissionsProvider)
+                    .contains(Perm.profileReview) &&
+                batch.status == ProfileChangeStatus.pending
             ? UtenFloatingActionGroup(
                 children: [
                   UtenButton(

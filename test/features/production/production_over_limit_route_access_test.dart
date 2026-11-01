@@ -51,40 +51,43 @@ void main() {
     },
   );
 
-  test('read-only detail permissions still cannot open the approval queue', () {
-    for (final permission in [
-      Perm.productionPlanView,
-      Perm.productionExecutionView,
-      Perm.productionDailyReportView,
-    ]) {
-      final actor = AppUser(
-        id: 'reader',
-        code: 'R1',
-        name: '读者',
-        permissions: [permission],
-      );
+  test(
+    'plan readers can browse the queue while workshop-only readers keep their detail scope',
+    () {
+      for (final permission in [
+        Perm.productionPlanView,
+        Perm.productionExecutionView,
+        Perm.productionDailyReportView,
+      ]) {
+        final actor = AppUser(
+          id: 'reader',
+          code: 'R1',
+          name: '读者',
+          permissions: [permission],
+        );
+        expect(
+          employeePermissionRedirect(
+            actor,
+            RoutePath.productionOverLimitDisposition('case'),
+          ),
+          isNull,
+        );
+        expect(
+          employeePermissionRedirect(
+            actor,
+            RouteName.productionOverLimitDispositions,
+          ),
+          permission == Perm.productionPlanView ? null : RouteName.accessDenied,
+        );
+      }
+      const none = AppUser(id: 'none', code: 'N1', name: '无授权');
       expect(
         employeePermissionRedirect(
-          actor,
+          none,
           RoutePath.productionOverLimitDisposition('case'),
-        ),
-        isNull,
-      );
-      expect(
-        employeePermissionRedirect(
-          actor,
-          RouteName.productionOverLimitDispositions,
         ),
         RouteName.accessDenied,
       );
-    }
-    const none = AppUser(id: 'none', code: 'N1', name: '无授权');
-    expect(
-      employeePermissionRedirect(
-        none,
-        RoutePath.productionOverLimitDisposition('case'),
-      ),
-      RouteName.accessDenied,
-    );
-  });
+    },
+  );
 }

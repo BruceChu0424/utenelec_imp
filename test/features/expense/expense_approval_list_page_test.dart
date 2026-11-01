@@ -184,6 +184,29 @@ MasterDataTableView<ExpenseClaim> _table(WidgetTester tester) =>
     );
 
 void main() {
+  testWidgets('只读报销账号可切换待审和历史，行可打开但不出现审批选择及动作', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
+    final preferences = await SharedPreferences.getInstance();
+    final repo = _FakeExpenseRepository();
+    await tester.pumpWidget(
+      _app(
+        repo,
+        preferences,
+        initialQueue: ApprovalQueue.pending,
+        permissions: const {Perm.expenseView},
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(_table(tester).items, hasLength(2));
+    expect(_table(tester).onRowTap, isNotNull);
+    expect(_table(tester).selectable, isFalse);
+    expect(_table(tester).batchActionsBuilder, isNull);
+    expect(find.text('待付款'), findsOneWidget);
+    expect(find.text('全部单据'), findsOneWidget);
+    expect(repo.rejectBatchCalls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final queue in [ApprovalQueue.payable, ApprovalQueue.history]) {
     testWidgets('明确队列入口只读请求所选队列，不先加载待审批：$queue', (tester) async {
       SharedPreferences.setMockInitialValues(const {});

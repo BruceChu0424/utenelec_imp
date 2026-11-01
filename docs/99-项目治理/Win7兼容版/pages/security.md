@@ -22,7 +22,7 @@
 
 ## W7-BIZ-144 · lib/features/security/pages/security_scan_page.dart
 
-模块 `security`；202 行；SHA256 `9ae75fc2ccb93887665c42f14c17d6b2139ae89b8d259d08323d9abde0e9b853`。
+模块 `security`；202 行；SHA256 `7dfcb1488b079bbcf9b30684cac265825438056be3328324d71e2fe3eed2bcad`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

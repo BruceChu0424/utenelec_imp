@@ -47,6 +47,14 @@ class BusinessIdentifierRegistryMigrationContractTest {
         Map<String, String> namespaces = namespacePrefixes(registrySql());
         Set<String> registeredPrefixes = Set.copyOf(namespaces.values());
         for (MasterCodePrefix prefix : MasterCodePrefix.values()) {
+            if (prefix == MasterCodePrefix.EMPLOYEE) {
+                // V977 assigns prefix-free numeric codes. UT remains a lifetime
+                // historical reservation, not a prefix to delete or reassign.
+                assertEquals("", prefix.code());
+                assertEquals(6, prefix.width());
+                assertEquals("UT", namespaces.get("MASTER_EMPLOYEE"));
+                continue;
+            }
             assertTrue(registeredPrefixes.contains(prefix.code()),
                     () -> "Missing MasterCodePrefix reservation: " + prefix.name());
         }

@@ -3133,13 +3133,13 @@ abstract class AppLocalizations {
   /// No description provided for @employeeOnboardNote.
   ///
   /// In zh, this message translates to:
-  /// **'提交后自动生成工号(UT 前缀)。如果选择同时开户，请以返回的登录账号和临时密码为准；密码仅显示一次、限时有效，首次登录必须修改。'**
+  /// **'提交后自动生成6位数字工号，分配后固定。如果选择同时开户，请以返回的登录账号和临时密码为准；密码仅显示一次、限时有效，首次登录必须修改。'**
   String get employeeOnboardNote;
 
   /// No description provided for @employeeOnboardCodeAutoNote.
   ///
   /// In zh, this message translates to:
-  /// **'工号提交后自动生成(UT 前缀，唯一递增)'**
+  /// **'工号提交后自动生成（6位数字，接续编号，分配后固定）'**
   String get employeeOnboardCodeAutoNote;
 
   /// No description provided for @employeeOnboardStepBasic.

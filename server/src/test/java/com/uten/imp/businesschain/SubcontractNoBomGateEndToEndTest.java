@@ -229,7 +229,7 @@ class SubcontractNoBomGateEndToEndTest {
         // ⑤ 旧生产计划确认执行计划包: 按缺口生成委外申请前同样 409, 确认人进等待名单。
         var planWorld = fixture.seedWorld(tag + "-plan");
         if ("OPERATOR".equals(subscription)) {
-            grant(db, planWorld.superAdminUserId(), "notice:read", "production_plan:view", "planning_package:generate");
+            grant(db, planWorld.superAdminUserId(), "notice:read", "production_plan:view", "production_planning_package:generate");
         } else if ("VIEW_ONLY".equals(subscription)) {
             grant(db, planWorld.superAdminUserId(), "notice:read", "production_plan:view");
         }

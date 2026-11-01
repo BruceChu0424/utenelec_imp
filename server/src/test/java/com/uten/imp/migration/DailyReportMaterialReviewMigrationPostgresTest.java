@@ -42,6 +42,12 @@ class DailyReportMaterialReviewMigrationPostgresTest {
             Map.entry("idx_asset_recognition_reversal_original_voucher","CREATE INDEX idx_asset_recognition_reversal_original_voucher ON public.finance_asset_recognition_reversals USING btree (original_voucher_id)"),
             Map.entry("idx_asset_recognition_reversal_reversal_voucher","CREATE INDEX idx_asset_recognition_reversal_reversal_voucher ON public.finance_asset_recognition_reversals USING btree (reversal_voucher_id)"));
     private record IndexReplacement(String before,String after) { }
+    // V978 manager decisions plus two queue indexes; reviewed declarations, never learned from the live catalog.
+    private static final Map<String,String> V978_INDEX_ADDITIONS=Map.ofEntries(
+            Map.entry("sales_order_manager_review_events_pkey","CREATE UNIQUE INDEX sales_order_manager_review_events_pkey ON public.sales_order_manager_review_events USING btree (id)"),
+            Map.entry("idx_sales_order_manager_review_events_order","CREATE INDEX idx_sales_order_manager_review_events_order ON public.sales_order_manager_review_events USING btree (order_id, created_at)"),
+            Map.entry("idx_sales_quotes_manager_pending","CREATE INDEX idx_sales_quotes_manager_pending ON public.sales_quotes USING btree (manager_review_state, submitted_at, id) WHERE (NOT is_deleted)"),
+            Map.entry("idx_sales_orders_manager_pending","CREATE INDEX idx_sales_orders_manager_pending ON public.sales_orders USING btree (manager_review_state, deliver_date, id) WHERE (NOT is_deleted)"));
     private static final Map<String,IndexReplacement> V974_SOURCE_INDEX_REPLACEMENTS=Map.ofEntries(
             Map.entry("ux_fixed_assets_active_source_line",new IndexReplacement(
                     "CREATE UNIQUE INDEX ux_fixed_assets_active_source_line ON public.fixed_assets USING btree (source_type, source_id, source_line_ref) WHERE ((is_deleted = false) AND (source_type IS NOT NULL) AND (source_id IS NOT NULL) AND (source_line_ref IS NOT NULL))",
@@ -351,6 +357,7 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertEquals(24, V949_TO_V968_TABLE_ADDITIONS.size());
         V949_TO_V968_TABLE_ADDITIONS.forEach(table -> assertTrue(expectedTables.add(table)));
         V973_TO_V976_TABLE_ADDITIONS.forEach(table -> assertTrue(expectedTables.add(table)));
+        assertTrue(expectedTables.add("sales_order_manager_review_events"));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         V885_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         TreeMap<String,String> expectedIndexes=catalogMap(indexesAfterV840);
@@ -426,6 +433,9 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         V973_TO_V976_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
                 "A declared finance audit/voucher index must not replace an existing index: "+name));
         assertEquals(8,V974_SOURCE_INDEX_REPLACEMENTS.size());
+        assertEquals(4,V978_INDEX_ADDITIONS.size());
+        V978_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
+                "A declared manager-review index must not replace an existing index: "+name));
         V974_SOURCE_INDEX_REPLACEMENTS.forEach((name,replacement)->{
             assertEquals(replacement.before(),expectedIndexes.remove(name),"The exact pre-V974 source uniqueness must be present: "+name);
             assertNull(expectedIndexes.put(name,replacement.after()));

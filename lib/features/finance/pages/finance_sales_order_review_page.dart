@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import '../../../shared/presentation/workflow_field_guidance.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
@@ -198,8 +199,31 @@ class _FinanceSalesOrderReviewPageState
     if (source is! Map ||
         source['subjectId'] != widget.id ||
         current.orderId != widget.id ||
-        (source['version'] as int?) !=
-            current.financeReviewRevision - (widget.managerReview ? 1 : 0)) {
+        source['version'] is! int) {
+      return false;
+    }
+    if (widget.managerReview && command['action'] == 'reverse') {
+      final request = command['request'];
+      if (request is! Map ||
+          request['decisionId'] is! String ||
+          request['actorId'] is! String ||
+          request['actorId'] != ref.read(sessionProvider).user?.employeeId ||
+          request['reason'] is! String) {
+        return false;
+      }
+      final decidedRevision = (source['version'] as int) + 1;
+      if (current.financeReviewRevision < decidedRevision) return false;
+      return current.managerDecisions.any(
+        (decision) =>
+            decision.decisionId == request['decisionId'] &&
+            decision.revision == decidedRevision &&
+            decision.action == 'REVERSED' &&
+            decision.actorId == request['actorId'] &&
+            decision.reason == request['reason'],
+      );
+    }
+    if (source['version'] !=
+        current.financeReviewRevision - (widget.managerReview ? 1 : 0)) {
       return false;
     }
     if (widget.managerReview &&
@@ -292,6 +316,12 @@ class _FinanceSalesOrderReviewPageState
       context.appWarning('请填写反审核原因');
       return;
     }
+    final actorId = ref.read(sessionProvider).user?.employeeId;
+    if (actorId == null || actorId.isEmpty) {
+      context.appWarning('当前审核员身份尚未读取，请刷新后重试');
+      return;
+    }
+    final decisionId = const Uuid().v4();
     setState(() => _busy = true);
     try {
       await submitReviewCommand(
@@ -300,10 +330,15 @@ class _FinanceSalesOrderReviewPageState
             .read(salesManagerOrderReviewRepositoryProvider)
             .reverseManager(
               widget.id,
+              decisionId: decisionId,
               reason: reason,
               expectedRevision: reviewed.financeReviewRevision,
             ),
-        request: {'reason': reason},
+        request: {
+          'decisionId': decisionId,
+          'actorId': actorId,
+          'reason': reason,
+        },
       );
       if (!mounted || !formDraftIdentityIsCurrent) return;
       await finishReviewDraft(keepEditing: true);

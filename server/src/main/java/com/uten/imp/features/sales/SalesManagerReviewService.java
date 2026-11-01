@@ -199,24 +199,37 @@ public class SalesManagerReviewService implements com.uten.imp.application.port.
         orders.saveAndFlush(order); event(order,"REJECTED",reason);
         notices.resolved("order",id,"REJECTED"); notices.rejected("order",id,reason); claims.release(ORDER_TARGET,id.toString());
     }
+    /** The client persists this identity before sending; only its immutable event proves a lost response. */
+    public record ReverseRequest(
+            @jakarta.validation.constraints.NotNull UUID decisionId,
+            @jakarta.validation.constraints.NotNull Long expectedRevision,
+            @jakarta.validation.constraints.NotBlank @jakarta.validation.constraints.Size(max=500) String reason) {}
+
     @Transactional
     @org.springframework.security.access.prepost.PreAuthorize("hasAuthority('sales_order_manager:view') and hasAuthority('sales_order_manager:reverse')")
-    public void reverseOrder(UUID id, FinanceRejectRequest request) {
+    public void reverseOrder(UUID id, ReverseRequest request) {
         requireAccess("order","reverse"); tx.bind();
+        if (request == null || request.decisionId() == null)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"缺少反审核决定身份，请重新核对后提交");
         String reason=note(request==null?null:request.reason(),true);
         SalesOrder order=lock(id,request.expectedRevision());
         if (!order.getManagerReview().approved() || order.isFinanceRejected())
             throw new ApiException(ErrorCode.CONFLICT,"只有负责人已批准、财务尚未办结的订单可以反审核");
         claims.requireNoActiveClaim("SALES_ORDER_FINANCE_CONFIRM",id.toString());
         order.getManagerReview().submit(); order.setFinanceReviewRevision(order.getFinanceReviewRevision()+1);
-        orders.saveAndFlush(order); event(order,"REVERSED",reason);
+        orders.saveAndFlush(order); event(order,"REVERSED",reason,request.decisionId());
         chainNotice.resolveSalesFinanceReviewNotices(id,"MANAGER_REVERSED"); notices.pending("order",id);
     }
     private void event(SalesOrder order,String action,String reason) {
+        event(order,action,reason,UUID.randomUUID());
+    }
+    private void event(SalesOrder order,String action,String reason,UUID decisionId) {
         String snapshot=revisions.snapshot(order.getId());
-        em.createNativeQuery("INSERT INTO sales_order_manager_review_events(order_id,revision,action,actor_id,reason,claim_id,snapshot) VALUES(:id,:rev,:action,:actor,:reason,:claim,CAST(:snapshot AS jsonb))")
+        int inserted=em.createNativeQuery("INSERT INTO sales_order_manager_review_events(id,order_id,revision,action,actor_id,reason,claim_id,snapshot) VALUES(:decision,:id,:rev,:action,:actor,:reason,:claim,CAST(:snapshot AS jsonb)) ON CONFLICT(id) DO NOTHING")
+                .setParameter("decision",decisionId)
                 .setParameter("id",order.getId()).setParameter("rev",order.getFinanceReviewRevision()).setParameter("action",action)
                 .setParameter("actor",currentUser.requireEmployeeId()).setParameter("reason",reason)
                 .setParameter("claim",order.getManagerReview().getDecisionClaimId()).setParameter("snapshot",snapshot).executeUpdate();
+        if (inserted != 1) throw new ApiException(ErrorCode.CONFLICT,"决定身份已经使用，请读取原审核结果，不能重放或覆盖");
     }
 }

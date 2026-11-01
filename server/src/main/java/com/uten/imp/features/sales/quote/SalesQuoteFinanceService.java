@@ -520,7 +520,7 @@ public class SalesQuoteFinanceService {
         List<SalesQuoteItem> items = itemRepo.findByQuoteIdOrderByLineNoAsc(id);
         revisionLog.append(q, items, manager ? "MANAGER_REJECT" : SalesQuoteRevisionLog.RETURN, actor, reason);
         em.flush();
-        if (manager) { managerNotices.rejected("quote", id, reason); managerNotices.resolved("quote", id, "REJECTED"); }
+        if (manager) { managerNotices.resolved("quote", id, "REJECTED"); managerNotices.rejected("quote", id, reason); }
         else { notices.notifyReturned(id); notices.resolveReviewNotices(id, "RETURNED"); }
         claimGuard.release(manager ? "SALES_QUOTE_MANAGER_REVIEW" : TARGET, id.toString());
         return reviewOf(q, manager);

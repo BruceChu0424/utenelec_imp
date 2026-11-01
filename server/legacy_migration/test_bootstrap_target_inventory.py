@@ -61,7 +61,7 @@ class BootstrapInventoryContractTest(unittest.TestCase):
                 'employee_identity_historical_claims', 'employee_identity_merge_payloads',
                 'employee_identity_merges', 'employee_identity_review_certificates', 'employee_identity_user_tombstones',
                 'employee_legacy_identity_aliases', 'party_month_dirty', 'party_monthly_summaries',
-                'scheduled_task_runs', 'stock_monthly_summaries'):
+                'scheduled_task_runs', 'stock_monthly_summaries', 'sales_order_manager_review_events'):
             with self.subTest(table=table):
                 self.assertEqual(inventory[table], 'EMPTY')
 

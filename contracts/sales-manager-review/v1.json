@@ -41,12 +41,22 @@
     "reviewRejected": false,
     "managerDecisionClaimId": "719605db-38b3-4655-acf4-6b6fed0181ce",
     "managerReversible": true,
-    "items": [], "qtyChanges": [], "commercialChanges": [], "managerHistory": []
+    "items": [], "qtyChanges": [], "commercialChanges": [], "managerHistory": [],
+    "managerDecisions": [{
+      "decisionId": "a45d15f1-0253-42a5-9dba-969828bbf573",
+      "revision": 7, "action": "REVERSED",
+      "actorId": "e28cfcbb-bc23-4261-8261-7debe2646cae", "reason": "重新核对交期"
+    }]
+  },
+  "reverseOrderRequest": {
+    "decisionId": "a45d15f1-0253-42a5-9dba-969828bbf573",
+    "expectedRevision": 6, "reason": "重新核对交期"
   },
   "rules": [
     "A management approval does not assert finance approval or release production.",
     "A decision requires the displayed revision and the live claim ID; reversal has its own authority and downstream guard.",
     "An amendment resets management approval; retries never automatically replay an unknown write.",
+    "Order reversal persists its client decisionId before sending. Recovery requires the exact immutable event ID, next revision, REVERSED action, employee actorId and reason; current status alone proves nothing. Reusing an event ID fails atomically.",
     "Money and quantity values remain decimal text. Manager pricing keeps MANAGER provenance.",
     "WPF consumers are not yet migrated and must implement this contract before exposing these actions."
   ]

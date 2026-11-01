@@ -38,7 +38,12 @@ class _Session extends SessionNotifier {
   @override
   SessionState build() => const SessionState(
     status: AuthStatus.authenticated,
-    user: AppUser(id: 'manager', code: 'M001', name: '销售负责人'),
+    user: AppUser(
+      id: 'manager',
+      employeeId: 'manager-employee',
+      code: 'M001',
+      name: '销售负责人',
+    ),
   );
 }
 
@@ -47,6 +52,10 @@ class _Api extends ApiClient {
   final reads = <String>[];
   final writes = <({String path, Map<String, dynamic> body})>[];
   bool reverseAvailable = false;
+  bool loseReverseResponse = false;
+  String? reversalEvidenceMismatch;
+  int orderRevision = 7;
+  Map<String, dynamic>? reversalDecision;
   bool loseBatchResponse = false;
   bool multiPage = false;
   @override
@@ -125,10 +134,11 @@ class _Api extends ApiClient {
         'currencyName': '人民币',
         'totalOriginal': '90',
         'reviewStage': 'SALES_MANAGER',
-        'reviewRevision': 7,
+        'reviewRevision': orderRevision,
         'reviewApproved': reverseAvailable,
         'reviewRejected': false,
         'managerReversible': reverseAvailable,
+        'managerDecisions': [if (reversalDecision != null) reversalDecision],
         'items': <Map<String, dynamic>>[],
         'qtyChanges': <Map<String, dynamic>>[],
         'commercialChanges': <Map<String, dynamic>>[],
@@ -155,6 +165,38 @@ class _Api extends ApiClient {
     ));
     if (loseBatchResponse && path.endsWith('/orders/batch')) {
       throw NetworkTimeoutException();
+    }
+    if (path.endsWith('/orders/order-1/reverse')) {
+      final request = writes.last.body;
+      reverseAvailable = false;
+      orderRevision++;
+      reversalDecision = {
+        'decisionId': request['decisionId'],
+        'revision': orderRevision,
+        'action': 'REVERSED',
+        'actorId': 'manager-employee',
+        'reason': request['reason'],
+      };
+      switch (reversalEvidenceMismatch) {
+        case 'decisionId':
+          reversalDecision!['decisionId'] = 'different-decision';
+        case 'revision':
+          reversalDecision!['revision'] = orderRevision + 1;
+        case 'currentRevision':
+          orderRevision -= 2;
+        case 'laterRevision':
+          orderRevision++;
+          reverseAvailable = true;
+        case 'actor':
+          reversalDecision!['actorId'] = 'other-employee';
+        case 'reason':
+          reversalDecision!['reason'] = '另一个反审核原因';
+        case 'action':
+          reversalDecision!['action'] = 'APPROVED';
+        case 'absent':
+          reversalDecision = null;
+      }
+      if (loseReverseResponse) throw NetworkTimeoutException();
     }
     return {};
   }
@@ -378,6 +420,69 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     },
   );
+  for (final mismatch in <String?>[
+    null,
+    'decisionId',
+    'revision',
+    'currentRevision',
+    'laterRevision',
+    'actor',
+    'reason',
+    'action',
+    'absent',
+  ]) {
+    testWidgets(
+      'lost reversal response requires the exact immutable decision: $mismatch',
+      (tester) async {
+        final api = _Api()
+          ..reverseAvailable = true
+          ..loseReverseResponse = true
+          ..reversalEvidenceMismatch = mismatch;
+        await _pump(tester, api, '/sales/manager-review/orders/order-1', {
+          Perm.salesOrderManagerView,
+          Perm.salesOrderManagerReverse,
+        });
+        await tester.tap(find.byKey(const Key('sales-manager-order-reverse')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.widgetWithText(TextField, '反审核原因'),
+          '重新核对交期',
+        );
+        await tester.tap(find.text('确认反审核'));
+        await tester.pumpAndSettle();
+        expect(
+          api.writes.single.path,
+          '/sales/manager-review/orders/order-1/reverse',
+        );
+        expect(api.writes.single.body, containsPair('expectedRevision', 7));
+        expect(
+          api.writes.single.body['decisionId'],
+          matches(RegExp(r'^[0-9a-f-]{36}$')),
+        );
+        expect(find.textContaining('结果尚未确认'), findsWidgets);
+        await tester.tap(
+          find.byKey(const Key('review-task-draft-read-recovery')),
+        );
+        await tester.pumpAndSettle();
+        if (mismatch == null || mismatch == 'laterRevision') {
+          expect(find.text('订单审核'), findsOneWidget);
+          expect(find.textContaining('结果尚未确认'), findsNothing);
+        } else {
+          expect(find.textContaining('结果尚未确认'), findsWidgets);
+          await tester.tap(
+            find.byKey(const Key('review-task-draft-read-recovery')),
+          );
+          await tester.pumpAndSettle();
+          expect(find.textContaining('结果尚未确认'), findsWidgets);
+        }
+        expect(api.writes, hasLength(1));
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
+  }
   testWidgets(
     'quote approval submits the manager version and lease to the manager endpoint',
     (tester) async {

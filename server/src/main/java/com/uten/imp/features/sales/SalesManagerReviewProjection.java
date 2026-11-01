@@ -15,6 +15,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class SalesManagerReviewProjection {
     private final ObjectMapper mapper;
+    private final jakarta.persistence.EntityManager em;
+
+    public record Decision(java.util.UUID decisionId,long revision,String action,java.util.UUID actorId,String reason) {}
 
     public Map<String,Object> quote(QuoteFinanceReviewDto review) {
         Map<String,Object> result=base(review);
@@ -38,6 +41,11 @@ public class SalesManagerReviewProjection {
     }
     public Map<String,Object> order(SalesOrderFinanceReviewDto review) {
         Map<String,Object> result=base(review);
+        @SuppressWarnings("unchecked") List<Object[]> decisions=em.createNativeQuery(
+                "SELECT id,revision,action,actor_id,reason FROM sales_order_manager_review_events WHERE order_id=:id ORDER BY revision,id")
+                .setParameter("id",review.orderId()).getResultList();
+        result.put("managerDecisions",decisions.stream().map(row -> new Decision((java.util.UUID)row[0],
+                ((Number)row[1]).longValue(),(String)row[2],(java.util.UUID)row[3],(String)row[4])).toList());
         rename(result,Map.ofEntries(
                 Map.entry("financeConfirmed","reviewApproved"),Map.entry("financeConfirmedAt","reviewApprovedAt"),
                 Map.entry("financeConfirmedByName","reviewApprovedByName"),Map.entry("financeConfirmRemark","reviewRemark"),

@@ -58,5 +58,5 @@ public class SalesManagerReviewController {
     @PostMapping("/orders/{id}/reject") @PreAuthorize("hasAuthority('sales_order_manager:view') and hasAuthority('sales_order_manager:reject')")
     public void rejectOrder(@PathVariable UUID id,@Valid @RequestBody SalesOrderFinanceConfirmService.FinanceRejectRequest request) { service.rejectOrder(id,request); }
     @PostMapping("/orders/{id}/reverse") @PreAuthorize("hasAuthority('sales_order_manager:view') and hasAuthority('sales_order_manager:reverse')")
-    public void reverseOrder(@PathVariable UUID id,@Valid @RequestBody SalesOrderFinanceConfirmService.FinanceRejectRequest request) { service.reverseOrder(id,request); }
+    public void reverseOrder(@PathVariable UUID id,@Valid @RequestBody SalesManagerReviewService.ReverseRequest request) { service.reverseOrder(id,request); }
 }

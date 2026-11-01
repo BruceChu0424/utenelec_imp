@@ -80887,7 +80887,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "f64d5ab543d3b5fd2f159974875f4184783d7c8876409aff6709f279edc6520b"
+          "targetSha256": "a057094efdf6c2163e645068f3bf1dc68ecd58829ab690ba28426340d98d76dc"
         },
         {
           "directive": "import",
@@ -80923,7 +80923,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4c7f67e645e08d56659ac072101bdb2bd359496a4f28fe8d03b56f2bc01ad319"
+          "targetSha256": "bc87a23d3b7cced4ee857fa7db59a463d63c6e0270d6fb88180ca4b02f4def6c"
         },
         {
           "directive": "import",
@@ -80997,8 +80997,8 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-          "sha256": "4c7f67e645e08d56659ac072101bdb2bd359496a4f28fe8d03b56f2bc01ad319",
-          "lineCount": 240,
+          "sha256": "bc87a23d3b7cced4ee857fa7db59a463d63c6e0270d6fb88180ca4b02f4def6c",
+          "lineCount": 245,
           "apiEndpointReferences": [
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirmationPending",
@@ -81056,7 +81056,7 @@
             },
             {
               "symbol": "ApiEndpoints.salesOrderFinanceReject",
-              "line": 217,
+              "line": 222,
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -81086,14 +81086,14 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 202,
+              "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 216,
+              "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
@@ -81304,13 +81304,13 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 202,
+              "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 216,
+              "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             }
@@ -81341,13 +81341,13 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 202,
+              "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/manager-review"
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 216,
+              "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/manager-review"
             }
@@ -81372,13 +81372,13 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 202,
+              "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 216,
+              "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             }
@@ -81427,7 +81427,7 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 217,
+              "line": 222,
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "controllerBase": "/api/sales/orders"
             }
@@ -81476,7 +81476,7 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 217,
+              "line": 222,
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "controllerBase": "/api/sales/orders"
             }
@@ -81492,18 +81492,18 @@
       "id": "page:finance/pages/finance_sales_order_review_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_sales_order_review_page.dart",
-      "sha256": "abde1585a81a2e31b1aa3799e4f6488b5612e9beee2dd3a1c5799a109234b3bf",
-      "lineCount": 1543,
+      "sha256": "2cd784814d9ffb8092c444041722e15eb03ed24c4eb53abd18ed6f76d983c421",
+      "lineCount": 1578,
       "classes": [
         {
           "name": "FinanceSalesOrderReviewPage",
-          "line": 67,
+          "line": 68,
           "role": "page-class",
           "extends": "ConsumerStatefulWidget"
         },
         {
           "name": "_FinanceSalesOrderReviewPageState",
-          "line": 84,
+          "line": 85,
           "role": "state-class",
           "extends": "ConsumerState<FinanceSalesOrderReviewPage>\n    with\n        FormDraftMixin<FinanceSalesOrderReviewPage>,\n        ReviewTaskDraftMixin<FinanceSalesOrderReviewPage>,\n        ReviewAuthorityRefreshMixin<FinanceSalesOrderReviewPage>"
         }
@@ -81619,9 +81619,21 @@
         },
         {
           "directive": "import",
+          "uri": "package:uuid/uuid.dart",
+          "source": null,
+          "line": 24,
+          "role": "other",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": false,
+          "targetSha256": null
+        },
+        {
+          "directive": "import",
           "uri": "../../../components/buttons/uten_back_button.dart",
           "source": "lib/components/buttons/uten_back_button.dart",
-          "line": 25,
+          "line": 26,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81633,7 +81645,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_button.dart",
           "source": "lib/components/buttons/uten_button.dart",
-          "line": 26,
+          "line": 27,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81645,7 +81657,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_totals_summary_bar.dart",
           "source": "lib/components/data_display/uten_totals_summary_bar.dart",
-          "line": 27,
+          "line": 28,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81657,7 +81669,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_detail_summary_card.dart",
           "source": "lib/components/data_display/uten_detail_summary_card.dart",
-          "line": 28,
+          "line": 29,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81669,7 +81681,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_revision_table.dart",
           "source": "lib/components/data_display/uten_revision_table.dart",
-          "line": 29,
+          "line": 30,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81681,7 +81693,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_status_badge.dart",
           "source": "lib/components/data_display/uten_status_badge.dart",
-          "line": 30,
+          "line": 31,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81693,7 +81705,7 @@
           "directive": "import",
           "uri": "../widgets/sales_order_revision_table.dart",
           "source": "lib/features/finance/widgets/sales_order_revision_table.dart",
-          "line": 31,
+          "line": 32,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -81705,7 +81717,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_reviewer_responsibility_notice.dart",
           "source": "lib/components/feedback/uten_reviewer_responsibility_notice.dart",
-          "line": 32,
+          "line": 33,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81717,7 +81729,7 @@
           "directive": "import",
           "uri": "../../../components/forms/maker_audit_fields.dart",
           "source": "lib/components/forms/maker_audit_fields.dart",
-          "line": 33,
+          "line": 34,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81729,7 +81741,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_field_message.dart",
           "source": "lib/components/inputs/uten_field_message.dart",
-          "line": 34,
+          "line": 35,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81741,7 +81753,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_input_decoration.dart",
           "source": "lib/components/inputs/uten_input_decoration.dart",
-          "line": 35,
+          "line": 36,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81753,7 +81765,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_busy_overlay.dart",
           "source": "lib/components/feedback/uten_busy_overlay.dart",
-          "line": 36,
+          "line": 37,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81765,7 +81777,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_app_bar.dart",
           "source": "lib/components/layout/uten_app_bar.dart",
-          "line": 37,
+          "line": 38,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81777,7 +81789,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_collapsing_header_scroll_view.dart",
           "source": "lib/components/layout/uten_collapsing_header_scroll_view.dart",
-          "line": 38,
+          "line": 39,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81789,7 +81801,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_content_container.dart",
           "source": "lib/components/layout/uten_content_container.dart",
-          "line": 39,
+          "line": 40,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81801,7 +81813,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_floating_action_group.dart",
           "source": "lib/components/layout/uten_floating_action_group.dart",
-          "line": 40,
+          "line": 41,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81813,7 +81825,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_goods_identity_cell.dart",
           "source": "lib/components/data_display/uten_goods_identity_cell.dart",
-          "line": 41,
+          "line": 42,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81825,7 +81837,7 @@
           "directive": "import",
           "uri": "../../../core/l10n/gen/app_localizations.dart",
           "source": "lib/core/l10n/gen/app_localizations.dart",
-          "line": 42,
+          "line": 43,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -81837,7 +81849,7 @@
           "directive": "import",
           "uri": "../../../core/network/api_exception.dart",
           "source": "lib/core/network/api_exception.dart",
-          "line": 43,
+          "line": 44,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -81849,7 +81861,7 @@
           "directive": "import",
           "uri": "../../../core/theme/uten_tokens.dart",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 44,
+          "line": 45,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -81861,7 +81873,7 @@
           "directive": "import",
           "uri": "../../../core/ui/app_notification.dart",
           "source": "lib/core/ui/app_notification.dart",
-          "line": 45,
+          "line": 46,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -81873,7 +81885,7 @@
           "directive": "import",
           "uri": "../../../shared/auth/permissions.dart",
           "source": "lib/shared/auth/permissions.dart",
-          "line": 46,
+          "line": 47,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81885,7 +81897,7 @@
           "directive": "import",
           "uri": "../../../shared/concurrency/task_claim_session.dart",
           "source": "lib/shared/concurrency/task_claim_session.dart",
-          "line": 47,
+          "line": 48,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81897,7 +81909,7 @@
           "directive": "import",
           "uri": "../../../shared/measurement/exact_measurement_totals.dart",
           "source": "lib/shared/measurement/exact_measurement_totals.dart",
-          "line": 48,
+          "line": 49,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81909,7 +81921,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/session_provider.dart",
           "source": "lib/shared/providers/session_provider.dart",
-          "line": 49,
+          "line": 50,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81921,7 +81933,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/list_refresh_provider.dart",
           "source": "lib/shared/providers/list_refresh_provider.dart",
-          "line": 50,
+          "line": 51,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81933,7 +81945,7 @@
           "directive": "import",
           "uri": "../../../shared/widgets/finance_review_claim_notice.dart",
           "source": "lib/shared/widgets/finance_review_claim_notice.dart",
-          "line": 51,
+          "line": 52,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81945,7 +81957,7 @@
           "directive": "import",
           "uri": "../../../shared/widgets/sales_document_layout.dart",
           "source": "lib/shared/widgets/sales_document_layout.dart",
-          "line": 52,
+          "line": 53,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -81957,7 +81969,7 @@
           "directive": "import",
           "uri": "../../basic_data/widgets/master_data_table_view.dart",
           "source": "lib/features/basic_data/widgets/master_data_table_view.dart",
-          "line": 53,
+          "line": 54,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -81969,31 +81981,31 @@
           "directive": "import",
           "uri": "../models/sales_order_finance_confirmation.dart",
           "source": "lib/features/finance/models/sales_order_finance_confirmation.dart",
-          "line": 54,
+          "line": 55,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "f64d5ab543d3b5fd2f159974875f4184783d7c8876409aff6709f279edc6520b"
+          "targetSha256": "a057094efdf6c2163e645068f3bf1dc68ecd58829ab690ba28426340d98d76dc"
         },
         {
           "directive": "import",
           "uri": "../repositories/sales_order_finance_confirmation_repository.dart",
           "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-          "line": 55,
+          "line": 56,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4c7f67e645e08d56659ac072101bdb2bd359496a4f28fe8d03b56f2bc01ad319"
+          "targetSha256": "bc87a23d3b7cced4ee857fa7db59a463d63c6e0270d6fb88180ca4b02f4def6c"
         },
         {
           "directive": "import",
           "uri": "../widgets/finance_document_unapproval_action.dart",
           "source": "lib/features/finance/widgets/finance_document_unapproval_action.dart",
-          "line": 56,
+          "line": 57,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -82005,7 +82017,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/review_task_draft.dart",
           "source": "lib/shared/drafts/review_task_draft.dart",
-          "line": 57,
+          "line": 58,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82017,7 +82029,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/review_authority_refresh_mixin.dart",
           "source": "lib/shared/drafts/review_authority_refresh_mixin.dart",
-          "line": 58,
+          "line": 59,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82029,7 +82041,7 @@
           "directive": "import",
           "uri": "../../../shared/widgets/sales_order_money_summary_card.dart",
           "source": "lib/shared/widgets/sales_order_money_summary_card.dart",
-          "line": 59,
+          "line": 60,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82041,7 +82053,7 @@
           "directive": "import",
           "uri": "../../../shared/badges/badge_registry.dart",
           "source": "lib/shared/badges/badge_registry.dart",
-          "line": 60,
+          "line": 61,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82053,7 +82065,7 @@
           "directive": "import",
           "uri": "../../../shared/formatters/exact_decimal.dart",
           "source": "lib/shared/formatters/exact_decimal.dart",
-          "line": 61,
+          "line": 62,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82065,7 +82077,7 @@
           "directive": "import",
           "uri": "../../../shared/formatters/money_display.dart",
           "source": "lib/shared/formatters/money_display.dart",
-          "line": 62,
+          "line": 63,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82077,7 +82089,7 @@
           "directive": "import",
           "uri": "../../../shared/formatters/quantity_display.dart",
           "source": "lib/shared/formatters/quantity_display.dart",
-          "line": 63,
+          "line": 64,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82089,7 +82101,7 @@
           "directive": "import",
           "uri": "../widgets/finance_party_snapshot_card.dart",
           "source": "lib/features/finance/widgets/finance_party_snapshot_card.dart",
-          "line": 64,
+          "line": 65,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -82101,7 +82113,7 @@
           "directive": "import",
           "uri": "package:uten_imp/components/layout/uten_page_layout.dart",
           "source": "lib/components/layout/uten_page_layout.dart",
-          "line": 65,
+          "line": 66,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -82115,157 +82127,157 @@
         {
           "symbol": "Perm.salesOrderManagerView",
           "literal": "sales_order_manager:view",
-          "line": 97,
+          "line": 98,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 461
         },
         {
           "symbol": "Perm.salesOrderManagerConfirm",
           "literal": "sales_order_manager:confirm",
-          "line": 98,
+          "line": 99,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 462
         },
         {
           "symbol": "Perm.salesOrderManagerReject",
           "literal": "sales_order_manager:reject",
-          "line": 99,
+          "line": 100,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 463
         },
         {
           "symbol": "Perm.salesOrderManagerReverse",
           "literal": "sales_order_manager:reverse",
-          "line": 100,
+          "line": 101,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 464
         },
         {
           "symbol": "Perm.salesOrderFinanceView",
           "literal": "sales_order_finance:view",
-          "line": 103,
+          "line": 104,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 466
         },
         {
           "symbol": "Perm.salesOrderFinanceConfirm",
           "literal": "sales_order_finance:confirm",
-          "line": 104,
+          "line": 105,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 467
         },
         {
           "symbol": "Perm.salesOrderReverse",
           "literal": "sales_order:reverse",
-          "line": 105,
+          "line": 106,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 587
         },
         {
           "symbol": "Perm.salesOrderManagerView",
           "literal": "sales_order_manager:view",
-          "line": 235,
+          "line": 259,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 461
         },
         {
           "symbol": "Perm.salesOrderFinanceView",
           "literal": "sales_order_finance:view",
-          "line": 236,
+          "line": 260,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 466
         },
         {
           "symbol": "Perm.salesOrderManagerConfirm",
           "literal": "sales_order_manager:confirm",
-          "line": 238,
+          "line": 262,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 462
         },
         {
           "symbol": "Perm.salesOrderFinanceConfirm",
           "literal": "sales_order_finance:confirm",
-          "line": 239,
+          "line": 263,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 467
         },
         {
           "symbol": "Perm.salesOrderManagerView",
           "literal": "sales_order_manager:view",
-          "line": 250,
+          "line": 274,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 461
         },
         {
           "symbol": "Perm.salesOrderManagerReverse",
           "literal": "sales_order_manager:reverse",
-          "line": 251,
+          "line": 275,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 464
         },
         {
           "symbol": "Perm.salesOrderManagerView",
           "literal": "sales_order_manager:view",
-          "line": 329,
+          "line": 364,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 461
         },
         {
           "symbol": "Perm.salesOrderManagerReject",
           "literal": "sales_order_manager:reject",
-          "line": 330,
+          "line": 365,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 463
         },
         {
           "symbol": "Perm.financeViewAll",
           "literal": "finance:view:all",
-          "line": 789,
+          "line": 824,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 495
         },
         {
           "symbol": "Perm.customerPrepaymentView",
           "literal": "customer_prepayment:view",
-          "line": 790,
+          "line": 825,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 477
         },
         {
           "symbol": "Perm.attachmentView",
           "literal": "attachment:view",
-          "line": 906,
+          "line": 941,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 86
         },
         {
           "symbol": "Perm.salesQuoteView",
           "literal": "sales_quote:view",
-          "line": 994,
+          "line": 1029,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 297
         },
         {
           "symbol": null,
           "literal": "sales_order:view",
-          "line": 968,
+          "line": 1003,
           "definitionSource": "lib/features/finance/pages/finance_sales_order_review_page.dart",
-          "definitionLine": 968
+          "definitionLine": 1003
         },
         {
           "symbol": null,
           "literal": "sales_order:reverse",
-          "line": 969,
+          "line": 1004,
           "definitionSource": "lib/features/finance/pages/finance_sales_order_review_page.dart",
-          "definitionLine": 969
+          "definitionLine": 1004
         }
       ],
       "apiEndpointReferences": [],
       "directRepositoryEvidence": [
         {
           "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-          "sha256": "4c7f67e645e08d56659ac072101bdb2bd359496a4f28fe8d03b56f2bc01ad319",
-          "lineCount": 240,
+          "sha256": "bc87a23d3b7cced4ee857fa7db59a463d63c6e0270d6fb88180ca4b02f4def6c",
+          "lineCount": 245,
           "apiEndpointReferences": [
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirmationPending",
@@ -82323,7 +82335,7 @@
             },
             {
               "symbol": "ApiEndpoints.salesOrderFinanceReject",
-              "line": 217,
+              "line": 222,
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -82353,14 +82365,14 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 202,
+              "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 216,
+              "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
@@ -82372,7 +82384,7 @@
         {
           "symbol": "canDispatchReviewCommand",
           "receiver": null,
-          "line": 154,
+          "line": 155,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "dispatch"
@@ -82382,7 +82394,7 @@
         {
           "symbol": "restoreReviewInputs",
           "receiver": null,
-          "line": 175,
+          "line": 176,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "restore"
@@ -82392,7 +82404,7 @@
         {
           "symbol": "closeRecoveredReview",
           "receiver": null,
-          "line": 226,
+          "line": 250,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "close"
@@ -82402,7 +82414,7 @@
         {
           "symbol": "_closeAfterDecision",
           "receiver": null,
-          "line": 226,
+          "line": 250,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "close"
@@ -82412,7 +82424,7 @@
         {
           "symbol": "_reverseManager",
           "receiver": null,
-          "line": 254,
+          "line": 278,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "reverse"
@@ -82422,7 +82434,7 @@
         {
           "symbol": "submitReviewCommand",
           "receiver": null,
-          "line": 297,
+          "line": 327,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -82432,7 +82444,7 @@
         {
           "symbol": "reverseManager",
           "receiver": null,
-          "line": 301,
+          "line": 331,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "reverse"
@@ -82442,7 +82454,7 @@
         {
           "symbol": "finishReviewDraft",
           "receiver": null,
-          "line": 309,
+          "line": 344,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -82452,7 +82464,7 @@
         {
           "symbol": "startFormDraftIdentityGuard",
           "receiver": null,
-          "line": 339,
+          "line": 374,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -82462,22 +82474,12 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 340,
+          "line": 375,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
           ],
           "evidenceLine": "WidgetsBinding.instance.addPostFrameCallback((_) => _load());"
-        },
-        {
-          "symbol": "removeListener",
-          "receiver": null,
-          "line": 346,
-          "kind": "action-like-invocation",
-          "actionNameHints": [
-            "remove"
-          ],
-          "evidenceLine": "_reviewClaim?.removeListener(_claimChanged);"
         },
         {
           "symbol": "removeListener",
@@ -82490,9 +82492,19 @@
           "evidenceLine": "_reviewClaim?.removeListener(_claimChanged);"
         },
         {
+          "symbol": "removeListener",
+          "receiver": null,
+          "line": 416,
+          "kind": "action-like-invocation",
+          "actionNameHints": [
+            "remove"
+          ],
+          "evidenceLine": "_reviewClaim?.removeListener(_claimChanged);"
+        },
+        {
           "symbol": "_confirm",
           "receiver": null,
-          "line": 466,
+          "line": 501,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "confirm"
@@ -82502,7 +82514,7 @@
         {
           "symbol": "submitReviewCommand",
           "receiver": null,
-          "line": 548,
+          "line": 583,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -82512,7 +82524,7 @@
         {
           "symbol": "confirm",
           "receiver": null,
-          "line": 556,
+          "line": 591,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -82522,7 +82534,7 @@
         {
           "symbol": "finishReviewDraft",
           "receiver": null,
-          "line": 577,
+          "line": 612,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -82532,7 +82544,7 @@
         {
           "symbol": "_closeAfterDecision",
           "receiver": null,
-          "line": 583,
+          "line": 618,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "close"
@@ -82542,7 +82554,7 @@
         {
           "symbol": "confirmFormDraftExit",
           "receiver": null,
-          "line": 602,
+          "line": 637,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -82552,7 +82564,7 @@
         {
           "symbol": "_closeAfterDecision",
           "receiver": null,
-          "line": 623,
+          "line": 658,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "close"
@@ -82562,7 +82574,7 @@
         {
           "symbol": "_reject",
           "receiver": null,
-          "line": 633,
+          "line": 668,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "reject"
@@ -82572,7 +82584,7 @@
         {
           "symbol": "submitReviewCommand",
           "receiver": null,
-          "line": 723,
+          "line": 758,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -82582,7 +82594,7 @@
         {
           "symbol": "reject",
           "receiver": null,
-          "line": 731,
+          "line": 766,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "reject"
@@ -82592,7 +82604,7 @@
         {
           "symbol": "finishReviewDraft",
           "receiver": null,
-          "line": 752,
+          "line": 787,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -82602,7 +82614,7 @@
         {
           "symbol": "_closeAfterDecision",
           "receiver": null,
-          "line": 756,
+          "line": 791,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "close"
@@ -82612,7 +82624,7 @@
         {
           "symbol": "removeListener",
           "receiver": null,
-          "line": 775,
+          "line": 810,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -82622,7 +82634,7 @@
         {
           "symbol": "_rejectRecordCard",
           "receiver": null,
-          "line": 912,
+          "line": 947,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "reject"
@@ -82632,7 +82644,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 1107,
+          "line": 1142,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -82642,7 +82654,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 1188,
+          "line": 1223,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -82652,7 +82664,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 1224,
+          "line": 1259,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -82662,7 +82674,7 @@
         {
           "symbol": "_rejectRecordCard",
           "receiver": null,
-          "line": 1492,
+          "line": 1527,
           "kind": "action-ui-factory",
           "actionNameHints": [
             "reject"
@@ -82672,7 +82684,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 1507,
+          "line": 1542,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -82682,7 +82694,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 1517,
+          "line": 1552,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -82691,7 +82703,7 @@
         },
         {
           "symbol": "_closeAfterDecision",
-          "line": 989,
+          "line": 1024,
           "kind": "callback-reference",
           "callback": "onCompleted",
           "actionNameHints": [
@@ -82700,7 +82712,7 @@
         },
         {
           "symbol": "_canReject",
-          "line": 1025,
+          "line": 1060,
           "kind": "callback-reference",
           "callback": "onPressed",
           "actionNameHints": [
@@ -82709,7 +82721,7 @@
         },
         {
           "symbol": "_canConfirm",
-          "line": 1036,
+          "line": 1071,
           "kind": "callback-reference",
           "callback": "onPressed",
           "actionNameHints": [
@@ -82762,13 +82774,13 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 202,
+              "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 216,
+              "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             }
@@ -82799,13 +82811,13 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 202,
+              "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/manager-review"
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 216,
+              "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/manager-review"
             }
@@ -82830,13 +82842,13 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 202,
+              "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 216,
+              "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             }
@@ -82885,7 +82897,7 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 217,
+              "line": 222,
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "controllerBase": "/api/sales/orders"
             }
@@ -82934,7 +82946,7 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 217,
+              "line": 222,
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "controllerBase": "/api/sales/orders"
             }
@@ -160490,7 +160502,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4c7f67e645e08d56659ac072101bdb2bd359496a4f28fe8d03b56f2bc01ad319"
+          "targetSha256": "bc87a23d3b7cced4ee857fa7db59a463d63c6e0270d6fb88180ca4b02f4def6c"
         }
       ],
       "partUnits": [],
@@ -160499,8 +160511,8 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-          "sha256": "4c7f67e645e08d56659ac072101bdb2bd359496a4f28fe8d03b56f2bc01ad319",
-          "lineCount": 240,
+          "sha256": "bc87a23d3b7cced4ee857fa7db59a463d63c6e0270d6fb88180ca4b02f4def6c",
+          "lineCount": 245,
           "apiEndpointReferences": [
             {
               "symbol": "ApiEndpoints.salesOrderFinanceConfirmationPending",
@@ -160558,7 +160570,7 @@
             },
             {
               "symbol": "ApiEndpoints.salesOrderFinanceReject",
-              "line": 217,
+              "line": 222,
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -160588,14 +160600,14 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 202,
+              "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 216,
+              "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
@@ -160799,13 +160811,13 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 202,
+              "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 216,
+              "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             }
@@ -160836,13 +160848,13 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 202,
+              "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/manager-review"
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 216,
+              "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/manager-review"
             }
@@ -160867,13 +160879,13 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 202,
+              "line": 203,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 216,
+              "line": 221,
               "template": "/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             }
@@ -160922,7 +160934,7 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 217,
+              "line": 222,
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "controllerBase": "/api/sales/orders"
             }
@@ -160971,7 +160983,7 @@
             },
             {
               "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-              "line": 217,
+              "line": 222,
               "template": "/sales/orders/{orderId}/finance-confirmation/reject",
               "controllerBase": "/api/sales/orders"
             }
@@ -245616,7 +245628,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/sales/SalesManagerReviewController.java",
-      "sha256": "f83804417cae1fd772f881196bcc9586da8af3a65fc0303d630490b3ae42cdab",
+      "sha256": "62a3aa92a0b35017cc615c702d756518017133f051b1a779760de1752eac3925",
       "lineCount": 62,
       "class": "SalesManagerReviewController",
       "declaredBasePaths": [
@@ -252719,8 +252731,8 @@
     },
     {
       "source": "lib/features/finance/models/sales_order_finance_confirmation.dart",
-      "sha256": "f64d5ab543d3b5fd2f159974875f4184783d7c8876409aff6709f279edc6520b",
-      "lineCount": 666
+      "sha256": "a057094efdf6c2163e645068f3bf1dc68ecd58829ab690ba28426340d98d76dc",
+      "lineCount": 687
     },
     {
       "source": "lib/features/finance/models/sales_quote_finance_review.dart",
@@ -252814,8 +252826,8 @@
     },
     {
       "source": "lib/features/finance/pages/finance_sales_order_review_page.dart",
-      "sha256": "abde1585a81a2e31b1aa3799e4f6488b5612e9beee2dd3a1c5799a109234b3bf",
-      "lineCount": 1543
+      "sha256": "2cd784814d9ffb8092c444041722e15eb03ed24c4eb53abd18ed6f76d983c421",
+      "lineCount": 1578
     },
     {
       "source": "lib/features/finance/pages/finance_sales_shipment_audit_page.dart",
@@ -252899,8 +252911,8 @@
     },
     {
       "source": "lib/features/finance/repositories/sales_order_finance_confirmation_repository.dart",
-      "sha256": "4c7f67e645e08d56659ac072101bdb2bd359496a4f28fe8d03b56f2bc01ad319",
-      "lineCount": 240
+      "sha256": "bc87a23d3b7cced4ee857fa7db59a463d63c6e0270d6fb88180ca4b02f4def6c",
+      "lineCount": 245
     },
     {
       "source": "lib/features/finance/repositories/sales_quote_finance_review_repository.dart",
@@ -257429,7 +257441,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/sales/SalesManagerReviewController.java",
-      "sha256": "f83804417cae1fd772f881196bcc9586da8af3a65fc0303d630490b3ae42cdab",
+      "sha256": "62a3aa92a0b35017cc615c702d756518017133f051b1a779760de1752eac3925",
       "lineCount": 62
     },
     {

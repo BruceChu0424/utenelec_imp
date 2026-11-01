@@ -572,6 +572,8 @@ class AuditTriggerCoverageMigrationContractTest {
                         "production_workshop_material_return_slices",
                         "production_workshop_return_preplan_events", "sales_order_qty_change_logs",
                         "sales_order_revision_logs", "sales_quote_revision_logs",
+                        // V978: immutable manager decisions retain actor, revision, reason and original snapshot.
+                        "sales_order_manager_review_events",
                         "sales_return_disposition_events",
                         "sales_return_quality_events", "sales_shipment_finance_release_events",
                         "sales_shipment_submission_events", "sales_shipment_warehouse_events",

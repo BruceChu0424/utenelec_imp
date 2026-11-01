@@ -63,7 +63,7 @@ CREATE TABLE sales_order_manager_review_events (
 CREATE INDEX idx_sales_order_manager_review_events_order ON sales_order_manager_review_events(order_id,created_at);
 CREATE TRIGGER trg_sales_order_manager_review_events_immutable BEFORE UPDATE OR DELETE ON sales_order_manager_review_events
 FOR EACH ROW EXECUTE FUNCTION fn_sales_order_revision_logs_immutable();
-SELECT fn_audit_track_table('sales_order_manager_review_events','FULL','data_change',false,NULL,true,NULL);
+-- Immutable actor-bearing decisions are their own evidence (ADR-105 NONE/ledger), not duplicated into generic row audit.
 
 INSERT INTO permissions(code,name,module,category,sort_order,action_type,description,grant_policy,high_risk,baseline,sensitivity)
 VALUES

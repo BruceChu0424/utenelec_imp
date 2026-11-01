@@ -8,7 +8,7 @@
     "mergeMainAllowed": false,
     "productionDeploymentAllowed": false
   },
-  "inventorySha256": "53bcb325e9c63a5b6a2af5ba71ba910d0394cff902eedae859ca1f67bff5d3db",
+  "inventorySha256": "52281ec3fbd317440d91f21e15d3860a499d5406274ef5eeee518039d13afdf9",
   "baselineCounts": {
     "businessPagePackages": 214,
     "commonAndFlowPackages": 136,
@@ -6593,7 +6593,7 @@
       "feature": "finance",
       "businessSource": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
       "sourceSha256": "896210256588933db4d1b56d6c0ef1002a51747b53c1fefcf9f439a057c563e3",
-      "sourceProofSha256": "bf2c424dce27887a8f012c1ee67e4a54969f996794c41b0260020287c4fd7260",
+      "sourceProofSha256": "715c04ab7d80c689b29433f9596c8b156d8d6e6339642c818050c2a95b71ce70",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -6633,8 +6633,8 @@
       "phase": "D",
       "feature": "finance",
       "businessSource": "lib/features/finance/pages/finance_sales_order_review_page.dart",
-      "sourceSha256": "abde1585a81a2e31b1aa3799e4f6488b5612e9beee2dd3a1c5799a109234b3bf",
-      "sourceProofSha256": "b10ca51834e3f2c447a11d209b792db117b426f6c167bf528d53d886b98aebd7",
+      "sourceSha256": "2cd784814d9ffb8092c444041722e15eb03ed24c4eb53abd18ed6f76d983c421",
+      "sourceProofSha256": "2ae3cbaae56c9f4cbf54ee3915fbfa1ceba4a4b615d8a511493f75d36472eb6a",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -6663,8 +6663,8 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [],
-      "notes": "2026-10-31 订货审核新增负责人前置阶段，Flutter 复用审核详情；WPF 仍未迁移。主管批准只进入财务；批量原子性、修订重审、独立反审核和未知提交恢复须按共享合同实现。",
-      "lastUpdated": "2026-11-01T01:47:04.037476+00:00"
+      "notes": "2026-10-31 负责人订货审核仍未迁移；反审核须先持久化decisionId并按不可变事件身份、下一修订号、员工及原因核对未知结果，不能凭状态猜成功或重放。合同见contracts/sales-manager-review/v1.json。",
+      "lastUpdated": "2026-11-01T03:32:33.123470+00:00"
     },
     {
       "id": "W7-BIZ-075",
@@ -9300,7 +9300,7 @@
       "feature": "sales",
       "businessSource": "lib/features/sales/pages/sales_manager_review_page.dart",
       "sourceSha256": "147138cc8190237c212b594123e078004675921b573e3744e3bca287149db77c",
-      "sourceProofSha256": "82c18adf01ce4508e2419a552f16b661fc44e9380550894eae0c62368c70e700",
+      "sourceProofSha256": "df7193fe2dba64e4ed6380b679a07fd6e016ff98578e0655e326906ad0fdfdc3",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",

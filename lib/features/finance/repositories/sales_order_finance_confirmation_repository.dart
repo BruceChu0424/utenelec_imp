@@ -195,12 +195,17 @@ class DioSalesOrderFinanceConfirmationRepository
 
   Future<void> reverseManager(
     String orderId, {
+    required String decisionId,
     required String reason,
     required int expectedRevision,
   }) async {
     await api.post(
       '/sales/manager-review/orders/${Uri.encodeComponent(orderId)}/reverse',
-      body: {'reason': reason, 'expectedRevision': expectedRevision},
+      body: {
+        'decisionId': decisionId,
+        'reason': reason,
+        'expectedRevision': expectedRevision,
+      },
     );
   }
 

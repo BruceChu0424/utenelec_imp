@@ -182,7 +182,7 @@ class SalesManagerReviewFlowPostgresTest {
         loginAs(f.finance()); var orderClaim=claims.claim("SALES_ORDER_FINANCE_CONFIRM",order.getId().toString());
         orderFinance.confirm(order.getId(),new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,revision(order.getId()),orderClaim.claimId()));
         assertThat(jdbc.queryForObject("SELECT finance_confirmed FROM sales_orders WHERE id=?",Boolean.class,order.getId())).isTrue();
-        loginAs(manager); assertConflict(() -> managers.reverseOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceRejectRequest("撤回",revision(order.getId()),null)));
+        loginAs(manager); assertConflict(() -> managers.reverseOrder(order.getId(),new com.uten.imp.features.sales.SalesManagerReviewService.ReverseRequest(UUID.randomUUID(),revision(order.getId()),"撤回")));
     }
 
     @Test void quoteRejectWithdrawResubmitAndReverseKeepSeparateAuditAndClaims() {
@@ -192,7 +192,14 @@ class SalesManagerReviewFlowPostgresTest {
         loginAs(manager); var rejected=finance.rejectManager(quote.getId(),new QuoteFinanceDecisionRequest(quote.getReviewRevision(),claim.claimId(),"请核对数量"));
         assertThat(rejected.status()).isZero();
         assertThat(jdbc.queryForObject("SELECT finance_returned_at IS NULL FROM sales_quotes WHERE id=?",Boolean.class,quote.getId())).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM notices WHERE aggregate_id=? AND audience_user_id=? AND source_event='SALES_QUOTE_MANAGER_REJECTED' AND resolved_at IS NULL",
+                Long.class,quote.getId(),f.sales())).isEqualTo(1);
+        loginAs(f.sales());
+        assertThat(noticeService.list(false)).anyMatch(notice ->
+                "SALES_QUOTE_MANAGER_REJECTED".equals(notice.sourceEvent()) && quote.getId().toString().equals(notice.aggregateId()));
         loginAs(f.sales()); var next=quotes.submit(quote.getId(),new QuoteActionRequest(rejected.reviewRevision()));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM notices WHERE aggregate_id=? AND source_event='SALES_QUOTE_MANAGER_REJECTED' AND resolved_at IS NULL",
+                Long.class,quote.getId())).isZero();
         assertThat(next.getManagerReview().pending()).isTrue();
         approveQuote(quote.getId(),manager);
         loginAs(f.finance()); var financeClaim=claims.claim(CLAIM,quote.getId().toString());
@@ -279,11 +286,12 @@ class SalesManagerReviewFlowPostgresTest {
         quotes.submit(q.getId(),new QuoteActionRequest(q.getReviewRevision()));
         loginAs(manager); var review=finance.managerReview(q.getId()); var claim=claims.claim(MANAGER_QUOTE,q.getId().toString());
         assertConflict(() -> finance.confirmManager(q.getId(),new QuoteFinanceDecisionRequest(review.reviewRevision(),claim.claimId(),null)));
-        var priced=finance.editManager(q.getId(),edit(review.reviewRevision(),claim.claimId(),List.of(
+        var priced=finance.editManager(q.getId(),new QuoteFinanceEditRequest(review.reviewRevision(),claim.claimId(),null,null,"保存的负责人备注",List.of(
                 new QuoteFinanceEditRequest.Line(review.lines().getFirst().itemId(),null,new BigDecimal("12"),null,null))));
         assertThat(priced.lines().getFirst().priceSource()).isEqualTo("MANAGER");
         assertThat(jdbc.queryForObject("SELECT finance_price_by IS NULL AND manager_price_by=? FROM sales_quote_items WHERE quote_id=?",Boolean.class,employeeOf(manager),q.getId())).isTrue();
         finance.confirmManager(q.getId(),new QuoteFinanceDecisionRequest(priced.reviewRevision(),claim.claimId(),null));
+        assertThat(finance.managerReview(q.getId()).financeRemark()).isEqualTo("保存的负责人备注");
         loginAs(f.finance()); var fin=finance.review(q.getId()); var fc=claims.claim(CLAIM,q.getId().toString());
         finance.confirm(q.getId(),new QuoteFinanceDecisionRequest(fin.reviewRevision(),fc.claimId(),null));
         assertThat(jdbc.queryForObject("SELECT total_original FROM sales_quotes WHERE id=?",BigDecimal.class,q.getId())).isEqualByComparingTo("24");
@@ -315,17 +323,46 @@ class SalesManagerReviewFlowPostgresTest {
         approveOrder(order.getId(),manager); loginAs(f.finance());
         var claim=claims.claim("SALES_ORDER_FINANCE_CONFIRM",order.getId().toString()); long reviewed=revision(order.getId());
         loginAs(manager);
-        assertConflict(() -> managers.reverseOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceRejectRequest("重新核对",reviewed,null)));
+        assertConflict(() -> managers.reverseOrder(order.getId(),new com.uten.imp.features.sales.SalesManagerReviewService.ReverseRequest(UUID.randomUUID(),reviewed,"重新核对")));
         loginAs(f.finance());
         orderFinance.reject(order.getId(),new SalesOrderFinanceConfirmService.FinanceRejectRequest("付款条件需调整",reviewed,claim.claimId()));
         loginAs(f.sales()); var revised=orders.update(order.getId(),orderRequest(orders.detail(order.getId())));
         assertThat(revised.getStatus()).isZero(); orders.approve(order.getId());
         approveOrder(order.getId(),manager);
-        managers.reverseOrder(order.getId(),new SalesOrderFinanceConfirmService.FinanceRejectRequest("负责人再次核对",revision(order.getId()),null));
+        managers.reverseOrder(order.getId(),new com.uten.imp.features.sales.SalesManagerReviewService.ReverseRequest(UUID.randomUUID(),revision(order.getId()),"负责人再次核对"));
         assertThat(managers.counts().get("order")).isGreaterThanOrEqualTo(1);
         assertThat(orderFinance.managerReview(order.getId()).managerHistory()).extracting(com.uten.imp.features.sales.order.dto.OrderProgressTimelineEvent::code)
                 .contains("MANAGER_APPROVED","MANAGER_REVERSED","MANAGER_PENDING");
         loginAs(f.finance()); assertConflict(() -> orderFinance.confirm(order.getId(),new SalesOrderFinanceConfirmService.FinanceConfirmRequest(null,reviewed,claim.claimId())));
+    }
+
+    @Test void reversalHasAnImmutableRequestIdentityAndCannotReplayOrOverwriteADecision() {
+        Fixture f=fixture("manager-reverse-receipt"); UUID manager=manager(); var order=submittedOrder(f);
+        approveOrder(order.getId(),manager);
+        long reviewed=revision(order.getId()); UUID decisionId=UUID.randomUUID();
+        var request=new com.uten.imp.features.sales.SalesManagerReviewService.ReverseRequest(decisionId,reviewed,"重新核对交期");
+        assertConflict(() -> managers.reverseOrder(order.getId(),
+                new com.uten.imp.features.sales.SalesManagerReviewService.ReverseRequest(UUID.randomUUID(),reviewed+1,"错误版本")));
+        // Treat the successful response as lost: the next GET must independently prove this exact write.
+        managers.reverseOrder(order.getId(),request);
+        @SuppressWarnings("unchecked") var decisions=(List<com.uten.imp.features.sales.SalesManagerReviewProjection.Decision>)managerController.order(order.getId()).get("managerDecisions");
+        assertThat(decisions).filteredOn(d -> d.decisionId().equals(decisionId)).singleElement().satisfies(decision -> {
+            assertThat(decision.revision()).isEqualTo(reviewed+1);
+            assertThat(decision.action()).isEqualTo("REVERSED");
+            assertThat(decision.actorId()).isEqualTo(employeeOf(manager));
+            assertThat(decision.reason()).isEqualTo("重新核对交期");
+        });
+        assertConflict(() -> managers.reverseOrder(order.getId(),request));
+        approveOrder(order.getId(),manager);
+        long approved=revision(order.getId());
+        // Even after a new approval, reusing another request's identity atomically rolls back the reversal.
+        assertConflict(() -> managers.reverseOrder(order.getId(),
+                new com.uten.imp.features.sales.SalesManagerReviewService.ReverseRequest(decisionId,approved,"不同原因")));
+        assertThat(revision(order.getId())).isEqualTo(approved);
+        assertThat(orderFinance.managerReview(order.getId()).financeConfirmed()).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM sales_order_manager_review_events WHERE id=?",Long.class,decisionId)).isEqualTo(1);
+        assertThatThrownBy(() -> jdbc.update("UPDATE sales_order_manager_review_events SET reason='覆写' WHERE id=?",decisionId))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
     }
 
     @Test void quantityChangesAfterFinanceApprovalMustReturnToManagement() {

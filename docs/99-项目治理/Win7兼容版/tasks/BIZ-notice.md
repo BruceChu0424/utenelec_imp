@@ -46,9 +46,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
 
-接续/限制：2026-10-31 新增报价/订货销售负责人居中审核提醒。WPF 通知与业务审核仍未迁移；须同步 SALES_QUOTE_PENDING_MANAGER_REVIEW / SALES_ORDER_PENDING_MANAGER_REVIEW、登录及在线授权补发、认领心跳和办结撤回，不能仅显示普通通知。。
+接续/限制：2026-10-31 新增报价/订货销售负责人居中审核提醒。WPF 通知与业务审核仍未迁移；须同步 SALES_QUOTE_PENDING_MANAGER_REVIEW / SALES_ORDER_PENDING_MANAGER_REVIEW、登录及在线授权补发、认领心跳和办结撤回，不能仅显示普通通知。；2026-11-01 必要合同增量仍未迁移：V982仓库通知按真实指定supervisor与相关child keeper并集后交精确业务资格池；隐式SA不成为负责人，历史read/ack/身份不重写。原通知及销售审核迁移要求保留。。
 
 ## W7-BIZ-086
 

@@ -78,6 +78,30 @@ class ProgressTrackerTest(unittest.TestCase):
         self.assertEqual("specific handover", z["notes"])
         self.assertEqual("人工核实的页面标题", z["title"])
 
+    def test_plural_companion_is_new_todo_without_resetting_existing_identity_or_acceptance(self):
+        old = self.page("old")
+        self.source_inputs([old])
+        previous = tracker.build_registry()
+        prior = previous["tasks"][0]
+        prior.update(status="verified_local", owner="original owner", evidence=["evidence.md"],
+                     notes="original evidence boundary", definitionOfDone=["specific unchanged DoD"],
+                     lastUpdated="2026-10-30")
+        plural = self.page("companion")
+        plural["source"] = "lib/features/fixture/pages/companion_pages.dart"
+        plural["routerBindings"] = [{"path": "/list"}, {"path": "/:id"}]
+        self.source_inputs([plural, old])
+        updated = tracker.build_registry(previous)
+        retained = next(item for item in updated["tasks"] if item["businessSource"] == old["source"])
+        self.assertEqual(prior, retained)
+        added = next(item for item in updated["tasks"] if item["businessSource"] == plural["source"])
+        self.assertNotEqual(prior["id"], added["id"])
+        self.assertEqual("todo", added["status"])
+        self.assertEqual([], added["nativeTargets"])
+        self.assertEqual([], added["evidence"])
+        self.assertEqual("fixture / companion", added["title"])
+        self.assertTrue(any("多个" in criterion or "同一伴随源" in criterion for criterion in added["definitionOfDone"]))
+        self.assertEqual(updated, tracker.build_registry(updated))
+
     def test_source_change_reopens_done_without_erasing_prior_evidence(self):
         self.source_inputs([self.page("a")])
         previous = tracker.build_registry()
@@ -96,6 +120,9 @@ class ProgressTrackerTest(unittest.TestCase):
         b = next(item for item in updated["tasks"] if item["businessSource"].endswith("b_page.dart"))
         self.assertEqual("in_progress", b["status"])
         self.assertIn("不得自动删除", b["notes"])
+        self.assertEqual(1, updated["baselineCounts"]["retainedBusinessPagePackages"])
+        self.assertEqual(len(updated["tasks"]), sum(updated["baselineCounts"][key] for key in
+                         ["businessPagePackages", "retainedBusinessPagePackages", "commonAndFlowPackages"]))
         self.assertEqual(updated, tracker.build_registry(updated),
                          "Repeated source sync must preserve the same task history without appending duplicate notices")
 

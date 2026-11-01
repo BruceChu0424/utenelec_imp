@@ -22,9 +22,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 必要读范围合同增量仍未迁移：新的车间/仓库浏览投影不替代原内料command车间资格；本页原SETUP/OPEN/ENABLE/REVOKE、请领/履行及盘点等实际适用动作须沿owning入口分别核对，不能因VIEW全读开放操作。原状态/DoD/证据保留。。
 
 ## W7-BIZ-174
 
@@ -46,9 +46,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 必要读范围合同增量仍未迁移：新的车间/仓库浏览投影不替代原内料command车间资格；本页原SETUP/OPEN/ENABLE/REVOKE、请领/履行及盘点等实际适用动作须沿owning入口分别核对，不能因VIEW全读开放操作。原状态/DoD/证据保留。。
 
 ## W7-BIZ-175
 
@@ -70,9 +70,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 必要读范围合同增量仍未迁移：新的车间/仓库浏览投影不替代原内料command车间资格；本页原SETUP/OPEN/ENABLE/REVOKE、请领/履行及盘点等实际适用动作须沿owning入口分别核对，不能因VIEW全读开放操作。原状态/DoD/证据保留。。
 
 ## W7-BIZ-176
 
@@ -94,9 +94,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 必要读范围合同增量仍未迁移：新的车间/仓库浏览投影不替代原内料command车间资格；本页原SETUP/OPEN/ENABLE/REVOKE、请领/履行及盘点等实际适用动作须沿owning入口分别核对，不能因VIEW全读开放操作。原状态/DoD/证据保留。。
 
 ## W7-BIZ-177
 
@@ -118,9 +118,34 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 必要读范围合同增量仍未迁移：新的车间/仓库浏览投影不替代原内料command车间资格；本页原SETUP/OPEN/ENABLE/REVOKE、请领/履行及盘点等实际适用动作须沿owning入口分别核对，不能因VIEW全读开放操作。原状态/DoD/证据保留。。
+
+## W7-BIZ-222
+
+- [ ] **仓库业务 / finance arrival exception** — 未开始
+
+影响：`frontend+shared-contract`；负责人：待认领；依赖：W7-GOV-005, W7-GOV-006, W7-CORE-011, W7-CORE-012, W7-CORE-013, W7-CORE-014, W7-UI-001。
+
+源入口：`lib/features/warehouse/pages/finance_arrival_exception_pages.dart`。
+
+完成条件：
+
+1. 核实本页有效入口、路由/别名/内嵌/退役分类，以及静态发现之外的所有实际动作。
+2. 同一伴随源内每个真实页面构造、直接路由和动态factory分支须逐项核实；文件/路由数量不是workflow完成数量。
+3. 逐一对照 owning Flutter UI/公共组件及后端DTO/权限/动作合同；缺失接口单独登记必要增量，不能猜测。
+4. 原生WPF实现全部适用读取、筛选/排序/分页、详情/导航与业务动作，不能只做菜单或只读代替写流程。
+5. 源码发现的动作线索须逐项核实：complete、copy、post、submit（仅静态线索，不等于完整动作清单）。
+6. 若源有新增/编辑/审核/批量/附件/导入导出/打印/历史，逐项迁移，保留币种/单位/来源/归属及精度/未知语义。
+7. 权限/数据集/读范围、草稿、版本/幂等、未知提交、取消/断网/重启/升级行为有合同及恢复证据。
+8. 复用同源Uten圆角/控件/字体/间距，完成键盘/IME/缩放/状态/焦点与现版本实际对照。
+9. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
+10. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
+
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
+
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 新登记未迁移伴随源：财务到货异常列表/详情两个真实app_router构造。财务定案权限/原source和金额、动作状态/版本独立；supplier_return_task:view:all不授予财务办理身份。。
 
 ## W7-BIZ-178
 
@@ -145,6 +170,31 @@
 证据：尚未登记，不得推定通过。
 
 接续/限制：尚未迁移；2026-10-31修复权限/读取范围更新后名称服务重建造成空仓库快照；原生须按当前身份加载真实仓库标记，区分错误/空结果并支持重试；见2026-10-31仓库选仓与车间任务导出记录。。
+
+## W7-BIZ-223
+
+- [ ] **仓库业务 / procurement return task** — 未开始
+
+影响：`frontend+shared-contract`；负责人：待认领；依赖：W7-GOV-005, W7-GOV-006, W7-CORE-011, W7-CORE-012, W7-CORE-013, W7-CORE-014, W7-UI-001。
+
+源入口：`lib/features/warehouse/pages/procurement_return_task_pages.dart`。
+
+完成条件：
+
+1. 核实本页有效入口、路由/别名/内嵌/退役分类，以及静态发现之外的所有实际动作。
+2. 同一伴随源内每个真实页面构造、直接路由和动态factory分支须逐项核实；文件/路由数量不是workflow完成数量。
+3. 逐一对照 owning Flutter UI/公共组件及后端DTO/权限/动作合同；缺失接口单独登记必要增量，不能猜测。
+4. 原生WPF实现全部适用读取、筛选/排序/分页、详情/导航与业务动作，不能只做菜单或只读代替写流程。
+5. 源码发现的动作线索须逐项核实：complete、confirm、copy、post、remove（仅静态线索，不等于完整动作清单）。
+6. 若源有新增/编辑/审核/批量/附件/导入导出/打印/历史，逐项迁移，保留币种/单位/来源/归属及精度/未知语义。
+7. 权限/数据集/读范围、草稿、版本/幂等、未知提交、取消/断网/重启/升级行为有合同及恢复证据。
+8. 复用同源Uten圆角/控件/字体/间距，完成键盘/IME/缩放/状态/焦点与现版本实际对照。
+9. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
+10. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
+
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
+
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 新登记未迁移伴随源：/procurement/arrival-exceptions与/:id真实列表/详情。基本supplier_return_task:view与supplier_return_task:view:all全读分离；complete仍需原user/employee owner、supplier_return_task:complete及expectedVersion。必须同步Me/身份/范围ABA围栏、只读allowedActions、原任务ID及未知提交核对。。
 
 ## W7-BIZ-179
 

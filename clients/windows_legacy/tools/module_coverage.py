@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 import re
 
+from business_inventory import page_source_paths
+
 ROOT = Path(__file__).resolve().parents[3]
 OUTPUT = ROOT / "clients/windows_legacy/migration-coverage.json"
 ROUTE_NAMES = "lib/core/router/route_names.dart"
@@ -68,7 +70,7 @@ def collect() -> dict:
                           "validation": "source-implementation; target-machine acceptance pending"})
         routes.append(entry)
     pages = []
-    for source in sorted((ROOT / "lib/features").rglob("*_page.dart")):
+    for source in page_source_paths(ROOT):
         relative = source.relative_to(ROOT).as_posix()
         pages.append({"source": relative,
                       "status": "partial-native-readonly" if relative in PARTIAL_PAGES else "not-migrated"})

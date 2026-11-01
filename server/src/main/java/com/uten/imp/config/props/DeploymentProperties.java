@@ -5,6 +5,7 @@ import lombok.Setter;
 import jakarta.annotation.PostConstruct;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
+import java.time.Duration;
 
 /**
  * 部署位置与公司受控远程connector。位置不再代替请求入口身份。
@@ -35,6 +36,17 @@ public class DeploymentProperties {
     /** A bounded share of request capacity; local requests never acquire these permits. */
     private int remoteMaxConcurrentRequests = 8;
 
+    /** Finite no-progress budget for remote response writes, separate from request/header reads. */
+    private Duration remoteWriteTimeout = Duration.ofSeconds(60);
+
+    public long requireRemoteWriteTimeoutMillis() {
+        if (remoteWriteTimeout == null || remoteWriteTimeout.isNegative() || remoteWriteTimeout.isZero()
+                || remoteWriteTimeout.compareTo(Duration.ofMinutes(5)) > 0 || remoteWriteTimeout.toMillis() < 1) {
+            throw new IllegalStateException("uten.deployment.remote-write-timeout must be at least 1ms and at most 5min");
+        }
+        return remoteWriteTimeout.toMillis();
+    }
+
     @PostConstruct
     void validateSite() {
         if (!"local".equalsIgnoreCase(site) && !"cloud".equalsIgnoreCase(site)) {
@@ -46,5 +58,6 @@ public class DeploymentProperties {
         if (remoteMaxConcurrentRequests < 1 || remoteMaxConcurrentRequests > 128) {
             throw new IllegalStateException("uten.deployment.remote-max-concurrent-requests must be 1..128");
         }
+        requireRemoteWriteTimeoutMillis();
     }
 }

@@ -1676,10 +1676,11 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get employeeOnboardNote =>
-      '제출 시 사번(UT 접두사)이 생성됩니다. 계정도 개설하는 경우 반환된 로그인 계정과 임시 비밀번호를 사용하세요. 비밀번호는 한 번만 표시되고 유효기간이 있으며 최초 로그인 시 변경해야 합니다.';
+      '제출 시 6자리 숫자 사번이 자동 발급되며 이후 변경되지 않습니다. 계정도 개설하는 경우 반환된 로그인 계정과 임시 비밀번호를 사용하세요. 비밀번호는 한 번만 표시되고 유효기간이 있으며 최초 로그인 시 변경해야 합니다.';
 
   @override
-  String get employeeOnboardCodeAutoNote => '사번은 제출 시 자동 생성됩니다(UT 접두사, 고유 증가)';
+  String get employeeOnboardCodeAutoNote =>
+      '제출 시 기존 번호에 이어 6자리 숫자 사번이 자동 발급되며 이후 변경되지 않습니다.';
 
   @override
   String get employeeOnboardStepBasic => '기본 정보';

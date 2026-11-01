@@ -1611,10 +1611,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get employeeOnboardNote =>
-      '提交后自动生成工号(UT 前缀)。如果选择同时开户，请以返回的登录账号和临时密码为准；密码仅显示一次、限时有效，首次登录必须修改。';
+      '提交后自动生成6位数字工号，分配后固定。如果选择同时开户，请以返回的登录账号和临时密码为准；密码仅显示一次、限时有效，首次登录必须修改。';
 
   @override
-  String get employeeOnboardCodeAutoNote => '工号提交后自动生成(UT 前缀，唯一递增)';
+  String get employeeOnboardCodeAutoNote => '工号提交后自动生成（6位数字，接续编号，分配后固定）';
 
   @override
   String get employeeOnboardStepBasic => '基本信息';

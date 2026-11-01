@@ -46,7 +46,7 @@ class MasterCodeServiceTest {
         Query query = fluentQuery();
         when(entityManager.createNativeQuery(anyString())).thenReturn(query);
         when(query.getSingleResult())
-                .thenReturn(new Object[]{"UT10000", 10_000, false});
+                .thenReturn(new Object[]{"1000000", 1_000_000, false});
 
         assertThrows(IllegalStateException.class,
                 () -> new MasterCodeService(entityManager)

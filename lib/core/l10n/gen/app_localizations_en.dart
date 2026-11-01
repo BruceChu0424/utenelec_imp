@@ -1710,11 +1710,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get employeeOnboardNote =>
-      'Submitting generates the employee code (UT prefix). If you also open an account, use the returned login account and temporary password. The password is shown once, expires, and must be changed at first sign-in.';
+      'Submitting generates a fixed six-digit employee number. If you also open an account, use the returned login account and temporary password. The password is shown once, expires, and must be changed at first sign-in.';
 
   @override
   String get employeeOnboardCodeAutoNote =>
-      'Employee code is auto-generated on submit (UT prefix, unique and incremental)';
+      'A fixed six-digit employee number is assigned on submission, following the existing sequence.';
 
   @override
   String get employeeOnboardStepBasic => 'Basic Info';

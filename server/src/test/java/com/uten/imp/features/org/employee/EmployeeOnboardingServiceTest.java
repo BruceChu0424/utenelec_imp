@@ -158,7 +158,7 @@ class EmployeeOnboardingServiceTest {
     void aValidPhoneAndExplicitCustomLoginStillProvisionTheRequestedAccount() {
         Department center = managementCenter();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
-        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("UT0008");
+        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("000008");
         OnboardingRequest valid = request(center.getId(), null, null, "IGNORED");
         OnboardingRequest input = new OnboardingRequest(
                 valid.profile(), valid.employment(), valid.compensation(), valid.contract(),
@@ -177,14 +177,14 @@ class EmployeeOnboardingServiceTest {
         Department center = managementCenter();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
         when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class)))
-                .thenReturn("UT0002");
+                .thenReturn("000003");
 
         EmployeeOnboardingResult result = service.onboard(
                 request(center.getId(), null, null, "CLIENT-SUPPLIED-CODE"));
 
         ArgumentCaptor<Employee> employee = ArgumentCaptor.forClass(Employee.class);
         verify(empRepo).save(employee.capture());
-        assertEquals("UT0002", employee.getValue().getCode());
+        assertEquals("000003", employee.getValue().getCode());
         verify(employeeCodeAllocator).nextForNewEmployee(employee.getValue().getId());
         assertEquals("13800000000", result.loginAccount());
     }
@@ -193,7 +193,7 @@ class EmployeeOnboardingServiceTest {
     void onboardingUsesNormalizedIdLastSixWithExpiryAndForcedChange() {
         Department center = managementCenter();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
-        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("UT0006");
+        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("000006");
         when(settings.readInt(com.uten.imp.features.admin.systemsetting.SystemSettingKey.TEMP_PASSWORD_TTL_HOURS))
                 .thenReturn(72);
         when(passwordEncoder.encode("31002X")).thenReturn("argon2-encoded");
@@ -278,7 +278,7 @@ class EmployeeOnboardingServiceTest {
         Department center = managementCenter();
         UUID foreignPositionId = UUID.randomUUID();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
-        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("UT0003");
+        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("000003");
         when(positionRepo.findByIdAndDepartmentIdAndDeletedFalse(
                 foreignPositionId, center.getId())).thenReturn(Optional.empty());
 
@@ -298,7 +298,7 @@ class EmployeeOnboardingServiceTest {
         Position existing = position(center, "ZW0042", "Engineer");
         stubCustomPositionLock();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
-        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("UT0004");
+        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("000004");
         when(positionRepo.findFirstActiveByNormalizedName(center.getId(), "engineer"))
                 .thenReturn(Optional.of(existing));
 
@@ -315,7 +315,7 @@ class EmployeeOnboardingServiceTest {
         Department center = managementCenter();
         stubCustomPositionLock();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
-        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("UT0005");
+        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("000005");
         when(masterCodeService.nextCode(MasterCodePrefix.POSITION)).thenReturn("ZW0137");
         when(positionRepo.findFirstActiveByNormalizedName(center.getId(), "数据分析师"))
                 .thenReturn(Optional.empty());
@@ -337,7 +337,7 @@ class EmployeeOnboardingServiceTest {
         // 角色体系已删除(ADR-109)：入职只建登录账号，权限只来自全员基础包与所在部门配置。
         Department center = managementCenter();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
-        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("UT0007");
+        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("000007");
 
         service.onboard(request(center.getId(), null, null, "IGNORED"));
 
@@ -597,7 +597,7 @@ class EmployeeOnboardingServiceTest {
     void onboardingWithShortNonResidentDocumentUsesRandomPassword() {
         Department center = managementCenter();
         when(deptRepo.findById(center.getId())).thenReturn(Optional.of(center));
-        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("UT0008");
+        when(employeeCodeAllocator.nextForNewEmployee(any(UUID.class))).thenReturn("000008");
         when(passwordGenerator.generate()).thenReturn("Onboard-Random-20ch!");
 
         EmployeeOnboardingResult result = service.onboard(request(

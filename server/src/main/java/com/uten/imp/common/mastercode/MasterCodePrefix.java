@@ -33,7 +33,7 @@ public enum MasterCodePrefix {
     MOULD_CATEGORY("MF"),    // 模具分类（mould_categories）
     CLIENT_CATEGORY("KF"),   // 客户分类（client_categories）
     SUPPLIER_CATEGORY("GF"), // 供应商分类（supplier_categories）
-    EMPLOYEE("UT", 4),       // 员工工号（UT 前缀 + 4 位顺序号，如 UT0001）
+    EMPLOYEE("", 6),         // 员工工号：6 位纯数字；000001/000002 为创始人保留
     POSITION("ZW");          // 自动新增岗位（ZW 前缀 + 6 位顺序号）
 
     private final String code;
@@ -48,7 +48,7 @@ public enum MasterCodePrefix {
         this.width = width;
     }
 
-    /** 前缀，如 "HP"/"UT"/"V"。 */
+    /** 前缀，如 "HP"/"V"；员工使用空前缀，历史 UT 命名空间继续保留。 */
     public String code() {
         return code;
     }

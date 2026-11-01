@@ -131,6 +131,9 @@ BEGIN
         ('employee_compensation','SEED_OR_ADMIN'),
         ('employee_contracts','SEED_OR_ADMIN'),
         ('employee_credentials','SEED_OR_ADMIN'),
+        -- V977 numbering receipts are immutable business-identity evidence.
+        -- A completed numbering target must never be reused for first bootstrap.
+        ('employee_code_numbering_receipts','EMPTY'),
         ('employee_data_handover_scopes','SEED_OR_ADMIN'),
         ('employee_data_handovers','SEED_OR_ADMIN'),
         ('employee_education','SEED_OR_ADMIN'),

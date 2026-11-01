@@ -351,6 +351,8 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertEquals(24, V949_TO_V968_TABLE_ADDITIONS.size());
         V949_TO_V968_TABLE_ADDITIONS.forEach(table -> assertTrue(expectedTables.add(table)));
         V973_TO_V976_TABLE_ADDITIONS.forEach(table -> assertTrue(expectedTables.add(table)));
+        // V977 retains the one-time employee-numbering decision per dataset.
+        assertTrue(expectedTables.add("employee_code_numbering_receipts"));
         V871_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         V885_HISTORY_TABLES.forEach(table->assertTrue(expectedTables.add(table)));
         TreeMap<String,String> expectedIndexes=catalogMap(indexesAfterV840);
@@ -425,6 +427,8 @@ class DailyReportMaterialReviewMigrationPostgresTest {
         assertEquals(8,V973_TO_V976_INDEX_ADDITIONS.size());
         V973_TO_V976_INDEX_ADDITIONS.forEach((name,definition)->assertNull(expectedIndexes.put(name,definition),
                 "A declared finance audit/voucher index must not replace an existing index: "+name));
+        assertNull(expectedIndexes.put("employee_code_numbering_receipts_pkey",
+                "CREATE UNIQUE INDEX employee_code_numbering_receipts_pkey ON public.employee_code_numbering_receipts USING btree (dataset_id)"));
         assertEquals(8,V974_SOURCE_INDEX_REPLACEMENTS.size());
         V974_SOURCE_INDEX_REPLACEMENTS.forEach((name,replacement)->{
             assertEquals(replacement.before(),expectedIndexes.remove(name),"The exact pre-V974 source uniqueness must be present: "+name);

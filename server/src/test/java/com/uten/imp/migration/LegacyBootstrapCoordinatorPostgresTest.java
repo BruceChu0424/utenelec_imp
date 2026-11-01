@@ -286,6 +286,29 @@ class LegacyBootstrapCoordinatorPostgresTest {
             }
             assertThat(bootstrapHistoryFacts(statement)).isEqualTo(seedHistory);
 
+            statement.execute("""
+                    INSERT INTO employee_code_numbering_receipts(dataset_id,plan_sha256,plan,evidence_reference)
+                    SELECT business_dataset_id,repeat('b',64),'{"entries":[]}'::jsonb,
+                           'Isolated retained numbering evidence'
+                    FROM authorization_state WHERE singleton_id=1
+                    """);
+            String retainedNumbering;
+            try (var rows = statement.executeQuery("SELECT jsonb_agg(to_jsonb(r) ORDER BY dataset_id)::text FROM employee_code_numbering_receipts r")) {
+                rows.next();
+                retainedNumbering = rows.getString(1);
+            }
+            var beforeNumberingGuard = connection.setSavepoint();
+            java.sql.SQLException occupiedNumbering = org.junit.jupiter.api.Assertions.assertThrows(java.sql.SQLException.class,
+                    () -> statement.execute(guard));
+            assertThat(occupiedNumbering.getSQLState()).isEqualTo("P0001");
+            assertThat(occupiedNumbering.getMessage()).contains("business facts in employee_code_numbering_receipts");
+            connection.rollback(beforeNumberingGuard);
+            try (var rows = statement.executeQuery("SELECT jsonb_agg(to_jsonb(r) ORDER BY dataset_id)::text FROM employee_code_numbering_receipts r")) {
+                rows.next();
+                assertThat(rows.getString(1)).isEqualTo(retainedNumbering);
+            }
+            connection.rollback();
+
             statement.execute("INSERT INTO business_record_history(source_table,source_id,payload,operation) "
                     + "VALUES('stock_movements','private-bootstrap-retained-business-proof','{}','DELETE')");
             java.sql.SQLException retainedBusiness = org.junit.jupiter.api.Assertions.assertThrows(java.sql.SQLException.class,

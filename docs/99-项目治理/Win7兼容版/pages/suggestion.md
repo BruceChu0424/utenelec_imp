@@ -11,7 +11,7 @@
 | 页面/状态类 | SuggestionDetailPage @29 (page-class)<br>_Content @55 (supporting-class)<br>_ReplyComposer @249 (supporting-class)<br>_ReplyComposerState @258 (state-class)<br>_ReplyCard @368 (supporting-class) |
 | 真实路由绑定 | /suggestion/:id；router @772；builder ['SuggestionDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | suggestion:reply @139；定义 lib/shared/auth/permissions.dart:516<br>suggestion:submit @169；定义 lib/shared/auth/permissions.dart:515 |
+| 权限 | suggestion:reply @139；定义 lib/shared/auth/permissions.dart:517<br>suggestion:submit @169；定义 lib/shared/auth/permissions.dart:516 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
 | 动作处理 | copyWith @101 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelMedium?.copyWith(<br>copyWith @120 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.headlineSmall?.copyWith(<br>copyWith @133 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyLarge?.copyWith(height: 1.7),<br>copyWith @314 [action-like-invocation] 提示 ['copy']；style: Theme.of(context).textTheme.bodySmall?.copyWith(<br>_submit @345 [method-declaration-candidate] 提示 ['submit']；Future<void> _submit() async {<br>copyWith @409 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @415 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @427 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(height: 1.6),<br>_submit @326 [callback-reference] 提示 ['submit']；onAction |
@@ -29,7 +29,7 @@
 | 页面/状态类 | SuggestionListPage @43 (page-class)<br>_SuggestionListPageState @50 (state-class) |
 | 真实路由绑定 | /suggestion；router @762；builder ['SuggestionListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | suggestion:submit @87；定义 lib/shared/auth/permissions.dart:515<br>suggestion:submit @149；定义 lib/shared/auth/permissions.dart:515<br>suggestion:submit @201；定义 lib/shared/auth/permissions.dart:515<br>suggestion:submit @238；定义 lib/shared/auth/permissions.dart:515 |
+| 权限 | suggestion:submit @87；定义 lib/shared/auth/permissions.dart:516<br>suggestion:submit @149；定义 lib/shared/auth/permissions.dart:516<br>suggestion:submit @201；定义 lib/shared/auth/permissions.dart:516<br>suggestion:submit @238；定义 lib/shared/auth/permissions.dart:516 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
 | 动作处理 | UtenListCreateAction @83 [action-like-invocation] 提示 ['create']；final createAction = UtenListCreateAction( |

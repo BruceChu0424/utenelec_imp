@@ -381,7 +381,8 @@ abstract final class Perm {
   // ===== 生产管理（生产部）=====
   static const productionPlanView = 'production_plan:view';
   static const productionExecutionView = 'production_execution:view';
-  static const productionWorkshopTaskViewAll = 'production_workshop_task:view:all';
+  static const productionWorkshopTaskViewAll =
+      'production_workshop_task:view:all';
   static const productionExecutionOverview = 'production_execution:overview';
   static const productionPlanEdit = 'production_plan:edit';
   static const productionPlanApprove = 'production_plan:approve';

@@ -11,7 +11,7 @@
 | 页面/状态类 | WebsiteInquiryDetailPage @31 (page-class)<br>_HeaderCard @128 (supporting-class)<br>_MessageCard @192 (supporting-class)<br>_RequirementCard @228 (supporting-class)<br>_ActionPanel @287 (supporting-class)<br>_ConvertedCard @397 (supporting-class) |
 | 真实路由绑定 | /webinquiry/:id；router @790；builder ['WebsiteInquiryDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | webinquiry:claim @48；定义 lib/shared/auth/permissions.dart:761<br>webinquiry:close @49；定义 lib/shared/auth/permissions.dart:762<br>webinquiry:convert_client @51；定义 lib/shared/auth/permissions.dart:763 |
+| 权限 | webinquiry:claim @48；定义 lib/shared/auth/permissions.dart:762<br>webinquiry:close @49；定义 lib/shared/auth/permissions.dart:763<br>webinquiry:convert_client @51；定义 lib/shared/auth/permissions.dart:764 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
 | 动作处理 | copyWith @151 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleLarge?.copyWith(<br>copyWith @166 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>copyWith @182 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @209 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyLarge?.copyWith(height: 1.7),<br>copyWith @217 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @266 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>updateWebsiteInquiryStatus @321 [action-like-invocation] 提示 ['update']；() => updateWebsiteInquiryStatus(<br>updateWebsiteInquiryStatus @352 [action-like-invocation] 提示 ['update']；() => updateWebsiteInquiryStatus(<br>copyWith @365 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith( |

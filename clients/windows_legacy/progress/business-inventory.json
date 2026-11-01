@@ -975,7 +975,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -2419,7 +2419,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -3246,7 +3246,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -4009,7 +4009,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -5878,7 +5878,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -10506,7 +10506,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -12085,7 +12085,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -14051,7 +14051,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -17309,7 +17309,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -17554,14 +17554,14 @@
           "literal": "account:delete",
           "line": 147,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 580
+          "definitionLine": 581
         },
         {
           "symbol": "Perm.accountStatus",
           "literal": "account:status",
           "line": 148,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 581
+          "definitionLine": 582
         },
         {
           "symbol": "Perm.accountBalanceView",
@@ -18681,7 +18681,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -18955,7 +18955,7 @@
           "literal": "account:create",
           "line": 206,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 579
+          "definitionLine": 580
         },
         {
           "symbol": "Perm.accountEdit",
@@ -18969,14 +18969,14 @@
           "literal": "account:delete",
           "line": 208,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 580
+          "definitionLine": 581
         },
         {
           "symbol": "Perm.accountStatus",
           "literal": "account:status",
           "line": 209,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 581
+          "definitionLine": 582
         },
         {
           "symbol": "Perm.accountBalanceView",
@@ -20015,7 +20015,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         }
       ],
       "partUnits": [],
@@ -20228,7 +20228,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -20521,7 +20521,7 @@
           "literal": "client_category:create",
           "line": 88,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 543
+          "definitionLine": 544
         },
         {
           "symbol": "Perm.clientCategoryEdit",
@@ -20535,35 +20535,35 @@
           "literal": "client_category:delete",
           "line": 96,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 544
+          "definitionLine": 545
         },
         {
           "symbol": "Perm.clientCategoryMove",
           "literal": "client_category:move",
           "line": 100,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 545
+          "definitionLine": 546
         },
         {
           "symbol": "Perm.clientCategoryReorder",
           "literal": "client_category:reorder",
           "line": 104,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 546
+          "definitionLine": 547
         },
         {
           "symbol": "Perm.clientCreate",
           "literal": "client:create",
           "line": 246,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 560
+          "definitionLine": 561
         },
         {
           "symbol": "Perm.clientStatus",
           "literal": "client:status",
           "line": 247,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 562
+          "definitionLine": 563
         },
         {
           "symbol": "Perm.clientFinance",
@@ -20591,7 +20591,7 @@
           "literal": "client:delete",
           "line": 449,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 561
+          "definitionLine": 562
         },
         {
           "symbol": "Perm.clientExport",
@@ -20640,7 +20640,7 @@
           "literal": "client:status",
           "line": 562,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 562
+          "definitionLine": 563
         },
         {
           "symbol": "Perm.clientAssign",
@@ -23052,7 +23052,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -23254,7 +23254,7 @@
           "literal": "color:create",
           "line": 215,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 567
+          "definitionLine": 568
         },
         {
           "symbol": "Perm.colorEdit",
@@ -23268,21 +23268,21 @@
           "literal": "color:delete",
           "line": 221,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 568
+          "definitionLine": 569
         },
         {
           "symbol": "Perm.colorStatus",
           "literal": "color:status",
           "line": 224,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 569
+          "definitionLine": 570
         },
         {
           "symbol": "Perm.colorCreate",
           "literal": "color:create",
           "line": 368,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 567
+          "definitionLine": 568
         },
         {
           "symbol": "Perm.colorEdit",
@@ -23310,14 +23310,14 @@
           "literal": "color:status",
           "line": 634,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 569
+          "definitionLine": 570
         },
         {
           "symbol": "Perm.colorDelete",
           "literal": "color:delete",
           "line": 675,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 568
+          "definitionLine": 569
         },
         {
           "symbol": "Perm.colorExport",
@@ -24458,7 +24458,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -24660,7 +24660,7 @@
           "literal": "currency:create",
           "line": 221,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 573
+          "definitionLine": 574
         },
         {
           "symbol": "Perm.currencyEdit",
@@ -24674,21 +24674,21 @@
           "literal": "currency:delete",
           "line": 227,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 574
+          "definitionLine": 575
         },
         {
           "symbol": "Perm.currencyStatus",
           "literal": "currency:status",
           "line": 230,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 575
+          "definitionLine": 576
         },
         {
           "symbol": "Perm.currencyCreate",
           "literal": "currency:create",
           "line": 377,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 573
+          "definitionLine": 574
         },
         {
           "symbol": "Perm.currencyEdit",
@@ -24716,14 +24716,14 @@
           "literal": "currency:delete",
           "line": 684,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 574
+          "definitionLine": 575
         },
         {
           "symbol": "Perm.currencyStatus",
           "literal": "currency:status",
           "line": 684,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 575
+          "definitionLine": 576
         },
         {
           "symbol": "Perm.currencyExport",
@@ -25589,7 +25589,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -25709,7 +25709,7 @@
           "literal": "goods:status",
           "line": 207,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 553
+          "definitionLine": 554
         },
         {
           "symbol": "Perm.goodsView",
@@ -25723,21 +25723,21 @@
           "literal": "goods:status",
           "line": 213,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 553
+          "definitionLine": 554
         },
         {
           "symbol": "Perm.goodsStatus",
           "literal": "goods:status",
           "line": 217,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 553
+          "definitionLine": 554
         },
         {
           "symbol": "Perm.goodsDelete",
           "literal": "goods:delete",
           "line": 274,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 552
+          "definitionLine": 553
         },
         {
           "symbol": "Perm.goodsView",
@@ -25751,56 +25751,56 @@
           "literal": "goods:delete",
           "line": 280,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 552
+          "definitionLine": 553
         },
         {
           "symbol": "Perm.goodsDelete",
           "literal": "goods:delete",
           "line": 284,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 552
+          "definitionLine": 553
         },
         {
           "symbol": "Perm.goodsCreate",
           "literal": "goods:create",
           "line": 358,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 551
+          "definitionLine": 552
         },
         {
           "symbol": "Perm.goodsDelete",
           "literal": "goods:delete",
           "line": 362,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 552
+          "definitionLine": 553
         },
         {
           "symbol": "Perm.goodsStatus",
           "literal": "goods:status",
           "line": 363,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 553
+          "definitionLine": 554
         },
         {
           "symbol": "Perm.goodsBomCreate",
           "literal": "goods:bom:create",
           "line": 364,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 554
+          "definitionLine": 555
         },
         {
           "symbol": "Perm.goodsBomEdit",
           "literal": "goods:bom:edit",
           "line": 365,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 555
+          "definitionLine": 556
         },
         {
           "symbol": "Perm.goodsBomDelete",
           "literal": "goods:bom:delete",
           "line": 366,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 556
+          "definitionLine": 557
         }
       ],
       "apiEndpointReferences": [
@@ -27836,7 +27836,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -27920,7 +27920,7 @@
           "literal": "sales_quote_finance:view",
           "line": 109,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 480
+          "definitionLine": 481
         },
         {
           "symbol": "Perm.salesOrderView",
@@ -29622,7 +29622,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -30323,7 +30323,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -30642,7 +30642,7 @@
           "literal": "mould_category:create",
           "line": 93,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 539
+          "definitionLine": 540
         },
         {
           "symbol": "Perm.mouldCategoryEdit",
@@ -30656,42 +30656,42 @@
           "literal": "mould_category:delete",
           "line": 101,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 540
+          "definitionLine": 541
         },
         {
           "symbol": "Perm.mouldCategoryMove",
           "literal": "mould_category:move",
           "line": 105,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 541
+          "definitionLine": 542
         },
         {
           "symbol": "Perm.mouldCategoryReorder",
           "literal": "mould_category:reorder",
           "line": 109,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 542
+          "definitionLine": 543
         },
         {
           "symbol": "Perm.mouldStatus",
           "literal": "mould:status",
           "line": 365,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 559
+          "definitionLine": 560
         },
         {
           "symbol": "Perm.mouldCreate",
           "literal": "mould:create",
           "line": 370,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 557
+          "definitionLine": 558
         },
         {
           "symbol": "Perm.mouldCreate",
           "literal": "mould:create",
           "line": 398,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 557
+          "definitionLine": 558
         },
         {
           "symbol": "Perm.mouldEdit",
@@ -30705,14 +30705,14 @@
           "literal": "mould:delete",
           "line": 483,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 558
+          "definitionLine": 559
         },
         {
           "symbol": "Perm.mouldStatus",
           "literal": "mould:status",
           "line": 484,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 559
+          "definitionLine": 560
         },
         {
           "symbol": "Perm.mouldExport",
@@ -30733,7 +30733,7 @@
           "literal": "mould:create",
           "line": 613,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 557
+          "definitionLine": 558
         },
         {
           "symbol": "Perm.mouldEdit",
@@ -30754,7 +30754,7 @@
           "literal": "mould:delete",
           "line": 861,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 558
+          "definitionLine": 559
         }
       ],
       "apiEndpointReferences": [
@@ -32620,7 +32620,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -32975,28 +32975,28 @@
           "literal": "client:status",
           "line": 145,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 562
+          "definitionLine": 563
         },
         {
           "symbol": "Perm.supplierStatus",
           "literal": "supplier:status",
           "line": 145,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 566
+          "definitionLine": 567
         },
         {
           "symbol": "Perm.clientDelete",
           "literal": "client:delete",
           "line": 147,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 561
+          "definitionLine": 562
         },
         {
           "symbol": "Perm.supplierDelete",
           "literal": "supplier:delete",
           "line": 147,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 565
+          "definitionLine": 566
         },
         {
           "symbol": "Perm.clientAssign",
@@ -33080,7 +33080,7 @@
           "literal": "client:status",
           "line": 1081,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 562
+          "definitionLine": 563
         },
         {
           "symbol": "Perm.clientView",
@@ -33136,14 +33136,14 @@
           "literal": "client:status",
           "line": 1992,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 562
+          "definitionLine": 563
         },
         {
           "symbol": "Perm.supplierStatus",
           "literal": "supplier:status",
           "line": 1992,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 566
+          "definitionLine": 567
         },
         {
           "symbol": "Perm.clientView",
@@ -33164,14 +33164,14 @@
           "literal": "client:delete",
           "line": 2068,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 561
+          "definitionLine": 562
         },
         {
           "symbol": "Perm.supplierDelete",
           "literal": "supplier:delete",
           "line": 2068,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 565
+          "definitionLine": 566
         }
       ],
       "apiEndpointReferences": [
@@ -35776,7 +35776,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -36002,42 +36002,42 @@
           "literal": "payment_style:create",
           "line": 339,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 582
+          "definitionLine": 583
         },
         {
           "symbol": "Perm.paymentStyleEdit",
           "literal": "payment_style:edit",
           "line": 341,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 509
+          "definitionLine": 510
         },
         {
           "symbol": "Perm.paymentStyleStatus",
           "literal": "payment_style:status",
           "line": 343,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 583
+          "definitionLine": 584
         },
         {
           "symbol": "Perm.paymentStyleMove",
           "literal": "payment_style:move",
           "line": 345,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 584
+          "definitionLine": 585
         },
         {
           "symbol": "Perm.paymentStyleReorder",
           "literal": "payment_style:reorder",
           "line": 347,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 585
+          "definitionLine": 586
         },
         {
           "symbol": "Perm.paymentStyleView",
           "literal": "payment_style:view",
           "line": 352,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 508
+          "definitionLine": 509
         }
       ],
       "apiEndpointReferences": [],
@@ -37067,7 +37067,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -37535,7 +37535,7 @@
           "literal": "material_category:create",
           "line": 135,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 535
+          "definitionLine": 536
         },
         {
           "symbol": "Perm.materialCategoryEdit",
@@ -37549,21 +37549,21 @@
           "literal": "material_category:delete",
           "line": 144,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 536
+          "definitionLine": 537
         },
         {
           "symbol": "Perm.materialCategoryMove",
           "literal": "material_category:move",
           "line": 148,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 537
+          "definitionLine": 538
         },
         {
           "symbol": "Perm.materialCategoryReorder",
           "literal": "material_category:reorder",
           "line": 153,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 538
+          "definitionLine": 539
         },
         {
           "symbol": "Perm.goodsImport",
@@ -37577,63 +37577,63 @@
           "literal": "goods:create",
           "line": 528,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 551
+          "definitionLine": 552
         },
         {
           "symbol": "Perm.goodsDelete",
           "literal": "goods:delete",
           "line": 529,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 552
+          "definitionLine": 553
         },
         {
           "symbol": "Perm.goodsStatus",
           "literal": "goods:status",
           "line": 530,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 553
+          "definitionLine": 554
         },
         {
           "symbol": "Perm.goodsBomEdit",
           "literal": "goods:bom:edit",
           "line": 532,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 555
+          "definitionLine": 556
         },
         {
           "symbol": "Perm.goodsBomDelete",
           "literal": "goods:bom:delete",
           "line": 533,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 556
+          "definitionLine": 557
         },
         {
           "symbol": "Perm.goodsBomEdit",
           "literal": "goods:bom:edit",
           "line": 535,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 555
+          "definitionLine": 556
         },
         {
           "symbol": "Perm.goodsBomCreate",
           "literal": "goods:bom:create",
           "line": 536,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 554
+          "definitionLine": 555
         },
         {
           "symbol": "Perm.goodsBomCreate",
           "literal": "goods:bom:create",
           "line": 540,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 554
+          "definitionLine": 555
         },
         {
           "symbol": "Perm.goodsBomEdit",
           "literal": "goods:bom:edit",
           "line": 541,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 555
+          "definitionLine": 556
         },
         {
           "symbol": "Perm.goodsPriceEdit",
@@ -40754,7 +40754,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -40920,35 +40920,35 @@
           "literal": "settlement_method:create",
           "line": 171,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 586
+          "definitionLine": 587
         },
         {
           "symbol": "Perm.settlementMethodEdit",
           "literal": "settlement_method:edit",
           "line": 174,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 588
+          "definitionLine": 589
         },
         {
           "symbol": "Perm.settlementMethodExport",
           "literal": "settlement_method:export",
           "line": 797,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 589
+          "definitionLine": 590
         },
         {
           "symbol": "Perm.settlementMethodExport",
           "literal": "settlement_method:export",
           "line": 808,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 589
+          "definitionLine": 590
         },
         {
           "symbol": "Perm.settlementMethodEdit",
           "literal": "settlement_method:edit",
           "line": 889,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 588
+          "definitionLine": 589
         }
       ],
       "apiEndpointReferences": [],
@@ -41560,7 +41560,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -41793,7 +41793,7 @@
           "literal": "supplier_category:create",
           "line": 79,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 547
+          "definitionLine": 548
         },
         {
           "symbol": "Perm.supplierCategoryEdit",
@@ -41807,35 +41807,35 @@
           "literal": "supplier_category:delete",
           "line": 88,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 548
+          "definitionLine": 549
         },
         {
           "symbol": "Perm.supplierCategoryMove",
           "literal": "supplier_category:move",
           "line": 92,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 549
+          "definitionLine": 550
         },
         {
           "symbol": "Perm.supplierCategoryReorder",
           "literal": "supplier_category:reorder",
           "line": 97,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 550
+          "definitionLine": 551
         },
         {
           "symbol": "Perm.supplierCreate",
           "literal": "supplier:create",
           "line": 225,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 564
+          "definitionLine": 565
         },
         {
           "symbol": "Perm.supplierStatus",
           "literal": "supplier:status",
           "line": 226,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 566
+          "definitionLine": 567
         },
         {
           "symbol": "Perm.supplierEdit",
@@ -41849,7 +41849,7 @@
           "literal": "supplier:delete",
           "line": 395,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 565
+          "definitionLine": 566
         },
         {
           "symbol": "Perm.supplierExport",
@@ -41863,7 +41863,7 @@
           "literal": "supplier:status",
           "line": 441,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 566
+          "definitionLine": 567
         }
       ],
       "apiEndpointReferences": [
@@ -43832,7 +43832,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -44034,7 +44034,7 @@
           "literal": "unit:create",
           "line": 208,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 570
+          "definitionLine": 571
         },
         {
           "symbol": "Perm.unitEdit",
@@ -44048,21 +44048,21 @@
           "literal": "unit:delete",
           "line": 214,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 571
+          "definitionLine": 572
         },
         {
           "symbol": "Perm.unitStatus",
           "literal": "unit:status",
           "line": 217,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 572
+          "definitionLine": 573
         },
         {
           "symbol": "Perm.unitCreate",
           "literal": "unit:create",
           "line": 360,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 570
+          "definitionLine": 571
         },
         {
           "symbol": "Perm.unitEdit",
@@ -44090,14 +44090,14 @@
           "literal": "unit:status",
           "line": 627,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 572
+          "definitionLine": 573
         },
         {
           "symbol": "Perm.unitDelete",
           "literal": "unit:delete",
           "line": 659,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 571
+          "definitionLine": 572
         },
         {
           "symbol": "Perm.unitExport",
@@ -45424,7 +45424,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -45770,7 +45770,7 @@
           "literal": "warehouse:create",
           "line": 237,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 576
+          "definitionLine": 577
         },
         {
           "symbol": "Perm.warehouseEdit",
@@ -45784,21 +45784,21 @@
           "literal": "warehouse:delete",
           "line": 243,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 577
+          "definitionLine": 578
         },
         {
           "symbol": "Perm.warehouseStatus",
           "literal": "warehouse:status",
           "line": 246,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 578
+          "definitionLine": 579
         },
         {
           "symbol": "Perm.warehouseCreate",
           "literal": "warehouse:create",
           "line": 560,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 576
+          "definitionLine": 577
         },
         {
           "symbol": "Perm.warehouseExport",
@@ -50385,7 +50385,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -50739,7 +50739,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -50878,14 +50878,14 @@
           "literal": "department:create",
           "line": 290,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 734
+          "definitionLine": 735
         },
         {
           "symbol": "Perm.departmentDelete",
           "literal": "department:delete",
           "line": 330,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 735
+          "definitionLine": 736
         },
         {
           "symbol": "Perm.departmentEdit",
@@ -50899,14 +50899,14 @@
           "literal": "department:move",
           "line": 404,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 736
+          "definitionLine": 737
         },
         {
           "symbol": "Perm.departmentManagerAssign",
           "literal": "department:manager_assign",
           "line": 405,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 737
+          "definitionLine": 738
         },
         {
           "symbol": "Perm.departmentEdit",
@@ -50920,14 +50920,14 @@
           "literal": "department:move",
           "line": 428,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 736
+          "definitionLine": 737
         },
         {
           "symbol": "Perm.departmentManagerAssign",
           "literal": "department:manager_assign",
           "line": 429,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 737
+          "definitionLine": 738
         },
         {
           "symbol": "Perm.departmentEdit",
@@ -50941,28 +50941,28 @@
           "literal": "department:create",
           "line": 594,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 734
+          "definitionLine": 735
         },
         {
           "symbol": "Perm.departmentDelete",
           "literal": "department:delete",
           "line": 595,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 735
+          "definitionLine": 736
         },
         {
           "symbol": "Perm.departmentMove",
           "literal": "department:move",
           "line": 596,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 736
+          "definitionLine": 737
         },
         {
           "symbol": "Perm.departmentManagerAssign",
           "literal": "department:manager_assign",
           "line": 597,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 737
+          "definitionLine": 738
         },
         {
           "symbol": "Perm.employeeView",
@@ -52996,7 +52996,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -53294,7 +53294,7 @@
           "literal": "employee:avatar_edit",
           "line": 83,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 747
+          "definitionLine": 748
         },
         {
           "symbol": "Perm.employeeEdit",
@@ -53315,21 +53315,21 @@
           "literal": "employee:contract_renew",
           "line": 87,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 746
+          "definitionLine": 747
         },
         {
           "symbol": "Perm.employeeConfirm",
           "literal": "employee:confirm",
           "line": 89,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 744
+          "definitionLine": 745
         },
         {
           "symbol": "Perm.employeeRehire",
           "literal": "employee:rehire",
           "line": 90,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 745
+          "definitionLine": 746
         },
         {
           "symbol": "Perm.employeeView",
@@ -53364,21 +53364,21 @@
           "literal": "attachment:upload",
           "line": 383,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 750
+          "definitionLine": 751
         },
         {
           "symbol": "Perm.employeeTransfer",
           "literal": "employee:transfer",
           "line": 548,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 741
+          "definitionLine": 742
         },
         {
           "symbol": "Perm.employeeOffboard",
           "literal": "employee:offboard",
           "line": 569,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 743
+          "definitionLine": 744
         },
         {
           "symbol": "Perm.accountSupport",
@@ -54488,7 +54488,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -55354,7 +55354,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -57495,7 +57495,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -59466,7 +59466,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -59600,7 +59600,7 @@
           "literal": "attachment:download",
           "line": 481,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 749
+          "definitionLine": 750
         }
       ],
       "apiEndpointReferences": [],
@@ -59984,7 +59984,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -60984,7 +60984,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -61719,7 +61719,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -62140,7 +62140,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -62595,7 +62595,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -62749,14 +62749,14 @@
           "literal": "finance_report:export",
           "line": 536,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 445
+          "definitionLine": 446
         },
         {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
           "line": 545,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 445
+          "definitionLine": 446
         }
       ],
       "apiEndpointReferences": [],
@@ -63195,7 +63195,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -63433,14 +63433,14 @@
           "literal": "finance_report:export",
           "line": 936,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 445
+          "definitionLine": 446
         },
         {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
           "line": 946,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 445
+          "definitionLine": 446
         }
       ],
       "apiEndpointReferences": [],
@@ -65845,7 +65845,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -65939,56 +65939,56 @@
           "literal": "finance_asset:view",
           "line": 81,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 446
+          "definitionLine": 447
         },
         {
           "symbol": "Perm.financeAssetEdit",
           "literal": "finance_asset:edit",
           "line": 82,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 447
+          "definitionLine": 448
         },
         {
           "symbol": "Perm.financeAssetDelete",
           "literal": "finance_asset:delete",
           "line": 83,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 448
+          "definitionLine": 449
         },
         {
           "symbol": "Perm.financeAssetApprove",
           "literal": "finance_asset:approve",
           "line": 84,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 449
+          "definitionLine": 450
         },
         {
           "symbol": "Perm.financeAssetPost",
           "literal": "finance_asset:post",
           "line": 85,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 450
+          "definitionLine": 451
         },
         {
           "symbol": "Perm.financeAssetReverse",
           "literal": "finance_asset:reverse",
           "line": 86,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 451
+          "definitionLine": 452
         },
         {
           "symbol": "Perm.financeAssetDispose",
           "literal": "finance_asset:dispose",
           "line": 87,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 452
+          "definitionLine": 453
         },
         {
           "symbol": "Perm.financeAssetPeriodManage",
           "literal": "finance_asset_period:manage",
           "line": 88,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 453
+          "definitionLine": 454
         }
       ],
       "apiEndpointReferences": [],
@@ -66387,7 +66387,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -66493,21 +66493,21 @@
           "literal": "sales_order_finance:view",
           "line": 129,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 475
+          "definitionLine": 476
         },
         {
           "symbol": "Perm.salesShipmentFinanceView",
           "literal": "sales_shipment_finance:view",
           "line": 130,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 457
+          "definitionLine": 458
         },
         {
           "symbol": "Perm.financeOrderApprovalView",
           "literal": "finance_order_approval:view",
           "line": 131,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 463
+          "definitionLine": 464
         },
         {
           "symbol": "Perm.procurementIqcRejectionView",
@@ -67093,7 +67093,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -67235,21 +67235,21 @@
           "literal": "finance_expense:gl_confirm",
           "line": 114,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 724
+          "definitionLine": 725
         },
         {
           "symbol": "Perm.financeViewAll",
           "literal": "finance:view:all",
           "line": 375,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 504
+          "definitionLine": 505
         },
         {
           "symbol": "Perm.customerPrepaymentView",
           "literal": "customer_prepayment:view",
           "line": 377,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 486
+          "definitionLine": 487
         }
       ],
       "apiEndpointReferences": [],
@@ -69042,7 +69042,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -69340,70 +69340,70 @@
           "literal": "finance:view:all",
           "line": 720,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 504
+          "definitionLine": 505
         },
         {
           "symbol": "Perm.customerPrepaymentView",
           "literal": "customer_prepayment:view",
           "line": 721,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 486
+          "definitionLine": 487
         },
         {
           "symbol": "Perm.financeReceiptCreate",
           "literal": "finance_receipt:create",
           "line": 722,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 712
+          "definitionLine": 713
         },
         {
           "symbol": "Perm.attachmentUpload",
           "literal": "attachment:upload",
           "line": 2115,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 750
+          "definitionLine": 751
         },
         {
           "symbol": "Perm.financeViewAll",
           "literal": "finance:view:all",
           "line": 2369,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 504
+          "definitionLine": 505
         },
         {
           "symbol": "Perm.customerPrepaymentView",
           "literal": "customer_prepayment:view",
           "line": 2370,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 486
+          "definitionLine": 487
         },
         {
           "symbol": "Perm.customerPrepaymentApply",
           "literal": "customer_prepayment:apply",
           "line": 2371,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 487
+          "definitionLine": 488
         },
         {
           "symbol": "Perm.financeViewAll",
           "literal": "finance:view:all",
           "line": 2374,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 504
+          "definitionLine": 505
         },
         {
           "symbol": "Perm.customerPrepaymentView",
           "literal": "customer_prepayment:view",
           "line": 2375,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 486
+          "definitionLine": 487
         },
         {
           "symbol": "Perm.financeReceiptCreate",
           "literal": "finance_receipt:create",
           "line": 2376,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 712
+          "definitionLine": 713
         },
         {
           "symbol": "Perm.attachmentView",
@@ -71838,7 +71838,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -73284,7 +73284,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -73737,7 +73737,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -74035,119 +74035,119 @@
           "literal": "finance_order_approval:approve",
           "line": 106,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 629
+          "definitionLine": 630
         },
         {
           "symbol": "Perm.financeOrderApprovalReject",
           "literal": "finance_order_approval:reject",
           "line": 107,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 630
+          "definitionLine": 631
         },
         {
           "symbol": "Perm.purchaseOrderReverse",
           "literal": "purchase_order:reverse",
           "line": 108,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 616
+          "definitionLine": 617
         },
         {
           "symbol": "Perm.subcontractOrderReverse",
           "literal": "subcontract_order:reverse",
           "line": 109,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 681
+          "definitionLine": 682
         },
         {
           "symbol": "Perm.financeOrderApprovalView",
           "literal": "finance_order_approval:view",
           "line": 115,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 463
+          "definitionLine": 464
         },
         {
           "symbol": "Perm.financeOrderApprovalApprove",
           "literal": "finance_order_approval:approve",
           "line": 116,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 629
+          "definitionLine": 630
         },
         {
           "symbol": "Perm.financeOrderApprovalReject",
           "literal": "finance_order_approval:reject",
           "line": 117,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 630
+          "definitionLine": 631
         },
         {
           "symbol": "Perm.purchaseOrderReverse",
           "literal": "purchase_order:reverse",
           "line": 118,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 616
+          "definitionLine": 617
         },
         {
           "symbol": "Perm.subcontractOrderReverse",
           "literal": "subcontract_order:reverse",
           "line": 119,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 681
+          "definitionLine": 682
         },
         {
           "symbol": "Perm.financeOrderApprovalApprove",
           "literal": "finance_order_approval:approve",
           "line": 141,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 629
+          "definitionLine": 630
         },
         {
           "symbol": "Perm.financeOrderApprovalReject",
           "literal": "finance_order_approval:reject",
           "line": 145,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 630
+          "definitionLine": 631
         },
         {
           "symbol": "Perm.financeOrderApprovalReject",
           "literal": "finance_order_approval:reject",
           "line": 199,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 630
+          "definitionLine": 631
         },
         {
           "symbol": "Perm.financeOrderApprovalApprove",
           "literal": "finance_order_approval:approve",
           "line": 200,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 629
+          "definitionLine": 630
         },
         {
           "symbol": "Perm.financeOrderApprovalView",
           "literal": "finance_order_approval:view",
           "line": 336,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 463
+          "definitionLine": 464
         },
         {
           "symbol": "Perm.financeOrderApprovalApprove",
           "literal": "finance_order_approval:approve",
           "line": 389,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 629
+          "definitionLine": 630
         },
         {
           "symbol": "Perm.financeOrderApprovalReject",
           "literal": "finance_order_approval:reject",
           "line": 390,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 630
+          "definitionLine": 631
         },
         {
           "symbol": "Perm.financeOrderApprovalView",
           "literal": "finance_order_approval:view",
           "line": 824,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 463
+          "definitionLine": 464
         },
         {
           "symbol": "Perm.purchaseOrderView",
@@ -75148,7 +75148,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -75302,14 +75302,14 @@
           "literal": "finance_order_approval:view",
           "line": 182,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 463
+          "definitionLine": 464
         },
         {
           "symbol": "Perm.financeOrderApprovalView",
           "literal": "finance_order_approval:view",
           "line": 754,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 463
+          "definitionLine": 464
         }
       ],
       "apiEndpointReferences": [],
@@ -77151,7 +77151,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -79871,7 +79871,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -80109,28 +80109,28 @@
           "literal": "finance_report:export",
           "line": 335,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 445
+          "definitionLine": 446
         },
         {
           "symbol": "Perm.paymentStyleEdit",
           "literal": "payment_style:edit",
           "line": 579,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 509
+          "definitionLine": 510
         },
         {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
           "line": 802,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 445
+          "definitionLine": 446
         },
         {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
           "line": 811,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 445
+          "definitionLine": 446
         }
       ],
       "apiEndpointReferences": [],
@@ -80846,7 +80846,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -81024,28 +81024,28 @@
           "literal": "sales_order_finance:view",
           "line": 157,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 475
+          "definitionLine": 476
         },
         {
           "symbol": "Perm.salesOrderFinanceConfirm",
           "literal": "sales_order_finance:confirm",
           "line": 164,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 476
+          "definitionLine": 477
         },
         {
           "symbol": "Perm.salesOrderFinanceView",
           "literal": "sales_order_finance:view",
           "line": 783,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 475
+          "definitionLine": 476
         },
         {
           "symbol": "Perm.salesOrderFinanceConfirm",
           "literal": "sales_order_finance:confirm",
           "line": 786,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 476
+          "definitionLine": 477
         }
       ],
       "apiEndpointReferences": [],
@@ -81958,7 +81958,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -82196,14 +82196,14 @@
           "literal": "finance:view:all",
           "line": 812,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 504
+          "definitionLine": 505
         },
         {
           "symbol": "Perm.customerPrepaymentView",
           "literal": "customer_prepayment:view",
           "line": 813,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 486
+          "definitionLine": 487
         },
         {
           "symbol": "Perm.attachmentView",
@@ -83398,7 +83398,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -83636,84 +83636,84 @@
           "literal": "sales_shipment_finance:view",
           "line": 90,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 457
+          "definitionLine": 458
         },
         {
           "symbol": "Perm.salesShipmentFinanceApprove",
           "literal": "sales_shipment_finance:approve",
           "line": 91,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 458
+          "definitionLine": 459
         },
         {
           "symbol": "Perm.salesShipmentFinanceReject",
           "literal": "sales_shipment_finance:reject",
           "line": 92,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 459
+          "definitionLine": 460
         },
         {
           "symbol": "Perm.salesShipmentFinanceReverse",
           "literal": "sales_shipment_finance:reverse",
           "line": 93,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 460
+          "definitionLine": 461
         },
         {
           "symbol": "Perm.salesShipmentFinanceView",
           "literal": "sales_shipment_finance:view",
           "line": 108,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 457
+          "definitionLine": 458
         },
         {
           "symbol": "Perm.salesShipmentFinanceReject",
           "literal": "sales_shipment_finance:reject",
           "line": 147,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 459
+          "definitionLine": 460
         },
         {
           "symbol": "Perm.salesShipmentFinanceApprove",
           "literal": "sales_shipment_finance:approve",
           "line": 148,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 458
+          "definitionLine": 459
         },
         {
           "symbol": "Perm.salesShipmentFinanceApprove",
           "literal": "sales_shipment_finance:approve",
           "line": 218,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 458
+          "definitionLine": 459
         },
         {
           "symbol": "Perm.salesShipmentFinanceReject",
           "literal": "sales_shipment_finance:reject",
           "line": 222,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 459
+          "definitionLine": 460
         },
         {
           "symbol": "Perm.salesShipmentFinanceReverse",
           "literal": "sales_shipment_finance:reverse",
           "line": 226,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 460
+          "definitionLine": 461
         },
         {
           "symbol": "Perm.salesShipmentFinanceApprove",
           "literal": "sales_shipment_finance:approve",
           "line": 362,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 458
+          "definitionLine": 459
         },
         {
           "symbol": "Perm.salesShipmentFinanceReject",
           "literal": "sales_shipment_finance:reject",
           "line": 364,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 459
+          "definitionLine": 460
         },
         {
           "symbol": "Perm.salesShipmentView",
@@ -83727,7 +83727,7 @@
           "literal": "sales_shipment_finance:view",
           "line": 1490,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 457
+          "definitionLine": 458
         }
       ],
       "apiEndpointReferences": [
@@ -84903,7 +84903,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -85093,14 +85093,14 @@
           "literal": "finance_report:export",
           "line": 644,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 445
+          "definitionLine": 446
         },
         {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
           "line": 653,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 445
+          "definitionLine": 446
         }
       ],
       "apiEndpointReferences": [],
@@ -85619,7 +85619,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -85797,49 +85797,49 @@
           "literal": "finance_payment:create",
           "line": 102,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 716
+          "definitionLine": 717
         },
         {
           "symbol": "Perm.arApLedgerView",
           "literal": "ar_ap_ledger:view",
           "line": 106,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 485
+          "definitionLine": 486
         },
         {
           "symbol": "Perm.financeViewAll",
           "literal": "finance:view:all",
           "line": 107,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 504
+          "definitionLine": 505
         },
         {
           "symbol": "Perm.subcontractLossClaimView",
           "literal": "subcontract_loss_claim:view",
           "line": 112,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 489
+          "definitionLine": 490
         },
         {
           "symbol": "Perm.supplierSettlementView",
           "literal": "supplier_settlement:view",
           "line": 116,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 497
+          "definitionLine": 498
         },
         {
           "symbol": "Perm.supplierOpenItemOffsetApply",
           "literal": "supplier_open_item_offset:apply",
           "line": 120,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 493
+          "definitionLine": 494
         },
         {
           "symbol": "Perm.financeViewAll",
           "literal": "finance:view:all",
           "line": 121,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 504
+          "definitionLine": 505
         }
       ],
       "apiEndpointReferences": [],
@@ -86627,7 +86627,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -86965,7 +86965,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -87870,7 +87870,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -89077,7 +89077,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -89255,14 +89255,14 @@
           "literal": "notice:publish",
           "line": 183,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 513
+          "definitionLine": 514
         },
         {
           "symbol": "Perm.noticeRead",
           "literal": "notice:read",
           "line": 186,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 512
+          "definitionLine": 513
         },
         {
           "symbol": "Perm.employeePiiView",
@@ -89276,7 +89276,7 @@
           "literal": "employee:confirm",
           "line": 190,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 744
+          "definitionLine": 745
         },
         {
           "symbol": "Perm.employeeView",
@@ -89297,14 +89297,14 @@
           "literal": "employee:confirm",
           "line": 665,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 744
+          "definitionLine": 745
         },
         {
           "symbol": "Perm.employeeTaskTakeover",
           "literal": "employee:task_takeover",
           "line": 670,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 748
+          "definitionLine": 749
         }
       ],
       "apiEndpointReferences": [],
@@ -90250,7 +90250,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -90332,7 +90332,7 @@
           "literal": "notice:publish",
           "line": 66,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 513
+          "definitionLine": 514
         },
         {
           "symbol": "Perm.employeeView",
@@ -92434,7 +92434,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -92638,7 +92638,7 @@
           "literal": "purchase_report:export",
           "line": 1828,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 525
+          "definitionLine": 526
         }
       ],
       "apiEndpointReferences": [],
@@ -93788,7 +93788,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -94930,7 +94930,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -95062,14 +95062,14 @@
           "literal": "procurement_iqc_rejection:record_return",
           "line": 492,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 769
+          "definitionLine": 770
         },
         {
           "symbol": "Perm.procurementIqcRejectionConfirmCredit",
           "literal": "procurement_iqc_rejection:confirm_credit",
           "line": 502,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 771
+          "definitionLine": 772
         },
         {
           "symbol": "Perm.procurementIqcRejectionAmountView",
@@ -95083,14 +95083,14 @@
           "literal": "procurement_iqc_rejection:close_no_credit",
           "line": 520,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 773
+          "definitionLine": 774
         },
         {
           "symbol": "Perm.procurementIqcRejectionConfirmCredit",
           "literal": "procurement_iqc_rejection:confirm_credit",
           "line": 530,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 771
+          "definitionLine": 772
         },
         {
           "symbol": "Perm.procurementIqcRejectionAmountView",
@@ -95104,7 +95104,7 @@
           "literal": "procurement_iqc_rejection:reverse",
           "line": 541,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 775
+          "definitionLine": 776
         },
         {
           "symbol": "Perm.procurementIqcRejectionAmountView",
@@ -95577,7 +95577,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -96042,7 +96042,7 @@
           "literal": "production_plan:approve",
           "line": 228,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 387
+          "definitionLine": 388
         }
       ],
       "apiEndpointReferences": [],
@@ -96335,7 +96335,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -96417,35 +96417,35 @@
           "literal": "production_daily_report:create",
           "line": 125,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 646
+          "definitionLine": 647
         },
         {
           "symbol": "Perm.productionPlanApprove",
           "literal": "production_plan:approve",
           "line": 282,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 387
+          "definitionLine": 388
         },
         {
           "symbol": "Perm.productionPlanApprove",
           "literal": "production_plan:approve",
           "line": 291,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 387
+          "definitionLine": 388
         },
         {
           "symbol": "Perm.productionExecutionStart",
           "literal": "production_execution:start",
           "line": 300,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 662
+          "definitionLine": 663
         },
         {
           "symbol": "Perm.productionDailyReportCreate",
           "literal": "production_daily_report:create",
           "line": 330,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 646
+          "definitionLine": 647
         }
       ],
       "apiEndpointReferences": [],
@@ -99097,7 +99097,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -99335,21 +99335,21 @@
           "literal": "production_execution:overview",
           "line": 270,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 385
+          "definitionLine": 386
         },
         {
           "symbol": "Perm.productionPlanApprove",
           "literal": "production_plan:approve",
           "line": 364,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 387
+          "definitionLine": 388
         },
         {
           "symbol": "Perm.productionPlanDelete",
           "literal": "production_plan:delete",
           "line": 365,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 655
+          "definitionLine": 656
         },
         {
           "symbol": "Perm.productionPlanView",
@@ -99363,70 +99363,70 @@
           "literal": "production_daily_report:view",
           "line": 475,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 415
+          "definitionLine": 416
         },
         {
           "symbol": "Perm.productionPlanApprove",
           "literal": "production_plan:approve",
           "line": 503,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 387
+          "definitionLine": 388
         },
         {
           "symbol": "Perm.productionPlanApprove",
           "literal": "production_plan:approve",
           "line": 512,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 387
+          "definitionLine": 388
         },
         {
           "symbol": "Perm.productionPlanApprove",
           "literal": "production_plan:approve",
           "line": 525,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 387
+          "definitionLine": 388
         },
         {
           "symbol": "Perm.productionPlanDelete",
           "literal": "production_plan:delete",
           "line": 526,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 655
+          "definitionLine": 656
         },
         {
           "symbol": "Perm.productionPlanApprove",
           "literal": "production_plan:approve",
           "line": 534,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 387
+          "definitionLine": 388
         },
         {
           "symbol": "Perm.productionPlanDelete",
           "literal": "production_plan:delete",
           "line": 548,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 655
+          "definitionLine": 656
         },
         {
           "symbol": "Perm.productionMaterialAnalysisCreate",
           "literal": "production_material_analysis:create",
           "line": 677,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 755
+          "definitionLine": 756
         },
         {
           "symbol": "Perm.productionMaterialAnalysisRefresh",
           "literal": "production_material_analysis:refresh",
           "line": 681,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 757
+          "definitionLine": 758
         },
         {
           "symbol": "Perm.productionPlanFlags",
           "literal": "production_plan:flags",
           "line": 1376,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 657
+          "definitionLine": 658
         }
       ],
       "apiEndpointReferences": [],
@@ -101084,7 +101084,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -101178,84 +101178,84 @@
           "literal": "production_daily_report:view",
           "line": 100,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 415
+          "definitionLine": 416
         },
         {
           "symbol": "Perm.productionDailyReportView",
           "literal": "production_daily_report:view",
           "line": 244,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 415
+          "definitionLine": 416
         },
         {
           "symbol": "Perm.productionDailyReportCreate",
           "literal": "production_daily_report:create",
           "line": 262,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 646
+          "definitionLine": 647
         },
         {
           "symbol": "Perm.productionDailyReportEdit",
           "literal": "production_daily_report:edit",
           "line": 263,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 416
+          "definitionLine": 417
         },
         {
           "symbol": "Perm.attachmentUpload",
           "literal": "attachment:upload",
           "line": 264,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 750
+          "definitionLine": 751
         },
         {
           "symbol": "Perm.productionDailyReportCreate",
           "literal": "production_daily_report:create",
           "line": 292,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 646
+          "definitionLine": 647
         },
         {
           "symbol": "Perm.productionDailyReportEdit",
           "literal": "production_daily_report:edit",
           "line": 293,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 416
+          "definitionLine": 417
         },
         {
           "symbol": "Perm.attachmentUpload",
           "literal": "attachment:upload",
           "line": 294,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 750
+          "definitionLine": 751
         },
         {
           "symbol": "Perm.productionDailyReportView",
           "literal": "production_daily_report:view",
           "line": 384,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 415
+          "definitionLine": 416
         },
         {
           "symbol": "Perm.productionDailyReportCreate",
           "literal": "production_daily_report:create",
           "line": 395,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 646
+          "definitionLine": 647
         },
         {
           "symbol": "Perm.productionDailyReportEdit",
           "literal": "production_daily_report:edit",
           "line": 398,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 416
+          "definitionLine": 417
         },
         {
           "symbol": "Perm.attachmentUpload",
           "literal": "attachment:upload",
           "line": 400,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 750
+          "definitionLine": 751
         }
       ],
       "apiEndpointReferences": [],
@@ -102760,7 +102760,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -102950,7 +102950,7 @@
           "literal": "production_daily_report:view",
           "line": 1325,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 415
+          "definitionLine": 416
         }
       ],
       "apiEndpointReferences": [],
@@ -104695,7 +104695,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -105029,98 +105029,98 @@
           "literal": "production_daily_report:view",
           "line": 2650,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 415
+          "definitionLine": 416
         },
         {
           "symbol": "Perm.productionDailyReportCreate",
           "literal": "production_daily_report:create",
           "line": 2651,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 646
+          "definitionLine": 647
         },
         {
           "symbol": "Perm.productionDailyReportEdit",
           "literal": "production_daily_report:edit",
           "line": 2652,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 416
+          "definitionLine": 417
         },
         {
           "symbol": "Perm.attachmentUpload",
           "literal": "attachment:upload",
           "line": 2653,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 750
+          "definitionLine": 751
         },
         {
           "symbol": "Perm.productionDailyReportCreate",
           "literal": "production_daily_report:create",
           "line": 2813,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 646
+          "definitionLine": 647
         },
         {
           "symbol": "Perm.productionDailyReportView",
           "literal": "production_daily_report:view",
           "line": 2816,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 415
+          "definitionLine": 416
         },
         {
           "symbol": "Perm.productionDailyReportCreate",
           "literal": "production_daily_report:create",
           "line": 3285,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 646
+          "definitionLine": 647
         },
         {
           "symbol": "Perm.productionDailyReportView",
           "literal": "production_daily_report:view",
           "line": 3288,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 415
+          "definitionLine": 416
         },
         {
           "symbol": "Perm.productionDailyReportCreate",
           "literal": "production_daily_report:create",
           "line": 3310,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 646
+          "definitionLine": 647
         },
         {
           "symbol": "Perm.productionDailyReportView",
           "literal": "production_daily_report:view",
           "line": 3313,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 415
+          "definitionLine": 416
         },
         {
           "symbol": "Perm.productionDailyReportCreate",
           "literal": "production_daily_report:create",
           "line": 3333,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 646
+          "definitionLine": 647
         },
         {
           "symbol": "Perm.productionDailyReportView",
           "literal": "production_daily_report:view",
           "line": 3336,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 415
+          "definitionLine": 416
         },
         {
           "symbol": "Perm.productionDailyReportView",
           "literal": "production_daily_report:view",
           "line": 3349,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 415
+          "definitionLine": 416
         },
         {
           "symbol": "Perm.productionDailyReportView",
           "literal": "production_daily_report:view",
           "line": 3360,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 415
+          "definitionLine": 416
         },
         {
           "symbol": "Perm.productionExecutionView",
@@ -105148,7 +105148,7 @@
           "literal": "production_daily_report:create",
           "line": 4264,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 646
+          "definitionLine": 647
         },
         {
           "symbol": null,
@@ -108254,7 +108254,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -109707,7 +109707,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -109832,7 +109832,7 @@
           "literal": "production_execution:start",
           "line": 238,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 662
+          "definitionLine": 663
         }
       ],
       "apiEndpointReferences": [],
@@ -110332,7 +110332,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -110469,7 +110469,7 @@
           "literal": "production_execution:start",
           "line": 89,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 662
+          "definitionLine": 663
         }
       ],
       "apiEndpointReferences": [],
@@ -110988,7 +110988,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -113298,7 +113298,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -114423,7 +114423,7 @@
               "literal": "production_material_analysis:view",
               "line": 320,
               "definitionSource": "lib/shared/auth/permissions.dart",
-              "definitionLine": 397
+              "definitionLine": 398
             },
             {
               "symbol": "Perm.purchaseOrderView",
@@ -114444,35 +114444,35 @@
               "literal": "production_material_analysis:view",
               "line": 417,
               "definitionSource": "lib/shared/auth/permissions.dart",
-              "definitionLine": 397
+              "definitionLine": 398
             },
             {
               "symbol": "Perm.productionMaterialAnalysisNotify",
               "literal": "production_material_analysis:notify",
               "line": 909,
               "definitionSource": "lib/shared/auth/permissions.dart",
-              "definitionLine": 401
+              "definitionLine": 402
             },
             {
               "symbol": "Perm.productionMaterialAnalysisGenerate",
               "literal": "production_material_analysis:generate",
               "line": 912,
               "definitionSource": "lib/shared/auth/permissions.dart",
-              "definitionLine": 405
+              "definitionLine": 406
             },
             {
               "symbol": "Perm.productionMaterialAnalysisNotify",
               "literal": "production_material_analysis:notify",
               "line": 996,
               "definitionSource": "lib/shared/auth/permissions.dart",
-              "definitionLine": 401
+              "definitionLine": 402
             },
             {
               "symbol": "Perm.productionMaterialAnalysisGenerate",
               "literal": "production_material_analysis:generate",
               "line": 999,
               "definitionSource": "lib/shared/auth/permissions.dart",
-              "definitionLine": 405
+              "definitionLine": 406
             }
           ],
           "apiEndpointReferences": []
@@ -117747,49 +117747,49 @@
               "literal": "production_material_analysis:view",
               "line": 8007,
               "definitionSource": "lib/shared/auth/permissions.dart",
-              "definitionLine": 397
+              "definitionLine": 398
             },
             {
               "symbol": "Perm.productionMaterialAnalysisNotify",
               "literal": "production_material_analysis:notify",
               "line": 8008,
               "definitionSource": "lib/shared/auth/permissions.dart",
-              "definitionLine": 401
+              "definitionLine": 402
             },
             {
               "symbol": "Perm.productionMaterialAnalysisNotify",
               "literal": "production_material_analysis:notify",
               "line": 8211,
               "definitionSource": "lib/shared/auth/permissions.dart",
-              "definitionLine": 401
+              "definitionLine": 402
             },
             {
               "symbol": "Perm.productionMaterialAnalysisClaimSharedFuture",
               "literal": "production_material_analysis:claim_shared_future",
               "line": 8215,
               "definitionSource": "lib/shared/auth/permissions.dart",
-              "definitionLine": 413
+              "definitionLine": 414
             },
             {
               "symbol": "Perm.productionMaterialAnalysisNotify",
               "literal": "production_material_analysis:notify",
               "line": 8216,
               "definitionSource": "lib/shared/auth/permissions.dart",
-              "definitionLine": 401
+              "definitionLine": 402
             },
             {
               "symbol": "Perm.productionPlanReverse",
               "literal": "production_plan:reverse",
               "line": 8642,
               "definitionSource": "lib/shared/auth/permissions.dart",
-              "definitionLine": 656
+              "definitionLine": 657
             },
             {
               "symbol": "Perm.productionPlanDelete",
               "literal": "production_plan:delete",
               "line": 8643,
               "definitionSource": "lib/shared/auth/permissions.dart",
-              "definitionLine": 655
+              "definitionLine": 656
             }
           ],
           "apiEndpointReferences": []
@@ -119079,7 +119079,7 @@
               "literal": "production_plan:approve",
               "line": 228,
               "definitionSource": "lib/shared/auth/permissions.dart",
-              "definitionLine": 387
+              "definitionLine": 388
             }
           ],
           "apiEndpointReferences": []
@@ -119379,91 +119379,91 @@
           "literal": "production_plan:approve",
           "line": 315,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 387
+          "definitionLine": 388
         },
         {
           "symbol": "Perm.productionMaterialAnalysisForwardRd",
           "literal": "production_material_analysis:forward_rd",
           "line": 584,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 403
+          "definitionLine": 404
         },
         {
           "symbol": "Perm.productionMaterialAnalysisCreate",
           "literal": "production_material_analysis:create",
           "line": 859,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 755
+          "definitionLine": 756
         },
         {
           "symbol": "Perm.productionMaterialAnalysisRefresh",
           "literal": "production_material_analysis:refresh",
           "line": 860,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 757
+          "definitionLine": 758
         },
         {
           "symbol": "Perm.productionMaterialAnalysisRoute",
           "literal": "production_material_analysis:route",
           "line": 865,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 399
+          "definitionLine": 400
         },
         {
           "symbol": "Perm.productionMaterialAnalysisNotify",
           "literal": "production_material_analysis:notify",
           "line": 868,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 401
+          "definitionLine": 402
         },
         {
           "symbol": "Perm.productionMaterialAnalysisCancel",
           "literal": "production_material_analysis:cancel",
           "line": 871,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 759
+          "definitionLine": 760
         },
         {
           "symbol": "Perm.productionMaterialAnalysisGenerate",
           "literal": "production_material_analysis:generate",
           "line": 874,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 405
+          "definitionLine": 406
         },
         {
           "symbol": "Perm.productionMaterialAnalysisNotify",
           "literal": "production_material_analysis:notify",
           "line": 875,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 401
+          "definitionLine": 402
         },
         {
           "symbol": "Perm.productionMaterialAnalysisClaimSharedFuture",
           "literal": "production_material_analysis:claim_shared_future",
           "line": 877,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 413
+          "definitionLine": 414
         },
         {
           "symbol": "Perm.productionMaterialAnalysisOverSupply",
           "literal": "production_material_analysis:over_supply",
           "line": 881,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 411
+          "definitionLine": 412
         },
         {
           "symbol": "Perm.productionMaterialAnalysisClaimSharedFuture",
           "literal": "production_material_analysis:claim_shared_future",
           "line": 884,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 413
+          "definitionLine": 414
         },
         {
           "symbol": "Perm.productionMaterialAnalysisGenerate",
           "literal": "production_material_analysis:generate",
           "line": 889,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 405
+          "definitionLine": 406
         },
         {
           "symbol": "Perm.productionPlanView",
@@ -119477,14 +119477,14 @@
           "literal": "production_material_analysis:reallocate",
           "line": 893,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 407
+          "definitionLine": 408
         },
         {
           "symbol": "Perm.productionMaterialAnalysisCrossReallocate",
           "literal": "production_material_analysis:cross_reallocate",
           "line": 896,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 409
+          "definitionLine": 410
         }
       ],
       "apiEndpointReferences": [],
@@ -121568,7 +121568,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -121705,7 +121705,7 @@
           "literal": "production_execution:start",
           "line": 263,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 662
+          "definitionLine": 663
         }
       ],
       "apiEndpointReferences": [],
@@ -122434,7 +122434,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -122516,7 +122516,7 @@
           "literal": "production_plan:approve",
           "line": 656,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 387
+          "definitionLine": 388
         },
         {
           "symbol": "Perm.productionExecutionView",
@@ -122988,7 +122988,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -123118,7 +123118,7 @@
           "literal": "production_plan:approve",
           "line": 464,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 387
+          "definitionLine": 388
         }
       ],
       "apiEndpointReferences": [],
@@ -123501,7 +123501,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -124164,7 +124164,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -124438,105 +124438,105 @@
           "literal": "production_plan:edit",
           "line": 185,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 386
+          "definitionLine": 387
         },
         {
           "symbol": "Perm.productionPlanDelete",
           "literal": "production_plan:delete",
           "line": 192,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 655
+          "definitionLine": 656
         },
         {
           "symbol": "Perm.productionPlanReverse",
           "literal": "production_plan:reverse",
           "line": 199,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 656
+          "definitionLine": 657
         },
         {
           "symbol": "Perm.productionPlanApprove",
           "literal": "production_plan:approve",
           "line": 205,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 387
+          "definitionLine": 388
         },
         {
           "symbol": "Perm.productionMaterialAnalysisView",
           "literal": "production_material_analysis:view",
           "line": 210,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 397
+          "definitionLine": 398
         },
         {
           "symbol": "Perm.productionPlanningPackageCancel",
           "literal": "production_planning_package:cancel",
           "line": 237,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 667
+          "definitionLine": 668
         },
         {
           "symbol": "Perm.productionPlanningPackageReverse",
           "literal": "production_planning_package:reverse",
           "line": 239,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 669
+          "definitionLine": 670
         },
         {
           "symbol": "Perm.productionMaterialSettle",
           "literal": "production_material:settle",
           "line": 240,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 671
+          "definitionLine": 672
         },
         {
           "symbol": "Perm.productionMaterialReverse",
           "literal": "production_material:reverse",
           "line": 242,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 672
+          "definitionLine": 673
         },
         {
           "symbol": "Perm.productionMaterialClose",
           "literal": "production_material:close",
           "line": 244,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 673
+          "definitionLine": 674
         },
         {
           "symbol": "Perm.productionExecutionAssign",
           "literal": "production_execution:assign",
           "line": 250,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 658
+          "definitionLine": 659
         },
         {
           "symbol": "Perm.productionExecutionReleaseDefer",
           "literal": "production_execution:release_defer",
           "line": 252,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 659
+          "definitionLine": 660
         },
         {
           "symbol": "Perm.productionExecutionStart",
           "literal": "production_execution:start",
           "line": 253,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 662
+          "definitionLine": 663
         },
         {
           "symbol": "Perm.productionDailyReportView",
           "literal": "production_daily_report:view",
           "line": 258,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 415
+          "definitionLine": 416
         },
         {
           "symbol": "Perm.productionDailyReportCreate",
           "literal": "production_daily_report:create",
           "line": 259,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 646
+          "definitionLine": 647
         },
         {
           "symbol": "Perm.productionPlanView",
@@ -126363,7 +126363,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -128529,7 +128529,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -128611,28 +128611,28 @@
           "literal": "production_material_analysis:create",
           "line": 119,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 755
+          "definitionLine": 756
         },
         {
           "symbol": "Perm.productionPlanApprove",
           "literal": "production_plan:approve",
           "line": 128,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 387
+          "definitionLine": 388
         },
         {
           "symbol": "Perm.productionPlanDelete",
           "literal": "production_plan:delete",
           "line": 131,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 655
+          "definitionLine": 656
         },
         {
           "symbol": "Perm.productionPlanApprove",
           "literal": "production_plan:approve",
           "line": 533,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 387
+          "definitionLine": 388
         }
       ],
       "apiEndpointReferences": [],
@@ -131286,7 +131286,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -131500,14 +131500,14 @@
           "literal": "production_report:export",
           "line": 603,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 426
+          "definitionLine": 427
         },
         {
           "symbol": "Perm.productionReportExport",
           "literal": "production_report:export",
           "line": 612,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 426
+          "definitionLine": 427
         }
       ],
       "apiEndpointReferences": [],
@@ -132148,7 +132148,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -132554,7 +132554,7 @@
           "literal": "production_plan:approve",
           "line": 264,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 387
+          "definitionLine": 388
         },
         {
           "symbol": "Perm.productionPlanView",
@@ -132575,7 +132575,7 @@
           "literal": "production_execution:start",
           "line": 429,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 662
+          "definitionLine": 663
         },
         {
           "symbol": "Perm.productionExecutionView",
@@ -132589,35 +132589,35 @@
           "literal": "production_daily_report:view",
           "line": 436,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 415
+          "definitionLine": 416
         },
         {
           "symbol": "Perm.productionDailyReportCreate",
           "literal": "production_daily_report:create",
           "line": 437,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 646
+          "definitionLine": 647
         },
         {
           "symbol": "Perm.productionMaterialReverse",
           "literal": "production_material:reverse",
           "line": 2640,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 672
+          "definitionLine": 673
         },
         {
           "symbol": "Perm.productionMaterialSettle",
           "literal": "production_material:settle",
           "line": 2644,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 671
+          "definitionLine": 672
         },
         {
           "symbol": "Perm.productionReportExport",
           "literal": "production_report:export",
           "line": 2852,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 426
+          "definitionLine": 427
         }
       ],
       "apiEndpointReferences": [],
@@ -134973,7 +134973,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -135220,21 +135220,21 @@
           "literal": "goods:bom:edit",
           "line": 1404,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 555
+          "definitionLine": 556
         },
         {
           "symbol": "Perm.goodsBomEdit",
           "literal": "goods:bom:edit",
           "line": 1485,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 555
+          "definitionLine": 556
         },
         {
           "symbol": "Perm.productionWhereUsedExport",
           "literal": "production_where_used:export",
           "line": 1504,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 428
+          "definitionLine": 429
         }
       ],
       "apiEndpointReferences": [],
@@ -139437,7 +139437,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -139798,14 +139798,14 @@
           "literal": "purchase_order:create",
           "line": 115,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 613
+          "definitionLine": 614
         },
         {
           "symbol": "Perm.purchaseOrderDecompose",
           "literal": "purchase_order:decompose",
           "line": 116,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 617
+          "definitionLine": 618
         },
         {
           "symbol": "Perm.purchaseRequestView",
@@ -139819,21 +139819,21 @@
           "literal": "purchase_order:decompose",
           "line": 300,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 617
+          "definitionLine": 618
         },
         {
           "symbol": "Perm.financeOrderApprovalView",
           "literal": "finance_order_approval:view",
           "line": 612,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 463
+          "definitionLine": 464
         },
         {
           "symbol": "Perm.purchaseOrderChangeQty",
           "literal": "purchase_order:change_qty",
           "line": 628,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 620
+          "definitionLine": 621
         },
         {
           "symbol": "Perm.purchaseOrderSubmitFinance",
@@ -139861,7 +139861,7 @@
           "literal": "finance_order_approval:view",
           "line": 1254,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 463
+          "definitionLine": 464
         },
         {
           "symbol": "Perm.purchaseOrderView",
@@ -139875,14 +139875,14 @@
           "literal": "finance_order_approval:view",
           "line": 1288,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 463
+          "definitionLine": 464
         },
         {
           "symbol": "Perm.purchaseOrderCancel",
           "literal": "purchase_order:cancel",
           "line": 2460,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 615
+          "definitionLine": 616
         },
         {
           "symbol": "Perm.purchaseOrderSubmitFinance",
@@ -143386,7 +143386,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -144243,7 +144243,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -145034,7 +145034,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -145286,7 +145286,7 @@
           "literal": "purchase_order:create",
           "line": 1955,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 613
+          "definitionLine": 614
         }
       ],
       "apiEndpointReferences": [],
@@ -147694,7 +147694,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -147872,14 +147872,14 @@
           "literal": "purchase_report:export",
           "line": 577,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 525
+          "definitionLine": 526
         },
         {
           "symbol": "Perm.purchaseReportExport",
           "literal": "purchase_report:export",
           "line": 586,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 525
+          "definitionLine": 526
         }
       ],
       "apiEndpointReferences": [],
@@ -148566,7 +148566,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -148710,28 +148710,28 @@
           "literal": "production_quality_inspection:approve",
           "line": 129,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 419
+          "definitionLine": 420
         },
         {
           "symbol": "Perm.productionQualityInspectionApprove",
           "literal": "production_quality_inspection:approve",
           "line": 136,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 419
+          "definitionLine": 420
         },
         {
           "symbol": "Perm.productionQualityInspectionView",
           "literal": "production_quality_inspection:view",
           "line": 2368,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 417
+          "definitionLine": 418
         },
         {
           "symbol": "Perm.productionQualityInspectionApprove",
           "literal": "production_quality_inspection:approve",
           "line": 2373,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 419
+          "definitionLine": 420
         },
         {
           "symbol": "Perm.attachmentView",
@@ -151350,7 +151350,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -151477,7 +151477,7 @@
           "literal": "production_quality_inspection:view",
           "line": 134,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 417
+          "definitionLine": 418
         }
       ],
       "apiEndpointReferences": [],
@@ -152280,7 +152280,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -152489,7 +152489,7 @@
           "literal": "production_quality_inspection:view",
           "line": 135,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 417
+          "definitionLine": 418
         },
         {
           "symbol": "Perm.procurementInspectionHandle",
@@ -152503,7 +152503,7 @@
           "literal": "production_quality_inspection:approve",
           "line": 270,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 419
+          "definitionLine": 420
         },
         {
           "symbol": "Perm.procurementInspectionHandle",
@@ -153339,7 +153339,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -153404,7 +153404,7 @@
           "literal": "production_quality_inspection:view",
           "line": 52,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 417
+          "definitionLine": 418
         }
       ],
       "apiEndpointReferences": [],
@@ -153905,7 +153905,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -154061,7 +154061,7 @@
           "literal": "rd_task:resolve",
           "line": 298,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 532
+          "definitionLine": 533
         }
       ],
       "apiEndpointReferences": [],
@@ -154818,7 +154818,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -155135,14 +155135,14 @@
           "literal": "sales_order:change_qty",
           "line": 239,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 599
+          "definitionLine": 600
         },
         {
           "symbol": "Perm.salesOrderStop",
           "literal": "sales_order:stop",
           "line": 242,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 598
+          "definitionLine": 599
         },
         {
           "symbol": "Perm.salesOrderChangePlanned",
@@ -155156,7 +155156,7 @@
           "literal": "sales_order:cancel",
           "line": 271,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 600
+          "definitionLine": 601
         },
         {
           "symbol": "Perm.warehouseSalesOutboundExecute",
@@ -155177,14 +155177,14 @@
           "literal": "sales_return_quality:correct",
           "line": 316,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 764
+          "definitionLine": 765
         },
         {
           "symbol": "Perm.salesReturnQualityDispose",
           "literal": "sales_return_quality:dispose",
           "line": 323,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 765
+          "definitionLine": 766
         },
         {
           "symbol": "Perm.salesQuoteView",
@@ -155212,21 +155212,21 @@
           "literal": "finance:view:all",
           "line": 1403,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 504
+          "definitionLine": 505
         },
         {
           "symbol": "Perm.customerPrepaymentView",
           "literal": "customer_prepayment:view",
           "line": 1404,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 486
+          "definitionLine": 487
         },
         {
           "symbol": "Perm.salesShipmentFinanceView",
           "literal": "sales_shipment_finance:view",
           "line": 1548,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 457
+          "definitionLine": 458
         },
         {
           "symbol": "Perm.salesQuoteView",
@@ -155268,7 +155268,7 @@
           "literal": "production_material_analysis:view",
           "line": 2977,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 397
+          "definitionLine": 398
         },
         {
           "symbol": "Perm.salesQuoteView",
@@ -157291,7 +157291,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -157665,21 +157665,21 @@
           "literal": "sales_quote:create",
           "line": 2904,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 590
+          "definitionLine": 591
         },
         {
           "symbol": "Perm.currencyCreate",
           "literal": "currency:create",
           "line": 4818,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 573
+          "definitionLine": 574
         },
         {
           "symbol": "Perm.settlementMethodCreate",
           "literal": "settlement_method:create",
           "line": 4821,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 586
+          "definitionLine": 587
         }
       ],
       "apiEndpointReferences": [],
@@ -160897,7 +160897,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -161149,7 +161149,7 @@
           "literal": "sales_quote_finance:view",
           "line": 182,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 480
+          "definitionLine": 481
         },
         {
           "symbol": "Perm.salesOrderPriceView",
@@ -161163,28 +161163,28 @@
           "literal": "sales_shipment_finance:view",
           "line": 185,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 457
+          "definitionLine": 458
         },
         {
           "symbol": "Perm.salesShipmentCreate",
           "literal": "sales_shipment:create",
           "line": 361,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 601
+          "definitionLine": 602
         },
         {
           "symbol": "Perm.salesQuoteConvert",
           "literal": "sales_quote:convert",
           "line": 366,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 593
+          "definitionLine": 594
         },
         {
           "symbol": "Perm.salesOrderCreate",
           "literal": "sales_order:create",
           "line": 367,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 594
+          "definitionLine": 595
         }
       ],
       "apiEndpointReferences": [],
@@ -161951,7 +161951,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -162316,7 +162316,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -163241,7 +163241,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -163455,14 +163455,14 @@
           "literal": "sales_order:delete",
           "line": 204,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 595
+          "definitionLine": 596
         },
         {
           "symbol": "Perm.salesOrderCancel",
           "literal": "sales_order:cancel",
           "line": 431,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 600
+          "definitionLine": 601
         },
         {
           "symbol": "Perm.salesOrderEdit",
@@ -163476,7 +163476,7 @@
           "literal": "sales_shipment:create",
           "line": 509,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 601
+          "definitionLine": 602
         }
       ],
       "apiEndpointReferences": [],
@@ -164359,7 +164359,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -165641,7 +165641,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -166436,7 +166436,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -166739,7 +166739,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -167856,7 +167856,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -168773,7 +168773,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -168967,7 +168967,7 @@
           "literal": "goods:bom:edit",
           "line": 1296,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 555
+          "definitionLine": 556
         }
       ],
       "apiEndpointReferences": [],
@@ -170440,7 +170440,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -171118,7 +171118,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -173010,7 +173010,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -173219,7 +173219,7 @@
           "literal": "subcontract_order:create",
           "line": 112,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 679
+          "definitionLine": 680
         },
         {
           "symbol": "Perm.subcontractReturnView",
@@ -173233,7 +173233,7 @@
           "literal": "subcontract_return:create",
           "line": 163,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 696
+          "definitionLine": 697
         },
         {
           "symbol": "Perm.subcontractMaterialReturnView",
@@ -173247,7 +173247,7 @@
           "literal": "subcontract_material_return:create",
           "line": 197,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 700
+          "definitionLine": 701
         },
         {
           "symbol": "Perm.subcontractWasteView",
@@ -173261,7 +173261,7 @@
           "literal": "subcontract_waste:create",
           "line": 231,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 708
+          "definitionLine": 709
         }
       ],
       "apiEndpointReferences": [],
@@ -174118,7 +174118,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -174456,14 +174456,14 @@
           "literal": "subcontract_order:create",
           "line": 1512,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 679
+          "definitionLine": 680
         },
         {
           "symbol": "Perm.subcontractOrderDecompose",
           "literal": "subcontract_order:decompose",
           "line": 1513,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 682
+          "definitionLine": 683
         },
         {
           "symbol": "Perm.subcontractOrderSubmitFinance",
@@ -175326,7 +175326,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -175686,14 +175686,14 @@
           "literal": "finance_order_approval:view",
           "line": 169,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 463
+          "definitionLine": 464
         },
         {
           "symbol": "Perm.subcontractOrderChangeQty",
           "literal": "subcontract_order:change_qty",
           "line": 181,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 685
+          "definitionLine": 686
         },
         {
           "symbol": "Perm.subcontractOrderSubmitFinance",
@@ -175728,14 +175728,14 @@
           "literal": "finance_order_approval:view",
           "line": 766,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 463
+          "definitionLine": 464
         },
         {
           "symbol": "Perm.financeOrderApprovalView",
           "literal": "finance_order_approval:view",
           "line": 822,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 463
+          "definitionLine": 464
         },
         {
           "symbol": "Perm.subcontractShortDeliveryDecide",
@@ -175763,14 +175763,14 @@
           "literal": "subcontract_order:create",
           "line": 2174,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 679
+          "definitionLine": 680
         },
         {
           "symbol": "Perm.subcontractOrderDecompose",
           "literal": "subcontract_order:decompose",
           "line": 2175,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 682
+          "definitionLine": 683
         }
       ],
       "apiEndpointReferences": [],
@@ -179528,7 +179528,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -180307,7 +180307,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -180559,7 +180559,7 @@
           "literal": "subcontract_order:create",
           "line": 1820,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 679
+          "definitionLine": 680
         }
       ],
       "apiEndpointReferences": [],
@@ -182436,7 +182436,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -183584,7 +183584,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -183618,14 +183618,14 @@
           "literal": "suggestion:reply",
           "line": 139,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 516
+          "definitionLine": 517
         },
         {
           "symbol": "Perm.suggestionSubmit",
           "literal": "suggestion:submit",
           "line": 169,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 515
+          "definitionLine": 516
         }
       ],
       "apiEndpointReferences": [],
@@ -183807,7 +183807,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -184069,28 +184069,28 @@
           "literal": "suggestion:submit",
           "line": 87,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 515
+          "definitionLine": 516
         },
         {
           "symbol": "Perm.suggestionSubmit",
           "literal": "suggestion:submit",
           "line": 149,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 515
+          "definitionLine": 516
         },
         {
           "symbol": "Perm.suggestionSubmit",
           "literal": "suggestion:submit",
           "line": 201,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 515
+          "definitionLine": 516
         },
         {
           "symbol": "Perm.suggestionSubmit",
           "literal": "suggestion:submit",
           "line": 238,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 515
+          "definitionLine": 516
         }
       ],
       "apiEndpointReferences": [],
@@ -186541,7 +186541,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -187180,7 +187180,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -187780,7 +187780,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -188830,7 +188830,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -194826,7 +194826,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -195030,7 +195030,7 @@
           "literal": "goods:bom:edit",
           "line": 636,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 555
+          "definitionLine": 556
         }
       ],
       "apiEndpointReferences": [],
@@ -197768,7 +197768,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -197972,7 +197972,7 @@
           "literal": "goods:bom:edit",
           "line": 158,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 555
+          "definitionLine": 556
         }
       ],
       "apiEndpointReferences": [],
@@ -201019,7 +201019,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -204926,7 +204926,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -205183,7 +205183,7 @@
           "literal": "warehouse_inbound:stock_in",
           "line": 313,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 779
+          "definitionLine": 780
         },
         {
           "symbol": "Perm.warehouseIqcStockInBeforeInspection",
@@ -207632,7 +207632,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -207882,21 +207882,21 @@
           "literal": "stock_doc:issue",
           "line": 630,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 644
+          "definitionLine": 645
         },
         {
           "symbol": "Perm.stockDocApprove",
           "literal": "stock_doc:approve",
           "line": 646,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 633
+          "definitionLine": 634
         },
         {
           "symbol": "Perm.stockDocIssue",
           "literal": "stock_doc:issue",
           "line": 1135,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 644
+          "definitionLine": 645
         }
       ],
       "apiEndpointReferences": [],
@@ -209105,7 +209105,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -209403,14 +209403,14 @@
           "literal": "stock_doc:approve",
           "line": 139,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 633
+          "definitionLine": 634
         },
         {
           "symbol": "Perm.productionFinishedInBeforeInspection",
           "literal": "production_finished_in:before_inspection",
           "line": 152,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 641
+          "definitionLine": 642
         }
       ],
       "apiEndpointReferences": [],
@@ -210176,7 +210176,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -210294,21 +210294,21 @@
           "literal": "stock_doc:approve",
           "line": 335,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 633
+          "definitionLine": 634
         },
         {
           "symbol": "Perm.stockDocApprove",
           "literal": "stock_doc:approve",
           "line": 370,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 633
+          "definitionLine": 634
         },
         {
           "symbol": "Perm.stockDocApprove",
           "literal": "stock_doc:approve",
           "line": 519,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 633
+          "definitionLine": 634
         }
       ],
       "apiEndpointReferences": [],
@@ -210958,7 +210958,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -211076,14 +211076,14 @@
           "literal": "stock_doc:issue",
           "line": 201,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 644
+          "definitionLine": 645
         },
         {
           "symbol": "Perm.stockDocApprove",
           "literal": "stock_doc:approve",
           "line": 202,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 633
+          "definitionLine": 634
         }
       ],
       "apiEndpointReferences": [],
@@ -211677,7 +211677,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -212644,7 +212644,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -212973,14 +212973,14 @@
           "literal": "stock_doc:issue",
           "line": 259,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 644
+          "definitionLine": 645
         },
         {
           "symbol": "Perm.stockDocReverseIssue",
           "literal": "stock_doc:reverse_issue",
           "line": 263,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 645
+          "definitionLine": 646
         }
       ],
       "apiEndpointReferences": [],
@@ -214505,7 +214505,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -214733,14 +214733,14 @@
           "literal": "stock_doc:approve",
           "line": 915,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 633
+          "definitionLine": 634
         },
         {
           "symbol": "Perm.stockDocIssue",
           "literal": "stock_doc:issue",
           "line": 916,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 644
+          "definitionLine": 645
         },
         {
           "symbol": "Perm.stockDocView",
@@ -215978,7 +215978,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -217638,7 +217638,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -217883,7 +217883,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -218404,7 +218404,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -219111,7 +219111,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -219277,21 +219277,21 @@
           "literal": "stock_doc:approve",
           "line": 456,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 633
+          "definitionLine": 634
         },
         {
           "symbol": "Perm.stockDocApprove",
           "literal": "stock_doc:approve",
           "line": 491,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 633
+          "definitionLine": 634
         },
         {
           "symbol": "Perm.stockDocApprove",
           "literal": "stock_doc:approve",
           "line": 613,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 633
+          "definitionLine": 634
         }
       ],
       "apiEndpointReferences": [],
@@ -219862,7 +219862,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -220383,7 +220383,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -221145,7 +221145,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -221990,7 +221990,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -222194,7 +222194,7 @@
           "literal": "procurement_iqc_rejection:record_return",
           "line": 206,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 769
+          "definitionLine": 770
         },
         {
           "symbol": "Perm.warehouseIqcStockInView",
@@ -222958,7 +222958,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -223202,7 +223202,7 @@
           "literal": "procurement_iqc_rejection:record_return",
           "line": 187,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 769
+          "definitionLine": 770
         },
         {
           "symbol": "Perm.warehouseIqcStockInView",
@@ -223672,7 +223672,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -225860,7 +225860,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -225978,7 +225978,7 @@
           "literal": "stock_doc:approve",
           "line": 100,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 633
+          "definitionLine": 634
         }
       ],
       "apiEndpointReferences": [],
@@ -226768,7 +226768,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -227061,7 +227061,7 @@
           "literal": "subcontract_outbound:execute",
           "line": 472,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 778
+          "definitionLine": 779
         },
         {
           "symbol": "Perm.subcontractMaterialIssueView",
@@ -227082,7 +227082,7 @@
           "literal": "subcontract_material_issue:approve",
           "line": 475,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 692
+          "definitionLine": 693
         }
       ],
       "apiEndpointReferences": [],
@@ -228939,7 +228939,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -229165,7 +229165,7 @@
           "literal": "subcontract_outbound:execute",
           "line": 1244,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 778
+          "definitionLine": 779
         },
         {
           "symbol": "Perm.subcontractMaterialIssueEdit",
@@ -229179,7 +229179,7 @@
           "literal": "subcontract_material_issue:approve",
           "line": 1250,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 692
+          "definitionLine": 693
         }
       ],
       "apiEndpointReferences": [],
@@ -230719,7 +230719,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -231272,7 +231272,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -231692,7 +231692,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -231762,21 +231762,21 @@
           "literal": "webinquiry:claim",
           "line": 48,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 761
+          "definitionLine": 762
         },
         {
           "symbol": "Perm.webinquiryClose",
           "literal": "webinquiry:close",
           "line": 49,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 762
+          "definitionLine": 763
         },
         {
           "symbol": "Perm.webinquiryConvertClient",
           "literal": "webinquiry:convert_client",
           "line": 51,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 763
+          "definitionLine": 764
         }
       ],
       "apiEndpointReferences": [],
@@ -232622,7 +232622,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430"
+          "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
         },
         {
           "directive": "import",
@@ -232668,14 +232668,14 @@
           "literal": "website:view",
           "line": 39,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 519
+          "definitionLine": 520
         },
         {
           "symbol": "Perm.websiteView",
           "literal": "website:view",
           "line": 67,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 519
+          "definitionLine": 520
         },
         {
           "symbol": "Perm.authorizationManage",
@@ -232689,70 +232689,70 @@
           "literal": "website:content_edit",
           "line": 186,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 520
+          "definitionLine": 521
         },
         {
           "symbol": "Perm.websiteProductEdit",
           "literal": "website:product_edit",
           "line": 193,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 521
+          "definitionLine": 522
         },
         {
           "symbol": "Perm.websiteMediaManage",
           "literal": "website:media_manage",
           "line": 200,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 522
+          "definitionLine": 523
         },
         {
           "symbol": "Perm.websiteContentEdit",
           "literal": "website:content_edit",
           "line": 207,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 520
+          "definitionLine": 521
         },
         {
           "symbol": "Perm.websiteContentEdit",
           "literal": "website:content_edit",
           "line": 214,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 520
+          "definitionLine": 521
         },
         {
           "symbol": "Perm.websitePublish",
           "literal": "website:publish",
           "line": 221,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 523
+          "definitionLine": 524
         },
         {
           "symbol": "Perm.websitePublish",
           "literal": "website:publish",
           "line": 222,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 523
+          "definitionLine": 524
         },
         {
           "symbol": "Perm.websiteRollback",
           "literal": "website:rollback",
           "line": 223,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 524
+          "definitionLine": 525
         },
         {
           "symbol": "Perm.websiteView",
           "literal": "website:view",
           "line": 321,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 519
+          "definitionLine": 520
         },
         {
           "symbol": "Perm.websiteView",
           "literal": "website:view",
           "line": 325,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 519
+          "definitionLine": 520
         },
         {
           "symbol": "Perm.authorizationManage",
@@ -232766,7 +232766,7 @@
           "literal": "webinquiry:view",
           "line": 428,
           "definitionSource": "lib/shared/auth/permissions.dart",
-          "definitionLine": 518
+          "definitionLine": 519
         }
       ],
       "apiEndpointReferences": [],
@@ -261509,8 +261509,8 @@
     },
     {
       "source": "lib/shared/auth/permissions.dart",
-      "sha256": "2c4da5a54dfcd4e6b8d087e4f5eda4d9e47693ea1c65005148b6f6ae72c6c430",
-      "lineCount": 796
+      "sha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e",
+      "lineCount": 797
     },
     {
       "source": "lib/shared/auth/read_owner_fence.dart",

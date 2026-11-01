@@ -567,7 +567,12 @@ public class SalesQuoteFinanceService {
         OffsetDateTime now = OffsetDateTime.now();
         quotes.captureApprovalSnapshots(items, now);
         items.forEach(itemRepo::save);
-        if (manager) { q.getManagerReview().approve(actor, req == null ? null : blankToNull(req.text())); q.getManagerReview().setDecisionClaimId(req.expectedClaimId()); }
+        if (manager) {
+            String managerRemark = req == null ? null : blankToNull(req.text());
+            q.getManagerReview().approve(actor,
+                    managerRemark == null ? q.getManagerReview().getRemark() : managerRemark);
+            q.getManagerReview().setDecisionClaimId(req.expectedClaimId());
+        }
         else {
         q.setStatus(SalesQuoteService.STATUS_CONFIRMED);
         q.setFinanceConfirmedAt(now);

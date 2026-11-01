@@ -112,7 +112,7 @@
 
 ## W7-BIZ-140 · lib/features/sales/pages/sales_report_page.dart
 
-模块 `sales`；1103 行；SHA256 `4d46c0077776a0c081310f4fddf193ae8058242015b8964177f06f9714e24d5d`。
+模块 `sales`；1103 行；SHA256 `23e2afb3278da77d05a700da1b06541e134bf0ee30ce840d76250b7263945dea`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

@@ -22,7 +22,7 @@
 
 ## W7-BIZ-082 · lib/features/hr_task/pages/hr_task_list_page.dart
 
-模块 `hr_task`；1192 行；SHA256 `2e680bb145852a20dd8c157fd9b9a4f7fb876c18734640488944ad9ed2b894ee`。
+模块 `hr_task`；1192 行；SHA256 `cbacb5afcfccad77b2272f9800a6a1f2112d361eb2ddb79c997146b40c89dfc1`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

@@ -59,6 +59,10 @@ namespace Uten.Legacy.Core
         public int WithdrawnCount { get { return items.Count(item => item.Stage == ClientReleaseQueueStage.Withdrawn); } }
         public int UncertainCount { get { return items.Count(item => item.Uncertain); } }
         public int RemainingCount { get { return items.Count(item => !item.Terminal && !item.Uncertain); } }
+        public int RunnableCount { get { return items.Count(item => !item.Terminal && !item.Uncertain
+            && (item.Metadata.IsStore || item.Stage == ClientReleaseQueueStage.Uploaded || item.SourcePath != null)); } }
+        public int EditableCount { get { return items.Count(item => item.MetadataEditable); } }
+        public int OverriddenCount { get { return items.Count(item => item.MetadataEditable && item.MetadataOverrides.Count > 0); } }
 
         private bool Current { get { return !Retired; } }
         private void Notify()
@@ -119,7 +123,13 @@ namespace Uten.Legacy.Core
 
         public void Edit(ClientReleaseQueueItem item, ClientReleasePublishMetadata metadata)
         {
-            if (item == null || !Current || Busy || item.Frozen || !items.Contains(item)) return;
+            if (item == null || !Current || Busy || !item.MetadataEditable || !items.Contains(item)) return;
+            var previous = item.Metadata.ToDictionary();
+            var next = metadata.ToDictionary();
+            var changed = new HashSet<string>(ClientReleaseQueueItem.MetadataFields.Where(field => !Equals(previous[field], next[field])), StringComparer.Ordinal);
+            if (changed.Overlaps(TargetFields)) changed.UnionWith(TargetFields);
+            if (changed.Contains("version") || changed.Contains("buildNumber")) changed.UnionWith(new[] { "version", "buildNumber" });
+            item.OverrideFields.UnionWith(changed);
             item.Metadata = metadata.Clone();
             item.Error = null;
             item.Stage = item.SourcePath == null && !item.Metadata.IsStore
@@ -128,12 +138,45 @@ namespace Uten.Legacy.Core
             Notify();
         }
 
+        private static readonly string[] TargetFields = { "platform", "runtimeFamily", "architecture", "packageKind", "storeUrl" };
+        public void ApplyDefaults(ClientReleasePublishMetadata metadata)
+        {
+            if (!Current || Busy) return;
+            foreach (var item in items.Where(value => value.MetadataEditable)) Inherit(item, metadata);
+            Notify();
+        }
+        public void UseDefaults(ClientReleaseQueueItem item, ClientReleasePublishMetadata metadata)
+        {
+            if (item == null || !Current || Busy || !item.MetadataEditable || !items.Contains(item)) return;
+            item.OverrideFields.Clear();
+            Inherit(item, metadata);
+            Notify();
+        }
+        private static void Inherit(ClientReleaseQueueItem item, ClientReleasePublishMetadata metadata)
+        {
+            var values = item.Metadata.ToDictionary();
+            var incoming = metadata.ToDictionary();
+            foreach (var field in ClientReleaseQueueItem.MetadataFields)
+                if (!item.OverrideFields.Contains(field)
+                    && !(item.FileName != null && metadata.IsStore && TargetFields.Contains(field))) values[field] = incoming[field];
+            if (!item.OverrideFields.Contains("packageKind") && (string)values["platform"] == "windows")
+            {
+                var extension = Path.GetExtension(item.FileName ?? "");
+                if (String.Equals(extension, ".exe", StringComparison.OrdinalIgnoreCase)) values["packageKind"] = "installer";
+                if (String.Equals(extension, ".zip", StringComparison.OrdinalIgnoreCase)) values["packageKind"] = "update";
+            }
+            item.Metadata = ClientReleasePublishMetadata.FromDictionary(values);
+            item.Error = null;
+            item.Stage = item.SourcePath == null && !item.Metadata.IsStore ? ClientReleaseQueueStage.NeedsFile : ClientReleaseQueueStage.Ready;
+        }
+
         public void ReplaceFile(ClientReleaseQueueItem item, string sourcePath, long sizeBytes)
         {
             if (item == null || !Current || Busy || item.Terminal || item.Uncertain || !items.Contains(item)) return;
             if (String.IsNullOrEmpty(sourcePath) || sizeBytes <= 0 || sizeBytes > ClientReleasePublishLimits.MaxClientPackageBytes)
                 throw new InvalidOperationException("文件必须非空且不超过512 MiB。");
             item.SourcePath = sourcePath;
+            item.FileReadStarted = false;
             item.SourceSize = sizeBytes;
             // A frozen row keeps its original name and size: the intent must not be rewritten.
             if (!item.Frozen)
@@ -158,7 +201,7 @@ namespace Uten.Legacy.Core
         /// already-uploaded rows are skipped; one row's failure never rolls back the others.</summary>
         public async Task RunAsync(CancellationToken cancellationToken)
         {
-            if (!Current || Busy) return;
+            if (!Current || Busy || RunnableCount == 0) return;
             Busy = true;
             Error = null;
             Notify();
@@ -311,6 +354,7 @@ namespace Uten.Legacy.Core
         public static async Task<LoadedFile> ReadFileAsync(ClientReleaseQueueItem item, CancellationToken cancellationToken)
         {
             if (String.IsNullOrEmpty(item.SourcePath)) throw new InvalidOperationException("请重新选择原文件后继续。");
+            item.FileReadStarted = true;
             return await Task.Run(delegate
             {
                 using (var sha = SHA256.Create())
@@ -360,10 +404,30 @@ namespace Uten.Legacy.Core
 
         /// <summary>Resolves one unknown row by reading its original server record. A 404 during
         /// an unknown prepare only allows continuing the same UUID, never a fresh identity.</summary>
-        public async Task ReconcileAsync(ClientReleaseQueueItem item, CancellationToken cancellationToken)
+        public Task ReconcileAsync(ClientReleaseQueueItem item, CancellationToken cancellationToken)
+        { return ReconcileCoreAsync(item, cancellationToken, true); }
+
+        public async Task ReconcilePendingAsync(CancellationToken cancellationToken)
         {
-            if (item == null || !Current || Busy || item.RequestId == null || item.Terminal) return;
+            if (!Current || Busy) return;
             Busy = true;
+            Notify();
+            try
+            {
+                foreach (var item in items.Where(value => value.RequestId != null && !value.Terminal).ToList())
+                {
+                    if (!Current) return;
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await ReconcileCoreAsync(item, cancellationToken, false).ConfigureAwait(true);
+                }
+            }
+            finally { Busy = false; Notify(); }
+        }
+
+        private async Task ReconcileCoreAsync(ClientReleaseQueueItem item, CancellationToken cancellationToken, bool ownsBusy)
+        {
+            if (item == null || !Current || (ownsBusy && Busy) || item.RequestId == null || item.Terminal) return;
+            if (ownsBusy) Busy = true;
             Error = null;
             Notify();
             try
@@ -415,7 +479,7 @@ namespace Uten.Legacy.Core
             catch (Exception error) { item.Error = Describe(error); }
             finally
             {
-                Busy = false;
+                if (ownsBusy) Busy = false;
                 Notify();
             }
         }
@@ -533,7 +597,7 @@ namespace Uten.Legacy.Core
             else item.Stage = ClientReleaseQueueStage.Rejected;
             if (definite || !item.Dispatched) item.PendingOperation = null;
             item.Error = Describe(failure);
-            item.SourcePath = null;
+            if (item.FileReadStarted) item.SourcePath = null;
             SaveOrFlag();
         }
 

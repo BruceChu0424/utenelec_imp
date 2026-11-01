@@ -49,7 +49,115 @@ namespace Uten.Legacy.Desktop.Features.Publish
             CheckPairGroups(check);
             CheckDraftSnapshot(check, reject);
             CheckDraftStore(check);
+            CheckBatchDefaults(check, reject);
+            CheckPreflightAndBatchRecovery(check);
+            CheckTargetEditorChanges(check);
             return assertions;
+        }
+
+        private static void CheckBatchDefaults(Action<bool, string> check, Action<Action, string> reject)
+        {
+            Dictionary<string, object> sample;
+            using (var resource = typeof(PublishContractChecks).Assembly.GetManifestResourceStream("Uten.PublishBatchDefaultsFixture.json"))
+            using (var reader = new StreamReader(resource)) sample = (Dictionary<string, object>)Serializer.DeserializeObject(reader.ReadToEnd());
+            Func<string, ClientReleasePublishMetadata> metadata = key => ClientReleasePublishMetadata.FromDictionary((Dictionary<string, object>)sample[key]);
+            Func<ClientReleaseQueueItem, string, bool> matches = (item, key) => item.Metadata.ToDictionary()
+                .All(pair => Equals(pair.Value, ((Dictionary<string, object>)sample[key])[pair.Key]));
+            var queue = Queue(new FakeGateway());
+            foreach (var name in (object[])sample["files"]) queue.AddFile((string)name, 3, metadata("initial"));
+            queue.Edit(queue.Items[0], metadata("manual"));
+            queue.ApplyDefaults(metadata("batch"));
+            check(matches(queue.Items[0], "expectedManual"), "shared sample preserves manual target/version while inheriting notes");
+            check(matches(queue.Items[1], "expectedSecond"), "shared sample retains ZIP role while following batch fields");
+            var snapshot = ClientReleasePublishContract.BuildSnapshot(queue.Items, null, queue.Withdrawals);
+            var restored = ClientReleasePublishContract.ValidateAndRestore(Serializer.Serialize(snapshot));
+            check(restored.Rows[0].MetadataOverrides.Contains("version") && restored.Rows[0].MetadataOverrides.Contains("architecture"),
+                "snapshot keeps finite override origins");
+            var row = ((List<object>)snapshot["rows"])[0] as Dictionary<string, object>;
+            foreach (var invalid in new object[] { new object[] { "fileBytes" }, new object[] { "version", "version" }, new object[] { 1 }, "version" })
+            {
+                row["metadataOverrides"] = invalid;
+                reject(() => ClientReleasePublishContract.ValidateAndRestore(Serializer.Serialize(snapshot)), "invalid override origin rejected");
+            }
+            queue.UseDefaults(queue.Items[0], metadata("batch"));
+            check(matches(queue.Items[0], "expectedReset") && queue.Items[0].MetadataOverrides.Count == 0,
+                "shared sample resets only an explicit row choice");
+            var legacy = RowViaSnapshot(null, "Ready", null, null, 3, "old.zip");
+            var legacyQueue = Queue(new FakeGateway());
+            legacyQueue.Restore(new ClientReleasePublishContract.ValidatedSnapshot { Rows = new List<ClientReleaseQueueItem> { legacy },
+                Withdrawals = new Dictionary<string, ClientReleaseWithdrawState>() });
+            legacyQueue.ApplyDefaults(metadata("batch"));
+            check(legacyQueue.Items[0].Metadata.Version == "2.5.37", "legacy absent origins remain conservatively protected");
+            foreach (var field in new[] { "requestId", "releaseId", "sha256" })
+            {
+                var frozen = ClientReleasePublishContract.BuildSnapshot(queue.Items, null, queue.Withdrawals);
+                var frozenRow = (Dictionary<string, object>)((List<object>)frozen["rows"])[0];
+                frozenRow[field] = field == "sha256" ? ShaText : NewId();
+                var frozenQueue = Queue(new FakeGateway());
+                frozenQueue.Restore(ClientReleasePublishContract.ValidateAndRestore(Serializer.Serialize(frozen)));
+                frozenQueue.Edit(frozenQueue.Items[0], metadata("manual"));
+                frozenQueue.ApplyDefaults(metadata("manual"));
+                frozenQueue.UseDefaults(frozenQueue.Items[0], metadata("manual"));
+                check(matches(frozenQueue.Items[0], "expectedReset"), "every bound identity freezes defaults: " + field);
+            }
+        }
+
+        private static void CheckPreflightAndBatchRecovery(Action<bool, string> check)
+        {
+            var gateway = new FakeGateway();
+            var queue = Queue(gateway);
+            string sha; long size;
+            var item = AddReadyItem(queue, out sha, out size);
+            var source = item.SourcePath;
+            try
+            {
+                var invalid = item.Metadata.Clone(); invalid.Version = "";
+                queue.Edit(item, invalid);
+                Await(queue.RunAsync(CancellationToken.None));
+                check(item.SourcePath == source && gateway.SentPaths.Count == 0, "pre-read validation preserves selected file with zero dispatch");
+                queue.Edit(item, WindowsUpdate());
+                Await(queue.RunAsync(CancellationToken.None));
+                check(item.Published, "correcting metadata publishes without reselecting the unread file");
+                var sent = gateway.SentPaths.Count;
+                Await(queue.RunAsync(CancellationToken.None));
+                check(gateway.SentPaths.Count == sent && queue.RunnableCount == 0, "all-success continuation performs no write or upload");
+                var restored = Queue(gateway);
+                restored.Restore(ClientReleasePublishContract.ValidateAndRestore(Serializer.Serialize(
+                    ClientReleasePublishContract.BuildSnapshot(queue.Items, null, queue.Withdrawals))));
+                var readIds = new List<string>();
+                gateway.OnRead = path => {
+                    readIds.Add(path);
+                    return Task.FromResult(Record(item.RequestId, "PUBLISHED", sha, size, item.FileName, expected: sha));
+                };
+                Await(restored.ReconcilePendingAsync(CancellationToken.None));
+                check(readIds.SequenceEqual(new[] { "admin/client-releases/" + item.RequestId }), "batch restore only GETs original identity");
+                check(restored.ConfirmedCount == 1 && restored.Items[0].SourcePath == null, "restored success needs no local file");
+                Await(restored.RunAsync(CancellationToken.None));
+                check(gateway.SentPaths.Count == sent, "restored success never creates, uploads or republishes");
+            }
+            finally { if (File.Exists(source)) File.Delete(source); }
+        }
+
+        private static IEnumerable<T> LogicalDescendants<T>(System.Windows.DependencyObject root) where T : System.Windows.DependencyObject
+        {
+            foreach (var child in System.Windows.LogicalTreeHelper.GetChildren(root))
+            {
+                var node = child as System.Windows.DependencyObject;
+                if (node == null) continue;
+                var match = node as T;
+                if (match != null) yield return match;
+                foreach (var descendant in LogicalDescendants<T>(node)) yield return descendant;
+            }
+        }
+        private static void CheckTargetEditorChanges(Action<bool, string> check)
+        {
+            var editor = new ClientReleaseTargetEditor();
+            var changes = 0;
+            editor.Changed += delegate { changes++; };
+            editor.Bind(WindowsUpdate());
+            check(changes == 0, "restored editor binding does not invent manual changes");
+            LogicalDescendants<System.Windows.Controls.TextBox>(editor.Root).First().Text = "2.5.42";
+            check(changes == 1 && editor.Read().Version == "2.5.42", "native editor actually notifies batch context after user text change");
         }
 
         /// <summary>Scriptable gateway: prepare/upload/publish/withdraw/read can each be given a

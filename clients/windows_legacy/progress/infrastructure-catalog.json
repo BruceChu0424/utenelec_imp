@@ -3552,6 +3552,80 @@
       "evidence": [],
       "notes": "",
       "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-023",
+      "title": "客户端发布批设置与原编号恢复合同增量（下一版）",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "todo",
+      "impactArea": "frontend+shared-contract",
+      "owner": "待实施",
+      "sources": [
+        "lib/features/client_update/client_release_publish_queue.dart",
+        "lib/features/client_update/client_release_publish_drafts.dart",
+        "lib/features/client_update/client_release_publish_page.dart",
+        "test/features/client_update/client_release_publish_queue_test.dart",
+        "test/features/client_update/client_release_publish_drafts_test.dart",
+        "test/features/client_update/client_release_publish_test.dart",
+        "test/fixtures/client_release_publish_defaults_v1.json"
+      ],
+      "nativeTargets": [
+        "clients/windows_legacy/Uten.Legacy.Core/ClientReleasePublishQueue.cs",
+        "clients/windows_legacy/Uten.Legacy.Core/ClientReleasePublishContract.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleasePublishView.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleasePublishDraftLease.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleaseTargetEditor.cs"
+      ],
+      "dependencies": [
+        "W7-BIZ-215",
+        "W7-CORE-014"
+      ],
+      "definitionOfDone": [
+        "按公共发布合同迁移批默认的有限字段归属：未提交且未手动覆盖才联动，设备与版本成组；绑定requestId/releaseId/SHA及已发布项目永不改写元数据。",
+        "原编号批量只读核对与草稿恢复不创建、不重传、不重发未知命令；已成功和已上传分支沿原身份继续，回归晚到结果及身份/服务器/权限变化。",
+        "区分尚未读取的验证失败和已消耗的一次性文件流，减少无谓重选；浏览器刷新不保存无授权文件，WPF文件来源按原生授权合同保留必要平台差异，同SHA约束不变。",
+        "在x86/x64执行合同及真实调用方回归，并完成Win7目标机适用验收；旧215本机证据不代替此新增差异，全部适用DoD满足前保持未完成。"
+      ],
+      "evidence": [
+        "docs/99-项目治理/2026-11-01-客户端发布工作台批设置与恢复.md"
+      ],
+      "notes": "下一版合同增量，最小适用C#行为已同步，待本机及目标机证据收口；未完成的新布局独立登记W7-UI-013 TODO。原215历史证据保留，不纳入2.5.39、不代表完整ERP、Win7正式支持或真实服务器发布验收。\n2026-11-01：本轮已授权纳入2.5.42适用功能；原2.5.39排除仅属历史范围。原生布局及目标机验收边界不变。",
+      "lastUpdated": "2026-11-01"
+    },
+    {
+      "id": "W7-UI-013",
+      "title": "客户端发布工作台全宽队列与自适应布局（下一版）",
+      "group": "UI",
+      "groupLabel": "Uten同源界面与交互",
+      "phase": "C",
+      "status": "todo",
+      "impactArea": "frontend",
+      "owner": "待实施",
+      "sources": [
+        "lib/features/client_update/client_release_publish_page.dart",
+        "test/features/client_update/client_release_publish_test.dart"
+      ],
+      "nativeTargets": [
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleasePublishView.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleaseTargetEditor.cs"
+      ],
+      "dependencies": [
+        "W7-CORE-023",
+        "W7-UI-001",
+        "W7-UI-012"
+      ],
+      "definitionOfDone": [
+        "迁移本批联动范围提示、全宽队列与可展开配对/草稿说明，保留Uten同源主题和既有原生键盘操作。",
+        "以宽窄窗口、明暗主题、100%/200%字体和目标机DPI对照Flutter，状态结果与主操作自适应排布，不挤窄说明或遮挡关键动作。",
+        "保留CORE-023的冻结、原ID核对与成功禁重传合同；完整实际交互和Win7目标机验收前保持未完成，不把旧215或仅编译证据充作新版UI通过。"
+      ],
+      "evidence": [
+        "docs/99-项目治理/2026-11-01-客户端发布工作台批设置与恢复.md"
+      ],
+      "notes": "新布局尚未迁移到WPF；共享行为增量归CORE-023。独立下一版，不纳入2.5.39，不授权正式打包或发布。\n2026-11-01：本轮已授权纳入2.5.42适用功能；原2.5.39排除仅属历史范围。原生布局及目标机验收边界不变。",
+      "lastUpdated": "2026-11-01"
     }
   ]
 }

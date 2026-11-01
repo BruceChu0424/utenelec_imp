@@ -368,8 +368,8 @@ namespace Uten.Legacy.Core
     {
         public string LocalId { get; internal set; }
         public ClientReleasePublishMetadata Metadata { get; internal set; }
-        /// <summary>Local path of the picked file; kept only until the row reaches a terminal,
-        /// rejected or unknown outcome, mirroring the Flutter one-shot stream contract.</summary>
+        /// <summary>Memory-only picked path. Validation before reading preserves it; consumed
+        /// or dispatched failures retire it. Snapshots never persist this file capability.</summary>
         public string SourcePath { get; internal set; }
         public long SourceSize { get; internal set; }
         public string FileName { get; internal set; }
@@ -386,7 +386,13 @@ namespace Uten.Legacy.Core
         public bool PublishAcknowledged { get; internal set; }
         internal bool Dispatched { get; set; }
 
-        public bool Frozen { get { return RequestId != null; } }
+        public bool Frozen { get { return RequestId != null || ReleaseId != null || Sha256 != null; } }
+        public bool MetadataEditable { get { return !Frozen && !Terminal && !Uncertain; } }
+        internal bool FileReadStarted { get; set; }
+        internal readonly HashSet<string> OverrideFields = new HashSet<string>(StringComparer.Ordinal);
+        public IReadOnlyCollection<string> MetadataOverrides { get { return OverrideFields.ToList().AsReadOnly(); } }
+        public static readonly IReadOnlyList<string> MetadataFields = Array.AsReadOnly(new[] {
+            "platform", "runtimeFamily", "architecture", "packageKind", "version", "buildNumber", "releaseNotes", "storeUrl" });
         public bool Uncertain { get { return Stage == ClientReleaseQueueStage.Unknown || PendingOperation != null; } }
         public bool Published { get { return Stage == ClientReleaseQueueStage.Published; } }
         public bool Terminal { get { return Published || Stage == ClientReleaseQueueStage.Withdrawn; } }

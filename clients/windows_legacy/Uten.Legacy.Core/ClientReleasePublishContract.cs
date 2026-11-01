@@ -14,7 +14,7 @@ namespace Uten.Legacy.Core
         public const string UnknownSubmissionKey = "_formDraftHasUnknownSubmission";
 
         private static readonly string[] RowKeys = { "localId", "metadata", "fileName", "sizeBytes", "requestId",
-            "sha256", "releaseId", "stage", "pendingOperation", "retentionPending", "publishAcknowledged" };
+            "sha256", "releaseId", "stage", "pendingOperation", "retentionPending", "publishAcknowledged", "metadataOverrides" };
         private static readonly string[] TopLevelKeys = { "schemaVersion", "rows", "context", "withdrawals", UnknownSubmissionKey };
 
         public static Dictionary<string, object> BuildSnapshot(IReadOnlyList<ClientReleaseQueueItem> rows,
@@ -35,7 +35,8 @@ namespace Uten.Legacy.Core
                     { "stage", item.Stage.ToString() },
                     { "pendingOperation", item.PendingOperation.HasValue ? item.PendingOperation.Value.ToString() : null },
                     { "retentionPending", item.RetentionPending },
-                    { "publishAcknowledged", item.PublishAcknowledged }
+                    { "publishAcknowledged", item.PublishAcknowledged },
+                    { "metadataOverrides", item.MetadataOverrides.OrderBy(value => value, StringComparer.Ordinal).ToArray() }
                 });
             }
             var snapshotWithdrawals = new List<object>();
@@ -100,7 +101,8 @@ namespace Uten.Legacy.Core
             foreach (var rawRow in rawRows)
             {
                 var row = rawRow as Dictionary<string, object>;
-                if (row == null || row.Count != RowKeys.Length || row.Keys.Any(key => !RowKeys.Contains(key)))
+                if (row == null || row.Keys.Any(key => !RowKeys.Contains(key))
+                    || RowKeys.Where(key => key != "metadataOverrides").Any(key => !row.ContainsKey(key)))
                     throw new FormatException("发布队列草稿项目无效。");
                 var localId = row["localId"] as string;
                 ClientReleaseAdminContract.RequireUuid(localId, "发布草稿项目无效。");
@@ -120,6 +122,18 @@ namespace Uten.Legacy.Core
                     throw new FormatException("发布草稿项目无效。");
                 if (item.RequestId != null) ClientReleaseAdminContract.RequireUuid(item.RequestId, "发布草稿项目无效。");
                 if (item.ReleaseId != null) ClientReleaseAdminContract.RequireUuid(item.ReleaseId, "发布草稿项目无效。");
+                object rawOverrides;
+                if (!row.TryGetValue("metadataOverrides", out rawOverrides) || rawOverrides == null)
+                    item.OverrideFields.UnionWith(ClientReleaseQueueItem.MetadataFields);
+                else
+                {
+                    var overrides = rawOverrides as object[];
+                    if (overrides == null || overrides.Any(value => !(value is string)
+                        || !ClientReleaseQueueItem.MetadataFields.Contains((string)value))
+                        || overrides.Distinct().Count() != overrides.Length)
+                        throw new FormatException("发布草稿的单独设置来源无效。");
+                    item.OverrideFields.UnionWith(overrides.Cast<string>());
+                }
                 item.RetentionPending = row["retentionPending"] is bool && (bool)row["retentionPending"];
                 item.PublishAcknowledged = row["publishAcknowledged"] is bool && (bool)row["publishAcknowledged"];
                 ClientReleaseQueueStage stage;

@@ -328,7 +328,7 @@ public class WorkshopMaterialRequisitionService {
     @Transactional(readOnly = true)
     public RequisitionView detail(UUID requisitionId) {
         RequisitionView view = view(requisitionId);
-        scope.requireWorkshop(view.workshopDepartmentId());
+        scope.requireTaskReadableWorkshop(view.workshopDepartmentId());
         return view;
     }
 
@@ -353,7 +353,7 @@ public class WorkshopMaterialRequisitionService {
                                               WarehouseTaskScopePort.WarehouseTaskScope warehouseScope,
                                               int page, int size, TaskView view, String keyword) {
         MapSqlParameterSource params = new MapSqlParameterSource();
-        StringBuilder where = new StringBuilder(scope.predicate("requisition.workshop_department_id", params));
+        StringBuilder where = new StringBuilder(scope.readPredicate("requisition.workshop_department_id", params));
         String lineStatus = "(CASE WHEN line.fulfilled_qty>0 THEN 'DONE' ELSE requisition.status END)";
         where.append(view == TaskView.HISTORY
                 ? " AND " + lineStatus + " IN ('DONE','CANCELLED')" : " AND " + lineStatus + " = 'PENDING'");
@@ -372,9 +372,9 @@ public class WorkshopMaterialRequisitionService {
             where.append(" AND requisition.workshop_department_id = :workshop");
             params.addValue("workshop", workshopId);
         }
-        String warehouseFilter = scope.requisitionWarehouseFilter(warehouseScope, params);
+        String warehouseFilter = scope.readRequisitionWarehouseFilter(warehouseScope, params);
         if (view == TaskView.HISTORY) {
-            String postedFilter=scope.requisitionPhysicalWarehouseFilter(warehouseScope,params,"history_posting.leaf_warehouse_id");
+            String postedFilter=scope.readRequisitionPhysicalWarehouseFilter(warehouseScope,params,"history_posting.leaf_warehouse_id","requisition.workshop_department_id");
             if (!postedFilter.isEmpty()) warehouseFilter="((line.fulfilled_qty=0 AND " + warehouseFilter + ") OR "
                     + "EXISTS(SELECT 1 FROM workshop_material_requisition_postings history_posting"
                     + " WHERE history_posting.line_id=line.id AND " + postedFilter + "))";
@@ -421,7 +421,7 @@ public class WorkshopMaterialRequisitionService {
     private RequisitionView historyLine(RequisitionView header, RequisitionLineView line,
                                          WarehouseTaskScopePort.WarehouseTaskScope warehouseScope) {
         var parameters=new MapSqlParameterSource("line",line.id());
-        String filter=scope.requisitionPhysicalWarehouseFilter(warehouseScope,parameters,"posting.leaf_warehouse_id");
+        String filter=scope.readRequisitionPhysicalWarehouseFilter(warehouseScope,parameters,"posting.leaf_warehouse_id",header.workshopDepartmentId());
         List<RequisitionDocumentView> documents=db.query("""
                 SELECT document.id,document.bill_no,posting.leaf_warehouse_id,leaf.name,posting.period_id,
                        period.period_no,bool_or(posting.is_supplement),sum(posting.qty)
@@ -732,6 +732,7 @@ public class WorkshopMaterialRequisitionService {
         }
         boolean canIssue = permissions.has(WorkshopMaterialPermissions.ISSUE);
         boolean canRequest = permissions.has(WorkshopMaterialPermissions.REQUEST);
+        var commandWorkshops=scope.restrictedWorkshops();
         Map<UUID, RequisitionView> byId = new LinkedHashMap<>();
         for (Map<String, Object> row : db.queryForList("""
                 SELECT requisition.id, requisition.request_no, requisition.kind, requisition.origin, requisition.status,
@@ -753,7 +754,7 @@ public class WorkshopMaterialRequisitionService {
             UUID id = (UUID) row.get("id");
             String status = (String) row.get("status");
             List<String> actions = new ArrayList<>();
-            if ("PENDING".equals(status)) {
+            if ("PENDING".equals(status) && commandWorkshops.map(workshops->workshops.contains((UUID)row.get("workshop_department_id"))).orElse(true)) {
                 if (canIssue) actions.add("FULFIL");
                 if (canIssue || canRequest) actions.add("CANCEL");
             }

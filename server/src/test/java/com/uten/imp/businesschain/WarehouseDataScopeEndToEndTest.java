@@ -402,9 +402,9 @@ class WarehouseDataScopeEndToEndTest {
 
     @Test void noticeRecipientsFollowTheSameResponsibilityAsTheLists() {
         List<UUID> pool = List.of(keeperA, keeperAB, member, mainKeeper, manager);
-        // 该仓链上的子仓负责人 ∩ 池。
-        assertThat(router.recipients(pool, List.of(warehouseA))).containsExactly(keeperA, keeperAB);
-        assertThat(router.recipients(pool, List.of(warehouseB))).containsExactly(keeperAB);
+        // V982：该仓链上的子仓负责人和真实指定主管，在精确权限池内取并集。
+        assertThat(router.recipients(pool, List.of(warehouseA))).containsExactly(keeperA, keeperAB, mainKeeper, manager);
+        assertThat(router.recipients(pool, List.of(warehouseB))).containsExactly(keeperAB, mainKeeper, manager);
         // 没有子仓负责人(主仓上的登记不算) → 主管 ∩ 池。
         assertThat(router.recipients(pool, List.of(warehouseC))).containsExactlyInAnyOrder(mainKeeper, manager);
         // 未定仓的任务 → 主管 ∩ 池。

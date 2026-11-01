@@ -65,6 +65,21 @@ public class WorkshopMaterialPositionQueryService {
         Settings settings = binWarehouseId == null ? null : bins.settingsByBin(binWarehouseId);
         if (settings == null || !settings.enabled()) return directOnlyPosition(binWarehouseId);
         scope.requireWorkshop(settings.workshopDepartmentId());
+        List<PositionRow> rows = positionRows(binWarehouseId);
+        return periodicPosition(binWarehouseId,settings,rows);
+    }
+
+    /** Only quantity facts for the task reader; no period/configuration actions
+     * or general bin write scope are exposed through the task read grant. */
+    @Transactional(readOnly = true)
+    public List<PositionRow> positionRowsForTask(UUID binWarehouseId) {
+        Settings settings=binWarehouseId==null?null:bins.settingsByBin(binWarehouseId);
+        if(settings==null || !settings.enabled())return List.of();
+        scope.requireTaskReadableWorkshop(settings.workshopDepartmentId());
+        return positionRows(binWarehouseId);
+    }
+
+    private List<PositionRow> positionRows(UUID binWarehouseId) {
         List<PositionRow> rows = new ArrayList<>();
         for (Map<String, Object> row : db.queryForList("""
                 SELECT position.*, goods.code AS goods_code, goods.name AS goods_name, color.name AS color_name,
@@ -90,6 +105,10 @@ public class WorkshopMaterialPositionQueryService {
                     WorkshopMaterialBinSupport.number(row.get("missing_weight_products")).intValue(),
                     WorkshopMaterialBinSupport.number(row.get("draft_report_count")).intValue()));
         }
+        return List.copyOf(rows);
+    }
+
+    private PositionView periodicPosition(UUID binWarehouseId,Settings settings,List<PositionRow> rows) {
         Period open = null;
         Period pending = null;
         for (Period period : bins.periodsOf(binWarehouseId)) {

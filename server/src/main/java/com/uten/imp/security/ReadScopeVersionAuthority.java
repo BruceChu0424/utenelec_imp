@@ -139,7 +139,7 @@ public class ReadScopeVersionAuthority {
                 atom(hash,businessTasks);
                 if("native_fqc_records".equals(domain))atom(hash,scope==null?"QUALITY_POOL":"PLAN_OWNER");
                 if("native_workshop_tasks".equals(domain)) {
-                    var assignment=required(workshopAccess).snapshot(effective);
+                    var assignment=required(workshopAccess).snapshot(effective,businessTasks);
                     atom(hash,"WORKSHOP_ASSIGNMENT");atom(hash,assignment.all());atom(hash,assignment.responsibleEmployee());
                     uuids(hash,assignment.workshops());
                 }

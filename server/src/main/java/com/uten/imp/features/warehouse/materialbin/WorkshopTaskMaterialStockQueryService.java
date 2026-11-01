@@ -56,12 +56,12 @@ public class WorkshopTaskMaterialStockQueryService {
         if (segments.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "工单不存在或已撤回");
         Map<String, Object> segment = segments.getFirst();
         UUID workshop = (UUID) segment.get("workshop_department_id");
-        scope.requireWorkshop(workshop);
+        scope.requireTaskReadableWorkshop(workshop);
         var settings = bins.settings(workshop);
         UUID bin = settings == null || !settings.enabled() ? null : settings.binWarehouseId();
         BigDecimal remainingOutput = WorkshopMaterialBinSupport.decimal(segment.get("remaining_output_qty"));
-        PositionView position = bin == null ? null : positions.position(bin);
-        Map<MaterialKey, PositionRow> stock = position == null ? Map.of() : position.rows().stream()
+        List<PositionRow> position = bin == null ? List.of() : positions.positionRowsForTask(bin);
+        Map<MaterialKey, PositionRow> stock = position.stream()
                 .collect(Collectors.toMap(row -> new MaterialKey(row.goodsId(), row.colorId()), row -> row));
         List<StockRow> rows = new ArrayList<>();
         for (Map<String, Object> material : db.queryForList("""
@@ -88,7 +88,7 @@ public class WorkshopTaskMaterialStockQueryService {
                 ? "这张工单还没有今天生效的内料仓用料记录，暂不能估算用量" : null;
         boolean incomplete = reason != null || rows.stream().anyMatch(StockRow::estimateIncomplete);
         List<String> actions = bin != null && "IN_PROGRESS".equals(segment.get("status"))
-                && permissions.has(WorkshopMaterialPermissions.REQUEST) ? List.of("REQUEST") : List.of();
+                && scope.canSee(workshop) && permissions.has(WorkshopMaterialPermissions.REQUEST) ? List.of("REQUEST") : List.of();
         return new StockReadiness(segmentId, bin, workshop, (String) segment.get("workshop_name"),
                 remainingOutput, rows, incomplete, reason, actions);
     }

@@ -76,9 +76,9 @@ class NativeReadScopeVersionAuthorityTest {
     }
     @Test void workshopProofUsesAssignmentDimensionsNotBusinessFiltersOrEveryHistoricalSegment(){
         var policy=mock(ProductionWorkshopReadScopePolicy.class);port("workshopAccess",policy);
-        when(policy.snapshot(subject)).thenReturn(new ProductionWorkshopReadScopePolicy.Snapshot(false,employee,List.of(other)));
+        when(policy.snapshot(subject,false)).thenReturn(new ProductionWorkshopReadScopePolicy.Snapshot(false,employee,List.of(other)));
         String before=authority.scopeFor("native_workshop_tasks",subject,false);
-        when(policy.snapshot(subject)).thenReturn(new ProductionWorkshopReadScopePolicy.Snapshot(false,null,List.of()));
+        when(policy.snapshot(subject,false)).thenReturn(new ProductionWorkshopReadScopePolicy.Snapshot(false,null,List.of()));
         assertThat(authority.scopeFor("native_workshop_tasks",subject,false)).isNotEqualTo(before);
         verifyNoInteractions(owners);
     }

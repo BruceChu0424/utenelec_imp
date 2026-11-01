@@ -65,6 +65,16 @@ public class ProductionExecutionWorkbenchService {
      */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.uten.imp.application.port.WorkshopPlanningGapReadPort planningGaps;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.uten.imp.security.ProductionWorkshopReadScopePolicy workshopReads;
+
+    private boolean allWorkshopReads() {
+        var actor=currentUser.get().orElse(null);
+        if(actor!=null && actor.isSuperAdmin())return true; // Existing administrative browse contract.
+        if(!com.uten.imp.security.ProductionWorkshopReadScopePolicy.hasAllReadGrant(actor))return false;
+        if(workshopReads==null)throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE,"车间读取范围不可用");
+        return workshopReads.snapshot(actor).all();
+    }
 
     @Transactional(readOnly = true)
     public PageResponse<ProductionExecutionWorkbenchGroup> list(
@@ -237,7 +247,7 @@ public class ProductionExecutionWorkbenchService {
         String keyword = productKeyword == null || productKeyword.isBlank() ? null : productKeyword.strip().toLowerCase(Locale.ROOT);
         NativeReadScope rootScope = planningScope
                 ? productionAccess.nativeReadScope("root.owner_employee_id", "inProgressOwners") : null;
-        boolean seeAllWorkshops = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
+        boolean seeAllWorkshops = allWorkshopReads();
         UUID employeeId = currentUser.employeeId().orElse(null);
         if (!planningScope && !seeAllWorkshops && employeeId == null)
             throw new ApiException(ErrorCode.FORBIDDEN);
@@ -254,7 +264,7 @@ public class ProductionExecutionWorkbenchService {
             else if (!seeAllWorkshops) query.setParameter("employeeId", employeeId);
             if (keyword != null) query.setParameter("productKeyword", keyword);
             if (segmentId != null) query.setParameter("inProgressSegmentId", segmentId);
-        }, 1, limit, "ORDER BY task.plan_begin_date ASC NULLS LAST, task.segment_code ASC, task.segment_id ASC");
+        }, 1, limit, "ORDER BY task.plan_begin_date ASC NULLS LAST, task.segment_code ASC, task.segment_id ASC",null,false,!planningScope);
     }
 
     @Transactional(readOnly = true)
@@ -294,7 +304,7 @@ public class ProductionExecutionWorkbenchService {
             String preparationFilter, String routeFilter,
             String analysisNo, String segmentCode, String sort, String order) {
         UUID employeeId = currentUser.employeeId().orElse(null);
-        boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
+        boolean seeAll = allWorkshopReads();
         if (employeeId == null && !seeAll) {
             int size = boundedSize(requestedSize);
             return new PageResponse<>(List.of(), 1, size, 0, 0);
@@ -322,12 +332,12 @@ public class ProductionExecutionWorkbenchService {
                 requestedSize,
                 orderBy,
                 operatorRouteMemory,
-                !history);
+                !history,true);
     }
 
     /** workshopTasks/workshopTaskFacets 共用的 WHERE 谓词（单号值筛选也在此拼接）。 */
     private String workshopTaskPredicate(String status, UUID workshopDepartmentId, String keyword, String preparationFilter, String routeFilter, String analysisNo, String segmentCode) {
-        boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
+        boolean seeAll = allWorkshopReads();
         boolean history = "COMPLETED".equals(status);
         String statuses = history
                 ? "('COMPLETED','CANCELLED','REVERSED')"
@@ -451,7 +461,7 @@ public class ProductionExecutionWorkbenchService {
             LocalDate dateFrom, LocalDate dateTo,
             String preparationFilter, String routeFilter) {
         UUID employeeId = currentUser.employeeId().orElse(null);
-        boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
+        boolean seeAll = allWorkshopReads();
         if (employeeId == null && !seeAll) {
             return java.util.Map.of();
         }
@@ -578,8 +588,17 @@ public class ProductionExecutionWorkbenchService {
      */
     @Transactional(readOnly = true)
     public void requireVisibleWorkshopTask(UUID segmentId) {
+        requireWorkshopTask(segmentId,allWorkshopReads());
+    }
+
+    /** Commands retain the original assignment universe even for read-all observers. */
+    @Transactional(readOnly = true)
+    public void requireAssignedWorkshopTask(UUID segmentId) {
+        requireWorkshopTask(segmentId,currentUser.get().map(AuthUser::isSuperAdmin).orElse(false));
+    }
+
+    private void requireWorkshopTask(UUID segmentId,boolean seeAll) {
         UUID employeeId = currentUser.employeeId().orElse(null);
-        boolean seeAll = currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
         if (segmentId == null || (employeeId == null && !seeAll)) {
             throw new ApiException(ErrorCode.NOT_FOUND, "车间任务不存在");
         }
@@ -754,7 +773,7 @@ public class ProductionExecutionWorkbenchService {
             int requestedPage,
             int requestedSize,
             String orderBy) {
-        return segmentPage(predicate, binder, requestedPage, requestedSize, orderBy, null, false);
+        return segmentPage(predicate, binder, requestedPage, requestedSize, orderBy, null, false,false);
     }
 
     /**
@@ -768,7 +787,7 @@ public class ProductionExecutionWorkbenchService {
             int requestedSize,
             String orderBy,
             String operatorRouteMemory,
-            boolean planningFacts) {
+            boolean planningFacts,boolean workshopReader) {
         int size = boundedSize(requestedSize);
         int page = Math.max(requestedPage, 1);
         String from = " FROM v_production_execution_workbench_segments task WHERE "
@@ -792,9 +811,16 @@ public class ProductionExecutionWorkbenchService {
                 // ADR-131 车间内料仓用料状态：每行只算一次，状态列与「要不要过开工确认表」共用。
                 + " LEFT JOIN LATERAL (SELECT fn_segment_bin_material_state(task.segment_id) AS state) bin_material ON TRUE"
                 + " WHERE " + predicate;
-        Query data = em.createNativeQuery(segmentSelect() + dataFrom + "\n" + orderBy
+        UUID actionEmployee=currentUser.employeeId().orElse(null);
+        // Only newly broadened personal-task rows lose task eligibility. The
+        // ordinary plan-owner workbench keeps its original command contract.
+        boolean actionAll=!workshopReader || currentUser.get().map(AuthUser::isSuperAdmin).orElse(false);
+        String actionScope=actionAll?"TRUE":actionEmployee==null?"FALSE":assignmentPredicate("task")
+                .replace(":employeeId",":workshopActionEmployee");
+        Query data = em.createNativeQuery(segmentSelect() + ", ("+actionScope+") AS original_task_scope" + dataFrom + "\n" + orderBy
                 + "\n LIMIT :limit OFFSET :offset");
         binder.accept(data);
+        if(!actionAll && actionEmployee!=null)data.setParameter("workshopActionEmployee",actionEmployee);
         boolean activeOperator = workshopMembership.isActiveOperator();
         boolean allowReport = activeOperator && reportAllowed(
                 productionAccess.hasAuthority("production_daily_report:view"),
@@ -819,7 +845,7 @@ public class ProductionExecutionWorkbenchService {
         List<ProductionExecutionWorkbenchSegment> items = rows.stream()
                         .map(row -> segmentRow(row, usage.getOrDefault(uuid(row[0]), ProductionMaterialUsageReadPort.UsageFlags.NONE),
                                 operatorRouteMemory, planning.getOrDefault(uuid(row[0]), PlanningFacts.NONE),
-                                canChooseMaterial, requirements.getOrDefault(uuid(row[0]), List.of())))
+                                canChooseMaterial && bool(row[80]), requirements.getOrDefault(uuid(row[0]), List.of())))
                         .toList();
         return new PageResponse<>(items, page, size, total, totalPages);
     }
@@ -847,6 +873,7 @@ public class ProductionExecutionWorkbenchService {
             urges.put(uuid(urge[0]), urge);
         }
         java.util.Map<UUID, PlanningFacts> result = new java.util.HashMap<>();
+        var assigned=rows.stream().filter(row->bool(row[80])).map(row->uuid(row[0])).collect(java.util.stream.Collectors.toSet());
         gaps.forEach((segmentId, segmentGaps) -> {
             Object[] urge = urges.get(segmentId);
             java.time.OffsetDateTime urgedAt = urge == null ? null
@@ -858,7 +885,7 @@ public class ProductionExecutionWorkbenchService {
                     urgedAt,
                     urge == null ? null : text(urge[3]),
                     urgedAt == null ? null : urgedAt.plus(ProductionPlanningUrgeService.COOLDOWN),
-                    canUrge));
+                    canUrge && assigned.contains(segmentId)));
         });
         return result;
     }
@@ -1578,7 +1605,7 @@ public class ProductionExecutionWorkbenchService {
                                                                   List<com.uten.imp.features.production.ProductionSalesRequirements.Requirement> requirements) {
         // The same current plan/package facts gate every command capability. Compute once
         // per projected task, so historical or paused rows do not advertise rejected actions.
-        boolean executable = bool(row[46]);
+        boolean executable = bool(row[46]) && bool(row[80]);
         boolean custodyValid = bool(row[47]);
         // ADR-131 §5.4：待认料或路线未确认的行要先过开工确认表(车间没开启整批领料的不算)。
         String binMaterialState = text(row[76]);
@@ -1598,7 +1625,7 @@ public class ProductionExecutionWorkbenchService {
                 decimal(row[18]), decimal(row[19]), text(row[20]),
                 text(row[21]), text(row[22]), bool(row[23]), bool(row[24]),
                 bool(row[25]), executable && bool(row[26]), executable && custodyValid && bool(row[27]), executable && custodyValid && bool(row[28]),
-                executable && custodyValid && bool(row[29]), custodyValid ? text(row[30]) : "实领或直送物料与当前车间不一致，请先核对原领料并按来源退回或反向处理", date(row[31]), date(row[32]),
+                executable && custodyValid && bool(row[29]), !bool(row[80]) ? "当前仅可查看其它车间任务，办理仍须符合原责任范围" : custodyValid ? text(row[30]) : "实领或直送物料与当前车间不一致，请先核对原领料并按来源退回或反向处理", date(row[31]), date(row[32]),
                 ((Number) row[33]).longValue(), bool(row[34]), executable && bool(row[35]),
                 usage.hasMaterialActivity(), usage.hasUnregisteredMaterial(), bool(row[36]), executable && bool(row[37]),
                 executable && bool(row[38]), uuid(row[39]), bool(row[40]), bool(row[41]),

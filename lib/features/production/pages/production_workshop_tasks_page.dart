@@ -378,18 +378,21 @@ class _ProductionWorkshopTasksPageState
   int _loadGeneration = 0;
 
   @override
-  void scopedPagedReadOwnerChanged() => setState(() {
-    _loadGeneration++;
-    _tableRows.update(const []);
-    _acceptedTaskReadQuery = null;
-    _items = const [];
-    _selected.clear();
-    _draftReportQty = const {};
-    _resetServerDraftState();
-    _totalPages = 0;
-    _loading = false;
-    _error = scopedPagedReadRejection?.message;
-  });
+  void scopedPagedReadOwnerChanged() {
+    setState(() {
+      _loadGeneration++;
+      _tableRows.update(const []);
+      _acceptedTaskReadQuery = null;
+      _items = const [];
+      _selected.clear();
+      _draftReportQty = const {};
+      _resetServerDraftState();
+      _totalPages = 0;
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+    });
+    _taskDetailRevision.value++;
+  }
 
   Object get _taskReadQuery => [
     ref.read(productionExecutionWorkbenchRepositoryProvider),

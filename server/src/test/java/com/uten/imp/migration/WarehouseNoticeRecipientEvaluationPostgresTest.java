@@ -99,7 +99,7 @@ class WarehouseNoticeRecipientEvaluationPostgresTest {
             }
         }
         TestFlyway.configure().dataSource(PG.getJdbcUrl(), PG.getUsername(), PG.getPassword())
-                .locations("classpath:db/migration").load().migrate();
+                .locations("classpath:db/migration").target("892").load().migrate();
         try (Connection connection = connection()) { attributesAfter = attributes(connection); }
         assertEquals(1, db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE version='892' AND success", Integer.class));
         UUID ordinary = department("NOTICE-ORDINARY");

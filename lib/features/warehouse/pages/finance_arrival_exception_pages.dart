@@ -38,6 +38,7 @@ import '../../../shared/models/procurement_inbound.dart';
 import '../repositories/procurement_inbound_repository.dart';
 import '../widgets/arrival_qty_revision_table.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 
 class FinanceArrivalExceptionTasksPage extends ConsumerStatefulWidget {
   const FinanceArrivalExceptionTasksPage({
@@ -190,9 +191,16 @@ class _FinanceArrivalExceptionTasksPageState
       ],
       UtenFilterToolbar<String>(
         segmentsKey: const Key('finance-arrival-task-status'),
-        segments: const [
-          UtenFilterSegment(value: 'PENDING_FINANCE', label: '待审批'),
-          UtenFilterSegment(value: 'PROCESSED', label: '已处理'),
+        segments: [
+          UtenFilterSegment(
+            value: 'PENDING_FINANCE',
+            label: '待审批',
+            count: ref.watch(
+              badgeFactOrNullProvider(BadgeFact.financeArrivalException),
+            ),
+            countForm: UtenSegmentCountForm.actionable,
+          ),
+          const UtenFilterSegment(value: 'PROCESSED', label: '已处理'),
         ],
         selected: {_status},
         onSelectionChanged: (value) {

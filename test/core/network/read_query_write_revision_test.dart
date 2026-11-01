@@ -23,6 +23,69 @@ class _Adapter implements HttpClientAdapter {
 
 void main() {
   test(
+    'automatic claim lifecycle cannot schedule another business refresh',
+    () {
+      for (final prefix in ['', '/api']) {
+        for (final type in [
+          'SALES_ORDER_APPROVE',
+          'SALES_ORDER_MANAGER_REVIEW',
+          'SALES_ORDER_FINANCE_CONFIRM',
+          'STOCK_DOC_APPROVE',
+        ]) {
+          final base = '$prefix/task-claims/$type/order-1';
+          for (final action in ['claim', 'heartbeat']) {
+            expect(
+              isBusinessWrite(
+                RequestOptions(method: 'POST', path: '$base/$action'),
+              ),
+              isFalse,
+            );
+          }
+          expect(
+            isBusinessWrite(
+              RequestOptions(
+                method: 'DELETE',
+                path: base,
+                queryParameters: {'expectedClaimId': 'lease-1'},
+              ),
+            ),
+            isFalse,
+          );
+          for (final action in ['takeover', 'force-release', 'approve']) {
+            expect(
+              isBusinessWrite(
+                RequestOptions(method: 'POST', path: '$base/$action'),
+              ),
+              isTrue,
+            );
+          }
+        }
+      }
+      expect(
+        isBusinessWrite(
+          RequestOptions(method: 'POST', path: '/sales/orders/order-1/approve'),
+        ),
+        isTrue,
+      );
+      expect(
+        isBusinessWrite(
+          RequestOptions(method: 'PUT', path: '/sales/orders/order-1'),
+        ),
+        isTrue,
+      );
+      expect(
+        isBusinessWrite(
+          RequestOptions(
+            method: 'POST',
+            path: '/other/task-claims/SALES_ORDER_APPROVE/order-1/claim',
+          ),
+        ),
+        isTrue,
+      );
+    },
+  );
+
+  test(
     'B1 selection and export task POSTs never masquerade as business saves',
     () {
       const id = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';

@@ -6249,9 +6249,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。",
+      "lastUpdated": "2026-11-01"
     },
     {
       "id": "W7-BIZ-063",
@@ -6700,9 +6702,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。",
+      "lastUpdated": "2026-11-01"
     },
     {
       "id": "W7-BIZ-074",
@@ -6782,9 +6786,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。",
+      "lastUpdated": "2026-11-01"
     },
     {
       "id": "W7-BIZ-076",
@@ -9380,9 +9386,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "2026-10-31 销售单据详情新增负责人待审/驳回/批准、人员及原因，销售修订后先重走负责人审核。WPF 详情尚未迁移，不把后端同步当成本端完成；见 sales-manager-review/v1.json 合同。",
-      "lastUpdated": "2026-11-01T01:47:05.827894+00:00"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json"
+      ],
+      "notes": "2026-10-31 销售单据详情新增负责人待审/驳回/批准、人员及原因，销售修订后先重走负责人审核。WPF 详情尚未迁移，不把后端同步当成本端完成；见 sales-manager-review/v1.json 合同。\n2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。",
+      "lastUpdated": "2026-11-01"
     },
     {
       "id": "W7-BIZ-136",
@@ -9545,9 +9553,10 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json"
+        "clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json",
+        "clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json"
       ],
-      "notes": "2026-10-31 新增销售负责人订单审核，原生 WPF 尚未迁移，不开放占位写入口。共享契约 contracts/sales-manager-review/v1.json；八个独立权限、两类认领、版本校验、驳回/反审核/批量/未知提交恢复均须迁移。详见 docs/99-项目治理/2026-10-31-销售负责人前置审核.md。\n2026-11-01 审核队列新增 kind=all / HISTORY 与分页前全列表头筛选；UI 仅待审核/历史记录、首列状态，搜索与分类同高。合同见 sales-manager-review/v1.json queue。WPF 仍未迁移，不开放写入口。",
+      "notes": "2026-10-31 新增销售负责人订单审核，原生 WPF 尚未迁移，不开放占位写入口。共享契约 contracts/sales-manager-review/v1.json；八个独立权限、两类认领、版本校验、驳回/反审核/批量/未知提交恢复均须迁移。详见 docs/99-项目治理/2026-10-31-销售负责人前置审核.md。\n2026-11-01 审核队列新增 kind=all / HISTORY 与分页前全列表头筛选；UI 仅待审核/历史记录、首列状态，搜索与分类同高。合同见 sales-manager-review/v1.json queue。WPF 仍未迁移，不开放写入口。\n2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。",
       "lastUpdated": "2026-11-01"
     },
     {
@@ -11241,10 +11250,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json"
+        "clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json",
+        "clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 新登记未迁移伴随源：财务到货异常列表/详情两个真实app_router构造。财务定案权限/原source和金额、动作状态/版本独立；supplier_return_task:view:all不授予财务办理身份。",
-      "lastUpdated": "2026-11-01T14:24:51.199853+00:00"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 新登记未迁移伴随源：财务到货异常列表/详情两个真实app_router构造。财务定案权限/原source和金额、动作状态/版本独立；supplier_return_task:view:all不授予财务办理身份。\n2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。",
+      "lastUpdated": "2026-11-01"
     },
     {
       "id": "W7-BIZ-178",

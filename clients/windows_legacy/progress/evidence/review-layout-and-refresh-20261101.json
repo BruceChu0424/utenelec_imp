@@ -1,0 +1,34 @@
+{
+  "date": "2026-11-01",
+  "baseline": "8b1eaf0ac",
+  "branch": "uimp/review-layout-and-finance-badges-20261101",
+  "classification": [
+    "frontend",
+    "shared-client-contract"
+  ],
+  "receipt": "docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md",
+  "nativeUnmigratedWorkItems": [
+    "W7-BIZ-062",
+    "W7-BIZ-073",
+    "W7-BIZ-075",
+    "W7-BIZ-135",
+    "W7-BIZ-217",
+    "W7-BIZ-222"
+  ],
+  "nativeStatusChanged": false,
+  "fullErpEquivalent": false,
+  "win7Accepted": false,
+  "serverContractChanged": false,
+  "databaseMigrationAdded": false,
+  "logs": "output/review-layout-and-refresh-20261101/",
+  "verification": {
+    "focusedCases": 159,
+    "leaseAndNativeBoundaryCases": 72,
+    "totalCases": 231,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "analysis": "No issues found",
+    "originalLoopReproduced": true
+  }
+}

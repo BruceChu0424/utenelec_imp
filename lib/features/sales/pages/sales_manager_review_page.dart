@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -549,7 +551,18 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
     ];
     return withFormDraft(
       Scaffold(
-        appBar: const UtenAppBar(title: '订单审核', leading: UtenBackButton()),
+        appBar: UtenAppBar(
+          title: '订单审核',
+          leading: const UtenBackButton(),
+          actions: [
+            UtenRefreshButton(
+              key: const Key('sales-manager-review-refresh'),
+              busy: _loading,
+              enabled: !_busy,
+              onRefresh: () => _reload(page: _result?.page ?? 1),
+            ),
+          ],
+        ),
         body: Padding(
           padding: const EdgeInsets.all(UtenSpacing.s16),
           child: Column(
@@ -582,31 +595,6 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
                 onSearchChanged: (_) {
                   if (!_busy) _reload(clear: true);
                 },
-                trailing: Wrap(
-                  spacing: UtenSpacing.s8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    IconButton(
-                      tooltip: '刷新',
-                      onPressed: _busy
-                          ? null
-                          : () => _reload(page: _result?.page ?? 1),
-                      icon: const Icon(Icons.refresh),
-                    ),
-                    if (_state == 'PENDING' && _allowed('order', 'confirm'))
-                      TextButton.icon(
-                        onPressed:
-                            _busy ||
-                                _loading ||
-                                _unknownSubmission ||
-                                _selected.isEmpty
-                            ? null
-                            : _batch,
-                        icon: const Icon(Icons.done_all),
-                        label: Text('批量批准 (${_selected.length})'),
-                      ),
-                  ],
-                ),
               ),
               const SizedBox(height: UtenSpacing.s12),
               if (_unknownSubmission)
@@ -637,6 +625,25 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
                       : null,
                   selectable:
                       _state == 'PENDING' && _allowed('order', 'confirm'),
+                  batchActionsBuilder:
+                      _state == 'PENDING' && _allowed('order', 'confirm')
+                      ? (_, ids) => [
+                          UtenButton(
+                            key: const Key('sales-manager-batch-approve'),
+                            type: UtenButtonType.danger,
+                            size: UtenButtonSize.large,
+                            onPressed:
+                                _busy ||
+                                    _loading ||
+                                    _unknownSubmission ||
+                                    ids.isEmpty
+                                ? null
+                                : _batch,
+                            icon: Icons.done_all,
+                            child: const Text('批量批准'),
+                          ),
+                        ]
+                      : null,
                   selectedIds: _selected,
                   onSelectedIdsChanged: _busy
                       ? null

@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,7 +10,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/shared/sales_review/sales_order_review.dart';
 import 'package:uten_imp/features/finance/pages/finance_audit_center_page.dart';
-import 'package:uten_imp/features/finance/providers/sales_order_finance_confirmation_count_provider.dart';
 import 'package:uten_imp/shared/sales_review/sales_order_review_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -27,6 +28,69 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+
+  testWidgets(
+    'sales parent and pending category share one reactive badge without separate count requests',
+    (tester) async {
+      final repository = _EmptyConfirmationRepository();
+      await tester.pumpWidget(
+        _app(
+          const FinanceAuditCenterPage(initialSegment: 'salesConfirm'),
+          {Perm.salesOrderFinanceView},
+          repository: repository,
+        ),
+      );
+      await tester.pumpAndSettle();
+      int? countOf(String value) => tester
+          .widgetList<UtenFilterToolbar<String>>(
+            find.byType(UtenFilterToolbar<String>),
+          )
+          .expand((t) => t.segments)
+          .firstWhere((s) => s.value == value)
+          .count;
+      expect(countOf('salesConfirm'), 3);
+      expect(countOf('pending'), 3);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(FinanceAuditCenterPage)),
+        listen: false,
+      );
+      (container.read(badgeSummaryProvider.notifier)
+              as FixedBadgeSummaryNotifier)
+          .emit(badgeSummaryFixture(facts: {BadgeFact.salesOrderFinance: 5}));
+      await tester.pumpAndSettle();
+      expect(countOf('salesConfirm'), 5);
+      expect(countOf('pending'), 5);
+      expect(repository.countRequests, 0);
+    },
+  );
+
+  for (final target in [
+    ('shipment', Perm.salesShipmentFinanceView, 'pending', 2),
+    ('arrival', Perm.financeOrderApprovalView, 'PENDING_FINANCE', 4),
+  ]) {
+    testWidgets(
+      'finance ${target.$1} pending child keeps its parent summary badge',
+      (tester) async {
+        await tester.pumpWidget(
+          _app(
+            FinanceAuditCenterPage(initialSegment: target.$1),
+            {target.$2},
+            api: _EmptyAuditApi(),
+            arrivalCount: 4,
+          ),
+        );
+        await tester.pumpAndSettle();
+        final segment = tester
+            .widgetList<UtenFilterToolbar<String>>(
+              find.byType(UtenFilterToolbar<String>),
+            )
+            .expand((t) => t.segments)
+            .firstWhere((s) => s.value == target.$3);
+        expect(segment.count, target.$4);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 
   for (final width in [375.0, 1200.0]) {
     testWidgets(
@@ -258,25 +322,22 @@ Widget _app(
   Set<String> permissions, {
   SalesOrderFinanceConfirmationRepository? repository,
   bool emptyCounts = false,
+  int arrivalCount = 0,
+  ApiClient? api,
 }) {
   return ProviderScope(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(_preferences),
+      if (api != null) apiClientProvider.overrideWithValue(api),
       currentPermissionsProvider.overrideWithValue(permissions),
       isSuperAdminProvider.overrideWithValue(false),
-      salesOrderFinanceQueueCountProvider(
-        false,
-      ).overrideWith((ref) async => emptyCounts ? 0 : 2),
-      salesOrderFinanceQueueCountProvider(
-        true,
-      ).overrideWith((ref) async => emptyCounts ? 0 : 1),
       fixedBadgeSummaryOverride(
         badgeSummaryFixture(
           facts: {
             BadgeFact.salesOrderFinance: emptyCounts ? 0 : 3,
             BadgeFact.shipmentFinance: emptyCounts ? 0 : 2,
             BadgeFact.procurementApproval: 0,
-            BadgeFact.financeArrivalException: 0,
+            BadgeFact.financeArrivalException: arrivalCount,
           },
         ),
       ),
@@ -334,8 +395,12 @@ class _EmptyConfirmationRepository
     );
   }
 
+  int countRequests = 0;
   @override
-  Future<int> pendingCount({bool? changesOnly}) async => 0;
+  Future<int> pendingCount({bool? changesOnly}) async {
+    countRequests++;
+    return 0;
+  }
 
   @override
   Future<SalesOrderFinanceReview> review(String orderId) async {
@@ -365,4 +430,18 @@ class _EmptyConfirmationRepository
     int? expectedRevision,
     String? expectedClaimId,
   }) async {}
+}
+
+class _EmptyAuditApi extends ApiClient {
+  _EmptyAuditApi() : super(Dio());
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => {'items': <dynamic>[], 'total': 0, 'totalPages': 1, 'page': 1};
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => [];
 }

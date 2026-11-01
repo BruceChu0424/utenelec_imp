@@ -47,7 +47,6 @@ final _businessReadPostPaths = [
 
 /// 不代表业务数据变化的自动写请求(心跳、自动已读、偏好保存、令牌刷新、只算不存的预览)。
 final List<RegExp> _automaticWritePaths = [
-  RegExp(r'/task-claims/[^/]+/[^/]+/heartbeat$'),
   RegExp(r'/notices/read-by-(route|source)$'),
   RegExp(r'/notices/[^/]+/(read|popup-ack|snooze)$'),
   RegExp(r'/user/preferences/'),
@@ -77,11 +76,25 @@ final List<RegExp> _automaticWritePaths = [
   RegExp(r'/org/employee-reconcile/plans/(id-repair|[^/]+/discard)$'),
 ];
 
+final _automaticClaimPostPath = RegExp(
+  r'^/(?:api/)?task-claims/[^/]+/[^/]+/(claim|heartbeat)$',
+);
+final _automaticClaimReleasePath = RegExp(
+  r'^/(?:api/)?task-claims/[^/]+/[^/]+$',
+);
+
 /// 该请求成功后是否算一次本端写操作。
 bool isBusinessWrite(RequestOptions options) {
   final method = options.method.toUpperCase();
   if (method == 'GET' || method == 'HEAD' || method == 'OPTIONS') return false;
   final path = options.uri.path;
+  // Automatic lease acquisition/cleanup while reading a page is not a business
+  // edit. Counting it makes return-refresh reacquire a lease and refresh itself
+  // forever. Deliberate takeover/force-release and document decisions still count.
+  if ((method == 'POST' && _automaticClaimPostPath.hasMatch(path)) ||
+      (method == 'DELETE' && _automaticClaimReleasePath.hasMatch(path))) {
+    return false;
+  }
   if (method == 'POST' && isNativeFacetPath(path)) return false;
   if (method == 'POST' &&
       (path == '/production/daily-reports/create-receipt' ||

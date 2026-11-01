@@ -16,6 +16,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
+import 'package:uten_imp/components/layout/uten_app_bar.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
+import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -347,6 +351,73 @@ void main() {
       Perm.salesOrderManagerView,
     ]);
   });
+  for (final size in [const Size(1440, 1000), const Size(430, 900)]) {
+    testWidgets(
+      'manager selection and approval float together with refresh in header at $size',
+      (tester) async {
+        await _pump(tester, _Api(), '/sales/manager-review', {
+          Perm.salesOrderManagerView,
+          Perm.salesOrderManagerConfirm,
+        }, size: size);
+        final action = find.byKey(const Key('sales-manager-batch-approve'));
+        expect(
+          find.ancestor(
+            of: action,
+            matching: find.byType(UtenFloatingActionGroup),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.ancestor(
+            of: find.byType(UtenSelectionSummaryPill),
+            matching: find.byType(UtenFloatingActionGroup),
+          ),
+          findsOneWidget,
+        );
+        expect(tester.getRect(action).bottom, greaterThan(size.height / 2));
+        final refresh = find.byKey(const Key('sales-manager-review-refresh'));
+        expect(
+          tester
+              .widget<UtenAppBar>(find.byType(UtenAppBar))
+              .actions!
+              .whereType<UtenRefreshButton>()
+              .single
+              .key,
+          const Key('sales-manager-review-refresh'),
+        );
+        if (size.width >= 800) {
+          expect(
+            find.ancestor(of: refresh, matching: find.byType(UtenAppBar)),
+            findsOneWidget,
+          );
+        }
+        expect(tester.widget<UtenButton>(action).onPressed, isNull);
+        final table = tester
+            .widget<MasterDataTableView<SalesManagerReviewTask>>(
+              find.byType(MasterDataTableView<SalesManagerReviewTask>),
+            );
+        table.onSelectedIdsChanged!({'order-1'});
+        await tester.pumpAndSettle();
+        expect(find.text('已选 1 项'), findsOneWidget);
+        expect(tester.widget<UtenButton>(action).onPressed, isNotNull);
+        if (_capture) {
+          await saveAuditScreenshot(
+            tester,
+            _captureKey,
+            'manager-floating-${size.width.toInt()}',
+          );
+        }
+        await tester.tap(find.byKey(const Key('master-table-clear-selection')));
+        await tester.pumpAndSettle();
+        expect(find.text('已选 0 项'), findsOneWidget);
+        expect(tester.widget<UtenButton>(action).onPressed, isNull);
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
+  }
+
   testWidgets(
     'review queue uses platform categories and sends all header conditions before paging',
     (tester) async {
@@ -632,7 +703,7 @@ void main() {
       expect(table().selectedIds, contains('order-1'));
       table().onSelectedIdsChanged!({'order-1', 'order-2'});
       await tester.pump();
-      await tester.tap(find.text('批量批准 (2)'));
+      await tester.tap(find.byKey(const Key('sales-manager-batch-approve')));
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('manager-batch-remark')),
@@ -666,7 +737,7 @@ void main() {
       );
       table.onSelectedIdsChanged!({'order-1'});
       await tester.pump();
-      await tester.tap(find.text('批量批准 (1)'));
+      await tester.tap(find.byKey(const Key('sales-manager-batch-approve')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('批准并转交财务'));
       await tester.pumpAndSettle();
@@ -686,7 +757,9 @@ void main() {
       await tester.pump();
       expect(
         tester
-            .widget<TextButton>(find.widgetWithText(TextButton, '批量批准 (1)'))
+            .widget<UtenButton>(
+              find.byKey(const Key('sales-manager-batch-approve')),
+            )
             .onPressed,
         isNull,
       );

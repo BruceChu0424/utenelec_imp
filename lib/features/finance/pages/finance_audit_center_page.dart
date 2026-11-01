@@ -90,7 +90,6 @@ class _FinanceAuditCenterPageState
       _refreshCompletion = completion;
       _refreshTick++;
     });
-    ref.invalidate(salesOrderFinanceQueueCountProvider);
     try {
       await Future.wait([
         refreshBadges(ref),
@@ -138,7 +137,7 @@ class _FinanceAuditCenterPageState
         _AuditSegment(
           value: 'salesConfirm',
           label: '销售订单确认',
-          count: fact(BadgeFact.salesOrderFinance),
+          count: ref.watch(salesOrderFinancePendingCountProvider),
         ),
       if (canShipment)
         _AuditSegment(

@@ -45,6 +45,7 @@ import '../providers/master_name_provider.dart';
 import '../repositories/sales_repository.dart';
 import 'shipment_finance_change_summary.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../shared/drafts/review_task_draft.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 
@@ -1019,13 +1020,20 @@ class _SalesShipmentTaskWorkbenchState
       return UtenFilterToolbar<String>(
         segmentsKey: const Key('finance-shipment-audit-segments'),
         searchKey: const Key('sales-shipment-task-search'),
-        segments: const [
+        segments: [
           // 「待审核」= 等我放行的队列（进页面默认选中）；
           // 「已退回」= 被我退回、销售还没改回来的单（V578 专段）。
-          UtenFilterSegment(value: 'pending', label: '待审核'),
-          UtenFilterSegment(value: 'rejected', label: '已退回'),
-          UtenFilterSegment(value: 'audited', label: '已审核'),
-          UtenFilterSegment(value: 'all', label: '全部'),
+          UtenFilterSegment(
+            value: 'pending',
+            label: '待审核',
+            count: ref.watch(
+              badgeFactOrNullProvider(BadgeFact.shipmentFinance),
+            ),
+            countForm: UtenSegmentCountForm.actionable,
+          ),
+          const UtenFilterSegment(value: 'rejected', label: '已退回'),
+          const UtenFilterSegment(value: 'audited', label: '已审核'),
+          const UtenFilterSegment(value: 'all', label: '全部'),
         ],
         selected: {_financeSegment},
         onSelectionChanged: _changeFinanceSegment,

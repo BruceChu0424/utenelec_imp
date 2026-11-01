@@ -336,8 +336,6 @@ class _FinanceSalesOrderConfirmationPageState
           _rejectedCount = result.total;
         }
       });
-      // 分段计数与列表同源, 随列表加载一并失效(页内专用, 不连带整份徽章汇总)。
-      ref.invalidate(salesOrderFinanceQueueCountProvider);
     } on ApiException catch (error) {
       if (!mounted || requestVersion != _requestVersion) {
         return;
@@ -471,7 +469,10 @@ class _FinanceSalesOrderConfirmationPageState
 
   Future<void> _refreshCurrent() async {
     setState(_clearSelectionState);
-    await _load(_tableRows.visiblePage ?? _result?.page ?? 1);
+    await Future.wait([
+      _load(_tableRows.visiblePage ?? _result?.page ?? 1),
+      refreshBadges(ref),
+    ]);
   }
 
   void _invalidateSearchRequest(String _) {
@@ -1202,19 +1203,7 @@ class _FinanceSalesOrderConfirmationPageState
   ];
 
   Widget _filters(ThemeData theme) {
-    final count = ref.watch(salesOrderFinanceQueueCountProvider(false));
-    final changedCount = ref.watch(salesOrderFinanceQueueCountProvider(true));
-    // false/true are complementary slices of the same pending predicate.
-    // Sum once for the main queue; these page counts never enter global totals.
-    final pendingCount =
-        count.isLoading ||
-            count.hasError ||
-            changedCount.isLoading ||
-            changedCount.hasError
-        ? null
-        : count.value == null || changedCount.value == null
-        ? null
-        : count.value! + changedCount.value!;
+    final pendingCount = ref.watch(salesOrderFinancePendingCountProvider);
     // 全平台统一筛选工具条：分段 + 胶囊搜索框（窄屏自动换行）。
     // 整批提交期间不响应分段切换（原 onSelectionChanged 置空的语义收进回调守卫）。
     return UtenFilterToolbar<String>(

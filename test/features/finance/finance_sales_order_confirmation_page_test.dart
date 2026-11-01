@@ -305,7 +305,13 @@ Future<GoRouter> _pumpPage(
         ),
         fixedBadgeSummaryOverride(
           badgeSummaryFixture(
-            facts: {BadgeFact.salesOrderFinance: repository.items.length},
+            facts: {
+              BadgeFact.salesOrderFinance: repository.items
+                  .where(
+                    (item) => !item.financeRejected && !item.financeConfirmed,
+                  )
+                  .length,
+            },
           ),
         ),
         salesOrderFinanceConfirmationRepositoryProvider.overrideWithValue(

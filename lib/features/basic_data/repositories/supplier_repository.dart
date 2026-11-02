@@ -71,8 +71,16 @@ abstract interface class SupplierRepository {
 }
 
 class DioSupplierRepository implements SupplierRepository {
-  DioSupplierRepository(this.api);
+  DioSupplierRepository(
+    this.api, {
+    this.queryBasePath = ApiEndpoints.suppliers,
+    this.selectionFlagsInBody = false,
+    SupplierListItem Function(Map<String, dynamic>)? decodeListItem,
+  }) : _decodeListItem = decodeListItem ?? SupplierListItem.fromJson;
   final ApiClient api;
+  final String queryBasePath;
+  final bool selectionFlagsInBody;
+  final SupplierListItem Function(Map<String, dynamic>) _decodeListItem;
 
   @override
   Future<MasterSearchContext> searchContext(
@@ -81,7 +89,7 @@ class DioSupplierRepository implements SupplierRepository {
     bool selectableOnly = false,
   }) async {
     final json = await api.post(
-      '${ApiEndpoints.suppliers}/search-context',
+      '$queryBasePath/search-context',
       query: {'page': page, 'size': 100},
       body: {'keyword': keyword.trim(), 'selectableOnly': selectableOnly},
     );
@@ -145,7 +153,9 @@ class DioSupplierRepository implements SupplierRepository {
       'size': size,
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
-      if (selectableOnly) 'selectableOnly': true,
+      if (selectableOnly &&
+          (!selectionFlagsInBody || keyword?.trim().isNotEmpty != true))
+        'selectableOnly': true,
     };
     // 哨兵值 → nullFields（Dio 把 List 序列化成重复 param，Spring Set<String> 绑定）；
     // 其余按 字段=值 发送。搜索关键字 (会匹配手机号) 与手机/电话/银行账号的筛选值
@@ -162,13 +172,16 @@ class DioSupplierRepository implements SupplierRepository {
     if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
 
     final json = sensitive.isEmpty
-        ? await api.get(ApiEndpoints.suppliers, query: query)
+        ? await api.get(queryBasePath, query: query)
         : await api.post(
-            ApiEndpoints.suppliersSearch,
+            '$queryBasePath/search',
             query: query,
-            body: sensitive,
+            body: {
+              ...sensitive,
+              if (selectionFlagsInBody) 'selectableOnly': selectableOnly,
+            },
           );
-    return PagedResult.fromJsonResponsive(json, SupplierListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, _decodeListItem);
   }
 
   @override
@@ -182,16 +195,20 @@ class DioSupplierRepository implements SupplierRepository {
     final query = {
       'page': page,
       'size': size,
-      if (selectableOnly) 'selectableOnly': true,
+      if (selectableOnly && (!selectionFlagsInBody || keyword.trim().isEmpty))
+        'selectableOnly': true,
     };
     final json = keyword.trim().isEmpty
-        ? await api.get(ApiEndpoints.suppliers, query: query)
+        ? await api.get(queryBasePath, query: query)
         : await api.post(
-            ApiEndpoints.suppliersSearch,
+            '$queryBasePath/search',
             query: query,
-            body: {'keyword': keyword.trim()},
+            body: {
+              'keyword': keyword.trim(),
+              if (selectionFlagsInBody) 'selectableOnly': selectableOnly,
+            },
           );
-    return PagedResult.fromJsonResponsive(json, SupplierListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, _decodeListItem);
   }
 
   @override

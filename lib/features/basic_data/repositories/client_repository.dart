@@ -89,8 +89,16 @@ abstract interface class ClientRepository {
 }
 
 class DioClientRepository implements ClientRepository {
-  DioClientRepository(this.api);
+  DioClientRepository(
+    this.api, {
+    this.queryBasePath = ApiEndpoints.clients,
+    this.selectionFlagsInBody = false,
+    ClientListItem Function(Map<String, dynamic>)? decodeListItem,
+  }) : _decodeListItem = decodeListItem ?? ClientListItem.fromJson;
   final ApiClient api;
+  final String queryBasePath;
+  final bool selectionFlagsInBody;
+  final ClientListItem Function(Map<String, dynamic>) _decodeListItem;
 
   @override
   Future<MasterSearchContext> searchContext(
@@ -100,7 +108,7 @@ class DioClientRepository implements ClientRepository {
     bool selectableOnly = false,
   }) async {
     final json = await api.post(
-      '${ApiEndpoints.clients}/search-context',
+      '$queryBasePath/search-context',
       query: {'page': page, 'size': 100},
       body: {
         'keyword': keyword.trim(),
@@ -173,8 +181,10 @@ class DioClientRepository implements ClientRepository {
       'size': size,
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
-      'excludeLegacyFinanceStub': excludeLegacyFinanceStub,
-      'selectableOnly': selectableOnly,
+      if (!selectionFlagsInBody || keyword?.trim().isNotEmpty != true)
+        'excludeLegacyFinanceStub': excludeLegacyFinanceStub,
+      if (!selectionFlagsInBody || keyword?.trim().isNotEmpty != true)
+        'selectableOnly': selectableOnly,
     };
     // 哨兵值 → nullFields（Dio 把 List 序列化成重复 param，Spring Set<String> 绑定）；
     // 其余按 字段=值 发送。搜索关键字 (会匹配手机号) 与手机/电话/银行账号的筛选值
@@ -191,13 +201,18 @@ class DioClientRepository implements ClientRepository {
     if (nullFields.isNotEmpty) query['nullFields'] = nullFields;
 
     final json = sensitive.isEmpty
-        ? await api.get(ApiEndpoints.clients, query: query)
+        ? await api.get(queryBasePath, query: query)
         : await api.post(
-            ApiEndpoints.clientsSearch,
+            '$queryBasePath/search',
             query: query,
-            body: sensitive,
+            body: {
+              ...sensitive,
+              if (selectionFlagsInBody) 'selectableOnly': selectableOnly,
+              if (selectionFlagsInBody)
+                'excludeLegacyFinanceStub': excludeLegacyFinanceStub,
+            },
           );
-    return PagedResult.fromJsonResponsive(json, ClientListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, _decodeListItem);
   }
 
   @override
@@ -212,17 +227,24 @@ class DioClientRepository implements ClientRepository {
     final query = {
       'page': page,
       'size': size,
-      'excludeLegacyFinanceStub': excludeLegacyFinanceStub,
-      'selectableOnly': selectableOnly,
+      if (!selectionFlagsInBody || keyword.trim().isEmpty)
+        'excludeLegacyFinanceStub': excludeLegacyFinanceStub,
+      if (!selectionFlagsInBody || keyword.trim().isEmpty)
+        'selectableOnly': selectableOnly,
     };
     final json = keyword.trim().isEmpty
-        ? await api.get(ApiEndpoints.clients, query: query)
+        ? await api.get(queryBasePath, query: query)
         : await api.post(
-            ApiEndpoints.clientsSearch,
+            '$queryBasePath/search',
             query: query,
-            body: {'keyword': keyword.trim()},
+            body: {
+              'keyword': keyword.trim(),
+              if (selectionFlagsInBody) 'selectableOnly': selectableOnly,
+              if (selectionFlagsInBody)
+                'excludeLegacyFinanceStub': excludeLegacyFinanceStub,
+            },
           );
-    return PagedResult.fromJsonResponsive(json, ClientListItem.fromJson);
+    return PagedResult.fromJsonResponsive(json, _decodeListItem);
   }
 
   @override

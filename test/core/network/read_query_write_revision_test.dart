@@ -96,6 +96,8 @@ void main() {
           '$prefix/master/suppliers/search-context',
           '$prefix/business-references/clients/search-context',
           '$prefix/business-references/suppliers/search-context',
+          '$prefix/business-references/clients/search',
+          '$prefix/business-references/suppliers/search',
           for (final module in ['purchase', 'subcontract']) ...[
             '$prefix/$module/orders/print-authorization',
             '$prefix/operations/workbench/$module/export',

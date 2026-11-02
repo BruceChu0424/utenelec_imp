@@ -38,7 +38,9 @@ final _businessReadPostPaths = [
   RegExp(r'^/(?:api/)?operations/workbench/(purchase|subcontract)/export$'),
   RegExp(r'^/(?:api/)?sales/orders/shippable-lines/selection$'),
   RegExp(r'^/(?:api/)?master/(clients|suppliers)/search-context$'),
-  RegExp(r'^/(?:api/)?business-references/(clients|suppliers)/search-context$'),
+  RegExp(
+    r'^/(?:api/)?business-references/(clients|suppliers)/(search|search-context)$',
+  ),
   RegExp(
     r'^/(?:api/)?(sales|purchase|subcontract|production|stock|finance)/reports/export$',
   ),

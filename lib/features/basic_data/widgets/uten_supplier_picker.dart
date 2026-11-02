@@ -11,8 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/supplier_node.dart';
-import '../repositories/supplier_category_repository.dart';
-import '../repositories/supplier_repository.dart';
+import '../repositories/business_reference_repository.dart';
 import 'supplier_quick_create_sheet.dart';
 import 'master_data_table_view.dart';
 import 'uten_master_picker.dart';
@@ -25,7 +24,7 @@ Future<SupplierListItem?> showUtenSupplierPicker(
   bool selectableOnly = true,
   bool allowQuickCreate = true,
 }) {
-  final suppliers = ref.read(supplierRepositoryProvider);
+  final suppliers = ref.read(businessSupplierReferenceRepositoryProvider);
   final canAdd =
       allowQuickCreate &&
       ref.read(currentPermissionsProvider).contains(Perm.supplierCreate);
@@ -34,7 +33,8 @@ Future<SupplierListItem?> showUtenSupplierPicker(
     UtenMasterPickerSpec<SupplierListItem>(
       title: title,
       noun: '供应商',
-      loadTree: () => ref.read(supplierCategoryRepositoryProvider).tree(),
+      loadTree: () =>
+          ref.read(businessSupplierCategoryRepositoryProvider).tree(),
       loadCategoryPage: (categoryId, page, keyword) => suppliers.list(
         categoryId,
         page: page,
@@ -56,36 +56,25 @@ Future<SupplierListItem?> showUtenSupplierPicker(
       categoryIdOf: (s) => s.categoryId,
       labelOf: _supplierLabel,
       tableColumns: [
-        const MasterColumnDef(
+        MasterColumnDef<SupplierListItem>(
+          key: 'code',
+          label: '编号',
+          width: 130,
+          value: (item) => item.code,
+          columnSearchEnabled: false,
+        ),
+        const MasterColumnDef<SupplierListItem>(
           key: 'name',
           label: '供应商名称',
-          width: 220,
+          width: 240,
           value: _supplierLabel,
           columnSearchEnabled: false,
         ),
-        MasterColumnDef(
-          key: 'linkman',
-          label: '联系人',
-          width: 120,
-          value: (s) => s.linkman,
-          columnSearchEnabled: false,
-        ),
-        MasterColumnDef(
-          key: 'phone',
-          label: '联系电话',
-          width: 160,
-          value: (s) => [s.mobile, s.phone, s.phone2]
-              .whereType<String>()
-              .map((value) => value.trim())
-              .where((value) => value.isNotEmpty)
-              .firstOrNull,
-          columnSearchEnabled: false,
-        ),
-        MasterColumnDef(
-          key: 'place',
-          label: '地区',
-          width: 150,
-          value: (s) => s.place,
+        MasterColumnDef<SupplierListItem>(
+          key: 'status',
+          label: '状态',
+          width: 100,
+          value: (item) => item.status,
           columnSearchEnabled: false,
         ),
       ],
@@ -102,10 +91,10 @@ Future<SupplierListItem?> showUtenSupplierPicker(
               return SupplierListItem(
                 id: created.id,
                 name: created.name,
-                description: created.description,
-                place: created.place,
-                linkman: created.linkman,
-                mobile: created.mobile,
+                code: created.code,
+                categoryId: created.categoryId,
+                status: created.status,
+                defaultSettlementMethodId: created.defaultSettlementMethodId,
               );
             }
           : null,

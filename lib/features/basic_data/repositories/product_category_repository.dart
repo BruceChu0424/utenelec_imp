@@ -35,12 +35,16 @@ abstract interface class ProductCategoryRepository {
 }
 
 class DioProductCategoryRepository implements ProductCategoryRepository {
-  DioProductCategoryRepository(this.api);
+  DioProductCategoryRepository(
+    this.api, {
+    this.treePath = ApiEndpoints.materialCategoryTree,
+  });
   final ApiClient api;
+  final String treePath;
 
   @override
   Future<List<ProductCategoryNode>> tree() async {
-    final list = await api.getList(ApiEndpoints.materialCategoryTree);
+    final list = await api.getList(treePath);
     return list.map(ProductCategoryNode.fromJson).toList();
   }
 

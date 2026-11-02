@@ -8,8 +8,9 @@ import 'goods_repository.dart';
 /// Searches one header's distinct values before pagination, never the current
 /// goods page or the preview buckets returned by /facets.
 class GoodsFacetRepository {
-  GoodsFacetRepository(this.api);
+  GoodsFacetRepository(this.api, {this.queryBasePath = ApiEndpoints.goods});
   final ApiClient api;
+  final String queryBasePath;
 
   Future<MasterFacetPage> values({
     required String field,
@@ -24,7 +25,7 @@ class GoodsFacetRepository {
     bool excludeStub = false,
   }) async {
     final json = await api.get(
-      '${ApiEndpoints.goods}/facet-values',
+      '$queryBasePath/facet-values',
       query: {
         'field': goodsFacetField(field),
         'search': search.trim(),

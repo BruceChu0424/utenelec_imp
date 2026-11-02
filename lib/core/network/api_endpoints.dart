@@ -653,6 +653,15 @@ abstract final class ApiEndpoints {
   static const employeeReferenceDepartments =
       '/org/employee-references/departments';
   static const businessReferenceAccounts = '/business-references/accounts';
+  static const businessReferenceSuppliers = '/business-references/suppliers';
+  static const businessReferenceClients = '/business-references/clients';
+  static const businessReferenceSupplierCategories =
+      '/business-references/supplier-categories';
+  static const businessReferenceClientCategories =
+      '/business-references/client-categories';
+  static const businessReferenceGoods = '/business-references/goods';
+  static const businessReferenceGoodsCategories =
+      '/business-references/goods/categories';
   static const businessReferenceWarehouses = '/business-references/warehouses';
   static const businessReferenceDepartments =
       '/business-references/departments';

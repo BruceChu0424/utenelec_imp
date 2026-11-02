@@ -80,8 +80,9 @@ abstract interface class AccountRepository {
 }
 
 class DioAccountRepository implements AccountRepository {
-  DioAccountRepository(this.api);
+  DioAccountRepository(this.api, {this.dictPath = AccountEndpoints.dict});
   final ApiClient api;
+  final String dictPath;
 
   @override
   Future<PagedResult<AccountListItem>> list({
@@ -133,7 +134,7 @@ class DioAccountRepository implements AccountRepository {
 
   @override
   Future<List<AccountListItem>> dict() async {
-    final list = await api.getList(AccountEndpoints.dict);
+    final list = await api.getList(dictPath);
     return list.map(AccountListItem.fromJson).toList();
   }
 

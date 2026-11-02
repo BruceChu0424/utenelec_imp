@@ -30,6 +30,13 @@ class BusinessEmployeeReferencePurposeTest {
             assertTrue(purpose.mayEcho(purpose.echoAuthorities()));
         }
     }
+    @Test void generatedSubcontractIssueUsesOnlyItsRemainingEditAuthority() {
+        var purpose=BusinessEmployeeReferencePurpose.SUBCONTRACT_MATERIAL_ISSUE_PERSON;
+        assertTrue(purpose.mayListCandidates(Set.of("subcontract_material_issue:edit")));
+        assertFalse(purpose.mayListCandidates(Set.of("subcontract_material_issue:create")));
+        assertFalse(purpose.mayListCandidates(Set.of("subcontract_material_issue:view","employee:view")));
+        assertTrue(purpose.mayEcho(Set.of("subcontract_material_issue:view")));
+    }
     @Test void materialGenerationKeepsItsAndGateAndActualAlternativeActions() {
         var purpose=BusinessEmployeeReferencePurpose.PRODUCTION_MATERIAL_OWNER;
         assertFalse(purpose.mayListCandidates(Set.of("production_material_analysis:generate")));

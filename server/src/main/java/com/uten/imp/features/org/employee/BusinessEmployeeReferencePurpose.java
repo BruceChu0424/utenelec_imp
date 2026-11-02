@@ -19,7 +19,7 @@ public enum BusinessEmployeeReferencePurpose {
     SUBCONTRACT_APPLICATION_PERSON(List.of(),Set.of("subcontract_application:view")),
     SUBCONTRACT_ORDER_PERSON(List.of(Set.of("subcontract_order:create"),Set.of("subcontract_order:edit")),Set.of("subcontract_order:view")),
     SUBCONTRACT_RECEIPT_PERSON(List.of(Set.of("subcontract_receipt:create"),Set.of("subcontract_receipt:edit")),Set.of("subcontract_receipt:view")),
-    SUBCONTRACT_MATERIAL_ISSUE_PERSON(List.of(Set.of("subcontract_material_issue:create"),Set.of("subcontract_material_issue:edit")),Set.of("subcontract_material_issue:view")),
+    SUBCONTRACT_MATERIAL_ISSUE_PERSON(List.of(Set.of("subcontract_material_issue:edit")),Set.of("subcontract_material_issue:view")),
     SUBCONTRACT_RETURN_PERSON(List.of(Set.of("subcontract_return:create"),Set.of("subcontract_return:edit")),Set.of("subcontract_return:view")),
     SUBCONTRACT_MATERIAL_RETURN_PERSON(List.of(Set.of("subcontract_material_return:create"),Set.of("subcontract_material_return:edit")),Set.of("subcontract_material_return:view")),
     SUBCONTRACT_WASTE_PERSON(List.of(Set.of("subcontract_waste:create"),Set.of("subcontract_waste:edit")),Set.of("subcontract_waste:view")),

@@ -22,7 +22,7 @@
 
 ## W7-BIZ-174 · lib/features/warehouse/materialbin/pages/workshop_material_count_page.dart
 
-模块 `warehouse`；1116 行；SHA256 `3d679ac138eb2e63855315b4fc79cc837af932e51cff6d13d253f908686d3b18`。
+模块 `warehouse`；1116 行；SHA256 `6ba80e381fed6e3c63ec5ba0e649fdbb17579189bae2ce63be08ffef1f8cec81`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -94,21 +94,21 @@
 
 ## W7-BIZ-222 · lib/features/warehouse/pages/finance_arrival_exception_pages.dart
 
-模块 `warehouse`；1079 行；SHA256 `522e6e3b02767a217e337ade58c194a4a3de9f5b2b14797d46d37af6c7b5fbe2`。
+模块 `warehouse`；1087 行；SHA256 `9516e45c56196a0770daf16cc7e9c3d6e6063b6b740e640dc4680c6195f1967c`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | FinanceArrivalExceptionTasksPage @42 (page-class)<br>_FinanceArrivalExceptionTasksPageState @68 (state-class)<br>_FinanceTaskCard @309 (supporting-class)<br>FinanceArrivalExceptionDetailPage @397 (page-class)<br>_FinanceArrivalExceptionDetailPageState @407 (state-class)<br>_FinanceStatusBanner @713 (supporting-class)<br>_ArrivalFactsCard @759 (supporting-class)<br>_FinanceDecisionPanel @845 (supporting-class)<br>_DecisionOption @949 (supporting-class)<br>_Fact @1034 (supporting-class)<br>_Pager @1055 (supporting-class) |
+| 页面/状态类 | FinanceArrivalExceptionTasksPage @43 (page-class)<br>_FinanceArrivalExceptionTasksPageState @69 (state-class)<br>_FinanceTaskCard @317 (supporting-class)<br>FinanceArrivalExceptionDetailPage @405 (page-class)<br>_FinanceArrivalExceptionDetailPageState @415 (state-class)<br>_FinanceStatusBanner @721 (supporting-class)<br>_ArrivalFactsCard @767 (supporting-class)<br>_FinanceDecisionPanel @853 (supporting-class)<br>_DecisionOption @957 (supporting-class)<br>_Fact @1042 (supporting-class)<br>_Pager @1063 (supporting-class) |
 | 真实路由绑定 | /finance/procurement-arrival-exceptions；router @2093；builder ['FinanceArrivalExceptionTasksPage']；redirect None<br>/finance/procurement-arrival-exceptions/:id；router @2098；builder ['FinanceArrivalExceptionDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/warehouse/repositories/procurement_inbound_repository.dart；接口：/finance/procurement-arrival-exceptions/tasks、/finance/procurement-arrival-exceptions/{id}、/finance/procurement-arrival-exceptions/{id}/decision、/procurement/arrival-exceptions/return-tasks/{id}/complete、/procurement/arrival-exceptions/tasks、/procurement/arrival-exceptions/{id}、/warehouse/inbound/arrival-exceptions、/warehouse/inbound/arrival-exceptions/batch-stock-in、/warehouse/inbound/arrival-exceptions/facets、/warehouse/inbound/arrival-exceptions/{id}/stock-in、/warehouse/inbound/arrivals/batch、/warehouse/inbound/arrivals/batch-complete、/warehouse/inbound/arrivals/{receiptId}/complete、/warehouse/inbound/expectations、/warehouse/inbound/expectations/by-ids、/warehouse/inbound/expectations/facets |
-| 动作处理 | addPostFrameCallback @83 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>whenComplete @86 [action-like-invocation] 提示 ['complete']；_load(1).whenComplete(() {<br>complete @88 [action-like-invocation] 提示 ['complete']；completion.complete();<br>whenComplete @99 [action-like-invocation] 提示 ['complete']；_load(_result?.page ?? 1).whenComplete(() {<br>complete @101 [action-like-invocation] 提示 ['complete']；completion.complete();<br>complete @111 [action-like-invocation] 提示 ['complete']；completion.complete();<br>copyWith @352 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleMedium?.copyWith(<br>copyWith @379 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>addPostFrameCallback @420 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load());<br>_submit @473 [method-declaration-candidate] 提示 ['submit']；Future<void> _submit() async {<br>copyWith @744 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleMedium?.copyWith(<br>copyWith @781 [action-like-invocation] 提示 ['copy']；).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),<br>copyWith @878 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleMedium?.copyWith(<br>copyWith @885 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>copyWith @1009 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith( |
+| 动作处理 | addPostFrameCallback @84 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>whenComplete @87 [action-like-invocation] 提示 ['complete']；_load(1).whenComplete(() {<br>complete @89 [action-like-invocation] 提示 ['complete']；completion.complete();<br>whenComplete @100 [action-like-invocation] 提示 ['complete']；_load(_result?.page ?? 1).whenComplete(() {<br>complete @102 [action-like-invocation] 提示 ['complete']；completion.complete();<br>complete @112 [action-like-invocation] 提示 ['complete']；completion.complete();<br>copyWith @360 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleMedium?.copyWith(<br>copyWith @387 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>addPostFrameCallback @428 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load());<br>_submit @481 [method-declaration-candidate] 提示 ['submit']；Future<void> _submit() async {<br>copyWith @752 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleMedium?.copyWith(<br>copyWith @789 [action-like-invocation] 提示 ['copy']；).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),<br>copyWith @886 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleMedium?.copyWith(<br>copyWith @893 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>copyWith @1017 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith( |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/asset/FixedAssetController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/inbound/FinanceProcurementArrivalExceptionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalExceptionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/inbound/WarehouseInboundController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。<br>复数伴随源包含多个页面构造或共享实现；文件数、构造数和路由数均不等于workflow数。<br>存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/components/buttons/uten_app_bar_action_button.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/data_display/uten_status_badge.dart` (sharedComponents)；`lib/components/feedback/uten_busy_overlay.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/feedback/uten_reviewer_responsibility_notice.dart` (sharedComponents)；`lib/components/feedback/uten_skeleton.dart` (sharedComponents)；`lib/components/inputs/required_field_decoration.dart` (sharedComponents)；`lib/components/inputs/uten_input_decoration.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_pagination.dart` (sharedComponents)；`lib/core/network/api_exception.dart` (core)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/core/utils/display_datetime.dart` (core)；`lib/shared/models/paged_result.dart` (models)；`lib/shared/auth/native_read_view_scope_mixin.dart` (sharedComponents)；`lib/shared/models/procurement_inbound.dart` (models)；`lib/features/warehouse/repositories/procurement_inbound_repository.dart` (repositories)；`lib/features/warehouse/widgets/arrival_qty_revision_table.dart` (featureWidgets)；`lib/shared/badges/badge_registry.dart` (sharedComponents)。
+直接源依赖：`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/components/buttons/uten_app_bar_action_button.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/data_display/uten_status_badge.dart` (sharedComponents)；`lib/components/feedback/uten_busy_overlay.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/feedback/uten_reviewer_responsibility_notice.dart` (sharedComponents)；`lib/components/feedback/uten_skeleton.dart` (sharedComponents)；`lib/components/inputs/required_field_decoration.dart` (sharedComponents)；`lib/components/inputs/uten_input_decoration.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_pagination.dart` (sharedComponents)；`lib/core/network/api_exception.dart` (core)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/core/utils/display_datetime.dart` (core)；`lib/shared/models/paged_result.dart` (models)；`lib/shared/auth/native_read_view_scope_mixin.dart` (sharedComponents)；`lib/shared/models/procurement_inbound.dart` (models)；`lib/features/warehouse/repositories/procurement_inbound_repository.dart` (repositories)；`lib/features/warehouse/widgets/arrival_qty_revision_table.dart` (featureWidgets)；`lib/shared/badges/badge_registry.dart` (sharedComponents)；`lib/components/feedback/uten_segment_badge_label.dart` (sharedComponents)。
 
 ## W7-BIZ-178 · lib/features/warehouse/pages/inbound_arrival_registration_page.dart
 
@@ -184,7 +184,7 @@
 
 ## W7-BIZ-181 · lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart
 
-模块 `warehouse`；652 行；SHA256 `253c713ba1064218cd1509063ceb910147220032d86198b11be1c6524a41db01`。
+模块 `warehouse`；652 行；SHA256 `04c5ec81cc8179d58cf3b703198dc450eaae3299a79df576d37cb9d3ab990183`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -292,7 +292,7 @@
 
 ## W7-BIZ-187 · lib/features/warehouse/pages/stock_doc_list_page.dart
 
-模块 `warehouse`；815 行；SHA256 `a7241ecb87c5351ba4228cecd84635f56ac9f3159e61cc3c2cc139832e90d335`。
+模块 `warehouse`；815 行；SHA256 `d030c52d5c4b523aaa39cf6dbbad5cf5930fe5b229197dc541466a85ca326905`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -382,21 +382,21 @@
 
 ## W7-BIZ-192 · lib/features/warehouse/pages/warehouse_hub_page.dart
 
-模块 `warehouse`；329 行；SHA256 `1fa99a210e9802bdd8efa262aa977983e3fb02e9f3175b71fd262b315b699419`。
+模块 `warehouse`；328 行；SHA256 `d138b1e6aeefa8657d2066f533f2643b46997c1d3e2e095218c8249136642e1e`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | WarehouseHubPage @50 (page-class)<br>_StockQueryEntry @301 (supporting-class) |
+| 页面/状态类 | WarehouseHubPage @51 (page-class)<br>_StockQueryEntry @300 (supporting-class) |
 | 真实路由绑定 | /warehouse；router @1220；builder ['WarehouseHubPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | copyWith @292 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith( |
+| 动作处理 | copyWith @291 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith( |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/components/feedback/uten_module_badges.dart` (sharedComponents)；`lib/components/feedback/uten_notification_badge.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/cards/uten_hub_card.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_responsive_grid.dart` (sharedComponents)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/router/route_access_policy.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/auth/document_permission_set.dart` (sharedComponents)；`lib/features/warehouse/config/warehouse_report_config.dart` (other)；`lib/features/warehouse/models/stock_doc.dart` (models)；`lib/features/warehouse/providers/warehouse_count_refresh.dart` (providers)；`lib/shared/badges/badge_registry.dart` (sharedComponents)；`lib/shared/drafts/form_drafts_page.dart` (sharedComponents)。
+直接源依赖：`lib/components/feedback/uten_module_badges.dart` (sharedComponents)；`lib/components/feedback/uten_scoped_badges.dart` (sharedComponents)；`lib/shared/badges/badge_scope.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/cards/uten_hub_card.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_responsive_grid.dart` (sharedComponents)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/router/route_access_policy.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/capsule_nav_metrics.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/auth/document_permission_set.dart` (sharedComponents)；`lib/features/warehouse/config/warehouse_report_config.dart` (other)；`lib/features/warehouse/models/stock_doc.dart` (models)；`lib/features/warehouse/providers/warehouse_count_refresh.dart` (providers)；`lib/shared/badges/badge_registry.dart` (sharedComponents)；`lib/shared/drafts/form_drafts_page.dart` (sharedComponents)。
 
 ## W7-BIZ-193 · lib/features/warehouse/pages/warehouse_inbound_expectations_page.dart
 
@@ -436,7 +436,7 @@
 
 ## W7-BIZ-195 · lib/features/warehouse/pages/warehouse_insight_page.dart
 
-模块 `warehouse`；1315 行；SHA256 `a3f67499af60c0c3bd161d4fc1ad6f1b7612781444e6ef9dada551583c6c29e6`。
+模块 `warehouse`；1315 行；SHA256 `5e79468848a50c8f2605d21ee4fc4c5712cfa370d801d00aee3e5cb2e950f8f8`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -490,7 +490,7 @@
 
 ## W7-BIZ-198 · lib/features/warehouse/pages/warehouse_quality_batch_stock_in_page.dart
 
-模块 `warehouse`；706 行；SHA256 `3bdb37a72a7b14029a3730c0ecc2b40cf4e903a4af433571bcaff166af1cfd21`。
+模块 `warehouse`；706 行；SHA256 `d1777c78e05b54c38eea2b4281d7d16137d00c62c37cf0041fb46cf1aaee6abe`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -544,7 +544,7 @@
 
 ## W7-BIZ-201 · lib/features/warehouse/pages/warehouse_quality_results_page.dart
 
-模块 `warehouse`；1109 行；SHA256 `a24fc6e62c85a4575e4756d08bed357044f3c99d6059517562fbc1d54415d881`。
+模块 `warehouse`；1109 行；SHA256 `d320622717ca4a4366015711da3a4ef13ade7a2b5925310da298e2e7aea4bd9d`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -562,7 +562,7 @@
 
 ## W7-BIZ-202 · lib/features/warehouse/pages/warehouse_report_table_page.dart
 
-模块 `warehouse`；684 行；SHA256 `4eb31bc07368d47da58670f4c8c764787cc55e8dcb2907302c3e6a38ae887118`。
+模块 `warehouse`；684 行；SHA256 `31cd6e7fd3b09e5014ed4b5aff06b467f40ee8bb593f177c21c18397cbe9a4b2`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

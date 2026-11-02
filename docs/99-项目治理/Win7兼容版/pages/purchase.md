@@ -40,7 +40,7 @@
 
 ## W7-BIZ-123 · lib/features/purchase/pages/purchase_doc_list_page.dart
 
-模块 `purchase`；1093 行；SHA256 `e92b39482bca813d2e125bdd7abdefc23efd76d460e7217971f662396388fd19`。
+模块 `purchase`；1093 行；SHA256 `55b9e1b1198ec861cbfe2b22d9b6dc84f56a18c0d14dd13b3e2ab5817f8e4734`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -112,7 +112,7 @@
 
 ## W7-BIZ-127 · lib/features/purchase/pages/purchase_report_table_page.dart
 
-模块 `purchase`；650 行；SHA256 `276a83d5e5f8a34f1013136759f72962bfdc3a68f2d4bbd1b6679c640de66518`。
+模块 `purchase`；650 行；SHA256 `9e72ec601ea0b5d21f5b3945447845ccbd34aeaf29b9ff5cda24c0c8e81d64e0`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

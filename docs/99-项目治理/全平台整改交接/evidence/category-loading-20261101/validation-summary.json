@@ -1,0 +1,323 @@
+{
+  "schemaVersion": 1,
+  "status": "verified-local",
+  "baselineCommit": "bd7e8525b",
+  "branch": "uimp/category-table-loading-20261101",
+  "httpQuiet": {
+    "before": {
+      "rowsMs": {
+        "samples": 4,
+        "p50Ms": 176.817,
+        "p95Ms": 218.819,
+        "maxMs": 218.819
+      },
+      "countsMs": {
+        "samples": 4,
+        "p50Ms": 176.668,
+        "p95Ms": 218.726,
+        "maxMs": 218.726
+      },
+      "allReadsMs": {
+        "samples": 4,
+        "p50Ms": 328.622,
+        "p95Ms": 362.3,
+        "maxMs": 362.3
+      }
+    },
+    "after": {
+      "rowsMs": {
+        "samples": 4,
+        "p50Ms": 18.26,
+        "p95Ms": 20.165,
+        "maxMs": 20.165
+      },
+      "countsMs": {
+        "samples": 4,
+        "p50Ms": 18.205,
+        "p95Ms": 20.112,
+        "maxMs": 20.112
+      },
+      "allReadsMs": {
+        "samples": 4,
+        "p50Ms": 629.743,
+        "p95Ms": 631.91,
+        "maxMs": 631.91
+      }
+    }
+  },
+  "pageQuiet": {
+    "scenarios": 22,
+    "allFirstRowsAtNextPumpedFrame": true,
+    "beforeFirstRows": {
+      "samples": 22,
+      "p50Ms": 236.197,
+      "p95Ms": 420.962,
+      "maxMs": 1854.987
+    },
+    "afterFirstRows": {
+      "samples": 22,
+      "p50Ms": 211.938,
+      "p95Ms": 354.549,
+      "maxMs": 1490.567
+    },
+    "categoryRequestsBefore": 40,
+    "categoryRequestsAfter": 20,
+    "perPageCategoryRequests": [
+      {
+        "page": "purchase/request",
+        "beforeCategoryReads": 0,
+        "afterCategoryReads": 0
+      },
+      {
+        "page": "purchase/order",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "purchase/receipt",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "purchase/returnDoc",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "sales/quote",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "sales/order",
+        "beforeCategoryReads": 0,
+        "afterCategoryReads": 0
+      },
+      {
+        "page": "sales/shipment",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "sales/customerShipment",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "sales/returnDoc",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "finance/receipt",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "finance/payment",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "finance/expense",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "finance/otherIncome",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "finance/bankTransfer",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "stock/transfer",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "stock/otherIn",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "stock/otherOut",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "stock/draw",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "stock/wdraw",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "stock/finishedIn",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "stock/finishedOut",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      },
+      {
+        "page": "stock/check",
+        "beforeCategoryReads": 2,
+        "afterCategoryReads": 1
+      }
+    ],
+    "limitation": "Test binding wall-clock model; not real raster or production network latency."
+  },
+  "flutterRegressionPassed": 333,
+  "pageEntryScenariosPassed": 22,
+  "staticAnalysis": "No issues found",
+  "postgresTests": [
+    {
+      "suite": "WorkbenchBadgeSummaryPostgresTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "suite": "DocumentStatusCountSqlContractTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "realBrowserContract": {
+    "passed": true,
+    "checks": [
+      "auxiliary capacity",
+      "exact warehouse query",
+      "foreground priority",
+      "queue cancellation",
+      "identity retirement"
+    ],
+    "businessRequests": 0,
+    "runtime": "Actual headless Chrome, dart2js and Dio; no Flutter platform-test bootstrap",
+    "fullFlutterWebPageUat": false,
+    "compiledHarnessSha256": "962e0b565ba2ddfe274484f13d3970e09ca73736981a4e000012e9340e30f886"
+  },
+  "flutterChromeBootstrap": {
+    "status": "bootstrap-blocked",
+    "testsExecuted": 0,
+    "sharedSdkModified": false,
+    "issues": [
+      {
+        "path": "/canvaskit/chromium/canvaskit.wasm",
+        "message": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      },
+      {
+        "path": "/canvaskit/chromium/canvaskit.js",
+        "message": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      },
+      {
+        "message": "TypeError: Failed to execute 'compile' on 'WebAssembly': HTTP status code is not ok"
+      },
+      {
+        "message": "TypeError: Failed to fetch dynamically imported module: http://localhost:56661/canvaskit/chromium/canvaskit.js"
+      },
+      {
+        "message": "TypeError: Cannot read properties of undefined (reading 'uten_imp__components__layout__uten_page_scrollbar_host')"
+      },
+      {
+        "path": "/canvaskit/chromium/canvaskit.wasm",
+        "message": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      },
+      {
+        "path": "/canvaskit/chromium/canvaskit.js",
+        "message": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      },
+      {
+        "message": "TypeError: Failed to execute 'compile' on 'WebAssembly': HTTP status code is not ok"
+      },
+      {
+        "message": "TypeError: Failed to fetch dynamically imported module: http://localhost:59537/canvaskit/chromium/canvaskit.js"
+      },
+      {
+        "message": "DartError: Exception: Web test for core"
+      }
+    ]
+  },
+  "native": {
+    "architectures": [
+      "x86",
+      "x64"
+    ],
+    "succeeded": true,
+    "targetPcAcceptance": false,
+    "formalPackageCreated": false,
+    "verificationReportSha256": "2350d96f106b1fe0e2a71202a148e68d69e7e62143e09fc7ecf79e561783ce2a",
+    "sourceHashes": {
+      "clients/windows_legacy/Uten.Legacy.Core/ManagedTlsHttpHandler.cs": "636883113403b64f520db2f3b28b9b0cd23ac48dc877ac6eec408a7cf4e75aa8",
+      "clients/windows_legacy/Uten.Legacy.Core/PageReadPriorityGate.cs": "43c23886c58d6e8a6416986c973f180f691b7067f827d49d468d5b604e429e9b",
+      "clients/windows_legacy/Uten.Legacy.Core/Tests/PageReadPriorityChecks.cs": "969d4f9501b2097d807e4af8004657f181eba7656567e97e10d266793f871954"
+    }
+  },
+  "nativeWorkPackageIdsAndStatusesPreserved": true,
+  "sourceHashes": {
+    "clients/windows_legacy/Uten.Legacy.Core/ManagedTlsHttpHandler.cs": "636883113403b64f520db2f3b28b9b0cd23ac48dc877ac6eec408a7cf4e75aa8",
+    "clients/windows_legacy/Uten.Legacy.Core/PageReadPriorityGate.cs": "43c23886c58d6e8a6416986c973f180f691b7067f827d49d468d5b604e429e9b",
+    "clients/windows_legacy/Uten.Legacy.Core/Tests/PageReadPriorityChecks.cs": "969d4f9501b2097d807e4af8004657f181eba7656567e97e10d266793f871954",
+    "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj": "4f59bc8c73d5c546cd3112abe9f28b386ddc7ae3727df206a1b2c690e26eed1c",
+    "clients/windows_legacy/Uten.Legacy.Tests/Program.cs": "7ae3f09163a208e7db555aade783b5121e232041cec539890dccbbf6999548b8",
+    "lib/core/network/api_client.dart": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e",
+    "lib/core/network/interceptors/page_read_priority_interceptor.dart": "8d4a2f5af59a42c0ab7189ef6732d057c2873fa43312431b8038f680c2a4eb55",
+    "lib/features/finance/pages/finance_doc_list_page.dart": "d4675a07688fc9e1c9dc87fe046958c79e5abca6e707e900514daccf2f872dfb",
+    "lib/features/operations_workbench/pages/operations_workbench_page.dart": "0f3b6e62509ea3bccfa728ddbea7b92918d16205266f2123196cc8c1483987ea",
+    "lib/features/operations_workbench/repositories/operations_workbench_repository.dart": "fb990bfe96b801d6dccee58620fea1721b92c090e8561f2b9d77dd5638ef97c4",
+    "lib/features/production/pages/production_daily_report_list_page.dart": "5c72e2c6bd1fdaa5abcc466c23aa1402e9883f8a275ae848d636b8c85ade834c",
+    "lib/features/production/pages/production_plan_list_page.dart": "44bb6bd56d1e5f52518a0a61c45bbecb4e202581328de0ac4345fc23e686ed7d",
+    "lib/features/production/pages/production_report_page.dart": "1bfc5eaa69a57c3ec8085d9efb6ec81b30491f61d3f597b89da0965c6ded6f9a",
+    "lib/features/purchase/pages/purchase_doc_list_page.dart": "55b9e1b1198ec861cbfe2b22d9b6dc84f56a18c0d14dd13b3e2ab5817f8e4734",
+    "lib/features/sales/pages/sales_doc_list_page.dart": "16f33f816d8353691339423c186262b184bcf1383446f7b80e838a0a69283933",
+    "lib/features/subcontract/pages/subcontract_business_list_pages.dart": "d4243b84f35df8501d90400952891db56a37d17264090b9dc7302018622d576c",
+    "lib/features/subcontract/pages/subcontract_decomposition_page.dart": "b25b15d2d811ac041daaec52693f71fbfa27859497df4dff17aae1da55333890",
+    "lib/features/warehouse/pages/stock_doc_list_page.dart": "d030c52d5c4b523aaa39cf6dbbad5cf5930fe5b229197dc541466a85ca326905",
+    "lib/features/warehouse/widgets/warehouse_draw_task_segment.dart": "a8cc7d9c6d96a9271256deb4931acf28db715fd584ff50679338d54e82875f7e",
+    "lib/shared/paging/scoped_category_read.dart": "aa666dd51542e4e812e3a0f3c4eccf9c990496e89e77127c79854a59727e7ba7",
+    "lib/shared/providers/document_status_counts_provider.dart": "0e75faf1e1145f417a0e7312180a22ff63b6719b68fc5f3d59e7142a2396a180",
+    "lib/shared/providers/retain_read_snapshot.dart": "782a8c8980d017f1a126341b56671a4acbbcf32562b2ee302e7cfbbbb75660b0",
+    "lib/shared/warehouse/warehouse_task_badges.dart": "e6cb563977132ad66c56810268ed6a93964dc29b8f21a746579b8282c3794e25",
+    "server/src/test/java/com/uten/imp/businesschain/WorkbenchBadgeSummaryPostgresTest.java": "77e6c3918bd8b3984abfca8dba4293799b7e53809ad9d2c50a85d210839d7f04",
+    "test/core/network/page_read_priority_contract_test.dart": "26522ff4de4208232798096881e39207ccd83fb7023233b399c74caef6f52a6d",
+    "test/core/network/page_read_priority_test.dart": "b3677ccb24e9c1ac2a40960299cf82f9e240721781cfad012ebeb0e299e62a46",
+    "test/features/category_table_entry_timing_test.dart": "d294552a3f0fff805cce8611db280a4682f144d4271fda67705523cae7f24f53",
+    "test/features/operations_workbench/workbench_category_count_lifecycle_test.dart": "618ec8a1ac888010748fde22a4ce7a50e0072afec18585c992d327e5cbb09ece",
+    "test/features/warehouse/warehouse_task_draft_workspace_test.dart": "ec6745f16797068341477e6b1298006bc9d4f220ad30e8f2edb8fc0cb2007861",
+    "test/shared/paging/scoped_category_read_test.dart": "fd796c2b47dbecf733930e56e2116804098af8f2ac8e08f50ccbb1292140d46d",
+    "test/shared/providers/document_status_retention_test.dart": "e05011d9032fc6f07fa8c33c319daa2251930a9481f3e8c65200d090f8a692d4",
+    "tool/audit_category_loading.py": "5f9001c8735faad50418f437a507a8f3bda37e950ae5b7b27649f683dca45548",
+    "tool/category_read_web_contract.dart": "3c547417fced0b4772fa172674140f565b5f1be8a71ca59b4e9e157496f80cd5",
+    "tool/run_category_read_web_contract.mjs": "88ecddb6a70e7c752b74b7cc8407b9ab4a7683d59509de01d2a96a7789faa75d"
+  },
+  "unverified": [
+    "Company-server before/after latency and activation",
+    "Real GPU raster timings",
+    "Complete Flutter Chrome page UAT: platform-test bootstrap failed before executing cases",
+    "Win7 target machine UAT",
+    "Unported WPF business pages",
+    "Formal packages and publication"
+  ],
+  "commands": [
+    "flutter test --no-pub test/features/category_table_entry_timing_test.dart --concurrency 1 --reporter expanded (same test source on bd7e8525b and candidate)",
+    "flutter test --no-pub test/core/network/page_read_priority_test.dart --concurrency 1 --reporter expanded",
+    "flutter test --no-pub test/core/network/page_read_priority_contract_test.dart",
+    "dart compile js tool/category_read_web_contract.dart -o build/category-web-contract/contract.js; node tool/run_category_read_web_contract.mjs",
+    "Complete 333-test invocation recorded in build/category-all-green.log; source suites listed in the stage report",
+    "dart analyze <all changed and added Dart sources>",
+    "UTEN_RUN_DB_TESTS=true UTEN_MEASURE_CATEGORY_READS=true mvn -q -Dtest=WorkbenchBadgeSummaryPostgresTest,DocumentStatusCountSqlContractTest -Duten.test.jvm.heap.args=-Xmx1536m test",
+    "verify_windows_wpf.ps1 -Verify -Architecture all -BuildScope category-reads-r3 -MsBuildPath <installed MSBuild.exe> -PythonPath <installed python.exe>"
+  ]
+}

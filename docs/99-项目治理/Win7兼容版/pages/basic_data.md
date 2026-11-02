@@ -4,7 +4,7 @@
 
 ## W7-BIZ-018 · lib/features/basic_data/pages/account_detail_page.dart
 
-模块 `basic_data`；1312 行；SHA256 `8a726c41bc05d4c26d8fbc26fada1b294602f669ab4e6053961b851aa7ed4cd7`。
+模块 `basic_data`；1312 行；SHA256 `c481611b65de18bea280182eeac8e4493fa270f0aff59795306ac932172a9de1`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -76,7 +76,7 @@
 
 ## W7-BIZ-022 · lib/features/basic_data/pages/client_category_page.dart
 
-模块 `basic_data`；942 行；SHA256 `c4b9e10d0074b64f1b146527da1de9958a670c980574bef3fadc3c0f64828f84`。
+模块 `basic_data`；942 行；SHA256 `7cb8c00b20bae86c742b55927cf5864ccf11e1ed670a66858302083f1b3fb349`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -130,21 +130,21 @@
 
 ## W7-BIZ-025 · lib/features/basic_data/pages/goods_detail_page.dart
 
-模块 `basic_data`；433 行；SHA256 `dbe9c18a02340d1ebb92c736ed6a7ba58499eb588648647508eb126f706a30b9`。
+模块 `basic_data`；437 行；SHA256 `67b1d0549b1b98ec7ef6ba1fe50b4582981b0c4eab67e408d6ce47991d09ffbb`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | GoodsDetailPage @37 (page-class)<br>_GoodsDetailPageState @62 (state-class) |
+| 页面/状态类 | GoodsDetailPage @38 (page-class)<br>_GoodsDetailPageState @63 (state-class) |
 | 真实路由绑定 | /basicinfo/goods/new；router @872；builder ['GoodsDetailPage']；redirect None<br>/basicinfo/goods/:id；router @886；builder ['GoodsDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | goods:view @161；定义 lib/shared/auth/permissions.dart:139<br>goods:view @171；定义 lib/shared/auth/permissions.dart:139<br>goods:status @207；定义 lib/shared/auth/permissions.dart:554<br>goods:view @213；定义 lib/shared/auth/permissions.dart:139<br>goods:status @213；定义 lib/shared/auth/permissions.dart:554<br>goods:status @217；定义 lib/shared/auth/permissions.dart:554<br>goods:delete @274；定义 lib/shared/auth/permissions.dart:553<br>goods:view @280；定义 lib/shared/auth/permissions.dart:139<br>goods:delete @280；定义 lib/shared/auth/permissions.dart:553<br>goods:delete @284；定义 lib/shared/auth/permissions.dart:553<br>goods:create @358；定义 lib/shared/auth/permissions.dart:552<br>goods:delete @362；定义 lib/shared/auth/permissions.dart:553<br>goods:status @363；定义 lib/shared/auth/permissions.dart:554<br>goods:bom:create @364；定义 lib/shared/auth/permissions.dart:555<br>goods:bom:edit @365；定义 lib/shared/auth/permissions.dart:556<br>goods:bom:delete @366；定义 lib/shared/auth/permissions.dart:557 |
-| 接口常量 | ApiEndpoints.good @248 → /master/goods/{id} |
+| 权限 | goods:view @165；定义 lib/shared/auth/permissions.dart:139<br>goods:view @175；定义 lib/shared/auth/permissions.dart:139<br>goods:status @211；定义 lib/shared/auth/permissions.dart:554<br>goods:view @217；定义 lib/shared/auth/permissions.dart:139<br>goods:status @217；定义 lib/shared/auth/permissions.dart:554<br>goods:status @221；定义 lib/shared/auth/permissions.dart:554<br>goods:delete @278；定义 lib/shared/auth/permissions.dart:553<br>goods:view @284；定义 lib/shared/auth/permissions.dart:139<br>goods:delete @284；定义 lib/shared/auth/permissions.dart:553<br>goods:delete @288；定义 lib/shared/auth/permissions.dart:553<br>goods:create @362；定义 lib/shared/auth/permissions.dart:552<br>goods:delete @366；定义 lib/shared/auth/permissions.dart:553<br>goods:status @367；定义 lib/shared/auth/permissions.dart:554<br>goods:bom:create @368；定义 lib/shared/auth/permissions.dart:555<br>goods:bom:edit @369；定义 lib/shared/auth/permissions.dart:556<br>goods:bom:delete @370；定义 lib/shared/auth/permissions.dart:557 |
+| 接口常量 | ApiEndpoints.good @252 → /master/goods/{id} |
 | 仓库调用 | lib/features/basic_data/repositories/goods_repository.dart；接口：/master/goods、/master/goods/facets、/master/goods/search-category-ids、/master/goods/{id}<br>lib/features/basic_data/repositories/master_status_repository.dart；接口： |
-| 动作处理 | addPostFrameCallback @106 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @114 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @138 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>MasterEditOwner @158 [action-like-invocation] 提示 ['edit']；final owner = MasterEditOwner(<br>MasterEditOwner @210 [action-like-invocation] 提示 ['edit']；final owner = MasterEditOwner(<br>confirmMasterStatusChange @233 [action-like-invocation] 提示 ['confirm']；if (!await confirmMasterStatusChange(<br>_delete @273 [method-declaration-candidate] 提示 ['delete']；Future<void> _delete() async {<br>MasterEditOwner @277 [action-like-invocation] 提示 ['edit']；final owner = MasterEditOwner(<br>delete @331 [action-like-invocation] 提示 ['delete']；await owner.run(() => ref.read(goodsRepositoryProvider).delete(d.id));<br>canEditAny @361 [action-like-invocation] 提示 ['edit']；(isAdmin \|\| GoodsFieldEditPolicy.canEditAny(permissions)) && writable;<br>canDelete @415 [callback-reference] 提示 ['delete']；onDelete<br>_isCreate @417 [callback-reference] 提示 ['create']；onDataChanged |
+| 动作处理 | addPostFrameCallback @110 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @118 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @142 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>MasterEditOwner @162 [action-like-invocation] 提示 ['edit']；final owner = MasterEditOwner(<br>MasterEditOwner @214 [action-like-invocation] 提示 ['edit']；final owner = MasterEditOwner(<br>confirmMasterStatusChange @237 [action-like-invocation] 提示 ['confirm']；if (!await confirmMasterStatusChange(<br>_delete @277 [method-declaration-candidate] 提示 ['delete']；Future<void> _delete() async {<br>MasterEditOwner @281 [action-like-invocation] 提示 ['edit']；final owner = MasterEditOwner(<br>delete @335 [action-like-invocation] 提示 ['delete']；await owner.run(() => ref.read(goodsRepositoryProvider).delete(d.id));<br>canEditAny @365 [action-like-invocation] 提示 ['edit']；(isAdmin \|\| GoodsFieldEditPolicy.canEditAny(permissions)) && writable;<br>canDelete @419 [callback-reference] 提示 ['delete']；onDelete<br>_isCreate @421 [callback-reference] 提示 ['create']；onDataChanged |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/master/MasterIdentifierAvailabilityController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/GoodsBomPasteController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/GoodsController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/GoodsIssueMethodController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/GoodsPeriodicBomPreparationController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/costing/GoodsCostSheetController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/history/GoodsOperationHistoryController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsBomImportController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/importing/GoodsImportController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/pricing/GoodsPriceAnalysisController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/goods/pricing/GoodsSubcontractSupplierController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/lifecycle/MasterLifecycleController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/master/paymentstyle/PaymentStyleWorkspaceController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。<br>存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/features/basic_data/models/goods_detail_sequence.dart` (models)；`lib/components/layout/uten_page_layout.dart` (sharedComponents)；`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/feedback/uten_busy_overlay.dart` (sharedComponents)；`lib/core/network/api_endpoints.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/router/page_search_lifecycle.dart` (core)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_colors.dart` (core)；`lib/core/ui/action_feedback.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/providers/sensitive_read_boundary_provider.dart` (sharedComponents)；`lib/features/basic_data/models/goods_node.dart` (models)；`lib/features/basic_data/models/goods_field_edit_policy.dart` (models)；`lib/features/basic_data/repositories/goods_repository.dart` (repositories)；`lib/features/basic_data/repositories/master_status_repository.dart` (repositories)；`lib/features/basic_data/widgets/goods_detail_body.dart` (featureWidgets)；`lib/features/basic_data/widgets/master_status_confirmation.dart` (featureWidgets)；`lib/features/basic_data/widgets/master_edit_owner.dart` (featureWidgets)。
+直接源依赖：`lib/features/basic_data/models/goods_detail_sequence.dart` (models)；`lib/components/layout/uten_page_layout.dart` (sharedComponents)；`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/components/feedback/uten_empty.dart` (sharedComponents)；`lib/components/feedback/uten_busy_overlay.dart` (sharedComponents)；`lib/core/network/api_endpoints.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/router/page_search_lifecycle.dart` (core)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_colors.dart` (core)；`lib/core/ui/action_feedback.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/shared/providers/sensitive_read_boundary_provider.dart` (sharedComponents)；`lib/features/basic_data/models/goods_node.dart` (models)；`lib/features/basic_data/models/goods_field_edit_policy.dart` (models)；`lib/features/basic_data/repositories/goods_repository.dart` (repositories)；`lib/features/basic_data/repositories/master_status_repository.dart` (repositories)；`lib/features/basic_data/widgets/goods_detail_body.dart` (featureWidgets)；`lib/features/basic_data/providers/goods_bom_changes.dart` (providers)；`lib/features/basic_data/widgets/master_status_confirmation.dart` (featureWidgets)；`lib/features/basic_data/widgets/master_edit_owner.dart` (featureWidgets)。
 
 ## W7-BIZ-216 · lib/features/basic_data/pages/goods_import_preview_page.dart
 
@@ -256,7 +256,7 @@
 
 ## W7-BIZ-032 · lib/features/basic_data/pages/party_detail_page.dart
 
-模块 `basic_data`；2207 行；SHA256 `bfc9b15d9ba0a454b9e6e0629bd675fb86f316750e6c1cfa7f86cf6b24b49fe4`。
+模块 `basic_data`；2207 行；SHA256 `ad73dd12427d43013c3c5ce8160b709976d0f46ca35969cd4026b46c4d8cf2d7`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -274,7 +274,7 @@
 
 ## W7-BIZ-033 · lib/features/basic_data/pages/payment_style_page.dart
 
-模块 `basic_data`；2546 行；SHA256 `6f4a760747832392087116126b072a715b25940a85102a98efac0af6ac21ab89`。
+模块 `basic_data`；2546 行；SHA256 `637b4a2e42121e80e7c61837e8e9fc9acd7daeb00fcaba4e1f01690314cece4c`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -310,7 +310,7 @@
 
 ## W7-BIZ-035 · lib/features/basic_data/pages/settlement_method_page.dart
 
-模块 `basic_data`；985 行；SHA256 `9299b98fa8d3e64c221ab07f3366a9f518b64e532d1ea6b6bedf9b79eac3836e`。
+模块 `basic_data`；985 行；SHA256 `9f2a2fdc835f4dff6bc46e70450a385620b3ad659031ec59c5263e00a2f4c9a5`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -328,7 +328,7 @@
 
 ## W7-BIZ-036 · lib/features/basic_data/pages/supplier_category_page.dart
 
-模块 `basic_data`；611 行；SHA256 `a7fafd7bb9a0f3ef9f836bd8ab54521967e875e82da584c39a326a48f8312da9`。
+模块 `basic_data`；611 行；SHA256 `4e8eecd76b5f097416b13b577f07ede76beb13e89a6b1fa3c8ec73a06c2d5e6b`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

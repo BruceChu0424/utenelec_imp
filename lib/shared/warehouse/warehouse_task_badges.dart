@@ -12,16 +12,29 @@ import '../../core/network/api_endpoints.dart';
 import '../badges/badge_registry.dart';
 import '../badges/effective_badge_summary_provider.dart';
 import '../providers/authenticated_scope_provider.dart';
+import '../../core/network/read_scope_revision.dart';
+import '../paging/scoped_paged_read.dart';
+import '../providers/sensitive_read_boundary_provider.dart';
+import '../providers/retain_read_snapshot.dart';
 import 'warehouse_task_scope.dart';
 
-/// 选了某个仓时的仓库模块汇总(只在任务中心打开期间存活)。
+/// Exact warehouse snapshots survive a brief page departure; their owner proof
+/// is checked again before any retained Riverpod value may be displayed.
+typedef _WarehouseBadgeSnapshot = ({
+  BadgeSummary summary,
+  SensitiveReadBoundary owner,
+  int revision,
+});
+
 final _selectedWarehouseBadgesProvider = FutureProvider.autoDispose
-    .family<BadgeSummary, String>((ref, warehouseId) async {
+    .family<_WarehouseBadgeSnapshot, String>((ref, warehouseId) async {
+      final owner = ref.watch(sensitiveReadBoundaryProvider);
+      final revision = ref.watch(readScopeRevisionProvider);
+      retainReadSnapshot(ref);
       if (ref.watch(authenticatedScopeProvider) == null) {
-        return BadgeSummary.empty;
+        return (summary: BadgeSummary.empty, owner: owner, revision: revision);
       }
       // 全站汇总有变化(轮询、本端写操作后的补拉)就跟着重拉, 两份数字不会一新一旧。
-      ref.watch(badgeSummaryProvider);
       ref.watch(badgeSummaryFetchRevisionProvider);
       final json = await ref
           .read(apiClientProvider)
@@ -29,7 +42,11 @@ final _selectedWarehouseBadgesProvider = FutureProvider.autoDispose
             ApiEndpoints.workbenchBadges,
             query: {'scopeWarehouseId': warehouseId},
           );
-      return BadgeSummary.fromJson(json);
+      return (
+        summary: BadgeSummary.fromJson(json),
+        owner: owner,
+        revision: revision,
+      );
     });
 
 /// 某个范围下的仓库任务汇总。还没拉到时为空汇总(各数字按「未知」处理)。
@@ -43,8 +60,17 @@ final warehouseScopedBadgesProvider = Provider.autoDispose
       if (physical == null || !physical.canSelectForTasks(warehouseId)) {
         return BadgeSummary.empty;
       }
-      return ref.watch(_selectedWarehouseBadgesProvider(warehouseId)).value ??
-          BadgeSummary.empty;
+      final read = ref.watch(_selectedWarehouseBadgesProvider(warehouseId));
+      if (read.hasError && pagedReadAccessDenied(read.error!)) {
+        return BadgeSummary.empty;
+      }
+      final snapshot = read.value;
+      if (snapshot == null ||
+          snapshot.owner != ref.watch(sensitiveReadBoundaryProvider) ||
+          snapshot.revision != ref.watch(readScopeRevisionProvider)) {
+        return BadgeSummary.empty;
+      }
+      return snapshot.summary;
     });
 
 /// 任务中心当前范围下的汇总。

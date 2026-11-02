@@ -1,0 +1,23 @@
+{
+  "id": "E-CATEGORY-LOADING-20261101",
+  "status": "verified-local-transport-only",
+  "baselineCommit": "bd7e8525b",
+  "nativeRuntimeFamily": "wpf_legacy",
+  "architectures": [
+    "x86",
+    "x64"
+  ],
+  "transportVerified": true,
+  "TargetPcAcceptance": false,
+  "FullErpAcceptance": false,
+  "formalPackagesCreated": false,
+  "productionRequestsExecuted": false,
+  "verificationReportSha256": "2350d96f106b1fe0e2a71202a148e68d69e7e62143e09fc7ecf79e561783ce2a",
+  "sourceHashes": {
+    "clients/windows_legacy/Uten.Legacy.Core/ManagedTlsHttpHandler.cs": "636883113403b64f520db2f3b28b9b0cd23ac48dc877ac6eec408a7cf4e75aa8",
+    "clients/windows_legacy/Uten.Legacy.Core/PageReadPriorityGate.cs": "43c23886c58d6e8a6416986c973f180f691b7067f827d49d468d5b604e429e9b",
+    "clients/windows_legacy/Uten.Legacy.Core/Tests/PageReadPriorityChecks.cs": "969d4f9501b2097d807e4af8004657f181eba7656567e97e10d266793f871954"
+  },
+  "details": "docs/99-项目治理/全平台整改交接/evidence/category-loading-20261101/validation-summary.json",
+  "unportedBusinessPackages": "See coverage.json nativePackages; all prior IDs/statuses/DoDs are preserved."
+}

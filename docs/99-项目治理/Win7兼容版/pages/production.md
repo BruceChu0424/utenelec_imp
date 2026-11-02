@@ -4,7 +4,7 @@
 
 ## W7-BIZ-094 · lib/features/production/pages/material_analysis_child_shortage_page.dart
 
-模块 `production`；721 行；SHA256 `4f6779960493e76dbd373af78f8e1a6bfc2e58f101483c535626463ac83c49e2`。
+模块 `production`；721 行；SHA256 `a8c0e435d8bd7f634423ee8f3fdd414b004ddf6ff2589597c0459506465bc57b`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -76,7 +76,7 @@
 
 ## W7-BIZ-098 · lib/features/production/pages/production_board_page.dart
 
-模块 `production`；2541 行；SHA256 `2fd8879cc12e482251f6d78c84111430250c4fa0b2c3b763a3dde07f5a3332ca`。
+模块 `production`；2541 行；SHA256 `b16f41d67f3f8715565c62de78c9b07b3f95bdbbc0a9ec84297aaba31f5f1126`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -166,7 +166,7 @@
 
 ## W7-BIZ-103 · lib/features/production/pages/production_daily_report_list_page.dart
 
-模块 `production`；489 行；SHA256 `752d864eeffaf5bba38c9a007612bbf493e1d9f1406c4f29194824b6122d9905`。
+模块 `production`；489 行；SHA256 `5c72e2c6bd1fdaa5abcc466c23aa1402e9883f8a275ae848d636b8c85ade834c`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -238,7 +238,7 @@
 
 ## W7-BIZ-107 · lib/features/production/pages/production_material_analysis_history_page.dart
 
-模块 `production`；647 行；SHA256 `c12f0f6a5922fc30eb640ab57a9b9fe2b9c0d6b589a73e88fc30c84e252e925e`。
+模块 `production`；647 行；SHA256 `763d0c5d870a4318991f4721ad75c9eb8c2d096d1cff552773f3995337e66779`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -292,7 +292,7 @@
 
 ## W7-BIZ-218 · lib/features/production/pages/production_material_increment_pages.dart
 
-模块 `production`；810 行；SHA256 `c36f726a6f3b8b464fab14d68933888b9214e5f6c51f4476d86ea01acca71a64`。
+模块 `production`；810 行；SHA256 `7d2c0bc31f2b3337a91228535bba98736847b3aae5b030284d46adf0e2a24870`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -310,7 +310,7 @@
 
 ## W7-BIZ-219 · lib/features/production/pages/production_over_limit_pages.dart
 
-模块 `production`；697 行；SHA256 `c0eed8611f6db99f0b386e6629d358c6fb63eaf6cc7407207d469b4b1be868d0`。
+模块 `production`；697 行；SHA256 `fa1b4ee2575dbcb5b9cfc0ec995c2a3477a81b48b4c125fa16d27f11a3094afb`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -328,7 +328,7 @@
 
 ## W7-BIZ-220 · lib/features/production/pages/production_overproduction_rate_pages.dart
 
-模块 `production`；526 行；SHA256 `1ea617420a71ec2032b3f1190a71242934d6c63518d592f3de51614d9e285fe7`。
+模块 `production`；526 行；SHA256 `4393a51d33caccb63dbdb94e9d5f2ed40e915d4d104383d56383e485f2c1edb3`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -346,7 +346,7 @@
 
 ## W7-BIZ-110 · lib/features/production/pages/production_plan_detail_page.dart
 
-模块 `production`；2120 行；SHA256 `c32cefaa27c08a883dfbc22ba7cfbd4afa78f46eef887286e0c836663443b50e`。
+模块 `production`；2120 行；SHA256 `d8b5a9eb4c718a7095bc59ff367a8ecd466919e0e48364afa46cd145086332c9`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -382,7 +382,7 @@
 
 ## W7-BIZ-112 · lib/features/production/pages/production_plan_list_page.dart
 
-模块 `production`；689 行；SHA256 `271e2852a25af443ed5eccaf1e18e7f6a983316efd2f790c9a488b16758f2bfe`。
+模块 `production`；689 行；SHA256 `44bb6bd56d1e5f52518a0a61c45bbecb4e202581328de0ac4345fc23e686ed7d`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -418,7 +418,7 @@
 
 ## W7-BIZ-114 · lib/features/production/pages/production_report_page.dart
 
-模块 `production`；675 行；SHA256 `07a3bb60e816331091454d7032855d256e4dfad8e2f1eb8f82e9b83114fa0cc8`。
+模块 `production`；675 行；SHA256 `1bfc5eaa69a57c3ec8085d9efb6ec81b30491f61d3f597b89da0965c6ded6f9a`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

@@ -1,0 +1,61 @@
+{
+  "fixture": "loopback HTTP, 6 connections, 8 auxiliary reads at 150ms, 50 table rows, exact warehouse queries",
+  "samples": [
+    {
+      "repeat": 0,
+      "optimized": false,
+      "rowsMs": 218.819,
+      "countsMs": 218.726,
+      "allReadsMs": 362.3
+    },
+    {
+      "repeat": 0,
+      "optimized": true,
+      "rowsMs": 20.165,
+      "countsMs": 20.112,
+      "allReadsMs": 631.91
+    },
+    {
+      "repeat": 1,
+      "optimized": false,
+      "rowsMs": 175.619,
+      "countsMs": 175.594,
+      "allReadsMs": 329.041
+    },
+    {
+      "repeat": 1,
+      "optimized": true,
+      "rowsMs": 16.449,
+      "countsMs": 16.413,
+      "allReadsMs": 630.867
+    },
+    {
+      "repeat": 2,
+      "optimized": false,
+      "rowsMs": 178.015,
+      "countsMs": 177.741,
+      "allReadsMs": 328.203
+    },
+    {
+      "repeat": 2,
+      "optimized": true,
+      "rowsMs": 18.478,
+      "countsMs": 18.406,
+      "allReadsMs": 626.194
+    },
+    {
+      "repeat": 3,
+      "optimized": false,
+      "rowsMs": 172.624,
+      "countsMs": 172.6,
+      "allReadsMs": 322.76
+    },
+    {
+      "repeat": 3,
+      "optimized": true,
+      "rowsMs": 18.042,
+      "countsMs": 18.004,
+      "allReadsMs": 628.618
+    }
+  ]
+}

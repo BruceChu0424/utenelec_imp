@@ -268,7 +268,7 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
         read.read(targetPage);
 
     // Status counts share the same current query, independently of its pages.
-    ref.invalidate(documentStatusCountsProvider(_statusScope));
+    refreshDocumentStatusCounts(ref, _statusScope, force: !reuseMetadata);
     final pending = _reportPages.load(
       requestedPage,
       silent: background && _data != null,

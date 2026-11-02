@@ -40,7 +40,7 @@
 
 - [ ] **统一有界HTTP传输** — 源码已实现/待整合验证
 
-影响：`frontend`；负责人：待认领；依赖：W7-ENV-001。
+影响：`frontend`；负责人：Codex category/table reads；依赖：W7-ENV-001。
 
 源入口：`clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs`；`lib/core/network/api_client.dart`。
 
@@ -49,9 +49,9 @@
 1. 唯一framing reader；CL/TE、重复头、chunk/trailer、压缩/解压、连接/超时/取消均有界。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/category-loading-20261101.json`。
 
-接续/限制：已有源码/历史局部检查；接手基线需复核当前整合，不能代替Win7或完整业务验收。。
+接续/限制：2026-11-01 分类/表格公共读取优化：托管 TLS 保留原 8 连接上限，facets/lookup/dict 最多占 2 条；队列继续沿用会话取消、来源和 read proof。当前源码 x86/x64 公共门及既有完整 runner 通过，证据 E-CATEGORY-LOADING-20261101。只验证本次传输增量；本工作包其余 DoD、完整 ERP 和 Win7 真机验收未完成，原 implemented 状态保留。。
 
 ## W7-CORE-004
 

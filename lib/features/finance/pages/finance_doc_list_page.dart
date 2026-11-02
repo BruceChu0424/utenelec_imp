@@ -353,7 +353,7 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
     final ownerCurrent = captureReadOwner(ref);
     final generation = ++_reloadGeneration;
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
-    ref.invalidate(documentStatusCountsProvider(_statusScope));
+    refreshDocumentStatusCounts(ref, _statusScope, force: page == null);
     final hasHeaderDate =
         _columnFilters['search.billDate']?.trim().isNotEmpty == true;
     if (!_statusFilterSelected ||
@@ -367,25 +367,23 @@ class _FinanceDocListPageState extends ConsumerState<FinanceDocListPage>
       _list.onSortChange(sortKey, sortAsc);
       return;
     }
-    await Future.wait([
-      _loadBillNoFacets(),
-      _list.load(
-        page ?? _list.pageNum,
-        silent: silent,
-        fetch: _fetch,
-        fetchPage: _fetch,
-        useCachedPage: useCachedPage,
-        canPrefetch: () =>
-            mounted &&
-            TickerMode.valuesOf(context).enabled &&
-            (ModalRoute.of(context)?.isCurrent ?? true),
-        queryScope: cacheQuery,
-        isCurrent: () =>
-            mounted &&
-            ownerCurrent() &&
-            const DeepCollectionEquality().equals(cacheQuery, _pageQueryScope),
-      ),
-    ]);
+    unawaited(_loadBillNoFacets());
+    await _list.load(
+      page ?? _list.pageNum,
+      silent: silent,
+      fetch: _fetch,
+      fetchPage: _fetch,
+      useCachedPage: useCachedPage,
+      canPrefetch: () =>
+          mounted &&
+          TickerMode.valuesOf(context).enabled &&
+          (ModalRoute.of(context)?.isCurrent ?? true),
+      queryScope: cacheQuery,
+      isCurrent: () =>
+          mounted &&
+          ownerCurrent() &&
+          const DeepCollectionEquality().equals(cacheQuery, _pageQueryScope),
+    );
     if (!mounted || generation != _reloadGeneration || _list.error != null) {
       return;
     }

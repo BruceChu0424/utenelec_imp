@@ -4,7 +4,7 @@
 
 ## W7-BIZ-057 · lib/features/finance/pages/finance_account_flow_page.dart
 
-模块 `finance`；631 行；SHA256 `42c8dbe3cf32765a91baf2be372fccfe76a9e4fa488fe7dd540fd22c71a77df3`。
+模块 `finance`；631 行；SHA256 `2403132105514cb14a70c4c1cec7d6864e1a7351b2c4ed27c3053119b627ca2d`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -22,7 +22,7 @@
 
 ## W7-BIZ-058 · lib/features/finance/pages/finance_ar_ap_overview_page.dart
 
-模块 `finance`；992 行；SHA256 `977f4f54ec5b8949582a8c5c8842b03a22c954126a47d38d2cbb7e4d8c3e39ee`。
+模块 `finance`；992 行；SHA256 `699fa3820f55431b2c18eb73158cd28bf8498995b1f643f9a0a42299119ce48f`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -40,7 +40,7 @@
 
 ## W7-BIZ-059 · lib/features/finance/pages/finance_ar_ap_page.dart
 
-模块 `finance`；804 行；SHA256 `fd96e6d8fa7aa06cdfb15429ed8a7491f2dcd615cd77d7b46a2f95fb295ec76c`。
+模块 `finance`；804 行；SHA256 `5e4bbb2fcb17b258f40d1b25d16b17c901f3f36ff9da2e145feff8fd2503b923`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -94,17 +94,17 @@
 
 ## W7-BIZ-062 · lib/features/finance/pages/finance_audit_center_page.dart
 
-模块 `finance`；311 行；SHA256 `05aa09468eec0ae2f92d43102ef72a5df008edc4ecfc63bc11c89b91981a98dd`。
+模块 `finance`；310 行；SHA256 `6ef455c337c46fa90d07bc4e461cc2d4aa2079a316740d73718f14bb88e113a8`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | _AuditSegment @42 (supporting-class)<br>FinanceAuditCenterPage @50 (page-class)<br>_FinanceAuditCenterPageState @68 (state-class)<br>_NoAuditPermission @301 (supporting-class) |
+| 页面/状态类 | _AuditSegment @42 (supporting-class)<br>FinanceAuditCenterPage @50 (page-class)<br>_FinanceAuditCenterPageState @68 (state-class)<br>_NoAuditPermission @300 (supporting-class) |
 | 真实路由绑定 | /finance/audits；router @2018；builder ['FinanceAuditCenterPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | sales_order_finance:view @129；定义 lib/shared/auth/permissions.dart:476<br>sales_shipment_finance:view @130；定义 lib/shared/auth/permissions.dart:458<br>finance_order_approval:view @131；定义 lib/shared/auth/permissions.dart:464<br>procurement_iqc_rejection:view @132；定义 lib/shared/auth/permissions.dart:297 |
+| 权限 | sales_order_finance:view @128；定义 lib/shared/auth/permissions.dart:476<br>sales_shipment_finance:view @129；定义 lib/shared/auth/permissions.dart:458<br>finance_order_approval:view @130；定义 lib/shared/auth/permissions.dart:464<br>procurement_iqc_rejection:view @131；定义 lib/shared/auth/permissions.dart:297 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | _AuditSegment @43 [action-like-invocation] 提示 ['audit']；const _AuditSegment({required this.value, required this.label, this.count});<br>FinanceAuditCenterPage @51 [action-like-invocation] 提示 ['audit']；const FinanceAuditCenterPage({<br>_FinanceAuditCenterPageState @65 [action-like-invocation] 提示 ['audit']；_FinanceAuditCenterPageState();<br>complete @115 [action-like-invocation] 提示 ['complete']；completion.complete();<br>_AuditSegment @138 [action-like-invocation] 提示 ['audit']；_AuditSegment(<br>_AuditSegment @144 [action-like-invocation] 提示 ['audit']；_AuditSegment(<br>_AuditSegment @150 [action-like-invocation] 提示 ['audit']；_AuditSegment(<br>_AuditSegment @156 [action-like-invocation] 提示 ['audit']；_AuditSegment(<br>_AuditSegment @162 [action-like-invocation] 提示 ['audit']；_AuditSegment(<br>complete @175 [action-like-invocation] 提示 ['complete']；completion.complete();<br>_NoAuditPermission @194 [action-like-invocation] 提示 ['audit']；? const _NoAuditPermission()<br>_NoAuditPermission @302 [action-like-invocation] 提示 ['audit']；const _NoAuditPermission(); |
+| 动作处理 | _AuditSegment @43 [action-like-invocation] 提示 ['audit']；const _AuditSegment({required this.value, required this.label, this.count});<br>FinanceAuditCenterPage @51 [action-like-invocation] 提示 ['audit']；const FinanceAuditCenterPage({<br>_FinanceAuditCenterPageState @65 [action-like-invocation] 提示 ['audit']；_FinanceAuditCenterPageState();<br>complete @114 [action-like-invocation] 提示 ['complete']；completion.complete();<br>_AuditSegment @137 [action-like-invocation] 提示 ['audit']；_AuditSegment(<br>_AuditSegment @143 [action-like-invocation] 提示 ['audit']；_AuditSegment(<br>_AuditSegment @149 [action-like-invocation] 提示 ['audit']；_AuditSegment(<br>_AuditSegment @155 [action-like-invocation] 提示 ['audit']；_AuditSegment(<br>_AuditSegment @161 [action-like-invocation] 提示 ['audit']；_AuditSegment(<br>complete @174 [action-like-invocation] 提示 ['complete']；completion.complete();<br>_NoAuditPermission @193 [action-like-invocation] 提示 ['audit']；? const _NoAuditPermission()<br>_NoAuditPermission @301 [action-like-invocation] 提示 ['audit']；const _NoAuditPermission(); |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
@@ -148,7 +148,7 @@
 
 ## W7-BIZ-065 · lib/features/finance/pages/finance_doc_list_page.dart
 
-模块 `finance`；862 行；SHA256 `2f5806368c36880de2307e02adf6864536810f482c35ea79a933b65c03efa401`。
+模块 `finance`；860 行；SHA256 `d4675a07688fc9e1c9dc87fe046958c79e5abca6e707e900514daccf2f872dfb`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -158,7 +158,7 @@
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/finance/repositories/finance_repository.dart；接口：/finance/ar-ap、/finance/ar-ap/{id}、/finance/reconciliations、/finance/{_seg}/{id}/gl-confirm、/finance/{seg}、/finance/{seg}/{id}、/finance/{seg}/{id}/approve、/finance/{seg}/{id}/reverse |
-| 动作处理 | addPostFrameCallback @110 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @126 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @164 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_deleteDraft @179 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteDraft(String id, FinanceDocType type) async {<br>delete @211 [action-like-invocation] 提示 ['delete']；await repository.delete(id);<br>_createButton @220 [action-ui-factory] 提示 ['create']；Widget _createButton() => UtenButton(<br>update @350 [action-like-invocation] 提示 ['update']；_tableRows.update(const []);<br>addPostFrameCallback @400 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_createButton @699 [action-like-invocation] 提示 ['create']；? UtenFloatingActionGroup(children: [_createButton()])<br>_createButton @729 [action-like-invocation] 提示 ['create']；if (_canCreate) _createButton(),<br>_deleteDraft @732 [action-like-invocation] 提示 ['delete']；delete: (id) => _deleteDraft(id, docType),<br>draftDeleteBusy @725 [callback-reference] 提示 ['delete']；onSelectedIdsChanged |
+| 动作处理 | addPostFrameCallback @110 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @126 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @164 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_deleteDraft @179 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteDraft(String id, FinanceDocType type) async {<br>delete @211 [action-like-invocation] 提示 ['delete']；await repository.delete(id);<br>_createButton @220 [action-ui-factory] 提示 ['create']；Widget _createButton() => UtenButton(<br>update @350 [action-like-invocation] 提示 ['update']；_tableRows.update(const []);<br>addPostFrameCallback @398 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_createButton @697 [action-like-invocation] 提示 ['create']；? UtenFloatingActionGroup(children: [_createButton()])<br>_createButton @727 [action-like-invocation] 提示 ['create']；if (_canCreate) _createButton(),<br>_deleteDraft @730 [action-like-invocation] 提示 ['delete']；delete: (id) => _deleteDraft(id, docType),<br>draftDeleteBusy @723 [callback-reference] 提示 ['delete']；onSelectedIdsChanged |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/finance/accountbalance/AccountBalanceAdjustmentController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/arap/ArApLedgerController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/asset/AssetRecognitionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/asset/FixedAssetController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/bank_transfer/FinanceBankTransferController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/cost/FinanceCostController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/expense/FinanceExpenseController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/gl/InventoryCostPostingController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/gl/SystemPostingStyleController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/other_income/FinanceOtherIncomeController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/payables/ProcurementPayablesController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/payables/SubcontractLossClaimController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/payables/SupplierOffsetController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/payables/SupplierSettlementController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/payment/FinancePaymentController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/procurement/ProcurementFinanceApprovalController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/reconciliation/FinanceReconciliationController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/report/FinanceReportController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/finance/statement/FinanceStatementController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/inbound/FinanceProcurementArrivalExceptionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
@@ -202,7 +202,7 @@
 
 ## W7-BIZ-068 · lib/features/finance/pages/finance_procurement_approval_tasks_page.dart
 
-模块 `finance`；1274 行；SHA256 `d4fb91df451bc0356de95b49f431f1794ce7c23f7a3da81483c46a08f30fdc59`。
+模块 `finance`；1274 行；SHA256 `d711f7569382905a1414fb460f2827d0a5de4d815404d73131558e978fc0b5a0`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -220,7 +220,7 @@
 
 ## W7-BIZ-069 · lib/features/finance/pages/finance_quote_review_list_page.dart
 
-模块 `finance`；615 行；SHA256 `634db6d8b95f6355f589f45226965604b1d80e022a9000087a7b4b701cecfc57`。
+模块 `finance`；615 行；SHA256 `c3e87893042bedbcca8deaeb7114be4caf13f432d66a974b7bae8e37cf0b0e0f`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -256,7 +256,7 @@
 
 ## W7-BIZ-071 · lib/features/finance/pages/finance_reconciliation_page.dart
 
-模块 `finance`；498 行；SHA256 `5082e9157cd727343bba9b131ce190e0c528931e3df7494939b5b18848ca338e`。
+模块 `finance`；498 行；SHA256 `fb1d532e8a633182d028af2f662a354058ccfc069d32971551da2233ede95dbe`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -292,17 +292,17 @@
 
 ## W7-BIZ-073 · lib/features/finance/pages/finance_sales_order_confirmation_page.dart
 
-模块 `finance`；1408 行；SHA256 `e0130d4e31574ff1f08456ce1ac150d7e817175fc2193ed26af466b9f9b5315a`。
+模块 `finance`；1397 行；SHA256 `a86d16e7a517f29d28c6a9fd34318f6e8bb97d49fcac2cbb76dac8298745fb40`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | FinanceSalesOrderConfirmationPage @67 (page-class)<br>_FinanceSalesOrderConfirmationPageState @95 (state-class)<br>_ClientBalanceCell @1340 (supporting-class)<br>_InlineError @1375 (supporting-class) |
+| 页面/状态类 | FinanceSalesOrderConfirmationPage @67 (page-class)<br>_FinanceSalesOrderConfirmationPageState @95 (state-class)<br>_ClientBalanceCell @1329 (supporting-class)<br>_InlineError @1364 (supporting-class) |
 | 真实路由绑定 | /finance/sales-order-confirmations；router @2046；builder ['FinanceSalesOrderConfirmationPage']；redirect None<br>/finance/sales-order-changes；router @2053；builder ['FinanceSalesOrderConfirmationPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | sales_order_finance:view @157；定义 lib/shared/auth/permissions.dart:476<br>sales_order_finance:confirm @164；定义 lib/shared/auth/permissions.dart:477<br>sales_order_finance:view @783；定义 lib/shared/auth/permissions.dart:476<br>sales_order_finance:confirm @786；定义 lib/shared/auth/permissions.dart:477 |
+| 权限 | sales_order_finance:view @157；定义 lib/shared/auth/permissions.dart:476<br>sales_order_finance:confirm @164；定义 lib/shared/auth/permissions.dart:477<br>sales_order_finance:view @784；定义 lib/shared/auth/permissions.dart:476<br>sales_order_finance:confirm @787；定义 lib/shared/auth/permissions.dart:477 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/shared/sales_review/sales_order_review_repository.dart；接口：/sales/manager-review/orders/batch、/sales/manager-review/orders/{Uri.encodeComponent(orderId)}、/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/confirm、/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reject、/sales/manager-review/orders/{Uri.encodeComponent(orderId)}/reverse、/sales/orders/finance-confirmation/batch、/sales/orders/finance-confirmation/count、/sales/orders/finance-confirmation/pending、/sales/orders/finance-confirmation/pending/facets、/sales/orders/{orderId}/finance-confirmation、/sales/orders/{orderId}/finance-confirmation/reject、/sales/orders/{orderId}/finance-confirmation/review |
-| 动作处理 | complete @125 [action-like-invocation] 提示 ['complete']；completion.complete();<br>addPostFrameCallback @173 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>whenComplete @178 [action-like-invocation] 提示 ['complete']；_load(1).whenComplete(() {<br>complete @180 [action-like-invocation] 提示 ['complete']；completion.complete();<br>whenComplete @198 [action-like-invocation] 提示 ['complete']；_refreshCurrent().whenComplete(() {<br>complete @200 [action-like-invocation] 提示 ['complete']；completion.complete();<br>addPostFrameCallback @226 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>removeWhere @504 [action-like-invocation] 提示 ['remove']；_selectedItems.removeWhere((id, _) => !next.contains(id));<br>remove @526 [action-like-invocation] 提示 ['remove']；_selectedIds.remove(item.orderId);<br>remove @527 [action-like-invocation] 提示 ['remove']；_selectedItems.remove(item.orderId);<br>_confirmSelected @541 [method-declaration-candidate] 提示 ['confirm']；Future<void> _confirmSelected() async {<br>confirmBatch @710 [action-like-invocation] 提示 ['confirm']；.confirmBatch(<br>canConfirmNow @887 [callback-reference] 提示 ['confirm']；onPressed<br>canConfirmNow @888 [callback-reference] 提示 ['confirm']；onDisabledTap<br>canConfirm @1060 [callback-reference] 提示 ['confirm']；onSelectionChanged<br>canConfirm @1063 [callback-reference] 提示 ['confirm']；onSelectionCleared |
+| 动作处理 | complete @125 [action-like-invocation] 提示 ['complete']；completion.complete();<br>addPostFrameCallback @173 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>whenComplete @178 [action-like-invocation] 提示 ['complete']；_load(1).whenComplete(() {<br>complete @180 [action-like-invocation] 提示 ['complete']；completion.complete();<br>whenComplete @198 [action-like-invocation] 提示 ['complete']；_refreshCurrent().whenComplete(() {<br>complete @200 [action-like-invocation] 提示 ['complete']；completion.complete();<br>addPostFrameCallback @226 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>removeWhere @505 [action-like-invocation] 提示 ['remove']；_selectedItems.removeWhere((id, _) => !next.contains(id));<br>remove @527 [action-like-invocation] 提示 ['remove']；_selectedIds.remove(item.orderId);<br>remove @528 [action-like-invocation] 提示 ['remove']；_selectedItems.remove(item.orderId);<br>_confirmSelected @542 [method-declaration-candidate] 提示 ['confirm']；Future<void> _confirmSelected() async {<br>confirmBatch @711 [action-like-invocation] 提示 ['confirm']；.confirmBatch(<br>canConfirmNow @888 [callback-reference] 提示 ['confirm']；onPressed<br>canConfirmNow @889 [callback-reference] 提示 ['confirm']；onDisabledTap<br>canConfirm @1061 [callback-reference] 提示 ['confirm']；onSelectionChanged<br>canConfirm @1064 [callback-reference] 提示 ['confirm']；onSelectionCleared |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/ai/job/AiInputOriginalController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/sales/SalesManagerReviewController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/sales/learning/SalesLearningReceiptController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/sales/order/SalesOrderController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/sales/order/SalesOrderFinanceConfirmController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。<br>存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
@@ -346,7 +346,7 @@
 
 ## W7-BIZ-076 · lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart
 
-模块 `finance`；1532 行；SHA256 `2c476d89d48ad14c7f54a9c55412e1bd7c3c5b619fbbac37245827fb42e0dbe2`。
+模块 `finance`；1532 行；SHA256 `b388b23102fbeac1dec9a27f319dc3403139c08942cf7cb8f1a9b6a7c34a2bb6`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -364,7 +364,7 @@
 
 ## W7-BIZ-077 · lib/features/finance/pages/finance_statement_page.dart
 
-模块 `finance`；699 行；SHA256 `11d1105e44e9ddb7fcb3bc4e489507e5d7ab20d595b2c518eb5d9c8cc952f14d`。
+模块 `finance`；699 行；SHA256 `9729d9e92efaa6e8f5aaed52ff51730ce908977fb2374aa13f00eef3638cdfd5`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -382,7 +382,7 @@
 
 ## W7-BIZ-078 · lib/features/finance/payables/pages/finance_payables_page.dart
 
-模块 `finance`；1159 行；SHA256 `0391464b78ee9d02fb7ea266447f8f0d0b8988c7b6cb951cf9fdf1014b9dd68c`。
+模块 `finance`；1159 行；SHA256 `fdd1efc6fdfa4ac57424a4003e35609e27123337fb1b734da3b83d3a9721f553`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

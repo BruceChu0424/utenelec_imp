@@ -1,0 +1,41 @@
+{
+  "status": "bootstrap-blocked",
+  "testsExecuted": 0,
+  "sharedSdkModified": false,
+  "issues": [
+    {
+      "path": "/canvaskit/chromium/canvaskit.wasm",
+      "message": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "path": "/canvaskit/chromium/canvaskit.js",
+      "message": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "message": "TypeError: Failed to execute 'compile' on 'WebAssembly': HTTP status code is not ok"
+    },
+    {
+      "message": "TypeError: Failed to fetch dynamically imported module: http://localhost:56661/canvaskit/chromium/canvaskit.js"
+    },
+    {
+      "message": "TypeError: Cannot read properties of undefined (reading 'uten_imp__components__layout__uten_page_scrollbar_host')"
+    },
+    {
+      "path": "/canvaskit/chromium/canvaskit.wasm",
+      "message": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "path": "/canvaskit/chromium/canvaskit.js",
+      "message": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    },
+    {
+      "message": "TypeError: Failed to execute 'compile' on 'WebAssembly': HTTP status code is not ok"
+    },
+    {
+      "message": "TypeError: Failed to fetch dynamically imported module: http://localhost:59537/canvaskit/chromium/canvaskit.js"
+    },
+    {
+      "message": "DartError: Exception: Web test for core"
+    }
+  ]
+}

@@ -20,7 +20,7 @@ namespace Uten.Legacy.Desktop.Features.Publish
         private const double WideLayoutThreshold = 1120;
         private readonly SessionCoordinator session;
         private readonly DpapiPublishDraftStore draftStore = new DpapiPublishDraftStore();
-        private readonly ClientReleaseTargetEditor contextEditor = new ClientReleaseTargetEditor();
+        private readonly ClientReleaseTargetEditor contextEditor = new ClientReleaseTargetEditor(compact: true);
         private readonly TextBox releaseNotes = new TextBox { MinHeight = 56, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         private readonly TabControl tabs = new TabControl();
         private readonly StackPanel queueRows = new StackPanel();
@@ -36,7 +36,7 @@ namespace Uten.Legacy.Desktop.Features.Publish
         private readonly Button refreshLedger = new Button { Content = "刷新并核对原状态" };
         private readonly Button saveDraft = new Button { Content = "保存发布草稿" };
         private readonly ScrollViewer workScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-        private readonly ScrollViewer summaryScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        private readonly ScrollViewer configurationScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
         private readonly Grid contentGrid = new Grid();
         private readonly StackPanel lockedPanel = new StackPanel { Visibility = Visibility.Collapsed };
         private readonly StackPanel mainPanel = new StackPanel();
@@ -92,14 +92,13 @@ namespace Uten.Legacy.Desktop.Features.Publish
             SetResourceReference(BackgroundProperty, "Uten.Background");
             var content = new DockPanel();
             content.Children.Add(BuildHeader());
-            mainPanel.Children.Add(BuildContextPanel());
             mainPanel.Children.Add(notice);
             contentGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             contentGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(352), MinWidth = 280 });
             contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            contentGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(300), MinWidth = 260 });
             contentGrid.Children.Add(workScroll);
-            contentGrid.Children.Add(summaryScroll);
+            contentGrid.Children.Add(configurationScroll);
             mainPanel.Children.Add(contentGrid);
             var page = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
             page.Content = mainPanel;
@@ -116,23 +115,33 @@ namespace Uten.Legacy.Desktop.Features.Publish
             host.Children.Add(lockedPanel);
             Content = host;
             workScroll.Content = BuildWorkPanel();
-            summaryScroll.Content = BuildSummaryPanel();
+            var configuration = new StackPanel();
+            configuration.Children.Add(BuildContextPanel());
+            configuration.Children.Add(BuildSummaryPanel());
+            configurationScroll.Content = configuration;
+            configurationScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+            workScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
             ApplyLayout();
         }
 
         private Border BuildHeader()
         {
-            var title = new TextBlock { Text = "客户端发布工作台", Style = (Style)FindResource("Uten.PageTitle") };
+            var title = new TextBlock { Text = "发布新客户端", Style = (Style)FindResource("Uten.PageTitle") };
             var subtitle = new TextBlock
             {
-                Text = "选择文件、核对目标与版本，逐项上传并保留明确结果",
+                Text = "配置版本与分发目标，上传文件并确认发布结果",
                 TextWrapping = TextWrapping.Wrap
             };
             subtitle.SetResourceReference(TextBlock.ForegroundProperty, "Uten.Muted");
             var head = new StackPanel { Margin = new Thickness(0, 0, 0, Space("S16")) };
             head.Children.Add(title);
             head.Children.Add(subtitle);
-            var header = new Border { Child = head };
+            var headerLayout = new DockPanel();
+            saveDraft.SetResourceReference(MinHeightProperty, "Uten.Height.Standard");
+            saveDraft.Margin = new Thickness(Space("S16"), 0, 0, Space("S16"));
+            DockPanel.SetDock(saveDraft, Dock.Right); headerLayout.Children.Add(saveDraft);
+            headerLayout.Children.Add(head);
+            var header = new Border { Child = headerLayout };
             DockPanel.SetDock(header, Dock.Top);
             return header;
         }
@@ -140,20 +149,14 @@ namespace Uten.Legacy.Desktop.Features.Publish
         private Border BuildContextPanel()
         {
             var panel = new StackPanel { Margin = new Thickness(0, 0, 0, Space("S12")) };
-            var caption = new TextBlock { Text = "本批发布设置", Margin = new Thickness(0, 0, 0, Space("S8")), Style = (Style)FindResource("Uten.SectionTitle") };
+            var caption = new TextBlock { Text = "版本与适用设备", Margin = new Thickness(0, 0, 0, Space("S8")), Style = (Style)FindResource("Uten.SectionTitle") };
             panel.Children.Add(caption);
             var editorHost = new StackPanel();
-            var fields = new StackPanel { Orientation = Orientation.Horizontal };
-            foreach (var child in contextEditor.Root.Children.Cast<UIElement>().ToList())
-            {
-                contextEditor.Root.Children.Remove(child);
-                fields.Children.Add(child);
-            }
-            editorHost.Children.Add(fields);
+            editorHost.Children.Add(contextEditor.Root);
             var notesLabel = new TextBlock { Text = "发布说明", Margin = new Thickness(0, Space("S8"), 0, Space("S4")) };
             notesLabel.SetResourceReference(TextBlock.ForegroundProperty, "Uten.Muted");
             editorHost.Children.Add(notesLabel);
-            releaseNotes.MinWidth = 320;
+            releaseNotes.MinWidth = 0;
             editorHost.Children.Add(releaseNotes);
             panel.Children.Add(editorHost);
             return WrapCard(panel);
@@ -162,7 +165,7 @@ namespace Uten.Legacy.Desktop.Features.Publish
         private Control BuildWorkPanel()
         {
             var queueTab = new TabItem { Header = "发布队列" };
-            var queuePanel = new StackPanel { Margin = new Thickness(Space("S8")) };
+            var queuePanel = new DockPanel { Margin = new Thickness(Space("S8")), LastChildFill = true };
             var queueHeader = new DockPanel { Margin = new Thickness(0, 0, 0, Space("S8")) };
             var queueCaption = new TextBlock { Text = "文件队列", VerticalAlignment = VerticalAlignment.Center, Style = (Style)FindResource("Uten.SectionTitle") };
             DockPanel.SetDock(queueCaption, Dock.Left);
@@ -176,17 +179,17 @@ namespace Uten.Legacy.Desktop.Features.Publish
             actions.Children.Add(addStore);
             DockPanel.SetDock(actions, Dock.Right);
             queueHeader.Children.Add(actions);
-            queuePanel.Children.Add(queueHeader);
-            var queueScroll = new ScrollViewer { MaxHeight = 420, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-            queueScroll.Content = queueRows;
-            queuePanel.Children.Add(queueScroll);
-            queuePanel.Children.Add(queueStatus);
+            DockPanel.SetDock(queueHeader, Dock.Top); queuePanel.Children.Add(queueHeader);
+            var queueFooter = new StackPanel();
+            queueFooter.Children.Add(queueStatus);
             run.SetResourceReference(StyleProperty, "Uten.PrimaryButton");
             run.SetResourceReference(MinHeightProperty, "Uten.Height.Standard");
             run.MinWidth = 128;
             run.Margin = new Thickness(0, Space("S8"), 0, 0);
             run.HorizontalAlignment = HorizontalAlignment.Left;
-            queuePanel.Children.Add(run);
+            queueFooter.Children.Add(run); DockPanel.SetDock(queueFooter, Dock.Bottom); queuePanel.Children.Add(queueFooter);
+            var queueScroll = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, Content = queueRows };
+            queuePanel.Children.Add(queueScroll);
             queueTab.Content = queuePanel;
 
             var ledgerTab = new TabItem { Header = "发布记录" };
@@ -212,12 +215,12 @@ namespace Uten.Legacy.Desktop.Features.Publish
         private UIElement BuildSummaryPanel()
         {
             var panel = new StackPanel();
-            var pairCaption = new TextBlock { Text = "完整配对", Margin = new Thickness(0, 0, 0, Space("S8")), Style = (Style)FindResource("Uten.SectionTitle") };
+            var pairCaption = new TextBlock { Text = "Windows 双包交付", Margin = new Thickness(0, 0, 0, Space("S8")), Style = (Style)FindResource("Uten.SectionTitle") };
             panel.Children.Add(pairCaption);
             panel.Children.Add(pairSummary);
             var pairNote = new TextBlock
             {
-                Text = "新发布的 Windows 组：同适用设备、版本和构建号的 Setup 与 ZIP 都发布后，才开放该组下载。历史版本沿原发布方式保留。",
+                Text = "每个适用设备组合需同时发布 Setup 安装包和更新 ZIP，且版本与构建号一致。历史版本沿原规则保留。",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, Space("S4"), 0, Space("S12"))
             };
@@ -226,16 +229,12 @@ namespace Uten.Legacy.Desktop.Features.Publish
             var countCaption = new TextBlock { Text = "发布摘要", Margin = new Thickness(0, 0, 0, Space("S8")), Style = (Style)FindResource("Uten.SectionTitle") };
             panel.Children.Add(countCaption);
             panel.Children.Add(countSummary);
-            saveDraft.SetResourceReference(MinHeightProperty, "Uten.Height.Standard");
-            saveDraft.Margin = new Thickness(0, Space("S12"), 0, 0);
-            saveDraft.HorizontalAlignment = HorizontalAlignment.Left;
-            panel.Children.Add(saveDraft);
             return WrapCard(panel);
         }
 
         private Border WrapCard(object content)
         {
-            var border = new Border { Child = content as UIElement, Padding = new Thickness(Space("S16")), Margin = new Thickness(0, 0, 0, Space("S12")) };
+            var border = new Border { Child = content as UIElement, BorderThickness = new Thickness(1), Padding = new Thickness(Space("S16")), Margin = new Thickness(0, 0, 0, Space("S12")) };
             border.SetResourceReference(Border.BorderBrushProperty, "Uten.Border");
             border.SetResourceReference(Border.BackgroundProperty, "Uten.Surface");
             border.SetResourceReference(Border.CornerRadiusProperty, "Uten.Radius.Card");
@@ -246,15 +245,28 @@ namespace Uten.Legacy.Desktop.Features.Publish
         {
             if (ActualWidth >= WideLayoutThreshold)
             {
-                Grid.SetRow(workScroll, 0); Grid.SetColumn(workScroll, 0);
-                Grid.SetRow(summaryScroll, 0); Grid.SetColumn(summaryScroll, 1);
+                Grid.SetRow(configurationScroll, 0); Grid.SetColumn(configurationScroll, 0);
+                Grid.SetColumnSpan(configurationScroll, 1);
+                Grid.SetRow(workScroll, 0); Grid.SetColumn(workScroll, 1); Grid.SetColumnSpan(workScroll, 1);
+                contentGrid.ColumnDefinitions[0].Width = new GridLength(352);
+                contentGrid.ColumnDefinitions[1].Width = new GridLength(1, GridUnitType.Star);
+                contentGrid.RowDefinitions[0].Height = new GridLength(1, GridUnitType.Star);
                 contentGrid.RowDefinitions[1].Height = new GridLength(0);
+                contentGrid.Height = Math.Max(480, ActualHeight - 120);
+                tabs.Height = contentGrid.Height;
+                workScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
             }
             else
             {
-                Grid.SetRow(workScroll, 0); Grid.SetColumn(workScroll, 0);
-                Grid.SetRow(summaryScroll, 1); Grid.SetColumn(summaryScroll, 0);
-                contentGrid.RowDefinitions[1].Height = new GridLength(1, GridUnitType.Star);
+                Grid.SetRow(configurationScroll, 0); Grid.SetColumn(configurationScroll, 0); Grid.SetColumnSpan(configurationScroll, 2);
+                Grid.SetRow(workScroll, 1); Grid.SetColumn(workScroll, 0); Grid.SetColumnSpan(workScroll, 2);
+                contentGrid.ColumnDefinitions[0].Width = new GridLength(1, GridUnitType.Star);
+                contentGrid.ColumnDefinitions[1].Width = new GridLength(0);
+                contentGrid.RowDefinitions[0].Height = GridLength.Auto;
+                contentGrid.RowDefinitions[1].Height = GridLength.Auto;
+                contentGrid.Height = Double.NaN;
+                tabs.Height = 600;
+                workScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
             }
         }
 

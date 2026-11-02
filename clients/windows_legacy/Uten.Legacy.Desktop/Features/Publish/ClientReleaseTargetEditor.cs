@@ -27,7 +27,8 @@ namespace Uten.Legacy.Desktop.Features.Publish
         private readonly TextBox buildNumber = new TextBox { MinWidth = 90 };
         private readonly TextBox storeUrl = new TextBox { MinWidth = 240 };
         private readonly TextBlock storeLabel = new TextBlock { Text = "官方商店链接", VerticalAlignment = VerticalAlignment.Center };
-        private readonly StackPanel root;
+        private readonly Panel root;
+        private readonly bool compact;
         private bool binding;
         public event Action Changed;
         private void NotifyChanged()
@@ -37,8 +38,9 @@ namespace Uten.Legacy.Desktop.Features.Publish
             if (changed != null) changed();
         }
 
-        public ClientReleaseTargetEditor()
+        public ClientReleaseTargetEditor(bool compact = false)
         {
+            this.compact = compact;
             platform.ItemsSource = new[]
             {
                 new Choice { Value = "windows", Label = "Windows" },
@@ -63,10 +65,12 @@ namespace Uten.Legacy.Desktop.Features.Publish
             version.TextChanged += delegate { NotifyChanged(); };
             buildNumber.TextChanged += delegate { NotifyChanged(); };
             storeUrl.TextChanged += delegate { NotifyChanged(); };
-            root = new StackPanel();
+            root = compact ? (Panel)new WrapPanel() : new StackPanel();
+            if (compact) root.SizeChanged += delegate { ArrangeConfigurationFields(); };
             root.Children.Add(Field("系统", platform));
+            if (compact) root.Children.Add(Field("架构", architecture));
             root.Children.Add(Field("客户端类型", family));
-            root.Children.Add(Field("架构", architecture));
+            if (!compact) root.Children.Add(Field("架构", architecture));
             root.Children.Add(Field("包类型", packageKind));
             root.Children.Add(Field("版本", version));
             root.Children.Add(Field("构建号", buildNumber));
@@ -81,11 +85,23 @@ namespace Uten.Legacy.Desktop.Features.Publish
             control.Margin = new Thickness(0, 0, 12, 8);
             var text = new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
             text.SetResourceReference(TextBlock.ForegroundProperty, "Uten.Muted");
-            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            var row = new StackPanel { Orientation = compact ? Orientation.Vertical : Orientation.Horizontal };
+            if (compact) { control.MinWidth = 0; control.Margin = new Thickness(0); text.Margin = new Thickness(0, 0, 0, 6); }
             row.Children.Add(text);
             row.Children.Add(control);
-            var border = new Border { Child = row, Margin = new Thickness(0, 0, 12, 4) };
+            var border = new Border { Child = row, Margin = new Thickness(0, 0, 12, 12), Tag = label };
             return border;
+        }
+
+        private void ArrangeConfigurationFields()
+        {
+            if (!compact || root.ActualWidth <= 0) return;
+            double available = root.ActualWidth;
+            foreach (Border field in root.Children.OfType<Border>())
+            {
+                bool full = Equals(field.Tag, "客户端类型") || field.Name == "StoreField" || available < 280;
+                field.Width = Math.Max(0, full ? available - 12 : (available - 24) / 2);
+            }
         }
 
         private Border StoreField()
@@ -93,7 +109,8 @@ namespace Uten.Legacy.Desktop.Features.Publish
             storeUrl.SetResourceReference(FrameworkElement.MinHeightProperty, "Uten.Height.Standard");
             var text = storeLabel;
             text.SetResourceReference(TextBlock.ForegroundProperty, "Uten.Muted");
-            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            var row = new StackPanel { Orientation = compact ? Orientation.Vertical : Orientation.Horizontal };
+            if (compact) { storeUrl.MinWidth = 0; text.Margin = new Thickness(0, 0, 0, 6); }
             row.Children.Add(text);
             row.Children.Add(storeUrl);
             var border = new Border { Child = row, Margin = new Thickness(0, 0, 12, 4), Name = "StoreField" };
@@ -161,11 +178,19 @@ namespace Uten.Legacy.Desktop.Features.Publish
 
         private void SyncVisibility(string selectedPlatform, bool storeVisible)
         {
-            family.Visibility = selectedPlatform == "windows" ? Visibility.Visible : Visibility.Collapsed;
-            packageKind.Visibility = selectedPlatform == "windows" ? Visibility.Visible : Visibility.Collapsed;
+            SetFieldVisible(family, selectedPlatform == "windows");
+            SetFieldVisible(packageKind, selectedPlatform == "windows");
             var storeField = storeVisible || selectedPlatform == "ios" || selectedPlatform == "macos";
-            storeUrl.Visibility = storeField ? Visibility.Visible : Visibility.Collapsed;
+            SetFieldVisible(storeUrl, storeField);
             storeLabel.Visibility = storeUrl.Visibility;
+        }
+
+        private static void SetFieldVisible(Control control, bool visible)
+        {
+            control.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            var row = control.Parent as FrameworkElement;
+            var field = row == null ? null : row.Parent as Border;
+            if (field != null) field.Visibility = control.Visibility;
         }
 
         private static IReadOnlyList<string> SupportedArchitectures(string platformName, string familyValue)

@@ -1885,7 +1885,7 @@ abstract class AppLocalizations {
   /// No description provided for @commonError.
   ///
   /// In zh, this message translates to:
-  /// **'出错了，请稍后重试'**
+  /// **'系统未能完成操作，请刷新核对后再试'**
   String get commonError;
 
   /// No description provided for @commonSuccess.

@@ -403,7 +403,7 @@
   "commonBack": "返回",
   "commonLoading": "加载中…",
   "commonNoData": "暂无数据",
-  "commonError": "出错了，请稍后重试",
+  "commonError": "系统未能完成操作，请刷新核对后再试",
   "commonSuccess": "操作成功",
   "loginAccountHint": "请输入员工工号或手机号",
   "loginAccountRequired": "请输入账号",

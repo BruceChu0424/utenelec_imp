@@ -25,8 +25,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/feedback/uten_center_alert.dart';
 import '../network/api_error.dart';
-import '../network/api_exception.dart';
 import 'app_notification.dart';
+import 'human_error_message.dart';
 
 /// 统一通知门面：两条通道（顶部弹条 + 居中弹窗）的唯一调用入口。
 abstract final class UtenNotify {
@@ -97,18 +97,8 @@ abstract final class UtenNotify {
   static void apiError(
     BuildContext context,
     Object error, {
-    String? fallback = '操作失败，请稍后重试',
-  }) {
-    final notifier = _notifierOf(context);
-    if (error is ApiException) {
-      notifier.showError(
-        error.message.isNotEmpty ? error.message : (fallback ?? ''),
-        fieldErrors: error.fieldErrors,
-      );
-    } else {
-      notifier.showError(fallback ?? '操作失败，请稍后重试');
-    }
-  }
+    String? fallback = unknownErrorMessage,
+  }) => context.appApiError(error, fallback: fallback);
 
   // ============================================================
   // 通道二：屏幕正中弹窗（重要 / 阻塞）

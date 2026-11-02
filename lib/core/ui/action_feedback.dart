@@ -20,8 +20,8 @@
 // - 其它异常 → errorFallback。
 import 'package:flutter/widgets.dart';
 
-import '../network/api_exception.dart';
 import 'app_notification.dart';
+import 'human_error_message.dart';
 
 export 'app_notification.dart'
     show AppNotificationKind, AppNotificationContextX;
@@ -34,7 +34,7 @@ extension GuardedActionContextX on BuildContext {
   Future<T?> guardAction<T>(
     Future<T> Function() action, {
     String? success,
-    String errorFallback = '操作失败，请稍后重试',
+    String errorFallback = unknownErrorMessage,
     bool Function()? isCurrent,
   }) async {
     try {
@@ -44,16 +44,10 @@ extension GuardedActionContextX on BuildContext {
         appSuccess(success);
       }
       return r;
-    } on ApiException catch (e) {
+    } catch (error) {
       if (mounted && (isCurrent?.call() ?? true)) {
-        appError(
-          e.message.isNotEmpty ? e.message : errorFallback,
-          fieldErrors: e.fieldErrors,
-        );
+        appApiError(error, fallback: errorFallback);
       }
-      return null;
-    } catch (_) {
-      if (mounted && (isCurrent?.call() ?? true)) appError(errorFallback);
       return null;
     }
   }
@@ -69,7 +63,7 @@ extension GuardedActionContextX on BuildContext {
   Future<bool> guardRun(
     Future<void> Function() action, {
     String? success,
-    String errorFallback = '操作失败，请稍后重试',
+    String errorFallback = unknownErrorMessage,
     bool Function()? isCurrent,
   }) async {
     final ok = await guardAction(

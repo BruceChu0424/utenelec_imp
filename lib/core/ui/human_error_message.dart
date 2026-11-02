@@ -10,12 +10,17 @@ import '../network/api_exception.dart';
 
 final _han = RegExp(r'[\u4e00-\u9fff]');
 const _maxLength = 300;
+const unknownErrorMessage = '系统未能完成操作，请刷新核对后再试';
 
 /// 这个异常能直接给人看的原因; 不能给人看(英文内部异常、空消息)返回 null。
 String? humanErrorMessage(Object error) {
   if (error is ApiException) {
     final message = error.message.trim();
     return message.isEmpty ? null : message;
+  }
+  if (error is TimeoutException &&
+      (error.message == null || !_han.hasMatch(error.message!))) {
+    return '操作等待超时，请先核对结果再继续';
   }
   final String? raw = switch (error) {
     StateError(:final message) => message,

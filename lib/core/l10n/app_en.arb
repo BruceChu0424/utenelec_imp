@@ -379,7 +379,7 @@
   "commonBack": "Back",
   "commonLoading": "Loading…",
   "commonNoData": "No data",
-  "commonError": "Something went wrong, please try again",
+  "commonError": "The operation could not be completed. Refresh and check the result before trying again.",
   "commonSuccess": "Success",
   "loginAccountHint": "Employee code or phone number",
   "loginAccountRequired": "Please enter your account",

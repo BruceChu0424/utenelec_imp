@@ -1017,7 +1017,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get commonNoData => '데이터 없음';
 
   @override
-  String get commonError => '문제가 발생했습니다. 다시 시도해 주세요';
+  String get commonError => '작업을 완료하지 못했습니다. 새로고침하여 결과를 확인한 후 다시 시도해 주세요.';
 
   @override
   String get commonSuccess => '완료';

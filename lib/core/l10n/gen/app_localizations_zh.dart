@@ -956,7 +956,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get commonNoData => '暂无数据';
 
   @override
-  String get commonError => '出错了，请稍后重试';
+  String get commonError => '系统未能完成操作，请刷新核对后再试';
 
   @override
   String get commonSuccess => '操作成功';

@@ -52,7 +52,9 @@ final class WarehouseTaskHeaderQuery {
             case "colorName" -> inbound ? "line_data->>'colorName'" : "color_name";
             case "specification" -> inbound ? "line_data->>'specification'" : "specification";
             case "quantity" -> inbound ? "CAST(line_data->>'quantity' AS numeric)" : "quantity";
-            case "stockedQty","pendingStockInQty","pendingReturnQty" -> "CAST(action_data->>'"+column+"' AS numeric)";
+            case "stockedQty" -> "CAST(action_data->>'stockedQty' AS numeric)";
+            case "pendingStockInQty" -> "CAST(action_data->>'pendingStockInQty' AS numeric)";
+            case "pendingReturnQty" -> "CAST(action_data->>'pendingReturnQty' AS numeric)";
             case "billNo" -> "bill_no"; case "sourceDocNo" -> "source_doc_no";
             case "partyName" -> "party_name"; case "warehouseName" -> "warehouse_name";
             case "responsibleName" -> "responsible_name"; case "makerName" -> "maker_name";

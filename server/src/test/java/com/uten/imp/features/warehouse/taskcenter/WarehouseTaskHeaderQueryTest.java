@@ -18,4 +18,13 @@ class WarehouseTaskHeaderQueryTest {
             assertThrows(ApiException.class,()->WarehouseTaskHeaderQuery.orderExpression(value,true));
         }
     }
+    @Test void procurementProgressSortsUseOnlyFixedNumericExpressions() {
+        Map.of("stockedQty","CAST(action_data->>'stockedQty' AS numeric)",
+                "pendingStockInQty","CAST(action_data->>'pendingStockInQty' AS numeric)",
+                "pendingReturnQty","CAST(action_data->>'pendingReturnQty' AS numeric)").forEach((key,sql)->{
+            assertEquals(sql,WarehouseTaskHeaderQuery.orderExpression(new String(key.toCharArray()),true));
+            assertThrows(ApiException.class,()->WarehouseTaskHeaderQuery.orderExpression(key,false));
+            assertThrows(ApiException.class,()->WarehouseTaskHeaderQuery.orderExpression(key+"' AS numeric);SELECT 1 --",true));
+        });
+    }
 }

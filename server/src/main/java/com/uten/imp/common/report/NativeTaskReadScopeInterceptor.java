@@ -19,6 +19,7 @@ public record NativeTaskReadScopeInterceptor(ReadScopeVersionAuthority authority
     private record Route(Pattern path,String profile) { }
     private static final String ID="[0-9a-fA-F-]{36}";
     private static final List<Route> ROUTES=List.of(
+            route("/api/org/employee-references(?:/(?:by-ids|departments))?","native_feature"),
             route("/api/production/workshop-tasks(?:/(?:facets|count|"+ID+"/materials))?","native_workshop_tasks"),
             route("/api/workshop-material/segments/"+ID+"/stock-readiness","native_workshop_tasks"),
             route("/api/procurement/arrival-exceptions/(?:tasks|count|"+ID+")","native_feature"),

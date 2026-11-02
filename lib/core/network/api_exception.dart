@@ -1,15 +1,16 @@
 // 统一 API 异常（对应后端 ApiError：{code,message,fieldErrors}）。
 // 文档：docs/05-架构/网络层与拦截器.md §8
 import 'api_error.dart';
+import 'api_error_message.dart';
 
 class ApiException implements Exception {
   ApiException(
     this.code,
-    this.message, {
+    String message, {
     this.fieldErrors,
     this.httpStatus,
     this.hasResponseCode = false,
-  });
+  }) : message = apiErrorMessage(code, message, httpStatus: httpStatus);
 
   /// 后端错误码（BAD_CREDENTIALS / ACCOUNT_LOCKED / ...）
   final String code;
@@ -41,11 +42,11 @@ class ApiException implements Exception {
 
 class NetworkException extends ApiException {
   NetworkException([String? message])
-    : super('NETWORK', message ?? '网络连不上，请检查网络后再试');
+    : super('NETWORK', message ?? '无法连接服务器，请检查网络或服务器状态');
 }
 
 class NetworkTimeoutException extends ApiException {
-  NetworkTimeoutException() : super('NETWORK_TIMEOUT', '等待服务器响应时间过长，请检查网络后再试');
+  NetworkTimeoutException() : super('NETWORK_TIMEOUT', '服务器未及时响应，请先核对操作结果');
 }
 
 class ApiExceptionFactory {
@@ -57,17 +58,17 @@ class ApiExceptionFactory {
       case null:
         return NetworkException();
       case 401:
-        return ApiException('UNAUTHORIZED', '登录已过期，请重新登录', httpStatus: status);
+        return ApiException('UNAUTHORIZED', '', httpStatus: status);
       case 403:
-        return ApiException('FORBIDDEN', '您没有权限做这个操作', httpStatus: status);
+        return ApiException('FORBIDDEN', '', httpStatus: status);
       case 404:
-        return ApiException('NOT_FOUND', '要查看的内容不存在', httpStatus: status);
+        return ApiException('NOT_FOUND', '', httpStatus: status);
       case 429:
-        return ApiException('RATE_LIMITED', '操作太频繁了，请稍后再试', httpStatus: status);
+        return ApiException('RATE_LIMITED', '', httpStatus: status);
       case >= 500:
-        return ApiException('INTERNAL', '服务器繁忙，请稍后再试', httpStatus: status);
+        return ApiException('INTERNAL', '', httpStatus: status);
       default:
-        return ApiException('UNKNOWN', '操作失败($status)', httpStatus: status);
+        return ApiException('UNKNOWN', '', httpStatus: status);
     }
   }
 }

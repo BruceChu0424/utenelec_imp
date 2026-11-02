@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {"code":"UNKNOWN","status":403,"message":"","expected":"此账号没有进行该操作的权限，请联系管理员"},
+    {"code":"FORBIDDEN","status":403,"message":"Access Denied","expected":"此账号没有进行该操作的权限，请联系管理员"},
+    {"code":"FORBIDDEN","status":403,"message":"当前账号没有查看客户价格的权限","expected":"当前账号没有查看客户价格的权限"},
+    {"code":"REMOTE_ACCESS_DENIED","status":403,"message":"Forbidden","expected":"此账号没有外网访问权限，请联系管理员"},
+    {"code":"READ_SCOPE_CHANGED","status":403,"message":"","expected":"账号的数据访问范围已变化，请重新打开页面"},
+    {"code":"UNAUTHORIZED","status":401,"message":"Unauthorized","expected":"登录已过期，请重新登录"},
+    {"code":"ACCOUNT_DISABLED","status":401,"message":"","expected":"账号已停用，请联系管理员"},
+    {"code":"VALIDATION_FAILED","status":422,"message":"操作失败","expected":"填写内容不符合要求，请按字段提示修改"},
+    {"code":"INTERNAL","status":500,"message":"服务器内部错误","expected":"服务器处理异常，请先刷新核对操作结果"},
+    {"code":"UNKNOWN","status":503,"message":"Service Unavailable","expected":"服务器处理异常，请先刷新核对操作结果"},
+    {"code":"NETWORK","status":null,"message":"","expected":"无法连接服务器，请检查网络或服务器状态"},
+    {"code":"NETWORK_TIMEOUT","status":null,"message":"","expected":"服务器未及时响应，请先核对操作结果"},
+    {"code":"CONFLICT","status":409,"message":"Conflict","expected":"数据或操作条件已变化，请刷新核对后再试"},
+    {"code":"CONFLICT","status":409,"message":"订货单已审核，不能删除","expected":"订货单已审核，不能删除"},
+    {"code":"SERVER_OPERATION_OUTCOME_UNCERTAIN","status":503,"message":"服务器操作结果待确认，请刷新状态后核对，不要重复提交","expected":"服务器操作结果待确认，请刷新状态后核对，不要重复提交"},
+    {"code":"UNKNOWN","status":null,"message":"未知错误","expected":"操作未完成，原因尚未确认，请先刷新核对"},
+    {"code":"NEW_BUSINESS_CODE","status":403,"message":"操作失败","expected":"操作未完成，原因尚未确认，请先刷新核对"},
+    {"code":"IMPERSONATION_READ_ONLY","status":403,"message":"Forbidden","expected":"当前为只读模拟身份，不能进行写入、审核、删除或导出"},
+    {"code":"PRIMARY_UNAVAILABLE","status":503,"message":"Service Unavailable","expected":"暂时无法连接公司业务服务器；已发送操作请先核对结果"},
+    {"code":"SERVER_OPERATION_OUTCOME_UNCERTAIN","status":503,"message":"","expected":"服务器操作结果待确认，请刷新状态后核对，不要重复提交"}
+  ]
+}

@@ -344,15 +344,11 @@ extension AppNotificationContextX on BuildContext {
   ///
   /// 不是服务端异常时(草稿保护、本机存储、页面自己的校验), 有写给人看的中文原因就原样显示
   /// (ADR-151 §2 提交失败如实报因); 英文内部异常才用 [fallback]。
-  void appApiError(Object error, {String? fallback = '操作失败，请稍后重试'}) {
-    if (error is ApiException) {
-      _notifier.showError(
-        error.message.isNotEmpty ? error.message : (fallback ?? ''),
-        fieldErrors: error.fieldErrors,
-      );
-    } else {
-      _notifier.showError(humanErrorMessage(error) ?? fallback ?? '操作失败，请稍后重试');
-    }
+  void appApiError(Object error, {String? fallback = unknownErrorMessage}) {
+    _notifier.showError(
+      humanErrorMessage(error) ?? fallback ?? unknownErrorMessage,
+      fieldErrors: error is ApiException ? error.fieldErrors : null,
+    );
   }
 }
 

@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
+import '../../core/ui/human_error_message.dart';
 import '../inputs/uten_field_hint_icon.dart';
 
 /// Uten 空状态组件
@@ -24,6 +25,7 @@ class UtenEmpty extends StatelessWidget {
   factory UtenEmpty.error({
     Key? key,
     String? message,
+    Object? error,
     String? description,
     String? actionLabel,
     VoidCallback? onAction,
@@ -31,7 +33,10 @@ class UtenEmpty extends StatelessWidget {
     return UtenEmpty(
       key: key,
       icon: Icons.error_outline_rounded,
-      message: message ?? '出错了，请稍后重试',
+      message:
+          (error == null ? null : humanErrorMessage(error)) ??
+          message ??
+          '内容未能加载，请刷新后重试',
       description: description,
       actionLabel: actionLabel,
       onAction: onAction,

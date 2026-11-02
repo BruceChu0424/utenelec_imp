@@ -379,7 +379,7 @@
   "commonBack": "뒤로",
   "commonLoading": "로드 중…",
   "commonNoData": "데이터 없음",
-  "commonError": "문제가 발생했습니다. 다시 시도해 주세요",
+  "commonError": "작업을 완료하지 못했습니다. 새로고침하여 결과를 확인한 후 다시 시도해 주세요.",
   "commonSuccess": "완료",
   "loginAccountHint": "사번 또는 전화번호",
   "loginAccountRequired": "계정을 입력해 주세요",

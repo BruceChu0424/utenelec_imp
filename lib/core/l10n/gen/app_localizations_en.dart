@@ -1045,7 +1045,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get commonNoData => 'No data';
 
   @override
-  String get commonError => 'Something went wrong, please try again';
+  String get commonError =>
+      'The operation could not be completed. Refresh and check the result before trying again.';
 
   @override
   String get commonSuccess => 'Success';

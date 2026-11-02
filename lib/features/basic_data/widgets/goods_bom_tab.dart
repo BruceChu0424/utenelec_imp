@@ -1,3 +1,4 @@
+import 'bom_inline_edit_cell.dart';
 import '../providers/goods_bom_changes.dart';
 // 货品详情「组装信息」：默认只读；编辑模式中的每次操作进入会话草稿。
 // 退出编辑时选择保存或丢弃，保存前预览共用组件的影响并一次提交全部变更。
@@ -57,7 +58,6 @@ import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
-import '../../../components/inputs/uten_inline_edit_cell.dart';
 import '../../../components/inputs/uten_reference_picker_field.dart';
 import '../../../components/inputs/uten_picker_icon_button.dart';
 import '../../../components/inputs/uten_table_cell_spec.dart';
@@ -275,8 +275,7 @@ enum _BomEditExitAction { continueEditing, discard, save }
 
 // Native fields retain their own selection. Their labels and decorations must
 // not also register as table text while rows move or an edit session closes.
-Widget _bomTableInput({required Widget child}) =>
-    SelectionContainer.disabled(child: UtenTableCellInputTheme(child: child));
+Widget _bomTableInput({required Widget child}) => BomTableInput(child: child);
 
 /// 「添加组件」弹窗里的选货入口(组件范围、多选)。独立成 provider，组件测试可以换成
 /// 固定结果，而不必驱动整套分类树 + 分页选货面板。
@@ -466,7 +465,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       }
       if (values.changed.contains('basisOutputQty')) {
         final parsed = double.tryParse(values.basis.text.trim());
-        if (parsed == null || !parsed.isFinite || parsed <= 0) {
+        if (parsed == null || !bomDesignQuantityValid(values.basis.text)) {
           context.appWarning(_l10n.bomDesignQtyInvalid);
           return false;
         }
@@ -3115,33 +3114,26 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     bool changed = false,
     bool retainFocusWhenDisabled = false,
     TextAlign textAlign = TextAlign.start,
-  }) => _bomTableInput(
-    child: UtenInlineEditCell(
-      key: ValueKey((
-        'goods-bom-editor',
-        field,
-        row.occurrenceKey,
-        row.node.item.componentGoodsId,
-        _modeRevision,
-      )),
-      activationKey: ValueKey('goods-bom-activate-$field-${row.occurrenceKey}'),
-      semanticLabel: masterEditText(
-        context,
-        '编辑$label',
-        'Edit $label',
-        '$label 편집',
-      ),
-      enabled: _canMutate && !_writeBusy,
-      changed: changed,
-      retainFocusWhenDisabled: retainFocusWhenDisabled,
-      preview: Text(
-        preview.isEmpty ? '—' : preview,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        textAlign: textAlign,
-      ),
-      editorBuilder: editor,
+  }) => BomInlineEditCell(
+    key: ValueKey((
+      'goods-bom-editor',
+      field,
+      row.occurrenceKey,
+      row.node.item.componentGoodsId,
+      _modeRevision,
+    )),
+    activationKey: ValueKey('goods-bom-activate-$field-${row.occurrenceKey}'),
+    label: masterEditText(context, '编辑$label', 'Edit $label', '$label 편집'),
+    enabled: _canMutate && !_writeBusy,
+    changed: changed,
+    retainFocusWhenDisabled: retainFocusWhenDisabled,
+    preview: Text(
+      preview.isEmpty ? '—' : preview,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textAlign: textAlign,
     ),
+    editorBuilder: editor,
   );
 
   void _adoptMasterValues(Map<String, _BomMasterValues> prepared) {
@@ -4511,7 +4503,7 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
           return;
         }
         final entered = double.tryParse(raw);
-        if (entered == null || entered <= 0) {
+        if (entered == null || !bomDesignQuantityValid(raw)) {
           final label = _periodicWeightLabel(context, p.goods.unitName);
           setState(() => _error = '「$name」$label必须大于 0');
           return;
@@ -5017,7 +5009,7 @@ class _BomItemEditDialogState extends ConsumerState<_BomItemEditDialog> {
     final submitQuantity = raw != _initialQtyText || widget.requireQuantity;
     final entered = double.tryParse(raw);
     if (e.isPeriodicEdge) {
-      if (entered == null || !entered.isFinite || entered <= 0) {
+      if (entered == null || !bomDesignQuantityValid(raw)) {
         final label = _periodicWeightLabel(context, e.componentUnitName);
         setState(() => _error = '「$label」必须是大于 0 的数字'); // TODO(l10n): 补 arb
         return;
@@ -5342,12 +5334,7 @@ class _DesignQtyField extends StatelessWidget {
 /// 设计使用数量校验(两个弹窗共用)：空 → 请填写；不是大于 0 的有限数字 →
 /// 报错；合法返回 null。
 String? _designQtyError(AppLocalizations l10n, String raw) {
-  final text = raw.trim();
-  if (text.isEmpty) return l10n.bomDesignQtyRequired;
-  final value = double.tryParse(text);
-  return value == null || !value.isFinite || value <= 0
-      ? l10n.bomDesignQtyInvalid
-      : null;
+  return bomDesignQtyError(l10n, raw);
 }
 
 Widget _dialogHeader(BuildContext context, ThemeData theme, String title) {

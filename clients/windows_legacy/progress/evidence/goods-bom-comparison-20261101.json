@@ -93,5 +93,76 @@
     "test/features/basic_data/widgets/goods_bom_comparison_workspace_test.dart": "43bb69e506909c25e491119ac30f0f7bfbfae1d3521119989de70db91f7d3be6",
     "test/support/bom_comparison_fixture.dart": "df2f05a1778c7e707955b04cfcdb8238068c3f7920f3779b7b4e775535ad4986",
     "test/support/goods_bom_edit_test_api.dart": "298f390ae406dcac42f41fd6d17410144e24dc5f68151d773b938814c1931053"
+  },
+  "followupCodeFirstLiveEditing": {
+    "classification": [
+      "frontend",
+      "existing-edit-contract-consumer"
+    ],
+    "columnOrder": [
+      "code",
+      "componentName",
+      "color",
+      "spec",
+      "qty"
+    ],
+    "rowProjection": "One row per real BOM component; individual recipe cells are colored, no virtual field rows",
+    "editing": "Authorized roots automatically open independent GoodsBomEditDraft sessions; shared inline cell and input theme; debounced local rechecking",
+    "persistence": "Explicit per-side preview/commit; other-side inputs survive, including invalid input; replacement waits for save/discard",
+    "inputOwnership": "root + parent + relationship + component + field; changing component cannot reuse its old callback",
+    "validation": {
+      "overlap": "These suites overlap and must not be added as unique tests",
+      "static": {
+        "issues": 0,
+        "log": ".analyze-live-release-candidate.log",
+        "finalIdentityLog": ".analyze-live-identity-final.log"
+      },
+      "finalIdentityAndLive": {
+        "passed": 32,
+        "warnings": 0,
+        "failed": 0,
+        "log": ".test-live-identity-final.log"
+      },
+      "capture": {
+        "log": ".test-live-pdf-capture.log",
+        "passed": 1,
+        "pixelRatio": 3
+      },
+      "full": {
+        "passed": 1724,
+        "skipped": 1,
+        "log": ".test-live-full-regression.log"
+      },
+      "finalCallers": {
+        "passed": 116,
+        "warnings": 0,
+        "failed": 0,
+        "log": ".test-live-release-candidate.log"
+      }
+    },
+    "screenshots": [
+      "build/ui-audit/multiwindow-03-comparison.png",
+      "build/ui-audit/multiwindow-11-live-qty.png",
+      "build/ui-audit/multiwindow-12-live-match.png",
+      "build/ui-audit/multiwindow-13-live-review.png"
+    ],
+    "pdf": "D:/Projects/uten_imp/output/pdf/多窗口与BOM对比操作指南_补充修订版.pdf",
+    "nativeWpf": "W7-BIZ-025/034 still in_progress; no native full-detail/BOM editing migration or target-PC acceptance claimed",
+    "deployed": false,
+    "formalPackagesBuilt": false,
+    "productionWritten": false,
+    "pdfSha256": "d674a0a811bcc074c552a2d3867d932cfc250d7de8ca7012cddfd41c615ff4a0"
+  },
+  "currentFollowupSourceSha256": {
+    "lib/features/basic_data/widgets/bom_component_quantity_field.dart": "c37a707fe06ea0ee74a666fd53569133f74bae54d843a35bbbe3bfaf601d0a3e",
+    "lib/features/basic_data/widgets/bom_inline_edit_cell.dart": "67d8cf53547fce349bc72d7dcfc020465b0650ae83b822a8e1ba57e1e2247a1d",
+    "lib/features/basic_data/widgets/goods_bom_batch_maintenance_dialog.dart": "f843806418158d789e9d63c199239fa6cc773ae78533effadd57ad11e0281c77",
+    "lib/features/basic_data/widgets/goods_bom_comparison_editor.dart": "76f5726970d6ff0e3022418699c1f28d1a50152e4bdf2ac550275c1ca04b404a",
+    "lib/features/basic_data/widgets/goods_bom_comparison_table.dart": "2bc03b0b179860409a8ede9a8ffd2cdf74e00ec55704cbb0004e10997791947f",
+    "lib/features/basic_data/widgets/goods_bom_comparison_workspace.dart": "5d4de539ef340e4f52a4fc77e7db29eec487590b1b678dc45dd628d19e4de58b",
+    "lib/features/basic_data/widgets/goods_bom_tab.dart": "87317cee61ff87c27c91ac90f10805885805dcef46e5e08c1ad856596d713c5b",
+    "test/features/basic_data/bom_live_edit_controller_test.dart": "79e709dbf0a1f8dd0bc3489ff0b5a175a526dde196b084fd9a4c635c77649afc",
+    "test/features/basic_data/widgets/goods_bom_comparison_workspace_test.dart": "56d4b960f29a84ab6af57d1306c3a0b2565576d7d17fe6157bed19b8ae9bee87",
+    "test/support/bom_comparison_fixture.dart": "626693efb0dd7caf11177454a19047c7d42943b62268dc4bbcfde48cdceefa3c"
   }
 }

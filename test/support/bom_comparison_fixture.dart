@@ -52,10 +52,29 @@ class ComparisonFixtureBom extends Fake implements GoodsBomRepository {
       if (mode == BomPasteMode.replace) into.clear();
       for (final item in items) {
         final component = item['componentGoodsId'] as String;
+        final original = rows.values
+            .expand((items) => items)
+            .where((row) => row.componentGoodsId == component)
+            .firstOrNull;
+        final presentation = original == null
+            ? <String, dynamic>{}
+            : bomItemTestJson(original);
         into.add(
           GoodsBomItem.fromJson({
             'id': '${target.goodsId}-$component',
             'componentName': component,
+            for (final key in const [
+              'componentCode',
+              'componentName',
+              'componentModel',
+              'componentSpec',
+              'componentMaterial',
+              'componentUnitName',
+              'componentColorName',
+              'componentSourceType',
+              'componentIssueMethod',
+            ])
+              if (presentation.containsKey(key)) key: presentation[key],
             ...item,
           }),
         );
@@ -98,11 +117,40 @@ class ComparisonFixtureApi extends GoodsBomEditTestApi {
   Map<String, dynamic>? _saved;
 
   @override
-  Future<Map<String, dynamic>> get(String path, {Map<String, dynamic>? query}) {
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
     if (path.endsWith('/snapshot')) {
       snapshots.add(path.split('/').reversed.elementAt(3));
     }
-    return super.get(path, query: query);
+    final response = await super.get(path, query: query);
+    if (path.endsWith('/snapshot') && repository is ComparisonFixtureBom) {
+      final bom = repository as ComparisonFixtureBom;
+      final id = path.split('/').reversed.elementAt(3);
+      final all = bom.rows.values.expand((items) => items);
+      Map<String, dynamic> master(String id) {
+        final item = all.where((row) => row.componentGoodsId == id).firstOrNull;
+        return {
+          'id': id,
+          'version': 1,
+          'model': item?.componentModel,
+          'spec': item?.componentSpec,
+          'material': item?.componentMaterial,
+          'sourceType': item?.componentSourceType,
+          'componentGoodsWritable': true,
+        };
+      }
+
+      return {
+        ...response,
+        'goods': master(id),
+        'componentGoods': [
+          for (final item in await bom.list(id)) master(item.componentGoodsId),
+        ],
+      };
+    }
+    return response;
   }
 
   @override
@@ -123,6 +171,31 @@ class ComparisonFixtureApi extends GoodsBomEditTestApi {
       headers: headers,
       query: query,
     );
+    if (path.endsWith('/commit') && repository is ComparisonFixtureBom) {
+      final bom = repository as ComparisonFixtureBom;
+      final operations = (body as Map)['operations'] as List;
+      for (final raw in operations) {
+        final operation = Map<String, dynamic>.from(raw as Map);
+        if (operation['type'] != 'UPDATE_GOODS') continue;
+        final changes = Map<String, dynamic>.from(
+          operation['goodsChanges'] as Map,
+        );
+        for (final parent in bom.rows.keys) {
+          bom.rows[parent] = [
+            for (final row in bom.rows[parent]!)
+              row.componentGoodsId != operation['goodsId']
+                  ? row
+                  : GoodsBomItem.fromJson({
+                      ...bomItemTestJson(row),
+                      for (final entry in changes.entries)
+                        'component${entry.key[0].toUpperCase()}${entry.key.substring(1)}':
+                            entry.value,
+                    }),
+          ];
+        }
+        bom.writes++;
+      }
+    }
     if (path.endsWith('/commit') && loseCommitReply) {
       _saved = response;
       throw ApiException('NETWORK_TIMEOUT', '保存回执中断');

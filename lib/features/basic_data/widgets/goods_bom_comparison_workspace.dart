@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/feedback/uten_inline_notice.dart';
 import 'goods_bom_comparison_table.dart';
+import 'goods_bom_comparison_editor.dart';
+import '../../../components/feedback/uten_dialog.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/api_error.dart';
@@ -18,7 +20,6 @@ import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/windows/business_windows.dart';
 import '../models/goods_bom_comparison.dart';
-import '../models/goods_bom_item.dart';
 import '../models/goods_detail_sequence.dart';
 import '../models/goods_node.dart';
 import '../providers/goods_bom_changes.dart';
@@ -58,8 +59,11 @@ class _GoodsBomComparisonWorkspaceState
   late final double _ratio = widget.initialRatio;
   BomComparisonReplacement? _replacement;
   BomEditPreview? _preview;
+  GoodsBomComparisonEditor? _editor;
+  bool _inlineReview = false;
   bool _toLeft = true;
   GoRouter? _hostRouter;
+  ModalRoute<dynamic>? _leaveRoute;
   ProviderSubscription<SensitiveReadBoundary>? _boundarySubscription;
 
   String? _goodsId(BusinessWindow window) {
@@ -81,6 +85,9 @@ class _GoodsBomComparisonWorkspaceState
       _,
     ) {
       ++_epoch;
+      _dismissLeaveDialog();
+      _editor?.dispose();
+      _editor = null;
       _replacement?.draft.close();
       _replacement = null;
       _preview = null;
@@ -115,7 +122,50 @@ class _GoodsBomComparisonWorkspaceState
 
   Future<bool> _canLeave() async {
     if (!_busy && _replacement?.draft.isCommitRecoveryPending != true) {
-      return true;
+      final editor = _editor;
+      if (editor?.hasChanges != true) return true;
+      final choice = await showDialog<String>(
+        context: context,
+        builder: (ctx) {
+          _leaveRoute = ModalRoute.of(ctx);
+          return UtenAlertDialog(
+            title: const Text('还有未保存的 BOM 修改'),
+            content: const Text('请先核对并保存，或明确放弃未保存修改。离开对比不会自动保存输入。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'continue'),
+                child: const Text('继续编辑'),
+              ),
+              OutlinedButton(
+                onPressed: () => Navigator.pop(ctx, 'discard'),
+                child: const Text('放弃并继续'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, 'save'),
+                child: const Text('先核对并保存'),
+              ),
+            ],
+          );
+        },
+      );
+      _leaveRoute = null;
+      if (!mounted || !identical(editor, _editor)) return false;
+      if (choice == 'discard') {
+        try {
+          for (final root in editor!.details.keys) {
+            if (editor.changed(root)) await editor.reset(root);
+          }
+          return mounted && identical(editor, _editor);
+        } catch (error) {
+          if (mounted) setState(() => _error = _errorText(error));
+          return false;
+        }
+      }
+      if (choice == 'save') {
+        final root = editor!.details.keys.firstWhere(editor.changed);
+        await _reviewEdits(root);
+      }
+      return false;
     }
     if (mounted) setState(() => _error = '请先核对当前保存结果，再离开 BOM 对比');
     return false;
@@ -136,6 +186,7 @@ class _GoodsBomComparisonWorkspaceState
   @override
   void dispose() {
     ++_epoch;
+    _dismissLeaveDialog();
     widget.leftWindow.activeRouter?.routerDelegate.removeListener(
       _routeChanged,
     );
@@ -144,9 +195,20 @@ class _GoodsBomComparisonWorkspaceState
     );
     _boundarySubscription?.close();
     _replacement?.draft.close();
+    _editor?.dispose();
+    _editor = null;
     FormDraftNavigation.unregister(this);
     webUpdateSafety.unregister(this);
     super.dispose();
+  }
+
+  void _dismissLeaveDialog() {
+    final route = _leaveRoute;
+    _leaveRoute = null;
+    if (route == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (route.isActive) route.navigator?.removeRoute(route);
+    });
   }
 
   Future<void> _load() async {
@@ -160,8 +222,11 @@ class _GoodsBomComparisonWorkspaceState
     final leftId = _goodsId(widget.leftWindow),
         rightId = _goodsId(widget.rightWindow);
     _replacement?.draft.close();
+    _editor?.dispose();
+    _editor = null;
     setState(() {
       _replacement = null;
+      _inlineReview = false;
       _preview = null;
       _comparison = null;
       _left = null;
@@ -196,11 +261,35 @@ class _GoodsBomComparisonWorkspaceState
         ]),
       );
       if (!current()) return;
+      final editor = GoodsBomComparisonEditor(
+        ref: ref,
+        details: {
+          leftId: results[0] as GoodsDetail,
+          rightId: results[1] as GoodsDetail,
+        },
+        isCurrent: current,
+        onChanged: _refreshComparison,
+      );
+      try {
+        await editor.open();
+      } catch (_) {
+        editor.dispose();
+        rethrow;
+      }
+      if (!current()) {
+        editor.dispose();
+        return;
+      }
+      _editor = editor;
+      final editable = await Future.wait([
+        editor.read(leftId, leftId),
+        editor.read(rightId, rightId),
+      ]);
       final comparison = await GoodsBomComparison.build(
         leftId: leftId,
         rightId: rightId,
-        left: results[2] as List<GoodsBomItem>,
-        right: results[3] as List<GoodsBomItem>,
+        left: editable[0],
+        right: editable[1],
         isCurrent: current,
       );
       if (!current()) return;
@@ -226,6 +315,7 @@ class _GoodsBomComparisonWorkspaceState
         _comparison = comparison;
         _loading = false;
       });
+      editor.addListener(_editorStateChanged);
     } catch (error) {
       if (current()) {
         setState(() {
@@ -244,11 +334,130 @@ class _GoodsBomComparisonWorkspaceState
         ].join('\n')
       : '处理失败，请重试；尚未确认的保存请先核对结果';
 
+  void _editorStateChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _refreshComparison() async {
+    final editor = _editor, comparison = _comparison;
+    if (!mounted || editor == null || comparison == null) return;
+    final epoch = _epoch;
+    bool current() => mounted && epoch == _epoch && identical(editor, _editor);
+    final items = await Future.wait([
+      editor.read(comparison.leftId, comparison.leftId),
+      editor.read(comparison.rightId, comparison.rightId),
+    ]);
+    final next = await GoodsBomComparison.build(
+      leftId: comparison.leftId,
+      rightId: comparison.rightId,
+      left: items[0],
+      right: items[1],
+      isCurrent: current,
+    );
+    if (current()) {
+      setState(() {
+        final before = {
+          for (final row in comparison.rows)
+            row.key: '${row.left?.id}|${row.right?.id}',
+        };
+        final after = {
+          for (final row in next.rows)
+            row.key: '${row.left?.id}|${row.right?.id}',
+        };
+        if (before.length != after.length ||
+            before.keys.any((key) => before[key] != after[key])) {
+          _selected = {};
+        }
+        _comparison = next;
+        _selected.removeWhere(
+          (id) => !next.rows.any(
+            (row) => row.key == id && row.difference != BomDifference.same,
+          ),
+        );
+      });
+    }
+  }
+
+  Future<void> _reviewEdits(String root) async {
+    final editor = _editor;
+    if (_locked || editor == null || !editor.changed(root)) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await editor.flush(root: root);
+      final draft = editor.draftFor(root);
+      if (!mounted ||
+          !identical(editor, _editor) ||
+          draft == null ||
+          !draft.hasChanges) {
+        return;
+      }
+      BomEditPreview preview;
+      while (true) {
+        try {
+          preview = await draft.preview();
+          break;
+        } on ApiException catch (error) {
+          final confirmations = periodicConfirmationsOf(error);
+          if (confirmations == null || !mounted) rethrow;
+          final fields = await askPeriodicConfirmations(
+            context,
+            confirmations,
+            isCurrent: () => mounted && identical(editor, _editor),
+          );
+          if (fields == null || !mounted) return;
+          draft.confirmPeriodicFields(fields);
+        }
+      }
+      if (mounted && identical(editor, _editor)) {
+        setState(() {
+          _replacement = BomComparisonReplacement(
+            draft: draft,
+            added: 0,
+            removed: 0,
+            updated: draft.operationCount,
+            moved: 0,
+          );
+          _preview = preview;
+          _inlineReview = true;
+          _toLeft = root == _comparison?.leftId;
+        });
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = _errorText(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _discardEdits(String root) async {
+    if (_locked || _editor == null) return;
+    setState(() => _busy = true);
+    try {
+      await _editor!.reset(root);
+    } catch (error) {
+      if (mounted) setState(() => _error = _errorText(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _reload() async {
+    if (await _canLeave() && mounted) await _load();
+  }
+
+  Future<void> _close() async {
+    if (await _canLeave() && mounted) widget.onClose();
+  }
+
   bool _canReplace(bool toLeft, bool all) {
     final comparison = _comparison;
     if (comparison == null ||
         _busy ||
         _replacement != null ||
+        _editor?.hasChanges == true ||
         comparison.leftId == comparison.rightId ||
         (toLeft ? _left : _right)?.writable != true) {
       return false;
@@ -322,6 +531,7 @@ class _GoodsBomComparisonWorkspaceState
         _replacement = replacement;
         _preview = preview;
         _toLeft = toLeft;
+        _inlineReview = false;
       });
     } catch (error) {
       if (current()) setState(() => _error = _errorText(error));
@@ -346,10 +556,21 @@ class _GoodsBomComparisonWorkspaceState
       );
       if (!mounted || epoch != _epoch) return;
       ref.read(goodsBomChangesProvider.notifier).saved();
+      final inline = _inlineReview;
+      final root = _toLeft ? _comparison!.leftId : _comparison!.rightId;
       _replacement = null;
       _preview = null;
-      await _load();
-      if (mounted) setState(() => _message = '组件已替换，已重新分析左右 BOM');
+      _inlineReview = false;
+      if (inline) {
+        await _editor!.reset(root, committed: true);
+      } else {
+        await _load();
+      }
+      if (mounted) {
+        setState(
+          () => _message = inline ? '修改已保存，已重新核对左右 BOM' : '组件已替换，已重新分析左右 BOM',
+        );
+      }
     } catch (error) {
       if (mounted && epoch == _epoch) {
         setState(
@@ -367,6 +588,7 @@ class _GoodsBomComparisonWorkspaceState
 
   Future<void> _choose(bool left) async {
     if (_locked) return;
+    if (!await _canLeave() || !mounted) return;
     final epoch = _epoch, boundary = ref.read(sensitiveReadBoundaryProvider);
     final item = await showUtenGoodsPicker(
       context,
@@ -386,6 +608,7 @@ class _GoodsBomComparisonWorkspaceState
 
   Future<void> _navigate(bool left, String id) async {
     if (_locked) return;
+    if (!await _canLeave() || !mounted) return;
     final window = left ? widget.leftWindow : widget.rightWindow;
     final router = window.activeRouter;
     final boundary = ref.read(sensitiveReadBoundaryProvider);
@@ -428,6 +651,13 @@ class _GoodsBomComparisonWorkspaceState
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
+                if (detail != null)
+                  Text(
+                    _editor?.draftFor(detail.id) != null
+                        ? '编辑模式 · 修改后实时核对'
+                        : '只读对比',
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
               ],
             ),
           ),
@@ -496,7 +726,7 @@ class _GoodsBomComparisonWorkspaceState
             onSelected: (value) => setState(() => _onlyDifferences = value),
           ),
           TextButton.icon(
-            onPressed: _locked ? null : _load,
+            onPressed: _locked ? null : _reload,
             icon: const Icon(Icons.refresh_rounded),
             label: const Text('重新分析'),
           ),
@@ -504,7 +734,7 @@ class _GoodsBomComparisonWorkspaceState
             onPressed:
                 _busy || _replacement?.draft.isCommitRecoveryPending == true
                 ? null
-                : widget.onClose,
+                : _close,
             icon: const Icon(Icons.close_rounded),
             label: const Text('返回资料窗口'),
           ),
@@ -525,19 +755,24 @@ class _GoodsBomComparisonWorkspaceState
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              '用${_toLeft ? '右侧' : '左侧'}「${source?.code}」替换${_toLeft ? '左侧' : '右侧'}「${target?.code}」',
+              _inlineReview
+                  ? '保存${_toLeft ? '左侧' : '右侧'}「${target?.code}」的编辑'
+                  : '用${_toLeft ? '右侧' : '左侧'}「${source?.code}」替换${_toLeft ? '左侧' : '右侧'}「${target?.code}」',
               style: Theme.of(context).textTheme.titleSmall,
             ),
             Text(
-              '新增 ${replacement.added} 项，修改 ${replacement.updated} 项，删除 ${replacement.removed} 项，调整顺序 ${replacement.moved} 项。',
+              _inlineReview
+                  ? '暂存 ${preview.operationCount} 项操作，涉及 ${preview.affectedParents.length} 个父件。'
+                  : '新增 ${replacement.added} 项，修改 ${replacement.updated} 项，删除 ${replacement.removed} 项，调整顺序 ${replacement.moved} 项。',
             ),
-            if ((_toLeft ? _comparison?.right : _comparison?.left)?.isEmpty ==
-                true)
+            if (!_inlineReview &&
+                (_toLeft ? _comparison?.right : _comparison?.left)?.isEmpty ==
+                    true)
               Text(
                 '来源没有组件，确认后将清空目标的全部组件。',
                 style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
-            if (_left?.unitName != _right?.unitName)
+            if (!_inlineReview && _left?.unitName != _right?.unitName)
               Text(
                 '左右货品基本单位不同：${_left?.unitName ?? '未设置'} / ${_right?.unitName ?? '未设置'}。本次按原设计数量复制，不自动换算。',
               ),
@@ -555,14 +790,15 @@ class _GoodsBomComparisonWorkspaceState
                   onPressed: _busy || replacement.draft.isCommitRecoveryPending
                       ? null
                       : () {
-                          replacement.draft.close();
+                          if (!_inlineReview) replacement.draft.close();
                           setState(() {
                             _replacement = null;
                             _preview = null;
                             _error = null;
+                            _inlineReview = false;
                           });
                         },
-                  child: const Text('取消替换'),
+                  child: Text(_inlineReview ? '返回继续编辑' : '取消替换'),
                 ),
                 FilledButton(
                   key: const Key('bom-compare-confirm'),
@@ -570,6 +806,8 @@ class _GoodsBomComparisonWorkspaceState
                   child: Text(
                     replacement.draft.isCommitRecoveryPending
                         ? '核对上次保存结果'
+                        : _inlineReview
+                        ? '确认保存${_toLeft ? '左侧' : '右侧'}修改'
                         : '确认替换${_toLeft ? '左侧' : '右侧'}组件',
                   ),
                 ),
@@ -586,6 +824,28 @@ class _GoodsBomComparisonWorkspaceState
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
+          if (_editor != null)
+            for (final root in _editor!.details.keys)
+              if (_editor!.changed(root)) ...[
+                FilledButton(
+                  key: ValueKey('bom-compare-save-$root'),
+                  onPressed: _locked ? null : () => _reviewEdits(root),
+                  child: Text(
+                    '保存${root == _comparison?.leftId ? '左侧' : '右侧'}修改',
+                  ),
+                ),
+                TextButton(
+                  onPressed: _locked ? null : () => _discardEdits(root),
+                  child: Text(
+                    '放弃${root == _comparison?.leftId ? '左侧' : '右侧'}修改',
+                  ),
+                ),
+              ],
+          if (_editor?.hasChanges == true) const Text('有未保存编辑，请先保存或放弃后再替换组件'),
+          if (_editor?.hasMasterChanges == true)
+            const Text('规格、型号等属于共用货品属性，保存会同步相同组件'),
+          if (_editor?.hasStaleRoots == true)
+            const Text('另一侧仍有基于旧版共用资料的草稿，请按保存提示核对版本'),
           Text('已选 ${_selected.length} 项差异'),
           TextButton(
             onPressed: _locked || _comparison == null
@@ -678,6 +938,10 @@ class _GoodsBomComparisonWorkspaceState
               ),
             Expanded(
               child: GoodsBomComparisonTables(
+                editor: _editor,
+                onEditError: (error) {
+                  if (mounted) setState(() => _error = _errorText(error));
+                },
                 comparison: _comparison,
                 leftHeader: _product(true),
                 rightHeader: _product(false),

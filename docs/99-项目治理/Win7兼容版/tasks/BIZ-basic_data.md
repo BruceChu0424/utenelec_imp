@@ -191,7 +191,7 @@
 
 证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`；`clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json`。
 
-接续/限制：2026-11-01 Web/Flutter goods detail gains symmetric window insets and a unified theme surface. BOM comparison uses the SAME MasterDataTableView and UtenTreeTableCell as assembly, with linked scroll/selection and bidirectional selected/all-component replacement through existing snapshot/preview/commit. Native full detail/BOM remains unported. Follow source+target fingerprints, exact decimals, permissions and unknown-commit recovery. See E-GOODS-BOM-COMPARE-20261101; current source hashes belong to that evidence.。
+接续/限制：2026-11-01 follow-up: comparison now orders code/name/color/spec/design quantity, highlights exact cells without virtual field rows, and automatically opens authorized ordinary edit drafts. Shared BomInlineEditCell/quantity validation cover assembly and comparison. Live checking preserves input, independent root saves, shared-master rules and unknown receipt recovery. Full native detail/BOM editing remains unported; migrate this contract before exposing writes. E-GOODS-BOM-COMPARE-20261101.。
 
 ## W7-BIZ-216
 
@@ -407,7 +407,7 @@
 
 证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`；`clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json`。
 
-接续/限制：2026-11-01 Web/Flutter goods windows add retained resizable tiling, unified surfaces and comparison including narrow/multiple-window selection. WPF equivalent remains unported; retain partial-read status and follow W7-BIZ-025 contract. See E-GOODS-BOM-COMPARE-20261101.。
+接续/限制：2026-11-01 comparison follow-up adds code-first cell differences and automatic inline editing with independent root drafts and explicit save/discard on navigation. Native goods workspace remains partial read; multiwindow/BOM parity is not complete. See W7-BIZ-025 and E-GOODS-BOM-COMPARE-20261101.。
 
 ## W7-BIZ-035
 

@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../core/router/route_names.dart';
 
 final clientUpdateNavigationProvider = Provider(
   (ref) => ClientUpdateNavigation(),
@@ -10,7 +11,7 @@ final clientUpdateNavigationProvider = Provider(
 class ClientUpdateNavigation extends NavigatorObserver {
   Route<dynamic>? _top;
   bool get blocked =>
-      _top is PopupRoute || _top?.settings.name == '/settings/software-update';
+      _top is PopupRoute || _top?.settings.name == RouteName.clientUpdate;
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     _top = route;

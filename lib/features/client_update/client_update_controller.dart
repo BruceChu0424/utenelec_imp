@@ -62,6 +62,7 @@ class ClientUpdateController extends ChangeNotifier {
   bool _disposed = false;
   final _ownerDisposedListeners = <VoidCallback>{};
   CancelToken? _download;
+  bool _manualUpdate = false;
   bool get isDisposed => _disposed;
   void addOwnerDisposedListener(VoidCallback listener) =>
       _ownerDisposedListeners.add(listener);
@@ -74,6 +75,10 @@ class ClientUpdateController extends ChangeNotifier {
   bool get transferBusy =>
       stage == ClientUpdateStage.downloading ||
       stage == ClientUpdateStage.installing;
+  // Background preparation keeps the rest of the app usable. An explicit
+  // update must finish its download/handoff before leaving this page.
+  bool get blocksNavigation =>
+      _manualUpdate || stage == ClientUpdateStage.installing;
 
   void _notify() {
     if (!_disposed) notifyListeners();
@@ -144,10 +149,22 @@ class ClientUpdateController extends ChangeNotifier {
   Future<void> update() async {
     final candidate = release;
     final context = installed;
-    if (_disposed || busy || candidate == null || context == null) return;
+    if (_disposed ||
+        busy ||
+        _manualUpdate ||
+        candidate == null ||
+        context == null) {
+      return;
+    }
     if (candidate.installMode != 'store') {
-      await prepareUpdate();
-      if (!_disposed && hasStagedUpdate) await installPrepared();
+      _manualUpdate = true;
+      try {
+        await prepareUpdate();
+        if (!_disposed && hasStagedUpdate) await installPrepared();
+      } finally {
+        _manualUpdate = false;
+        _notify();
+      }
       return;
     }
     try {
@@ -184,6 +201,7 @@ class ClientUpdateController extends ChangeNotifier {
       return;
     }
     error = null;
+    waitingForSafeInstall = false;
     progress = 0;
     stage = ClientUpdateStage.downloading;
     _notify();

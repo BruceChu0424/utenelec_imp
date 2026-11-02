@@ -36,6 +36,7 @@ class _ClientUpdateHostState extends ConsumerState<ClientUpdateHost> {
   bool _countdownOpen = false;
   String? _shownRelease;
   bool _dialogOpen = false;
+  VoidCallback? _closeOfferForCountdown;
   bool get _active =>
       mounted &&
       widget.enabled &&
@@ -92,6 +93,12 @@ class _ClientUpdateHostState extends ConsumerState<ClientUpdateHost> {
     final staged = store.update;
     if (staged == null || !store.mayApplyAutomatically(staged)) return;
     if (!_safeAndIdle()) return;
+    if (_dialogOpen) {
+      // Replace only our availability offer. Never pop a business dialog or
+      // the details page while waiting for the clean idle window.
+      _closeOfferForCountdown?.call();
+      return;
+    }
     // The visible countdown is the final grace period: input elsewhere cannot
     // happen through the modal barrier, and 稍后 restarts the idle window.
     _showCountdown(staged);
@@ -162,19 +169,16 @@ class _ClientUpdateHostState extends ConsumerState<ClientUpdateHost> {
         release.installMode == 'windows_archive' &&
         release.sizeBytes > 0 &&
         RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(release.sha256)) {
-      await controller.prepareUpdate();
-      if (!_active) return;
-      if (controller.hasStagedUpdate) {
-        // A blocking announcement would itself prevent an absent user's idle
-        // installation. Availability remains visible on the update page.
-        _schedule();
-        return;
-      }
+      // Preparation and announcing availability are independent. A slow or
+      // already completed background download must not suppress the offer.
+      unawaited(controller.prepareUpdate());
     }
     if (release != null &&
         release.id != _shownRelease &&
         !_dialogOpen &&
-        !controller.transferBusy) {
+        !_countdownOpen &&
+        controller.stage != ClientUpdateStage.installing &&
+        controller.stage != ClientUpdateStage.installerOpened) {
       final dialogs = ref.read(opportunisticDialogCoordinatorProvider);
       final context = widget.dialogContext();
       if (context == null || !context.mounted) {
@@ -198,14 +202,22 @@ class _ClientUpdateHostState extends ConsumerState<ClientUpdateHost> {
       }
       _shownRelease = release.id;
       _dialogOpen = true;
+      var replacedByCountdown = false;
+      _closeOfferForCountdown = () {
+        replacedByCountdown = true;
+        opportunity.interrupt();
+      };
       try {
         final details = await showClientUpdateDialog(
           context,
           controller,
           interruptSignal: opportunity,
         );
-        if (opportunity.interrupted) _shownRelease = null;
+        if (opportunity.interrupted && !replacedByCountdown) {
+          _shownRelease = null;
+        }
         opportunity.dispose();
+        _closeOfferForCountdown = null;
         if (details == true &&
             _active &&
             context.mounted &&
@@ -214,6 +226,7 @@ class _ClientUpdateHostState extends ConsumerState<ClientUpdateHost> {
         }
       } finally {
         opportunity.dispose();
+        _closeOfferForCountdown = null;
         _dialogOpen = false;
       }
     }

@@ -6,8 +6,11 @@ import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_motion.dart';
 import '../../core/constants/app_info.dart';
 import '../../core/l10n/gen/app_localizations.dart';
+import '../../core/router/route_names.dart';
 import '../../core/theme/uten_anim.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../core/ui/app_notification.dart';
+import '../../core/web_update/web_update_safety.dart';
 import 'client_update_controller.dart';
 import 'client_auto_update_preferences.dart';
 import '../../shared/platform_branding/platform_branding_provider.dart';
@@ -17,12 +20,18 @@ Future<void> openClientUpdatePage(
   ClientUpdateController controller,
 ) async {
   final navigator = Navigator.of(context, rootNavigator: true);
-  final route = MaterialPageRoute<void>(
-    settings: const RouteSettings(name: '/settings/software-update'),
-    builder: (_) => ClientUpdatePage(controller: controller),
+  late final MaterialPageRoute<void> route;
+  route = MaterialPageRoute<void>(
+    settings: const RouteSettings(name: RouteName.clientUpdate),
+    builder: (_) => ClientUpdatePage(
+      controller: controller,
+      onClose: () {
+        if (navigator.mounted && route.isCurrent) navigator.pop();
+      },
+    ),
   );
   void ownerChanged() {
-    if (route.isActive) navigator.removeRoute(route);
+    if (navigator.mounted && route.isActive) navigator.removeRoute(route);
   }
 
   controller.addOwnerDisposedListener(ownerChanged);
@@ -35,8 +44,9 @@ Future<void> openClientUpdatePage(
 
 /// The page owns one check per visit; all callers share this lifecycle.
 class ClientUpdatePage extends ConsumerStatefulWidget {
-  const ClientUpdatePage({super.key, required this.controller});
+  const ClientUpdatePage({super.key, required this.controller, this.onClose});
   final ClientUpdateController controller;
+  final VoidCallback? onClose;
   @override
   ConsumerState<ClientUpdatePage> createState() => _ClientUpdatePageState();
 }
@@ -73,9 +83,43 @@ class _ClientUpdatePageState extends ConsumerState<ClientUpdatePage> {
     });
   }
 
+  String _installWaitMessage(BuildContext context) {
+    final snapshot = webUpdateSafety.snapshot;
+    final chinese = Localizations.localeOf(context).languageCode == 'zh';
+    if (snapshot.dirty) {
+      return chinese
+          ? '更新已下载。请返回保存正在编辑的内容，再点击“立即更新”。'
+          : 'The update is downloaded. Go back and save your work, then select Update now.';
+    }
+    if (snapshot.busy) {
+      return chinese
+          ? '更新已下载。请等待当前操作完成，再点击“立即更新”。'
+          : 'The update is downloaded. Wait for the current operation to finish, then select Update now.';
+    }
+    if (!snapshot.ready || snapshot.blocked) {
+      return chinese
+          ? '更新已下载。请返回处理未完成的操作并关闭弹窗，再从设置页继续更新。'
+          : 'The update is downloaded. Go back, resolve unfinished operations and close dialogs, then update from Settings.';
+    }
+    return chinese
+        ? '更新已下载，可以点击“立即更新”继续安装。'
+        : 'The update is downloaded. Select Update now to install it.';
+  }
+
+  Future<void> _update() async {
+    final owner = widget.controller;
+    await owner.update();
+    if (!mounted || !identical(widget.controller, owner) || owner.isDisposed) {
+      return;
+    }
+    if (owner.waitingForSafeInstall) {
+      context.appWarning(_installWaitMessage(context));
+    }
+  }
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.controller,
+    listenable: Listenable.merge([widget.controller, webUpdateSafety]),
     builder: (context, _) {
       final controller = widget.controller;
       final l10n = AppLocalizations.of(context);
@@ -149,7 +193,7 @@ class _ClientUpdatePageState extends ConsumerState<ClientUpdatePage> {
             }}$platformDetail'
           : platformDetail;
       return PopScope(
-        canPop: !transferring,
+        canPop: !controller.blocksNavigation,
         child: Scaffold(
           appBar: AppBar(
             toolbarHeight: 72,
@@ -160,8 +204,15 @@ class _ClientUpdatePageState extends ConsumerState<ClientUpdatePage> {
               padding: const EdgeInsetsDirectional.only(start: UtenSpacing.s24),
               child: UtenBackButton(
                 key: const ValueKey('client-update-back'),
+                enabled: !controller.blocksNavigation,
                 onPressed: () {
-                  if (!controller.transferBusy) {
+                  // The transfer can start between painting and a pointer-up.
+                  // Recheck the live owner before invoking the captured route.
+                  if (controller.blocksNavigation) return;
+                  final close = widget.onClose;
+                  if (close != null) {
+                    close();
+                  } else {
                     Navigator.of(context).maybePop();
                   }
                 },
@@ -281,10 +332,15 @@ class _ClientUpdatePageState extends ConsumerState<ClientUpdatePage> {
                                 ],
                                 if (controller.waitingForSafeInstall) ...[
                                   const SizedBox(height: UtenSpacing.s12),
-                                  Text(
-                                    chinese
-                                        ? '更新已下载。请先保存正在编辑的内容并完成提交，再继续安装。'
-                                        : 'The update is downloaded. Save your work and finish pending submissions before installing.',
+                                  Semantics(
+                                    liveRegion: true,
+                                    child: Text(
+                                      _installWaitMessage(context),
+                                      key: const ValueKey(
+                                        'client-update-install-wait',
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
                                   ),
                                 ],
                                 const SizedBox(height: UtenSpacing.s16),
@@ -314,7 +370,7 @@ class _ClientUpdatePageState extends ConsumerState<ClientUpdatePage> {
                                       isLoading: transferring,
                                       onPressed: controller.busy || opened
                                           ? null
-                                          : controller.update,
+                                          : _update,
                                       child: Text(l10n.clientUpdateNow),
                                     ),
                                   ),

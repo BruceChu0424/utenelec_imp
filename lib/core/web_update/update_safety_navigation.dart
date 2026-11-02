@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../router/route_names.dart';
 import 'web_update_safety.dart';
 
 final rootUpdateSafetyNavigationProvider = Provider((ref) {
@@ -30,9 +31,15 @@ class UpdateSafetyNavigation extends NavigatorObserver {
 
   bool get blocked => _routes.any(
     (route) =>
-        route is PopupRoute ||
-        (route.settings is! Page &&
-            route.settings.name != '/settings/software-update'),
+        // These owned surfaces contain no business input. In particular, the
+        // countdown must not block its own final installation. Every other
+        // underlying dialog/editor still participates independently.
+        !const {
+          RouteName.clientUpdate,
+          RouteName.clientUpdateOffer,
+          RouteName.clientUpdateCountdown,
+        }.contains(route.settings.name) &&
+        (route is PopupRoute || route.settings is! Page),
   );
 
   WebUpdateSafetyState _probe() => WebUpdateSafetyState(blocked: blocked);

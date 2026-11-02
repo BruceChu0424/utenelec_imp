@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/theme/uten_control_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/shared/widgets/uten_department_picker.dart';
@@ -174,14 +175,26 @@ void main() {
           await tester.tap(find.text('长期待摊'));
           await tester.pumpAndSettle();
         }
-        final search = find.descendant(
-          of: find.byKey(Key('asset-search-${ledger.apiValue}')),
-          matching: find.byType(TextField),
+        final searchHost = find.byKey(Key('asset-search-${ledger.apiValue}'));
+        await tester.ensureVisible(searchHost);
+        await tester.pumpAndSettle();
+        final searchIcon = find.descendant(
+          of: searchHost,
+          matching: find.byType(IconButton),
         );
+        if (searchIcon.evaluate().isNotEmpty) {
+          await tester.tap(searchIcon);
+          await tester.pumpAndSettle();
+        }
+        final search = find.byType(TextField).first;
         await tester.ensureVisible(search);
         await tester.enterText(search, '设备');
         await tester.pump(const Duration(milliseconds: 350));
         await tester.pumpAndSettle();
+        if (searchIcon.evaluate().isNotEmpty) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+          await tester.pumpAndSettle();
+        }
 
         Future<void> openHeader(String column) async {
           final header = find.byKey(ValueKey('master-column-filter-$column'));
@@ -350,7 +363,7 @@ Future<void> _pump(
             data: MediaQuery.of(
               context,
             ).copyWith(textScaler: TextScaler.linear(layout.scale)),
-            child: child!,
+            child: UtenControlTheme(child: child!),
           ),
           home: const FinanceAssetWorkbenchPage(),
         ),

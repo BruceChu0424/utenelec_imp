@@ -29,6 +29,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/router/page_search_lifecycle.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../core/responsive/compact_presentation.dart';
+import '../layout/uten_anchored_popup.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// Uten 搜索栏
@@ -47,6 +49,8 @@ class UtenSearchBar extends StatefulWidget {
     this.debounce = const Duration(milliseconds: 300),
     this.controller,
     this.dense = false,
+    this.compactIcon = true,
+    this.popupFooter,
   });
 
   final String hint;
@@ -74,12 +78,16 @@ class UtenSearchBar extends StatefulWidget {
   /// IntrinsicHeight+stretch 让分类分段跟搜索框同高，改高度会把全站分段一起带走
   /// （2026-09-10 已因此回退过一次）。
   final bool dense;
+  final bool compactIcon;
+  final Widget? popupFooter;
 
   @override
   State<UtenSearchBar> createState() => _UtenSearchBarState();
 }
 
 class _UtenSearchBarState extends State<UtenSearchBar> {
+  final _popup = UtenPopupController();
+  final _fieldKey = GlobalKey();
   late final TextEditingController _controller;
   Timer? _debounce;
   bool _ownsController = false;
@@ -255,11 +263,55 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.compactIcon && UtenCompactPresentation.iconSearchOf(context)) {
+      return UtenAnchoredPopup(
+        controller: _popup,
+        width: 360,
+        maxHeight: widget.popupFooter == null ? 140 : 320,
+        popupBuilder: (context) => SingleChildScrollView(
+          primary: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _field(context, autofocus: true),
+              if (widget.popupFooter != null) ...[
+                const SizedBox(height: 8),
+                widget.popupFooter!,
+              ],
+            ],
+          ),
+        ),
+        child: Align(
+          alignment: AlignmentDirectional.centerStart,
+          widthFactor: 1,
+          heightFactor: 1,
+          child: ValueListenableBuilder<TextEditingValue>(
+            valueListenable: _controller,
+            builder: (context, value, _) => IconButton(
+              tooltip: value.text.isEmpty
+                  ? widget.hint
+                  : '${widget.hint}：${value.text}',
+              onPressed: _popup.toggle,
+              icon: Badge(
+                isLabelVisible: value.text.isNotEmpty,
+                child: const Icon(Icons.search_rounded, size: 20),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    return _field(context);
+  }
+
+  Widget _field(BuildContext context, {bool? autofocus}) {
     final theme = Theme.of(context);
 
     return TextField(
+      key: _fieldKey,
       controller: _controller,
-      autofocus: widget.autofocus,
+      autofocus: autofocus ?? widget.autofocus,
       onChanged: _onChanged,
       // 回车即查：先取消挂起的防抖回调，避免回车查完 ~300ms 后防抖又重查一次。
       onSubmitted: widget.onSubmitted == null

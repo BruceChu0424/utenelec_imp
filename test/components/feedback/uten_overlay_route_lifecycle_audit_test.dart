@@ -103,7 +103,7 @@ void main() {
         onToggleAll: (_) {},
       ),
     );
-    await tester.tap(find.text('表头设置 1/1'));
+    await tester.tap(find.bySemanticsLabel('表头设置 1/1'));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('uten-column-chooser')), findsOneWidget);
     await _push(tester, navigator);

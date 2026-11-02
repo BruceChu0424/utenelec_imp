@@ -25,6 +25,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../core/responsive/compact_presentation.dart';
 import '../../shared/badges/badge_scope.dart';
 import '../feedback/uten_notification_badge.dart' show UtenBadgeScale;
 import '../feedback/uten_scoped_badges.dart';
@@ -141,6 +142,7 @@ class UtenHubCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = UtenCompactPresentation.of(context);
     final tint = color ?? theme.colorScheme.primary;
     final iconColor = enabled ? tint : theme.colorScheme.outline;
     return Material(
@@ -151,9 +153,9 @@ class UtenHubCard extends StatelessWidget {
         onTap: enabled ? onTap : onDisabledTap,
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(
-            vertical: UtenSpacing.s20,
-            horizontal: UtenSpacing.s16,
+          padding: EdgeInsets.symmetric(
+            vertical: compact ? 12 : UtenSpacing.s20,
+            horizontal: compact ? 12 : UtenSpacing.s16,
           ),
           decoration: BoxDecoration(
             color: theme.colorScheme.surface,
@@ -177,8 +179,8 @@ class UtenHubCard extends StatelessWidget {
                       progressBadge != null;
                   final narrow = hasBadges && constraints.maxWidth < badgeWidth;
                   final iconBox = Container(
-                    width: _iconExtent,
-                    height: _iconExtent,
+                    width: compact ? 32 : _iconExtent,
+                    height: compact ? 32 : _iconExtent,
                     decoration: BoxDecoration(
                       color: iconColor.withValues(alpha: 0.1),
                       borderRadius: UtenRadius.mdAll,
@@ -196,7 +198,9 @@ class UtenHubCard extends StatelessWidget {
                             const SizedBox(height: UtenSpacing.s8),
                             Align(
                               alignment: AlignmentDirectional.centerEnd,
-                              child: _badges(theme),
+                              child: compact
+                                  ? IntrinsicWidth(child: _badges(theme))
+                                  : _badges(theme),
                             ),
                           ],
                         )
@@ -205,7 +209,7 @@ class UtenHubCard extends StatelessWidget {
                         );
                 },
               ),
-              const SizedBox(height: UtenSpacing.s12),
+              SizedBox(height: compact ? 8 : UtenSpacing.s12),
               // 标题与括号数字同一行：标题仍是独立的 Text（不换成 Text.rich——
               // 那会让 data 变 null，`find.text('仓库调拨')` 之类的既有断言与
               // 读屏的整段朗读一起失效），Flexible 保证字号放大/窄屏时照常换行。

@@ -1,3 +1,4 @@
+import 'attachment_test_actions.dart';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
@@ -127,16 +128,16 @@ void main() {
   testWidgets('wide draft attachment add stays at the section right edge', (
     tester,
   ) async {
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.devicePixelRatio = 1;
     final controller = PendingAttachmentController();
-    for (final width in [1440.0, 800.0]) {
-      await tester.binding.setSurfaceSize(Size(width, 900));
+    for (final width in [1440.0, 1024.0]) {
+      tester.view.physicalSize = Size(width, 900);
       await _pump(tester, controller, permissions: {Perm.attachmentUpload});
 
       final section = tester.getRect(find.byType(PendingAttachmentSection));
-      final add = tester.getRect(
-        find.byKey(const ValueKey('pending-attachment-add')),
-      );
+      final add = tester.getRect(pendingAttachmentAddFilesAction());
       final heading = tester.getRect(find.text('附件（合同/客户确认/图片）'));
       expect(add.right, closeTo(section.right, 0.1));
       expect(add.top, lessThan(heading.bottom));
@@ -146,19 +147,21 @@ void main() {
   });
 
   testWidgets(
-    'narrow draft attachment add wraps below the heading on the right',
+    'narrow draft attachment uses the full upload frame below the heading',
     (tester) async {
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-      await tester.binding.setSurfaceSize(const Size(390, 900));
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(390, 900);
       final controller = PendingAttachmentController();
       await _pump(tester, controller, permissions: {Perm.attachmentUpload});
 
       final section = tester.getRect(find.byType(PendingAttachmentSection));
-      final add = tester.getRect(
-        find.byKey(const ValueKey('pending-attachment-add')),
-      );
+      final add = tester.getRect(pendingAttachmentAddFilesAction());
       final heading = tester.getRect(find.text('附件（合同/客户确认/图片）'));
-      expect(add.right, closeTo(section.right, 0.1));
+      expect(find.text('添加文件'), findsNothing);
+      expect(add.left, greaterThanOrEqualTo(section.left));
+      expect(add.right, lessThanOrEqualTo(section.right));
       expect(add.top, greaterThanOrEqualTo(heading.bottom));
       expect(tester.takeException(), isNull);
     },
@@ -167,10 +170,12 @@ void main() {
   testWidgets(
     'extra draft attachment actions remain right aligned when wrapping',
     (tester) async {
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      tester.view.devicePixelRatio = 1;
       final controller = PendingAttachmentController();
       for (final width in [1440.0, 800.0, 390.0]) {
-        await tester.binding.setSurfaceSize(Size(width, 900));
+        tester.view.physicalSize = Size(width, 900);
         await _pump(
           tester,
           controller,
@@ -186,13 +191,15 @@ void main() {
         );
 
         final section = tester.getRect(find.byType(PendingAttachmentSection));
-        final add = tester.getRect(
-          find.byKey(const ValueKey('pending-attachment-add')),
-        );
+        final add = tester.getRect(pendingAttachmentAddFilesAction());
         final extra = tester.getRect(
           find.byKey(const ValueKey('attachment-batch-action')),
         );
-        expect(add.right, closeTo(section.right, 0.1));
+        if (width >= 840) {
+          expect(add.right, closeTo(section.right, 0.1));
+        } else {
+          expect(find.text('添加文件'), findsNothing);
+        }
         if (width == 1440) {
           expect(extra.right, lessThan(add.left));
           expect(extra.top, closeTo(add.top, 0.1));
@@ -233,14 +240,14 @@ void main() {
         controller,
         permissions: const {Perm.attachmentUpload},
       );
-      expect(find.text('添加文件'), findsOneWidget);
+      expect(pendingAttachmentAddFilesAction(), findsOneWidget);
       expect(find.textContaining('保存单据后自动上传'), findsNothing, reason: '提示语已删除');
       expect(find.textContaining('保存前可随时移除'), findsNothing);
       // 上传前不再有任何「先选分类」的芯片。
       expect(find.byType(ChoiceChip), findsNothing);
       expect(find.text('客户确认'), findsNothing);
 
-      await tester.tap(find.byKey(const ValueKey('pending-attachment-add')));
+      await tester.tap(pendingAttachmentAddFilesAction());
       await tester.pumpAndSettle();
       expect(picker.calls, 1);
       // 「木马.exe」被类型白名单拒绝（提示走通知栈，已自动到期），只留下 PDF。
@@ -262,7 +269,7 @@ void main() {
     final controller = PendingAttachmentController();
     FilePicker.platform = _Picker([_file('确认.png'), _file('合同.pdf')]);
     await _pump(tester, controller, permissions: const {Perm.attachmentUpload});
-    await tester.tap(find.byKey(const ValueKey('pending-attachment-add')));
+    await tester.tap(pendingAttachmentAddFilesAction());
     await tester.pumpAndSettle();
     expect(controller.items.map((i) => i.category), [null, null]);
 
@@ -303,7 +310,7 @@ void main() {
     final container = ProviderScope.containerOf(
       tester.element(find.byType(PendingAttachmentSection)),
     );
-    await tester.tap(find.byKey(const ValueKey('pending-attachment-add')));
+    await tester.tap(pendingAttachmentAddFilesAction());
     await tester.pumpAndSettle();
     expect(container.read(appNotificationProvider).single.message, '已加入 2 个文件');
   });
@@ -314,7 +321,7 @@ void main() {
     final controller = PendingAttachmentController();
     FilePicker.platform = _Picker([_file('坏.xlsx')]);
     await _pump(tester, controller, permissions: const {Perm.attachmentUpload});
-    await tester.tap(find.byKey(const ValueKey('pending-attachment-add')));
+    await tester.tap(pendingAttachmentAddFilesAction());
     await tester.pumpAndSettle();
     controller.items.single.lastError = '扫描服务不可用';
     // ignore: invalid_use_of_protected_member

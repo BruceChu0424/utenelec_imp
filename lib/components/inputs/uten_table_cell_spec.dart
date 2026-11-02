@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'uten_caret_scroll_clearance.dart';
 import '../../core/performance/ui_work_budget.dart';
 
 import '../../core/theme/uten_tokens.dart';
@@ -110,7 +111,10 @@ class UtenTableCellInputTheme extends StatelessWidget {
       return _UtenTableCellInputScope(
         theme: cellTheme,
         geometry: geometry,
-        child: Theme(data: cellTheme, child: child),
+        child: Theme(
+          data: cellTheme,
+          child: UtenCaretScrollClearance(child: child),
+        ),
       );
     } finally {
       if (clock != null) observer!('table-cell-theme-build', clock.elapsed);

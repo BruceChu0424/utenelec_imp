@@ -1977,7 +1977,10 @@ class _FinanceQuoteReviewPageState extends ConsumerState<FinanceQuoteReviewPage>
         ),
       );
     }
-    return UtenFloatingActionGroup(children: children);
+    return UtenFloatingActionGroup(
+      compactPrimaryActionKey: _dirty ? const Key('quote-finance-save') : null,
+      children: children,
+    );
   }
 
   /// 金额按服务端十进制原文显示(ADR-112)：至少 2 位小数、不四舍五入。

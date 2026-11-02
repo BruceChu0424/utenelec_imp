@@ -5,10 +5,22 @@ import 'package:uten_imp/shared/attachments/attachment_section.dart';
 
 /// The visible action in the saved attachment section. Scope it to the section
 /// so an unrelated page action cannot satisfy an upload permission assertion.
-Finder attachmentAddFilesButton() => find.descendant(
-  of: find.byType(AttachmentSection),
-  matching: find.widgetWithText(FilledButton, '添加文件'),
-);
+Finder attachmentAddFilesButton() {
+  final explicit = find.descendant(
+    of: find.byType(AttachmentSection),
+    matching: find.widgetWithText(FilledButton, '添加文件'),
+  );
+  return explicit.evaluate().isNotEmpty
+      ? explicit
+      : find.byKey(const ValueKey('attachment-upload-dropzone'));
+}
+
+Finder pendingAttachmentAddFilesAction() {
+  final button = find.byKey(const ValueKey('pending-attachment-add'));
+  return button.evaluate().isNotEmpty
+      ? button
+      : find.byKey(const ValueKey('pending-attachment-upload-dropzone'));
+}
 
 /// Check both ways to add files: the explicit action and the drop target.
 void expectAttachmentUploadAvailable(
@@ -18,7 +30,11 @@ void expectAttachmentUploadAvailable(
   final action = attachmentAddFilesButton();
   expect(action, available ? findsOneWidget : findsNothing);
   if (available) {
-    expect(tester.widget<FilledButton>(action).onPressed, isNotNull);
+    final widget = tester.widget(action);
+    expect(
+      widget is FilledButton ? widget.onPressed : (widget as InkWell).onTap,
+      isNotNull,
+    );
   }
   final dropTargets = find.descendant(
     of: find.byType(AttachmentSection),

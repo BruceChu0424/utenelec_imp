@@ -55,6 +55,7 @@ import '../feedback/uten_notification_badge.dart';
 import '../feedback/uten_segment_badge_label.dart';
 import '../inputs/uten_search_bar.dart';
 import 'uten_segment_row.dart';
+import '../../core/responsive/compact_presentation.dart';
 
 /// 一个分类分段：值 + 文字 + 可选计数（中性括号数字 / 红色待办徽章）。
 class UtenFilterSegment<T> {
@@ -94,6 +95,7 @@ class UtenFilterToolbar<T> extends StatefulWidget {
     this.segmentsKey,
     this.searchKey,
     this.searchHint,
+    this.searchCompactIcon = true,
     this.initialSearchValue,
     this.searchController,
     this.onSearchInputChanged,
@@ -135,6 +137,7 @@ class UtenFilterToolbar<T> extends StatefulWidget {
 
   /// 搜索提示文案；不传且无 [searchController] 时不渲染搜索框（纯分类工具条）。
   final String? searchHint;
+  final bool searchCompactIcon;
 
   final String? initialSearchValue;
   final TextEditingController? searchController;
@@ -232,6 +235,9 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
 
   @override
   Widget build(BuildContext context) {
+    final searchWidth = UtenCompactPresentation.iconSearchOf(context)
+        ? 48.0
+        : widget.searchWidth;
     final enabled = widget.enabled;
     final selected = widget.selected;
     final l10n =
@@ -296,6 +302,7 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
     // 不能只增加 TextField 外盒高度来代替真实描边高度。
     final search = showSearch
         ? UtenSearchBar(
+            compactIcon: widget.searchCompactIcon,
             key: widget.searchKey,
             hint: widget.searchHint ?? '搜索',
             initialValue: widget.initialSearchValue,
@@ -307,6 +314,31 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
         : null;
     return LayoutBuilder(
       builder: (context, constraints) {
+        if (widget.searchCompactIcon &&
+            UtenCompactPresentation.iconSearchOf(context)) {
+          final reserved = search == null
+              ? 0.0
+              : UtenControlMetrics.minimumHitExtent(context) + UtenSpacing.s4;
+          return Wrap(
+            spacing: UtenSpacing.s4,
+            runSpacing: UtenSpacing.s4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (button != null)
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: (constraints.maxWidth - reserved).clamp(
+                      0,
+                      constraints.maxWidth,
+                    ),
+                  ),
+                  child: button,
+                ),
+              ?search,
+              ?widget.trailing,
+            ],
+          );
+        }
         if (constraints.maxWidth < widget.compactBreakpoint) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -334,7 +366,7 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
         // 宽度仍沿用原 Row 的分配：先扣搜索与间距，剩余宽度在分类/行尾等分；
         // 没有分类时行尾独占剩余宽度，保留 Wrap 的有界换行与横向滚动行为。
         final fixedWidth =
-            (search != null ? widget.searchWidth : 0.0) +
+            (search != null ? searchWidth : 0.0) +
             (button != null && search != null ? UtenFilterRow.rowGap : 0.0);
         final trailingWidth = widget.trailing == null
             ? 0.0
@@ -356,7 +388,7 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
                       if (search != null) ...[
                         if (button != null)
                           const SizedBox(width: UtenFilterRow.rowGap),
-                        SizedBox(width: widget.searchWidth, child: search),
+                        SizedBox(width: searchWidth, child: search),
                       ],
                     ],
                   ),

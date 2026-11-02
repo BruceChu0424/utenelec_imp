@@ -1,3 +1,4 @@
+import 'attachment_test_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -61,7 +62,7 @@ void main() {
     tester,
   ) async {
     await pumpSection(tester, const {Perm.attachmentUpload});
-    expect(find.text('添加文件'), findsOneWidget);
+    expect(attachmentAddFilesButton(), findsOneWidget);
     expect(find.byTooltip('删除'), findsNothing);
     expect(find.byTooltip('预览'), findsNothing);
 

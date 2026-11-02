@@ -1,0 +1,1474 @@
+{
+  "startedOn": "2026-11-02",
+  "clientTimezone": "America/Denver",
+  "baseCommit": "6112e2041",
+  "environment": {
+    "frontend": "http://127.0.0.1:8273",
+    "api": "http://127.0.0.1:8281/api",
+    "database": "uten-mobile-review-20261102-pg16:5548"
+  },
+  "classification": "Actual UI and live local HTTP evidence only; existing automated tests recorded separately",
+  "sourcePages": [
+    {
+      "source": "lib/features/admin/pages/admin_ai_settings_page.dart",
+      "module": "admin",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/admin/pages/admin_ai_usage_page.dart",
+      "module": "admin",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/admin/pages/admin_ai_usage_person_page.dart",
+      "module": "admin",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/admin/pages/admin_ai_usage_records_page.dart",
+      "module": "admin",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/admin/pages/admin_audit_log_page.dart",
+      "module": "admin",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/admin/pages/admin_audit_session_detail_page.dart",
+      "module": "admin",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/admin/pages/admin_permissions_page.dart",
+      "module": "admin",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/admin/pages/admin_platform_settings_page.dart",
+      "module": "admin",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/admin/pages/admin_sms_settings_page.dart",
+      "module": "admin",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/admin/pages/admin_system_settings_page.dart",
+      "module": "admin",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/admin/pages/server_operations_page.dart",
+      "module": "admin",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/admin/pages/server_status_page.dart",
+      "module": "admin",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/admin/pages/server_storage_page.dart",
+      "module": "admin",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/auth/pages/change_password_page.dart",
+      "module": "auth",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/auth/pages/login_page.dart",
+      "module": "auth",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/account_detail_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/account_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/account_workspace_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/basic_data_hub_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/client_category_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/color_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/currency_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/goods_detail_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/goods_import_preview_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/goods_price_analysis_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/import_review_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/master_record_history_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/master_record_revision_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/mould_category_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/party_detail_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/payment_style_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/product_category_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/settlement_method_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/supplier_category_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/unit_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/basic_data/pages/warehouse_page.dart",
+      "module": "basic_data",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/client_update/client_release_publish_page.dart",
+      "module": "client_update",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/client_update/client_update_page.dart",
+      "module": "client_update",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/client_update/software_downloads_page.dart",
+      "module": "client_update",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/company_files/pages/company_files_page.dart",
+      "module": "company_files",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/dashboard/pages/dashboard_page.dart",
+      "module": "dashboard",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/department/pages/department_page.dart",
+      "module": "department",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/department/pages/my_department_page.dart",
+      "module": "department",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/disaster_recovery/disaster_recovery_page.dart",
+      "module": "disaster_recovery",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/employee/pages/employee_detail_page.dart",
+      "module": "employee",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/employee/pages/employee_edit_page.dart",
+      "module": "employee",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/employee/pages/employee_list_page.dart",
+      "module": "employee",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/employee/pages/employee_offboarding_workflow_page.dart",
+      "module": "employee",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/employee/pages/employee_onboarding_page.dart",
+      "module": "employee",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/expense/pages/expense_approval_detail_page.dart",
+      "module": "expense",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/expense/pages/expense_approval_list_page.dart",
+      "module": "expense",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/expense/pages/expense_claim_edit_page.dart",
+      "module": "expense",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/expense/pages/expense_detail_page.dart",
+      "module": "expense",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/expense/pages/expense_list_page.dart",
+      "module": "expense",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/expense/pages/expense_settings_page.dart",
+      "module": "expense",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_ar_ap_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_asset_workbench_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_assets_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_audit_center_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_doc_detail_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_doc_edit_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_doc_list_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_hub_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_procurement_approval_review_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_quote_review_list_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_quote_review_page.dart",
+      "module": "finance",
+      "status": "in-progress",
+      "events": [
+        "manager-quote-save-and-approve",
+        "review-dirty-primary-discoverability"
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_reconciliation_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_report_table_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_sales_order_review_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_sales_shipment_audit_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/pages/finance_statement_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "module": "finance",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/hr_profile/pages/hr_profile_change_detail_page.dart",
+      "module": "hr_profile",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+      "module": "hr_profile",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/hr_task/pages/hr_reconcile_page.dart",
+      "module": "hr_task",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/hr_task/pages/hr_task_list_page.dart",
+      "module": "hr_task",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/hr_task/pages/hr_workbench_page.dart",
+      "module": "hr_task",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/notice/pages/notice_detail_page.dart",
+      "module": "notice",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/notice/pages/notice_list_page.dart",
+      "module": "notice",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/notice/pages/notice_publish_page.dart",
+      "module": "notice",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "module": "operations_workbench",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/payroll/pages/payroll_generate_page.dart",
+      "module": "payroll",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/payroll/pages/payroll_review_page.dart",
+      "module": "payroll",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/payroll/pages/payroll_slip_detail_page.dart",
+      "module": "payroll",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/payroll/pages/payroll_slip_list_page.dart",
+      "module": "payroll",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_detail_page.dart",
+      "module": "procurement_iqc_rejection",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
+      "module": "procurement_iqc_rejection",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/material_analysis_child_shortage_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/material_analysis_order_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_actual_output_supplement_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_analysis_sales_order_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_board_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_chain_health_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_daily_report_create_recovery_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_daily_report_detail_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_daily_report_edit_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_daily_report_list_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_draw_request_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_execution_batch_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_hub_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_material_analysis_history_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_material_analysis_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_material_discovery_request_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_material_increment_pages.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_over_limit_pages.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_overproduction_rate_pages.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_plan_detail_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_plan_edit_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_plan_list_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_plan_summary_sheet_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_report_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/where_used_report_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/production/pages/workshop_material_reports_page.dart",
+      "module": "production",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/profile/pages/my_profile_changes_page.dart",
+      "module": "profile",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/profile/pages/profile_edit_page.dart",
+      "module": "profile",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/profile/pages/profile_page.dart",
+      "module": "profile",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_doc_detail_page.dart",
+      "module": "purchase",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_doc_edit_page.dart",
+      "module": "purchase",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "module": "purchase",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_hub_page.dart",
+      "module": "purchase",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_order_edit_page.dart",
+      "module": "purchase",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_report_page.dart",
+      "module": "purchase",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "module": "purchase",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/quality/pages/production_fqc_handling_page.dart",
+      "module": "quality",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/quality/pages/production_fqc_inspections_page.dart",
+      "module": "quality",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/quality/pages/quality_batch_approval_page.dart",
+      "module": "quality",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "module": "quality",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/quality/pages/quality_pending_disposal_page.dart",
+      "module": "quality",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/quality/pages/quality_task_center_page.dart",
+      "module": "quality",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/rd_task/pages/rd_task_page.dart",
+      "module": "rd_task",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/sales/pages/sales_doc_detail_page.dart",
+      "module": "sales",
+      "status": "in-progress",
+      "events": [
+        "quote-guidance-stage-fallback",
+        "ui-quote-submit-manager"
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_doc_edit_page.dart",
+      "module": "sales",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "module": "sales",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/sales/pages/sales_hub_page.dart",
+      "module": "sales",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/sales/pages/sales_manager_review_page.dart",
+      "module": "sales",
+      "status": "in-progress",
+      "events": [
+        "manager-filter-stack"
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "module": "sales",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/sales/pages/sales_report_page.dart",
+      "module": "sales",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/sales/pages/sales_scarcity_page.dart",
+      "module": "sales",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/sales/pages/sales_task_center_page.dart",
+      "module": "sales",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/security/pages/security_blacklist_page.dart",
+      "module": "security",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/security/pages/security_scan_page.dart",
+      "module": "security",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/security/pages/visitor_check_result_page.dart",
+      "module": "security",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/settings/pages/device_audit_receipts_page.dart",
+      "module": "settings",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/settings/pages/settings_page.dart",
+      "module": "settings",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/shell/pages/main_shell_page.dart",
+      "module": "shell",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/stock/counts/pages/stock_count_review_page.dart",
+      "module": "stock",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/stock/counts/pages/stock_count_session_page.dart",
+      "module": "stock",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/stock/pages/instant_inventory_overview_page.dart",
+      "module": "stock",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/stock/pages/instant_inventory_page.dart",
+      "module": "stock",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/stock/pages/stock_item_detail_page.dart",
+      "module": "stock",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "module": "subcontract",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "module": "subcontract",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_doc_detail_page.dart",
+      "module": "subcontract",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
+      "module": "subcontract",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_draw_request_page.dart",
+      "module": "subcontract",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_hub_page.dart",
+      "module": "subcontract",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_order_edit_page.dart",
+      "module": "subcontract",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "module": "subcontract",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "module": "subcontract",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/suggestion/pages/suggestion_detail_page.dart",
+      "module": "suggestion",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/suggestion/pages/suggestion_list_page.dart",
+      "module": "suggestion",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/suggestion/pages/suggestion_new_page.dart",
+      "module": "suggestion",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/visitor/pages/visitor_application_detail_page.dart",
+      "module": "visitor",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/visitor/pages/visitor_apply_page.dart",
+      "module": "visitor",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/visitor/pages/visitor_home_page.dart",
+      "module": "visitor",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/visitor/pages/visitor_login_page.dart",
+      "module": "visitor",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/visitor/pages/visitor_settings_page.dart",
+      "module": "visitor",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/visitor_approval/pages/my_visitors_page.dart",
+      "module": "visitor_approval",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/visitor_approval/pages/visitor_approval_detail_page.dart",
+      "module": "visitor_approval",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/visitor_approval/pages/visitor_approval_list_page.dart",
+      "module": "visitor_approval",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_bin_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_count_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_issue_batch_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_issue_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_setup_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/finance_arrival_exception_pages.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/inbound_arrival_registration_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/production_draw_batch_issue_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/production_finished_arrival_registration_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/production_finished_inbound_tasks_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/production_material_discovery_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/shelf_label_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/stock_doc_detail_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/stock_doc_edit_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_arrival_exceptions_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_document_history_detail_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_document_history_list_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_draw_task_center_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_hub_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_inbound_expectations_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_inbound_task_center_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_insight_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_material_return_batch_receive_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_quality_batch_stock_in_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_quality_pre_stock_in_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_quality_result_detail_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_sales_outbound_batch_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_sales_outbound_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_stock_batch_outbound_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_subcontract_outbound_batch_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_subcontract_outbound_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_task_center_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_weigh_count_page.dart",
+      "module": "warehouse",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/webinquiry/pages/website_inquiry_detail_page.dart",
+      "module": "webinquiry",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/webinquiry/pages/website_inquiry_list_page.dart",
+      "module": "webinquiry",
+      "status": "pending",
+      "events": []
+    },
+    {
+      "source": "lib/features/website_management/pages/website_management_page.dart",
+      "module": "website_management",
+      "status": "pending",
+      "events": []
+    }
+  ],
+  "businessCases": [],
+  "events": [
+    {
+      "id": "ui-quote-submit-manager",
+      "kind": "ui+live-readback",
+      "source": "lib/features/sales/pages/sales_doc_detail_page.dart",
+      "variant": "quote",
+      "result": "passed",
+      "billNo": "XB20261102000002",
+      "revision": 3,
+      "after": "PENDING_MANAGER",
+      "actions": [
+        "submit",
+        "confirm dialog",
+        "observe status and revision"
+      ],
+      "atUtc": "2026-11-02T16:29:49.300457+00:00"
+    },
+    {
+      "id": "manager-quote-save-and-approve",
+      "kind": "ui+live-readback",
+      "source": "lib/features/finance/pages/finance_quote_review_page.dart",
+      "variant": "SALES_MANAGER",
+      "result": "passed",
+      "billNo": "XB20261102000002",
+      "revision": 5,
+      "after": "PENDING_FINANCE",
+      "actions": [
+        "open manager queue",
+        "open quote",
+        "edit manager remark",
+        "confirm dirty guard",
+        "save revision 4",
+        "approve shown revision",
+        "observe return and queue removal"
+      ],
+      "precision": "qty 2.5, price 12.3456, discount 1, amount 30.864 unchanged",
+      "atUtc": "2026-11-02T16:29:49.300457+00:00",
+      "historyReadback": "Manager history tab shows the approved quote with actor and approval time; pending queue removed it."
+    },
+    {
+      "id": "quote-guidance-stage-fallback",
+      "kind": "ui-found-fix",
+      "source": "lib/features/sales/pages/sales_doc_detail_page.dart",
+      "variant": "PENDING_MANAGER / MANAGER_REJECTED",
+      "result": "fixed-awaiting-ui-recheck",
+      "finding": "pending manager displayed draft finance-submit instructions",
+      "fix": "stage-specific localized banner and draft/resubmission sequence; server flow unchanged",
+      "atUtc": "2026-11-02T16:29:49.300457+00:00"
+    },
+    {
+      "id": "review-dirty-primary-discoverability",
+      "kind": "ui-found-fix",
+      "source": "lib/features/finance/pages/finance_quote_review_page.dart",
+      "variant": "dirty narrow review",
+      "result": "fixed-awaiting-ui-recheck",
+      "finding": "save hidden in overflow while confirm stayed primary and refused dirty submission",
+      "fix": "shared floating action group can promote save as narrow primary; desktop order retained",
+      "atUtc": "2026-11-02T16:29:49.300457+00:00"
+    },
+    {
+      "id": "manager-filter-stack",
+      "kind": "ui-found-fix",
+      "source": "lib/features/sales/pages/sales_manager_review_page.dart",
+      "result": "fixed-awaiting-ui-recheck",
+      "finding": "icon search retained its own old row below short status tabs",
+      "fix": "compact filter toolbar lays category and search icon in one left-aligned wrap",
+      "atUtc": "2026-11-02T16:29:49.300457+00:00"
+    },
+    {
+      "id": "compact-menu-and-summary-ui",
+      "atUtc": "2026-11-02T16:49:28.805805+00:00",
+      "kind": "ui+component-regression",
+      "source": "lib/components/data_display/uten_selection_summary_pill.dart",
+      "result": "passed",
+      "findings": "selected summary uses compact 36px painted control with 48px target, current count and clear callback preserved; default desktop implementation unchanged"
+    },
+    {
+      "id": "content-sized-action-menus",
+      "atUtc": "2026-11-02T16:49:28.805805+00:00",
+      "kind": "ui+component-regression",
+      "source": "lib/components/layout/uten_app_bar.dart",
+      "result": "passed",
+      "findings": "Top-right menu sizes to two actions instead of a half-screen sheet; original claim/revision/Consumer lifetime guards retained. Inline action menus size to labels, scroll within available bounds, and retain pending controls."
+    },
+    {
+      "id": "left-cluster-reduced-spacing",
+      "atUtc": "2026-11-02T16:49:28.805805+00:00",
+      "kind": "ui+component-regression",
+      "source": "lib/components/layout/uten_filter_toolbar.dart",
+      "result": "passed",
+      "findings": "Compact table actions use left alignment and 4px wrap spacing. Short status tabs and search icon now share one row; desktop layout branches unchanged."
+    }
+  ],
+  "handoff": {
+    "requestedByUser": true,
+    "reason": "User asked to wrap up and will test later. Further document creation/approval was stopped.",
+    "quote": {
+      "billNo": "XB20261102000002",
+      "id": "a6adb7b1-5e8f-461e-a83b-87f875321bb1",
+      "reviewRevision": 5,
+      "managerReview": "APPROVED",
+      "statusBucket": "PENDING_FINANCE",
+      "quantity": "2.5",
+      "price": "12.3456",
+      "discount": "1",
+      "amount": "30.864"
+    },
+    "notCompleted": [
+      "finance pricing confirmation",
+      "customer acceptance and order conversion",
+      "other document chains and remaining page UI acceptance",
+      "real attachment upload; local safety gate remains closed"
+    ]
+  },
+  "checks": {
+    "flutterWrapup": {
+      "passed": 1784,
+      "skipped": 2,
+      "failed": 0,
+      "log": "build-responsive-wrapup-tests.log"
+    },
+    "quoteGuidanceFinal": {
+      "passed": 19,
+      "failed": 0,
+      "log": "build-responsive-wrapup-quote-guidance-final.log"
+    },
+    "analysis": {
+      "result": "No issues found",
+      "log": "build-responsive-wrapup-clean-analyze.log"
+    },
+    "note": "Test sets overlap; do not add these numbers or treat source inventory as actual UI acceptance."
+  }
+}

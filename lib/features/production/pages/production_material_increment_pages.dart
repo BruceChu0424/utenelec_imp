@@ -1,3 +1,5 @@
+import '../../../core/responsive/compact_presentation.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'dart:math' as math;
@@ -656,7 +658,43 @@ class _IncrementDetailState
     final planner = admin || permissions.contains(Perm.productionPlanApprove);
     final workshop =
         admin || permissions.contains(Perm.productionExecutionView);
+    final compact = UtenCompactPresentation.of(context);
+    final decisionActions = <Widget>[
+      if (detail != null) ...[
+        if (detail.status == 'APPROVED' && workshop)
+          OutlinedButton(
+            onPressed: () => context.push(RouteName.productionWorkshopTasks),
+            child: const Text('查看车间任务'),
+          ),
+        if (detail.status == 'APPROVED' && !workshop && planner)
+          OutlinedButton(
+            onPressed: () =>
+                context.push(RouteName.productionMaterialIncrementRequests),
+            child: const Text('返回审批列表'),
+          ),
+        if (detail.canReturn)
+          OutlinedButton(
+            onPressed: _busy ? null : () => _decide(false),
+            child: const Text('退回'),
+          ),
+        if (detail.canCancel)
+          OutlinedButton(
+            onPressed: _busy ? null : _cancel,
+            child: const Text('撤销用料授权'),
+          ),
+        if (detail.canApprove)
+          FilledButton(
+            onPressed: _busy || !validSnapshots ? null : () => _decide(true),
+            child: const Text('审批通过'),
+          ),
+      ],
+    ];
     return Scaffold(
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: compact && decisionActions.isNotEmpty
+          ? UtenFloatingActionGroup(children: decisionActions)
+          : null,
       appBar: UtenAppBar(
         title: '追加用料审批',
         leading: UtenBackButton(
@@ -726,6 +764,9 @@ class _IncrementDetailState
                           : UtenRevisionTable<Map<String, dynamic>>(
                               tableKey:
                                   'features.production.pages.production_material_increment_pages.IncrementDetailState.build.1',
+                              bottomContentPadding: compact
+                                  ? UtenFloatingActionGroup.scrollClearance
+                                  : 0,
                               rows: [
                                 UtenRevisionRow(
                                   value: before.single,
@@ -758,49 +799,16 @@ class _IncrementDetailState
                               ],
                             ),
                     ),
-                    UtenPageEdgePadding(
-                      padding: const EdgeInsets.all(16),
-                      child: Wrap(
-                        alignment: WrapAlignment.end,
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          if (detail.status == 'APPROVED' && workshop)
-                            OutlinedButton(
-                              onPressed: () => context.push(
-                                RouteName.productionWorkshopTasks,
-                              ),
-                              child: const Text('查看车间任务'),
-                            ),
-                          if (detail.status == 'APPROVED' &&
-                              !workshop &&
-                              planner)
-                            OutlinedButton(
-                              onPressed: () => context.push(
-                                RouteName.productionMaterialIncrementRequests,
-                              ),
-                              child: const Text('返回审批列表'),
-                            ),
-                          if (detail.canReturn)
-                            OutlinedButton(
-                              onPressed: _busy ? null : () => _decide(false),
-                              child: const Text('退回'),
-                            ),
-                          if (detail.canCancel)
-                            OutlinedButton(
-                              onPressed: _busy ? null : _cancel,
-                              child: const Text('撤销用料授权'),
-                            ),
-                          if (detail.canApprove)
-                            FilledButton(
-                              onPressed: _busy || !validSnapshots
-                                  ? null
-                                  : () => _decide(true),
-                              child: const Text('审批通过'),
-                            ),
-                        ],
+                    if (!compact)
+                      UtenPageEdgePadding(
+                        padding: const EdgeInsets.all(16),
+                        child: Wrap(
+                          alignment: WrapAlignment.end,
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [...decisionActions],
+                        ),
                       ),
-                    ),
                   ],
                 ),
         ),

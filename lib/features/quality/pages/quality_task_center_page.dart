@@ -142,6 +142,7 @@ class QualityTaskCenterPage extends ConsumerWidget {
             ),
           ),
           UtenResponsiveGrid(
+            compactMinItemWidth: 132,
             itemCount: entries.length,
             spacing: UtenSpacing.s12,
             columns: const UtenResponsiveColumns(compact: 2, medium: 4),

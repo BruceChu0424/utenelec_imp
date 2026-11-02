@@ -1,5 +1,6 @@
 import '../../../shared/repositories/employee_reference_repository.dart';
 import '../../../shared/models/employee_reference.dart';
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
@@ -62,7 +63,7 @@ Future<bool> showFinanceAssetDetail(
     onDelete: onDelete,
   );
   if (compact) {
-    return await showModalBottomSheet<bool>(
+    return await showUtenModalBottomSheet<bool>(
           context: context,
           isScrollControlled: true,
           useSafeArea: true,
@@ -877,7 +878,7 @@ Future<FinanceAssetWorkflowRequest?> showFinanceAssetActionInput(
     expectedVersion: expectedVersion,
   );
   if (compact) {
-    return showModalBottomSheet<FinanceAssetWorkflowRequest>(
+    return showUtenModalBottomSheet<FinanceAssetWorkflowRequest>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,

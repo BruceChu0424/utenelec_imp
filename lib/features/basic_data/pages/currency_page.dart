@@ -1,3 +1,4 @@
+import '../../../components/layout/uten_compact_toolbar.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // 币种资料管理页（基础资料 · 扁平主档，无分类树）。
 //
@@ -979,114 +980,119 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
               child: UtenContentContainer(
                 child: Padding(
                   padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                  child: Column(
-                    children: [
-                      UtenPageEdgePadding(
-                        padding: const EdgeInsets.only(
-                          bottom: UtenSpacing.s8,
-                          left: UtenSpacing.s4,
-                          right: UtenSpacing.s4,
-                        ),
-                        child: UtenSearchBar(
-                          hint: '搜索币种(名称/编号)',
-                          initialValue: _keyword,
-                          onChanged: (value) =>
-                              inlineNavigate(() => _onKeywordChanged(value)),
-                        ),
-                      ),
-                      Expanded(
-                        child: MasterDataTableView<CurrencyListItem>(
-                          rowsController: _readViewportRows,
-                          expensiveRowMounts: inlineEdit.active,
-                          appendRowsSource: inlineAppendRowsSource,
-                          bottomContentPadding: (_canCreate || _canEdit)
-                              ? UtenFloatingActionGroup.scrollClearance
-                              : 0,
-                          columnEditingEnabled: _canEdit,
-                          tableKey:
-                              'features.basic_data.pages.currency_page.CurrencyPageState._buildDraftHost.1',
-                          columns: inlineColumns(_columns),
-                          serverColumnSearchKeys: const {
-                            'code',
-                            'name',
-                            'exchangeRate',
-                          },
-                          headerFilterScopeDescription: '检索全部币种；汇率按原始精度比较',
-                          requiredLeadingColumnKeys: const [
-                            'code',
-                            'name',
-                            'status',
-                          ],
-                          items: _page?.items ?? const [],
-                          selectable: true,
-                          idOf: (currency) =>
-                              currency.baseCurrency ? null : currency.id,
-                          selectedIds: _selectedCurrencyIds,
-                          onSelectedIdsChanged: (ids) {
-                            if (!_rowOpBusy) {
-                              setState(() => _selectedCurrencyIds = ids);
-                            }
-                          },
-                          batchActionsBuilder: _currencyFloatingActions,
-                          rowMenuBuilder: inlineEdit.active
-                              ? null
-                              : _currencyMenuItems,
-                          // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
-                          // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
-                          toolbarLeadingActions: [
-                            UtenPrintPreviewButton(
-                              title: '币种资料',
-                              subtitle: '当前筛选的完整结果',
-                              loader: _printLoader,
-                              exportEndpoint: '/master/currencies/export',
-                              exportPermission: Perm.currencyExport,
-                              exportReport: '',
-                              exportQuery: _exportQuery,
-                              exportFilename: '币种资料',
-                              type: UtenButtonType.primary,
-                              size: UtenButtonSize.large,
-                              icon: null,
+                  child: UtenResponsiveTableSearch(
+                    search: UtenSearchBar(
+                      hint: '搜索币种(名称/编号)',
+                      initialValue: _keyword,
+                      onChanged: (value) =>
+                          inlineNavigate(() => _onKeywordChanged(value)),
+                    ),
+                    builder: (context, searchAbove, searchInToolbar) => Column(
+                      children: [
+                        if (searchAbove != null)
+                          UtenPageEdgePadding(
+                            padding: const EdgeInsets.only(
+                              bottom: UtenSpacing.s8,
+                              left: UtenSpacing.s4,
+                              right: UtenSpacing.s4,
                             ),
-                            UtenExportButton(
-                              endpoint: '/master/currencies/export',
-                              requiredPermission: Perm.currencyExport,
-                              report: '',
-                              queryParams: _exportQuery,
-                              filename: '币种资料',
-                              label: '导出币种',
-                              type: UtenButtonType.primary,
-                              size: UtenButtonSize.large,
-                              icon: null,
+                            child: searchAbove,
+                          ),
+                        Expanded(
+                          child: MasterDataTableView<CurrencyListItem>(
+                            rowsController: _readViewportRows,
+                            expensiveRowMounts: inlineEdit.active,
+                            appendRowsSource: inlineAppendRowsSource,
+                            bottomContentPadding: (_canCreate || _canEdit)
+                                ? UtenFloatingActionGroup.scrollClearance
+                                : 0,
+                            columnEditingEnabled: _canEdit,
+                            tableKey:
+                                'features.basic_data.pages.currency_page.CurrencyPageState._buildDraftHost.1',
+                            columns: inlineColumns(_columns),
+                            serverColumnSearchKeys: const {
+                              'code',
+                              'name',
+                              'exchangeRate',
+                            },
+                            headerFilterScopeDescription: '检索全部币种；汇率按原始精度比较',
+                            requiredLeadingColumnKeys: const [
+                              'code',
+                              'name',
+                              'status',
+                            ],
+                            items: _page?.items ?? const [],
+                            selectable: true,
+                            idOf: (currency) =>
+                                currency.baseCurrency ? null : currency.id,
+                            selectedIds: _selectedCurrencyIds,
+                            onSelectedIdsChanged: (ids) {
+                              if (!_rowOpBusy) {
+                                setState(() => _selectedCurrencyIds = ids);
+                              }
+                            },
+                            batchActionsBuilder: _currencyFloatingActions,
+                            rowMenuBuilder: inlineEdit.active
+                                ? null
+                                : _currencyMenuItems,
+                            // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
+                            // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
+                            toolbarLeadingActions: [
+                              UtenPrintPreviewButton(
+                                title: '币种资料',
+                                subtitle: '当前筛选的完整结果',
+                                loader: _printLoader,
+                                exportEndpoint: '/master/currencies/export',
+                                exportPermission: Perm.currencyExport,
+                                exportReport: '',
+                                exportQuery: _exportQuery,
+                                exportFilename: '币种资料',
+                                type: UtenButtonType.primary,
+                                size: UtenButtonSize.large,
+                                icon: null,
+                              ),
+                              UtenExportButton(
+                                endpoint: '/master/currencies/export',
+                                requiredPermission: Perm.currencyExport,
+                                report: '',
+                                queryParams: _exportQuery,
+                                filename: '币种资料',
+                                label: '导出币种',
+                                type: UtenButtonType.primary,
+                                size: UtenButtonSize.large,
+                                icon: null,
+                              ),
+                              ?searchInToolbar,
+                            ],
+                            facets: _facets?.fields ?? const {},
+                            nullCounts: _facets?.nullCounts ?? const {},
+                            filters: _filters,
+                            onFilterChanged: (key, value) => inlineNavigate(
+                              () => _onFilterChanged(key, value),
                             ),
-                          ],
-                          facets: _facets?.fields ?? const {},
-                          nullCounts: _facets?.nullCounts ?? const {},
-                          filters: _filters,
-                          onFilterChanged: (key, value) => inlineNavigate(
-                            () => _onFilterChanged(key, value),
-                          ),
-                          onRowTap: inlineEdit.active
-                              ? null
-                              : (c) => _showDetail(c.id),
-                          sortColumn: _sortKey,
-                          sortAscending: _sortAsc,
-                          onSortChange: (key, ascending) => inlineNavigate(
-                            () => _onSortChange(key, ascending),
-                          ),
-                          isLoading: _loading && _page == null,
-                          loadingMore: _loading && _page != null,
-                          error: _error,
-                          onRetry: () => _loadCurrencies(_visibleReadPage),
-                          emptyMessage: '暂无币种',
-                          currentPage: _page?.page ?? 1,
-                          totalPages: _page?.totalPages ?? 1,
-                          paginationScope: _keyword,
-                          onPageChange: (p) => inlineNavigate(
-                            () => _loadCurrencies(p, useCache: true),
+                            onRowTap: inlineEdit.active
+                                ? null
+                                : (c) => _showDetail(c.id),
+                            sortColumn: _sortKey,
+                            sortAscending: _sortAsc,
+                            onSortChange: (key, ascending) => inlineNavigate(
+                              () => _onSortChange(key, ascending),
+                            ),
+                            isLoading: _loading && _page == null,
+                            loadingMore: _loading && _page != null,
+                            error: _error,
+                            onRetry: () => _loadCurrencies(_visibleReadPage),
+                            emptyMessage: '暂无币种',
+                            currentPage: _page?.page ?? 1,
+                            totalPages: _page?.totalPages ?? 1,
+                            paginationScope: _keyword,
+                            onPageChange: (p) => inlineNavigate(
+                              () => _loadCurrencies(p, useCache: true),
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

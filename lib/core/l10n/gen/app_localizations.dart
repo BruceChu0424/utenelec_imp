@@ -11174,8 +11174,20 @@ abstract class AppLocalizations {
   /// No description provided for @salesQuoteStatusBannerDraft.
   ///
   /// In zh, this message translates to:
-  /// **'草稿: 填好后点「提交财务核价」, 财务定好价格和折扣后才能转订货单。'**
+  /// **'草稿：先提交负责人审核，通过后转财务核价；核价完成并经客户确认后可转订货。'**
   String get salesQuoteStatusBannerDraft;
+
+  /// No description provided for @salesQuoteStatusBannerManagerRejected.
+  ///
+  /// In zh, this message translates to:
+  /// **'负责人已驳回：{reason}。修改后请重新提交负责人审核。'**
+  String salesQuoteStatusBannerManagerRejected(String reason);
+
+  /// No description provided for @salesQuoteStatusBannerManagerPending.
+  ///
+  /// In zh, this message translates to:
+  /// **'等待销售负责人审核，通过后转交财务核价。需修改请先撤回。'**
+  String get salesQuoteStatusBannerManagerPending;
 
   /// No description provided for @salesQuoteStatusBannerPending.
   ///
@@ -11186,7 +11198,7 @@ abstract class AppLocalizations {
   /// No description provided for @salesQuoteStatusBannerReturned.
   ///
   /// In zh, this message translates to:
-  /// **'财务退回: {reason}。改好后再提交财务核价。'**
+  /// **'财务退回: {reason}。修改后请重新提交负责人审核。'**
   String salesQuoteStatusBannerReturned(String reason);
 
   /// No description provided for @salesQuoteStatusBannerConfirmed.
@@ -11306,13 +11318,13 @@ abstract class AppLocalizations {
   /// No description provided for @salesQuoteStatusWithdrawConfirmBody.
   ///
   /// In zh, this message translates to:
-  /// **'撤回后报价回到草稿, 可以继续修改; 改好后需要重新提交财务核价。确定撤回?'**
+  /// **'撤回后回到草稿，可以继续修改；修改后需重新提交负责人审核。确定撤回？'**
   String get salesQuoteStatusWithdrawConfirmBody;
 
   /// No description provided for @salesQuoteStatusReopenConfirmBody.
   ///
   /// In zh, this message translates to:
-  /// **'财务已经核好价格。重新修改会让报价回到草稿, 改完要再交财务核价才能转订货单。确定重新修改?'**
+  /// **'财务已经核价。重新修改后将回到草稿，需要重新经过负责人审核和财务核价，才能再转订货单。继续？'**
   String get salesQuoteStatusReopenConfirmBody;
 
   /// No description provided for @salesQuoteStatusDeleteConfirmBody.
@@ -11354,7 +11366,7 @@ abstract class AppLocalizations {
   /// No description provided for @salesQuoteStatusReopened.
   ///
   /// In zh, this message translates to:
-  /// **'已回到草稿, 改好后请重新提交财务核价'**
+  /// **'已回到草稿，改好后请重新提交负责人审核'**
   String get salesQuoteStatusReopened;
 
   /// No description provided for @salesQuoteStatusDeleted.

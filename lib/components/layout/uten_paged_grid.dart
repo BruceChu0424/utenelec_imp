@@ -26,6 +26,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../../core/responsive/compact_presentation.dart';
 import '../../core/ui/capsule_nav_metrics.dart';
 import 'uten_pagination.dart';
 import 'uten_responsive_grid.dart';
@@ -126,9 +127,15 @@ class _UtenPagedGridState<T> extends State<UtenPagedGrid<T>> {
     final start = (_page - 1) * widget.pageSize;
     final end = (start + widget.pageSize).clamp(0, widget.items.length);
     final pageLen = end - start;
+    final compact = UtenCompactPresentation.of(context);
 
     return Column(
       children: [
+        if (compact && totalPages > 1)
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: buildPager(context, totalPages),
+          ),
         Expanded(
           child: SingleChildScrollView(
             controller: _ctrl,
@@ -150,7 +157,7 @@ class _UtenPagedGridState<T> extends State<UtenPagedGrid<T>> {
         ),
         // compact 悬浮胶囊避让：翻页条钉在本组件 Column 底（即页面屏底），
         // 抬到胶囊上方；非 shell 内查不到 scope 取 0，位置不变。
-        if (totalPages > 1)
+        if (!compact && totalPages > 1)
           Padding(
             padding: EdgeInsets.only(
               bottom: UtenCapsuleNavScope.occlusionOf(context),

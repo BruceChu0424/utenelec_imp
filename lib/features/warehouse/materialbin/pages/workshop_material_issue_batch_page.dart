@@ -1089,6 +1089,7 @@ class _WorkshopMaterialIssueBatchPageState
       PopScope(
         canPop: !_saving,
         child: Scaffold(
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
           appBar: UtenAppBar(
             title: _isReturn ? '生产退料批量入库' : '生产领料批量出库',
             leading: UtenBackButton(enabled: !_saving, onPressed: _close),

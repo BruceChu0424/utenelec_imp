@@ -196,6 +196,7 @@ class SalesHubPage extends ConsumerWidget {
           UtenResponsiveGrid(
             itemCount: entries.length,
             spacing: UtenSpacing.s12,
+            compactMinItemWidth: 132,
             columns: const UtenResponsiveColumns(compact: 2, medium: 4),
             minItemWidth: entries.any((entry) => entry.badgeScope != null)
                 ? UtenHubCard.minimumBadgeRowWidth(context)

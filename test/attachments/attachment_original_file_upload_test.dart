@@ -182,12 +182,11 @@ void main() {
       await tester.tap(attachmentAddFilesButton());
       await tester.pump();
       expect(picker.calls, 1);
+      final addAction = tester.widget(attachmentAddFilesButton());
       expect(
-        tester
-            .widget<FilledButton>(
-              find.byWidgetPredicate((widget) => widget is FilledButton),
-            )
-            .onPressed,
+        addAction is FilledButton
+            ? addAction.onPressed
+            : (addAction as InkWell).onTap,
         isNull,
       );
       await tester.pumpWidget(const SizedBox.shrink());

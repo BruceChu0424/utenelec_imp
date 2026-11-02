@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -18,9 +19,8 @@ Future<void> showNoticeDetailDialog(
   // 此捕获，交 onActionNavigate 闭包携带——先关弹窗再用本 router 跳转。
   final router = GoRouter.of(context);
   if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<void>(
+    return showUtenModalBottomSheet<void>(
       context: context,
-      useRootNavigator: true,
       isScrollControlled: true,
       useSafeArea: true,
       showDragHandle: true,

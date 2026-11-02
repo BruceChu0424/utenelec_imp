@@ -6319,7 +6319,16 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get salesQuoteStatusBannerDraft =>
-      'Draft: when ready, tap \"Submit for finance pricing\". It can become an order only after finance sets the prices and discounts.';
+      'Draft: submit for sales manager review, then finance pricing. After pricing and customer acceptance, convert it to an order.';
+
+  @override
+  String salesQuoteStatusBannerManagerRejected(String reason) {
+    return 'Sales manager returned it: $reason. After editing, submit it for manager review again.';
+  }
+
+  @override
+  String get salesQuoteStatusBannerManagerPending =>
+      'Waiting for sales manager review, then finance pricing. Withdraw it before making changes.';
 
   @override
   String get salesQuoteStatusBannerPending =>
@@ -6327,7 +6336,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String salesQuoteStatusBannerReturned(String reason) {
-    return 'Returned by finance: $reason. Fix it and submit for finance pricing again.';
+    return 'Returned by finance: $reason. After editing, submit it for sales manager review again.';
   }
 
   @override
@@ -6395,11 +6404,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get salesQuoteStatusWithdrawConfirmBody =>
-      'The quote goes back to draft so you can keep editing; submit it for pricing again afterwards. Withdraw now?';
+      'Withdraw this quote to edit the draft? Submit it for sales manager review again after editing.';
 
   @override
   String get salesQuoteStatusReopenConfirmBody =>
-      'Finance has already priced this quote. Editing again returns it to draft, and it must be priced again before it can become an order. Continue?';
+      'Finance has priced this quote. Reopening returns it to draft and requires sales manager review and finance pricing again before conversion. Continue?';
 
   @override
   String get salesQuoteStatusDeleteConfirmBody =>
@@ -6423,7 +6432,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get salesQuoteStatusReopened =>
-      'Back to draft; submit for pricing again when ready';
+      'Returned to draft. Submit it for sales manager review again after editing.';
 
   @override
   String get salesQuoteStatusDeleted => 'Deleted';

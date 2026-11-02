@@ -247,6 +247,7 @@ class _FinanceAssetWorkbenchPageState
     // Overview and restrictions scroll away to leave room for the ledger.
     // Compact/short viewports use the shared whole-page scrolling fallback.
     return Scaffold(
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton:
           capabilities.canEdit && _tabIndex < 2 && !_ledgerFullscreen

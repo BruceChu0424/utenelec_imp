@@ -22,6 +22,7 @@ import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_action_overflow.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -769,8 +770,7 @@ class _SubcontractShortDeliveryPageState
             value: (c) => c.canDecide ? '分批到货 / 接受损耗' : '—',
             cellBuilderHandlesSemantics: true,
             cellBuilder: (context, c) => c.canDecide && c.isOpen
-                ? Row(
-                    mainAxisSize: MainAxisSize.min,
+                ? UtenResponsiveActionWrap(
                     children: [
                       UtenButton(
                         key: ValueKey('short-delivery-wait-${c.id}'),
@@ -782,7 +782,6 @@ class _SubcontractShortDeliveryPageState
                             : () => _decide(c, decision: 'WAIT_MORE'),
                         child: const Text('分批到货'),
                       ),
-                      const SizedBox(width: UtenSpacing.s8),
                       UtenButton(
                         key: ValueKey('short-delivery-accept-${c.id}'),
                         type: UtenButtonType.danger,

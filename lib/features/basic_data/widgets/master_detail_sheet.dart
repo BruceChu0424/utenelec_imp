@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 // 主档通用详情面板（货品/模具/客户/供应商 共用）。
 //
 // 替代各页内联 _openXxxDialog + _row：调用方按期望顺序传入 [MasterDetailRow] 列表，
@@ -96,7 +97,7 @@ Future<void> showMasterDetailSheet({
     isCurrent: isCurrent,
   );
   if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<void>(
+    return showUtenModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,

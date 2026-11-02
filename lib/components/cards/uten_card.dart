@@ -15,6 +15,7 @@ import '../../core/performance/performance_tier.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/brand_theme.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../core/responsive/compact_presentation.dart';
 import '../../shared/providers/performance_provider.dart';
 
 class UtenCard extends ConsumerWidget {
@@ -106,7 +107,10 @@ class UtenCard extends ConsumerWidget {
     // - 圆角裁剪：Material.clipBehavior（替换 Container 的 BoxDecoration.borderRadius）
     // - 阴影：   外层 DecoratedBox（Material 3 elevation 走的是 surface tint
     //          而非传统阴影，不能直接复刻 UtenElevation 的极轻双层阴影）
-    Widget content = Padding(padding: padding, child: child);
+    Widget content = Padding(
+      padding: UtenCompactPresentation.padding(context, padding),
+      child: child,
+    );
 
     // 卡片自带的 onTap/onLongPress：InkWell 必须放在 Material 内部，
     // 这样 ripple 才会画在卡片这张 Material 上（而不是更外层）。

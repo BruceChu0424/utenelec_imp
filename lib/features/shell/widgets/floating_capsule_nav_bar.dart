@@ -96,11 +96,10 @@ class FloatingCapsuleNavBar extends StatelessWidget {
     // itemWidth 上限：保证 n 格 + (n-1) 间距不超出 maxInner；
     // 上限同样随字号档放大（与 calcItemWidth 一致），避免大字号标签被裁。
     final maxItemCap = _maxItemWidth * textScaler.scale(1);
-    final maxItemW = ((maxInner - (n - 1) * _gap) / n).floorToDouble();
-    final itemWidth = rawItemWidth.clamp(
-      _minItemWidth,
-      maxItemW.clamp(_minItemWidth, maxItemCap),
-    );
+    final maxItemW = ((maxInner - (n - 1) * _gap) / n)
+        .clamp(0.0, maxItemCap)
+        .floorToDouble();
+    final itemWidth = rawItemWidth.clamp(0.0, maxItemW);
     final innerWidth = n * itemWidth + (n - 1) * _gap;
     // 外壳宽度 = 内容区 + padding + 描边（与内部算式完全一致）
     final outerWidth = innerWidth + _hPadding + _hBorder;

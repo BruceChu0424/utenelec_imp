@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 // 通知详情互动区：
 // - acknowledge 模式：「点击收到」按钮 + N 人已收到 + 近期收到人。
 // - bless 模式：送上祝福 composer（模板 chips + 输入 + 发送）+ 近期祝福 + 查看全部（祝福墙）。
@@ -284,7 +285,7 @@ class _BlessSectionState extends ConsumerState<_BlessSection> {
   }
 
   void _showWall(BuildContext context, WidgetRef ref) {
-    showModalBottomSheet<void>(
+    showUtenModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,

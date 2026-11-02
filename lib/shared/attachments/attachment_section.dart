@@ -21,6 +21,7 @@ import '../../components/layout/uten_section_header.dart';
 import '../../components/layout/uten_segment_row.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../core/responsive/compact_presentation.dart';
 import '../../core/ui/app_notification.dart';
 import '../../core/utils/china_datetime.dart';
 import '../auth/permissions.dart';
@@ -173,7 +174,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
                       : _countBadge(theme, widget.attachments.length),
                 ),
               ),
-              if (canUpload) ...[
+              if (canUpload && !UtenCompactPresentation.of(context)) ...[
                 const SizedBox(width: UtenSpacing.s8),
                 FilledButton.tonal(
                   onPressed: _busy ? null : _pickAndUpload,
@@ -202,6 +203,12 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
                 ],
               ),
             ),
+          if (canUpload &&
+              widget.attachments.isNotEmpty &&
+              UtenCompactPresentation.of(context)) ...[
+            const SizedBox(height: UtenSpacing.s8),
+            _uploadDropzone(theme),
+          ],
           if (showFilter) ...[
             const SizedBox(height: UtenSpacing.s8),
             _filterRow(theme, usedCategories, filter),
@@ -309,11 +316,15 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
   /// 可管理时的空态：虚线上传区，整块可点击直接选文件。
   Widget _uploadDropzone(ThemeData theme) {
     return InkWell(
+      key: const ValueKey('attachment-upload-dropzone'),
       borderRadius: UtenRadius.mdAll,
       onTap: _busy ? null : _pickAndUpload,
       child: DashedContainer(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          padding: EdgeInsets.symmetric(
+            horizontal: UtenCompactPresentation.of(context) ? 12 : 16,
+            vertical: UtenCompactPresentation.of(context) ? 12 : 20,
+          ),
           child: Row(
             children: [
               Container(

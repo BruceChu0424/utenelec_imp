@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 // PositionManagerSheet - 部门岗位管理（HR 增删改）
 //
 // 从部门管理页的部门节点「岗位」入口打开。列出该部门岗位（按 sortOrder），
@@ -76,7 +77,7 @@ Future<void> showPositionManagerSheet(
   BuildContext context,
   DepartmentNode node,
 ) {
-  return showModalBottomSheet<void>(
+  return showUtenModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     builder: (ctx) => Padding(

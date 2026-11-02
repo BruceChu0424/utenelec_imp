@@ -13,6 +13,10 @@
 
 import 'package:flutter/widgets.dart';
 
+abstract final class UtenFloatingOverlayMetrics {
+  static const double actionScrollClearance = 200;
+}
+
 /// 胶囊导航遮挡信息：仅在 compact 外壳（MainShellPage）内可查到。
 class UtenCapsuleNavScope extends InheritedWidget {
   const UtenCapsuleNavScope({
@@ -36,7 +40,10 @@ class UtenCapsuleNavScope extends InheritedWidget {
 
   /// 外壳注入用：按当前 MediaQuery 手势条高度算遮挡总高。
   static double computeOcclusion(BuildContext context) {
-    return navHeight + breathing + MediaQuery.paddingOf(context).bottom;
+    return navHeight +
+        bottomOffset +
+        breathing +
+        MediaQuery.paddingOf(context).bottom;
   }
 
   /// 查询点：不在 compact 外壳内（medium+ / 弹窗 / 抽屉）= 0。

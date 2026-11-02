@@ -5984,14 +5984,23 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get salesQuoteStatusBannerDraft =>
-      '草稿: 填好后点「提交财务核价」, 财务定好价格和折扣后才能转订货单。';
+      '草稿：先提交负责人审核，通过后转财务核价；核价完成并经客户确认后可转订货。';
+
+  @override
+  String salesQuoteStatusBannerManagerRejected(String reason) {
+    return '负责人已驳回：$reason。修改后请重新提交负责人审核。';
+  }
+
+  @override
+  String get salesQuoteStatusBannerManagerPending =>
+      '等待销售负责人审核，通过后转交财务核价。需修改请先撤回。';
 
   @override
   String get salesQuoteStatusBannerPending => '已提交财务核价, 正在等财务定价格。需要改内容请先「撤回」。';
 
   @override
   String salesQuoteStatusBannerReturned(String reason) {
-    return '财务退回: $reason。改好后再提交财务核价。';
+    return '财务退回: $reason。修改后请重新提交负责人审核。';
   }
 
   @override
@@ -6058,11 +6067,11 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get salesQuoteStatusWithdrawConfirmBody =>
-      '撤回后报价回到草稿, 可以继续修改; 改好后需要重新提交财务核价。确定撤回?';
+      '撤回后回到草稿，可以继续修改；修改后需重新提交负责人审核。确定撤回？';
 
   @override
   String get salesQuoteStatusReopenConfirmBody =>
-      '财务已经核好价格。重新修改会让报价回到草稿, 改完要再交财务核价才能转订货单。确定重新修改?';
+      '财务已经核价。重新修改后将回到草稿，需要重新经过负责人审核和财务核价，才能再转订货单。继续？';
 
   @override
   String get salesQuoteStatusDeleteConfirmBody => '确定删除这张报价草稿? 删除后不能恢复。';
@@ -6084,7 +6093,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get salesQuoteStatusWithdrawn => '已撤回, 可以继续修改';
 
   @override
-  String get salesQuoteStatusReopened => '已回到草稿, 改好后请重新提交财务核价';
+  String get salesQuoteStatusReopened => '已回到草稿，改好后请重新提交负责人审核';
 
   @override
   String get salesQuoteStatusDeleted => '已删除';

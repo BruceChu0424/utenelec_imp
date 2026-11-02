@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../../../shared/documents/document_unapproval.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
@@ -1190,7 +1191,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       return;
     }
     final names = ref.read(salesMasterNameServiceProvider);
-    await showModalBottomSheet<void>(
+    await showUtenModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -1708,6 +1709,18 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
     // 横幅与右侧状态徽章同一语义色(适老化基线: 黄=在财务手上、红=退回要本人改、
     // 绿=已核价、灰=草稿/作废); 底色和边框取语义主色, 文字取深浅主题各自够对比度的一档。
     final (Color accent, Color color, String text) = switch (stage) {
+      SalesQuoteStage.pendingManager => (
+        UtenColors.warning,
+        AiTone.warning(theme),
+        l10n.salesQuoteStatusBannerManagerPending,
+      ),
+      SalesQuoteStage.managerRejected => (
+        UtenColors.error,
+        AiTone.error(theme),
+        l10n.salesQuoteStatusBannerManagerRejected(
+          d.managerRejectReason ?? l10n.salesQuoteStatusReturned,
+        ),
+      ),
       SalesQuoteStage.financeRejected => (
         UtenColors.error,
         AiTone.error(theme),

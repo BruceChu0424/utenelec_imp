@@ -3,6 +3,7 @@ import '../../../features/basic_data/widgets/master_inline_edit.dart'
     show masterEditText;
 import '../../../shared/history/record_history_action.dart';
 import '../../../shared/history/record_history_area.dart';
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'dart:async';
 import 'dart:typed_data';
@@ -997,7 +998,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     // while the content area (sidebar + page padding removed) stays under it,
     // which used to leave both the side panel and the sheet unopened.
     if (_contentWidth < 1220) {
-      showModalBottomSheet<void>(
+      showUtenModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
         useSafeArea: true,

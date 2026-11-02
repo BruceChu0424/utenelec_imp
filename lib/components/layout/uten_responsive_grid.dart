@@ -15,6 +15,7 @@
 // 仍按从左到右、从上到下的顺序阅读，与 Wrap 版一致。
 
 import 'package:flutter/material.dart';
+import '../../core/responsive/compact_presentation.dart';
 
 /// Uten 自适应瀑布流网格
 ///
@@ -45,6 +46,7 @@ class UtenResponsiveGrid extends StatelessWidget {
     this.maxColumns = 6,
     this.minColumns = 1,
     this.minItemWidth = 220,
+    this.compactMinItemWidth,
   }) : assert(minItemWidth == null || minItemWidth > 0);
 
   /// 子项总数
@@ -76,6 +78,7 @@ class UtenResponsiveGrid extends StatelessWidget {
   /// 内容所需的最小卡宽；有值时在容器变窄或字体放大后减少列数。
   /// 即使配置了固定列数，也优先让内容完整可见；单列时使用可用宽度。
   final double? minItemWidth;
+  final double? compactMinItemWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -90,9 +93,12 @@ class UtenResponsiveGrid extends StatelessWidget {
                 .clamp(0.0, double.infinity);
         var cols = _resolveColumns(width).clamp(minColumns, maxColumns);
         final textScale = MediaQuery.textScalerOf(context).scale(14) / 14;
-        final minimum = minItemWidth == null
+        final itemMinimum = UtenCompactPresentation.of(context)
+            ? compactMinItemWidth ?? minItemWidth
+            : minItemWidth;
+        final minimum = itemMinimum == null
             ? null
-            : minItemWidth! * (textScale < 1 ? 1 : textScale);
+            : itemMinimum * (textScale < 1 ? 1 : textScale);
         if (minimum != null) {
           final fittingColumns = ((width + spacing) / (minimum + spacing))
               .floor()

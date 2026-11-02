@@ -16,7 +16,8 @@ import org.apache.commons.compress.archivers.zip.ZipFile;
 final class WindowsRuntimeProfileContract {
     static final String FILE = "data/uten-runtime-profile.json";
     private static final int MAX_BYTES = 16384;
-    private static final Set<String> KEYS = Set.of("schemaVersion", "buildProfile", "applicationId", "nativeProductName", "runtimeFamily");
+    private static final Set<String> KEYS = Set.of("schemaVersion", "buildProfile", "applicationId", "nativeProductName",
+            "displayName", "runtimeFamily", "networkScope", "selfUpdatesAllowed");
     private WindowsRuntimeProfileContract() { }
 
     static boolean required(ClientReleaseDto.Release release) {
@@ -55,7 +56,10 @@ final class WindowsRuntimeProfileContract {
         if (!"formal".equals(profile.path("buildProfile").asText())
                 || !"com.uten.uten_imp".equals(profile.path("applicationId").asText())
                 || !"优腾综合管理平台".equals(profile.path("nativeProductName").asText())
-                || !ClientRuntimeFamily.FLUTTER.equals(profile.path("runtimeFamily").asText()))
+                || !"UTEN".equals(profile.path("displayName").asText())
+                || !ClientRuntimeFamily.FLUTTER.equals(profile.path("runtimeFamily").asText())
+                || !"trusted-configured".equals(profile.path("networkScope").asText())
+                || !profile.path("selfUpdatesAllowed").isBoolean() || !profile.path("selfUpdatesAllowed").booleanValue())
             throw invalid("本地测试或身份不一致的客户端不能发布到正式软件目录");
         return true;
     }
@@ -73,12 +77,19 @@ final class WindowsRuntimeProfileContract {
     }
 
     static void peIdentity(Map<String, String> values, boolean required) {
+        rejectLocalTestPe(values);
+        String profile = values.get("utenbuildprofile");
+        if (profile != null && !required)
+            throw invalid("实际 PE 声明了新运行身份，不能移除对应身份清单后按历史包发布");
+        if (required && !"formal".equals(profile))
+            throw invalid("新 Windows 程序的实际 PE 缺少 formal 运行身份");
+    }
+
+    static void rejectLocalTestPe(Map<String, String> values) {
         String profile = values.get("utenbuildprofile");
         if (profile != null && !"formal".equals(profile)
                 || "UTEN Local Test".equals(values.get("productname")))
             throw invalid("本地测试程序不能发布到正式软件目录");
-        if (required && !"formal".equals(profile))
-            throw invalid("新 Windows 程序的实际 PE 缺少 formal 运行身份");
     }
 
     private static ApiException invalid(String message) { return new ApiException(ErrorCode.VALIDATION_FAILED, message); }

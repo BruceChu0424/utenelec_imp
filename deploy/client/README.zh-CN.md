@@ -109,6 +109,28 @@ Ed25519 发布摘要和 SHA-256 文件校验不能代替 Windows 发行者签名
 
 新版后端创建的 Windows 记录带 `deliveryContract=paired_v1`，只有同家族、架构、版本及构建号的安装包和更新包都通过并发布后，该组才进入软件下载、更新推荐和二进制下载。历史缺省记录保持旧行为，不读时补写或反向修改现役记录。Android 新 APK 的 `audited_v1` 使用包内版本及 ABI 校验；Apple 平台仍使用既有官方商店合同。新页面需要配套后端，不把旧后端返回当成完整配对已支持。
 
+#### Flutter 运行身份与同源安装器绑定
+
+Flutter Windows 2.5.44 起，正式 payload 必须含 `data/uten-runtime-profile.json`：
+
+```json
+{"schemaVersion":1,"buildProfile":"formal","applicationId":"com.uten.uten_imp","nativeProductName":"优腾综合管理平台","displayName":"UTEN","runtimeFamily":"flutter","networkScope":"trusted-configured","selfUpdatesAllowed":true}
+```
+
+该清单和 Windows EXE 的 `UtenBuildProfile`、`ProductName` 由同一个 Dart 运行身份生成。
+正式检查读取实际文件及 PE 资源；LocalTest 身份、字段冲突、缺失的新身份或重复 JSON 字段均拒绝。
+文件置于 `data/`，让现役 2.5.43 的固定更新器按已有运行数据白名单处理，更新 ZIP 不替换该更新器。
+只改输出文件名、CLI 模式或把公司 HTTPS 文本放进字节池都不能把 LocalTest 输入变成正式包。
+
+生产器先验证并冻结实际应用目录，编译并核验 Setup.exe，随后将该最终文件的真实 SHA-256
+写入更新 ZIP 清单的 `installerSha256`。Setup 内的首装清单不包含自身摘要，避免循环依赖。
+本地配对预检和服务端发布、推荐/下载、旧包清理统一核对此绑定；同版本/架构的另一个 Setup
+不能借同组元数据通过。任一份不一致时保留上一完整组及原请求审计，不清理其二进制。
+
+旧正式无运行身份清单的历史版本沿既有兼容规则处理；WPF 候选继续使用自己的六文件、配置、
+版本及运行时隔离合同，不套用 Flutter 的运行身份字段。这里验证实际字节的一致性及配对关系，
+不代替 Authenticode，也不声称证明任意压缩 Inno 程序的内部语义。
+
 首次使用新交付合同前，须同步审核服务器与备份/恢复工具；已有新合同记录的 catalog 不能交给不认识 `deliveryContract` 的旧 JAR 服务。仅支持运行时隔离的旧版本仍可能忽略配对门，暴露未完整的新组；因此回滚也必须保留新合同读取/推荐/下载/清理能力，不能靠删除字段伪装历史记录。
 
 队列保留每项原发布编号与结果。部分失败只处理未完成项；网络中断结果不明时先核对原记录，禁止换编号重复发布。发布草稿只保存原账号下的元数据与阶段，不保存文件内容、本地路径或认证材料；恢复需要时重选同一摘要文件。本分支源码与本机 fixture 证据不代表已部署、已上传正式包或 Win7 真机验收，详情见 [本轮实施记录](../../docs/99-项目治理/Win7兼容版/12-软件下载识别与独立批量发布.md)。

@@ -13,7 +13,7 @@ import zipfile
 
 import build_windows_installer as setup
 from package_windows import MANIFEST_NAME, UPDATER_PATH, inspect_executable, inspect_executable_info, required_vc_runtime
-from test_package_windows import fixture_executable, runtime_fixtures
+from test_package_windows import fixture_executable, generated_runtime_profile, runtime_fixtures
 
 
 def setup_fixture(*, architecture="x64", loader="x86", build=2531, strings=None, product_version=None,
@@ -71,6 +71,13 @@ class WindowsSetupSourceTest(unittest.TestCase):
         generated = Path(defines["OutputDir"]) / (defines["SetupBaseName"] + ".exe")
         generated.write_bytes(setup_fixture(local_test="/DLocalTest" in command))
         return subprocess.CompletedProcess(command, 0, "synthetic compiler boundary", "")
+
+    def local_test_runtime(self):
+        profile = generated_runtime_profile("local_test")
+        (self.bundle / "uten_imp.exe").write_bytes(fixture_executable(2531, version=(2, 5, 31),
+            strings={"CompanyName": "Uten", "ProductName": "UTEN Local Test", "OriginalFileName": "uten_imp.exe",
+                     "InternalName": "uten_imp", "UtenBuildProfile": "local_test"}))
+        (self.bundle / "data/uten-runtime-profile.json").write_text(json.dumps(profile), encoding="utf-8")
 
     def test_default_dry_run_validates_payload_and_never_calls_a_compiler(self):
         runner = mock.Mock(side_effect=AssertionError("Dry runs must never compile"))
@@ -131,6 +138,7 @@ class WindowsSetupSourceTest(unittest.TestCase):
             self.assertNotIn("dartjni.dll", archive.namelist())
 
     def test_local_test_dry_run_is_explicit_and_cannot_emit_a_production_update_zip(self):
+        self.local_test_runtime()
         plan = self.build(local_test=True)
         self.assertTrue(plan["localTest"])
         self.assertIn("/DLocalTest", plan["command"])
@@ -144,6 +152,7 @@ class WindowsSetupSourceTest(unittest.TestCase):
             setup.validate_setup(path, version="2.5.31", build_number=2531, architecture="x64")
         receipt = setup.validate_setup(path, version="2.5.31", build_number=2531, architecture="x64", local_test=True)
         self.assertTrue(receipt["localTest"])
+        self.local_test_runtime()
         result = self.build(compiler=self.compiler, compile=True, runner=self.fixture_compiler, local_test=True)
         self.assertTrue(result["localTest"])
 
@@ -172,11 +181,21 @@ class WindowsSetupSourceTest(unittest.TestCase):
 
     @unittest.skipUnless(os.environ.get("UTEN_TEST_ISCC"), "An explicitly supplied verified ISCC is required")
     def test_actual_verified_iscc_compiles_only_an_isolated_synthetic_local_test_installer(self):
+        self.local_test_runtime()
         result = self.build(compiler=Path(os.environ["UTEN_TEST_ISCC"]), compile=True, local_test=True)
         self.assertTrue(result["localTest"])
         self.assertGreater(result["sizeBytes"], 0)
         with self.assertRaises(ValueError):
             setup.validate_setup(self.output, version="2.5.31", build_number=2531, architecture="x64")
+
+    def test_cli_local_test_cannot_relabel_a_formal_runtime_payload(self):
+        with self.assertRaisesRegex(ValueError, "actual LocalTest runtime|generated runtime metadata"):
+            self.build(local_test=True)
+
+    def test_formal_setup_resources_cannot_cover_an_actual_local_test_marker(self):
+        path = self.write_setup(setup_fixture(strings={"UtenBuildProfile": "local_test"}))
+        with self.assertRaisesRegex(ValueError, "actual runtime profile"):
+            setup.validate_setup(path, version="2.5.31", build_number=2531, architecture="x64")
 
     def test_command_keeps_spaced_paths_in_single_arguments_and_separates_payload_architecture(self):
         command = setup.compiler_command(self.compiler, self.bundle, self.root / "compiler output", "UIMPSetup",
@@ -266,8 +285,11 @@ class WindowsSetupSourceTest(unittest.TestCase):
     def test_paired_compile_uses_one_snapshot_and_excludes_the_fixed_updater_from_the_update(self):
         original = (self.bundle / "data/app.so").read_bytes()
         calls = []
+        bootstrap = []
         def compiler_boundary(command, **options):
             calls.append(command)
+            defines = dict(argument[2:].split("=", 1) for argument in command if argument.startswith("/D") and "=" in argument)
+            bootstrap.append(json.loads((Path(defines["PayloadDir"]) / MANIFEST_NAME).read_text(encoding="utf-8")))
             # Model the original build folder changing after its private snapshot
             # was captured; neither deliverable may reread this external folder.
             (self.bundle / "data/app.so").write_bytes(b"later unrelated build output")
@@ -285,6 +307,8 @@ class WindowsSetupSourceTest(unittest.TestCase):
             manifest = json.loads(archive.read(MANIFEST_NAME))
             self.assertEqual("update", manifest["packageKind"])
             self.assertEqual(receipt["version"], manifest["version"])
+            self.assertEqual(hashlib.sha256(self.output.read_bytes()).hexdigest(), manifest["installerSha256"])
+        self.assertNotIn("installerSha256", bootstrap[0])
         for path, result in ((self.output, receipt), (self.update_output, receipt["updatePackage"])):
             self.assertEqual(str(path), result["package"])
             self.assertEqual(path.stat().st_size, result["sizeBytes"])

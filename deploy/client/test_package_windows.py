@@ -16,6 +16,11 @@ from package_windows import (MANIFEST_NAME, UPDATER_PATH, inspect_executable, in
                              package_release, required_vc_runtime, validate_package, validate_release_path)
 
 
+def generated_runtime_profile(name: str) -> dict:
+    fixture = Path(__file__).resolve().parents[2] / "server/src/test/resources/clientupdates/runtime-profile-v1" / (name + ".json")
+    return json.loads(fixture.read_text(encoding="utf-8"))
+
+
 def version_block(key: str, value: bytes = b"", *, value_length: int = 0,
                   kind: int = 1, children: tuple[bytes, ...] = ()) -> bytes:
     result = bytearray(struct.pack("<HHH", 0, value_length, kind) + (key + "\0").encode("utf-16le"))
@@ -120,6 +125,90 @@ class WindowsPackageTest(unittest.TestCase):
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def profiled_runtime(self, name="formal", *, version=(2, 5, 44), build=2544):
+        profile = generated_runtime_profile(name)
+        strings = {"UtenBuildProfile": profile["buildProfile"], "ProductName": profile["nativeProductName"],
+                   "CompanyName": "Uten", "InternalName": "uten_imp", "OriginalFilename": "uten_imp.exe"}
+        (self.bundle / "uten_imp.exe").write_bytes(fixture_executable(build, version=version, strings=strings))
+        (self.bundle / package_module.RUNTIME_PROFILE_PATH).write_text(json.dumps(profile), encoding="utf-8")
+        return profile, strings
+
+    def rewrite_archive(self, changes):
+        with zipfile.ZipFile(self.output) as archive:
+            entries = {name: archive.read(name) for name in archive.namelist()}
+        manifest = json.loads(entries.pop(MANIFEST_NAME))
+        for name, data in changes.items():
+            if data is None:
+                entries.pop(name)
+            else:
+                entries[name] = data
+        manifest["files"] = [{"path": name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+                             for name, data in entries.items()]
+        with zipfile.ZipFile(self.output, "w") as archive:
+            for name, data in entries.items():
+                archive.writestr(name, data)
+            archive.writestr(MANIFEST_NAME, json.dumps(manifest))
+
+    def test_actual_dart_eight_field_profile_and_native_identity_are_required_together(self):
+        profile, _ = self.profiled_runtime()
+        receipt = package_release(self.bundle, self.output, build_number=2544, architecture="x64", installer_sha256="a" * 64)
+        self.assertEqual(profile, receipt["runtimeProfile"])
+        self.assertEqual("a" * 64, validate_package(self.output, build_number=2544, architecture="x64")["installerSha256"])
+        for field, value in (("displayName", "other"), ("networkScope", "loopback-only"),
+                             ("selfUpdatesAllowed", 1), ("schemaVersion", True), ("unknown", "field")):
+            with self.subTest(field=field):
+                changed = dict(profile, **{field: value})
+                (self.bundle / package_module.RUNTIME_PROFILE_PATH).write_text(json.dumps(changed), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "eight-field identity"):
+                    package_release(self.bundle, self.output, build_number=2544, architecture="x64", installer_sha256="a" * 64)
+        (self.bundle / package_module.RUNTIME_PROFILE_PATH).write_text(json.dumps(profile)[:-1] + ',"buildProfile":"formal"}', encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Duplicate JSON field"):
+            package_release(self.bundle, self.output, build_number=2544, architecture="x64", installer_sha256="a" * 64)
+
+    def test_actual_local_test_payload_has_only_an_explicit_private_packaging_path(self):
+        profile, _ = self.profiled_runtime("local_test")
+        with self.assertRaisesRegex(ValueError, "LocalTest runtime"):
+            package_release(self.bundle, self.output, build_number=2544, architecture="x64")
+        receipt = package_release(self.bundle, self.output, build_number=2544, architecture="x64", allow_local_test=True)
+        self.assertEqual(profile, receipt["runtimeProfile"])
+        validate_package(self.output, build_number=2544, architecture="x64", allow_local_test=True)
+        with self.assertRaisesRegex(ValueError, "LocalTest runtime"):
+            validate_package(self.output, build_number=2544, architecture="x64")
+
+    def test_rehashed_zip_cannot_swap_actual_local_test_pe_or_remove_profile(self):
+        _, strings = self.profiled_runtime()
+        for tamper in ("local-pe", "remove-profile", "missing-field"):
+            with self.subTest(tamper=tamper):
+                package_release(self.bundle, self.output, build_number=2544, architecture="x64", installer_sha256="a" * 64)
+                if tamper == "local-pe":
+                    changes = {"uten_imp.exe": fixture_executable(2544, version=(2, 5, 44),
+                               strings=dict(strings, UtenBuildProfile="local_test", ProductName="UTEN Local Test"))}
+                elif tamper == "remove-profile":
+                    changes = {package_module.RUNTIME_PROFILE_PATH: None}
+                else:
+                    profile = generated_runtime_profile("formal")
+                    del profile["networkScope"]
+                    changes = {package_module.RUNTIME_PROFILE_PATH: json.dumps(profile).encode()}
+                self.rewrite_archive(changes)
+                with self.assertRaisesRegex(ValueError, "PE identity|runtime metadata|eight-field identity"):
+                    validate_package(self.output, build_number=2544, architecture="x64")
+
+    def test_new_pe_marker_cannot_downgrade_to_unprofiled_legacy_package(self):
+        self.profiled_runtime(version=(2, 5, 43), build=2543)
+        (self.bundle / package_module.RUNTIME_PROFILE_PATH).unlink()
+        with self.assertRaisesRegex(ValueError, "runtime metadata"):
+            package_release(self.bundle, self.output, build_number=2543, architecture="x64")
+
+    def test_generated_formal_update_needs_binding_and_bootstrap_cannot_bind_itself(self):
+        self.profiled_runtime()
+        for digest in (None, "A" * 64, "a" * 63, 123):
+            with self.subTest(digest=digest), self.assertRaisesRegex(ValueError, "installer_sha256"):
+                package_release(self.bundle, self.output, build_number=2544, architecture="x64", installer_sha256=digest)
+        with self.assertRaisesRegex(ValueError, "own Setup hash"):
+            package_release(self.bundle, self.output, build_number=2544, architecture="x64", kind="installer", installer_sha256="a" * 64)
+        package_release(self.bundle, self.output, build_number=2544, architecture="x64", kind="installer")
+        self.assertNotIn("installerSha256", validate_package(self.output, build_number=2544, architecture="x64", kind="installer"))
 
     def test_complete_package_excludes_trusted_running_updater(self):
         receipt = package_release(self.bundle, self.output, build_number=2, architecture="x64")

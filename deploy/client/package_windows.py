@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import shutil
 import stat
 import struct
 import tempfile
@@ -26,6 +27,16 @@ MAX_EXPANDED_BYTES = 2 * 1024 * 1024 * 1024
 REQUIRED_FILES = {"uten_imp.exe", "flutter_windows.dll", "data/app.so", "data/icudtl.dat"}
 UPDATER_PATH = "client_updater/client_updater.ps1"
 PACKAGE_KINDS = {"update", "installer"}
+RUNTIME_PROFILE_PATH = "data/uten-runtime-profile.json"
+MAX_PROFILE_BYTES = 16384
+RUNTIME_PROFILES = {
+    "formal": {"schemaVersion": 1, "buildProfile": "formal", "applicationId": "com.uten.uten_imp",
+               "nativeProductName": "优腾综合管理平台", "displayName": "UTEN", "runtimeFamily": "flutter",
+               "networkScope": "trusted-configured", "selfUpdatesAllowed": True},
+    "local_test": {"schemaVersion": 1, "buildProfile": "local_test", "applicationId": "com.uten.uten_imp.local_test",
+                   "nativeProductName": "UTEN Local Test", "displayName": "UTEN 本地测试", "runtimeFamily": "flutter",
+                   "networkScope": "loopback-only", "selfUpdatesAllowed": False},
+}
 VC_RUNTIME_CORE = {"msvcp140.dll", "vcruntime140.dll"}
 # Confirmed by dumps or field events with matching symbols/native regression.
 # Reject exact failed runtimes; an unknown digest is not a safety proof.
@@ -407,6 +418,7 @@ def inspect_executable_info(path: Path) -> dict:
                     file_version = (fixed[2] >> 16, fixed[2] & 0xFFFF, fixed[3] >> 16, fixed[3] & 0xFFFF)
                     product_version = (fixed[4] >> 16, fixed[4] & 0xFFFF, fixed[5] >> 16, fixed[5] & 0xFFFF)
                     versions.append({"fileVersion": file_version, "productVersion": product_version,
+                                     "debugBuild": bool(fixed[6] & fixed[7] & 1),
                                      "strings": _version_strings(value)})
         if not versions or any(version != versions[0] for version in versions[1:]):
             raise ValueError("Executable version resources are absent or inconsistent")
@@ -447,9 +459,64 @@ def release_version_number(version: str) -> tuple[int, int, int]:
     return numbers
 
 
+def _unique_json(data: bytes) -> dict:
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Duplicate JSON field in the package contract")
+            result[key] = value
+        return result
+    value = json.loads(data, object_pairs_hook=unique)
+    if not isinstance(value, dict):
+        raise ValueError("Package JSON contract must be an object")
+    return value
+
+
+def validate_runtime_profile(data: bytes | None, executable: dict, *, allow_local_test: bool = False) -> dict | None:
+    """Validate actual generated metadata and actual PE identity at one shared entry."""
+    strings = {key.casefold(): value for key, value in executable.get("strings", {}).items()}
+    marker = strings.get("utenbuildprofile")
+    if data is None:
+        if marker is not None or executable["productVersion"][:3] >= (2, 5, 44) or allow_local_test:
+            raise ValueError("Actual profiled program requires its generated runtime metadata")
+        if strings.get("productname") == "UTEN Local Test":
+            raise ValueError("LocalTest runtime cannot be packaged as formal")
+        return None
+    if not data or len(data) > MAX_PROFILE_BYTES:
+        raise ValueError("Runtime profile metadata exceeds its bounded contract")
+    profile = _unique_json(data)
+    name = profile.get("buildProfile")
+    if not isinstance(name, str):
+        raise ValueError("Runtime buildProfile must be textual")
+    expected = RUNTIME_PROFILES.get(name)
+    if expected is None or set(profile) != set(expected) or any(
+            type(profile[key]) is not type(value) or profile[key] != value for key, value in expected.items()):
+        raise ValueError("Runtime profile must exactly match the generated schema1 eight-field identity")
+    if profile["buildProfile"] == "local_test" and not allow_local_test:
+        raise ValueError("LocalTest runtime cannot enter the formal distribution")
+    if (marker != profile["buildProfile"] or strings.get("productname") != profile["nativeProductName"]
+            or strings.get("companyname") != "Uten" or strings.get("internalname") != "uten_imp"
+            or strings.get("originalfilename") != "uten_imp.exe"):
+        raise ValueError("Actual PE identity differs from the generated runtime profile")
+    if profile["buildProfile"] == "formal" and executable.get("debugBuild"):
+        raise ValueError("Debug runtime cannot enter the formal distribution")
+    return profile
+
+
+def _installer_binding(kind: str, profile: dict | None, value: str | None, *, allow_local_test: bool) -> None:
+    if kind == "installer" and value is not None:
+        raise ValueError("Bootstrap installer manifest cannot contain its own Setup hash")
+    if value is not None and (not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None):
+        raise ValueError("installer_sha256 must be the actual lower-case SHA-256 of Setup.exe")
+    if kind == "update" and profile is not None and profile["buildProfile"] == "formal" and value is None:
+        raise ValueError("New formal update runtime requires its actual installer_sha256 binding")
+
+
 def package_release(bundle: Path, output: Path, *, build_number: int, architecture: str,
                     kind: str = "update", version: str | None = None,
-                    source_root: Path | None = None) -> dict:
+                    source_root: Path | None = None, installer_sha256: str | None = None,
+                    allow_local_test: bool = False) -> dict:
     required = required_files(kind)
     bundle = bundle.resolve(strict=True)
     output = output.resolve()
@@ -458,6 +525,14 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
     if architecture not in {"x64", "arm64", "x86"}:
         raise ValueError("Unsupported Windows architecture")
     executable_info = inspect_executable_info(bundle / "uten_imp.exe")
+    profile_path = bundle / RUNTIME_PROFILE_PATH
+    if profile_path.is_symlink() or profile_path.parent.is_symlink() or profile_path.parent.is_junction():
+        raise ValueError("Runtime profile cannot be read through a link")
+    if profile_path.is_file() and profile_path.stat().st_size > MAX_PROFILE_BYTES:
+        raise ValueError("Runtime profile metadata exceeds its bounded contract")
+    runtime_profile = validate_runtime_profile(profile_path.read_bytes() if profile_path.is_file() else None,
+                                               executable_info, allow_local_test=allow_local_test)
+    _installer_binding(kind, runtime_profile, installer_sha256, allow_local_test=allow_local_test)
     if (executable_info["architecture"], executable_info["fileVersion"][3]) != (architecture, build_number):
         raise ValueError("Actual executable architecture/build differs from release metadata")
     # The manifest version must equal the version the operator publishes; the executable's
@@ -539,6 +614,8 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
     manifest = {"schemaVersion": 1, "platform": "windows", "architecture": architecture,
                 "version": version, "buildNumber": build_number, "executable": "uten_imp.exe",
                 "packageKind": kind, "files": files}
+    if installer_sha256 is not None:
+        manifest["installerSha256"] = installer_sha256
     output.parent.mkdir(parents=True, exist_ok=True)
     # Exclusive temporary output and atomic replace leave an existing package
     # intact if reading/compression fails.
@@ -551,7 +628,7 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
                 archive.write(source, relative)
             archive.writestr(MANIFEST_NAME, json.dumps(manifest, ensure_ascii=False, separators=(",", ":")))
         validate_package(temporary, build_number=build_number, architecture=architecture, kind=kind,
-                         version=version)
+                         version=version, allow_local_test=allow_local_test)
         temporary.replace(output)
     finally:
         temporary.unlink(missing_ok=True)
@@ -562,11 +639,12 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
             "buildNumber": build_number, "architecture": architecture,
             "mode": "windows_archive" if kind == "update" else "windows_bundle",
             "runtimeValidation": runtime_validation,
+            "runtimeProfile": runtime_profile,
             "omittedUnusedNativeArtifacts": [proof] if proof is not None else []}
 
 
 def validate_package(path: Path, *, build_number: int, architecture: str,
-                     kind: str = "update", version: str | None = None) -> dict:
+                     kind: str = "update", version: str | None = None, allow_local_test: bool = False) -> dict:
     """Independently re-read the finished ZIP before making it publishable."""
     required = required_files(kind)
     with zipfile.ZipFile(path) as archive:
@@ -576,7 +654,7 @@ def validate_package(path: Path, *, build_number: int, architecture: str,
         manifests = [entry for entry in entries if entry.filename == MANIFEST_NAME]
         if len(manifests) != 1 or manifests[0].file_size > 8 * 1024 * 1024:
             raise ValueError("Missing or oversized manifest")
-        manifest = json.loads(archive.read(manifests[0]))
+        manifest = _unique_json(archive.read(manifests[0]))
         if manifest.get("packageKind", "update") != kind:
             raise ValueError("Manifest package kind does not match")
         if (manifest.get("schemaVersion"), manifest.get("platform"), manifest.get("architecture"),
@@ -618,6 +696,7 @@ def validate_package(path: Path, *, build_number: int, architecture: str,
         if len(seen) != len(expected) + 1:
             raise ValueError("Archive omits release files")
         modules = {}
+        executable_info = None
         for entry in entries:
             is_native = PurePosixPath(entry.filename).suffix.casefold() in {".exe", ".dll"}
             if not is_native and entry.filename != "data/app.so":
@@ -634,7 +713,26 @@ def validate_package(path: Path, *, build_number: int, architecture: str,
                 reader = _PeReader(native, entry.file_size)
                 modules[entry.filename] = {"architecture": reader.architecture, "peMagic": reader.magic,
                                            "imports": reader.imports()}
+                if entry.filename == "uten_imp.exe":
+                    native.seek(0)
+                    with tempfile.TemporaryDirectory(prefix="uten-runtime-pe-") as temporary:
+                        image = Path(temporary) / "uten_imp.exe"
+                        with image.open("xb") as target:
+                            shutil.copyfileobj(native, target, 65536)
+                        executable_info = inspect_executable_info(image)
         validate_runtime_dependencies(modules, architecture=architecture)
+        if executable_info is None:
+            raise ValueError("Actual runtime executable is missing")
+        expected_version = (*release_version_number(recorded_version), build_number)
+        if (executable_info["architecture"] != architecture or executable_info["fileVersion"] != expected_version
+                or executable_info["productVersion"] != expected_version):
+            raise ValueError("Actual archived executable version/architecture differs from its manifest")
+        profile_entry = next((entry for entry in entries if entry.filename == RUNTIME_PROFILE_PATH), None)
+        if profile_entry is not None and profile_entry.file_size > MAX_PROFILE_BYTES:
+            raise ValueError("Runtime profile metadata exceeds its bounded contract")
+        profile = validate_runtime_profile(archive.read(profile_entry) if profile_entry is not None else None,
+                                           executable_info, allow_local_test=allow_local_test)
+        _installer_binding(kind, profile, manifest.get("installerSha256"), allow_local_test=allow_local_test)
         return manifest
 
 
@@ -650,10 +748,11 @@ def main() -> None:
                         help="installer includes the fixed updater for a complete first installation")
     parser.add_argument("--source-root", type=Path,
                         help="reviewed source tree for proving an unused transitive JNI artifact; otherwise inferred from bundle ancestors")
+    parser.add_argument("--installer-sha256", help="actual completed Setup.exe SHA-256, required for new formal update payloads")
     args = parser.parse_args()
     print(json.dumps(package_release(args.bundle, args.output, build_number=args.build_number,
                                      architecture=args.architecture, kind=args.kind, version=args.version,
-                                     source_root=args.source_root), ensure_ascii=False, indent=2))
+                                     source_root=args.source_root, installer_sha256=args.installer_sha256), ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

@@ -27,6 +27,7 @@ class WindowsSetupInspectorTest {
 
     @Test void rejectsSpoofedProductIdentityVersionBuildAndArchitecture() throws Exception {
         for (Map<String, String> wrong : List.of(Map.of("ProductName", "Other App"), Map.of("OriginalFileName", "uten_imp.exe"),
+                Map.of("UtenBuildProfile", "local_test"),
                 Map.of("FileDescription", "Uten IMP Windows Setup (arm64)"), Map.of("FileVersion", "2.5.32.1"),
                 Map.of("ProductVersion", "2.5.31.2532"))) {
             rejects(WindowsSetupFixture.bytes(2532, "x64", "2.5.32", wrong), release(2532, "x64", "2.5.32"));

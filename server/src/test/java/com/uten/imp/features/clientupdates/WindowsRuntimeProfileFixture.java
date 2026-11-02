@@ -10,8 +10,15 @@ import java.util.Map;
 final class WindowsRuntimeProfileFixture {
     private WindowsRuntimeProfileFixture() { }
     static Map<String, Object> formal() {
-        return Map.of("schemaVersion", 1, "buildProfile", "formal", "applicationId", "com.uten.uten_imp",
-                "nativeProductName", "优腾综合管理平台", "runtimeFamily", "flutter");
+        return generated("formal");
+    }
+    static Map<String, Object> generated(String name) {
+        try (var input = WindowsRuntimeProfileFixture.class.getResourceAsStream("/clientupdates/runtime-profile-v1/" + name + ".json")) {
+            if (input == null) throw new IllegalStateException("Actual Dart generator fixture is missing");
+            return new ObjectMapper().readValue(input, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() { });
+        } catch (java.io.IOException failure) {
+            throw new IllegalStateException("Cannot read actual Dart generator fixture", failure);
+        }
     }
     static byte[] archive(ObjectMapper mapper, String version, long build, Map<String, String> pe,
             byte[] profile, String installerHash) throws Exception {

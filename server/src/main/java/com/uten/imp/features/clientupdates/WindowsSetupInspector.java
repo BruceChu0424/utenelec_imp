@@ -99,6 +99,7 @@ final class WindowsSetupInspector {
                     if (values.putIfAbsent(item.key().toLowerCase(Locale.ROOT), value) != null) throw invalid();
                 }
                 boolean wpf = ClientRuntimeFamily.WPF_LEGACY.equals(release.runtimeFamily());
+                if (!wpf) WindowsRuntimeProfileContract.rejectLocalTestPe(values);
                 String product = wpf ? "Uten IMP Native WPF Compatibility Validation" : "Uten IMP Windows Setup";
                 if (!product.equals(values.get("productname"))
                         || !(wpf ? "UtenWin7WpfSetup.exe" : "UtenIMPSetup.exe").equals(values.get("originalfilename"))

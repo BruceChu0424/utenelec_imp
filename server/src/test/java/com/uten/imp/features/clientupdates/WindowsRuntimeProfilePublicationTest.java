@@ -83,10 +83,7 @@ class WindowsRuntimeProfilePublicationTest {
 
     @Test void localTestBytesNeverBecomeUploadedOrPublishedUnderAFormalFilename() throws Exception {
         var old = legacyPair();
-        var profile = new java.util.HashMap<>(WindowsRuntimeProfileFixture.formal());
-        profile.put("buildProfile", "local_test");
-        profile.put("applicationId", "com.uten.uten_imp.local_test");
-        profile.put("nativeProductName", "UTEN Local Test");
+        var profile = WindowsRuntimeProfileFixture.generated("local_test");
         byte[] zip = WindowsRuntimeProfileFixture.archive(mapper, "2.5.44", 2544,
                 Map.of("UtenBuildProfile", "local_test", "ProductName", "UTEN Local Test"), mapper.writeValueAsBytes(profile), "a".repeat(64));
         var draft = create("update", "2.5.44", 2544, zip);

@@ -60,6 +60,9 @@ def validate_setup(path: Path, *, version: str, build_number: int, architecture:
         raise ValueError("Setup must use the standard x86 PE32 Inno loader")
     if info["fileVersion"] != expected or info["productVersion"] != expected:
         raise ValueError("Setup binary version differs from the requested release")
+    profile = info["strings"].get("utenbuildprofile")
+    if profile is not None and profile != ("local_test" if local_test else "formal"):
+        raise ValueError("Setup actual runtime profile differs from its distribution identity")
     numeric = ".".join(str(part) for part in expected)
     product_name = LOCAL_PRODUCT_NAME if local_test else PRODUCT_NAME
     required = {
@@ -241,9 +244,12 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
         compiler_output = staging / "compiled"
         payload_receipt = package_release(bundle, archive_path, build_number=build_number,
                                           architecture=architecture, kind="installer", version=version,
-                                          source_root=source_root)
+                                          source_root=source_root, allow_local_test=local_test)
+        runtime_profile = payload_receipt.get("runtimeProfile")
+        if local_test and (not isinstance(runtime_profile, dict) or runtime_profile.get("buildProfile") != "local_test"):
+            raise ValueError("LocalTest Setup requires an actual LocalTest runtime payload, not a relabeled formal client")
         validate_package(archive_path, build_number=build_number, architecture=architecture, kind="installer",
-                         version=version)
+                         version=version, allow_local_test=local_test)
         payload.mkdir()
         compiler_output.mkdir()
         with zipfile.ZipFile(archive_path) as archive:
@@ -256,13 +262,6 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
                     shutil.copyfileobj(source, destination, 65536)
         update_path = staging / "application-update.zip"
         update_receipt = None
-        if update_output is not None:
-            # Both artifacts consume this one validated snapshot, not a second
-            # read of a potentially changing external Flutter build directory.
-            update_receipt = package_release(payload, update_path, build_number=build_number,
-                                             architecture=architecture, version=version)
-            validate_package(update_path, build_number=build_number, architecture=architecture,
-                             version=version)
         command = compiler_command(compiler, payload, compiler_output, output.stem,
                                    version=version, build_number=build_number, architecture=architecture,
                                    local_test=local_test)
@@ -285,12 +284,30 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
             return plan
         runner(command, check=True, capture_output=True, **UTF8_TOOL_OUTPUT)
         generated = compiler_output / output.name
-        artifacts = [(generated, output, lambda path: validate_setup(path, version=version,
-            build_number=build_number, architecture=architecture, local_test=local_test))]
+        setup_receipt = validate_setup(generated, version=version, build_number=build_number,
+                                       architecture=architecture, local_test=local_test)
+        installer_sha256 = setup_receipt["sha256"]
+        # The binding is deliberately one-way: Setup's frozen bootstrap manifest
+        # has no self hash; its actual final bytes are bound by the update ZIP.
+        if update_output is not None:
+            update_receipt = package_release(payload, update_path, build_number=build_number,
+                                             architecture=architecture, version=version,
+                                             installer_sha256=installer_sha256, allow_local_test=local_test)
+            validate_package(update_path, build_number=build_number, architecture=architecture,
+                             version=version, allow_local_test=local_test)
+
+        def validate_installer(path):
+            receipt = validate_setup(path, version=version, build_number=build_number,
+                                     architecture=architecture, local_test=local_test)
+            if receipt["sha256"] != installer_sha256:
+                raise ValueError("Prepared Setup changed after the update ZIP was bound")
+            return receipt
+
+        artifacts = [(generated, output, validate_installer)]
         if update_output is not None:
             def validate_update(path):
                 validate_package(path, build_number=build_number, architecture=architecture,
-                                 version=version)
+                                 version=version, allow_local_test=local_test)
                 with path.open("rb") as stream:
                     digest = hashlib.file_digest(stream, "sha256").hexdigest()
                 if digest != update_receipt["sha256"]:

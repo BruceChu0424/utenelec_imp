@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "buildProfile": "formal",
+  "applicationId": "com.uten.uten_imp",
+  "nativeProductName": "优腾综合管理平台",
+  "displayName": "UTEN",
+  "runtimeFamily": "flutter",
+  "networkScope": "trusted-configured",
+  "selfUpdatesAllowed": true
+}

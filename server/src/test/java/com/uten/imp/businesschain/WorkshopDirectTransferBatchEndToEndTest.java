@@ -421,6 +421,8 @@ class WorkshopDirectTransferBatchEndToEndTest {
                         "SELECT domain FROM read_scope_change_events WHERE change_txid=? ORDER BY domain",
                         String.class, profile.transactionId()),
                 "the measured approval changes only the warehouse-task authorization source");
+        assertEquals(0L, profile.calls().getOrDefault("fn_capture_permission_record_history", 0L),
+                "V990 must reject non-authorization audit rows before calling permanent permission history");
         long originalCalls = profile.triggerCalls() - archive - physicalMeasurement - reservationMeasurement
                 - nativeScopeObservers - scopeEventGuards;
         System.out.println("APPROVE-TRIGGER-BUDGET raw=" + profile.triggerCalls() + " original=" + originalCalls

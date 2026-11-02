@@ -155,7 +155,7 @@ Future<void> _pumpAnalysis(
     InterceptorsWrapper(
       onRequest: (request, handler) {
         final Object data = switch (request.path) {
-          '/master/warehouses/dict' => [
+          '/business-references/warehouses' => [
             {
               'id': 'warehouse-1',
               'name': '主仓',
@@ -185,6 +185,7 @@ Future<void> _pumpAnalysis(
         productionPlanRepositoryProvider.overrideWithValue(
           ProductionPlanRepository(api),
         ),
+        apiClientProvider.overrideWithValue(api),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         materialAnalysisWarehousePrefsProvider.overrideWith(
           _WarehousePrefs.new,

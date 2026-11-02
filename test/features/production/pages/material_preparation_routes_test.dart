@@ -1,3 +1,4 @@
+import '../../../support/production_person_reference_fixture.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -551,10 +552,17 @@ Future<List<RequestOptions>> _pump(
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   final requests = <RequestOptions>[];
+  final fixtureDepartmentRepository = _DepartmentRepository();
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
-      onRequest: (request, handler) {
+      onRequest: (request, handler) async {
+        if (await resolveProductionPersonReferenceFixture(
+          request,
+          handler,
+          departments: fixtureDepartmentRepository.tree,
+        ))
+          return;
         requests.add(request);
         if (request.path.endsWith('/aggregate-orders/preview')) {
           final view = analysis ?? _analysis();
@@ -620,7 +628,7 @@ Future<List<RequestOptions>> _pump(
           return;
         }
         final data = switch (request.path) {
-          '/master/warehouses/dict' => [
+          '/business-references/warehouses' => [
             {'id': 'warehouse-1', 'name': '主仓', 'selectableForNew': true},
           ],
           '/production/material-analyses/analysis-1' => analysis ?? _analysis(),
@@ -652,8 +660,11 @@ Future<List<RequestOptions>> _pump(
         productionPlanRepositoryProvider.overrideWithValue(
           ProductionPlanRepository(api),
         ),
+        apiClientProvider.overrideWithValue(api),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
-        departmentRepositoryProvider.overrideWithValue(_DepartmentRepository()),
+        departmentRepositoryProvider.overrideWithValue(
+          fixtureDepartmentRepository,
+        ),
         materialAnalysisWarehousePrefsProvider.overrideWith(
           _WarehousePrefs.new,
         ),

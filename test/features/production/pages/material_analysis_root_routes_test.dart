@@ -1,3 +1,4 @@
+import '../../../support/production_person_reference_fixture.dart';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -686,13 +687,20 @@ Future<_Harness> _pump(
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   final harness = _Harness(data);
+  final fixtureDepartmentRepository = _Departments();
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
-      onRequest: (request, handler) {
+      onRequest: (request, handler) async {
+        if (await resolveProductionPersonReferenceFixture(
+          request,
+          handler,
+          departments: fixtureDepartmentRepository.tree,
+        ))
+          return;
         harness.requests.add(request);
         dynamic result = <String, dynamic>{};
-        if (request.path.endsWith('/warehouses/dict')) {
+        if (request.path == '/business-references/warehouses') {
           result = [
             {'id': 'warehouse', 'name': '主仓', 'selectableForNew': true},
           ];
@@ -881,8 +889,11 @@ Future<_Harness> _pump(
         productionPlanRepositoryProvider.overrideWithValue(
           ProductionPlanRepository(api),
         ),
+        apiClientProvider.overrideWithValue(api),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
-        departmentRepositoryProvider.overrideWithValue(_Departments()),
+        departmentRepositoryProvider.overrideWithValue(
+          fixtureDepartmentRepository,
+        ),
         materialAnalysisWarehousePrefsProvider.overrideWith(_Prefs.new),
       ],
       child: const MaterialApp(

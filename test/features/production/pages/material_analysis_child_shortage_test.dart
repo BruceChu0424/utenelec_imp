@@ -1,3 +1,4 @@
+import '../../../support/production_person_reference_fixture.dart';
 // ADR-117 下单后查子层：弹窗「下层物料还不够」→「补下层物料」页 → 一键下单；
 // 页面顶部提示条(已下单的件下层还缺 / 车间在催)。
 //
@@ -1155,6 +1156,12 @@ Future<void> _pump(
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (request, handler) async {
+        if (await resolveProductionPersonReferenceFixture(
+          request,
+          handler,
+          departmentRows: const [],
+        ))
+          return;
         requests.add((
           method: request.method,
           path: request.path,
@@ -1164,7 +1171,7 @@ Future<void> _pump(
         ));
         Object result = <Object>[];
         final path = request.path;
-        if (path == '/master/warehouses/dict') {
+        if (path == '/business-references/warehouses') {
           result = [
             {
               'id': 'warehouse-1',
@@ -1283,6 +1290,7 @@ Future<void> _pump(
       productionPlanRepositoryProvider.overrideWithValue(
         ProductionPlanRepository(api),
       ),
+      apiClientProvider.overrideWithValue(api),
       masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
       materialAnalysisWarehousePrefsProvider.overrideWith(_WarehousePrefs.new),
       currentPermissionsProvider.overrideWithValue({

@@ -366,7 +366,7 @@ Future<_Harness> _pump(
       onRequest: (request, handler) {
         harness.requests.add(request);
         dynamic result = <String, dynamic>{};
-        if (request.path.endsWith('/warehouses/dict')) {
+        if (request.path == '/business-references/warehouses') {
           result = [
             {'id': 'warehouse', 'name': '主仓', 'selectableForNew': true},
           ];
@@ -438,6 +438,7 @@ Future<_Harness> _pump(
         productionPlanRepositoryProvider.overrideWithValue(
           ProductionPlanRepository(api),
         ),
+        apiClientProvider.overrideWithValue(api),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         materialAnalysisWarehousePrefsProvider.overrideWith(_Prefs.new),
       ],

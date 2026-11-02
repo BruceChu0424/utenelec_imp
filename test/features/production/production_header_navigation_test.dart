@@ -205,7 +205,7 @@ ApiClient _api(List<RequestOptions> requests) {
       onRequest: (request, handler) {
         requests.add(request);
         final Object data = switch (request.path) {
-          '/master/warehouses/dict' => [
+          '/business-references/warehouses' => [
             {
               'id': 'warehouse-1',
               'name': '主仓',

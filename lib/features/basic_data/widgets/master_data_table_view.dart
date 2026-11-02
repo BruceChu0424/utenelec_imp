@@ -6998,7 +6998,6 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               ...actions,
             ];
             return Wrap(
-              alignment: WrapAlignment.start,
               spacing: UtenSpacing.s4,
               runSpacing: UtenSpacing.s4,
               crossAxisAlignment: WrapCrossAlignment.center,

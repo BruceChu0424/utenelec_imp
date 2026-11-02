@@ -242,7 +242,10 @@ class FixtureSchemaDriftGuardPostgresTest {
             "com/uten/imp/common/report/ReportReadPlanPostgresTest.java#b1_report_facts",
             // Export queue/RR race oracle's synthetic source; never a business
             // table exemption or a blanket fixture-DDL exclusion.
-            "com/uten/imp/features/reporting/export/ReportExportQueuePostgresTest.java#b1_export_facts");
+            "com/uten/imp/features/reporting/export/ReportExportQueuePostgresTest.java#b1_export_facts",
+            // The repeatable-read export oracle shares only id/amount between two
+            // independent connections (TEMP cannot be shared); it models no ERP relation.
+            "com/uten/imp/features/reporting/export/FinanceSynchronousExportSnapshotPostgresTest.java#export_facts");
     private static final Set<String> CLASS_SCOPED_FIXTURE_COLUMNS = Set.of(
             // Exact V783 miniature source view: original task fact marker and trusted/unknown owner classification.
             "com/uten/imp/features/attachment/MasterStagingProtectionForwardPostgresTest.java#attachment_object_outbox.history_note",

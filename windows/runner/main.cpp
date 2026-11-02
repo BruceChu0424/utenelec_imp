@@ -34,7 +34,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
-  if (UTEN_LOCAL_TEST_BUILD) window.Show();
+  if constexpr (UTEN_LOCAL_TEST_BUILD != 0) window.Show();
 
   ::MSG msg;
   while (::GetMessage(&msg, nullptr, 0, 0)) {

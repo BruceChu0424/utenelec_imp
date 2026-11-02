@@ -176,6 +176,14 @@ class RegressionWindow : public FlutterWindow {
   void State(const char* event, const std::string& action) {
     RECT rectangle{};
     GetWindowRect(GetHandle(), &rectangle);
+    RECT client{};
+    POINT origin{};
+    GetClientRect(GetHandle(), &client);
+    ClientToScreen(GetHandle(), &origin);
+    OffsetRect(&client, origin.x, origin.y);
+    MONITORINFO monitor{};
+    monitor.cbSize = sizeof(monitor);
+    GetMonitorInfo(MonitorFromWindow(GetHandle(), MONITOR_DEFAULTTONEAREST), &monitor);
     const auto style = static_cast<DWORD>(GetWindowLongPtr(GetHandle(), GWL_STYLE));
     const HWND focus = GetFocus();
     const HWND content_child = GetWindow(GetHandle(), GW_CHILD);
@@ -198,6 +206,11 @@ class RegressionWindow : public FlutterWindow {
           << ",\"placementValid\":" << (placement_valid ? "true" : "false")
           << ",\"placementFlags\":" << placement.flags
           << ",\"placementShowCommand\":" << placement.showCmd
+          << ",\"dpi\":" << GetDpiForWindow(GetHandle())
+          << ",\"client\":[" << client.left << ',' << client.top << ','
+          << client.right << ',' << client.bottom << ']'
+          << ",\"work\":[" << monitor.rcWork.left << ',' << monitor.rcWork.top << ','
+          << monitor.rcWork.right << ',' << monitor.rcWork.bottom << ']'
           << ",\"rect\":[" << rectangle.left << ',' << rectangle.top << ','
           << rectangle.right << ',' << rectangle.bottom << "]}";
     Log(entry.str());
@@ -268,6 +281,23 @@ class RegressionWindow : public FlutterWindow {
       bool matched = (!action.check_maximized ||
                       (IsZoomed(GetHandle()) != FALSE) == action.maximized) &&
                      (IsIconic(GetHandle()) != FALSE) == action.minimized;
+      if (matched && action.maximized && !action.minimized) {
+        // A zoomed flag alone misses an offscreen client/Flutter surface.
+        RECT client{};
+        RECT child{};
+        POINT origin{};
+        MONITORINFO monitor{};
+        monitor.cbSize = sizeof(monitor);
+        const HWND content = GetWindow(GetHandle(), GW_CHILD);
+        const bool geometry = GetClientRect(GetHandle(), &client) &&
+            ClientToScreen(GetHandle(), &origin) &&
+            GetMonitorInfo(MonitorFromWindow(GetHandle(), MONITOR_DEFAULTTONEAREST),
+                           &monitor) &&
+            content != nullptr && GetWindowRect(content, &child);
+        OffsetRect(&client, origin.x, origin.y);
+        matched = geometry && EqualRect(&client, &monitor.rcWork) &&
+                  EqualRect(&child, &client);
+      }
       if (action.kind == ActionKind::resize) {
         RECT bounds{};
         matched = matched && GetWindowRect(GetHandle(), &bounds) != FALSE &&

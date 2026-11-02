@@ -307,9 +307,11 @@ ClientUpdateChannel::ClientUpdateChannel(flutter::BinaryMessenger* messenger,
   channel_->SetMethodCallHandler(
       [this, window](const flutter::MethodCall<Value>& call,
                std::unique_ptr<flutter::MethodResult<Value>> result) {
-    if (UTEN_LOCAL_TEST_BUILD && call.method_name() != "getSoftwareDownloadHost") {
-      result->Error("LOCAL_TEST_UPDATE_DISABLED", "LocalTest does not accept company client updates.");
-      return;
+    if constexpr (UTEN_LOCAL_TEST_BUILD != 0) {
+      if (call.method_name() != "getSoftwareDownloadHost") {
+        result->Error("LOCAL_TEST_UPDATE_DISABLED", "LocalTest does not accept company client updates.");
+        return;
+      }
     }
     if (call.method_name() == "getSoftwareDownloadHost") {
       const auto host = ReadSoftwareDownloadHost();

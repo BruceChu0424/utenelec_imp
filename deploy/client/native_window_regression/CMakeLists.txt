@@ -80,3 +80,20 @@ set_target_properties(uten_native_window_regression PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${HARNESS_RUNTIME}"
   RUNTIME_OUTPUT_DIRECTORY_RELEASE "${HARNESS_RUNTIME}"
 )
+
+add_executable(uten_native_geometry_regression
+  geometry_main.cpp
+  "${SUT}/runner/win32_window.cpp"
+  "${SUT}/runner/native_diagnostics.cpp"
+  "${SUT}/runner/runner.exe.manifest")
+target_compile_features(uten_native_geometry_regression PRIVATE cxx_std_17)
+target_compile_options(uten_native_geometry_regression PRIVATE /W4 /WX /utf-8 /EHsc /wd4100)
+target_compile_definitions(uten_native_geometry_regression PRIVATE
+  UNICODE _UNICODE NOMINMAX UTEN_BUILD_KIND="GeometryRegression")
+target_include_directories(uten_native_geometry_regression PRIVATE
+  "${SUT}" "${SUT}/runner" "${EPHEMERAL}")
+target_link_libraries(uten_native_geometry_regression PRIVATE
+  "${EPHEMERAL}/flutter_windows.dll.lib" dwmapi comctl32 shell32 ole32)
+set_target_properties(uten_native_geometry_regression PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${HARNESS_RUNTIME}"
+  RUNTIME_OUTPUT_DIRECTORY_RELEASE "${HARNESS_RUNTIME}")

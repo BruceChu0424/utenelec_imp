@@ -383,9 +383,28 @@ Win32Window::MessageHandler(HWND hwnd,
       return 0;
 
     case WM_NCCALCSIZE:
-      // Return zero without shrinking the proposed rectangle. The client now
-      // includes the old caption and border; Flutter paints all of it.
-      if (main_mode_) return 0;
+      if (main_mode_) {
+        // A standard maximized HWND may include an invisible resize-frame
+        // overhang outside rcWork. Claiming that entire outer rectangle as
+        // client clips Flutter content at the monitor/taskbar edges. This is
+        // the final client calculation: constrain only maximized content to
+        // its destination work area, in physical screen coordinates.
+        RECT* client = wparam
+            ? &reinterpret_cast<NCCALCSIZE_PARAMS*>(lparam)->rgrc[0]
+            : reinterpret_cast<RECT*>(lparam);
+        if (client != nullptr && IsZoomed(hwnd)) {
+          MONITORINFO monitor_info{};
+          monitor_info.cbSize = sizeof(monitor_info);
+          if (GetMonitorInfo(MonitorFromRect(client, MONITOR_DEFAULTTONEAREST),
+                              &monitor_info)) {
+            RECT visible{};
+            if (IntersectRect(&visible, client, &monitor_info.rcWork)) {
+              *client = visible;
+            }
+          }
+        }
+        return 0;
+      }
       break;
 
     case WM_NCHITTEST:
@@ -428,8 +447,8 @@ Win32Window::MessageHandler(HWND hwnd,
         if (GetMonitorInfo(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
                             &monitor_info)) {
           const double scale = GetDpiForWindow(hwnd) / 96.0;
-          // With no native nonclient frame, maximize exactly to the work area
-          // instead of letting the hidden thick frame overhang the taskbar.
+          // Request the work-area bounds. WM_NCCALCSIZE also constrains the
+          // final client if Windows retains a standard resize-frame overhang.
           limits->ptMaxPosition.x =
               monitor_info.rcWork.left - monitor_info.rcMonitor.left;
           limits->ptMaxPosition.y =

@@ -561,8 +561,9 @@ Future<List<RequestOptions>> _pump(
           request,
           handler,
           departments: fixtureDepartmentRepository.tree,
-        ))
+        )) {
           return;
+        }
         requests.add(request);
         if (request.path.endsWith('/aggregate-orders/preview')) {
           final view = analysis ?? _analysis();

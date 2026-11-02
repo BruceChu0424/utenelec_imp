@@ -601,8 +601,9 @@ Future<_Harness> _pump(
           request,
           handler,
           departments: _DepartmentRepository().tree,
-        ))
+        )) {
           return;
+        }
         if (request.method != 'GET') harness.writes.add(request);
         final base = persisted;
         final data = switch (request.path) {

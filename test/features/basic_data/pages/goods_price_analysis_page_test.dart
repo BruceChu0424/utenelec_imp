@@ -20,9 +20,12 @@ import 'package:flutter/material.dart';
 import 'package:uten_imp/components/buttons/uten_app_bar_action_button.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/inputs/uten_search_bar.dart';
+import '../../../support/uten_search_test_actions.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -1159,6 +1162,9 @@ void main() {
     expect(find.text('暂无法判断'), findsOneWidget);
     expect(tester.takeException(), isNull);
     repository.fail = false;
+    await tester.ensureVisible(find.text('重新加载'));
+    await tester.pumpAndSettle();
+    expect(find.text('重新加载').hitTestable(), findsOneWidget);
     await tester.tap(find.text('重新加载'));
     await tester.pumpAndSettle();
     expect(find.byType(PriceHistoryChart), findsOneWidget);
@@ -2490,6 +2496,18 @@ void main() {
         final search = find.byWidgetPredicate(
           (w) => w is TextField && w.decoration?.hintText == '搜索全部可见取值',
         );
+        final searchBar = find.byWidgetPredicate(
+          (widget) => widget is UtenSearchBar && widget.hint == '搜索全部可见取值',
+        );
+        // The compact trigger can start below the short dialog viewport.
+        // Complete the real scroll/layout before opening its popup.
+        final searchTrigger = find.descendant(
+          of: searchBar,
+          matching: find.byTooltip('搜索全部可见取值'),
+        );
+        await revealPricePanel(tester, searchTrigger);
+        expectVisiblePriceTarget(tester, searchTrigger, size);
+        await showUtenTestSearchInput(tester, searchBar);
         await Scrollable.ensureVisible(tester.element(search), alignment: 0.5);
         await tester.pumpAndSettle();
         expectVisiblePriceTarget(tester, search, size);
@@ -2501,6 +2519,15 @@ void main() {
           repository.facetQueries.last,
           containsPair('column', 'partnerName'),
         );
+        await _capture(
+          tester,
+          'price-after-search-${size.width.toInt()}-${size.height.toInt()}',
+        );
+        // The compact search has a modal hit barrier. Close it through the
+        // supported keyboard action before selecting an underlying row.
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(search, findsNothing);
         final bucket = find.text('第201条单据');
         await revealPricePanel(tester, bucket);
         expect(

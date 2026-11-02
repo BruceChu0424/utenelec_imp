@@ -3,8 +3,11 @@ import 'dart:async';
 // 英文名称. The search hint still includes the learned English name.
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../../support/uten_test_actions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/print/uten_print_preview.dart';
@@ -159,7 +162,27 @@ void main() {
         rankedSearch: true,
         delayedKeyword: '旧关键词',
       );
-      await _pumpPage(tester, goods, rankedSearch: true);
+      await _pumpPage(
+        tester,
+        goods,
+        rankedSearch: true,
+        extraPermissions: {Perm.goodsExport},
+      );
+      await tester.tap(find.text('近似分区').first);
+      await tester.pumpAndSettle();
+      final exportAction = find.byType(UtenExportButton);
+      final exportWasVisible = exportAction.hitTestable().evaluate().isNotEmpty;
+      await showUtenTestAction(tester, exportAction);
+      expect(tester.widget<UtenExportButton>(exportAction).enabled, isTrue);
+      final continueOriginalExport = tester
+          .widget<UtenExportButton>(exportAction)
+          .prepareExport!;
+      final originalSelection = await continueOriginalExport();
+      expect(originalSelection!.stillCurrent!(), isTrue);
+      if (!exportWasVisible) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+      }
       final tree = find.byType(UtenCategoryTreeView<ProductCategoryNode>);
       final search = find.descendant(
         of: tree,
@@ -183,7 +206,7 @@ void main() {
         callsBeforePendingRefresh,
         reason: '防抖期间外部reload不得派发旧关键词请求',
       );
-      await tester.binding.setSurfaceSize(const Size(375, 812));
+      await setUtenTestSurfaceSize(tester, const Size(375, 812));
       await tester.pump();
       goods.delayed.complete(
         const PagedResult(
@@ -196,11 +219,11 @@ void main() {
       );
       await tester.pump();
       expect(find.text('迟到旧行'), findsNothing);
-      final pendingExport = tester.widget<UtenExportButton>(
-        find.byType(UtenExportButton),
-      );
-      expect(pendingExport.enabled, isFalse);
-      final pendingSelection = await pendingExport.prepareExport!();
+      // The pending read blocks the compact toolbar. A continuation captured
+      // while the export was visible must still reject the changed query.
+      expect(exportAction.hitTestable(), findsNothing);
+      expect(originalSelection.stillCurrent!(), isFalse);
+      final pendingSelection = await continueOriginalExport();
       expect(pendingSelection!.stillCurrent!(), isFalse);
       await tester.pump(const Duration(milliseconds: 301));
       await tester.pumpAndSettle();
@@ -211,6 +234,7 @@ void main() {
       );
       expect(table.facets['series']!.single.value, '全球系列');
       expect(goods.globalFacetCalls, greaterThanOrEqualTo(1));
+      await showUtenTestAction(tester, find.byType(UtenExportButton));
       final export = tester.widget<UtenExportButton>(
         find.byType(UtenExportButton),
       );
@@ -391,8 +415,8 @@ Future<void> _pumpPage(
   bool emptyTree = false,
   Set<String> extraPermissions = const {},
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 900));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(1600, 900));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [

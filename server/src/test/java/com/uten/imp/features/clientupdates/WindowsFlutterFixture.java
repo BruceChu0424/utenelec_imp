@@ -8,8 +8,13 @@ import java.util.Map;
 final class WindowsFlutterFixture {
     private WindowsFlutterFixture() { }
     static byte[] main(long build, String architecture, String version) {
-        byte[] bytes = WindowsSetupFixture.bytes(build, architecture, version, Map.of(
-                "CompanyName", "Uten", "ProductName", "优腾综合管理平台", "OriginalFileName", "uten_imp.exe", "InternalName", "uten_imp", "FileDescription", "UTEN"));
+        return main(build, architecture, version, Map.of());
+    }
+    static byte[] main(long build, String architecture, String version, Map<String, String> overrides) {
+        var values = new java.util.HashMap<>(Map.of("CompanyName", "Uten", "ProductName", "优腾综合管理平台",
+                "OriginalFileName", "uten_imp.exe", "InternalName", "uten_imp", "FileDescription", "UTEN"));
+        values.putAll(overrides);
+        byte[] bytes = WindowsSetupFixture.bytes(build, architecture, version, values);
         var buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);
         int optional = 152, machine = NativeBinaryArchitecture.peMachine(architecture);
         buffer.putShort(132, (short)machine);

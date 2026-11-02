@@ -14,10 +14,10 @@ import org.apache.commons.compress.archivers.zip.ZipFile;
 final class WindowsFlutterPackageInspector {
     private static final int MAX_MAIN_BYTES = 32 * 1024 * 1024;
     private WindowsFlutterPackageInspector() { }
-    static void inspect(ZipFile zip, Map<String, ZipArchiveEntry> files, ClientReleaseDto.Release release) throws IOException {
+    static void inspect(ZipFile zip, Map<String, ZipArchiveEntry> files, ClientReleaseDto.Release release, boolean profilePresent) throws IOException {
         byte[] main = bounded(zip, files.get("uten_imp.exe"), MAX_MAIN_BYTES, false);
         var pe = pe(main, release.architecture(), false);
-        version(main, pe, release);
+        version(main, pe, release, profilePresent || WindowsRuntimeProfileContract.required(release));
         pe(bounded(zip, files.get("flutter_windows.dll"), 1048576, true), release.architecture(), true);
         NativeBinaryArchitecture.elf(bounded(zip, files.get("data/app.so"), 64, true), release.architecture());
     }
@@ -48,7 +48,7 @@ final class WindowsFlutterPackageInspector {
         }
         return new Pe(sections, image.dword(optional + directories + 16), image.dword(optional + directories + 20));
     }
-    private static void version(byte[] bytes, Pe pe, ClientReleaseDto.Release release) {
+    private static void version(byte[] bytes, Pe pe, ClientReleaseDto.Release release, boolean profileRequired) {
         if (pe.resourceSize() < 16 || pe.resourceSize() > 16 * 1024 * 1024) throw invalid();
         var data = new WindowsSetupInspector.Data(bytes);
         int rootOffset = integer(WindowsSetupInspector.offset(pe.sections(), pe.resourceRva(), pe.resourceSize()));
@@ -83,6 +83,7 @@ final class WindowsFlutterPackageInspector {
                             String value = raw.substring(0, end);
                             if (value.indexOf(0) >= 0 || values.putIfAbsent(text.key().toLowerCase(Locale.ROOT), value) != null) throw invalid();
                         }
+                        WindowsRuntimeProfileContract.peIdentity(values, profileRequired);
                         if (!"uten_imp.exe".equals(values.get("originalfilename")) || !"uten_imp".equals(values.get("internalname"))
                                 || !"Uten".equals(values.get("companyname")) || !"优腾综合管理平台".equals(values.get("productname"))) throw invalid();
                         strings++;

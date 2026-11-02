@@ -174,6 +174,14 @@ public class ClientReleaseService {
                     && !other.version().equals(release.version())))
                 throw new ApiException(ErrorCode.CONFLICT, "同一交付组的安装包和更新包必须使用相同版本号");
             if (!"store".equals(release.installMode())) validatePublishedPackage(root, release);
+            if (ClientDeliveryContract.paired(release)) {
+                for (var other : catalog.list(root)) {
+                    if (!sameDeliveryGroup(release, other) || !"PUBLISHED".equals(other.state())
+                            || release.packageKind().equals(other.packageKind())) continue;
+                    requireInstallerBinding(root, "installer".equals(release.packageKind()) ? release : other,
+                            "update".equals(release.packageKind()) ? release : other);
+                }
+            }
             ClientReleaseDto.Release published = copy(release, release.sha256(), release.sizeBytes(), "PUBLISHED", Instant.now());
             catalog.write(root, published);
             retireSupersededWindowsPackages(root, published);
@@ -205,6 +213,7 @@ public class ClientReleaseService {
         // Recheck both committed files before touching any old metadata or bytes.
         validatePublishedPackage(root, installer);
         validatePublishedPackage(root, update);
+        requireInstallerBinding(root, installer, update);
         var obsolete = releases.stream().filter(release -> "windows".equals(release.platform())
                 && published.architecture().equals(release.architecture()) && release.publishedAt() != null
                 && published.runtimeFamily().equals(release.runtimeFamily())
@@ -421,7 +430,7 @@ public class ClientReleaseService {
                     && release.sizeBytes() > 0 && Files.isRegularFile(binary, LinkOption.NOFOLLOW_LINKS) && Files.size(binary) == release.sizeBytes();
         } catch (IOException failure) { return false; }
     }
-    private static boolean deliveryVisible(Path root, List<ClientReleaseDto.Release> releases, ClientReleaseDto.Release release) {
+    private boolean deliveryVisible(Path root, List<ClientReleaseDto.Release> releases, ClientReleaseDto.Release release) {
         if (ClientDeliveryContract.auditedAndroid(release)) return usablePackage(root, release);
         if (!ClientDeliveryContract.paired(release)) return true;
         if (!usablePackage(root, release)) return false;
@@ -431,7 +440,31 @@ public class ClientReleaseService {
                 && other.runtimeFamily().equals(release.runtimeFamily()) && other.version().equals(release.version())
                 && other.buildNumber() == release.buildNumber() && opposite.equals(other.packageKind())
                 && ("installer".equals(other.packageKind()) ? ClientRuntimeFamily.setupMode(other.runtimeFamily()) : ClientRuntimeFamily.archiveMode(other.runtimeFamily())).equals(other.installMode())
-                && usablePackage(root, other));
+                && usablePackage(root, other)
+                && installerBindingMatches(root, "installer".equals(release.packageKind()) ? release : other,
+                        "update".equals(release.packageKind()) ? release : other));
+    }
+
+    private static boolean sameDeliveryGroup(ClientReleaseDto.Release left, ClientReleaseDto.Release right) {
+        return ClientDeliveryContract.paired(left) && ClientDeliveryContract.paired(right)
+                && left.platform().equals(right.platform()) && left.runtimeFamily().equals(right.runtimeFamily())
+                && left.architecture().equals(right.architecture()) && left.version().equals(right.version())
+                && left.buildNumber() == right.buildNumber();
+    }
+
+    private boolean installerBindingMatches(Path root, ClientReleaseDto.Release installer, ClientReleaseDto.Release update) {
+        try {
+            requireInstallerBinding(root, installer, update);
+            return true;
+        } catch (IOException | ApiException invalidPair) {
+            return false;
+        }
+    }
+
+    private void requireInstallerBinding(Path root, ClientReleaseDto.Release installer, ClientReleaseDto.Release update) throws IOException {
+        String expected = inspector.installerBinding(packagePath(root, update.id()), update);
+        if (expected != null && !expected.equals(installer.sha256()))
+            throw invalid("安装包与更新 ZIP 不属于同一冻结交付，请重新生成并上传完整双包");
     }
     private static Path packagePath(Path root, UUID id) { return root.resolve(id.toString()).resolve("package.bin"); }
     private void requireSpace(Path directory, long nextBytes) throws IOException {

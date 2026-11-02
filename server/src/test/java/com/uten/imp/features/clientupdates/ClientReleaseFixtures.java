@@ -26,14 +26,19 @@ final class ClientReleaseFixtures {
     }
     static byte[] windows(ObjectMapper mapper,long build,String architecture,String version) throws Exception {
         var files=new LinkedHashMap<String,byte[]>();
-        files.put("uten_imp.exe",WindowsFlutterFixture.main(build,architecture,version));
+        boolean profiled=WindowsRuntimeProfileContract.requiredVersion(version);
+        files.put("uten_imp.exe",WindowsFlutterFixture.main(build,architecture,version,
+                profiled?Map.of("UtenBuildProfile","formal"):Map.of()));
         files.put("flutter_windows.dll",WindowsFlutterFixture.engine(build,architecture,version));
         files.put("data/app.so",WindowsFlutterFixture.elf(architecture));
         files.put("data/icudtl.dat","icu".getBytes(StandardCharsets.UTF_8));
         files.put("data/flutter_assets/AssetManifest.bin","assets".getBytes(StandardCharsets.UTF_8));
+        if(profiled) files.put(WindowsRuntimeProfileContract.FILE,mapper.writeValueAsBytes(WindowsRuntimeProfileFixture.formal()));
         var entries=new ArrayList<Map<String,Object>>();files.forEach((name,value)->entries.add(Map.of("path",name,"size",value.length,"sha256",sha(value))));
-        files.put("uten-client-manifest.json",mapper.writeValueAsBytes(Map.of("schemaVersion",1,"platform","windows","architecture",architecture,
-                "version",version,"buildNumber",build,"executable","uten_imp.exe","packageKind","update","files",entries)));
+        var manifest=new LinkedHashMap<String,Object>(Map.of("schemaVersion",1,"platform","windows","architecture",architecture,
+                "version",version,"buildNumber",build,"executable","uten_imp.exe","packageKind","update","files",entries));
+        if(profiled) manifest.put("installerSha256",sha(WindowsSetupFixture.bytes(build,architecture,version)));
+        files.put("uten-client-manifest.json",mapper.writeValueAsBytes(manifest));
         return zip(files);
     }
     static byte[] zip(Map<String,byte[]> files) throws Exception {

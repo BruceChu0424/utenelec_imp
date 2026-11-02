@@ -4,11 +4,11 @@
 
 ## W7-BIZ-143 · lib/features/security/pages/security_blacklist_page.dart
 
-模块 `security`；272 行；SHA256 `c11d5cbeb0a7cbde7345b42dbb51cfe7f23140fe1790987806d5834cbda57525`。
+模块 `security`；277 行；SHA256 `a164f9739aecaae7adc83e5f75f927ff7181e780d4c7e398b818f046e689deda`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | SecurityBlacklistPage @67 (page-class)<br>_SecurityBlacklistPageState @75 (state-class) |
+| 页面/状态类 | SecurityBlacklistPage @68 (page-class)<br>_SecurityBlacklistPageState @76 (state-class) |
 | 真实路由绑定 | /security/blacklist；router @2295；builder ['SecurityBlacklistPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
@@ -18,7 +18,7 @@
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/visitor/SecurityVisitorController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/visitor/VisitorApprovalController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/shared/models/retained_async_page.dart` (models)；`lib/components/feedback/uten_context_menu.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/visitor/repositories/visitor_staff_repository.dart` (repositories)；`lib/features/visitor/providers/visitor_column_queries.dart` (providers)；`lib/features/visitor/widgets/visitor_status_ui.dart` (featureWidgets)；`lib/shared/models/paged_result.dart` (models)；`lib/shared/paging/scoped_paged_read_provider.dart` (sharedComponents)；`lib/shared/providers/export_context_epoch_provider.dart` (sharedComponents)。
+直接源依赖：`lib/core/ui/human_error_message.dart` (core)；`lib/components/feedback/uten_dialog.dart` (sharedComponents)；`lib/shared/models/retained_async_page.dart` (models)；`lib/components/feedback/uten_context_menu.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/responsive/breakpoint.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/visitor/repositories/visitor_staff_repository.dart` (repositories)；`lib/features/visitor/providers/visitor_column_queries.dart` (providers)；`lib/features/visitor/widgets/visitor_status_ui.dart` (featureWidgets)；`lib/shared/models/paged_result.dart` (models)；`lib/shared/paging/scoped_paged_read_provider.dart` (sharedComponents)；`lib/shared/providers/export_context_epoch_provider.dart` (sharedComponents)。
 
 ## W7-BIZ-144 · lib/features/security/pages/security_scan_page.dart
 

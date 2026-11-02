@@ -40,17 +40,17 @@
 
 ## W7-BIZ-083 · lib/features/hr_task/pages/hr_workbench_page.dart
 
-模块 `hr_task`；579 行；SHA256 `fd248d600baaf4ebe51e08295f1e90a4b264dca7e4a85c3402254fca383fd4ed`。
+模块 `hr_task`；580 行；SHA256 `f0bb27b9d11010a613c7a8bd129b8f1f2466b621fd054c2a23f9d69bf569ae2a`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | HrWorkbenchPage @51 (page-class)<br>_EntryCard @444 (supporting-class)<br>_QuickTile @534 (supporting-class) |
+| 页面/状态类 | HrWorkbenchPage @51 (page-class)<br>_EntryCard @445 (supporting-class)<br>_QuickTile @535 (supporting-class) |
 | 真实路由绑定 | /hr/tasks；router @2331；builder ['HrWorkbenchPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | notice:publish @66；定义 lib/shared/auth/permissions.dart:514<br>employee:view @123；定义 lib/shared/auth/permissions.dart:12<br>employee:edit @124；定义 lib/shared/auth/permissions.dart:14 |
+| 权限 | notice:publish @66；定义 lib/shared/auth/permissions.dart:514<br>employee:view @124；定义 lib/shared/auth/permissions.dart:12<br>employee:edit @125；定义 lib/shared/auth/permissions.dart:14 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | copyWith @201 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @263 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @270 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @291 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @367 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @429 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @501 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleLarge?.copyWith(<br>copyWith @513 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @522 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @571 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith( |
+| 动作处理 | copyWith @202 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @264 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @271 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @292 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @368 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @430 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @502 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleLarge?.copyWith(<br>copyWith @514 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @523 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @572 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith( |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 

@@ -335,7 +335,7 @@
 
 证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`；`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`。
 
-接续/限制：2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-10-31 read-only company/old-backup audit confirms original summary text is preserved as keeper while manufacturer is blank. Native mould workspace remains unported. Retain raw text, supplier UUID ambiguity and approved data-recovery boundary. See E-MOULD-BOM-WINDOWS-20261031.；2026-10-31 user confirmed summary is manufacturer/mould supplier. V972 and offline import now recover/preserve original text; company read-only preflight: 1300 eligible, zero conflicts. Production was not written. WPF mould page remains unported.；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。。
 
 ## W7-BIZ-032
 

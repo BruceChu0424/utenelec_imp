@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'components/layout/uten_page_scrollbar_host.dart';
+import 'components/layout/uten_app_bar_action_scope.dart';
+import 'shared/providers/export_context_epoch_provider.dart';
 import 'core/constants/app_info.dart';
 
 import 'components/feedback/uten_context_menu_policy.dart';
@@ -72,6 +74,11 @@ class UtenApp extends ConsumerWidget {
       }
     });
     final themeMode = ref.watch(themeProvider);
+    final actionOwnerEpoch = ref.watch(exportContextEpochProvider);
+    final actionOwnerIdentity = (
+      ref.read(exportContextEpochProvider.notifier),
+      actionOwnerEpoch,
+    );
     final branding = ref.watch(platformBrandingSnapshotProvider);
     syncWebUpdateBranding(branding, ref.watch(apiBaseUrlProvider));
     ref.watch(platformWindowTitleSyncProvider);
@@ -238,7 +245,10 @@ class UtenApp extends ConsumerWidget {
           ),
         );
         return Consumer(
-          child: appContent,
+          child: UtenActionOwnerScope(
+            identity: actionOwnerIdentity,
+            child: appContent,
+          ),
           builder: (context, ref, child) {
             // push keeps the address at its source route. Use the actual top
             // page so login's transparent drag strip cannot cover recovery.

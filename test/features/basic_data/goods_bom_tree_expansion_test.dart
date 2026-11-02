@@ -7,6 +7,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/uten_test_actions.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
@@ -144,8 +146,8 @@ Future<GoodsBomEditTestApi> _pump(
   double fontScale = 1,
   TargetPlatform platform = TargetPlatform.windows,
 }) async {
-  await tester.binding.setSurfaceSize(size);
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, size);
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   final api = GoodsBomEditTestApi(repo);
   await tester.pumpWidget(
     ProviderScope(

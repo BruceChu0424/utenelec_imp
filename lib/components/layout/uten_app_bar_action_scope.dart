@@ -5,6 +5,24 @@ import 'package:flutter/material.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/router/page_navigation_session.dart';
 
+/// UI projection of the application's monotonic authenticated-reader epoch.
+/// Components receive an opaque identity and never decide business access.
+class UtenActionOwnerScope extends InheritedWidget {
+  const UtenActionOwnerScope({
+    super.key,
+    required this.identity,
+    required super.child,
+  });
+  final Object identity;
+
+  static Object? identityOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<UtenActionOwnerScope>()?.identity;
+
+  @override
+  bool updateShouldNotify(UtenActionOwnerScope oldWidget) =>
+      identity != oldWidget.identity;
+}
+
 /// Flat full-width rows inside the project-owned action dropdown.
 class UtenMenuActionPresentation extends InheritedWidget {
   const UtenMenuActionPresentation({
@@ -46,16 +64,20 @@ class UtenAppBarActionScope extends InheritedWidget {
     required this.actionContext,
     required this.claimAction,
     required this.dismiss,
+    required this.isCurrent,
     this.navigation,
     this.closeBeforeAction = false,
+    this.transient = true,
     required super.child,
   });
 
   final BuildContext actionContext;
   final bool Function() claimAction;
   final VoidCallback dismiss;
+  final bool Function() isCurrent;
   final PageNavigationSession? navigation;
   final bool closeBeforeAction;
+  final bool transient;
 
   static BuildContext actionContextOf(BuildContext context) =>
       context
@@ -79,8 +101,10 @@ class UtenAppBarActionScope extends InheritedWidget {
       actionContext: scope.actionContext,
       claimAction: scope.claimAction,
       dismiss: scope.dismiss,
+      isCurrent: scope.isCurrent,
       navigation: scope.navigation,
       closeBeforeAction: true,
+      transient: scope.transient,
       child: child,
     );
   }
@@ -92,12 +116,41 @@ class UtenAppBarActionScope extends InheritedWidget {
     if (callback == null) return null;
     final scope = context
         .dependOnInheritedWidgetOfExactType<UtenAppBarActionScope>();
-    return () {
-      if (scope != null) {
-        if (!scope.claimAction()) return;
-        scope.dismiss();
+    if (scope == null) return () => callback();
+    if (!scope.transient) {
+      return () {
+        if (scope.claimAction()) callback();
+      };
+    }
+    return wrapOwnedBefore(
+      owner: scope.actionContext,
+      claimAction: scope.claimAction,
+      dismiss: scope.dismiss,
+      isCurrent: scope.isCurrent,
+      callback: callback,
+    );
+  }
+
+  /// Shared by native and Uten controls; the source owner survives its panel.
+  static VoidCallback? wrapOwnedBefore({
+    required BuildContext owner,
+    required bool Function() claimAction,
+    required VoidCallback dismiss,
+    required bool Function() isCurrent,
+    required FutureOr<void> Function()? callback,
+  }) {
+    if (callback == null) return null;
+    return () async {
+      if (!owner.mounted || !claimAction()) return;
+      final identity = UtenActionOwnerScope.identityOf(owner);
+      dismiss();
+      await WidgetsBinding.instance.endOfFrame;
+      if (!owner.mounted ||
+          !isCurrent() ||
+          identity != UtenActionOwnerScope.identityOf(owner)) {
+        return;
       }
-      callback();
+      await callback();
     };
   }
 
@@ -110,11 +163,7 @@ class UtenAppBarActionScope extends InheritedWidget {
         .dependOnInheritedWidgetOfExactType<UtenAppBarActionScope>();
     if (scope == null) return () => callback();
     if (scope.closeBeforeAction) {
-      return () {
-        if (!scope.claimAction()) return;
-        scope.dismiss();
-        callback();
-      };
+      return wrapBefore(context, callback);
     }
     return () {
       if (!scope.claimAction()) return;
@@ -128,6 +177,8 @@ class UtenAppBarActionScope extends InheritedWidget {
       actionContext != oldWidget.actionContext ||
       navigation != oldWidget.navigation ||
       closeBeforeAction != oldWidget.closeBeforeAction ||
+      transient != oldWidget.transient ||
+      isCurrent != oldWidget.isCurrent ||
       claimAction != oldWidget.claimAction ||
       dismiss != oldWidget.dismiss;
 }

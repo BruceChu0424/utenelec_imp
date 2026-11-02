@@ -10,6 +10,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/layout/uten_content_scrollbar.dart';
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
@@ -168,8 +169,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(
         scrollbar().bottomInset,
-        greaterThan(100),
-        reason: 'Wrapped actions still reserve their complete height',
+        closeTo(
+          tester.getSize(find.byType(UtenFloatingActionGroup)).height + 16,
+          .01,
+        ),
+        reason: 'Clearance follows the actual compact actions height',
       );
       expect(tester.takeException(), isNull);
     },

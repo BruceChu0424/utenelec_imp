@@ -108,7 +108,15 @@ class _UtenAppBarState extends State<UtenAppBar> {
   final _moreAnchorKey = GlobalKey();
   final _navigation = PageNavigationSession();
   int _actionRevision = 0;
+  int _sourceRevision = 0;
+  int _menuGeneration = 0;
   _AppBarActionPanel? _actionPanel;
+
+  @override
+  void didUpdateWidget(UtenAppBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _sourceRevision++;
+  }
 
   String? get title => widget.title;
   String? get subtitle => widget.subtitle;
@@ -149,6 +157,12 @@ class _UtenAppBarState extends State<UtenAppBar> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final compactWindow = UtenCompactPresentation.of(context);
+    // A page host already aligns its header and content to the same gutter.
+    // Keep the compact inset only for headers without that owning host.
+    final leadingInset =
+        compactWindow && !UtenContentInsetsScope.isPresentOf(context)
+        ? UtenSpacing.s8
+        : 0.0;
 
     final baseColor =
         backgroundColor ??
@@ -419,9 +433,9 @@ class _UtenAppBarState extends State<UtenAppBar> {
               ? EdgeInsets.only(right: UtenPageChromeMetrics.endOf(context))
               : EdgeInsets.zero,
           title: _buildTitleArea(context, theme, isDark),
-          leading: compactWindow && (pageLeading != null || showBackButton)
+          leading: leadingInset > 0 && (pageLeading != null || showBackButton)
               ? Padding(
-                  padding: const EdgeInsetsDirectional.only(start: 8),
+                  padding: EdgeInsetsDirectional.only(start: leadingInset),
                   child:
                       pageLeading ??
                       (showBackButton
@@ -436,7 +450,7 @@ class _UtenAppBarState extends State<UtenAppBar> {
           // 返回键只占可见圆形，标题间隔独立留白，不扩大返回点击区域。
           // 非返回型 leading 沿用 AppBar 的默认槽宽和标题间距。
           leadingWidth: (showBackButton || pageLeading is UtenBackButton)
-              ? UtenBackButton.slotWidth(context) + (compactWindow ? 8 : 0)
+              ? UtenBackButton.slotWidth(context) + leadingInset
               : (pageLeading == null && !showBackButton ? 0 : null),
           titleSpacing: (showBackButton || pageLeading is UtenBackButton)
               ? UtenBackButton.titleGap
@@ -498,6 +512,7 @@ class _UtenAppBarState extends State<UtenAppBar> {
   ) {
     if (!mounted || revision != _actionRevision) return Future<void>.value();
     final panel = _AppBarActionPanel(_actionRevision, pageActions);
+    final menuGeneration = ++_menuGeneration;
     _actionPanel = panel;
     bool claim(int revision) {
       if (!mounted ||
@@ -512,14 +527,22 @@ class _UtenAppBarState extends State<UtenAppBar> {
 
     void dismiss() => panel.dismiss();
 
+    bool Function() sourceGuard() {
+      final sourceRevision = _sourceRevision;
+      return () =>
+          mounted &&
+          sourceRevision == _sourceRevision &&
+          menuGeneration == _menuGeneration;
+    }
+
     VoidCallback? before(VoidCallback? callback, int revision) =>
-        callback == null
-        ? null
-        : () {
-            if (!claim(revision)) return;
-            dismiss();
-            callback();
-          };
+        UtenAppBarActionScope.wrapOwnedBefore(
+          owner: this.context,
+          claimAction: () => claim(revision),
+          dismiss: dismiss,
+          isCurrent: sourceGuard(),
+          callback: callback,
+        );
     Widget present(Widget source, BuildContext panelContext, int revision) {
       if (source is Padding) {
         return Padding(
@@ -597,6 +620,7 @@ class _UtenAppBarState extends State<UtenAppBar> {
             navigation: _navigation,
             claimAction: () => claim(revision),
             dismiss: dismiss,
+            isCurrent: sourceGuard(),
             closeBeforeAction: true,
             child: source,
           ),
@@ -620,6 +644,7 @@ class _UtenAppBarState extends State<UtenAppBar> {
             navigation: _navigation,
             claimAction: () => claim(presentation.revision),
             dismiss: dismiss,
+            isCurrent: sourceGuard(),
             child: Column(
               mainAxisSize: compactMenu ? MainAxisSize.min : MainAxisSize.max,
               children: [

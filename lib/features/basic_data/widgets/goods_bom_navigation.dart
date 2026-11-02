@@ -66,6 +66,7 @@ class GoodsBomNavigation extends ConsumerWidget {
     return builder(context, [
       UtenButton(
         key: const Key('goods-previous-bom'),
+        closeBeforeAction: true,
         type: UtenButtonType.secondary,
         size: UtenButtonSize.large,
         onPressed: enabled && index > 0
@@ -105,6 +106,7 @@ class GoodsBomNavigation extends ConsumerWidget {
         ),
       UtenButton(
         key: const Key('goods-next-bom'),
+        closeBeforeAction: true,
         type: UtenButtonType.secondary,
         size: UtenButtonSize.large,
         onPressed: enabled && index >= 0 && index < data!.ids.length - 1

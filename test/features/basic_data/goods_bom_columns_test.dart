@@ -15,6 +15,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/uten_test_actions.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
@@ -226,8 +228,8 @@ Future<void> _pumpTab(
   Set<String> permissions = const <String>{},
   Locale locale = const Locale('zh'),
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 900));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(1600, 900));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -268,8 +270,8 @@ void main() {
   });
 
   testWidgets('同一组装页在库存授权和撤权后更新列缓存', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1600, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     await tester.pumpWidget(
       ProviderScope(
         overrides: [

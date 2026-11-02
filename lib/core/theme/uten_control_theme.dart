@@ -35,7 +35,13 @@ class UtenControlTheme extends StatelessWidget {
               ? MaterialTapTargetSize.padded
               : style?.tapTargetSize,
           textStyle: compact && !icon
-              ? WidgetStatePropertyAll(text.labelLarge?.copyWith(fontSize: 13))
+              ? WidgetStateProperty.resolveWith((states) {
+                  // Preserve the source style's inheritance and state rules.
+                  // A retained Material button animates between these themes.
+                  final base =
+                      style?.textStyle?.resolve(states) ?? text.labelLarge;
+                  return base?.copyWith(fontSize: 13);
+                })
               : style?.textStyle,
           visualDensity: VisualDensity.standard,
           padding: compact

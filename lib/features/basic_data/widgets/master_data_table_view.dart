@@ -6990,12 +6990,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
             bool overflowAction(Widget child) =>
                 child.key != const ValueKey('master-table-fullscreen-toggle') &&
                 UtenActionOverflow.isAction(child);
-            final controls = toolbarChildren
-                .where((child) => !overflowAction(child))
-                .toList();
+            final controls = [
+              ...toolbarChildren.where((child) => !overflowAction(child)),
+              ...actions.where((child) => !overflowAction(child)),
+            ];
             final menuActions = [
               ...toolbarChildren.where(overflowAction),
-              ...actions,
+              ...actions.where(overflowAction),
             ];
             return Wrap(
               spacing: UtenSpacing.s4,

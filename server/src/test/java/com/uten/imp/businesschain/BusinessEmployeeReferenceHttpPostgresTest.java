@@ -84,12 +84,17 @@ class BusinessEmployeeReferenceHttpPostgresTest {
         assertFalse(actor.getPermissions().contains("employee:view"));
     }
     @AfterEach void clear() {PublicationProbe.PENDING.remove();SecurityContextHolder.clearContext();}
-    JsonNode read(String path,Map<String,String> parameters,int status) throws Exception {
+    org.springframework.mock.web.MockHttpServletResponse exchange(
+            org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request) throws Exception {
         var actor=SecurityContextHolder.getContext().getAuthentication();
-        var request=get(path).with(authentication(actor));parameters.forEach(request::param);
-        try {var response=http.perform(request).andReturn().getResponse();assertEquals(status,response.getStatus(),response.getContentAsString());
-            return response.getContentAsByteArray().length==0?json.nullNode():json.readTree(response.getContentAsByteArray());}
+        if (actor != null) request.with(authentication(actor));
+        try {return http.perform(request).andReturn().getResponse();}
         finally {SecurityContextHolder.getContext().setAuthentication(actor);}
+    }
+    JsonNode read(String path,Map<String,String> parameters,int status) throws Exception {
+        var request=get(path);parameters.forEach(request::param);
+        var response=exchange(request);assertEquals(status,response.getStatus(),response.getContentAsString());
+        return response.getContentAsByteArray().length==0?json.nullNode():json.readTree(response.getContentAsByteArray());
     }
     Map<String,String> query(String purpose) {return Map.of("purpose",purpose);}
     Set<String> fields(JsonNode node) {Set<String> result=new HashSet<>();node.fieldNames().forEachRemaining(result::add);return result;}
@@ -182,15 +187,15 @@ class BusinessEmployeeReferenceHttpPostgresTest {
     }
 
     @Test void anonymousAndVisitorAreDeniedButFormalReadOnlySimulationRetainsTargetReads() throws Exception {
-        SecurityContextHolder.clearContext();assertEquals(401,http.perform(get(API).param("purpose",ARRIVAL)).andReturn().getResponse().getStatus());
+        SecurityContextHolder.clearContext();assertEquals(401,exchange(get(API).param("purpose",ARRIVAL)).getStatus());
         AuthUser visitor=AuthUser.visitor(UUID.randomUUID(),"synthetic-visitor","V-REF",Set.of("warehouse_inbound:view","warehouse_inbound:stock_in"));
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(visitor,null,visitor.getAuthorities()));read(API,query(ARRIVAL),403);
         fixture.loginAs(operator);var real=(AuthUser)SecurityContextHolder.getContext().getAuthentication().getPrincipal();
         var simulated=new AuthUser(real.getId(),real.getEmployeeId(),real.getLoginAccount(),real.getPermissions(),false,true,false,false,UUID.randomUUID());
         var simulatedAuth=new UsernamePasswordAuthenticationToken(simulated,null,simulated.getAuthorities());
         SecurityContextHolder.getContext().setAuthentication(simulatedAuth);read(API,query(ARRIVAL),200);
-        assertEquals(403,http.perform(post("/api/warehouse/inbound/arrivals/batch").with(authentication(simulatedAuth))
-                .contentType("application/json").content("{}")).andReturn().getResponse().getStatus(),"Existing write guard must still reject simulated business writes");
+        assertEquals(403,exchange(post("/api/warehouse/inbound/arrivals/batch")
+                .contentType("application/json").content("{}")).getStatus(),"Existing write guard must still reject simulated business writes");
     }
 
     @Test void aRevokeBeforePublicationStillBlocksTheAlreadyBuiltMinimalResponse() throws Exception {
@@ -229,8 +234,12 @@ class BusinessEmployeeReferenceHttpPostgresTest {
         assertTrue(tree.findValues("managerId").isEmpty());assertTrue(tree.findValues("managerName").isEmpty());
         read("/api/org/departments/tree",Map.of(),403);read("/api/org/employees",Map.of(),403);
         var auth=SecurityContextHolder.getContext().getAuthentication();
-        var response=http.perform(get(WORKSHOP_DEFAULTS).with(authentication(auth)).param("purpose",purpose)
-                .param("ids",workshop.toString())).andReturn().getResponse();
+        long authVersion=db.queryForObject("SELECT auth_version FROM users WHERE id=?",Long.class,writer);
+        var response=exchange(get(WORKSHOP_DEFAULTS).param("purpose",purpose).param("ids",workshop.toString()));
+        assertSame(auth,SecurityContextHolder.getContext().getAuthentication(),
+                "A MockMvc response-header probe must retain the fixture principal for the next request");
+        assertEquals(authVersion,db.queryForObject("SELECT auth_version FROM users WHERE id=?",Long.class,writer),
+                "The read-only header probe must not mutate account authorization");
         assertEquals(200,response.getStatus());assertNotNull(response.getHeader("X-Uten-Read-Scope-Version"));
         assertEquals("native_workshop_tasks:browse",response.getHeader("X-Uten-Read-Scope-Domain"));
         read(WORKSHOP_DEFAULTS,Map.of("purpose","SUPPLIER_OWNER","ids",workshop.toString()),422);

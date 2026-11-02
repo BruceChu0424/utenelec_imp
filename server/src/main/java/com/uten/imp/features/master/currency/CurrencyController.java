@@ -88,7 +88,7 @@ public class CurrencyController {
 
     /** 全量字典（采购单据选币种用；currency:view 全员有）。 */
     @GetMapping("/dict")
-    @PreAuthorize(SalesClientTermsAccess.CURRENCY_OPTIONS + " or @businessMasterReferenceAccess.canRead('terms')")
+    @PreAuthorize(SalesClientTermsAccess.CURRENCY_OPTIONS)
     public List<CurrencyListItem> dict() {
         return service.dict();
     }

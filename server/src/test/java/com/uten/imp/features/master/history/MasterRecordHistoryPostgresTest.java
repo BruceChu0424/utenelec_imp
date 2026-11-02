@@ -1329,7 +1329,7 @@ class MasterRecordHistoryPostgresTest {
     var page=service.search("goods",item,null,null,edits);
     assertEquals(2,page.entries().size());assertNotNull(page.nextCursor());
     assertEquals(1,statistics.getPrepareStatementCount(),"Field visibility must remain inside the summary query");
-    var last=service.search("goods",item,null,Long.valueOf(page.nextCursor()),edits);
+    var last=service.search("goods",item,null,historyNumber(page.nextCursor()),edits);
     assertEquals(1,last.entries().size());assertNull(last.nextCursor());
   }
 

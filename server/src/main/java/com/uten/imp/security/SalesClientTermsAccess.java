@@ -12,6 +12,7 @@ public final class SalesClientTermsAccess {
 
     /** Preserve the existing order-reader entry while allowing every actual sales form. */
     public static final String READ = "hasAuthority('sales_order:view') or " + FORM;
-    public static final String SETTLEMENT_OPTIONS = "hasAnyAuthority('payment_style:view','client:finance') or " + FORM;
-    public static final String CURRENCY_OPTIONS = "hasAnyAuthority('currency:view','client:finance') or " + FORM;
+    private static final String BUSINESS_TERMS = " or @businessMasterReferenceAccess.canRead('terms')";
+    public static final String SETTLEMENT_OPTIONS = "hasAnyAuthority('payment_style:view','client:finance') or " + FORM + BUSINESS_TERMS;
+    public static final String CURRENCY_OPTIONS = "hasAnyAuthority('currency:view','client:finance') or " + FORM + BUSINESS_TERMS;
 }

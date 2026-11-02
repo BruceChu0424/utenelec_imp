@@ -49,7 +49,7 @@ class SupplierPayableHistoricalStatementContractTest {
                 .contains("party_monthly_summaries")
                 .contains("(ledger.deleted_at AT TIME ZONE 'Asia/Shanghai')::date")
                 .contains("(allocation.reversed_at AT TIME ZONE 'Asia/Shanghai')::date")
-                .contains("offset_facts AS (")
+                .contains("offset_facts AS NOT MATERIALIZED (")
                 .contains("FROM @offsets@ allocation")
                 .contains("'抵销反转'")
                 .contains("'@sourceLabel@使用'")
@@ -57,10 +57,22 @@ class SupplierPayableHistoricalStatementContractTest {
                 .contains("\"预收转销\" : \"应付抵销\"")
                 .contains("\"预收\" : \"贷项\"")
                 // 历史期初按快照截止日定格；迁入后的红冲才允许按删除时间定位。
-                .contains("THEN '历史期初' ELSE '立账' END")
                 .contains("ledger.legacy_import_run_id IS NULL AND ledger.status=-1")
                 .doesNotContain("ledger.deleted_at::date")
                 .doesNotContain("allocation.reversed_at::date");
+        Class<?> authority=Class.forName("com.uten.imp.features.finance.report.FinancePartyStatementSql");
+        var events=authority.getDeclaredMethod("events",boolean.class,String.class);
+        events.setAccessible(true);
+        for(boolean receivable:java.util.List.of(false,true)) {
+            String emitted=(String)events.invoke(null,receivable,"1=1");
+            assertThat(emitted)
+                    .contains("'历史期初'::text AS event_type", "'立账'::text AS event_type")
+                    .contains("ledger.legacy_import_run_id IS NOT NULL", "ledger.legacy_import_run_id IS NULL")
+                    .contains("snapshotAsOfUtc", "AT TIME ZONE 'Asia/Shanghai'")
+                    .contains(receivable?"'预收转销'":"'应付抵销'")
+                    .contains(receivable?"'预收使用'":"'贷项使用'")
+                    .contains(receivable?"'预收恢复'":"'贷项恢复'");
+        }
         // 新收付事件只认迁移后的资金事实，并保留带时区的冲销日期。
         assertThat(cashSql)
                 .contains("(COALESCE(t.reversed_at,t.updated_at) AT TIME ZONE 'Asia/Shanghai')::date AS reverse_date")

@@ -3,6 +3,7 @@ package com.uten.imp.features.sales;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.application.port.ExportLimitPort;
+import com.uten.imp.features.master.reference.BusinessMasterReferenceAccess;
 import com.uten.imp.common.export.WorkbookDownloadService;
 import com.uten.imp.common.export.XlsxExportService;
 import com.uten.imp.features.master.currency.CurrencyController;
@@ -104,18 +105,18 @@ class SalesClientTermsAccessTest {
     }
 
     @Test
-    void orderViewerRetainsClientDefaultsWithoutAcquiringDictionaryAccess() {
+    void orderViewerRetainsClientDefaultsAndMinimalTermChoicesWithoutMasterManagement() {
         assertClientDefaultsReadableWithOnly("sales_order:view");
 
-        assertThatThrownBy(referenceController::settlement).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(currencyController::dict).isInstanceOf(AccessDeniedException.class);
-        verifyNoInteractions(referenceService, currencyService);
+        assertSettlementOptionsReadable();
+        assertCurrencyOptionsReadable();
+        assertThatThrownBy(() -> currencyController.list(null,null,null,null,null,1,20,null,null))
+                .isInstanceOf(AccessDeniedException.class);
     }
 
     @ParameterizedTest(name = "unrelated read permission {0} does not expose client defaults")
     @ValueSource(strings = {
-            "sales_quote:view", "notice:read", "finance:view",
-            "sales_quote_finance:view", "client:view"
+            "notice:read", "finance:view", "sales_quote_finance:view"
     })
     void unrelatedReadersAreDeniedBeforeCallingService(String permission) {
         signIn(permission);
@@ -125,6 +126,20 @@ class SalesClientTermsAccessTest {
         assertThatThrownBy(referenceController::settlement).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(currencyController::dict).isInstanceOf(AccessDeniedException.class);
         verifyNoInteractions(service, referenceService, currencyService);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings={"sales_quote:view","client:view"})
+    void readableBusinessReferencesExposeOnlyTheirMinimalTermChoices(String permission) {
+        signIn(permission);
+        assertThatThrownBy(() -> controller.masterDefaultTerms(UUID.randomUUID())).isInstanceOf(AccessDeniedException.class);
+        assertSettlementOptionsReadable();
+        assertCurrencyOptionsReadable();
+        assertThatThrownBy(() -> currencyController.list(null,null,null,null,null,1,20,null,null))
+                .isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> referenceController.settlementAdmin(null,null,null,null,null))
+                .isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(service);
     }
 
     @Test
@@ -150,25 +165,27 @@ class SalesClientTermsAccessTest {
     }
 
     @Test
-    void paymentStyleViewerRetainsOnlyItsExistingDictionaryAccess() {
+    void paymentStyleViewerReadsMinimalTermChoicesWithoutGainingMasterWrites() {
         signIn("payment_style:view");
         assertSettlementOptionsReadable();
-
-        assertThatThrownBy(currencyController::dict).isInstanceOf(AccessDeniedException.class);
+        assertCurrencyOptionsReadable();
+        assertThatThrownBy(() -> currencyController.create(new CurrencySaveRequest()))
+                .isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.masterDefaultTerms(UUID.randomUUID()))
                 .isInstanceOf(AccessDeniedException.class);
-        verifyNoInteractions(service, currencyService);
+        verifyNoInteractions(service);
     }
 
     @Test
-    void currencyViewerRetainsOnlyItsExistingDictionaryAccess() {
+    void currencyViewerReadsMinimalTermChoicesWithoutGainingMasterWrites() {
         signIn("currency:view");
         assertCurrencyOptionsReadable();
-
-        assertThatThrownBy(referenceController::settlement).isInstanceOf(AccessDeniedException.class);
+        assertSettlementOptionsReadable();
+        assertThatThrownBy(() -> referenceController.settlementAdmin(null,null,null,null,null))
+                .isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(() -> controller.masterDefaultTerms(UUID.randomUUID()))
                 .isInstanceOf(AccessDeniedException.class);
-        verifyNoInteractions(service, referenceService);
+        verifyNoInteractions(service);
     }
 
     @Test
@@ -288,6 +305,15 @@ class SalesClientTermsAccessTest {
     @TestConfiguration
     @EnableMethodSecurity
     static class SecurityConfig {
+        @Bean
+        BusinessMasterReferenceAccess businessMasterReferenceAccess() {
+            return new BusinessMasterReferenceAccess(() -> {
+                var authentication=SecurityContextHolder.getContext().getAuthentication();
+                if(authentication==null)return java.util.Set.of();
+                return authentication.getAuthorities().stream().map(authority->authority.getAuthority())
+                        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+            });
+        }
         @Bean
         ControllerDependencies controllerDependencies() {
             return new ControllerDependencies();

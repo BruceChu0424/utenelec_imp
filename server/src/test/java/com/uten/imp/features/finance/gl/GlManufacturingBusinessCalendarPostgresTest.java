@@ -105,8 +105,12 @@ class GlManufacturingBusinessCalendarPostgresTest {
         when(result.getResultList()).thenAnswer(call -> {
             // Each query opens a fresh connection, so set timezone on that exact connection.
             return named.execute(sql, parameters, statement -> {
-                try (var session = statement.getConnection().createStatement()) {
-                    session.execute("SET TIME ZONE '" + timezone + "'");
+                try (var session = statement.getConnection().prepareStatement("SELECT set_config('TimeZone', ?, false)")) {
+                    session.setString(1, timezone);
+                    try (var configured = session.executeQuery()) {
+                        assertThat(configured.next()).isTrue();
+                        assertThat(configured.getString(1)).isEqualTo(timezone);
+                    }
                 }
                 try (var rows = statement.executeQuery()) {
                     var output = new java.util.ArrayList<Object[]>();

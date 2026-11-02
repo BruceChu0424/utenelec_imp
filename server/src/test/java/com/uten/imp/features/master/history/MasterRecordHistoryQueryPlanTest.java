@@ -83,7 +83,7 @@ class MasterRecordHistoryQueryPlanTest {
     int limited = finalPage.lastIndexOf("ORDER BY h.id DESC LIMIT :limit");
     assertTrue(joined >= 0 && limited > joined);
     for (String predicate : List.of("h.entity_type IN (:entities)", "h.id<:cursor", "newer.transaction_id=h.transaction_id",
-        "newer.record_id=h.record_id", "h.action=:action", "h.actor_id=:actor", "ILIKE :actorKeyword",
+        "newer.record_id=h.record_id", "COALESCE(visible_source.action,h.action)=:action", "h.actor_id=:actor", "ILIKE :actorKeyword",
         "ILIKE :summaryKeyword", "h.recorded_at>=:from", "h.recorded_at<:to",
         "NOT(r.is_category AND h.entity_type IN(:hiddenCategories))", "r.owner_employee_id IN(:goodsOwners)")) {
       int position = finalPage.indexOf(predicate);

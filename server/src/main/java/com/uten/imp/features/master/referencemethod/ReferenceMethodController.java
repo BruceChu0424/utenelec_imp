@@ -45,7 +45,7 @@ public class ReferenceMethodController {
     private final ExportLimitPort exportLimits;
 
     @GetMapping("/settlement")
-    @PreAuthorize(SalesClientTermsAccess.SETTLEMENT_OPTIONS + " or @businessMasterReferenceAccess.canRead('terms')")
+    @PreAuthorize(SalesClientTermsAccess.SETTLEMENT_OPTIONS)
     public List<ReferenceMethodOption> settlement() {
         return service.settlementOptions();
     }

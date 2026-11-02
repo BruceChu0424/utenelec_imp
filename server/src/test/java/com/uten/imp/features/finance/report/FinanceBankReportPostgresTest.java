@@ -74,7 +74,12 @@ class FinanceBankReportPostgresTest {
         Query q=mock(Query.class);Map<String,Object> p=new LinkedHashMap<>();
         when(q.setParameter(anyString(),any())).thenAnswer(call->{p.put(call.getArgument(0),call.getArgument(1));return q;});
         when(q.getResultList()).thenAnswer(call->{sqlRead.add(sql);return named.query(sql,p,(rs,n)->{
-            Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++)row[i]=rs.getObject(i+1);return row;});});
+            Object[] row=new Object[rs.getMetaData().getColumnCount()];
+            for(int i=0;i<row.length;i++) {
+                row[i]=rs.getObject(i+1);
+            }
+            return row;
+        });});
         when(q.getSingleResult()).thenAnswer(call->{sqlRead.add(sql);return named.queryForObject(sql,p,Long.class);});return q;
     }
     private ReportTableResponse report(String kind,UUID account,String keyword,Map<String,String> filters,int page,int size) {

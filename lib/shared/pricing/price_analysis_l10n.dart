@@ -382,9 +382,9 @@ const _copy = <String, List<String>>{
   'LIMIT_EXCEEDED': ['记录超过分析范围', 'Analysis limit reached', '분석 범위 초과'],
   'loading': ['正在核对可比价格', 'Checking comparable prices', '비교 가격 확인 중'],
   'denied': [
-    '需要货品查看与价格分析权限',
-    'Goods view and price analysis permissions are required',
-    '제품 조회 및 가격 분석 권한이 필요합니다',
+    '需要货品查看、价格分析及对应来源的价格查看权限',
+    'Goods, analysis and corresponding source price permissions are required',
+    '제품 조회, 가격 분석 및 해당 출처의 가격 조회 권한이 필요합니다',
   ],
   'retry': ['重新加载', 'Reload', '새로고침'],
   'warning': ['价格偏离参考区间', 'Price outside the reference range', '참고 범위를 벗어난 가격'],

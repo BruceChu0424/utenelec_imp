@@ -1603,7 +1603,9 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
             ? '订货单已保存并提交财务审核组；下一步由财务在「订货审批任务中心」审核'
             : '订货单草稿已保存；下一步请由有权限的人员提交财务审核',
       );
-      notifySavedPriceAssessment(context, ref, [d.priceAssessment]);
+      notifySavedPriceAssessment(context, ref, [
+        d.priceAssessment,
+      ], kind: 'PURCHASE');
       bumpListRefresh(ref, _cfg.refreshKey);
       unawaited(
         markNoticesReadByRoute(
@@ -1701,7 +1703,12 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
               : '订货单草稿已保存；下一步请由有权限的人员提交财务审核',
         );
       }
-      notifySavedPriceAssessment(context, ref, assessments.values);
+      notifySavedPriceAssessment(
+        context,
+        ref,
+        assessments.values,
+        kind: 'PURCHASE',
+      );
       await completeFormDraft();
       if (!mounted || !formDraftIdentityIsCurrent) return;
       // 新建完成回任务中心：单张与拆单使用同一去向，继续办理采购队列。

@@ -19,7 +19,7 @@ class MasterRecordHistoryControllerTest {
   void resolvedHistoryRecordsOneSpecificDetailViewForItsBusinessObjectAndRevision() {
     var service = mock(MasterRecordHistoryService.class);
     var audit = mock(AuditDetailViewRecorder.class);
-    var entry = mock(MasterRecordHistoryService.Entry.class);
+    var entry = mock(com.uten.imp.common.history.RecordHistory.Entry.class);
     var recordId = UUID.randomUUID();
     when(entry.id()).thenReturn("101");
     when(entry.recordId()).thenReturn(recordId);

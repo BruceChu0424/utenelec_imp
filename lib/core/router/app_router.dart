@@ -1,3 +1,6 @@
+import '../../shared/history/record_history_page.dart';
+import '../../shared/history/record_revision_page.dart';
+import '../../shared/history/record_history_area.dart';
 import '../../features/sales/pages/sales_manager_review_page.dart';
 import '../../features/basic_data/models/goods_detail_sequence.dart';
 import '../../shared/windows/business_windows.dart';
@@ -832,6 +835,39 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
             path: '/department',
             name: 'department',
             builder: (_, _) => const DepartmentPage(),
+          ),
+
+          DraftAwareGoRoute(
+            path: RouteName.companyFilesHistory,
+            builder: (_, state) => RecordHistoryPage(
+              area: RecordHistoryArea.companyFiles,
+              entityType: state.uri.queryParameters['entityType'],
+              recordId: state.uri.queryParameters['recordId'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.companyFilesHistoryRevision,
+            builder: (_, state) => RecordRevisionPage(
+              area: RecordHistoryArea.companyFiles,
+              entityType: state.pathParameters['entityType']!,
+              id: state.pathParameters['id']!,
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.adminPermissionsHistory,
+            builder: (_, state) => RecordHistoryPage(
+              area: RecordHistoryArea.permissions,
+              entityType: state.uri.queryParameters['entityType'],
+              recordId: state.uri.queryParameters['recordId'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: RouteName.adminPermissionsHistoryRevision,
+            builder: (_, state) => RecordRevisionPage(
+              area: RecordHistoryArea.permissions,
+              entityType: state.pathParameters['entityType']!,
+              id: state.pathParameters['id']!,
+            ),
           ),
 
           // —— 基础资料（hub：货品/模具资料同级入口；登录即可访问）——

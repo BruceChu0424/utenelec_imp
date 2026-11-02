@@ -928,7 +928,9 @@ class _PurchaseDocEditPageState extends ConsumerState<PurchaseDocEditPage>
         PurchaseDocType.request => widget.id == null ? '已创建' : '已保存',
       });
       if (formDraftIdentityIsCurrent) {
-        notifySavedPriceAssessment(context, ref, [d.priceAssessment]);
+        notifySavedPriceAssessment(context, ref, [
+          d.priceAssessment,
+        ], kind: 'PURCHASE');
       }
       bumpListRefresh(ref, _cfg.refreshKey);
       // 保存/更新成功后，指向本单据的通知对当前用户自动已读。

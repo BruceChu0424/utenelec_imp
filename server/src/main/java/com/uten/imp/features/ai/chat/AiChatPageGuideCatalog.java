@@ -4,6 +4,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.security.AiChatAccessPolicy;
 import com.uten.imp.security.AuthUser;
+import com.uten.imp.security.PriceAnalysisAccessPolicy;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -39,6 +40,8 @@ public class AiChatPageGuideCatalog {
         AuthUser actor = access.requireChat();
         access.requireDomain(page.domain());
         requirePermission(actor, page.permission());
+        if (page.key().equals("goods_price_analysis") && !PriceAnalysisAccessPolicy.canOpen(actor.getPermissions(),actor.isSuperAdmin()))
+            throw new ApiException(ErrorCode.FORBIDDEN,"无价格历史查看权限");
         if (route.endsWith("/new") && !page.permission().isEmpty()) {
             requirePermission(actor, page.permission().replace(":view", ":create"));
         } else if (route.endsWith("/edit") && !page.permission().isEmpty()) {

@@ -895,7 +895,9 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       if (outcome.financeSubmitError case final error?) {
         context.appWarning('单据已保存，但未提交财务：$error。可在详情页重新提交。');
         if (formDraftIdentityIsCurrent) {
-          notifySavedPriceAssessment(context, ref, [d.priceAssessment]);
+          notifySavedPriceAssessment(context, ref, [
+            d.priceAssessment,
+          ], kind: 'SUBCONTRACT');
         }
         bumpListRefresh(ref, _cfg.refreshKey);
         // 编辑既有单：pop 回宿主详情（其「返回即刷新」重取保存后数据），深链直达
@@ -913,7 +915,9 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
       if (!mounted) return;
       context.appSuccess(widget.id == null ? '已创建' : '已保存');
       if (formDraftIdentityIsCurrent) {
-        notifySavedPriceAssessment(context, ref, [d.priceAssessment]);
+        notifySavedPriceAssessment(context, ref, [
+          d.priceAssessment,
+        ], kind: 'SUBCONTRACT');
       }
       bumpListRefresh(ref, _cfg.refreshKey);
       if (widget.id != null) {

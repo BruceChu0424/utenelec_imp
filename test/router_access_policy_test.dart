@@ -429,7 +429,12 @@ void main() {
         expect(requiredAllPermsFor(analysis), [Perm.goodsView]);
         expect(
           locationAllowedFor(
-            {Perm.goodsView, Perm.goodsPriceAnalysisView},
+            {
+              Perm.goodsView,
+              Perm.goodsPriceAnalysisView,
+              Perm.purchaseOrderView,
+              Perm.purchaseOrderPriceView,
+            },
             false,
             analysis,
           ),

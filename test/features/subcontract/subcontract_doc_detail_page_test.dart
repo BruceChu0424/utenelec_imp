@@ -458,7 +458,7 @@ void main() {
     expect(find.text('合计(本币)'), findsOneWidget);
   });
 
-  testWidgets('finance-wide 权限可呈现服务端未脱敏委外金额', (tester) async {
+  testWidgets('财务数据范围不能显示未授权的委外价格和金额', (tester) async {
     tester.view.physicalSize = const Size(1200, 1800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -482,7 +482,7 @@ void main() {
     );
     expect({
       for (final column in table.columns) column.key,
-    }, containsAll(<String>{'price', 'amount'}));
+    }, isNot(contains(anyOf('price', 'amount'))));
   });
 
   testWidgets('委外进仓直接审核确认显示当前审核员责任', (tester) async {

@@ -1760,7 +1760,17 @@ void main() {
     final repository = _Repository()..items = [_textEntry()];
     await _mount(tester, repository);
     await _entryMenu(tester, 'text');
+    expect(find.text('修改历史'), findsOneWidget);
     expect(find.text('访问权限'), findsOneWidget);
+    // The shared history entry adds a row to the existing scrollable menu.
+    await tester.scrollUntilVisible(
+      find.text('访问密码'),
+      60,
+      scrollable: find.ancestor(
+        of: find.text('访问权限'),
+        matching: find.byType(Scrollable),
+      ).first,
+    );
     expect(find.text('访问密码'), findsOneWidget);
     await _tap(tester, find.text('访问权限'));
     expect(repository.accessIds, ['text']);

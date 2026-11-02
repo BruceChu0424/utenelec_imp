@@ -141,6 +141,7 @@ Future<void> _pump(
   _Bom bom,
   _History history, {
   GoodsDetailTab tab = GoodsDetailTab.basic,
+  Set<String>? permissions,
 }) async {
   tester.view.devicePixelRatio = 1;
   tester.view.physicalSize = const Size(1600, 1000);
@@ -149,12 +150,15 @@ Future<void> _pump(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        currentPermissionsProvider.overrideWithValue({
-          Perm.goodsView,
-          Perm.goodsEdit,
-          Perm.goodsBomCreate,
-          Perm.goodsBomEdit,
-        }),
+        currentPermissionsProvider.overrideWithValue(
+          permissions ??
+              {
+                Perm.goodsView,
+                Perm.goodsEdit,
+                Perm.goodsBomCreate,
+                Perm.goodsBomEdit,
+              },
+        ),
         isSuperAdminProvider.overrideWithValue(false),
         authenticatedScopeProvider.overrideWithValue(
           const AuthenticatedScope(userId: 'reader'),
@@ -219,6 +223,27 @@ Future<void> _apply(WidgetTester tester, {bool cancel = false}) async {
 }
 
 void main() {
+  testWidgets(
+    'price analysis toolbar entrance requires an authorized source price pool',
+    (tester) async {
+      final goods = _Goods(), bom = _Bom();
+      final history = _History(goods);
+      final base = {Perm.goodsView, Perm.goodsPriceAnalysisView};
+      for (final pair in [
+        (base, false),
+        ({...base, Perm.purchaseOrderView, Perm.financeViewAll}, false),
+        ({...base, Perm.purchaseOrderView, Perm.purchaseOrderPriceView}, true),
+      ]) {
+        await _pump(tester, goods, bom, history, permissions: pair.$1);
+        expect(
+          find.byKey(const Key('goods-price-analysis-entry')),
+          pair.$2 ? findsOneWidget : findsNothing,
+        );
+        await tester.pumpWidget(const SizedBox());
+      }
+    },
+  );
+
   testWidgets('详情编辑保存后留在查看态，撤回和取消撤回都确认并重读详情', (tester) async {
     final goods = _Goods();
     final bom = _Bom();

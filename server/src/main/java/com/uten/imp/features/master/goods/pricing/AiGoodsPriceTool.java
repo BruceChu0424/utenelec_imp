@@ -7,6 +7,7 @@ import com.uten.imp.features.master.goods.GoodsService;
 import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
 import com.uten.imp.security.AiChatAccessPolicy;
 import com.uten.imp.security.CurrentAuthorityGuard;
+import com.uten.imp.security.PriceAnalysisAccessPolicy;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -42,13 +43,12 @@ public class AiGoodsPriceTool implements AiChatToolPort {
     @Override public String domain() { return "FINANCE"; }
     @Override public boolean rememberQueryArguments() { return true; }
     @Override public boolean available() {
-        return access.hasDomain(domain()) && current.get().filter(actor -> actor.isSuperAdmin()
-                || actor.getPermissions().containsAll(List.of("goods:view", "goods:price_analysis:view"))).isPresent();
+        return access.hasDomain(domain()) && current.get().filter(actor -> !PriceAnalysisAccessPolicy.analyzableKinds(actor.getPermissions(),actor.isSuperAdmin()).isEmpty()).isPresent();
     }
     @Override public Map<String,Object> parameters() {
         return Map.of("type", "object", "additionalProperties", false, "required", List.of("goodsKeyword", "kind"),
                 "properties", Map.of("goodsKeyword", Map.of("type", "string", "minLength", 1, "maxLength", 100),
-                    "kind", Map.of("type", "string", "enum", List.of("PURCHASE", "SUBCONTRACT", "SALES")),
+                    "kind", Map.of("type", "string", "enum", current.get().map(actor->PriceAnalysisAccessPolicy.analyzableKinds(actor.getPermissions(),actor.isSuperAdmin())).orElse(List.of())),
                     "days", Map.of("type", "integer", "minimum", 1, "maximum", 366),
                     "quantity", Map.of("type", "string", "pattern", "[0-9]+(?:\\.[0-9]+)?", "maxLength", 30),
                     "targetMarginRate", Map.of("type", "string", "description", "毛利率小数，0.20表示20%，范围0至小于1", "pattern", "[0-9]+(?:\\.[0-9]+)?", "maxLength", 30)));
@@ -60,6 +60,8 @@ public class AiGoodsPriceTool implements AiChatToolPort {
         if (args == null || !Set.of("goodsKeyword", "kind", "days", "quantity", "targetMarginRate").containsAll(args.keySet())
                 || !(args.get("goodsKeyword") instanceof String keyword) || keyword.isBlank() || keyword.length() > 100) throw invalid();
         Options options = options(args);
+        if (!current.get().map(actor->PriceAnalysisAccessPolicy.canAnalyze(actor.getPermissions(),actor.isSuperAdmin(),options.kind().name())).orElse(false))
+            throw new ApiException(ErrorCode.FORBIDDEN,"无此类来源单据或商业价格查看权限");
         String text = keyword.strip();
         var page = goods.list(new GoodsQueryFilter(null, null, text, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null, null, null), 1, 11, "code", "asc");

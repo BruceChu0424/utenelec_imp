@@ -1,3 +1,5 @@
+import '../../../shared/history/record_history_action.dart';
+import '../../../shared/history/record_history_area.dart';
 // AdminPermissionsPage - 账号支持与权限管理。
 //
 // account:support 可执行账号锁定/启停/重置密码。
@@ -243,6 +245,8 @@ class _AdminPermissionsPageState extends ConsumerState<AdminPermissionsPage> {
           title: canManageAuthorization ? '账号与权限管理' : '账号支持',
           showBackButton: true,
           actions: [
+            if (canManageAuthorization)
+              const RecordHistoryAction(area: RecordHistoryArea.permissions),
             if (canManageAuthorization)
               AdminPermissionArchiveActions(
                 importEnabled: !_pendingPermissionChanges.values.any(

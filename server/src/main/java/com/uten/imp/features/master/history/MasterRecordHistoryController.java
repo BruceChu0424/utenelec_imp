@@ -20,7 +20,7 @@ public class MasterRecordHistoryController {
   public record RestoreRequest(@NotBlank String expectedHead, @NotNull Boolean before) {}
 
   @GetMapping
-  public MasterRecordHistoryService.Page list(
+  public com.uten.imp.common.history.RecordHistory.Page list(
       @RequestParam(required = false) String entityType,
       @RequestParam(required = false) UUID recordId,
       @RequestParam(required = false) UUID categoryId,
@@ -52,7 +52,7 @@ public class MasterRecordHistoryController {
   }
 
   @GetMapping("/{id}")
-  public MasterRecordHistoryService.Entry detail(
+  public com.uten.imp.common.history.RecordHistory.Entry detail(
       @RequestParam String entityType, @PathVariable long id) {
     var result = service.detail(entityType, id);
     audit.record(

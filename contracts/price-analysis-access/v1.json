@@ -1,0 +1,342 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "empty",
+      "permissions": [],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "entry-only",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "goods-sale-price-is-not-source-price",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "goods:price:view"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "scope-is-not-price",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "finance:view:all",
+        "finance_order_approval:view"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "PURCHASE-source-only",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "purchase_order:view"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "PURCHASE-price-only",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "purchase_order:price:view"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "PURCHASE-editor-without-price",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "purchase_order:view",
+        "purchase_order:edit"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "PURCHASE-authorized",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "purchase_order:view",
+        "purchase_order:price:view"
+      ],
+      "superAdmin": false,
+      "analyze": [
+        "PURCHASE"
+      ],
+      "history": [
+        "PURCHASE"
+      ]
+    },
+    {
+      "name": "SUBCONTRACT-source-only",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "subcontract_order:view"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "SUBCONTRACT-price-only",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "subcontract_order:price:view"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "SUBCONTRACT-editor-without-price",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "subcontract_order:view",
+        "subcontract_order:edit"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "SUBCONTRACT-authorized",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "subcontract_order:view",
+        "subcontract_order:price:view"
+      ],
+      "superAdmin": false,
+      "analyze": [
+        "SUBCONTRACT"
+      ],
+      "history": [
+        "SUBCONTRACT"
+      ]
+    },
+    {
+      "name": "SALES-source-only",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "sales_order:view"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "SALES-price-only",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "sales_order:price:view"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "SALES-editor-without-price",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "sales_order:view",
+        "sales_order:edit"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "SALES-authorized",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "sales_order:view",
+        "sales_order:price:view"
+      ],
+      "superAdmin": false,
+      "analyze": [
+        "SALES"
+      ],
+      "history": [
+        "SALES"
+      ]
+    },
+    {
+      "name": "finance-source-with-explicit-purchase-price",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "finance_order_approval:view",
+        "purchase_order:price:view"
+      ],
+      "superAdmin": false,
+      "analyze": [
+        "PURCHASE"
+      ],
+      "history": [
+        "PURCHASE"
+      ]
+    },
+    {
+      "name": "finance-source-with-explicit-subcontract-price",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "finance_order_approval:view",
+        "subcontract_order:price:view"
+      ],
+      "superAdmin": false,
+      "analyze": [
+        "SUBCONTRACT"
+      ],
+      "history": [
+        "SUBCONTRACT"
+      ]
+    },
+    {
+      "name": "sales-does-not-use-finance-source",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "finance_order_approval:view",
+        "sales_order:price:view"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "no-analysis-grant",
+      "permissions": [
+        "goods:view",
+        "purchase_order:view",
+        "purchase_order:price:view"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "no-goods-grant",
+      "permissions": [
+        "goods:price_analysis:view",
+        "purchase_order:view",
+        "purchase_order:price:view"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "quote-finance-history-only",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "sales_quote_finance:view"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": [
+        "SALES"
+      ]
+    },
+    {
+      "name": "quote-reader-not-finance",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "sales_quote:view"
+      ],
+      "superAdmin": false,
+      "analyze": [],
+      "history": []
+    },
+    {
+      "name": "purchase-and-quote-history",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "purchase_order:view",
+        "purchase_order:price:view",
+        "sales_quote_finance:view"
+      ],
+      "superAdmin": false,
+      "analyze": [
+        "PURCHASE"
+      ],
+      "history": [
+        "PURCHASE",
+        "SALES"
+      ]
+    },
+    {
+      "name": "all-pools",
+      "permissions": [
+        "goods:view",
+        "goods:price_analysis:view",
+        "purchase_order:view",
+        "purchase_order:price:view",
+        "subcontract_order:view",
+        "subcontract_order:price:view",
+        "sales_order:view",
+        "sales_order:price:view"
+      ],
+      "superAdmin": false,
+      "analyze": [
+        "PURCHASE",
+        "SUBCONTRACT",
+        "SALES"
+      ],
+      "history": [
+        "PURCHASE",
+        "SUBCONTRACT",
+        "SALES"
+      ]
+    },
+    {
+      "name": "super-admin",
+      "permissions": [],
+      "superAdmin": true,
+      "analyze": [
+        "PURCHASE",
+        "SUBCONTRACT",
+        "SALES"
+      ],
+      "history": [
+        "PURCHASE",
+        "SUBCONTRACT",
+        "SALES"
+      ]
+    }
+  ]
+}

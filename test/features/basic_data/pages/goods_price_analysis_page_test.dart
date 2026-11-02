@@ -64,7 +64,16 @@ ValueKey<(String, Key?, String?)> _dropdownOptionKey(
 ));
 
 final _grants = StateProvider<Set<String>>(
-  (_) => {Perm.goodsView, Perm.goodsPriceAnalysisView},
+  (_) => {
+    Perm.goodsView,
+    Perm.goodsPriceAnalysisView,
+    Perm.purchaseOrderView,
+    Perm.purchaseOrderPriceView,
+    Perm.subcontractOrderView,
+    Perm.subcontractOrderPriceView,
+    Perm.salesOrderView,
+    Perm.salesOrderPriceView,
+  },
 );
 
 class _PriceNonlinearScaler extends TextScaler {
@@ -445,10 +454,9 @@ void main() {
       ProviderScope(
         overrides: [
           priceAnalysisRepositoryProvider.overrideWithValue(repository),
-          if (marketRepository != null)
-            materialMarketRepositoryProvider.overrideWithValue(
-              marketRepository,
-            ),
+          materialMarketRepositoryProvider.overrideWithValue(
+            marketRepository ?? _MarketRepository(),
+          ),
           sessionProvider.overrideWith(_Session.new),
           if (permissions != null) _grants.overrideWith((_) => permissions),
           currentPermissionsProvider.overrideWith((ref) => ref.watch(_grants)),
@@ -511,6 +519,7 @@ void main() {
   Future<void> openRow(WidgetTester tester, String number) async {
     await scrollToRows(tester);
     await tester.ensureVisible(find.text(number));
+    await tester.pump();
     await tester.tap(find.text(number));
     await tester.pump(const Duration(milliseconds: 80));
     await tester.tap(find.text(number));
@@ -872,6 +881,80 @@ void main() {
   }
 
   testWidgets(
+    'analysis permission without source prices never fetches or displays a price pool',
+    (tester) async {
+      final repository = _Repository();
+      await pump(
+        tester,
+        repository,
+        permissions: {
+          Perm.goodsView,
+          Perm.goodsPriceAnalysisView,
+          Perm.purchaseOrderView,
+          Perm.financeViewAll,
+        },
+      );
+      await tester.pumpAndSettle();
+      await _capture(tester, 'price-access-denied');
+      expect(repository.queries, isEmpty);
+      expect(repository.tableQueries, isEmpty);
+      expect(find.byType(PriceHistoryChart), findsNothing);
+      expect(find.text('采购价格'), findsNothing);
+      expect(find.text('需要货品查看、价格分析及对应来源的价格查看权限'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'subcontract-only rights start in the allowed pool and hide all other pool selectors',
+    (tester) async {
+      final repository = _Repository();
+      await pump(
+        tester,
+        repository,
+        permissions: {
+          Perm.goodsView,
+          Perm.goodsPriceAnalysisView,
+          Perm.subcontractOrderView,
+          Perm.subcontractOrderPriceView,
+        },
+      );
+      await tester.pumpAndSettle();
+      await _capture(tester, 'price-access-subcontract-only');
+      expect(repository.queries.single['kind'], 'SUBCONTRACT');
+      expect(find.text('采购价格'), findsNothing);
+      expect(find.text('销售价格'), findsNothing);
+      expect(find.text('委外加工费'), findsWidgets);
+    },
+  );
+  testWidgets(
+    'losing source price rights retires pending analysis even when the analysis grant remains',
+    (tester) async {
+      final repository = _Repository()..delay = true;
+      final (container, _) = await pump(
+        tester,
+        repository,
+        permissions: {
+          Perm.goodsView,
+          Perm.goodsPriceAnalysisView,
+          Perm.purchaseOrderView,
+          Perm.purchaseOrderPriceView,
+        },
+      );
+      expect(repository.pending, hasLength(1));
+      container.read(_grants.notifier).state = {
+        Perm.goodsView,
+        Perm.goodsPriceAnalysisView,
+        Perm.purchaseOrderView,
+      };
+      await tester.pump();
+      repository.pending.single.complete(sample());
+      await tester.pumpAndSettle();
+      expect(find.byType(PriceHistoryChart), findsNothing);
+      expect(repository.queries, hasLength(1));
+      expect(find.text('采购价格'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'no analysis permission prevents both fetch and financial display',
     (tester) async {
       final repository = _Repository();
@@ -882,7 +965,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(repository.queries, isEmpty);
-      expect(find.text('需要货品查看与价格分析权限'), findsOneWidget);
+      expect(find.text('需要货品查看、价格分析及对应来源的价格查看权限'), findsOneWidget);
       expect(find.byType(PriceHistoryChart), findsNothing);
     },
   );
@@ -922,7 +1005,9 @@ void main() {
         Perm.goodsView,
         Perm.goodsPriceAnalysisView,
         Perm.financeOrderApprovalView,
-        Perm.financeViewAll,
+        Perm.purchaseOrderPriceView,
+        Perm.salesOrderView,
+        Perm.salesOrderPriceView,
       },
       marketRepository: market,
     );
@@ -1521,15 +1606,25 @@ void main() {
   );
 
   testWidgets(
-    'detail source action also requires the current document-route grant',
+    'finance-only historical reads do not override a withheld source-open capability',
     (tester) async {
       final repository = _Repository()
         ..overrides = {
           'observations': [
-            {...observation('one'), 'canOpenSource': true},
+            {...observation('one'), 'canOpenSource': false},
           ],
         };
-      await pump(tester, repository, size: const Size(375, 844));
+      await pump(
+        tester,
+        repository,
+        size: const Size(375, 844),
+        permissions: {
+          Perm.goodsView,
+          Perm.goodsPriceAnalysisView,
+          Perm.financeOrderApprovalView,
+          Perm.purchaseOrderPriceView,
+        },
+      );
       await tester.pumpAndSettle();
       await openRow(tester, 'PO-one');
       await tester.pumpAndSettle();
@@ -2461,6 +2556,7 @@ void main() {
             Perm.goodsView,
             Perm.goodsPriceAnalysisView,
             Perm.purchaseOrderView,
+            Perm.purchaseOrderPriceView,
           },
           child: panelHost(
             GoodsPriceObservationDetail(
@@ -2582,6 +2678,7 @@ void main() {
           Perm.goodsView,
           Perm.goodsPriceAnalysisView,
           Perm.subcontractOrderView,
+          Perm.subcontractOrderPriceView,
         },
         child: panelHost(
           GoodsSubcontractSupplierDetail(

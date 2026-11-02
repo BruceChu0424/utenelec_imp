@@ -1,3 +1,4 @@
+import '../../../shared/pricing/price_analysis_access.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
@@ -94,37 +95,56 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
   String? _historyError;
   bool _historyLoading = false;
   int _historyRevision = 0;
-  bool get _allowed =>
-      ref.read(isSuperAdminProvider) ||
-      ref.read(currentPermissionsProvider).containsAll({
-        Perm.goodsView,
-        Perm.goodsPriceAnalysisView,
-      });
+  List<String> get _allowedKinds => readablePriceHistoryKinds(
+    ref.read(currentPermissionsProvider),
+    ref.read(isSuperAdminProvider),
+  );
+  bool get _allowed => canReadPriceHistoryKind(
+    ref.read(currentPermissionsProvider),
+    ref.read(isSuperAdminProvider),
+    _kind,
+  );
   String get _identity => '${widget.goodsId}|$_kind|$_days|$_contextRevision';
   bool get _historyOnly =>
-      _kind == 'SALES' &&
-      !ref.read(isSuperAdminProvider) &&
-      ref
-          .read(currentPermissionsProvider)
-          .contains(Perm.salesQuoteFinanceView) &&
-      !ref.read(currentPermissionsProvider).containsAll({
-        Perm.salesOrderView,
-        Perm.salesOrderPriceView,
-      });
+      _allowed &&
+      !canAnalyzePriceKind(
+        ref.read(currentPermissionsProvider),
+        ref.read(isSuperAdminProvider),
+        _kind,
+      );
+
+  void _normalizeKind() {
+    final kinds = _allowedKinds;
+    if (kinds.isNotEmpty && !kinds.contains(_kind)) {
+      _kind = kinds.first;
+      _contextRevision++;
+      _subcontractView = 'prices';
+      _filters.clear();
+      _options.clear();
+    }
+  }
+
+  void _capabilitiesChanged() {
+    invalidateNativeReadAccess();
+    _normalizeKind();
+    _tableContext = null;
+    _options.clear();
+    _clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     initializeNativeReadScope();
-    ref.listenManual(currentPermissionsProvider, (_, _) {
-      invalidateNativeReadAccess();
-      _tableContext = null;
-      _options.clear();
-      _clear();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _load();
-      });
-    });
+    _normalizeKind();
+    ref.listenManual(
+      currentPermissionsProvider,
+      (_, _) => _capabilitiesChanged(),
+    );
+    ref.listenManual(isSuperAdminProvider, (_, _) => _capabilitiesChanged());
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -149,6 +169,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
 
   @override
   void nativeReadPermissionChanged() {
+    _normalizeKind();
     _tableContext = null;
     _options.clear();
     _clear();
@@ -782,11 +803,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
                               children: [
                                 UtenSegmentedFilter<String>(
                                   segments: [
-                                    for (final kind in [
-                                      'PURCHASE',
-                                      'SUBCONTRACT',
-                                      'SALES',
-                                    ])
+                                    for (final kind in _allowedKinds)
                                       UtenSegment(
                                         value: kind,
                                         label: priceText(context, kind),
@@ -794,6 +811,7 @@ class _GoodsPriceAnalysisPageState extends ConsumerState<GoodsPriceAnalysisPage>
                                   ],
                                   selected: _kind,
                                   onChanged: (kind) {
+                                    if (!_allowedKinds.contains(kind)) return;
                                     if (_kind != kind) {
                                       _kind = kind;
                                       _subcontractView = 'prices';

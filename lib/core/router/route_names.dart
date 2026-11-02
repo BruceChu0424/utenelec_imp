@@ -110,6 +110,9 @@ abstract final class RouteName {
 
   // 公司资料库
   static const String companyFiles = '/company-files';
+  static const String companyFilesHistory = '$companyFiles/history';
+  static const String companyFilesHistoryRevision =
+      '$companyFilesHistory/:entityType/:id';
 
   // 工资条
   static const String payrollSlipList = '/payroll/slip';
@@ -185,6 +188,9 @@ abstract final class RouteName {
 
   // 账号支持 + 超级管理员授权管理
   static const String adminPermissions = '/admin/permissions';
+  static const String adminPermissionsHistory = '$adminPermissions/history';
+  static const String adminPermissionsHistoryRevision =
+      '$adminPermissionsHistory/:entityType/:id';
   // 审计中心（独立 audit_log:view 只读核查；导出另需 audit_log:export）
   static const String adminAuditLogs = '/admin/audit-logs';
   static const String adminAuditSession =

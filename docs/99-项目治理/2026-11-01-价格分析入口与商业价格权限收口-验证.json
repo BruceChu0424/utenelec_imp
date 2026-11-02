@@ -1,0 +1,569 @@
+{
+  "schemaVersion": 1,
+  "clientDate": "2026-11-01",
+  "candidateBranch": "uimp/history-company-permissions-20261101",
+  "baseCommit": "392dd7b12",
+  "classification": [
+    "frontend",
+    "backend",
+    "shared-permission-contract"
+  ],
+  "rootCause": "Analysis entry checked only base grants; finance data scope substituted for commercial field permission despite current permission-help contract.",
+  "publicEntries": {
+    "javaCommercial": "server/src/main/java/com/uten/imp/security/CommercialPriceVisibility.java",
+    "javaPriceAnalysis": "server/src/main/java/com/uten/imp/security/PriceAnalysisAccessPolicy.java",
+    "dartCommercial": "lib/shared/auth/commercial_price_visibility.dart",
+    "dartPriceAnalysis": "lib/shared/pricing/price_analysis_access.dart",
+    "sharedCases": "contracts/price-analysis-access/v1.json",
+    "caseCount": 26
+  },
+  "callerInventory": {
+    "javaCommercialConsumers": [
+      "server/src/main/java/com/uten/imp/features/finance/FinanceAttachmentAccessConfiguration.java",
+      "server/src/main/java/com/uten/imp/features/finance/asset/application/FinanceAssetAttachmentAccessConfiguration.java",
+      "server/src/main/java/com/uten/imp/features/finance/payables/SubcontractLossClaimService.java",
+      "server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderAttachmentAccessPolicy.java",
+      "server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderService.java",
+      "server/src/main/java/com/uten/imp/features/purchase/receipt/ReceiptPriceMasker.java",
+      "server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportService.java",
+      "server/src/main/java/com/uten/imp/features/purchase/ret/PurchaseReturnService.java",
+      "server/src/main/java/com/uten/imp/features/subcontract/inquiry/SubcontractInquiryService.java",
+      "server/src/main/java/com/uten/imp/features/subcontract/material_issue/SubcontractMaterialIssueService.java",
+      "server/src/main/java/com/uten/imp/features/subcontract/material_return/SubcontractMaterialReturnService.java",
+      "server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderAttachmentAccessPolicy.java",
+      "server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderProgressService.java",
+      "server/src/main/java/com/uten/imp/features/subcontract/order/SubcontractOrderService.java",
+      "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java",
+      "server/src/main/java/com/uten/imp/features/subcontract/ret/SubcontractReturnService.java",
+      "server/src/main/java/com/uten/imp/features/subcontract/waste/SubcontractWasteService.java",
+      "server/src/main/java/com/uten/imp/security/CommercialPriceVisibility.java",
+      "server/src/main/java/com/uten/imp/security/PriceAnalysisAccessPolicy.java"
+    ],
+    "dartConfigConsumers": [
+      "lib/features/purchase/config/purchase_doc_config.dart",
+      "lib/features/purchase/pages/purchase_doc_detail_page.dart",
+      "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "lib/features/subcontract/config/subcontract_doc_config.dart",
+      "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "lib/features/subcontract/pages/subcontract_doc_detail_page.dart",
+      "lib/shared/drafts/draft_workspace_sources.dart",
+      "lib/shared/drafts/form_draft_history_projection.dart"
+    ],
+    "priceUiConsumers": [
+      "lib/core/router/route_access_policy.dart",
+      "lib/features/basic_data/pages/goods_price_analysis_page.dart",
+      "lib/features/basic_data/widgets/goods_detail_body.dart",
+      "lib/features/basic_data/widgets/goods_material_market_panel.dart",
+      "lib/features/basic_data/widgets/goods_price_observation_detail.dart",
+      "lib/features/basic_data/widgets/goods_subcontract_supplier_table.dart",
+      "lib/shared/pricing/price_analysis_access.dart",
+      "lib/shared/pricing/procurement_price_check.dart"
+    ],
+    "savedAssessmentCallSites": 7
+  },
+  "preservedDifferences": [
+    "source ownership/client scopes before limits and aggregates",
+    "separate sales/purchase/subcontract price codes",
+    "quote-finance history-only authority",
+    "explicit goods cost grant for legacy material costs",
+    "financial domain amount authority distinct from commercial prices",
+    "current goods field write contract retained",
+    "private price facts excluded from external model facts",
+    "save success and unknown-submission semantics"
+  ],
+  "verification": {
+    "backendDistinctPassed": 95,
+    "backendReports": [
+      {
+        "class": "com.uten.imp.features.ai.chat.AiChatPageGuideCatalogTest",
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "departmentAndActionPermissionsAreBothEnforced",
+          "newerQuoteWorkflowRequiresCustomerConsent",
+          "quantityHasConcreteHypotheticalExampleAndTrustedSource",
+          "pageRouteDoesNotGrantAccessOrAllowCostFields",
+          "suggestionsUseOnlyAuthorizedFieldsAndLandingCreates",
+          "unknownPathsAndInjectedContextNeverBecomeInstructions",
+          "costsRequireFinanceDepartmentAndFieldPermissionEvenWithGoodsView",
+          "priceAnalysisGuideRequiresItsOwnPermissionAndKeepsMarginFieldsScoped"
+        ],
+        "reportSha256": "51db397fde8b052a88b3f812e07a37c5ec1a36a665c9ace0e53427f06884770d"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.pricing.AiGoodsPriceToolTest",
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "openingThePriceAnalysisDomainDoesNotGrantSourcePricesOrBroaderFinancePermissions",
+          "hiddenKindsAreNotOfferedAndCannotBeQueriedThroughTheAiTool",
+          "ambiguousNameCannotChooseAnArbitraryGoodsPrice",
+          "invalidOrArbitraryArgumentsAreRejectedBeforeQueries",
+          "theSameSourcePermissionsOpenTheFormalAnalysisAndRegisteredAiToolWithoutFinanceMembership",
+          "storedAnswerWithAnotherGoodsIdIsRejected",
+          "storedAnswerRechecksObjectScopeAndExactPriceEvidence",
+          "privatePriceFactsNeverLeaveTheApplication",
+          "aSingleOldRecordIsNeverPresentedAsATodaysRecommendation",
+          "priceAnalysisPermissionIsRequiredBeforeLookingUpAnyGoods"
+        ],
+        "reportSha256": "300534da0aba113a06b7f9eb3eb1d427beb463cd355b36a17aa4f1451568d38c"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.pricing.GoodsMarketReferenceServiceTest",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "changedInstrumentIdentityRequiresExplicitRelinking",
+          "pendingAndFreshCollectorFailureStaySeparateFromACompletedSync",
+          "unlinkRetainsANewVersionAndRecordsATransactionalAudit",
+          "staleVersionCannotOverwriteARelinkedTombstone",
+          "everyReadChecksGoodsAndPurchaseAuthorityBeforeAnyMarketFile",
+          "builtinCatalogIsSelectableWithoutAnyConfiguredDirectoryOrSnapshot",
+          "saveRemembersABenchmarkBeforeTheCollectorExists",
+          "revokedPurchaseAuthorityCannotReadACatalog",
+          "foreignWritableScopeDenialStopsBindingAndAudit",
+          "requestWithoutEditAuthorityIsRejectedEvenOutsideController",
+          "newAutomaticSnapshotsNeverMutateTheRememberedBindingOrItsVersion"
+        ],
+        "reportSha256": "f95b28f5b8fa699ea8c3d00ce96843f76575a94c4e114f6e3916240a2d2af6f1"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.pricing.GoodsPriceAccessTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "salesPricesAreNotImpliedByProcurementOrFinancePrices",
+          "nullOwnerDoesNotBecomePublic",
+          "financePricePrivilegeStillRequiresSourceReadAndAnalytics",
+          "financeQuoteHistoryDoesNotImplySalesOrderPrices",
+          "analyticsGrantCannotBypassSourcePricePermission"
+        ],
+        "reportSha256": "ef46a1d59fba26e41e517da545312e6710150432e440612c3ac8585d3952cf80"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.pricing.GoodsPriceAnalysisServiceTest",
+        "tests": 14,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "responseQuantityAlwaysComesFromItsOwnRequestRatherThanCachedSourceContext",
+          "differentQuantitiesReuseRawSourcesButKeepIndependentStatisticsAndEvidence",
+          "detailKeepsExactAmountsAndUnknownHistoricalLabelsInItsLimitedFieldProjection",
+          "oldConfirmedCostAlgorithmCannotReintroduceWrongFxIntoNewQuote",
+          "currentConfirmedEstimateQuotesByMarginAndRetainsItsOwnCurrencyAndVersion",
+          "clientClaimOfNoOperationOnAnExtraColumnCannotSuppressFeeUncertainty",
+          "zeroChargeGiftRowDoesNotDisableOtherRowsAndCurrentOrderIsExcluded",
+          "omittedRequestCurrencyStillUsesResolvedComparisonContext",
+          "detailRequiresCurrentGoodsAccessBeforeReadingAnySource",
+          "positiveGiftQuantityDoesNotBecomeANormalPaidPrice",
+          "detailCannotUseAnUnversionedHistoricalSourceOrMalformedRevision",
+          "differentBatchDoesNotLinearlyConvertFixedFees",
+          "quotePagePermissionAloneCannotReadFinanceQuoteHistory",
+          "stableEvidenceIgnoresReadTimeButDetectsSourceVersionChanges"
+        ],
+        "reportSha256": "abcef73a536acf141d43b2a2ae4ab546dc3c8ca0216d8ab230040207fb6b648b"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.pricing.GoodsPriceHistoryTableControllerTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "facetEndpointBindsItsOwnPaginationAndSearchWithoutChangingTheTableContext",
+          "actualGetBindingPreservesIsoDatesRawNumericFilterAndPage"
+        ],
+        "reportSha256": "8f34b310ed486c57aca49e407d687ad22aee5dc1f9a5c2b3069e254935824cd1"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.pricing.GoodsPriceHistoryTablePostgresTest",
+        "tests": 12,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "numericSortAndNullPlacementAreNumericInBothDirections",
+          "quoteFinanceFacetsDoNotRevealOrderPricesOutsideTheOrderPermission",
+          "totalPricesUseTheSameHalfEvenBoundaryAsJavaDecimal128",
+          "facetsKeepExactVersionsAndRevokedOwnersDisappearBeforeAggregation",
+          "customHeadersFilterTheWholeAuthorizedDecimal128ProjectionAndKeepExactFacetsAcrossPages",
+          "fullFacetsAndFilteringIncludeRowsBeyondFirstFiveHundredButExcludeHiddenAndFutureSources",
+          "salesDiscountChangesThePriceSortAndEqualityFilter",
+          "lifecycleCandidateSearchMatchesItsVisibleChineseMeaningAndRetainsSourceVersionCounts",
+          "pageUsesThreeSourceQueriesAndSingleFacetUsesOne",
+          "malformedColumnsAndNumericValuesCannotBecomeSqlOrTriggerAnUnboundedPage",
+          "fractionAndTinyTotalInputUseDecimal128RatherThanRoundedRecordedPrice",
+          "multipleFacetBranchesKeepStableBindingsAndSqlShapedTextIsOnlyAValue"
+        ],
+        "reportSha256": "f63d915b3e47c04c9c4ce0007b836384f0fabe49f792039df01bc4bfd10053a6"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.pricing.GoodsPriceSourcePostgresTest",
+        "tests": 18,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "detailBindsGoodsItemSourceTypeAndExactHistoricalVersion",
+          "financeConfirmedTaxHasIndependentEvidenceAndSurvivesTheHistoricalProjection",
+          "explicitNullColorDoesNotFallBackToCurrentMasterColor",
+          "quoteFinanceOnlyCannotOpenEvenAnOwnSalesOrderDetail",
+          "reverseAndHandoverPreserveHistoryButRevokeOldOwnersAccess",
+          "exactTotalAndFinancialCaseRateWinOverDisplayPriceAndOrderRate",
+          "allVersionsAreReachableWithKeysetPagination",
+          "currencyTaxColorAndFrozenUnitRateNeverMix",
+          "ownerFilterRunsBeforeLimitAndNullOwnerIsNotPublic",
+          "aSourceLimitIsReportedInsteadOfPublishingTruncatedStatistics",
+          "approvedTaxVersionsStayIndependentAcrossPendingRejectedAndReversedOrders",
+          "detailRevalidatesBothAnalysisAndActiveHistoryWithoutChangingExactPriceText",
+          "numericApprovalSnapshotKeepsFullQuantityAndPricePrecision(String, String)[1]",
+          "numericApprovalSnapshotKeepsFullQuantityAndPricePrecision(String, String)[2]",
+          "financeQuoteScopeIncludesOtherOwnersAndDeletedClientsWithoutOpeningTheirOrders",
+          "giftsAndUndividedFeesAreNotUnitPriceEvidence",
+          "pendingQuantityReviewNeverUsesOldApprovalForNewQuantity",
+          "deletedUnknownLabelsAreNeverFilledFromCurrentMaster"
+        ],
+        "reportSha256": "92228c6f4de7cf8de51f610019991ad800f4cb6c29a07d57a47d143715284e22"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.pricing.GoodsSubcontractSupplierCapabilityTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "sourcePermissionDenialStopsBeforeGoodsOrAnyDatabaseRead",
+          "onlySubcontractSourceTypeEnablesTheTabAndTheProbeNeverReadsChildFacts",
+          "inaccessibleOrMissingGoodsNeverEnableTheTab"
+        ],
+        "reportSha256": "63da0acda5b58351a7357e47581436598cce66ba50028575c7a250d05b9609d6"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.pricing.MarketPriceSecurityTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "sharedMarketReadAndWriteAnnotationsDenyScopeOnlyBeforeEnteringTheService"
+        ],
+        "reportSha256": "12df79e1fec5e727d4dd89e99029e6fc460651a48c78b43f32214883b93df36d"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.pricing.PriceHistoryAuthorizationTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "tableAndRemoteFacetsDenyUnauthorizedPoolsBeforeReadingAnyRecordsOrTotals"
+        ],
+        "reportSha256": "18ee92d503ec0fe55cdfa5c28e2ac21b85653d31e686abdcd67928999cccb575"
+      },
+      {
+        "class": "com.uten.imp.features.master.goods.pricing.ProcurementPriceAssessmentAdapterTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "aDuplicateAcrossBatchBoundaryIsRejectedBeforeAnyPartialChecks",
+          "oneHundredAndOneRowsAreAllAssessedInBoundedBatches"
+        ],
+        "reportSha256": "0cf9ebcefa752a88893cc62ba3dc9d47fe505a2a14849d34d1214bce04b9a94c"
+      },
+      {
+        "class": "com.uten.imp.features.purchase.PurchaseCommercialPriceVisibilityTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "purchaseReturnListAndDetailMaskAllCommercialFields",
+          "purchaseOrderListAndDetailMaskAllCommercialFields"
+        ],
+        "reportSha256": "8ced126c32a592645726e3c44232354323709d17990c41ec75946f0357fedba0"
+      },
+      {
+        "class": "com.uten.imp.features.subcontract.order.SubcontractCommercialPriceVisibilityTest",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "progressRedactionClosesReceiptReturnWasteAndApAmountBypass",
+          "orderAndFinishedGoodsReturnMaskHeadersLinesAndListTotals",
+          "materialIssueReturnAndWasteKeepQuantitiesAndWeightButMaskMoney"
+        ],
+        "reportSha256": "740dc2e21a68122a3328e50803b0462491842bfe80a3a1488db6f40f674fe8bb"
+      },
+      {
+        "class": "com.uten.imp.security.CommercialPriceVisibilityTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "legacyReceiptMaskerDelegatesToSharedSecurityPolicy",
+          "pagePermissionsRemainIndependentAndMissingAuthenticationFailsClosed"
+        ],
+        "reportSha256": "3ff83f6af0648929586802f173f144a6b8600607c3d6d1b914010a97d41ab2bf"
+      },
+      {
+        "class": "com.uten.imp.security.PriceAnalysisAccessPolicyTest",
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "cases": [
+          "sharedDartAndJavaCapabilityCases"
+        ],
+        "reportSha256": "1302b5e694fe488069bb15909d332627fad97dcc3905eb7ddbef57bd53ddc5cb"
+      }
+    ],
+    "postgresCases": 30,
+    "frontendPassed": 186,
+    "frontendSkipped": 0,
+    "uiCaptureSubsetPassed": 2,
+    "dartAnalysis": "No issues found!",
+    "sharedFixtureCaseCount": 26,
+    "diffCheck": "passed",
+    "fixtureOnly": true,
+    "externalAiCalls": false,
+    "companyDataRequests": false,
+    "logs": [
+      "price-access-acceptance.log",
+      "price-access-visual-verified.log",
+      "price-access-analyze-final.log",
+      "server/price-access-reviewed.log",
+      "server/price-access-security-final.log",
+      "server/price-policy-annotation-final.log",
+      "price-toolbar-final.log"
+    ],
+    "toolbarFinalSubsetPassed": 4
+  },
+  "visuals": [
+    {
+      "file": "build/price-access-previews/price-access-denied.png",
+      "sha256": "22461ebca9bfadf780e80e32e22adcfbec16bd215b09390bf92c38000a2a4939"
+    },
+    {
+      "file": "build/price-access-previews/price-access-subcontract-only.png",
+      "sha256": "6ce61bdd24d6057a2a5f556e83a570e1b7968a41baf6e84f429922d404857beb"
+    }
+  ],
+  "wpf": {
+    "contractNotes": [
+      "W7-BIZ-025",
+      "W7-BIZ-027",
+      "W7-BIZ-121",
+      "W7-BIZ-122",
+      "W7-BIZ-123",
+      "W7-BIZ-124",
+      "W7-BIZ-125",
+      "W7-BIZ-126",
+      "W7-BIZ-127",
+      "W7-BIZ-221",
+      "W7-BIZ-154",
+      "W7-BIZ-155",
+      "W7-BIZ-156",
+      "W7-BIZ-158",
+      "W7-BIZ-159",
+      "W7-BIZ-160",
+      "W7-BIZ-161"
+    ],
+    "stableTaskCount": 361,
+    "statesOwnersDependenciesAndDodPreserved": true,
+    "priceAnalysisNative": "unported",
+    "purchaseAndSubcontractNative": "unported",
+    "existingGoodsPriceReadContract": "unchanged",
+    "targetMachineAccepted": false
+  },
+  "delivery": {
+    "formalCi": false,
+    "mainMerged": false,
+    "pushed": false,
+    "deployed": false,
+    "packaged": false,
+    "permissionAssignmentsMutated": false
+  },
+  "sourceDigests": {
+    "clients/windows_legacy/progress/work-items.json": {
+      "sha256": "5fbdde4a1b624e8ab36d0f4bb29c25977dc79561e20f06b2919da2a841450489",
+      "lfSha256": "c52bcddd75561bf9d0fff790da6d03bb31b457762b7e7648ad8eb57c8b954afc"
+    },
+    "contracts/price-analysis-access/v1.json": {
+      "sha256": "eb8cf16644e1e44c67625904b80cc8e1ca770319998531dc6f8852c497a07309",
+      "lfSha256": "4ff1250a0ef5708e2eb85d5e4eab889c09c7d6b8e844862b1f80d2826b61d26e"
+    },
+    "docs/05-架构/权限体系总设计.md": {
+      "sha256": "c213ac34b5e1d8e8b5ad4f2b86118aea5c57e8e040b462a3079b41dbf834ac6a",
+      "lfSha256": "fce60198f138b2858ed83df2dd71dbb86372e2a5d9c0135e06b66814e614a03c"
+    },
+    "docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md": {
+      "sha256": "11809edd3ad033c45f3d97654a46e20533d903301c674f26b3c83f2dff08ba87",
+      "lfSha256": "b4dbe016d2a3ae5a405b8d7432fdbe44b20acf7c6eb7b6b67d5ae1c2e5769d1a"
+    },
+    "lib/core/router/route_access_policy.dart": {
+      "sha256": "3ca99f152ab2574b895fee24e91692fadd3951b09238a70cb4d1e2e821a37da7",
+      "lfSha256": "8af97ae5d5d306003594430c3b02f0288430ed02c82395f006c6ccf9b61ec909"
+    },
+    "lib/features/basic_data/pages/goods_price_analysis_page.dart": {
+      "sha256": "0d48eac1c5ba335909195d52550f70d264093d5045d9b18433113b00de937705",
+      "lfSha256": "cbfb3d51086068c38c40561f08aebfd26e36903bbb56c133806a30c6a3d93959"
+    },
+    "lib/features/basic_data/widgets/goods_detail_body.dart": {
+      "sha256": "0b5370382feeb3974a30101b40544516ed636cf6cb02633a3c0ab0fabf2c3c2a",
+      "lfSha256": "43dda7c827347ddec93dee0b73b19351ee1f7b2f4ec4350ea0958d1cda060617"
+    },
+    "lib/features/basic_data/widgets/goods_material_market_panel.dart": {
+      "sha256": "d3c71858d8acb4408bc4e0407907c10c554d072b3585550f06e36af0d33c29c7",
+      "lfSha256": "869226fa67a8b11f690cda3b4e76b4e6ed3f46d9c428563ff8e2894e2f42aef5"
+    },
+    "lib/features/basic_data/widgets/goods_price_observation_detail.dart": {
+      "sha256": "51312a66c51ca5c0f796365d0aaccb23a6f8f1f5a8677566ecfddfb1128c2db3",
+      "lfSha256": "294874e3845fbd9a833a65338c011c0f2b7651fd2dfa18da35e3ca9cae55a4e1"
+    },
+    "lib/features/basic_data/widgets/goods_subcontract_supplier_table.dart": {
+      "sha256": "89e82793936650e4f3b215e163051baa4a93213959e7043c59fdcb9e7b7f5d8b",
+      "lfSha256": "dc7ea462bdd2b6be9a4b484893281b3527fac3548170de4af0da7991cc968b59"
+    },
+    "lib/features/purchase/config/purchase_doc_config.dart": {
+      "sha256": "916833b10c3559db3823ecd467aeb151c69f83becc66eb7117ff24c1d2e935c3",
+      "lfSha256": "de5554712812efed274b61a064ef73e6231fd2f21c2f28dc013378600232e2f1"
+    },
+    "lib/features/purchase/pages/purchase_doc_edit_page.dart": {
+      "sha256": "36575c6684d5443aa2fd7a1ae493659cf002601485628044af4cf862160ec0b0",
+      "lfSha256": "afb7dd72891b4112092ae93d1bba4862d717efafc9d255287c6af51b39ff1ba6"
+    },
+    "lib/features/purchase/pages/purchase_order_edit_page.dart": {
+      "sha256": "3f73b61736e07fd0c72566cbb31c6d566cff2f9a69687492316725dd1386f2c9",
+      "lfSha256": "90d456d7a3b6ad3ff9c632fa2dacd4ff67a79f91ad2ee6aa4f70b846432bd9de"
+    },
+    "lib/features/subcontract/config/subcontract_doc_config.dart": {
+      "sha256": "33b9d7f716bf442ff1de1c9bc565b23b1bf34b3fab9add1f77971070f1340958",
+      "lfSha256": "8449f9dc2380061c7636af3a959ece7e7729997e04b701b0d52f29b27ba06799"
+    },
+    "lib/features/subcontract/pages/subcontract_doc_edit_page.dart": {
+      "sha256": "60a629b1c70b164cd6ac51f149c94821975415d976d6d703bbdb802dc88b56bf",
+      "lfSha256": "b4e138cc8fd96a303d3236e5e75b222059f9bee38467b6fd1623404635d69b72"
+    },
+    "lib/features/subcontract/pages/subcontract_order_edit_page.dart": {
+      "sha256": "14de5511fe1dcf7f0652b0b4dfe7448ae80df07d951ba0e8a733204c7f85ec35",
+      "lfSha256": "400a952d275c0dfc2bf5ff9338d5a5221f6a2bf2953b972dbc040758c83c0daa"
+    },
+    "lib/shared/auth/commercial_price_visibility.dart": {
+      "sha256": "b2cd7e92bfb2a28d22551d27ae4e34cb8993e78d23ec872a6e6750b4e3f5f551",
+      "lfSha256": "b2cd7e92bfb2a28d22551d27ae4e34cb8993e78d23ec872a6e6750b4e3f5f551"
+    },
+    "lib/shared/pricing/price_analysis_access.dart": {
+      "sha256": "3ad3db28afff36c98f4327e65e0c78c4367b1f22632757ef0bdf35e1336a4cef",
+      "lfSha256": "a1dd326c1841a20608fe9b1285c0ee9b6a078244475ade1d66111a01e78b5649"
+    },
+    "lib/shared/pricing/price_analysis_l10n.dart": {
+      "sha256": "29efdddd479273accbe9dc4c00302970861796a96f5132d36372aaec2c702718",
+      "lfSha256": "bc7663a1992f079b9ed88a2ac07a3b1891eb9432a36114663dfa3aee8b41ff97"
+    },
+    "lib/shared/pricing/procurement_price_check.dart": {
+      "sha256": "5a192b3e8f6050379d1599eae7105dd685500cfc6e4f1dcccdeb65fc79de632c",
+      "lfSha256": "8aa318531984074d6059de2948d1a4e45e470efacd7405cd1454dd41a8c900a0"
+    },
+    "server/src/main/java/com/uten/imp/features/ai/chat/AiChatPageGuideCatalog.java": {
+      "sha256": "3bd5cd37f32b1f496929d93864ed8f2943b576b848f5a49a3678dcd56a3c488c",
+      "lfSha256": "d93f274d1b908929ce70e3d1465cf5b03fc13ef2d04cb7362b6cd1e6ac74cfdb"
+    },
+    "server/src/main/java/com/uten/imp/features/master/goods/pricing/AiGoodsPriceTool.java": {
+      "sha256": "f83b9ab9412a84ba03328510502a886d4120971e0d9975e3acbf9794bf9da305",
+      "lfSha256": "8fcdda32f0aa2b7ba84a0a2501c5648c7def3b95d266021df7e89c5e5a26d729"
+    },
+    "server/src/main/java/com/uten/imp/features/master/goods/pricing/GoodsMarketReferenceController.java": {
+      "sha256": "8ecbc73a9335d1fa51f583f46d28039e695fefebd03a3e91f3e607a939f4f493",
+      "lfSha256": "06b87aa4dc3582c192f416e90ee4f7d6a363f30be07c536dbe82441515f25076"
+    },
+    "server/src/main/java/com/uten/imp/features/master/goods/pricing/GoodsMarketReferenceService.java": {
+      "sha256": "2a750ac8f7f450906525d9c86eef4dc3db863a0cae9ef5090fbf3549349414da",
+      "lfSha256": "361f7e48875980c785b8b6e7d6a64f5fb8330fa03bf30d0ec40a7e21c48bf3bf"
+    },
+    "server/src/main/java/com/uten/imp/features/master/goods/pricing/GoodsPriceAccess.java": {
+      "sha256": "1195baf6bced71f8071185432965346d29f881cb973456c3a35dce43cd3e726f",
+      "lfSha256": "7c2af7fc7b8068142da0bbd5c6a5b2812d9c41b7c9b0120ff996114399c9a153"
+    },
+    "server/src/main/java/com/uten/imp/security/CommercialPriceVisibility.java": {
+      "sha256": "1d9de7e71138721296531e1655f6a79d083a8ee0749976cb93ea4910715720ec",
+      "lfSha256": "72d9eea3dba86a639a0c125c3bae84f57a4a2ce27571ec0cd6e22da82eb257f4"
+    },
+    "server/src/main/java/com/uten/imp/security/PriceAnalysisAccessPolicy.java": {
+      "sha256": "c4bed1fa1141b4ba9afe0817998a31840971fe00a2f742f5330d9e0829dbbe37",
+      "lfSha256": "876fa521fec8d91091ccbdd93dc1cb92c10de1bad79662e9f46fba665cc6ddb4"
+    },
+    "server/src/test/java/com/uten/imp/features/ai/chat/AiChatPageGuideCatalogTest.java": {
+      "sha256": "8a316e752e32402b4f4fbbc56a514bce371fd8e27a00b8b71f09f11d76523fe2",
+      "lfSha256": "0d89e8b5669f210c0cec89503906ce6450199c000f0575d87ae1a4cc8881d349"
+    },
+    "server/src/test/java/com/uten/imp/features/master/goods/pricing/AiGoodsPriceToolTest.java": {
+      "sha256": "0f2269e9586d1403a69fad294c2e9bd2cdaccbc39a376617942fa536985c3d5d",
+      "lfSha256": "98a7880ca0c2ed6aafbe867ffb7834330d943e7ca2781df2e4455031db74e94b"
+    },
+    "server/src/test/java/com/uten/imp/features/master/goods/pricing/GoodsPriceAccessTest.java": {
+      "sha256": "050ec53d3200dbf26dd3ca85a80baa8963e98a65ba075011b9a3baa5ff6260ba",
+      "lfSha256": "ca611aa37852672590803545babec360610b236348524d4c8dddba05e61aac20"
+    },
+    "server/src/test/java/com/uten/imp/features/master/goods/pricing/MarketPriceSecurityTest.java": {
+      "sha256": "546d6c746a69a2d9f5109be171141d746f33ab605d61781ad410d93f332ca185",
+      "lfSha256": "546d6c746a69a2d9f5109be171141d746f33ab605d61781ad410d93f332ca185"
+    },
+    "server/src/test/java/com/uten/imp/features/master/goods/pricing/PriceHistoryAuthorizationTest.java": {
+      "sha256": "8eecfdfaaffd63f371c69902d577c7f93ec4f1ae6e72d2aca623fccb33950d66",
+      "lfSha256": "8eecfdfaaffd63f371c69902d577c7f93ec4f1ae6e72d2aca623fccb33950d66"
+    },
+    "server/src/test/java/com/uten/imp/security/CommercialPriceVisibilityTest.java": {
+      "sha256": "84dcb290c3819fcd60179e563694e4109ab744bf3b4ccffadbdfb70258da636f",
+      "lfSha256": "df2e39d11e2c665d26ce2f6ec6096aa5d502673048aeab79a9de6a1c4dd5b407"
+    },
+    "server/src/test/java/com/uten/imp/security/PriceAnalysisAccessPolicyTest.java": {
+      "sha256": "b11eeebc07f769fcc9c61bb11a5214f36bad6ad972afb0cd02e8864bb50dbb77",
+      "lfSha256": "b11eeebc07f769fcc9c61bb11a5214f36bad6ad972afb0cd02e8864bb50dbb77"
+    },
+    "test/features/basic_data/pages/goods_price_analysis_page_test.dart": {
+      "sha256": "95e0f088d70f2bb2ac6a62b9736f818dd328813def21552b4904baabf6af63d7",
+      "lfSha256": "cdf2d4ec5a073ba658f1e87ef8b9d4862b7a0f5db440485bcfcf07f042d7f566"
+    },
+    "test/features/basic_data/widgets/goods_detail_history_test.dart": {
+      "sha256": "6ecc2c06d63e61c4db40a9cf419b9d6939c49de28a16aafd1723d5ae3f2ed2b5",
+      "lfSha256": "0364efc73db89ae392a7f0458489b7d3bcc3e4161657dd7c98da3e1b175494ae"
+    },
+    "test/features/basic_data/widgets/goods_material_market_panel_test.dart": {
+      "sha256": "a53ab1d540fb477e9351dfdfd160f6326fdcd433dc32a1cdf98e15617c403c21",
+      "lfSha256": "83c4356cd521bcb54afeaa4a14c62b8279c713aa476e9d09bf8f430c1c8a1536"
+    },
+    "test/features/purchase/purchase_doc_commercial_visibility_test.dart": {
+      "sha256": "cfa49fe901a96d62a5065df973206d60a7bc08c3ee23ab845da12520d4d84134",
+      "lfSha256": "f546bb9bf992f6578730db776c697fb027de76f090e1940ad26fcc1edd0a612a"
+    },
+    "test/features/subcontract/subcontract_doc_detail_page_test.dart": {
+      "sha256": "c5afbc749b24ee1b41d72bea97a188879b3c89764944e4dc20c0bb307a7a0708",
+      "lfSha256": "6b9dcfc8c2b2e43a5a4438ada9d18382866626160d868f9e471593eccc994a60"
+    },
+    "test/router_access_policy_test.dart": {
+      "sha256": "446ab06ea0796d57dddf8a72d778ca825b71b9ef7dc2ec71d3039202284dcd62",
+      "lfSha256": "81466c589b997b07e793ce3af2279d0ac9b231228d44c6816bafbc11213adfcd"
+    },
+    "test/shared/pricing/price_analysis_access_test.dart": {
+      "sha256": "6bbeaa7e75e674eda15d9a9fd76b38f8e5efc377e6f81e03bc53d252645ed244",
+      "lfSha256": "6bbeaa7e75e674eda15d9a9fd76b38f8e5efc377e6f81e03bc53d252645ed244"
+    },
+    "test/shared/pricing/price_check_batch_test.dart": {
+      "sha256": "c0b6885ac8f84050a3f578ee46e59c867ff32f687dfad86dc5d88b49bbd11cb5",
+      "lfSha256": "63ceb3cb3668ee4510f29ba935e9a49cdf13a1cc43cc3fc7e9a9595830dbbce3"
+    }
+  }
+}

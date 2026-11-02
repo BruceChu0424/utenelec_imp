@@ -103,7 +103,7 @@ class MasterRecordHistoryReferenceBatchTest {
         List<Object> facts = List.of(fact("goods", null, mapper.createObjectNode().put("client_id", readable.toString())),
                 fact("goods", null, mapper.createObjectNode().put("client_id", hidden.toString())),
                 fact("goods", null, mapper.createObjectNode().put("client_id", shared.toString())));
-        assertThat(changes(user(false, "client:view"), facts)).extracting(MasterRecordHistoryService.Change::afterValue)
+        assertThat(changes(user(false, "client:view"), facts)).extracting(com.uten.imp.common.history.RecordHistory.Change::afterValue)
                 .containsExactly("A 可读", "关联资料（无名称查看权限）", "C 分享");
         verify(query).setParameter("owners", Set.of(owner));
         verify(clients, never()).canRead(any(UUID.class), any(), any());
@@ -116,7 +116,7 @@ class MasterRecordHistoryReferenceBatchTest {
         var goodsFacts = List.of(fact("goods", null, mapper.createObjectNode().put("component_goods_id", readable.toString())),
                 fact("goods", null, mapper.createObjectNode().put("component_goods_id", hidden.toString())),
                 fact("goods", null, mapper.createObjectNode().put("component_goods_id", shared.toString())));
-        assertThat(changes(user(false, "goods:view"), goodsFacts)).extracting(MasterRecordHistoryService.Change::afterValue)
+        assertThat(changes(user(false, "goods:view"), goodsFacts)).extracting(com.uten.imp.common.history.RecordHistory.Change::afterValue)
                 .containsExactly("A 本人", "关联资料（无名称查看权限）", "C 空归属");
     }
 
@@ -126,7 +126,7 @@ class MasterRecordHistoryReferenceBatchTest {
         when(departments.namesOf(anyCollection())).thenReturn(Map.of());
         var after = mapper.createObjectNode().put("owner_employee_id", employee.toString()).put("department_id", department.toString());
         var result = changes(user(true), List.of(fact("goods", null, after), fact("goods", null, after)));
-        assertThat(result).extracting(MasterRecordHistoryService.Change::afterValue)
+        assertThat(result).extracting(com.uten.imp.common.history.RecordHistory.Change::afterValue)
                 .containsExactly("关联部门已删除或不可解析", "关联员工不可解析", "关联部门已删除或不可解析", "关联员工不可解析");
         verify(employees).namesWithCodeOf(List.of(employee)); verify(departments).namesOf(List.of(department));
         verifyNoInteractions(em);
@@ -145,7 +145,7 @@ class MasterRecordHistoryReferenceBatchTest {
         verify(em, times(3)).createNativeQuery(anyString());
     }
 
-    @SuppressWarnings("unchecked") private List<MasterRecordHistoryService.Change> changes(AuthUser user, List<?> facts) {
+    @SuppressWarnings("unchecked") private List<com.uten.imp.common.history.RecordHistory.Change> changes(AuthUser user, List<?> facts) {
         return ReflectionTestUtils.invokeMethod(service, "changes", user, facts);
     }
     private Object fact(String entity, JsonNode before, JsonNode after) throws Exception {

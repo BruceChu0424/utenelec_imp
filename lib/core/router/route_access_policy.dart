@@ -1,3 +1,4 @@
+import '../../shared/pricing/price_analysis_access.dart';
 import '../../shared/models/user.dart';
 import '../../shared/auth/permissions.dart';
 import 'hub_catalog.dart';
@@ -28,6 +29,13 @@ String? employeePermissionRedirect(AppUser? user, String location) {
         RouteName.adminSmsSettings,
       }.contains(hubCardPath(location)) &&
       !platformSettingsAllowedFor(user.permissions.toSet(), user.superAdmin)) {
+    return RouteName.accessDenied;
+  }
+
+  if (RegExp(
+        r'^/basicinfo/goods/[^/]+/price-analysis$',
+      ).hasMatch(hubCardPath(location)) &&
+      !canOpenPriceAnalysis(user.permissions.toSet(), user.superAdmin)) {
     return RouteName.accessDenied;
   }
 
@@ -71,6 +79,12 @@ bool locationAllowedFor(
     RouteName.adminSmsSettings,
   }.contains(hubCardPath(location))) {
     return platformSettingsAllowedFor(permissions, superAdmin);
+  }
+  if (RegExp(
+        r'^/basicinfo/goods/[^/]+/price-analysis$',
+      ).hasMatch(hubCardPath(location)) &&
+      !canOpenPriceAnalysis(permissions, superAdmin)) {
+    return false;
   }
   if (superAdmin && !requireEffectivePermissions) return true;
   if (isHubLocation(location)) {

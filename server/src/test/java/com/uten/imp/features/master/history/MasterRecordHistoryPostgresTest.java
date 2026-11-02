@@ -1190,10 +1190,10 @@ class MasterRecordHistoryPostgresTest {
               .executeUpdate();
           return null;
         });
+    var privateCost = service.list("goods",item,null,null).entries().getFirst();
     login(Set.of("goods:view"), false);
-    var entry = detail("goods", service.list("goods", item, null, null).entries().getFirst());
-    assertTrue(entry.changes().isEmpty());
-    assertFalse(entry.canRestoreBefore());
+    assertTrue(service.list("goods",item,null,null).entries().stream().noneMatch(e->e.id().equals(privateCost.id())));
+    assertThrows(ApiException.class,()->service.detail("goods",historyNumber(privateCost.id())));
     inTx(
         () -> {
           em.createNativeQuery(
@@ -1229,6 +1229,23 @@ class MasterRecordHistoryPostgresTest {
         });
     login(Set.of("goods:view"), false);
     assertFalse(service.list("goods", item, null, null).entries().isEmpty());
+    login(Set.of(),true);
+    inTx(()->{
+      em.createNativeQuery("UPDATE goods_bom_items SET qty=2 WHERE id=:id").setParameter("id",edge).executeUpdate();
+      em.createNativeQuery("UPDATE goods SET price=777 WHERE id=:id").setParameter("id",item).executeUpdate();
+      return null;
+    });
+    var mixed=service.list("goods",item,null,null).entries().getFirst();
+    login(Set.of("goods:view"),false);
+    assertTrue(service.list("goods",item,null,null).entries().stream().anyMatch(e->e.id().equals(mixed.id())));
+    var visible=service.detail("goods",historyNumber(mixed.id()));
+    assertEquals("BOM",service.list("goods",item,null,null).entries().getFirst().sourceType());
+    assertEquals("BOM",visible.sourceType());
+    assertTrue(service.search("goods",item,null,null,new MasterRecordHistoryService.Filters(null,null,null,null,null,null,50,"BOM",null))
+        .entries().stream().anyMatch(e->e.id().equals(mixed.id())));
+    assertTrue(visible.changes().stream().anyMatch(c->c.table().equals("goods_bom_items")&&c.field().equals("qty")));
+    assertTrue(visible.changes().stream().noneMatch(c->c.table().equals("goods")&&c.field().equals("price")));
+    assertEquals(1,visible.affectedCount());
   }
 
   @Test
@@ -1247,7 +1264,7 @@ class MasterRecordHistoryPostgresTest {
     assertTrue(masked.changes().stream().anyMatch(c -> c.field().equals("price")));
     assertTrue(masked.changes().stream().noneMatch(c -> c.field().equals("zk")));
     assertFalse(masked.canRestoreBefore());
-    assertTrue(masked.blockedReason().contains("折扣"));
+    assertTrue(masked.blockedReason().contains("不可查看或维护的字段"));
     assertThrows(
         ApiException.class,
         () ->
@@ -1258,6 +1275,101 @@ class MasterRecordHistoryPostgresTest {
                   return null;
                 }));
     assertEquals("0.9000", value("SELECT zk::text FROM goods WHERE id=:id", item));
+  }
+
+  @Test
+  void priceOnlyHistoryIsHiddenInListsDetailsAndRestoreWithoutExplicitPriceView() {
+    UUID item=goods("private price history");
+    inTx(()->{ em.createNativeQuery("UPDATE goods SET price=77 WHERE id=:id").setParameter("id",item).executeUpdate(); return null; });
+    var revision=service.list("goods",item,null,null).entries().getFirst();
+    var edits=new MasterRecordHistoryService.Filters("EDIT",null,null,null,null,null,50);
+    for(Set<String> permissions:List.of(Set.of("goods:view"),Set.of("goods:view","goods:edit","goods:price:edit"))) {
+      login(permissions,false);
+      assertTrue(service.search("goods",item,null,null,edits).entries().isEmpty());
+      assertThrows(ApiException.class,()->service.detail("goods",historyNumber(revision.id())));
+      assertThrows(ApiException.class,()->inTx(()->{ service.restore("goods",historyNumber(revision.id()),revision.expectedHead(),true); return null; }));
+    }
+    login(Set.of("goods:view","goods:price:view"),false);
+    assertEquals(1,service.search("goods",item,null,null,edits).entries().size());
+    assertTrue(service.detail("goods",historyNumber(revision.id())).changes().stream().anyMatch(c->c.field().equals("price")));
+  }
+
+  @Test
+  void mixedPublicAndPrivateHistoryShowsOnlyPublicFieldsAndCannotRestoreHiddenValues() {
+    UUID item=goods("mixed private history");
+    inTx(()->{ em.createNativeQuery("UPDATE goods SET price=99,name='public renamed' WHERE id=:id").setParameter("id",item).executeUpdate(); return null; });
+    var revision=service.list("goods",item,null,null).entries().getFirst();
+    login(Set.of("goods:view","goods:edit","goods:price:edit"),false);
+    var detail=service.detail("goods",historyNumber(revision.id()));
+    assertTrue(detail.changes().stream().anyMatch(c->c.field().equals("name")));
+    assertTrue(detail.changes().stream().noneMatch(c->c.field().equals("price")));
+    assertFalse(detail.canRestoreBefore());
+    assertFalse(detail.blockedReason().contains("价格"));
+    assertTrue(service.list("goods",item,null,null).entries().stream().anyMatch(e->e.id().equals(revision.id())));
+  }
+
+  @Test
+  void fieldVisibilityRunsBeforePaginationAndUsesTheFinalCommandDifference() {
+    UUID item=goods("paged private history");
+    for(int i=0;i<3;i++) {
+      final int n=i;
+      inTx(()->{ em.createNativeQuery("UPDATE goods SET name=:name WHERE id=:id").setParameter("id",item).setParameter("name","public "+n).executeUpdate(); return null; });
+    }
+    for(int i=0;i<55;i++) {
+      final int n=i;
+      inTx(()->{ em.createNativeQuery("UPDATE goods SET price=:price WHERE id=:id").setParameter("id",item).setParameter("price",n).executeUpdate(); return null; });
+    }
+    inTx(()->{
+      em.createNativeQuery("UPDATE goods SET name='temporary private command',price=101 WHERE id=:id").setParameter("id",item).executeUpdate();
+      em.createNativeQuery("UPDATE goods SET name='public 2' WHERE id=:id").setParameter("id",item).executeUpdate();return null;
+    });
+    login(Set.of("goods:view"),false);
+    var edits=new MasterRecordHistoryService.Filters("EDIT",null,null,null,null,null,2);
+    var statistics=factory.unwrap(org.hibernate.SessionFactory.class).getStatistics();statistics.clear();
+    var page=service.search("goods",item,null,null,edits);
+    assertEquals(2,page.entries().size());assertNotNull(page.nextCursor());
+    assertEquals(1,statistics.getPrepareStatementCount(),"Field visibility must remain inside the summary query");
+    var last=service.search("goods",item,null,Long.valueOf(page.nextCursor()),edits);
+    assertEquals(1,last.entries().size());assertNull(last.nextCursor());
+  }
+
+  @Test
+  void costOnlyAndDiscountOnlyHistoryRequireTheirRespectiveViewPermissions() {
+    UUID item=goods("private cost and discount history");
+    inTx(()->{ em.createNativeQuery("UPDATE goods SET source_e=17 WHERE id=:id").setParameter("id",item).executeUpdate();return null; });
+    var cost=service.list("goods",item,null,null).entries().getFirst();
+    inTx(()->{ em.createNativeQuery("UPDATE goods SET zk=0.8 WHERE id=:id").setParameter("id",item).executeUpdate();return null; });
+    var discount=service.list("goods",item,null,null).entries().getFirst();
+    login(Set.of("goods:view","goods:price:view"),false);
+    assertThrows(ApiException.class,()->service.detail("goods",historyNumber(cost.id())));
+    assertThrows(ApiException.class,()->service.detail("goods",historyNumber(discount.id())));
+    assertTrue(service.search("goods",item,null,null,new MasterRecordHistoryService.Filters("EDIT",null,null,null,null,null,50)).entries().isEmpty());
+    login(Set.of("goods:view","goods:cost:view"),false);
+    assertTrue(service.detail("goods",historyNumber(cost.id())).changes().stream().anyMatch(c->c.field().equals("source_e")));
+    login(Set.of("goods:view","goods:price:view","goods:discount:view"),false);
+    assertTrue(service.detail("goods",historyNumber(discount.id())).changes().stream().anyMatch(c->c.field().equals("zk")));
+  }
+
+  @Test
+  void bomCostHistoryUsesTheCostGrantAndMixedVersionsDoNotRevealHiddenCostChanges() {
+    UUID item=goods("BOM cost history"), component=goods("BOM component"), edge=UUID.randomUUID();
+    inTx(()->{
+      em.createNativeQuery("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty,price) VALUES(:edge,:item,:component,1,9)")
+          .setParameter("edge",edge).setParameter("item",item).setParameter("component",component).executeUpdate();return null;
+    });
+    inTx(()->{ em.createNativeQuery("UPDATE goods_bom_items SET price=18 WHERE id=:id").setParameter("id",edge).executeUpdate();return null; });
+    var cost=service.list("goods",item,null,null).entries().getFirst();
+    login(Set.of("goods:view","goods:edit","goods:bom:edit"),false);
+    assertTrue(service.list("goods",item,null,null).entries().stream().noneMatch(e->e.id().equals(cost.id())));
+    assertThrows(ApiException.class,()->service.detail("goods",historyNumber(cost.id())));
+    inTx(()->{ em.createNativeQuery("UPDATE goods_bom_items SET price=19,qty=2 WHERE id=:id").setParameter("id",edge).executeUpdate();return null; });
+    var mixed=service.detail("goods",historyNumber(service.list("goods",item,null,null).entries().getFirst().id()));
+    assertTrue(mixed.changes().stream().anyMatch(c->c.field().equals("qty")));
+    assertTrue(mixed.changes().stream().noneMatch(c->c.field().equals("price")||c.field().equals("total")));
+    assertFalse(mixed.canRestoreBefore());
+    assertFalse(mixed.blockedReason().contains("成本"));
+    login(Set.of("goods:view","goods:cost:view"),false);
+    assertTrue(service.detail("goods",historyNumber(cost.id())).changes().stream().anyMatch(c->c.field().equals("price")));
   }
 
   @Test
@@ -1685,8 +1797,8 @@ class MasterRecordHistoryPostgresTest {
         selected.changes().stream()
             .anyMatch(c -> c.beforeValue().equals("original private value")));
     login(Set.of("goods:view", "goods:edit"), false);
-    var masked = service.detail("goods", historyNumber(selected.id()));
-    assertTrue(masked.changes().isEmpty());
+    assertThrows(ApiException.class, () -> service.detail("goods", historyNumber(selected.id())));
+    assertTrue(service.list("goods",item,null,null).entries().stream().noneMatch(e->e.sourceType().equals("EXTENSION")));
     login(Set.of(), true);
     inTx(
         () -> {
@@ -1853,12 +1965,12 @@ class MasterRecordHistoryPostgresTest {
         });
   }
 
-  private MasterRecordHistoryService.Entry detail(
-      String entity, MasterRecordHistoryService.Entry summary) {
+  private com.uten.imp.common.history.RecordHistory.Entry detail(
+      String entity, com.uten.imp.common.history.RecordHistory.Entry summary) {
     return service.detail(entity, historyNumber(summary.id()));
   }
 
-  private MasterRecordHistoryService.Entry entry(UUID id) {
+  private com.uten.imp.common.history.RecordHistory.Entry entry(UUID id) {
     return detail("colors", service.list("colors", id, null, null).entries().getFirst());
   }
 

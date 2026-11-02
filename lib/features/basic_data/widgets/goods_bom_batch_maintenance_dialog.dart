@@ -211,7 +211,7 @@ class _BatchMaintenanceDialogState
   Map<String, dynamic> _body(_ComponentInput component) {
     final goods = component.goods;
     final entered = double.tryParse(component.quantity.text.trim());
-    if (entered == null || !entered.isFinite || entered <= 0) {
+    if (entered == null || !bomDesignQuantityValid(component.quantity.text)) {
       throw ApiException(
         'VALIDATION_FAILED',
         _l10n.goodsBomBatchInvalidQuantity(

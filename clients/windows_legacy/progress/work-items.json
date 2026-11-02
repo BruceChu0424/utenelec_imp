@@ -4677,8 +4677,8 @@
         "clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json",
         "clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json"
       ],
-      "notes": "2026-11-01 Web/Flutter goods detail gains symmetric window insets and a unified theme surface. BOM comparison uses the SAME MasterDataTableView and UtenTreeTableCell as assembly, with linked scroll/selection and bidirectional selected/all-component replacement through existing snapshot/preview/commit. Native full detail/BOM remains unported. Follow source+target fingerprints, exact decimals, permissions and unknown-commit recovery. See E-GOODS-BOM-COMPARE-20261101; current source hashes belong to that evidence.",
-      "lastUpdated": "2026-11-01T23:31:04.299763+00:00"
+      "notes": "2026-11-01 BOM对比追加：左右选中联动，目标侧按钮分组与顶部通知；编辑/替换先暂存，替换和最终保存弹窗确认，未保存关闭可保存/放弃/继续。Web和Flutter共用；完整WPF货品详情和此交互未迁移，未知回执/权限/精度须同合同接续，不算真机或原生完成。",
+      "lastUpdated": "2026-11-02T05:18:08.490420+00:00"
     },
     {
       "id": "W7-BIZ-216",
@@ -5054,8 +5054,8 @@
         "clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json",
         "clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json"
       ],
-      "notes": "2026-11-01 Web/Flutter goods windows add retained resizable tiling, unified surfaces and comparison including narrow/multiple-window selection. WPF equivalent remains unported; retain partial-read status and follow W7-BIZ-025 contract. See E-GOODS-BOM-COMPARE-20261101.",
-      "lastUpdated": "2026-11-01T23:31:04.742898+00:00"
+      "notes": "2026-11-01 多窗口BOM交互补充未迁入原生：目标侧按钮、顶部非模态通知、联动勾选、草稿替换及最终确认保存、未保存离开和同请求结果恢复；Flutter已实现不代表WPF已支持，维持未迁移记录。",
+      "lastUpdated": "2026-11-02T05:18:10.411661+00:00"
     },
     {
       "id": "W7-BIZ-035",

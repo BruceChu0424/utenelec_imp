@@ -68,43 +68,71 @@ class GoodsBomEditTestApi extends ApiClient {
     commitCalls++;
     operations.addAll(pending);
     final root = path.split('/').reversed.elementAt(3);
+    final itemIds = <String, String>{};
+    String persisted(String id) => itemIds[id] ?? id;
+    final referencedIds = <String>{
+      for (final op in pending) ...[
+        if (op['itemId'] case final String id) id,
+        ...List<String>.from(op['itemIds'] as List? ?? const []),
+        for (final raw in op['moves'] as List? ?? const []) ...[
+          if ((raw as Map)['itemId'] case final String id) id,
+          if (raw['anchorItemId'] case final String id) id,
+        ],
+      ],
+    };
     for (var index = 0; index < pending.length; index++) {
       final op = pending[index];
       final parent = op['goodsId'] as String? ?? root;
       switch (op['type']) {
         case 'CREATE':
           final items = [Map<String, dynamic>.from(op['body'] as Map)];
+          final clientIds = [op['clientItemId'] as String?];
           while (index + 1 < pending.length &&
               pending[index + 1]['type'] == 'CREATE' &&
               pending[index + 1]['goodsId'] == parent) {
-            items.add(
-              Map<String, dynamic>.from(pending[++index]['body'] as Map),
-            );
+            final next = pending[++index];
+            items.add(Map<String, dynamic>.from(next['body'] as Map));
+            clientIds.add(next['clientItemId'] as String?);
           }
           await repository.paste(
             mode: BomPasteMode.append,
             targets: [BomPasteTarget(parent)],
             items: items,
           );
+          final saved = clientIds.any(referencedIds.contains)
+              ? await repository.list(parent)
+              : const <GoodsBomItem>[];
+          for (var i = 0; i < items.length; i++) {
+            if (clientIds[i] != null && referencedIds.contains(clientIds[i])) {
+              itemIds[clientIds[i]!] = saved
+                  .firstWhere(
+                    (row) =>
+                        row.componentGoodsId == items[i]['componentGoodsId'],
+                  )
+                  .id;
+            }
+          }
         case 'UPDATE':
           await repository.update(
             parent,
-            op['itemId'] as String,
+            persisted(op['itemId'] as String),
             Map<String, dynamic>.from(op['body'] as Map),
           );
         case 'DELETE':
           await repository.deleteMany(
             root,
-            List<String>.from(op['itemIds'] as List),
+            List<String>.from(op['itemIds'] as List).map(persisted).toList(),
           );
         case 'MOVE':
           await repository.move(root, [
             for (final move
                 in (op['moves'] as List).cast<Map<String, dynamic>>())
               GoodsBomMove(
-                itemId: move['itemId'] as String,
+                itemId: persisted(move['itemId'] as String),
                 targetParentGoodsId: move['targetParentGoodsId'] as String,
-                anchorItemId: move['anchorItemId'] as String?,
+                anchorItemId: move['anchorItemId'] == null
+                    ? null
+                    : persisted(move['anchorItemId'] as String),
                 afterAnchor: move['afterAnchor'] == true,
               ),
           ]);

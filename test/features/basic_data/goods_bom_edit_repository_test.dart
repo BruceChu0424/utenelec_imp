@@ -22,6 +22,59 @@ const _exactDesignValues = {
 
 void main() {
   test(
+    'fork isolates edits, remains valid after original closes, and keeps confirmation bodies mutable',
+    () async {
+      final api = _DraftApi();
+      final original = _draft(api);
+      await original.update('frame', 'screw-edge', {'qty': '7.12345'});
+      final fork = await original.fork();
+      await fork.update('frame', 'screw-edge', {'summary': '仅分支'});
+      fork.confirmPeriodicFields({'confirmUnusualWeight'});
+      expect((await original.list('frame')).single.summary, isNull);
+      original.close();
+      expect((await fork.list('frame')).single.qtyExactText, '7.12345');
+      final preview = await fork.preview();
+      await fork.commit(preview.previewToken, confirmSharedChanges: true);
+      expect(api.commands, hasLength(2));
+    },
+  );
+  test(
+    'copy provenance follows persisted origins and omits changed or newly created identities',
+    () async {
+      final draft = _draft(_DraftApi());
+      final original = (await draft.list('frame')).single;
+      expect(draft.copyBodyFor(original)['copiedFromBomItemId'], 'screw-edge');
+      await draft.update('frame', 'screw-edge', {'componentGoodsId': 'nut'});
+      expect(
+        draft
+            .copyBodyFor((await draft.list('frame')).single)
+            .containsKey('copiedFromBomItemId'),
+        false,
+      );
+      await draft.paste(
+        mode: BomPasteMode.append,
+        targets: [const BomPasteTarget('root')],
+        items: [
+          {
+            'componentGoodsId': 'screw',
+            'qty': '7.12345',
+            'copiedFromBomItemId': 'screw-edge',
+          },
+        ],
+      );
+      final copied = (await draft.list('root')).last;
+      expect(draft.copyBodyFor(copied)['copiedFromBomItemId'], 'screw-edge');
+      await draft.update('root', copied.id, {'componentGoodsId': 'washer'});
+      expect(
+        draft
+            .copyBodyFor((await draft.list('root')).last)
+            .containsKey('copiedFromBomItemId'),
+        false,
+      );
+      draft.close();
+    },
+  );
+  test(
     'description edit and copied preview retain unchanged exact design decimals',
     () async {
       final api = _DraftApi()

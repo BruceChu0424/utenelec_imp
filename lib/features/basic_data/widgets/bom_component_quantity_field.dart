@@ -29,8 +29,7 @@ class BomComponentQuantityField extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        final value = double.tryParse(controller.text.trim());
-        final invalid = value == null || !value.isFinite || value <= 0;
+        final invalid = !bomDesignQuantityValid(controller.text);
         final border = BorderSide(
           color: invalid
               ? theme.colorScheme.error
@@ -67,6 +66,18 @@ class BomComponentQuantityField extends StatelessWidget {
     );
   }
 }
+
+bool bomDesignQuantityValid(String raw) {
+  final value = double.tryParse(raw.trim());
+  return value != null && value.isFinite && value > 0;
+}
+
+String? bomDesignQtyError(AppLocalizations l10n, String raw) =>
+    raw.trim().isEmpty
+    ? l10n.bomDesignQtyRequired
+    : bomDesignQuantityValid(raw)
+    ? null
+    : l10n.bomDesignQtyInvalid;
 
 String bomPeriodicQuantityLabel(BuildContext context, String? unitName) {
   if (periodicGramsPerBaseUnit(unitName) != null) {

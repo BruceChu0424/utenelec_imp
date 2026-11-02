@@ -128,6 +128,8 @@ class GoodsBomComparison {
     required GoodsBomRepository repository,
     required ApiClient api,
     required bool Function() isCurrent,
+    GoodsBomEditDraft? targetDraft,
+    GoodsBomEditDraft? sourceDraft,
   }) async {
     if (leftId == rightId) {
       throw ApiException('BOM_COMPARE_SAME', '两侧是同一货品，无需替换');
@@ -136,15 +138,20 @@ class GoodsBomComparison {
     final sourceId = toLeft ? rightId : leftId;
     final target = toLeft ? left : right;
     final source = toLeft ? right : left;
-    final draft = GoodsBomEditDraft(
-      base: repository,
-      api: api,
-      rootGoodsId: targetId,
-      isCurrent: isCurrent,
-    );
+    final draft = targetDraft != null
+        ? await targetDraft.fork()
+        : GoodsBomEditDraft(
+            base: repository,
+            api: api,
+            rootGoodsId: targetId,
+            isCurrent: isCurrent,
+          );
     try {
       final currentTarget = await draft.list(targetId);
-      final currentSource = await draft.list(sourceId);
+      if (sourceDraft != null) await draft.bindCopySource(sourceDraft);
+      final currentSource = await (sourceDraft ?? draft).list(sourceId);
+      Map<String, dynamic> copyBody(GoodsBomItem item) =>
+          sourceDraft?.copyBodyFor(item) ?? bomComponentCopyBody(item);
       bool unchanged(List<GoodsBomItem> a, List<GoodsBomItem> b) {
         if (a.length != b.length) return false;
         for (var i = 0; i < a.length; i++) {
@@ -212,7 +219,7 @@ class GoodsBomComparison {
           );
         }
         await draft.update(targetId, old.id, {
-          ...bomComponentCopyBody(item),
+          ...copyBody(item),
           // UPDATE must clear these fields when the source has no override.
           if (!legacyColor) 'colorId': item.colorId,
           if (!legacySupplier) 'defaultSupplierId': item.defaultSupplierId,
@@ -224,7 +231,7 @@ class GoodsBomComparison {
         await draft.paste(
           mode: BomPasteMode.append,
           targets: [BomPasteTarget(targetId)],
-          items: added.map(bomComponentCopyBody).toList(),
+          items: added.map(copyBody).toList(),
         );
       }
       // Resolve new relationship IDs from the draft, retaining unchanged edges.

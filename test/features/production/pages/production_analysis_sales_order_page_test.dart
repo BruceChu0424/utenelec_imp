@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 // ADR-088 关联订单只读货品清单页。
 //
 // 这一页的全部价值在于「看得见货品、看不见价格、也点不动任何东西」，
@@ -82,6 +83,7 @@ void main() {
 
     // 只读页不提供任何写入动作。
     expect(find.byType(FloatingActionButton), findsNothing);
+    expect(find.byType(UtenFloatingActionGroup), findsNothing);
     expect(find.byType(TextField), findsNothing);
     expect(find.text('保存'), findsNothing);
     expect(find.text('审核'), findsNothing);

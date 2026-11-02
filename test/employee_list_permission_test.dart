@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,7 +43,10 @@ void main() {
     await tester.pumpWidget(_app({Perm.employeeView}));
     await tester.pumpAndSettle();
 
-    expect(find.byType(FloatingActionButton), findsNothing);
+    expect(
+      find.widgetWithIcon(UtenButton, Icons.person_add_rounded),
+      findsNothing,
+    );
   });
 
   testWidgets('employee creators with PII write access see onboarding', (
@@ -53,7 +57,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(FloatingActionButton), findsOneWidget);
+    expect(
+      find.widgetWithIcon(UtenButton, Icons.person_add_rounded),
+      findsOneWidget,
+    );
   });
 
   testWidgets('employee create alone cannot start mandatory PII onboarding', (
@@ -62,6 +69,9 @@ void main() {
     await tester.pumpWidget(_app({Perm.employeeView, Perm.employeeCreate}));
     await tester.pumpAndSettle();
 
-    expect(find.byType(FloatingActionButton), findsNothing);
+    expect(
+      find.widgetWithIcon(UtenButton, Icons.person_add_rounded),
+      findsNothing,
+    );
   });
 }

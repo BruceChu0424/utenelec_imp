@@ -161,11 +161,11 @@
   },
   {
     "kind": "raw-close-icon",
-    "path": "lib/features/basic_data/pages/master_record_history_page.dart",
+    "path": "lib/shared/history/record_history_page.dart",
     "owner": "_HistoryPageState._scopeFilter",
     "fingerprint": "7f689890c17c980830b3c055a0462c9165b5389de09fdc76b2fcb89702260ab8",
     "count": 1,
-    "reason": "Clears a master-record history scope filter."
+    "reason": "Clears a record-history scope filter; the unchanged control moved to the shared history owner."
   },
   {
     "kind": "raw-close-icon",
@@ -638,5 +638,13 @@
     "fingerprint": "b479ce350dae95876df31abd63c1cf9b1d41aedcd591c77704f5e76fdcfc5f2d",
     "count": 1,
     "reason": "Explicit notice acknowledgement: _dismissManual calls markNoticeReadContainer, records popup acknowledgement and removes that notice. This is not a pure window dismiss; preserve its business receipt."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/components/data_display/uten_selection_summary_pill.dart",
+    "owner": "UtenSelectionSummaryPill.build",
+    "fingerprint": "0af8759bd84cba15d583cbbfc4562f48df16c86e71df6da9f9715827ef3fbcce",
+    "count": 1,
+    "reason": "Clears only the selected-row set in the compact selection summary; onClear has no window or navigation action."
   }
 ]

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 // 员工资料核对：计划/原回执保留服务端权威；建议只读，手填后勾选确认。
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:math' as math;
@@ -964,7 +965,7 @@ class _HrReconcilePageState extends ConsumerState<HrReconcilePage>
   Future<void> _openRecords() async {
     if (!_canReadRecords || _busy) return;
     final sessionKey = ref.read(masterDataSessionKeyProvider);
-    final planId = await showModalBottomSheet<String>(
+    final planId = await showUtenModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (_) => const _HrReconcileRecordsSheet(),

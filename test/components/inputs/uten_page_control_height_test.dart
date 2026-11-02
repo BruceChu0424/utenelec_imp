@@ -39,7 +39,7 @@ void main() {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      field('search', const UtenSearchBar()),
+                      field('search', const UtenSearchBar(compactIcon: false)),
                       field('plain', const TextField()),
                       field('input', const UtenInput(label: '货品名称')),
                       field(

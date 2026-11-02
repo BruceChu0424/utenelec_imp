@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -46,7 +47,7 @@ Future<bool> showFinanceAssetForm(
       MediaQuery.sizeOf(context).width < UtenBreakpoints.mediumStart;
   final content = FinanceAssetFormSurface(ledger: ledger, existing: existing);
   if (compact) {
-    return await showModalBottomSheet<bool>(
+    return await showUtenModalBottomSheet<bool>(
           context: context,
           isScrollControlled: true,
           useSafeArea: true,

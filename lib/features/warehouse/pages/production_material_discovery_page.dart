@@ -626,6 +626,7 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
       PopScope(
         canPop: !_saving && !_uncertain,
         child: Scaffold(
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
           appBar: UtenAppBar(
             title: l10n.materialDiscoveryTitle,
             showBackButton: true,
@@ -675,16 +676,20 @@ class _DiscoveryPageState extends ConsumerState<ProductionMaterialDiscoveryPage>
           floatingActionButtonAnimator:
               FloatingActionButtonAnimator.noAnimation,
           floatingActionButton: detail?.canConfigure == true && _canWrite
-              ? UtenButton(
-                  key: const Key('discovery-save'),
-                  type: UtenButtonType.danger,
-                  isLoading: _saving,
-                  onPressed: _loading ? null : _save,
-                  child: Text(
-                    _uncertain
-                        ? l10n.materialDiscoveryRetry
-                        : l10n.materialDiscoverySave,
-                  ),
+              ? UtenFloatingActionGroup(
+                  children: [
+                    UtenButton(
+                      key: const Key('discovery-save'),
+                      type: UtenButtonType.danger,
+                      isLoading: _saving,
+                      onPressed: _loading ? null : _save,
+                      child: Text(
+                        _uncertain
+                            ? l10n.materialDiscoveryRetry
+                            : l10n.materialDiscoverySave,
+                      ),
+                    ),
+                  ],
                 )
               : null,
         ),

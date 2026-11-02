@@ -26,6 +26,9 @@ class UtenTreeExpansionButton extends StatelessWidget {
     type: UtenButtonType.ghost,
     height: height,
     isLoading: isLoading,
+    compactIcon: expanded
+        ? Icons.unfold_less_rounded
+        : Icons.unfold_more_rounded,
     onPressed: isLoading ? null : (expanded ? onCollapse : onExpand),
     child: Text(expanded ? '全部收起' : '全部展开'),
   );

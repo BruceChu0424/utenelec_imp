@@ -68,9 +68,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('更多操作'), findsOneWidget);
+    expect(find.byTooltip('更多操作'), findsOneWidget);
     expect(find.text('刷新'), findsNothing);
-    await tester.tap(find.text('更多操作'));
+    await tester.tap(find.byTooltip('更多操作'));
     await tester.pumpAndSettle();
     expect(find.text('刷新'), findsOneWidget);
     expect(find.text('权限设置'), findsOneWidget);
@@ -106,9 +106,9 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('更多操作'), findsOneWidget);
+    expect(find.byTooltip('更多操作'), findsOneWidget);
     expect(find.text(labels.first), findsNothing);
-    await tester.tap(find.text('更多操作'));
+    await tester.tap(find.byTooltip('更多操作'));
     await tester.pumpAndSettle();
     for (final label in labels) {
       expect(find.text(label), findsOneWidget);
@@ -121,7 +121,7 @@ void main() {
 
     tester.view.physicalSize = const Size(1600, 700);
     await tester.pumpAndSettle();
-    expect(find.text('更多操作'), findsNothing);
+    expect(find.byTooltip('更多操作'), findsNothing);
     for (final label in labels) {
       expect(find.text(label), findsOneWidget);
     }

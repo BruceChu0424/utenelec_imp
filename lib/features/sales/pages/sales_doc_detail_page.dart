@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../../../shared/documents/document_unapproval.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart';
@@ -1190,7 +1191,7 @@ class _SalesDocDetailPageState extends ConsumerState<SalesDocDetailPage>
       return;
     }
     final names = ref.read(salesMasterNameServiceProvider);
-    await showModalBottomSheet<void>(
+    await showUtenModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,

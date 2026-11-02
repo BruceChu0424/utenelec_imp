@@ -14,6 +14,7 @@ import '../../components/layout/uten_section_header.dart';
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../core/responsive/compact_presentation.dart';
 import '../../core/ui/app_notification.dart';
 import '../auth/permissions.dart';
 import 'attachment_category_control.dart';
@@ -108,6 +109,7 @@ class _PendingAttachmentSectionState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = UtenCompactPresentation.of(context);
     final canAdd =
         widget.canManage &&
         (widget.manageWithoutUploadPerm ||
@@ -150,7 +152,7 @@ class _PendingAttachmentSectionState
                     runSpacing: UtenSpacing.s8,
                     children: [
                       if (widget.headerExtra != null) widget.headerExtra!,
-                      if (canAdd && !widget.selectionMode)
+                      if (canAdd && !widget.selectionMode && !compact)
                         FilledButton.tonal(
                           key: const ValueKey('pending-attachment-add'),
                           onPressed: busy ? null : _pick,
@@ -160,6 +162,7 @@ class _PendingAttachmentSectionState
                         ),
                     ],
                   );
+                  if (compact && actions.children.isEmpty) return heading;
                   if (constraints.maxWidth < 480) {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -198,8 +201,13 @@ class _PendingAttachmentSectionState
               const SizedBox(height: UtenSpacing.s8),
               if (items.isEmpty)
                 canAdd ? _dropzone(theme) : _readonlyEmpty(theme)
-              else
+              else ...[
                 _cardArea(theme, items, canAdd: canAdd, busy: busy),
+                if (compact && canAdd && !widget.selectionMode) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  _dropzone(theme),
+                ],
+              ],
             ],
           ),
         );
@@ -279,11 +287,15 @@ class _PendingAttachmentSectionState
 
   Widget _dropzone(ThemeData theme) {
     return InkWell(
+      key: const ValueKey('pending-attachment-upload-dropzone'),
       borderRadius: UtenRadius.mdAll,
-      onTap: _picking ? null : _pick,
+      onTap: _picking || widget.controller.isFlushing ? null : _pick,
       child: DashedContainer(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          padding: EdgeInsets.symmetric(
+            horizontal: UtenCompactPresentation.of(context) ? 12 : 16,
+            vertical: UtenCompactPresentation.of(context) ? 12 : 20,
+          ),
           child: Row(
             children: [
               Container(

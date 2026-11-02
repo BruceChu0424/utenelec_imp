@@ -8,6 +8,7 @@ import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/theme/uten_scroll_behavior.dart';
+import 'package:uten_imp/core/ui/capsule_nav_metrics.dart';
 import 'package:uten_imp/features/dashboard/pages/dashboard_page.dart';
 import 'package:uten_imp/features/dashboard/providers/dashboard_overview_provider.dart';
 import 'package:uten_imp/features/notice/providers/notice_providers.dart';
@@ -32,6 +33,82 @@ import 'helpers/badge_summary_fixture.dart';
 import 'shared/drafts/memory_form_draft_storage.dart';
 
 void main() {
+  testWidgets(
+    'pushed compact child hides navigation and pop restores it without losing the entry',
+    (tester) async {
+      final router = await _pumpShell(tester, width: 390, height: 844);
+      final entry = tester.state<_BusinessProbeState>(
+        find.byType(_BusinessProbe),
+      );
+      expect(find.byType(FloatingCapsuleNavBar), findsOneWidget);
+      final visit = router.push<void>('/shell-probe/detail');
+      await tester.pumpAndSettle();
+      expect(find.text('业务详情'), findsOneWidget);
+      expect(find.byType(FloatingCapsuleNavBar), findsNothing);
+      expect(
+        UtenCapsuleNavScope.occlusionOf(tester.element(find.text('业务详情'))),
+        0,
+      );
+      router.pop();
+      await visit;
+      await tester.pumpAndSettle();
+      expect(find.byType(FloatingCapsuleNavBar), findsOneWidget);
+      expect(
+        tester.state<_BusinessProbeState>(find.byType(_BusinessProbe)),
+        same(entry),
+      );
+      expect(
+        UtenCapsuleNavScope.occlusionOf(
+          tester.element(find.byType(_BusinessProbe)),
+        ),
+        greaterThan(0),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+  for (final width in [280.0, 390.0, 540.0]) {
+    testWidgets(
+      'compact navigation overlays every main tab and business page at $width',
+      (tester) async {
+        final router = await _pumpShell(
+          tester,
+          width: width,
+          height: 844,
+          dashboardFixture: true,
+        );
+        for (final route in [
+          '/dashboard',
+          '/notice',
+          '/profile',
+          '/settings',
+          '/shell-probe',
+        ]) {
+          router.go(route);
+          await tester.pumpAndSettle();
+          expect(find.byType(FloatingCapsuleNavBar), findsOneWidget);
+          final nav = tester.getRect(find.byType(FloatingCapsuleNavBar));
+          expect(nav.bottom, closeTo(838, .01));
+          expect(nav.width, lessThanOrEqualTo(width));
+          final page = find.byWidgetPredicate(
+            (widget) => switch (route) {
+              '/dashboard' => widget is DashboardPage,
+              '/profile' => widget is ProfilePage,
+              '/shell-probe' => widget is _BusinessProbe,
+              _ => widget is Scaffold,
+            },
+          );
+          if (route == '/dashboard' ||
+              route == '/profile' ||
+              route == '/shell-probe') {
+            expect(tester.getRect(page).bottom, closeTo(844, .01));
+          }
+          expect(tester.takeException(), isNull, reason: route);
+        }
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
   for (final width in [1366.0, 1920.0, 2560.0]) {
     testWidgets(
       'dashboard scrollbar reaches the page edge with inner content margins at $width',

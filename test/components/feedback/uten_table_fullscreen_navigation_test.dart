@@ -101,11 +101,11 @@ Future<void> _source(
   addTearDown(router.dispose);
   await tester.pumpWidget(MaterialApp.router(routerConfig: router));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('全屏'));
+  await tester.tap(find.bySemanticsLabel('全屏'));
   await tester.pumpAndSettle();
-  expect(find.text('退出全屏'), findsOneWidget);
+  expect(find.bySemanticsLabel('退出全屏'), findsOneWidget);
   expect(
-    ModalRoute.of(tester.element(find.text('退出全屏')))?.barrierDismissible,
+    ModalRoute.of(tester.element(find.bySemanticsLabel('退出全屏')))?.barrierDismissible,
     isFalse,
     reason: '保留原showGeneralDialog的不可点遮罩关闭合同',
   );
@@ -125,14 +125,14 @@ void main() {
     await tester.tap(find.text('业务货品'));
     await tester.pumpAndSettle();
     expect(find.text('货品详情'), findsOneWidget);
-    expect(find.text('退出全屏'), findsNothing);
+    expect(find.bySemanticsLabel('退出全屏'), findsNothing);
     await tester.tapAt(tester.getCenter(find.text('详情操作')));
     await tester.pump();
     expect(detailActions, 1);
     await tester.tap(find.text('返回货品资料'));
     await tester.pumpAndSettle();
     expect(find.text('业务货品'), findsOneWidget);
-    expect(find.text('全屏'), findsOneWidget);
+    expect(find.bySemanticsLabel('全屏'), findsOneWidget);
     expect(fullscreenChanges, [true, false]);
     expect(tester.takeException(), isNull);
   });
@@ -144,18 +144,20 @@ void main() {
       fullscreenChanges: fullscreenChanges,
       onDetailAction: () {},
     );
+    await tester.tap(find.byTooltip('表格操作'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('打开预览'));
     await tester.pumpAndSettle();
     expect(find.text('普通打印预览'), findsOneWidget);
     expect(fullscreenChanges, [true]);
     await tester.tap(find.text('关闭预览'));
     await tester.pumpAndSettle();
-    expect(find.text('退出全屏'), findsOneWidget);
+    expect(find.bySemanticsLabel('退出全屏'), findsOneWidget);
     expect(find.text('业务货品'), findsOneWidget);
     expect(fullscreenChanges, [true]);
-    await tester.tap(find.text('退出全屏'));
+    await tester.tap(find.bySemanticsLabel('退出全屏'));
     await tester.pumpAndSettle();
-    expect(find.text('全屏'), findsOneWidget);
+    expect(find.bySemanticsLabel('全屏'), findsOneWidget);
     expect(fullscreenChanges, [true, false]);
     expect(tester.takeException(), isNull);
   });
@@ -167,10 +169,12 @@ void main() {
       fullscreenChanges: [],
       onDetailAction: () => actions++,
     );
+    await tester.tap(find.byTooltip('表格操作'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('离开资料'));
     await tester.pumpAndSettle();
     expect(find.text('其他业务'), findsOneWidget);
-    expect(find.text('退出全屏'), findsNothing);
+    expect(find.bySemanticsLabel('退出全屏'), findsNothing);
     expect(find.byType(MasterDataTableView<String>), findsNothing);
     await tester.tapAt(tester.getCenter(find.text('其他业务操作')));
     await tester.pump();

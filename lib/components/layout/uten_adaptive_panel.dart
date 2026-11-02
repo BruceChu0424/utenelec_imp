@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -82,7 +83,7 @@ Future<T?> showUtenAdaptivePanel<T>({
     const shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(UtenRadius.lg)),
     );
-    return showModalBottomSheet<T>(
+    return showUtenModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
       isDismissible: barrierDismissible,

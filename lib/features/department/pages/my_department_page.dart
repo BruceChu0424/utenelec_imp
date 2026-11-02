@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 // MyDepartmentPage - 我的部门（全页面，镜像「部门管理」页布局）
 // 文档：docs/03-页面/我的页.md（§我的部门）
 //
@@ -599,7 +600,7 @@ Future<void> _showContactCard(
 ) async {
   final content = _ContactCard(row: r);
   if (context.breakpoint.isCompact) {
-    await showModalBottomSheet<void>(
+    await showUtenModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,

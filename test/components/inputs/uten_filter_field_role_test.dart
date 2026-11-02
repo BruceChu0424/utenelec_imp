@@ -70,7 +70,7 @@ Rect _rect(WidgetTester tester, String key) => tester.getRect(
 Widget _roles(String state) => Column(
   crossAxisAlignment: CrossAxisAlignment.start,
   children: [
-    const UtenSearchBar(key: ValueKey('search')),
+    const UtenSearchBar(key: ValueKey('search'), compactIcon: false),
     _field('form', state),
     UtenFilterFieldTheme(child: _field('filter', state)),
     UtenTableCellInputTheme(child: _field('table', state)),
@@ -90,7 +90,10 @@ void main() {
             theme: dark ? ThemeData.dark() : ThemeData.light(),
             child: Column(
               children: [
-                const UtenSearchBar(key: ValueKey('search')),
+                const UtenSearchBar(
+                  key: ValueKey('search'),
+                  compactIcon: false,
+                ),
                 for (final state in [
                   'empty',
                   'selected',

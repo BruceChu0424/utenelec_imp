@@ -308,7 +308,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       await _openActions(tester);
-      await tester.tap(find.text('预览打印'));
+      await tester.tap(find.bySemanticsLabel('预览打印'));
       await tester.pumpAndSettle();
       expect(loadedValue, 7);
       expect(find.text('预览 · 当前表头'), findsOneWidget);
@@ -520,7 +520,7 @@ void main() {
         ),
       );
       await _openActions(tester);
-      await tester.tap(find.text('下载表格'));
+      await tester.tap(find.bySemanticsLabel('下载表格'));
       await tester.pump();
       expect(find.byTooltip('关闭操作面板'), findsOneWidget);
       prepared.complete(const UtenExportSelection());

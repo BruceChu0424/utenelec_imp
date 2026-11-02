@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import '../layout/uten_app_bar_action_scope.dart';
 import '../layout/uten_app_bar_action_feedback.dart';
 import '../feedback/uten_dialog_action_scope.dart';
@@ -10,6 +11,7 @@ import '../feedback/uten_dialog_action_scope.dart';
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/responsive/scale.dart';
+import '../../core/responsive/compact_presentation.dart';
 
 /// The shared Uten action button.
 ///
@@ -28,6 +30,10 @@ class UtenButton extends StatelessWidget {
     this.onLongPress,
     this.onDisabledTap,
     this.height,
+    this.compactIcon,
+    this.compactLabel,
+    this.semanticLabel,
+    this.closeBeforeAction = false,
   });
 
   final FutureOr<void> Function()? onPressed;
@@ -42,6 +48,15 @@ class UtenButton extends StatelessWidget {
   /// Aligns a compact control with its toolbar. Touch targets retain their
   /// minimum extent even when the visual desktop height is overridden.
   final double? height;
+
+  /// Opt-in presentation for familiar auxiliary actions on narrow windows.
+  /// Menus and medium/large windows retain the full original child and icon.
+  final IconData? compactIcon;
+  final String? compactLabel;
+  final String? semanticLabel;
+
+  /// Navigation actions release a transient menu before moving its controls.
+  final bool closeBeforeAction;
 
   /// Called when the visually disabled button is tapped.
   ///
@@ -123,19 +138,30 @@ class UtenButton extends StatelessWidget {
     required FutureOr<void> Function()? longPress,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final inMenu = UtenMenuActionPresentation.contains(context);
+    final compact = UtenCompactPresentation.of(context);
     final inAppBar = UtenAppBarActionPresentation.contains(context);
     final inDialog = UtenDialogActionScope.contains(context);
     final enabled = press != null && !loading;
     final effectiveOnTap = enabled
-        ? UtenAppBarActionScope.wrap(context, press)
+        ? closeBeforeAction
+              ? UtenAppBarActionScope.wrapBefore(context, press)
+              : UtenAppBarActionScope.wrap(context, press)
         : loading && inAppBar
         ? null
         : onDisabledTap;
     final effectiveLongPress = enabled
         ? UtenAppBarActionScope.wrap(context, longPress)
         : null;
-    final (enabledBackground, enabledForeground, enabledBorder) =
-        _resolveColors(colorScheme, inAppBar: inAppBar, inDialog: inDialog);
+    final (enabledBackground, enabledForeground, enabledBorder) = inMenu
+        ? (
+            colorScheme.surface,
+            type == UtenButtonType.danger
+                ? colorScheme.error
+                : colorScheme.onSurface,
+            null,
+          )
+        : _resolveColors(colorScheme, inAppBar: inAppBar, inDialog: inDialog);
 
     // 禁用态刻意比 M3 默认（12% 底 + 38% 字）浓：默认那套在浅色底上几乎透明，
     // 用户在物料分析/下达采购等页反馈「不选的时候根本不知道这里可以点」。
@@ -166,7 +192,7 @@ class UtenButton extends StatelessWidget {
                       : _minimumExtent)),
       ),
     );
-    final iconSize = context.scaled(_iconSize);
+    final iconSize = context.scaled(compact ? 18 : _iconSize);
     final shape = RoundedRectangleBorder(
       borderRadius: radius,
       side: border == null ? BorderSide.none : BorderSide(color: border),
@@ -177,6 +203,140 @@ class UtenButton extends StatelessWidget {
             child: child is Flexible ? (child as Flexible).child : child,
           )
         : child;
+
+    if (compact && !inDialog) {
+      final iconOnly =
+          compactIcon != null &&
+          !inMenu &&
+          UtenCompactPresentation.auxiliaryIconsOf(context);
+      final abbreviated = compactLabel != null && !inMenu;
+      final description =
+          semanticLabel ?? (child is Text ? (child as Text).data : null);
+      final visualHeight =
+          (inDialog || size == UtenButtonSize.large && height == null) &&
+              !inMenu &&
+              !inAppBar
+          ? 40.0
+          : 36.0;
+      final label = DefaultTextStyle.merge(
+        style: _textStyle.copyWith(fontSize: 13, color: foreground),
+        child: iconOnly
+            ? loading
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: foreground,
+                      ),
+                    )
+                  : Icon(compactIcon, size: 18, color: foreground)
+            : inAppBar && !abbreviated
+            ? content
+            : _content(
+                context: context,
+                foreground: foreground,
+                iconSize: 16,
+                inAppBar: false,
+                labelOverride: abbreviated
+                    ? ExcludeSemantics(child: Text(compactLabel!))
+                    : null,
+              ),
+      );
+      Widget compactButton = MergeSemantics(
+        child: Semantics(
+          button: true,
+          enabled: enabled,
+          label: iconOnly || abbreviated ? description : null,
+          onTap: effectiveOnTap,
+          onLongPress: effectiveLongPress,
+          child: Focus(
+            canRequestFocus: effectiveOnTap != null,
+            onKeyEvent: (_, event) {
+              if (effectiveOnTap != null &&
+                  event is KeyDownEvent &&
+                  (event.logicalKey == LogicalKeyboardKey.enter ||
+                      event.logicalKey == LogicalKeyboardKey.space)) {
+                effectiveOnTap();
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: Builder(
+              builder: (context) => Listener(
+                onPointerDown: effectiveOnTap == null
+                    ? null
+                    : (_) => Focus.of(context).requestFocus(),
+                child: GestureDetector(
+                  excludeFromSemantics: true,
+                  behavior: HitTestBehavior.opaque,
+                  onTap: enabled ? null : effectiveOnTap,
+                  onLongPress: !enabled && effectiveOnTap != null
+                      ? _ignoreLongPress
+                      : null,
+                  child: _CompactHitTarget(
+                    minimumExtent: UtenControlMetrics.minimumHitExtent(context),
+                    expandWidth: isExpanded || inMenu,
+                    child: ExcludeFocus(
+                      child: RawMaterialButton(
+                        onPressed: enabled ? effectiveOnTap : null,
+                        onLongPress: enabled ? effectiveLongPress : null,
+                        fillColor: background,
+                        shape:
+                            Focus.of(context).hasFocus &&
+                                FocusManager.instance.highlightMode ==
+                                    FocusHighlightMode.traditional
+                            ? RoundedRectangleBorder(
+                                borderRadius: radius,
+                                side: BorderSide(
+                                  color: colorScheme.onSurface,
+                                  width: 2,
+                                ),
+                              )
+                            : shape,
+                        elevation: 0,
+                        focusElevation: 0,
+                        hoverElevation: 0,
+                        highlightElevation: 0,
+                        materialTapTargetSize: MaterialTapTargetSize.padded,
+                        constraints: BoxConstraints(
+                          minWidth: 36,
+                          minHeight: visualHeight,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: inMenu
+                            ? Align(
+                                alignment: AlignmentDirectional.centerStart,
+                                widthFactor: 1,
+                                heightFactor: 1,
+                                child: label,
+                              )
+                            : label,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      if (isExpanded || inMenu) {
+        compactButton = SizedBox(width: double.infinity, child: compactButton);
+      }
+      if ((iconOnly || abbreviated) && description != null) {
+        compactButton = Tooltip(
+          message: description,
+          excludeFromSemantics: true,
+          child: compactButton,
+        );
+      }
+      return compactButton;
+    }
 
     Widget button = MergeSemantics(
       child: Semantics(
@@ -220,6 +380,8 @@ class UtenButton extends StatelessWidget {
                     ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)
                     : inDialog
                     ? const EdgeInsets.symmetric(horizontal: 20, vertical: 12)
+                    : compact
+                    ? const EdgeInsets.symmetric(horizontal: 12, vertical: 6)
                     : _padding,
                 child: DefaultTextStyle.merge(
                   style:
@@ -230,11 +392,23 @@ class UtenButton extends StatelessWidget {
                                   height: 1.2,
                                 )
                               : inDialog
+                              ? _textStyle.copyWith(fontSize: compact ? 13 : 14)
+                              : compact
                               ? _textStyle.copyWith(fontSize: 14)
                               : _textStyle)
                           .copyWith(color: foreground),
                   child: inAppBar
                       ? content
+                      : inMenu
+                      ? Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: _content(
+                            context: context,
+                            foreground: foreground,
+                            iconSize: iconSize,
+                            inAppBar: false,
+                          ),
+                        )
                       : _content(
                           context: context,
                           foreground: foreground,
@@ -249,7 +423,7 @@ class UtenButton extends StatelessWidget {
       ),
     );
 
-    if (isExpanded) {
+    if (isExpanded || inMenu) {
       button = SizedBox(width: double.infinity, child: button);
     }
     return button;
@@ -260,6 +434,7 @@ class UtenButton extends StatelessWidget {
     required Color foreground,
     required double iconSize,
     required bool inAppBar,
+    Widget? labelOverride,
   }) {
     final leading = isLoading
         ? ExcludeSemantics(
@@ -276,7 +451,9 @@ class UtenButton extends StatelessWidget {
         ? Icon(icon, size: iconSize, color: foreground)
         : null;
     final gap = isLoading ? UtenSpacing.s8 : UtenSpacing.s6;
-    final label = child is Flexible ? (child as Flexible).child : child;
+    final label =
+        labelOverride ??
+        (child is Flexible ? (child as Flexible).child : child);
     if (leading == null) {
       return Align(widthFactor: 1, heightFactor: 1, child: label);
     }
@@ -549,6 +726,106 @@ class _RenderUtenButtonContent extends RenderBox
   @override
   void paint(PaintingContext context, Offset offset) =>
       defaultPaint(context, offset);
+}
+
+/// Paint compact controls naturally while retaining the window-sized target
+/// when application zoom is below 100%. The hit padding adds no visible fill.
+class _CompactHitTarget extends SingleChildRenderObjectWidget {
+  const _CompactHitTarget({
+    required this.minimumExtent,
+    required this.expandWidth,
+    required super.child,
+  });
+  final double minimumExtent;
+  final bool expandWidth;
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _CompactHitBox(minimumExtent, expandWidth);
+  @override
+  void updateRenderObject(BuildContext context, _CompactHitBox renderObject) {
+    renderObject.minimumExtent = minimumExtent;
+    renderObject.expandWidth = expandWidth;
+  }
+}
+
+class _CompactHitBox extends RenderShiftedBox {
+  _CompactHitBox(this._minimumExtent, this._expandWidth) : super(null);
+  double _minimumExtent;
+  bool _expandWidth;
+  set minimumExtent(double value) {
+    if (_minimumExtent == value) return;
+    _minimumExtent = value;
+    markNeedsLayout();
+  }
+
+  set expandWidth(bool value) {
+    if (_expandWidth == value) return;
+    _expandWidth = value;
+    markNeedsLayout();
+  }
+
+  BoxConstraints _childConstraints(BoxConstraints limits) =>
+      _expandWidth && limits.hasBoundedWidth
+      ? BoxConstraints(
+          minWidth: limits.maxWidth,
+          maxWidth: limits.maxWidth,
+          maxHeight: limits.maxHeight,
+        )
+      : limits.loosen();
+  Size _sizeFor(BoxConstraints limits, Size childSize) => limits.constrain(
+    Size(
+      math.max(_minimumExtent, childSize.width),
+      math.max(_minimumExtent, childSize.height),
+    ),
+  );
+  @override
+  Size computeDryLayout(BoxConstraints constraints) => _sizeFor(
+    constraints,
+    child?.getDryLayout(_childConstraints(constraints)) ?? Size.zero,
+  );
+  @override
+  double computeMinIntrinsicWidth(double height) =>
+      math.max(_minimumExtent, child?.getMinIntrinsicWidth(height) ?? 0);
+  @override
+  double computeMaxIntrinsicWidth(double height) =>
+      math.max(_minimumExtent, child?.getMaxIntrinsicWidth(height) ?? 0);
+  @override
+  double computeMinIntrinsicHeight(double width) =>
+      math.max(_minimumExtent, child?.getMinIntrinsicHeight(width) ?? 0);
+  @override
+  double computeMaxIntrinsicHeight(double width) =>
+      math.max(_minimumExtent, child?.getMaxIntrinsicHeight(width) ?? 0);
+  @override
+  void performLayout() {
+    child?.layout(_childConstraints(constraints), parentUsesSize: true);
+    size = _sizeFor(constraints, child?.size ?? Size.zero);
+    if (child case final child?) {
+      (child.parentData! as BoxParentData).offset = Offset(
+        (size.width - child.size.width) / 2,
+        (size.height - child.size.height) / 2,
+      );
+    }
+  }
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    final child = this.child;
+    if (child == null || !size.contains(position) || child.size.isEmpty) {
+      return false;
+    }
+    final offset = (child.parentData! as BoxParentData).offset;
+    final local = position - offset;
+    final target = Offset(
+      local.dx.clamp(0.0, child.size.width - .001),
+      local.dy.clamp(0.0, child.size.height - .001),
+    );
+    return result.addWithPaintOffset(
+      offset: position - target,
+      position: position,
+      hitTest: (result, transformed) =>
+          child.hitTest(result, position: transformed),
+    );
+  }
 }
 
 enum UtenButtonType { primary, secondary, tonal, ghost, success, danger }

@@ -34,6 +34,8 @@ class UtenImportButton extends StatelessWidget {
   Widget build(BuildContext context) => UtenButton(
     onPressed: onPressed,
     icon: icon,
+    compactLabel: '引入',
+    semanticLabel: label,
     height: height,
     child: Text(label),
   );

@@ -632,6 +632,8 @@ class _UtenColumnChooserButtonState extends State<UtenColumnChooserButton> {
         size: UtenButtonSize.large,
         height: UtenTableToolbar.controlHeight,
         onPressed: _open,
+        compactIcon: Icons.settings_outlined,
+        semanticLabel: '表头设置 $visible/${widget.entries.length}',
         child: Text('表头设置 $visible/${widget.entries.length}'),
       ),
     );

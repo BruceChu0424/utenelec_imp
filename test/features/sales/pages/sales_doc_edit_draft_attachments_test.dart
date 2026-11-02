@@ -1,3 +1,4 @@
+import '../../../attachments/attachment_test_actions.dart';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 
@@ -362,7 +363,7 @@ void main() {
       final draft = find.byKey(const ValueKey('sales-order-draft-attachments'));
       expect(draft, findsOneWidget);
       expect(find.byType(PendingAttachmentSection), findsOneWidget);
-      expect(find.text('添加文件'), findsOneWidget);
+      expect(pendingAttachmentAddFilesAction(), findsOneWidget);
       expect(find.text('上传'), findsNothing, reason: '没有 UUID 前不能即时上传');
 
       // 上传前不问分类：没有分类芯片，也没有那句暂存提示语。
@@ -370,7 +371,7 @@ void main() {
       expect(find.textContaining('保存单据后自动上传'), findsNothing);
       expect(find.textContaining('保存前可随时移除'), findsNothing);
 
-      await tester.tap(find.byKey(const ValueKey('pending-attachment-add')));
+      await tester.tap(pendingAttachmentAddFilesAction());
       await tester.pumpAndSettle();
       expect(picker.calls, 1);
       expect(find.text('销售合同.pdf'), findsOneWidget);
@@ -494,7 +495,7 @@ void main() {
           find.byType(BusinessAttachmentSection),
         );
         expect(section.isDraft, isTrue);
-        expect(find.text('添加文件'), findsOneWidget);
+        expect(pendingAttachmentAddFilesAction(), findsOneWidget);
         expect(files.uploads, isEmpty);
         if (entry.$1 == SalesDocType.shipment ||
             entry.$1 == SalesDocType.returnDoc) {

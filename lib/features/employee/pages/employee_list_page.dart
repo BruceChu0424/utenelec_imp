@@ -18,6 +18,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../components/layout/uten_floating_action_group.dart';
+import '../../../components/buttons/uten_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -258,14 +259,20 @@ class _EmployeeListPageState extends ConsumerState<EmployeeListPage> {
     return Scaffold(
       appBar: UtenAppBar(title: l10n.employeeTitle, showBackButton: true),
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: canCreate
-          ? FloatingActionButton.extended(
-              icon: const Icon(Icons.person_add_rounded),
-              label: Text(l10n.employeeFabOnboard),
-              onPressed: () async {
-                await context.push('/employee/onboarding');
-                _reload();
-              },
+          ? UtenFloatingActionGroup(
+              children: [
+                UtenButton(
+                  size: UtenButtonSize.large,
+                  icon: Icons.person_add_rounded,
+                  child: Text(l10n.employeeFabOnboard),
+                  onPressed: () async {
+                    await context.push('/employee/onboarding');
+                    _reload();
+                  },
+                ),
+              ],
             )
           : null,
       body: body,

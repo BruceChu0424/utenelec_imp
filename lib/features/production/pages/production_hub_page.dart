@@ -286,6 +286,7 @@ class ProductionHubPage extends ConsumerWidget {
           UtenResponsiveGrid(
             itemCount: visibleEntries.length,
             spacing: UtenSpacing.s12,
+            compactMinItemWidth: 132,
             columns: const UtenResponsiveColumns(compact: 2, medium: 4),
             minItemWidth:
                 visibleEntries.any(

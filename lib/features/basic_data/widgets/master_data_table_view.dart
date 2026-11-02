@@ -5,6 +5,9 @@ import '../../../components/layout/uten_page_layout.dart';
 import '../../../components/layout/uten_scroll_prefetch_policy.dart';
 import '../../../shared/paging/paged_read_intent.dart';
 import '../../../core/responsive/display_zoom.dart';
+import '../../../core/responsive/compact_presentation.dart';
+import '../../../components/layout/uten_action_overflow.dart';
+import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_vertical_scrollbar.dart';
 import '../../../components/data_display/uten_table_surface.dart';
 import '../../../components/data_display/uten_table_read_status.dart';
@@ -3635,6 +3638,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   Route<void>? _fullscreenRoute;
   VoidCallback? _returnFullscreenSurface;
   int _fullscreenScrollEpoch = 0;
+  bool _closingFullscreenTooltips = false;
   final GlobalKey _presentationKey = GlobalKey();
   final ValueNotifier<int> _fsTick = ValueNotifier<int>(0);
 
@@ -4536,6 +4540,21 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   /// 同一个 keyed surface 在 pop 时同帧交还正常树，全屏 route 同时退为空占位。
   /// 等到 dispose 后才挂回会先销毁行输入 State；保留两份表格则会双挂滚动位置。
   Future<void> _toggleFullscreen() async {
+    if (_closingFullscreenTooltips) return;
+    // A hovered Material Tooltip owns a deferred overlay render child in the
+    // source Navigator. Finish its short fade before retaining this surface in
+    // another Navigator; reattaching that live child from a LayoutBuilder can
+    // otherwise mutate the old overlay while the new route is laying out.
+    if (Tooltip.dismissAllToolTips()) {
+      _closingFullscreenTooltips = true;
+      try {
+        await Future<void>.delayed(const Duration(milliseconds: 120));
+        await WidgetsBinding.instance.endOfFrame;
+      } finally {
+        _closingFullscreenTooltips = false;
+      }
+      if (!mounted) return;
+    }
     // 切全屏会换渲染树，进行中的拖拽手势可能不再回调 onEnd，浮层 target 也在旧树，
     // 统一重置卸下（FM6）。
     columnHeaderDragReset();
@@ -6491,6 +6510,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     size: UtenButtonSize.large,
     height: UtenTableToolbar.controlHeight,
     onPressed: _toggleFullscreen,
+    closeBeforeAction: true,
+    compactIcon: _fullscreen
+        ? Icons.fullscreen_exit_rounded
+        : Icons.fullscreen_rounded,
     child: Text(_fullscreen ? '退出全屏' : '全屏'),
   );
 
@@ -6510,7 +6533,15 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
     }
     return [
       for (var i = 0; i < leading.length; i++)
-        KeyedSubtree(key: _leadingActionKeys[i], child: leading[i]),
+        KeyedSubtree(
+          key: _leadingActionKeys[i],
+          child:
+              UtenCompactPresentation.iconSearchOf(context) &&
+                  leading[i] is SizedBox &&
+                  (leading[i] as SizedBox).child is UtenSearchBar
+              ? SizedBox(width: 48, child: (leading[i] as SizedBox).child)
+              : leading[i],
+        ),
     ];
   }
 
@@ -6955,6 +6986,36 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           final actions = _stableToolbarActions();
           final pager = _buildToolbarPager(context);
           final trailing = [...actions, ?pager];
+          if (UtenCompactPresentation.of(context)) {
+            bool overflowAction(Widget child) =>
+                child.key != const ValueKey('master-table-fullscreen-toggle') &&
+                UtenActionOverflow.isAction(child);
+            final controls = toolbarChildren
+                .where((child) => !overflowAction(child))
+                .toList();
+            final menuActions = [
+              ...toolbarChildren.where(overflowAction),
+              ...actions,
+            ];
+            return Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              spacing: UtenSpacing.s8,
+              runSpacing: UtenSpacing.s4,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                ...controls,
+                if (menuActions.isNotEmpty)
+                  UtenActionOverflow(
+                    key: const ValueKey('master-table-action-overflow'),
+                    label: '表格操作',
+                    forceCompact: menuActions.length > 1,
+                    children: menuActions,
+                  ),
+                ?pager,
+              ],
+            );
+          }
+
           if (trailing.isEmpty) {
             return Wrap(
               spacing: UtenSpacing.s8,

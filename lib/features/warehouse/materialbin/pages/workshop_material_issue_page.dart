@@ -1070,6 +1070,7 @@ class _WorkshopMaterialIssuePageState
       PopScope(
         canPop: !_saving,
         child: Scaffold(
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
           floatingActionButtonAnimator:
               FloatingActionButtonAnimator.noAnimation,
           floatingActionButton: _loading || _loadError != null

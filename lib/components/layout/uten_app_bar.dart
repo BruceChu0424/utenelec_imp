@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
+import '../../core/responsive/compact_presentation.dart';
 import '../../core/router/page_navigation_session.dart';
 import '../../shared/auth/page_permission_action.dart';
 import '../buttons/uten_back_button.dart';
@@ -145,6 +146,7 @@ class _UtenAppBarState extends State<UtenAppBar> {
     final revision = ++_actionRevision;
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final compactWindow = UtenCompactPresentation.of(context);
 
     final baseColor =
         backgroundColor ??
@@ -389,12 +391,21 @@ class _UtenAppBarState extends State<UtenAppBar> {
           ],
         );
         final compactAction = UtenAppBarActionPresentation(
-          child: UtenAppBarActionButton(
-            key: const Key('uten-app-bar-more-actions'),
-            label: actionBudget < 112 * textScale ? '操作' : '更多操作',
-            tooltip: '更多操作',
-            onPressed: () => _showActions(context, presentedActions, revision),
-          ),
+          child: compactWindow
+              ? IconButton(
+                  key: const Key('uten-app-bar-more-actions'),
+                  tooltip: '更多操作',
+                  icon: const Icon(Icons.more_horiz_rounded, size: 20),
+                  onPressed: () =>
+                      _showActions(context, presentedActions, revision),
+                )
+              : UtenAppBarActionButton(
+                  key: const Key('uten-app-bar-more-actions'),
+                  label: actionBudget < 112 * textScale ? '操作' : '更多操作',
+                  tooltip: '更多操作',
+                  onPressed: () =>
+                      _showActions(context, presentedActions, revision),
+                ),
         );
         return AppBar(
           actionsPadding:
@@ -403,16 +414,24 @@ class _UtenAppBarState extends State<UtenAppBar> {
               ? EdgeInsets.only(right: UtenPageChromeMetrics.endOf(context))
               : EdgeInsets.zero,
           title: _buildTitleArea(context, theme, isDark),
-          leading:
-              pageLeading ??
-              (showBackButton
-                  ? const UtenBackButton()
-                  : const SizedBox.shrink()),
+          leading: compactWindow && (pageLeading != null || showBackButton)
+              ? Padding(
+                  padding: const EdgeInsetsDirectional.only(start: 8),
+                  child:
+                      pageLeading ??
+                      (showBackButton
+                          ? const UtenBackButton()
+                          : const SizedBox.shrink()),
+                )
+              : pageLeading ??
+                    (showBackButton
+                        ? const UtenBackButton()
+                        : const SizedBox.shrink()),
           automaticallyImplyLeading: false,
           // 返回键只占可见圆形，标题间隔独立留白，不扩大返回点击区域。
           // 非返回型 leading 沿用 AppBar 的默认槽宽和标题间距。
           leadingWidth: (showBackButton || pageLeading is UtenBackButton)
-              ? UtenBackButton.slotWidth(context)
+              ? UtenBackButton.slotWidth(context) + (compactWindow ? 8 : 0)
               : (pageLeading == null && !showBackButton ? 0 : null),
           titleSpacing: (showBackButton || pageLeading is UtenBackButton)
               ? UtenBackButton.titleGap

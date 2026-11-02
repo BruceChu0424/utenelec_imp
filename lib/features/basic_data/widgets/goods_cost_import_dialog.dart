@@ -317,6 +317,7 @@ class _GoodsCostImportDialogState extends State<GoodsCostImportDialog> {
           ],
         ),
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: UtenFloatingActionGroup(
         children: [
           TextButton(

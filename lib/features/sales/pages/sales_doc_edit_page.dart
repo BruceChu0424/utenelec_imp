@@ -1,3 +1,4 @@
+import '../../../core/responsive/compact_presentation.dart';
 import 'dart:async';
 // 销售单据编辑页（新建/编辑，全页路由）：主表头表单 + 明细可编辑 Excel 表（UtenEditableGrid）+ 保存。
 //
@@ -2570,41 +2571,46 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
               .toList(growable: false);
           final allSelected = selected.length == queue.length;
           final busy = _intakeBatchRunning || _saving;
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+          final actions = <Widget>[
+            TextButton(
+              key: const ValueKey('sales-intake-batch-cancel'),
+              onPressed: busy ? null : _cancelIntakeSelecting,
+              child: const Text('取消'),
+            ),
+            if (queue.length > 1)
               TextButton(
-                key: const ValueKey('sales-intake-batch-cancel'),
-                onPressed: busy ? null : _cancelIntakeSelecting,
-                child: const Text('取消'),
-              ),
-              if (queue.length > 1)
-                TextButton(
-                  key: const ValueKey('sales-intake-batch-select-all'),
-                  onPressed: busy
-                      ? null
-                      : () => setState(() {
-                          if (allSelected) {
-                            _intakeSelected.clear();
-                          } else {
-                            _intakeSelected
-                              ..clear()
-                              ..addAll(queue);
-                          }
-                        }),
-                  child: Text(allSelected ? '取消全选' : '全选'),
-                ),
-              FilledButton.icon(
-                key: const ValueKey('sales-intake-batch-confirm'),
-                // 批量进行中不转圈(每份的进度由公共 AI 进度弹窗展示)，只禁用。
-                onPressed: busy || selected.isEmpty
+                key: const ValueKey('sales-intake-batch-select-all'),
+                onPressed: busy
                     ? null
-                    : () => _confirmBatchIntake(selected),
-                icon: const Icon(Icons.auto_awesome_rounded, size: 18),
-                label: Text('识别 (${selected.length})'),
+                    : () => setState(() {
+                        if (allSelected) {
+                          _intakeSelected.clear();
+                        } else {
+                          _intakeSelected
+                            ..clear()
+                            ..addAll(queue);
+                        }
+                      }),
+                child: Text(allSelected ? '取消全选' : '全选'),
               ),
-            ],
-          );
+            FilledButton.icon(
+              key: const ValueKey('sales-intake-batch-confirm'),
+              // 批量进行中不转圈(每份的进度由公共 AI 进度弹窗展示)，只禁用。
+              onPressed: busy || selected.isEmpty
+                  ? null
+                  : () => _confirmBatchIntake(selected),
+              icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+              label: Text('识别 (${selected.length})'),
+            ),
+          ];
+          return UtenCompactPresentation.of(context)
+              ? Wrap(
+                  spacing: UtenSpacing.s4,
+                  runSpacing: UtenSpacing.s4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: actions,
+                )
+              : Row(mainAxisSize: MainAxisSize.min, children: actions);
         }
         if (queue.length < 2) return const SizedBox.shrink();
         return FilledButton.tonalIcon(

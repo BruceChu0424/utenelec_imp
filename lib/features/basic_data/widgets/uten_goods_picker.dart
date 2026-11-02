@@ -1,3 +1,4 @@
+import '../../../core/responsive/compact_presentation.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // UtenGoodsPicker - 货品选择器（单据明细/报表选货品用）。
 //
@@ -1463,66 +1464,78 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
   Widget _buildRightPane(ThemeData theme) => _buildGoodsList(theme);
 
   Widget _buildUnifiedSearch() {
-    return Padding(
-      // 左缘贴 0（2026-10-18 全站分栏口径）：与分类页左栏搜索共缘。
-      padding: UtenPanelSpacing.search(context),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (widget.allTree != null) ...[
-            UtenSegmentRow<bool>(
-              showSelectedIcon: false,
-              segments: const [
-                ButtonSegment(value: false, label: Text('当前组件范围')),
-                ButtonSegment(value: true, label: Text('全部可选货品')),
-              ],
-              selected: {_expandedScope},
-              onSelectionChanged: (values) => _changeScope(values.single),
-            ),
-            const SizedBox(height: UtenSpacing.s8),
+    final compact = UtenCompactPresentation.iconSearchOf(context);
+    final before = <Widget>[
+      if (widget.allTree != null) ...[
+        UtenSegmentRow<bool>(
+          showSelectedIcon: false,
+          segments: const [
+            ButtonSegment(value: false, label: Text('当前组件范围')),
+            ButtonSegment(value: true, label: Text('全部可选货品')),
           ],
-          UtenSearchBar(
-            key: const Key('uten-goods-picker-search'),
-            controller: _keywordCtl,
-            hint: '搜索分类/货品名称或编号',
-            onInputChanged: _onKeywordInputChanged,
-            onChanged: _onKeywordChanged,
-          ),
-          if (_query.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _searchCategoryId == null
-                        ? '搜索范围：全部分类'
-                        : '搜索范围：${utenTreeSelectionPath(_tree, _searchCategoryId) ?? '所选分类'}',
-                    key: const ValueKey('goods-picker-search-scope'),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-                if (_searchCategoryId != null)
-                  IconButton(
-                    tooltip: '清除分类范围，搜索全部分类',
-                    onPressed: () {
-                      setState(() => _searchCategoryId = null);
-                      _restartSearch();
-                    },
-                    icon: const Icon(Icons.close_rounded, size: 18),
-                  ),
-              ],
+          selected: {_expandedScope},
+          onSelectionChanged: (values) => _changeScope(values.single),
+        ),
+        const SizedBox(height: UtenSpacing.s8),
+      ],
+    ];
+    final after = <Widget>[
+      if (_query.isNotEmpty) ...[
+        const SizedBox(height: UtenSpacing.s8),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _searchCategoryId == null
+                    ? '搜索范围：全部分类'
+                    : '搜索范围：${utenTreeSelectionPath(_tree, _searchCategoryId) ?? '所选分类'}',
+                key: const ValueKey('goods-picker-search-scope'),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
-            if (_supportsRelatedSearch)
-              GoodsRelatedSearchControl(
-                value: _includeRelated,
-                onChanged: (value) {
-                  setState(() => _includeRelated = value);
+            if (_searchCategoryId != null)
+              IconButton(
+                tooltip: '清除分类范围，搜索全部分类',
+                onPressed: () {
+                  setState(() => _searchCategoryId = null);
                   _restartSearch();
                 },
+                icon: const Icon(Icons.close_rounded, size: 18),
               ),
           ],
-        ],
-      ),
+        ),
+        if (_supportsRelatedSearch)
+          GoodsRelatedSearchControl(
+            value: _includeRelated,
+            onChanged: (value) {
+              setState(() => _includeRelated = value);
+              _restartSearch();
+            },
+          ),
+      ],
+    ];
+    final search = UtenSearchBar(
+      key: const Key('uten-goods-picker-search'),
+      controller: _keywordCtl,
+      hint: '搜索分类/货品名称或编号',
+      onInputChanged: _onKeywordInputChanged,
+      onChanged: _onKeywordChanged,
+      popupFooter: compact && (before.isNotEmpty || after.isNotEmpty)
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [...before, ...after],
+            )
+          : null,
+    );
+    return Padding(
+      padding: UtenPanelSpacing.search(context),
+      child: compact
+          ? search
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [...before, search, ...after],
+            ),
     );
   }
 

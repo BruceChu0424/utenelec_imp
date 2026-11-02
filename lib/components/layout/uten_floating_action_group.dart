@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/capsule_nav_metrics.dart';
+import '../../core/responsive/compact_presentation.dart';
+import 'uten_action_overflow.dart';
 
 /// 右下角悬浮操作组。
 ///
@@ -39,7 +41,8 @@ class UtenFloatingActionGroup extends StatefulWidget {
 
   /// 正文末尾的可滚动留白，可把末行完整滚到悬浮操作组上方。
   /// 也是默认的总高度上限；有本地预算的宿主可传 [maxHeight]，超长组内滚动。
-  static const double scrollClearance = 200;
+  static const double scrollClearance =
+      UtenFloatingOverlayMetrics.actionScrollClearance;
 
   @override
   State<UtenFloatingActionGroup> createState() =>
@@ -99,6 +102,20 @@ class _UtenFloatingActionGroupState extends State<UtenFloatingActionGroup> {
     if (widget.children.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
     final media = MediaQuery.of(context);
+    final compact = UtenCompactPresentation.of(context);
+    final secondary = widget.children.take(widget.children.length - 1).toList();
+    final menuActions = secondary.where(UtenActionOverflow.isAction).toList();
+    final children = compact && menuActions.length > 1
+        ? <Widget>[
+            ...secondary.where((child) => !UtenActionOverflow.isAction(child)),
+            UtenActionOverflow(
+              label: '其他操作',
+              forceCompact: media.size.width < 600,
+              children: menuActions,
+            ),
+            widget.children.last,
+          ]
+        : widget.children;
     final availableWidth = (media.size.width - UtenSpacing.s32)
         .clamp(0.0, widget.maxWidth)
         .toDouble();
@@ -122,11 +139,11 @@ class _UtenFloatingActionGroupState extends State<UtenFloatingActionGroup> {
         .toDouble();
 
     if (widget.onMinimumContentHeightChanged != null) {
-      while (_controlKeys.length < widget.children.length) {
+      while (_controlKeys.length < children.length) {
         _controlKeys.add(GlobalKey());
       }
-      if (_controlKeys.length > widget.children.length) {
-        _controlKeys.removeRange(widget.children.length, _controlKeys.length);
+      if (_controlKeys.length > children.length) {
+        _controlKeys.removeRange(children.length, _controlKeys.length);
       }
     }
 
@@ -155,7 +172,7 @@ class _UtenFloatingActionGroupState extends State<UtenFloatingActionGroup> {
                     spacing: UtenSpacing.s8,
                     runSpacing: UtenSpacing.s8,
                     children: [
-                      for (var i = 0; i < widget.children.length; i++)
+                      for (var i = 0; i < children.length; i++)
                         KeyedSubtree(
                           key: widget.onMinimumContentHeightChanged != null
                               ? _controlKeys[i]
@@ -174,7 +191,7 @@ class _UtenFloatingActionGroupState extends State<UtenFloatingActionGroup> {
                                 minHeight:
                                     UtenFloatingActionGroup.controlHeight,
                               ),
-                              child: widget.children[i],
+                              child: children[i],
                             ),
                           ),
                         ),

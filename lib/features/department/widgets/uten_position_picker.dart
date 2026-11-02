@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 // UtenPositionPicker - 岗位联动选择（依赖已选部门）
 //
 // 输入 departmentId；未选部门时禁用并提示「请先选择部门」。
@@ -73,7 +74,7 @@ class _UtenPositionPickerState extends ConsumerState<UtenPositionPicker> {
   Future<void> _open() async {
     final deptId = widget.departmentId;
     if (deptId == null || deptId.isEmpty) return;
-    final result = await showModalBottomSheet<Position>(
+    final result = await showUtenModalBottomSheet<Position>(
       context: context,
       isScrollControlled: true,
       builder: (ctx) => Padding(

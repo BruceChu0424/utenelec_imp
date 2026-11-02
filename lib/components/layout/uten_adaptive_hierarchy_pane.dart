@@ -3,6 +3,9 @@ import '../buttons/uten_close_button.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/responsive/breakpoint.dart';
+import '../../core/responsive/compact_presentation.dart';
+import '../../core/theme/uten_tokens.dart';
+import 'uten_compact_toolbar.dart';
 import 'uten_collapsing_header_scroll_view.dart';
 import 'uten_content_container.dart';
 import 'uten_page_layout.dart';
@@ -67,37 +70,77 @@ class _AdaptiveHierarchyPaneState extends State<UtenAdaptiveHierarchyPane> {
   }
 
   Widget _buildCompactContent(Widget trailing) {
-    final header = KeyedSubtree(
-      key: _compactHeaderKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    final compact = UtenCompactPresentation.iconSearchOf(context);
+    final directory = OutlinedButton(
+      key: widget.openButtonKey,
+      focusNode: _triggerFocus,
+      onPressed: () => setState(() => _open = true),
+      child: Row(
         children: [
-          ?widget.compactHeader,
-          UtenPageEdgePadding.pane(
-            padding: const EdgeInsets.all(8),
-            child: OutlinedButton(
-              key: widget.openButtonKey,
-              focusNode: _triggerFocus,
-              onPressed: () => setState(() => _open = true),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        widget.selectedLabel ?? '选择${widget.noun}',
-                        softWrap: true,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.account_tree_rounded, size: 20),
-                  ],
-                ),
-              ),
+          Expanded(
+            child: Text(
+              widget.selectedLabel ?? '选择${widget.noun}',
+              softWrap: true,
             ),
           ),
+          const SizedBox(width: 8),
+          const Icon(Icons.account_tree_rounded, size: 20),
         ],
       ),
+    );
+    final header = KeyedSubtree(
+      key: _compactHeaderKey,
+      child: compact
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Expanded(child: directory),
+                  if (widget.compactHeader != null) ...[
+                    const SizedBox(width: 8),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth:
+                            UtenControlMetrics.minimumHitExtent(context) * 3,
+                      ),
+                      child: utenCompactToolbarChild(
+                        context,
+                        widget.compactHeader!,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ?widget.compactHeader,
+                UtenPageEdgePadding.pane(
+                  padding: const EdgeInsets.all(8),
+                  child: OutlinedButton(
+                    key: widget.openButtonKey,
+                    focusNode: _triggerFocus,
+                    onPressed: () => setState(() => _open = true),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.selectedLabel ?? '选择${widget.noun}',
+                              softWrap: true,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          const Icon(Icons.account_tree_rounded, size: 20),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
     );
     return LayoutBuilder(
       builder: (context, constraints) {

@@ -137,6 +137,7 @@ class HrWorkbenchPage extends ConsumerWidget {
         ],
       ),
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: canOnboard
           ? UtenFloatingActionGroup(
               children: [
@@ -369,6 +370,7 @@ class HrWorkbenchPage extends ConsumerWidget {
             ),
           ),
           UtenResponsiveGrid(
+            compactMinItemWidth: 132,
             itemCount: entries.length,
             spacing: UtenSpacing.s8,
             runSpacing: UtenSpacing.s8,

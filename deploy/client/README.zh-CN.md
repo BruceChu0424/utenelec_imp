@@ -255,7 +255,8 @@ $env:GRADLE_OPTS = '-Dorg.gradle.java.home="<任务私有 JDK 17 路径>" -Dorg.
 try {
   flutter build apk --debug --no-pub `
     --dart-define=API_BASE_URL=http://127.0.0.1:18081/api `
-    --dart-define=CLOUD_API_BASE_URL=http://127.0.0.1:18081/api
+    --dart-define=CLOUD_API_BASE_URL=http://127.0.0.1:18081/api `
+    --dart-define=DR_CONTROL_PLANE_URL=
 } finally {
   $env:GRADLE_OPTS = $previousGradleOpts
   Remove-Item Env:ORG_GRADLE_PROJECT_utenLocalTest
@@ -265,6 +266,7 @@ try {
 
 `org.gradle.java.home` 固定实际 Gradle 编译 JVM，避免 Windows 上 Flutter 优先采用 Android Studio
 内置 JDK 而覆盖命令的 `JAVA_HOME`；不运行会写入全局设置的 `flutter config --jdk-dir`。
+测试 APK 的灾备控制面编译地址显式留空，所有业务连接固定使用本地测试服务。
 
 在手机开启 USB 调试并确认开发机授权后，使用本机 Android SDK 的 `adb`：
 

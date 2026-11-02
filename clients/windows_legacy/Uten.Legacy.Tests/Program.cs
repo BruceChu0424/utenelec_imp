@@ -51,6 +51,7 @@ namespace Uten.Legacy.Tests
                     return 0;
                 }
                 if (args.Length != 0) throw new ArgumentException("Unknown native test group.");
+                DiagnosticsLogChecks.Run();
                 var checks = typeof(SessionCoordinator).Assembly.GetTypes().Single(type => type.Name == "CoreContractChecks");
                 checks.GetMethod("Run", BindingFlags.Public | BindingFlags.Static).Invoke(null, null);
                 typeof(SessionCoordinator).Assembly.GetTypes().Single(type => type.Name == "PageReadPriorityChecks")

@@ -46,6 +46,7 @@ import 'platform_tables_host.dart';
 import 'features/client_update/client_update_host.dart';
 import 'features/client_update/client_update_tile.dart';
 import 'shared/widgets/settings_about_extensions.dart';
+import 'shared/widgets/diagnostic_log_tile.dart';
 import 'core/network/server_config.dart';
 import 'core/network/connection_recovery.dart';
 
@@ -121,7 +122,7 @@ class UtenApp extends ConsumerWidget {
               )
             : child!;
         final settingsChild = SettingsAboutExtensions(
-          entries: const [ClientUpdateTile(), ClientReleasePublishTile()],
+          entries: const [ClientUpdateTile(), ClientReleasePublishTile(), DiagnosticLogTile()],
           child: UtenTooltipNavigationHost(
             navigation: router.routerDelegate,
             child: routedChild,

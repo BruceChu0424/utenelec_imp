@@ -27,9 +27,14 @@ list(GET HARNESS_VERSION_PARTS 1 HARNESS_VERSION_MINOR)
 list(GET HARNESS_VERSION_PARTS 2 HARNESS_VERSION_PATCH)
 add_executable(uten_native_window_regression WIN32
   harness_main.cpp
+  accessibility_probe.cpp
   "${SUT}/runner/flutter_window.cpp"
   "${SUT}/runner/win32_window.cpp"
   "${SUT}/runner/client_update_channel.cpp"
+  "${SUT}/runner/window_background_task.cpp"
+  "${SUT}/runner/update_helper_process.cpp"
+  "${SUT}/runner/native_diagnostics.cpp"
+  "${SUT}/runner/software_download_host.cpp"
   "${SUT}/runner/utils.cpp"
   "${SUT}/runner/Runner.rc"
   "${SUT}/runner/runner.exe.manifest"
@@ -44,6 +49,7 @@ target_compile_definitions(uten_native_window_regression PRIVATE
   FLUTTER_VERSION_MINOR=${HARNESS_VERSION_MINOR}
   FLUTTER_VERSION_PATCH=${HARNESS_VERSION_PATCH}
   FLUTTER_VERSION_BUILD=${HARNESS_BUILD_NUMBER}
+  UTEN_BUILD_KIND="Harness"
 )
 target_include_directories(uten_native_window_regression PRIVATE
   "${SUT}" "${SUT}/runner" "${EPHEMERAL}"
@@ -52,7 +58,7 @@ target_include_directories(uten_native_window_regression PRIVATE
 target_link_libraries(uten_native_window_regression PRIVATE
   "${SUT_BUILD}/flutter/Profile/flutter_wrapper_app.lib"
   "${EPHEMERAL}/flutter_windows.dll.lib"
-  dwmapi comctl32 bcrypt shell32 ole32
+  dwmapi comctl32 bcrypt shell32 ole32 oleacc oleaut32
 )
 # Read the actual project's native plugin list; FFI packages do not register here.
 file(READ "${SUT_PROJECT}/windows/flutter/generated_plugins.cmake" PLUGIN_CONFIG)

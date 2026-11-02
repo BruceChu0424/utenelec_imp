@@ -43,6 +43,8 @@ class FlutterWindow : public Win32Window {
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
       desktop_window_channel_;
   void ResetDesktopWindowChannel();
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> diagnostic_channel_;
+  void ResetDiagnosticChannel();
   std::optional<bool> last_sent_maximized_;
 };
 

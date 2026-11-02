@@ -10,6 +10,7 @@ using System.Security.Authentication;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Diagnostics;
 using Org.BouncyCastle.Tls;
 using Org.BouncyCastle.Tls.Crypto.Impl.BC;
 
@@ -50,15 +51,29 @@ namespace Uten.Legacy.Core
         {
             if (disposed) throw new ObjectDisposedException(nameof(ManagedTlsHttpHandler));
             ValidateRequestOrigin(request);
-            using (await pageReads.EnterAsync(request, cancellationToken).ConfigureAwait(false))
+            var timing = Stopwatch.StartNew();
+            DiagnosticsLog.Record("request.begin", method: request.Method.Method, path: request.RequestUri.AbsolutePath);
+            try
             {
-                await connectionSlots.WaitAsync(cancellationToken).ConfigureAwait(false);
-                try
+                using (await pageReads.EnterAsync(request, cancellationToken).ConfigureAwait(false))
                 {
-                    // BC's blocking stream API runs off the UI thread. Cancellation closes the owned socket.
-                    return await Task.Run(() => SendBlocking(request, cancellationToken)).ConfigureAwait(false);
+                    await connectionSlots.WaitAsync(cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        // BC's blocking stream API runs off the UI thread. Cancellation closes the owned socket.
+                        var response = await Task.Run(() => SendBlocking(request, cancellationToken)).ConfigureAwait(false);
+                        DiagnosticsLog.Record("request.end", method: request.Method.Method, path: request.RequestUri.AbsolutePath,
+                            elapsed: timing.ElapsedMilliseconds, status: (int)response.StatusCode);
+                        return response;
+                    }
+                    finally { connectionSlots.Release(); }
                 }
-                finally { connectionSlots.Release(); }
+            }
+            catch (Exception error)
+            {
+                DiagnosticsLog.Record("request.failed", error.GetType().Name, request.Method.Method,
+                    request.RequestUri.AbsolutePath, timing.ElapsedMilliseconds);
+                throw;
             }
         }
 

@@ -394,3 +394,21 @@
 证据：`docs/99-项目治理/2026-11-01-客户端发布工作台批设置与恢复.md`；`clients/windows_legacy/progress/evidence/client-publish-integration-20261101.json`。
 
 接续/限制：2.5.42适用发布合同已同步；当前Flutter79/分析0/页面28绿，x86发布95及实际View布局绿，x64既有runner待自然结束，不计done，Win7目标机和完整ERP未验收。原877完整DoD和历史单列保留。。
+
+## W7-CORE-024
+
+- [ ] **内置可复制运行日志与加载中断压力回归** — 本机验证/待本项最终验收
+
+影响：`frontend+shared-contract`；负责人：windows_stability；依赖：W7-ENV-001, W7-CORE-003, W7-UPD-006。
+
+源入口：`lib/core/diagnostics/diagnostic_log.dart`；`lib/core/performance/data_work_queue.dart`；`windows/runner/native_diagnostics.cpp`；`test/fixtures/client_diagnostics_v1.json`。
+
+完成条件：
+
+1. Flutter与WPF原生入口默认持久化版本/异常/无响应/更新日志，用户可直接复制.log；按运行时、架构、配置隔离，日志不含凭据或业务正文，限量且不碰业务/恢复资料。
+2. 共用日志schema/路径脱敏样例；覆盖x86/x64本机编译、异常落盘、日志风暴、加载中断/旧结果隔离及实际入口交互；不弱化未知提交或原始输入保全。
+3. Win7目标机适用启动、异常/卡顿和更新日志验收；未验收前不标done，不以源码存在或现代Windows本机runner替代目标机验收。
+
+证据：`docs/99-项目治理/2026-11-01-极端负载中断与内置日志.md`。
+
+接续/限制：本机WPF x86/x64与Flutter/Windows内置日志和压力合同已验证；Win7真机、正式安装/更新及完整ERP仍未验收，不标done。。

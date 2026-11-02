@@ -1,5 +1,7 @@
 #include "client_update_channel.h"
 #include "software_download_host.h"
+#include "update_helper_process.h"
+#include "native_diagnostics.h"
 
 #include <bcrypt.h>
 #include <shlobj.h>
@@ -89,7 +91,7 @@ bool ValidHash(const std::string& hash) {
   return true;
 }
 
-std::string Sha256(const fs::path& path) {
+std::string Sha256(const fs::path& path, HANDLE cancelled) {
   BCRYPT_ALG_HANDLE algorithm = nullptr;
   BCRYPT_HASH_HANDLE hash = nullptr;
   DWORD object_size = 0;
@@ -107,7 +109,7 @@ std::string Sha256(const fs::path& path) {
       std::ifstream input(path, std::ios::binary);
       std::array<char, 65536> buffer{};
       bool valid = input.good();
-      while (valid && input) {
+      while (valid && input && WaitForSingleObject(cancelled, 0) != WAIT_OBJECT_0) {
         input.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
         const auto size = input.gcount();
         if (size > 0 && BCryptHashData(hash,
@@ -187,6 +189,113 @@ std::string LastUpdateResult(const fs::path& staging) {
   if (json.compare(0, 3, "\xef\xbb\xbf") == 0) json.erase(0, 3);
   return json;
 }
+struct UpdatePreparation {
+  std::string error;
+  std::string message;
+  std::shared_ptr<UpdateHelperProcess> helper;
+};
+
+UpdatePreparation PrepareUpdate(const std::string& path_arg,
+    const std::string& expected_hash, int64_t build, HANDLE cancelled) {
+  LogNativeDiagnostic("update.native_prepare");
+  const auto staging = StagingDirectory();
+  const auto executable = Executable();
+  const auto script = executable.parent_path() / L"client_updater" / L"client_updater.ps1";
+  std::error_code error;
+  const fs::path package(Wide(path_arg));
+  const auto canonical_package = fs::canonical(package, error);
+  if (error || staging.empty() || !IsInside(canonical_package, staging) ||
+      !NoReparsePoint(canonical_package) || !NoReparsePoint(script) ||
+      !NoReparsePoint(executable.parent_path()) ||
+      canonical_package.extension() != L".zip" ||
+      !fs::is_regular_file(canonical_package, error) || error) {
+    return {"UNSAFE_UPDATE_PATH", "Update must be a ZIP in private staging.", nullptr};
+  }
+  const auto package_size = fs::file_size(canonical_package, error);
+  if (error || package_size == 0 || package_size > 536870912) {
+    return {"INVALID_UPDATE_SIZE", "Update ZIP must be between 1 byte and 512 MiB.", nullptr};
+  }
+  if (Sha256(canonical_package, cancelled) != expected_hash) {
+    return {"UPDATE_HASH_MISMATCH", "Update integrity check failed.", nullptr};
+  }
+  // Do not request elevation or redirect AppData. Portable/per-user installs
+  // retain their original path and their existing personal settings.
+  const auto probe = executable.parent_path() /
+      (L".uten-update-probe-" + std::to_wstring(GetCurrentProcessId()));
+  HANDLE probe_file = CreateFileW(probe.c_str(), GENERIC_WRITE, 0, nullptr,
+      CREATE_NEW, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
+  if (probe_file == INVALID_HANDLE_VALUE) {
+    return {"INSTALL_DIRECTORY_READ_ONLY", "The install directory is not writable.", nullptr};
+  }
+  CloseHandle(probe_file);
+  GUID id{};
+  if (FAILED(CoCreateGuid(&id))) {
+    return {"UPDATE_START_FAILED", "Could not allocate an update job.", nullptr};
+  }
+  wchar_t id_text[40]{};
+  StringFromGUID2(id, id_text, 40);
+  const std::wstring job_id(id_text);
+  const auto job = staging / job_id;
+  fs::create_directory(job, error);
+  if (error) {
+    return {"UPDATE_START_FAILED", "Could not create private update workspace.", nullptr};
+  }
+  const auto helper = job / L"client_updater.ps1";
+  fs::copy_file(script, helper, fs::copy_options::none, error);
+  if (error) {
+    return {"UPDATE_START_FAILED", "Could not prepare the installed updater.", nullptr};
+  }
+  FILETIME created{}, exited{}, kernel{}, user{};
+  if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user)) {
+    return {"UPDATE_START_FAILED", "Could not identify the running process.", nullptr};
+  }
+  ULARGE_INTEGER start{};
+  start.LowPart = created.dwLowDateTime;
+  start.HighPart = created.dwHighDateTime;
+  const auto event_name = L"Local\\UtenClientUpdate-" + job_id;
+  HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, event_name.c_str());
+  wchar_t system_directory[MAX_PATH]{};
+  const UINT system_length = GetSystemDirectoryW(system_directory, MAX_PATH);
+  if (ready == nullptr || system_length == 0 || system_length >= MAX_PATH) {
+    if (ready != nullptr) CloseHandle(ready);
+    return {"UPDATE_START_FAILED", "Could not create update handshake.", nullptr};
+  }
+  const fs::path powershell = fs::path(system_directory) /
+      L"WindowsPowerShell" / L"v1.0" / L"powershell.exe";
+  std::wstring command = Quote(powershell.wstring()) +
+      L" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " +
+      Quote(helper.wstring()) + L" -PackagePath " + Quote(canonical_package.wstring()) +
+      L" -ExpectedSha256 " + Wide(expected_hash) + L" -BuildNumber " +
+      std::to_wstring(build) + L" -Architecture " + Wide(Architecture()) +
+      L" -InstallDirectory " + Quote(executable.parent_path().wstring()) +
+      L" -ParentProcessId " + std::to_wstring(GetCurrentProcessId()) +
+      L" -ParentStartFileTime " + std::to_wstring(start.QuadPart) +
+      L" -ReadyEventName " + Quote(event_name) +
+      L" -Workspace " + Quote(job.wstring());
+  auto helper_process = UpdateHelperProcess::Start(
+      powershell.wstring(), std::move(command), job.wstring());
+  if (!helper_process) {
+    CloseHandle(ready);
+    return {"UPDATE_START_FAILED", "Could not start the installed updater safely.", nullptr};
+  }
+  const HANDLE waits[] = {cancelled, ready, helper_process->process()};
+  const DWORD state = WaitForMultipleObjects(3, waits, FALSE, 15000);
+  if (state != WAIT_OBJECT_0 + 1) {
+    // A late helper must never apply an update after the user has already
+    // received a failed handoff. It cannot have changed install files while
+    // this process is alive, so stopping this private helper is safe.
+    TerminateProcess(helper_process->process(), 1);
+    WaitForSingleObject(helper_process->process(), 5000);
+  }
+  CloseHandle(ready);
+  if (state != WAIT_OBJECT_0 + 1) {
+    // The helper never mutates the install until this process exits. A failed
+    // handshake therefore leaves the running version intact.
+    return {"UPDATE_START_FAILED", "Updater did not become ready. See the update log.", nullptr};
+  }
+  return {"", "", std::move(helper_process)};
+}
+
 }  // namespace
 
 ClientUpdateChannel::ClientUpdateChannel(flutter::BinaryMessenger* messenger,
@@ -195,7 +304,7 @@ ClientUpdateChannel::ClientUpdateChannel(flutter::BinaryMessenger* messenger,
       messenger, "com.uten.imp/client_update",
       &flutter::StandardMethodCodec::GetInstance());
   channel_->SetMethodCallHandler(
-      [window](const flutter::MethodCall<Value>& call,
+      [this, window](const flutter::MethodCall<Value>& call,
                std::unique_ptr<flutter::MethodResult<Value>> result) {
     if (call.method_name() == "getSoftwareDownloadHost") {
       const auto host = ReadSoftwareDownloadHost();
@@ -211,12 +320,10 @@ ClientUpdateChannel::ClientUpdateChannel(flutter::BinaryMessenger* messenger,
       }));
       return;
     }
-    const auto staging = StagingDirectory();
-    const auto executable = Executable();
-    const auto script = executable.parent_path() / L"client_updater" /
-                        L"client_updater.ps1";
-    std::error_code error;
     if (call.method_name() == "getInstallContext") {
+      const auto staging = StagingDirectory();
+      const auto script = Executable().parent_path() / L"client_updater" / L"client_updater.ps1";
+      std::error_code error;
       result->Success(Value(Map{
           {Value("platform"), Value("windows")},
           {Value("architecture"), Value(Architecture())},
@@ -245,116 +352,34 @@ ClientUpdateChannel::ClientUpdateChannel(flutter::BinaryMessenger* messenger,
       result->Error("INVALID_UPDATE", "Update path, hash or build is invalid.");
       return;
     }
-    const fs::path package(Wide(path_arg));
-    const auto canonical_package = fs::canonical(package, error);
-    if (error || staging.empty() || !IsInside(canonical_package, staging) ||
-        !NoReparsePoint(canonical_package) || !NoReparsePoint(script) ||
-        !NoReparsePoint(executable.parent_path()) ||
-        canonical_package.extension() != L".zip" ||
-        !fs::is_regular_file(canonical_package, error) || error) {
-      result->Error("UNSAFE_UPDATE_PATH", "Update must be a ZIP in private staging.");
-      return;
-    }
-    const auto package_size = fs::file_size(canonical_package, error);
-    if (error || package_size == 0 || package_size > 536870912) {
-      result->Error("INVALID_UPDATE_SIZE", "Update ZIP must be between 1 byte and 512 MiB.");
-      return;
-    }
-    if (Sha256(canonical_package) != expected_hash) {
-      result->Error("UPDATE_HASH_MISMATCH", "Update integrity check failed.");
-      return;
-    }
-    // Do not request elevation or redirect AppData. Portable/per-user installs
-    // retain their original path and their existing personal settings.
-    const auto probe = executable.parent_path() /
-        (L".uten-update-probe-" + std::to_wstring(GetCurrentProcessId()));
-    HANDLE probe_file = CreateFileW(probe.c_str(), GENERIC_WRITE, 0, nullptr,
-        CREATE_NEW, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
-    if (probe_file == INVALID_HANDLE_VALUE) {
-      result->Error("INSTALL_DIRECTORY_READ_ONLY", "The install directory is not writable.");
-      return;
-    }
-    CloseHandle(probe_file);
-    GUID id{};
-    if (FAILED(CoCreateGuid(&id))) {
-      result->Error("UPDATE_START_FAILED", "Could not allocate an update job.");
-      return;
-    }
-    wchar_t id_text[40]{};
-    StringFromGUID2(id, id_text, 40);
-    const std::wstring job_id(id_text);
-    const auto job = staging / job_id;
-    fs::create_directory(job, error);
-    if (error) {
-      result->Error("UPDATE_START_FAILED", "Could not create private update workspace.");
-      return;
-    }
-    const auto helper = job / L"client_updater.ps1";
-    fs::copy_file(script, helper, fs::copy_options::none, error);
-    if (error) {
-      result->Error("UPDATE_START_FAILED", "Could not prepare the installed updater.");
-      return;
-    }
-    FILETIME created{}, exited{}, kernel{}, user{};
-    if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user)) {
-      result->Error("UPDATE_START_FAILED", "Could not identify the running process.");
-      return;
-    }
-    ULARGE_INTEGER start{};
-    start.LowPart = created.dwLowDateTime;
-    start.HighPart = created.dwHighDateTime;
-    const auto event_name = L"Local\\UtenClientUpdate-" + job_id;
-    HANDLE ready = CreateEventW(nullptr, TRUE, FALSE, event_name.c_str());
-    wchar_t system_directory[MAX_PATH]{};
-    const UINT system_length = GetSystemDirectoryW(system_directory, MAX_PATH);
-    if (ready == nullptr || system_length == 0 || system_length >= MAX_PATH) {
-      if (ready != nullptr) CloseHandle(ready);
-      result->Error("UPDATE_START_FAILED", "Could not create update handshake.");
-      return;
-    }
-    const fs::path powershell = fs::path(system_directory) /
-        L"WindowsPowerShell" / L"v1.0" / L"powershell.exe";
-    std::wstring command = Quote(powershell.wstring()) +
-        L" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " +
-        Quote(helper.wstring()) + L" -PackagePath " + Quote(canonical_package.wstring()) +
-        L" -ExpectedSha256 " + Wide(expected_hash) + L" -BuildNumber " +
-        std::to_wstring(build) + L" -Architecture " + Wide(Architecture()) +
-        L" -InstallDirectory " + Quote(executable.parent_path().wstring()) +
-        L" -ParentProcessId " + std::to_wstring(GetCurrentProcessId()) +
-        L" -ParentStartFileTime " + std::to_wstring(start.QuadPart) +
-        L" -ReadyEventName " + Quote(event_name) +
-        L" -Workspace " + Quote(job.wstring());
-    STARTUPINFOW startup{};
-    startup.cb = sizeof(startup);
-    PROCESS_INFORMATION process{};
-    const BOOL started = CreateProcessW(powershell.c_str(), command.data(),
-        nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, job.c_str(),
-        &startup, &process);
+    auto reply = std::shared_ptr<flutter::MethodResult<Value>>(std::move(result));
+    const bool started = installation_.Start(
+        [window, reply, path_arg, expected_hash, build](HANDLE cancelled) {
+      auto prepared = PrepareUpdate(path_arg, expected_hash, build, cancelled);
+      return [window, reply, prepared = std::move(prepared)]() {
+        if (!prepared.error.empty()) {
+          LogNativeDiagnostic("update.native_failed", prepared.error.c_str());
+          reply->Error(prepared.error, prepared.message);
+          return;
+        }
+        if (!IsWindow(window)) {
+          reply->Error("WINDOW_UNAVAILABLE", "The window is closing.");
+          return;
+        }
+        // This closure runs on the platform thread with its channel still alive.
+        if (!prepared.helper->Accept()) {
+          LogNativeDiagnostic("update.native_failed", "AUTHORIZE_FAILED");
+          reply->Error("UPDATE_START_FAILED", "Could not authorize the ready updater.");
+          return;
+        }
+        reply->Success(Value(Map{{Value("status"), Value("restarting")}}));
+        LogNativeDiagnostic("update.native_handoff");
+        PostMessageW(window, WM_CLOSE, 0, 0);
+      };
+    });
     if (!started) {
-      CloseHandle(ready);
-      result->Error("UPDATE_START_FAILED", "Could not start the installed updater.");
-      return;
+      reply->Error("UPDATE_IN_PROGRESS", "An update handoff is already running or unavailable.");
     }
-    CloseHandle(process.hThread);
-    const HANDLE waits[] = {ready, process.hProcess};
-    const DWORD state = WaitForMultipleObjects(2, waits, FALSE, 15000);
-    if (state != WAIT_OBJECT_0) {
-      // A late helper must never apply an update after the user has already
-      // received a failed handoff. It cannot have changed install files while
-      // this process is alive, so stopping this private helper is safe.
-      TerminateProcess(process.hProcess, 1);
-      WaitForSingleObject(process.hProcess, 5000);
-    }
-    CloseHandle(ready);
-    CloseHandle(process.hProcess);
-    if (state != WAIT_OBJECT_0) {
-      // The helper never mutates the install until this process exits. A failed
-      // handshake therefore leaves the running version intact.
-      result->Error("UPDATE_START_FAILED", "Updater did not become ready. See the update log.");
-      return;
-    }
-    result->Success(Value(Map{{Value("status"), Value("restarting")}}));
-    PostMessageW(window, WM_CLOSE, 0, 0);
   });
 }
 

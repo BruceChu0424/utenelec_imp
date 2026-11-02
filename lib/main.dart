@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
+import 'core/diagnostics/diagnostic_log.dart';
 import 'core/network/company_tls.dart';
 import 'core/responsive/display_zoom_pointer_binding.dart';
 import 'core/web/browser_drop_guard.dart';
@@ -38,7 +39,9 @@ Future<void> bootstrapUtenApp({
 }) async {
   // 在任何插件/默认 binding 初始化之前启用整体缩放的滚轮坐标换算。
   (bindingFactory ?? UtenWidgetsFlutterBinding.new)();
+  await AppDiagnostics.initialize();
   _warmUpPrimaryFont();
+  AppDiagnostics.record('startup.phase', fields: {'phase': 'tls'});
   await initializeCompanyTls();
 
   // Web 端屏蔽浏览器自带右键菜单：表格行右击要弹 App 自绘的上下文菜单
@@ -51,6 +54,7 @@ Future<void> bootstrapUtenApp({
   }
 
   // 初始化 SharedPreferences（用于偏好持久化）
+  AppDiagnostics.record('startup.phase', fields: {'phase': 'preferences'});
   final prefs = await SharedPreferences.getInstance();
 
   runApp(
@@ -64,6 +68,7 @@ Future<void> bootstrapUtenApp({
     ),
   );
   WidgetsBinding.instance.addPostFrameCallback((_) {
+    AppDiagnostics.record('startup.phase', fields: {'phase': 'ready'});
     webUpdateSafety.setReady(true);
   });
 }

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show compute, kIsWeb;
 
 import '../../core/performance/ui_work_budget.dart';
+import '../../core/performance/data_work_queue.dart';
 import 'attachment_archive_listing.dart';
 import 'attachment_delimited_text.dart';
 import 'attachment_file_rules.dart';
@@ -50,9 +51,15 @@ Future<AttachmentPreviewPayload> parseAttachmentPreview(
   work.ensureCurrent();
   final AttachmentPreviewPayload result;
   if (kIsWeb) {
-    result = await parseAttachmentPreviewInUiSlices(kind, bytes, budget: work);
+    result = await dataWorkQueue.run(
+      () => parseAttachmentPreviewInUiSlices(kind, bytes, budget: work),
+      isCurrent: isCurrent,
+    );
   } else {
-    result = await compute(_parseInBackground, (kind: kind, bytes: bytes));
+    result = await dataWorkQueue.run(
+      () => compute(_parseInBackground, (kind: kind, bytes: bytes)),
+      isCurrent: isCurrent,
+    );
   }
   work.ensureCurrent();
   return result;

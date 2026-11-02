@@ -1,0 +1,13 @@
+--- a/engine/src/flutter/shell/platform/common/accessibility_bridge_unittests.cc
++++ b/engine/src/flutter/shell/platform/common/accessibility_bridge_unittests.cc
+@@ -87 +87,3 @@
+-  node4.value = "original value";
++  // Force an allocated value, matching the live 2.5.43 get_accValue crash.
++  const std::string retained_value(35, 'x');
++  node4.value = retained_value.c_str();
+@@ -137 +139,4 @@
+-            "original value");
++            retained_value);
++  EXPECT_EQ(retained[4]->GetData().GetString16Attribute(
++                ax::mojom::StringAttribute::kValue),
++            std::u16string(35, u'x'));

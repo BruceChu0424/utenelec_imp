@@ -31,6 +31,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ClientConfiguration.cs" />
+    <Compile Include="DiagnosticsLog.cs" />
     <Compile Include="Models.cs" />
     <Compile Include="CompanyCertificatePolicy.cs" />
     <Compile Include="SessionStore.cs" />

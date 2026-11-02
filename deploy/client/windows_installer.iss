@@ -114,8 +114,12 @@ chinesesimp.WinVersionTooLowError=UTEN 桌面客户端需要 Windows 10 或更�
 ; The intermediate ZIP is outside this directory and is never embedded twice.
 Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
+[Dirs]
+Name: "{localappdata}\com.uten.uten_imp\client-logs\flutter"; Flags: uninsneveruninstall
+
 [Icons]
 Name: "{autoprograms}\{cm:AppDisplayName}"; Filename: "{app}\uten_imp.exe"; WorkingDir: "{app}"
+Name: "{autoprograms}\{cm:AppDisplayName} Logs"; Filename: "{localappdata}\com.uten.uten_imp\client-logs\flutter"; Flags: foldershortcut
 Name: "{userdesktop}\{cm:AppDisplayName}"; Filename: "{app}\uten_imp.exe"; WorkingDir: "{app}"
 
 [Run]

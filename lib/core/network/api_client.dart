@@ -35,6 +35,7 @@ import 'streaming_download_contract.dart';
 import 'read_scope_revision.dart';
 import 'interceptors/read_scope_revision_interceptor.dart';
 import 'interceptors/page_read_priority_interceptor.dart';
+import '../diagnostics/diagnostic_request_interceptor.dart';
 
 const _clientPackageSendTimeout = Duration(minutes: 30);
 const _clientPackageReceiveTimeout = Duration(minutes: 5);
@@ -44,7 +45,11 @@ class ApiClient {
     this._dio, {
     this.streamingDownloads = false,
     ApiMutationReloadSafety? reloadSafety,
-  }) : _reloadSafety = reloadSafety ?? apiMutationReloadSafety;
+  }) : _reloadSafety = reloadSafety ?? apiMutationReloadSafety {
+    if (!_dio.interceptors.any((item) => item is DiagnosticRequestInterceptor)) {
+      _dio.interceptors.add(DiagnosticRequestInterceptor());
+    }
+  }
 
   final Dio _dio;
   final bool streamingDownloads;
@@ -726,6 +731,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
     installStreamingDownloadAdapter(client);
     client.transformer = ResponsiveJsonTransformer(jsonDecoder);
     client.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
+    client.interceptors.add(DiagnosticRequestInterceptor());
     client.interceptors.add(readScope);
     return client;
   }

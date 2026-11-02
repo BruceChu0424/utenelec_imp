@@ -12,8 +12,8 @@
   "baselineCounts": {
     "businessPagePackages": 220,
     "retainedBusinessPagePackages": 3,
-    "commonAndFlowPackages": 138,
-    "workPackages": 361
+    "commonAndFlowPackages": 139,
+    "workPackages": 362
   },
   "groups": [
     {
@@ -13015,6 +13015,43 @@
       "evidence": [],
       "notes": "尚未迁移；先做动作/合同审计。\n源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。\n源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。\n源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。\n源清单已不再发现该页，须人工分类退役/改名；不得自动删除历史任务。",
       "lastUpdated": "2026-10-28"
+    },
+    {
+      "id": "W7-CORE-024",
+      "title": "内置可复制运行日志与加载中断压力回归",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "verified_local",
+      "impactArea": "frontend+shared-contract",
+      "owner": "windows_stability",
+      "sources": [
+        "lib/core/diagnostics/diagnostic_log.dart",
+        "lib/core/performance/data_work_queue.dart",
+        "windows/runner/native_diagnostics.cpp",
+        "test/fixtures/client_diagnostics_v1.json"
+      ],
+      "nativeTargets": [
+        "clients/windows_legacy/Uten.Legacy.Core/DiagnosticsLog.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Shared/DiagnosticWatchdog.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/App.xaml.cs",
+        "clients/windows_legacy/Uten.Legacy.Updater/Program.cs"
+      ],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-CORE-003",
+        "W7-UPD-006"
+      ],
+      "definitionOfDone": [
+        "Flutter与WPF原生入口默认持久化版本/异常/无响应/更新日志，用户可直接复制.log；按运行时、架构、配置隔离，日志不含凭据或业务正文，限量且不碰业务/恢复资料。",
+        "共用日志schema/路径脱敏样例；覆盖x86/x64本机编译、异常落盘、日志风暴、加载中断/旧结果隔离及实际入口交互；不弱化未知提交或原始输入保全。",
+        "Win7目标机适用启动、异常/卡顿和更新日志验收；未验收前不标done，不以源码存在或现代Windows本机runner替代目标机验收。"
+      ],
+      "evidence": [
+        "docs/99-项目治理/2026-11-01-极端负载中断与内置日志.md"
+      ],
+      "notes": "本机WPF x86/x64与Flutter/Windows内置日志和压力合同已验证；Win7真机、正式安装/更新及完整ERP仍未验收，不标done。",
+      "lastUpdated": "2026-11-02T06:31:35.101199+00:00"
     }
   ]
 }

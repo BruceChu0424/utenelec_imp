@@ -8,6 +8,7 @@
 #include <algorithm>
 
 #include "resource.h"
+#include "native_diagnostics.h"
 
 namespace {
 
@@ -553,6 +554,12 @@ LRESULT CALLBACK Win32Window::ChildContentSubclassProc(
     HWND window, UINT message, WPARAM wparam, LPARAM lparam,
     UINT_PTR subclass_id, DWORD_PTR reference_data) noexcept {
   auto* owner = reinterpret_cast<Win32Window*>(reference_data);
+  if (message == WM_LBUTTONDOWN || message == WM_RBUTTONDOWN) {
+    LogNativeDiagnostic("input.pointer");
+  }
+  if (message == WM_KEYDOWN && (wparam == VK_TAB || wparam == VK_RETURN || wparam == VK_ESCAPE)) {
+    LogNativeDiagnostic("input.navigation");
+  }
   if (message == WM_NCHITTEST && owner->HitTestResizeBorder(lparam) != HTCLIENT) {
     // HTTRANSPARENT asks Windows to hit test underlying HWNDs on this thread.
     // The top-level parent then returns HTLEFT/HTTOP/etc. and owns resizing.

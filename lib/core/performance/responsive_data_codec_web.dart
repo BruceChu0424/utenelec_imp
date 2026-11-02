@@ -5,6 +5,7 @@ import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 import 'package:web/web.dart' as web;
 import 'ui_work_budget.dart';
+import 'data_work_queue.dart';
 
 @JS('Object.keys')
 external JSArray<JSString> _objectKeys(JSObject value);
@@ -22,6 +23,15 @@ extension type _Request._(JSObject _) implements JSObject {
 final _codec = _CodecWorker();
 
 Future<Object?> executeDataCodec(
+  String operation,
+  Object? value, {
+  bool Function()? isCurrent,
+}) => dataWorkQueue.run(
+  () => _executeDataCodec(operation, value, isCurrent: isCurrent),
+  isCurrent: isCurrent,
+);
+
+Future<Object?> _executeDataCodec(
   String operation,
   Object? value, {
   bool Function()? isCurrent,

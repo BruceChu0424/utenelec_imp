@@ -8,6 +8,8 @@
 
 #include <memory>
 
+#include "window_background_task.h"
+
 // Only installs validated release files; never accepts a command from Dart/server.
 class ClientUpdateChannel {
  public:
@@ -16,6 +18,7 @@ class ClientUpdateChannel {
 
  private:
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> channel_;
+  WindowBackgroundTask installation_;
 };
 
 #endif  // RUNNER_CLIENT_UPDATE_CHANNEL_H_

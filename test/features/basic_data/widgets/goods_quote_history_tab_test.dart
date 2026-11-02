@@ -406,4 +406,32 @@ void main() {
       expect(find.text('旧服务器响应'), findsNothing);
     },
   );
+  testWidgets(
+    'a canonical reader epoch reloads native and paged owners together',
+    (tester) async {
+      final history = _History();
+      final router = routes();
+      addTearDown(router.dispose);
+      const granted = {Perm.goodsView, Perm.salesQuoteFinanceView};
+      await pump(tester, history, router, granted);
+      history.pending['a']!.complete(_page('原已核对报价'));
+      await tester.pumpAndSettle();
+      expect(find.text('原已核对报价'), findsWidgets);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(GoodsQuoteHistoryTab)),
+      );
+      history.pending['a'] = Completer<PagedResult<GoodsQuoteHistoryRow>>();
+      // The account, URL and confirmed Me generation stay unchanged. A different
+      // permission still advances the public reader boundary used by the pager.
+      container.read(_permissions.notifier).state = {...granted, Perm.unitView};
+      await tester.pump();
+      await tester.pump();
+      expect(history.requests, ['a', 'a']);
+      expect(find.text('原已核对报价'), findsNothing);
+      history.pending['a']!.complete(_page('新范围重新核对报价'));
+      await tester.pumpAndSettle();
+      expect(find.text('新范围重新核对报价'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

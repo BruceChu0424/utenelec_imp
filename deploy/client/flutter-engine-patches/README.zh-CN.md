@@ -1,5 +1,34 @@
 # Windows 无障碍子节点保护
 
+## 2026-11-02：桌面 43 正式版实际复现与跨平台范围
+
+直接运行桌面快捷方式指向的 `2.5.43+2543`，确认 EXE、引擎摘要与正式双包一致；
+由用户手动登录后，只进入钱流模块并读取界面状态即退出，没有输入或提交业务数据。
+匹配 PDB 的新 dump 指向 `AXPlatformNodeWin::get_accValue` →
+`AXNodeData::GetString16Attribute/GetStringAttribute` → 字符串复制访问无效内存，
+Release RVA `0xF8B44C`。它与此前现场 `HitTestSync/0xF5D3` 是不同的原生查询入口，
+不能只修 Windows HitTest 或某个财务页面。
+
+公共树补丁的节点重挂载/重建后重新绑定能力是本次对应的公共修复入口。
+Windows 与 macOS 的 GN 依赖均引用 `common_cpp_accessibility`；公共树补丁必须进入
+这两个平台各自重建的引擎。Windows 命中补丁仍只适用于 Windows。Linux GTK、Android
+Java、iOS Objective-C、Web DOM 和 WPF 各有对应实现，不以类名相似推定它们已发生
+相同 native 故障，也不把 Windows 内部 Profile 结果当作这些平台或正式 Release 验收。
+
+再应用测试增量（只修改 C++ 回归，不改变生产代码）：
+
+```text
+git apply --check --unidiff-zero /path/to/flutter-3.44.2-retained-text-value-regression.patch
+git apply --unidiff-zero /path/to/flutter-3.44.2-retained-text-value-regression.patch
+```
+
+它将保留值改成 35 字节堆分配字符串，并在重挂载后实际读取 UTF-16 值，覆盖本次
+`get_accValue` 的字符串复制路径。公共 242 项与两项生命周期场景重复 1,000 轮均通过；
+该测试增量需要在公共树补丁之后应用。验证旧公共补丁的 reverse-apply 时，先反向
+移除此测试增量。源码摘要及证据见 `patch-provenance.json` 和
+[桌面 43 实际复现记录](../../../docs/99-项目治理/2026-11-02-43正式版实际闪退与跨平台公共根因.md)。
+正式 Release 引擎重建、各原生系统实机和整合发布仍须单独完成。
+
 ## 2026-11-01 现场日志补充：Windows 命中测试
 
 两台电脑日志复核与匹配 Release PDB 将第一台两次退出定位到

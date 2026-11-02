@@ -6,6 +6,7 @@ import 'package:video_player/video_player.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import 'attachment_media_source.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 typedef AttachmentMediaSourceLoader =
     Future<AttachmentMediaSource> Function(Uint8List bytes, String contentType);
@@ -103,9 +104,11 @@ class _AttachmentMediaPreviewState extends State<AttachmentMediaPreview> {
   Future<void> _act(Future<void> Function() action) async {
     try {
       await action();
-    } catch (_) {
+    } catch (caughtError) {
       if (!_retired) {
-        setState(() => _error = '播放失败，请下载原件查看');
+        setState(
+          () => _error = humanErrorMessage(caughtError) ?? '播放失败，请下载原件查看',
+        );
         final source = _source;
         _source = null;
         source?.controller.removeListener(_onChanged);

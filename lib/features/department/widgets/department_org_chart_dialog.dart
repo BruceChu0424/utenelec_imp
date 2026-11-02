@@ -27,6 +27,7 @@ import '../../employee/widgets/employee_leadership_badge.dart';
 import '../../../shared/models/department_node.dart';
 import '../../../shared/repositories/department_repository.dart';
 import '../repositories/department_roster_snapshot.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 /// 弹出部门架构图弹层。
 Future<void> showDepartmentOrgChart({
@@ -120,10 +121,10 @@ class _DepartmentOrgChartDialogState
         _byDept = snapshot.byDepartment;
         _loading = false;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!_current(version)) return;
       setState(() {
-        _error = '加载架构图数据失败，请稍后重试';
+        _error = humanErrorMessage(caughtError) ?? '加载架构图数据失败，请稍后重试';
         _loading = false;
       });
     }
@@ -522,9 +523,9 @@ class _DepartmentOrgChartDialogState
       );
       if (!_current(version)) return;
       await printPdfBytes(bytes, '${widget.node.name}-组织架构图.pdf');
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted || !_current(version)) return;
-      context.appError('生成打印件失败，请稍后重试');
+      context.appApiError(caughtError, fallback: '生成打印件失败，请稍后重试');
     } finally {
       if (_current(version)) setState(() => _printing = false);
     }

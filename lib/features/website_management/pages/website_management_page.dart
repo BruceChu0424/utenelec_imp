@@ -166,7 +166,8 @@ class _WebsiteWorkspaceState extends ConsumerState<_WebsiteWorkspace> {
           ],
         ),
       ),
-      error: (_, _) => UtenEmpty.error(
+      error: (caughtError, _) => UtenEmpty.error(
+        error: caughtError,
         message: l.websiteConnectionHelp,
         actionLabel: l.websiteCheckAgain,
         onAction: () => ref.invalidate(websiteManagementProvider),

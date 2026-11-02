@@ -55,6 +55,7 @@ import '../widgets/master_inline_create_fields.dart';
 import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/master_batch_feedback.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 class AccountPage extends ConsumerStatefulWidget {
   const AccountPage({super.key, this.initialAccountTypeFilter});
@@ -507,11 +508,11 @@ class _AccountPageState extends ConsumerState<AccountPage>
             : null;
       });
       return _stylesError == null;
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted || !inlineAcceptsRead(inlineReadBoundary)) return false;
       setState(() {
         _stylesLoading = false;
-        _stylesError = '币种或会计科目加载失败，请重试';
+        _stylesError = humanErrorMessage(caughtError) ?? '币种或会计科目加载失败，请重试';
       });
       return false;
     } finally {
@@ -1026,7 +1027,9 @@ class _AccountPageState extends ConsumerState<AccountPage>
         },
       );
     } catch (error) {
-      if (mounted && current()) context.appApiError(error);
+      if (mounted && current()) {
+        context.appApiError(error);
+      }
     } finally {
       if (mounted) {
         setState(() {

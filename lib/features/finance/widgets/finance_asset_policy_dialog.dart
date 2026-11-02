@@ -25,6 +25,7 @@ import '../models/finance_asset_category_models.dart';
 import '../models/finance_asset_models.dart';
 import '../repositories/finance_asset_category_repository.dart';
 import 'finance_asset_ui.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 Future<bool> showFinanceAssetPolicyDialog(
   BuildContext context, {
@@ -239,7 +240,7 @@ class _FinanceAssetPolicySurfaceState
       if (!mounted || !_requestGuard.isCurrent(generation)) return;
       setState(() {
         _loading = false;
-        _error = '会计政策加载失败，请重试';
+        _error = humanErrorMessage(error) ?? '会计政策加载失败，请重试';
       });
     }
   }
@@ -280,11 +281,11 @@ class _FinanceAssetPolicySurfaceState
         _expenseStyles = _flattenStyles(expenseRoots);
         _styleLoading = false;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted || !_styleRequestGuard.isCurrent(generation)) return;
       setState(() {
         _styleLoading = false;
-        _styleError = '会计科目加载失败，请重试';
+        _styleError = humanErrorMessage(caughtError) ?? '会计科目加载失败，请重试';
       });
     }
   }
@@ -486,7 +487,9 @@ class _FinanceAssetPolicySurfaceState
         },
       );
     } catch (error) {
-      if (mounted) context.appApiError(error, fallback: '启用失败，请刷新后重试');
+      if (mounted) {
+        context.appApiError(error, fallback: '启用失败，请刷新后重试');
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

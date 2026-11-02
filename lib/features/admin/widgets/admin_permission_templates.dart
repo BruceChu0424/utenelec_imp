@@ -1,9 +1,9 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/network/api_client.dart';
-import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
@@ -21,7 +21,7 @@ bool _canManage(WidgetRef ref) =>
     ref.read(currentPermissionsProvider).contains(Perm.authorizationManage);
 
 String _templateError(Object error, AppLocalizations l) =>
-    error is ApiException ? error.message : l.permissionTemplateLoadFailed;
+    humanErrorMessage(error) ?? l.permissionTemplateLoadFailed;
 
 class AdminPermissionTemplateActions extends ConsumerStatefulWidget {
   const AdminPermissionTemplateActions({

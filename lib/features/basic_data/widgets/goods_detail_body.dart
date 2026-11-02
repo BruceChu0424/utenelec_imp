@@ -1851,8 +1851,10 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
     try {
       await Clipboard.setData(ClipboardData(text: id));
       if (mounted) context.appSuccess('系统标识已复制');
-    } catch (_) {
-      if (mounted) context.appError('系统标识复制失败，请重试');
+    } catch (caughtError) {
+      if (mounted) {
+        context.appApiError(caughtError, fallback: '系统标识复制失败，请重试');
+      }
     }
   }
 

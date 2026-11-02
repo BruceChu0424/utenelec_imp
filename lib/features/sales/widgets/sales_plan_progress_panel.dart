@@ -41,6 +41,7 @@ import '../models/sales_doc.dart';
 import '../repositories/sales_repository.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/badges/badge_registry.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 /// 宿主与产品进度面板「去发货」动作的桥（统一悬浮口径，2026-09-12）。
 ///
@@ -1060,9 +1061,12 @@ class _ProgressList extends ConsumerWidget {
     ).toString();
     try {
       await router.push(location);
-    } catch (_) {
+    } catch (caughtError) {
       if (context.mounted) {
-        context.appError('生产计划打开失败，请稍后重试', force: true);
+        context.appError(
+          humanErrorMessage(caughtError) ?? '生产计划打开失败，请稍后重试',
+          force: true,
+        );
       }
     }
   }

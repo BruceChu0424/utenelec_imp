@@ -32,6 +32,7 @@ import '../models/finance_asset_models.dart';
 import '../repositories/finance_asset_workbench_repository.dart';
 import 'finance_asset_ui.dart';
 import 'finance_asset_revision_section.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 const _assetReviewerActions = <String>{
   'APPROVE',
@@ -148,7 +149,7 @@ class _FinanceAssetDetailSurfaceState
       if (!mounted || !_requestGuard.isCurrent(generation)) return;
       setState(() {
         _loading = false;
-        _error = '详情加载失败，请检查网络后重试';
+        _error = humanErrorMessage(error) ?? '详情加载失败，请检查网络后重试';
       });
     }
   }

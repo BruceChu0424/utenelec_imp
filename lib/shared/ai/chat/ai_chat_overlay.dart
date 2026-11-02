@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
@@ -433,11 +434,11 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       // every page load: the overlay is always mounted and most page loads
       // never open the chat.
       if (result.usable && _open) unawaited(_restoreConversation());
-    } catch (_) {
+    } catch (error) {
       if (!_current) return;
       setState(() {
         _loadingCapabilities = false;
-        _error = _t('loadFailed');
+        _error = humanErrorMessage(error) ?? _t('loadFailed');
       });
     }
   }
@@ -527,10 +528,13 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       if (!_current) return;
       setState(() {
         _settings = previous;
-        _settingsError = l10n.aiChatSettingsSaveFailed;
+        _settingsError =
+            humanErrorMessage(error) ?? l10n.aiChatSettingsSaveFailed;
         _applyPageAwareness();
       });
-      if (mounted) context.appError(l10n.aiChatSettingsSaveFailed);
+      if (mounted) {
+        context.appApiError(error, fallback: l10n.aiChatSettingsSaveFailed);
+      }
     } finally {
       if (_current) setState(() => _settingsSaving = null);
     }
@@ -576,10 +580,15 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       if (!_current) return;
       setState(_clear);
       if (mounted) context.appSuccess(l10n.aiChatSettingsClearDone);
-    } catch (_) {
+    } catch (error) {
       if (!_current) return;
-      setState(() => _settingsError = l10n.aiChatSettingsClearFailed);
-      if (mounted) context.appError(l10n.aiChatSettingsClearFailed);
+      setState(
+        () => _settingsError =
+            humanErrorMessage(error) ?? l10n.aiChatSettingsClearFailed,
+      );
+      if (mounted) {
+        context.appApiError(error, fallback: l10n.aiChatSettingsClearFailed);
+      }
     } finally {
       if (_current) setState(() => _clearingHistory = false);
     }
@@ -604,10 +613,12 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
       if (!_current) return;
       setState(() => _memorySuggestions = const []);
       if (mounted) context.appSuccess(l10n.aiChatMemoryCleared);
-    } catch (_) {
+    } catch (error) {
       if (!_current) return;
-      setState(() => _settingsError = _t('failed'));
-      if (mounted) context.appError(_t('failed'));
+      setState(() => _settingsError = humanErrorMessage(error) ?? _t('failed'));
+      if (mounted) {
+        context.appApiError(error, fallback: _t('failed'));
+      }
     } finally {
       if (_current) setState(() => _clearingMemory = false);
     }

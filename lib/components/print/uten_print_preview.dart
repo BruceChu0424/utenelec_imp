@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 // 通用「预览 → 打印」组件（所有表格页共用，对齐货品资料 BOM 预览体验）。
 //
 // 用法：AppBar 放 UtenPrintPreviewButton（通常在 UtenExportButton 旁），点击弹 A4 纸面预览：
@@ -573,8 +574,10 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
       }
     } on UiWorkCancelled {
       // No stale document is copied after a different selection or identity.
-    } catch (_) {
-      if (mounted && current()) context.appError('复制失败，请重试');
+    } catch (caughtError) {
+      if (mounted && current()) {
+        context.appApiError(caughtError, fallback: '复制失败，请重试');
+      }
     }
   }
 
@@ -659,7 +662,7 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
     } catch (error) {
       if (!_isCurrent(version)) return;
       setState(
-        () => _error = error is FormatException ? error.message : '加载数据失败，请重试',
+        () => _error = humanErrorMessage(error) ?? '加载数据失败，请重试',
       ); // TODO(l10n): 补 arb
     }
   }
@@ -690,9 +693,12 @@ class _UtenPrintPreviewDialogState extends State<_UtenPrintPreviewDialog> {
       );
       if (!_isCurrent(version)) return;
       await printPdfBytes(bytes, '${widget.title}.pdf');
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted || !_isCurrent(version)) return;
-      context.appError('生成打印件失败，请稍后重试'); // TODO(l10n): 补 arb
+      context.appApiError(
+        caughtError,
+        fallback: '生成打印件失败，请稍后重试',
+      ); // TODO(l10n): 补 arb
     } finally {
       if (_isCurrent(version)) setState(() => _printing = false);
     }

@@ -21,6 +21,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_navigation_session.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 /// Planning-facing ongoing list: one row per outer analysis/root plan.
 ///
@@ -177,9 +178,11 @@ class _ProductionExecutionGroupPanelState
         _page = result.page;
         _totalPages = result.totalPages;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (mounted && generation == _loadGeneration) {
-        setState(() => _error = '生产任务加载失败，请重试');
+        setState(
+          () => _error = humanErrorMessage(caughtError) ?? '生产任务加载失败，请重试',
+        );
       }
     } finally {
       if (mounted && generation == _loadGeneration) {

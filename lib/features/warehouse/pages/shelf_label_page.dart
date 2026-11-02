@@ -760,9 +760,12 @@ class _ShelfLabelPrintDialogState extends State<_ShelfLabelPrintDialog> {
         }
       }
       await printPdfBytes(await doc.save(), '$title-货架目视化清单.pdf');
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted) return;
-      context.appError('生成打印件失败，请稍后重试'); // TODO(l10n): 补 arb
+      context.appApiError(
+        caughtError,
+        fallback: '生成打印件失败，请稍后重试',
+      ); // TODO(l10n): 补 arb
     }
   }
 

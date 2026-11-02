@@ -35,6 +35,7 @@ import '../../basic_data/models/master_facet.dart';
 import '../../../shared/search/table_column_query.dart';
 
 export '../providers/employee_picker_department_tree_provider.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 /// 弹出「部门树 + 员工」选择器，返回所选员工；取消返回 null。
 Future<UtenEmployeePickerItem?> showUtenDepartmentEmployeePicker(
@@ -59,8 +60,10 @@ Future<UtenEmployeePickerItem?> showUtenDepartmentEmployeePicker(
     List<DepartmentNode> tree;
     try {
       tree = await ref.read(employeePickerDepartmentTreeProvider.future);
-    } catch (_) {
-      if (context.mounted && current()) context.appError('部门树加载失败，请稍后重试');
+    } catch (caughtError) {
+      if (context.mounted && current()) {
+        context.appApiError(caughtError, fallback: '部门树加载失败，请稍后重试');
+      }
       return null;
     }
     if (!context.mounted || !current()) return null;
@@ -308,10 +311,10 @@ class _DeptEmployeePickerSheetState
         _replacePage(firstPage, departmentId: null, keyword: query);
         _loading = false;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!_isCurrent(request)) return;
       setState(() {
-        _error = '员工搜索失败，请稍后重试';
+        _error = humanErrorMessage(caughtError) ?? '员工搜索失败，请稍后重试';
         _loading = false;
       });
       return;
@@ -348,9 +351,12 @@ class _DeptEmployeePickerSheetState
             categoryIdOf: (item) => item.departmentId,
             isCurrent: () => _isCurrent(request),
           );
-    } catch (_) {
+    } catch (caughtError) {
       if (!_isCurrent(request)) return;
-      setState(() => _searchLocationError = '完整部门定位失败，请稍后重试');
+      setState(
+        () => _searchLocationError =
+            humanErrorMessage(caughtError) ?? '完整部门定位失败，请稍后重试',
+      );
       return;
     }
     if (contentDepartmentIds == null) return;
@@ -382,9 +388,11 @@ class _DeptEmployeePickerSheetState
           _loading = false;
           _searchLocationError = null;
         });
-      } catch (_) {
+      } catch (caughtError) {
         if (!_isCurrent(request)) return;
-        setState(() => _error = '加载人员失败，请稍后重试');
+        setState(
+          () => _error = humanErrorMessage(caughtError) ?? '加载人员失败，请稍后重试',
+        );
       }
       return;
     }
@@ -430,10 +438,10 @@ class _DeptEmployeePickerSheetState
         _replacePage(result, departmentId: departmentId, keyword: keyword);
         _loading = false;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!_isCurrent(request)) return;
       setState(() {
-        _error = '加载人员失败，请稍后重试';
+        _error = humanErrorMessage(caughtError) ?? '加载人员失败，请稍后重试';
         _loading = false;
       });
     }
@@ -572,11 +580,11 @@ class _DeptEmployeePickerSheetState
         _itemTotal = result.total;
         _loadingMore = false;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!_isCurrent(request)) return;
       setState(() {
         _loadingMore = false;
-        _loadMoreError = '加载更多失败，请重试';
+        _loadMoreError = humanErrorMessage(caughtError) ?? '加载更多失败，请重试';
       });
     }
   }

@@ -11,6 +11,7 @@ import '../models/production_execution_workbench.dart';
 import '../repositories/production_draw_request_repository.dart';
 import '../repositories/production_execution_workbench_repository.dart';
 import 'workshop_task_material_table.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 /// Read-only facts and exact source selection. Warehouse submission remains
 /// exclusively in the existing draw-request review page.
@@ -126,9 +127,11 @@ class _WorkshopTaskMaterialDialogState
         _materials = materials;
         _retainValidSelection();
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!_current || generation != _materialsGeneration) return;
-      setState(() => _materialError = '物料明细加载失败');
+      setState(
+        () => _materialError = humanErrorMessage(caughtError) ?? '物料明细加载失败',
+      );
     } finally {
       if (_current && generation == _materialsGeneration) {
         setState(() => _loading = false);
@@ -156,9 +159,9 @@ class _WorkshopTaskMaterialDialogState
         _preview = preview;
         _retainValidSelection();
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!_current || generation != _drawGeneration) return;
-      setState(() => _drawError = '可领物料核对失败');
+      setState(() => _drawError = humanErrorMessage(caughtError) ?? '可领物料核对失败');
     } finally {
       if (_current && generation == _drawGeneration) {
         setState(() => _drawLoading = false);

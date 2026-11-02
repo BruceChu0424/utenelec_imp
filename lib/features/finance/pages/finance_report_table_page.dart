@@ -341,8 +341,10 @@ class _FinanceReportTablePageState
         exportQuery: {..._exportQuery, 'layout': 'template'},
         exportFilename: _variant.label,
       );
-    } catch (_) {
-      if (mounted) context.appError('模板预览加载失败，请重试');
+    } catch (caughtError) {
+      if (mounted) {
+        context.appApiError(caughtError, fallback: '模板预览加载失败，请重试');
+      }
     } finally {
       if (mounted) setState(() => _preparingTemplate = false);
     }
@@ -441,7 +443,9 @@ class _FinanceReportTablePageState
         _page = _reportPages.pageNum;
       }
     });
-    if (failure != null && !background) context.appError(failure);
+    if (failure != null && !background) {
+      context.appError(failure);
+    }
   }
 
   Future<ClientListItem?> _pickClient() => showUtenClientPicker(context, ref);

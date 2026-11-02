@@ -81,7 +81,8 @@ class HrWorkbenchPage extends ConsumerWidget {
 
     Widget body = async.when(
       loading: () => const UtenSkeletonList(itemCount: 6),
-      error: (_, _) => UtenEmpty.error(
+      error: (caughtError, _) => UtenEmpty.error(
+        error: caughtError,
         message: '加载工作台失败，请稍后重试',
         actionLabel: '重试',
         onAction: () => ref.read(hrTaskSummaryProvider.notifier).refresh(),

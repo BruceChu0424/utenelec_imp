@@ -85,6 +85,8 @@ import '../../../shared/ai/page_context/ai_page_context.dart';
 
 export '../../../components/data_display/master_data_table_rows_controller.dart';
 
+import 'package:uten_imp/core/ui/human_error_message.dart';
+
 part 'master_data_table_view_ai.dart';
 
 /// A presentation-only synchronous read scope. Implementations invoke [read]
@@ -1747,11 +1749,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
           () => widget.onPageChange!(target),
         );
       }
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted || generation != _appendGeneration) return;
       setState(() {
         _appendPage = null;
-        _appendError = '${prepend ? '上一页' : '下一页'}加载失败，请重试';
+        _appendError =
+            humanErrorMessage(caughtError) ??
+            '${prepend ? '上一页' : '下一页'}加载失败，请重试';
       });
       _bindPagination();
       if (_fullscreen) _fsTick.value++;

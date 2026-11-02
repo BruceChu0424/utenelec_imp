@@ -303,9 +303,9 @@ class _AdminDepartmentPermViewState
             ? '没有新增：可批量授予的权限都已配置'
             : '已为「${department.name}」新增 ${change.added.length} 项权限，即时生效',
       );
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted) return;
-      context.appError('批量授权失败，请稍后重试');
+      context.appApiError(caughtError, fallback: '批量授权失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -515,7 +515,8 @@ class _AdminDepartmentPermViewState
         Expanded(
           child: departments.when(
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (_, _) => UtenEmpty.error(
+            error: (caughtError, _) => UtenEmpty.error(
+              error: caughtError,
               message: '部门目录加载失败',
               description: '请检查网络后重试。',
               actionLabel: '重试',

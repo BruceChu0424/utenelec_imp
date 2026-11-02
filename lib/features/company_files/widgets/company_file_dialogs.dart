@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -27,7 +28,7 @@ import 'company_file_access_editor.dart';
 export 'company_file_access_editor.dart' show CompanyFileScopeBoundary;
 
 String companyFileError(Object error, AppLocalizations l) =>
-    error is ApiException ? error.message : l.companyFilesLoadFailed;
+    humanErrorMessage(error) ?? l.companyFilesLoadFailed;
 
 bool _validateAndReveal(GlobalKey<FormState> form, BuildContext context) {
   final invalid = form.currentState!.validateGranularly();

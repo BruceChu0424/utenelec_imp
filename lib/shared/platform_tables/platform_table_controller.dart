@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 import 'dart:convert';
 import 'platform_row_draft.dart';
 import 'dart:async';
@@ -1052,8 +1053,5 @@ class PlatformTableController<T> extends ChangeNotifier {
   }
 }
 
-String platformTableError(Object error) => error is ApiException
-    ? error.message
-    : error is FormatException
-    ? error.message
-    : '扩展字段读取或保存失败，请重试';
+String platformTableError(Object error) =>
+    humanErrorMessage(error) ?? '扩展字段读取或保存失败，请重试';

@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import '../../../shared/auth/read_owner_fence.dart';
@@ -374,7 +375,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     } catch (e) {
       if (!mounted || version != _requestVersion) return;
       setState(() {
-        _error = '$e';
+        _error = humanErrorMessage(e) ?? '销售进度加载失败，请稍后重试';
         _loading = false;
       });
     }
@@ -468,9 +469,13 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
       await _load(_refreshPage);
       _loadStageCounts();
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted) {
+        context.appError(e.message);
+      }
     } catch (_) {
-      if (mounted) context.appError('取消失败，请稍后重试');
+      if (mounted) {
+        context.appError('取消失败，请稍后重试');
+      }
     } finally {
       if (mounted) setState(() => _cancelBusy = false);
     }

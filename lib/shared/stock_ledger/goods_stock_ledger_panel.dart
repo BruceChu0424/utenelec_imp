@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 // 单货品库存面板 (ADR-135 §6.3): 库存详情页 (/stock/item/:goodsId?tab=balance|ledger|weight|trace)
 // 与货品详情「库存与出入库」页签共用同一个面板。
 //
@@ -153,11 +154,11 @@ class GoodsStockLedgerPanelState extends ConsumerState<GoodsStockLedgerPanel> {
       });
       final goods = result.items.firstOrNull;
       if (goods != null) widget.onGoodsLoaded?.call(goods);
-    } catch (_) {
+    } catch (error) {
       if (!mounted || version != _contextVersion) return;
       setState(() {
         _contextLoading = false;
-        _contextError = '库存概况读取失败，数量暂无法核对';
+        _contextError = '${humanErrorMessage(error) ?? '库存概况读取失败'}，数量暂无法核对';
       });
     }
   }

@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 // 单据/档案列表页共享的分页状态机（审计 §4.1 第 2 批）。
 //
 // 收敛各 *_list_page 手写的 _page/_pageNum/_loading/_error/_keyword/_sortKey/
@@ -339,7 +340,7 @@ class PagedListController<T> extends ChangeNotifier {
                         if (pagedReadAccessDenied(error)) {
                           invalidateReadOwner(notify: false);
                           _fail(
-                            error is ApiException ? error.message : '$error',
+                            humanErrorMessage(error) ?? '此账号没有读取该内容的权限',
                             background: false,
                           );
                         }

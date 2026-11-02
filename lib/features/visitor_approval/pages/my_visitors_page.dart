@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 // 我的访客(被访人)：确认/拒绝转给自己的访客申请。
 //
 // 2026-09-09 表格化改版：卡片 → MasterDataTableView（列对齐 + 分页）。
@@ -97,7 +98,9 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
         context.appApiError(e, fallback: l10n.commonError);
       }
     } catch (_) {
-      if (context.mounted) context.appError(l10n.commonError);
+      if (context.mounted) {
+        context.appError(l10n.commonError);
+      }
     }
   }
 
@@ -311,7 +314,9 @@ class _MyVisitorsPageState extends ConsumerState<MyVisitorsPage> {
               paginationScope: paginationScope,
               isLoading: list.isLoading && !list.hasValue,
               loadingMore: list.isLoading && list.hasValue,
-              error: list.hasError ? '${list.error}' : null,
+              error: list.hasError
+                  ? humanErrorMessage(list.error!) ?? '接待列表读取失败，请稍后重试'
+                  : null,
               onRetry: () {
                 readLease.invalidate();
                 ref.invalidate(myAsHostProvider(_query));

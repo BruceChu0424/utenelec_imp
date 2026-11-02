@@ -320,8 +320,10 @@ class _WarehouseQualityBatchStockInPageState
       setState(() {
         draft.selectWarehouse(id: picked.id, name: picked.label);
       });
-    } catch (_) {
-      if (mounted) context.appError('仓库资料加载失败，请重试');
+    } catch (caughtError) {
+      if (mounted) {
+        context.appApiError(caughtError, fallback: '仓库资料加载失败，请重试');
+      }
     }
   }
 
@@ -468,7 +470,9 @@ class _WarehouseQualityBatchStockInPageState
             );
           }
         } on ApiException catch (scopeError) {
-          if (mounted) context.appError(scopeError.message);
+          if (mounted) {
+            context.appError(scopeError.message);
+          }
         }
       }
       await checkpointFormDraftAfterCreation();

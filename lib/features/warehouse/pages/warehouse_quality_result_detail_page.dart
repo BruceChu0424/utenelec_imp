@@ -350,8 +350,10 @@ class _WarehouseQualityResultDetailPageState
       setState(() {
         draft.selectWarehouse(id: picked.id, name: picked.label);
       });
-    } catch (_) {
-      if (mounted) context.appError('仓库资料加载失败，请重试');
+    } catch (caughtError) {
+      if (mounted) {
+        context.appApiError(caughtError, fallback: '仓库资料加载失败，请重试');
+      }
     }
   }
 
@@ -561,7 +563,9 @@ class _WarehouseQualityResultDetailPageState
               setState(() => _conflictMessage = message);
             }
           } on ApiException catch (scopeError) {
-            if (mounted) context.appError(scopeError.message);
+            if (mounted) {
+              context.appError(scopeError.message);
+            }
           }
         }
       } else {
@@ -650,7 +654,9 @@ class _WarehouseQualityResultDetailPageState
       context.appError(error.message);
       if (error.code == 'CONFLICT') await _load();
     } catch (_) {
-      if (mounted) context.appError('实物退回登记失败，请稍后重试');
+      if (mounted) {
+        context.appError('实物退回登记失败，请稍后重试');
+      }
     } finally {
       if (mounted) {
         setState(() {

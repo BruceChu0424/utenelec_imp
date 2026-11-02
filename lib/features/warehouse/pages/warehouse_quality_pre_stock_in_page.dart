@@ -286,8 +286,10 @@ class _WarehouseQualityPreStockInPageState
       );
       if (picked == null || !mounted || !_grid.rows.contains(row)) return;
       setState(() => row.selectWarehouse(id: picked.id, name: picked.label));
-    } catch (_) {
-      if (mounted) context.appError('仓库资料加载失败，请重试');
+    } catch (caughtError) {
+      if (mounted) {
+        context.appApiError(caughtError, fallback: '仓库资料加载失败，请重试');
+      }
     }
   }
 

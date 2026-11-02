@@ -36,6 +36,7 @@ import 'category_tree_search.dart';
 import 'master_data_table_view.dart';
 import 'uten_category_tree_view.dart';
 import '../../../shared/ai/page_context/ai_page_context.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 /// 一种主档选择面板的全部差异点。
 class UtenMasterPickerSpec<TItem> {
@@ -97,9 +98,9 @@ Future<TItem?> showUtenMasterPicker<TItem>(
   List<ProductCategoryNode> tree;
   try {
     tree = await spec.loadTree();
-  } catch (_) {
+  } catch (caughtError) {
     if (context.mounted) {
-      context.appError('${spec.noun}分类加载失败，请稍后重试');
+      context.appApiError(caughtError, fallback: '${spec.noun}分类加载失败，请稍后重试');
     }
     return null;
   }
@@ -331,10 +332,10 @@ class _MasterPickerSheetState<TItem>
         _totalPages = r.totalPages < 1 ? 1 : r.totalPages;
         _loading = false;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!_currentReader || requestVersion != _requestVersion) return;
       setState(() {
-        _error = '加载${_spec.noun}失败，请稍后重试';
+        _error = humanErrorMessage(caughtError) ?? '加载${_spec.noun}失败，请稍后重试';
         _loading = false;
       });
     }
@@ -443,10 +444,10 @@ class _MasterPickerSheetState<TItem>
         _totalPages = result.totalPages < 1 ? 1 : result.totalPages;
         _loading = false;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!_currentReader || requestVersion != _requestVersion) return;
       setState(() {
-        _error = '搜索${_spec.noun}失败，请稍后重试';
+        _error = humanErrorMessage(caughtError) ?? '搜索${_spec.noun}失败，请稍后重试';
         _loading = false;
         _searchLocationLoading = false;
       });

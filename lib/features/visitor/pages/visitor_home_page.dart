@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 // 访客首页：我的预约列表(按状态筛选)+ 新建预约入口。
 //
 // 2026-09-09 表格化改版：卡片网格 → MasterDataTableView（列对齐 + 分页）。
@@ -97,8 +98,10 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
     try {
       await ref.read(visitorSessionProvider.notifier).logout();
       if (mounted) context.go(RouteName.entry);
-    } catch (_) {
-      if (mounted) context.appError('退出失败，请稍后重试');
+    } catch (caughtError) {
+      if (mounted) {
+        context.appApiError(caughtError, fallback: '退出失败，请稍后重试');
+      }
     } finally {
       if (mounted) setState(() => _loggingOut = false);
     }
@@ -220,7 +223,9 @@ class _VisitorHomePageState extends ConsumerState<VisitorHomePage> {
                       paginationScope: paginationScope,
                       isLoading: apps.isLoading && !apps.hasValue,
                       loadingMore: apps.isLoading && apps.hasValue,
-                      error: apps.hasError ? '${apps.error}' : null,
+                      error: apps.hasError
+                          ? humanErrorMessage(apps.error!) ?? '预约列表读取失败，请稍后重试'
+                          : null,
                       onRetry: () {
                         readLease.invalidate();
                         ref.invalidate(visitorApplicationsProvider(_query));

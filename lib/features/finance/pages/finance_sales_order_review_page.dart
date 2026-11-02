@@ -336,7 +336,9 @@ class _FinanceSalesOrderReviewPageState
         await _load();
       }
     } catch (error) {
-      if (mounted) context.appError(error.toString());
+      if (mounted) {
+        context.appApiError(error, fallback: '反审核未能完成，请刷新后核对');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -605,9 +607,13 @@ class _FinanceSalesOrderReviewPageState
       refreshBadges(ref);
       _closeAfterDecision();
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted) {
+        context.appError(e.message);
+      }
     } catch (_) {
-      if (mounted) context.appError('确认失败，请稍后重试');
+      if (mounted) {
+        context.appError('确认失败，请稍后重试');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -778,9 +784,13 @@ class _FinanceSalesOrderReviewPageState
       refreshBadges(ref);
       _closeAfterDecision();
     } on ApiException catch (e) {
-      if (mounted) context.appError(e.message);
+      if (mounted) {
+        context.appError(e.message);
+      }
     } catch (_) {
-      if (mounted) context.appError('驳回失败，请稍后重试');
+      if (mounted) {
+        context.appError('驳回失败，请稍后重试');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

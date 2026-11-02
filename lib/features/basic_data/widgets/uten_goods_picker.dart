@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 import '../../../core/responsive/compact_presentation.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // UtenGoodsPicker - 货品选择器（单据明细/报表选货品用）。
@@ -33,7 +34,6 @@ import '../../../components/layout/uten_picker_confirm_bar.dart';
 import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_segment_row.dart';
-import '../../../core/network/api_exception.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/ui/app_notification.dart';
@@ -386,7 +386,7 @@ abstract class UtenGoodsPickerDataSource {
 }
 
 String _pickerErrorMessage(Object error, String fallback) =>
-    error is ApiException ? error.message : fallback;
+    humanErrorMessage(error) ?? fallback;
 
 Future<List<GoodsListItem>> showUtenGoodsPickerMulti(
   BuildContext context,

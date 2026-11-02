@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 // 公司内部费用报销展示及打印件：A4、多页明细、准确金额及真实流转历史。
 // 电子文件数与纸质张数分开呈现；付款信息只说明系统已登记事实。
 // 本件不替代原始凭证、税务查验、有效电子签名或法定电子档案。
@@ -163,9 +164,7 @@ Future<void> showExpenseClaimPrintPreview(
     );
   } catch (error) {
     if (context.mounted) {
-      context.appError(
-        error is FormatException ? error.message : '报销明细暂时读取不出来，请稍后重试',
-      );
+      context.appError(humanErrorMessage(error) ?? '报销明细暂时读取不出来，请稍后重试');
     }
     return;
   }
@@ -218,9 +217,9 @@ class _ExpenseClaimPrintDialogState extends State<_ExpenseClaimPrintDialog> {
         itemsTable: widget.itemsTable,
       );
       await printPdfBytes(bytes, '费用报销单-${claim.claimNo}.pdf');
-    } catch (_) {
+    } catch (caughtError) {
       if (context.mounted) {
-        context.appError('生成打印件失败，请稍后重试');
+        context.appApiError(caughtError, fallback: '生成打印件失败，请稍后重试');
       }
     } finally {
       if (mounted) setState(() => _printing = false);

@@ -586,7 +586,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
       }
       await _load();
     } catch (error) {
-      if (mounted && warehouseTaskIsCurrent) context.appApiError(error);
+      if (mounted && warehouseTaskIsCurrent) {
+        context.appApiError(error);
+      }
     } finally {
       if (warehouseTaskIsCurrent) {
         setState(() {
@@ -761,7 +763,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
       if (!mounted || confirmed != true) return;
       await _executeIssue(body, reverse: false, remark: remark, scope: scope);
     } catch (error) {
-      if (mounted && warehouseTaskIsCurrent) context.appApiError(error);
+      if (mounted && warehouseTaskIsCurrent) {
+        context.appApiError(error);
+      }
     } finally {
       if (warehouseTaskIsCurrent) {
         setState(() => _confirmingAction = false);
@@ -900,7 +904,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
         scope: scope,
       );
     } catch (error) {
-      if (mounted && warehouseTaskIsCurrent) context.appApiError(error);
+      if (mounted && warehouseTaskIsCurrent) {
+        context.appApiError(error);
+      }
     } finally {
       if (warehouseTaskIsCurrent) {
         setState(() => _confirmingAction = false);
@@ -974,7 +980,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
       bumpListRefresh(ref, widget.docType.refreshKey);
       await _load();
     } on ApiException catch (error) {
-      if (mounted && warehouseTaskIsCurrent) context.appError(error.message);
+      if (mounted && warehouseTaskIsCurrent) {
+        context.appError(error.message);
+      }
     } catch (_) {
       if (mounted && warehouseTaskIsCurrent) {
         context.appError(reverse ? '取消出库失败' : '出库失败');
@@ -997,7 +1005,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
       scope.checkCurrent();
       await _confirmFinishedInboundWithScope(scope);
     } catch (error) {
-      if (mounted && warehouseTaskIsCurrent) context.appApiError(error);
+      if (mounted && warehouseTaskIsCurrent) {
+        context.appApiError(error);
+      }
     } finally {
       if (warehouseTaskIsCurrent) {
         setState(() => _confirmingAction = false);
@@ -1218,7 +1228,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
       bumpListRefresh(ref, widget.docType.refreshKey);
       await _load();
     } on ApiException catch (error) {
-      if (mounted && warehouseTaskIsCurrent) context.appError(error.message);
+      if (mounted && warehouseTaskIsCurrent) {
+        context.appError(error.message);
+      }
     } catch (_) {
       if (mounted && warehouseTaskIsCurrent) {
         context.appError('成品实收确认失败，请刷新后重试');
@@ -1280,8 +1292,10 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
             ? RoutePath.stockDocList(widget.docType.code)
             : RouteName.warehouse,
       );
-    } catch (_) {
-      if (mounted && warehouseTaskIsCurrent) context.appError('删除失败');
+    } catch (caughtError) {
+      if (mounted && warehouseTaskIsCurrent) {
+        context.appApiError(caughtError, fallback: '删除失败');
+      }
     } finally {
       if (warehouseTaskIsCurrent) {
         setState(() {

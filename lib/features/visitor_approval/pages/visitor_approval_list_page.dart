@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 // 访客审批列表(HR)：待审批 / 已批准 / 已拒绝。
 //
 // 2026-09-09 表格化改版：卡片网格 → MasterDataTableView（列对齐 + 分页）。
@@ -452,7 +453,9 @@ class _VisitorApprovalListPageState
                   paginationScope: paginationScope,
                   isLoading: list.isLoading && !list.hasValue,
                   loadingMore: list.isLoading && list.hasValue,
-                  error: list.hasError ? '${list.error}' : null,
+                  error: list.hasError
+                      ? humanErrorMessage(list.error!) ?? '访客审批列表读取失败，请稍后重试'
+                      : null,
                   onRetry: () {
                     readLease.invalidate();
                     ref.invalidate(visitorApprovalListProvider(_query));

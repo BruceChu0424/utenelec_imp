@@ -29,6 +29,7 @@ import 'finance_asset_detail.dart';
 import 'finance_asset_form.dart';
 import 'finance_asset_ui.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 class FinanceAssetLedgerPanel extends ConsumerStatefulWidget {
   const FinanceAssetLedgerPanel({
@@ -195,11 +196,12 @@ class _FinanceAssetLedgerPanelState
         _loading = false;
         if (_query.status == 'DRAFT') _draftTotal = result.total;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted || !_requestGuard.isCurrent(generation)) return;
       setState(() {
         _loading = false;
-        _error = '加载${widget.ledger.label}失败，请重试';
+        _error =
+            humanErrorMessage(caughtError) ?? '加载${widget.ledger.label}失败，请重试';
       });
     }
   }

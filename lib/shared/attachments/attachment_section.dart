@@ -1,3 +1,5 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 // 通用附件区段：列出 + 上传 + 预览/下载 + 删除 + 逐个文件的可选分类。
 // 可复用于任意 ownerType/ownerId；接入方：员工详情「档案文件」（EMPLOYEE）、
 // 合同附件弹窗（EMPLOYEE_CONTRACT）、报销详情（EXPENSE_CLAIM）、我的文件（EMPLOYEE 只读）。
@@ -550,7 +552,7 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
     } catch (e) {
       if (mounted) {
         setState(() => _categoryOverride[a.id] = previous);
-        context.appError('分类未能保存：$e');
+        context.appApiError(e, fallback: '分类未能保存，请稍后重试');
       }
     } finally {
       if (mounted) setState(() => _savingCategory.remove(a.id));
@@ -606,7 +608,9 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
         );
         final bytes = f.bytes;
         if (bytes == null) {
-          if (mounted) context.appError('无法读取「${f.name}」的内容');
+          if (mounted) {
+            context.appError('无法读取「${f.name}」的内容');
+          }
           continue;
         }
         final contentType = guessContentType(f.name);
@@ -632,7 +636,12 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
           succeeded++;
           uploadedFileName = f.name;
         } catch (e) {
-          if (mounted) context.appError('「${f.name}」上传失败：$e');
+          if (mounted) {
+            context.appError(
+              '「${f.name}」${humanErrorMessage(e) ?? '上传失败，请稍后重试'}',
+              fieldErrors: e is ApiException ? e.fieldErrors : null,
+            );
+          }
         }
       }
       if (mounted && succeeded > 0) {
@@ -733,7 +742,9 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
         if (mounted && current()) context.appSuccess('已保存到 $saved');
       }
     } catch (e) {
-      if (mounted && current()) context.appError('打开失败：$e');
+      if (mounted && current()) {
+        context.appApiError(e, fallback: '文件未能打开，请稍后重试');
+      }
     } finally {
       if (mounted && epoch == _readEpoch) {
         setState(() => _readingIds.remove(a.id));
@@ -804,7 +815,9 @@ class _AttachmentSectionState extends ConsumerState<AttachmentSection> {
       widget.onChanged();
       if (mounted) context.appSuccess('已删除');
     } catch (e) {
-      if (mounted) context.appError('删除失败：$e');
+      if (mounted) {
+        context.appApiError(e, fallback: '附件未能删除，请稍后重试');
+      }
     }
   }
 

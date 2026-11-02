@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 // 访客预约详情：状态 + 信息 + 已批准显示二维码凭证 + 审批轨迹。
 //
 // 响应式：访客流程不经主外壳，全断点自套 UtenContentContainer.narrow
@@ -55,7 +56,7 @@ class VisitorApplicationDetailPage extends ConsumerWidget {
       body: detail.when(
         loading: () => const UtenSkeletonList(itemCount: 4),
         error: (e, _) => UtenEmpty.error(
-          message: '$e',
+          message: humanErrorMessage(e) ?? '预约详情读取失败，请稍后重试',
           actionLabel: l10n.commonRetry,
           onAction: () =>
               ref.invalidate(visitorApplicationDetailProvider(applicationId)),

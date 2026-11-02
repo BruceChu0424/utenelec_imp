@@ -23,6 +23,7 @@ import '../repositories/supplier_category_repository.dart';
 import '../repositories/supplier_repository.dart';
 import 'master_edit_dialog.dart';
 import 'uten_category_tree_view.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 /// 单据表单内联新建供应商：弹主档编辑表单 → POST /master/suppliers → 返回新建详情。
 Future<SupplierDetail?> showSupplierQuickCreateSheet(
@@ -138,9 +139,9 @@ class _SupplierCategoryPickerFieldState
         _error = null;
         _selectedName ??= _findById(tree, _selectedId)?.name;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted) return;
-      setState(() => _error = '分类加载失败，点击重试');
+      setState(() => _error = humanErrorMessage(caughtError) ?? '分类加载失败，点击重试');
     }
   }
 

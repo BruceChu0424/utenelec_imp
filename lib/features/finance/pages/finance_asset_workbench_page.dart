@@ -30,6 +30,7 @@ import '../widgets/finance_asset_form.dart';
 import '../widgets/finance_asset_policy_dialog.dart';
 import '../widgets/finance_asset_posting_panel.dart';
 import '../widgets/finance_asset_ui.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 class FinanceAssetWorkbenchPage extends ConsumerStatefulWidget {
   const FinanceAssetWorkbenchPage({super.key});
@@ -141,11 +142,11 @@ class _FinanceAssetWorkbenchPageState
         _overview = result;
         _overviewLoading = false;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!current() || !_overviewGuard.isCurrent(generation)) return;
       setState(() {
         _overviewLoading = false;
-        _overviewError = '资产总览加载失败，请检查网络后重试';
+        _overviewError = humanErrorMessage(caughtError) ?? '资产总览加载失败，请检查网络后重试';
       });
     }
   }

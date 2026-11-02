@@ -2,7 +2,7 @@
 // 文档：docs/03-页面/App外壳.md
 //
 // 设计：
-// - 全高 surface 底 + 右侧 1px 发丝边框，与内容区自然分层
+// - 全高 surface 底，通过导航与内容背景分层，不额外绘制贯穿窗口的灰线
 // - 宽度 ≥1280dp 时 extended（常驻文字标签），否则纯图标 + Tooltip；大字号档按窗口
 //   口径再判一次（extendedFor），超大档起收成图标栏
 // - 大屏底部按钮可手动收起 / 展开，偏好由外壳持有
@@ -91,7 +91,6 @@ class UtenSideNavRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final toggleExtent = UtenControlMetrics.minimumHitExtent(
       context,
       desktop: 48,
@@ -102,13 +101,6 @@ class UtenSideNavRail extends StatelessWidget {
         color:
             theme.navigationRailTheme.backgroundColor ??
             theme.colorScheme.surface,
-        border: Border(
-          right: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(
-              alpha: isDark ? 0.6 : 1,
-            ),
-          ),
-        ),
       ),
       child: NavigationRail(
         extended: extended,

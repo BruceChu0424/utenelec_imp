@@ -123,12 +123,31 @@ class _UtenSplitHandleState extends State<UtenSplitHandle> {
                                 : colors.outlineVariant,
                           ),
                         ),
-                        child: Icon(
-                          Icons.more_vert_rounded,
-                          size: 20,
-                          color: active
-                              ? colors.primary
-                              : colors.onSurfaceVariant,
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            spacing: 2,
+                            children: [
+                              for (var row = 0; row < 3; row++)
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  spacing: 2,
+                                  children: [
+                                    for (var column = 0; column < 2; column++)
+                                      Container(
+                                        width: 2,
+                                        height: 2,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: active
+                                              ? colors.primary
+                                              : colors.onSurfaceVariant,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ],

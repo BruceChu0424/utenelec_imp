@@ -104,7 +104,7 @@ class _Api extends ApiClient {
   }) async {
     final options = RequestOptions(path: path, baseUrl: _baseUrl, data: body);
     final scope = AuthenticatedRequestScope.attach(options);
-    expect(
+    expectSync(
       scope,
       isNotNull,
       reason: 'Direct commands must retain the captured credential scope',
@@ -112,9 +112,9 @@ class _Api extends ApiClient {
     await scope!.verify();
     scope.checkEndpoint(options);
     final tokens = await storage.getAuthTokenSnapshot();
-    expect(tokens.hasTokens, isTrue);
-    expect(scope.identity.lineage, tokens.sessionLineage);
-    expect(scope.identity.intent, tokens.intentGeneration);
+    expectSync(tokens.hasTokens, isTrue);
+    expectSync(scope.identity.lineage, tokens.sessionLineage);
+    expectSync(scope.identity.intent, tokens.intentGeneration);
     posts.add(
       _Post(
         path,
@@ -128,7 +128,7 @@ class _Api extends ApiClient {
       }
       return {'processedCount': 2, 'replay': loseFirstExceptionResponse};
     }
-    expect(path, ApiEndpoints.warehouseInboundArrivalBatchComplete);
+    expectSync(path, ApiEndpoints.warehouseInboundArrivalBatchComplete);
     return const {
       'processedCount': 2,
       'items': <Map<String, dynamic>>[
@@ -298,6 +298,40 @@ Future<void> _confirm(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('双击到货异常直接打开批准量确认，连续打开与取消均不提交', (tester) async {
+    final row = _exceptions().first;
+    final harness = await _pump(tester, [row]);
+    await tester.tap(find.text(row.billNo!));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(find.text(row.billNo!));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 20; i++) {
+      _table(tester).onRowTap!(row);
+    }
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(FilledButton, '确认处理'), findsOneWidget);
+    expect(find.textContaining('批准接收 12'), findsOneWidget);
+    expect(harness.api.posts, isEmpty);
+    await tester.tap(find.widgetWithText(TextButton, '取消'));
+    await tester.pumpAndSettle();
+    expect(harness.api.posts, isEmpty);
+    _table(tester).onRowTap!(row);
+    await tester.pumpAndSettle();
+    await _confirm(tester);
+    expect(
+      harness.api.posts,
+      hasLength(1),
+      reason: harness.container
+          .read(appNotificationProvider)
+          .map((n) => n.message)
+          .join('; '),
+    );
+    expect(harness.api.posts.single.body['items'], [
+      {'exceptionId': 'exception-1', 'expectedVersion': 5},
+    ]);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('继续送检按全部原收货单批量提交，展示实际办理数与隔离及已处理反馈', (tester) async {
     final rows = [_continue()];
     final harness = await _pump(tester, rows);

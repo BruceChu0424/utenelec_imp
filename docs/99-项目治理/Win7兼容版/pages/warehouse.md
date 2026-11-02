@@ -130,11 +130,11 @@
 
 ## W7-BIZ-223 · lib/features/warehouse/pages/procurement_return_task_pages.dart
 
-模块 `warehouse`；1001 行；SHA256 `5a5d54e0c0a04706ef2f8079664833360880f40b7d9f33f85f7bf4895c89d123`。
+模块 `warehouse`；1006 行；SHA256 `ab44c85c28ec6afc98daea54b9ce7c41072de81e60dbcba707d1962fef291445`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | ProcurementReturnTasksPage @47 (page-class)<br>_ProcurementReturnTasksPageState @60 (state-class)<br>_ReturnTaskListCard @525 (supporting-class)<br>ProcurementReturnTaskDetailPage @605 (page-class)<br>_ProcurementReturnTaskDetailPageState @615 (state-class)<br>_ReturnStatusBanner @863 (supporting-class)<br>_ReturnFactsCard @903 (supporting-class)<br>_Fact @956 (supporting-class)<br>_Pager @977 (supporting-class) |
+| 页面/状态类 | ProcurementReturnTasksPage @47 (page-class)<br>_ProcurementReturnTasksPageState @60 (state-class)<br>_ReturnTaskListCard @525 (supporting-class)<br>ProcurementReturnTaskDetailPage @605 (page-class)<br>_ProcurementReturnTaskDetailPageState @615 (state-class)<br>_ReturnStatusBanner @863 (supporting-class)<br>_ReturnFactsCard @903 (supporting-class)<br>_Fact @961 (supporting-class)<br>_Pager @982 (supporting-class) |
 | 真实路由绑定 | /procurement/arrival-exceptions；router @1067；builder ['ProcurementReturnTasksPage']；redirect None<br>/procurement/arrival-exceptions/:id；router @1076；builder ['ProcurementReturnTaskDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |

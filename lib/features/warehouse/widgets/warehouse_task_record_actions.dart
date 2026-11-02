@@ -50,6 +50,23 @@ const _openActions = {
 bool warehouseTaskRecordCanOpen(WarehouseTaskCenterRecord row) =>
     _openActions.contains(row.action) && (row.targetId ?? row.id).isNotEmpty;
 
+bool warehouseTaskRecordCanViewReturn(WarehouseTaskCenterRecord row) =>
+    row.actionData['canViewSupplierReturn'] == true &&
+    row.dataId('returnExceptionId') != null;
+
+String warehouseTaskRecordOpenLabel(WarehouseTaskCenterRecord row) {
+  if (row.canHandle) {
+    return switch (row.action) {
+      'ARRIVAL_EXCEPTION' => '按批准量继续送检',
+      'ARRIVAL_CONTINUE' => '继续送检',
+      'QUALITY_RESULT' => '打开质检入库 / 退回办理',
+      _ => '打开办理',
+    };
+  }
+  if (warehouseTaskRecordCanViewReturn(row)) return '打开退回供应商任务';
+  return '查看详情与处理进度';
+}
+
 /// Registration keeps physical items until the destination reads those exact rows.
 /// Document commands deduplicate only after all selected item identities are retained.
 List<WarehouseTaskCenterRecord> warehouseTaskCommandTargets(
@@ -172,6 +189,16 @@ Future<void> openWarehouseTaskRecord(
     await openWarehouseTaskRecordBatch(context, ref, [
       row,
     ], navigation: navigation);
+    return;
+  }
+  if (!row.canHandle &&
+      warehouseTaskRecordCanViewReturn(row) &&
+      ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.supplierReturnTaskView)) {
+    await navigation.push<void>(
+      RoutePath.procurementArrivalException(row.dataId('returnExceptionId')!),
+    );
     return;
   }
   final id = row.targetId ?? row.id;

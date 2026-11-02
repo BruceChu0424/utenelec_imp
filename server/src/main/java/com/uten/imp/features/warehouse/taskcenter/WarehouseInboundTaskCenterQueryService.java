@@ -1,5 +1,7 @@
 package com.uten.imp.features.warehouse.taskcenter;
 
+import com.uten.imp.features.warehouse.inbound.ProcurementReceiptProgress;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.WarehouseTaskScopePort;
@@ -245,11 +247,14 @@ public class WarehouseInboundTaskCenterQueryService {
                            color.name AS "colorName",unit.name AS "unitName",exception.declared_qty AS quantity,
                            exception.approved_remaining_qty AS "approvedRemainingQty",exception.accepted_qty AS "acceptedQty",
                            exception.unaccepted_qty AS "unacceptedQty",exception.status,exception.version,
-                           exception.decision,exception.finance_reason AS "decisionReason"
+                           exception.decision,exception.finance_reason AS "decisionReason",
+                           receipt_progress.stocked_qty AS "stockedQty",receipt_progress.pending_stock_qty AS "pendingStockInQty",
+                           (surplus_return.pending_qty+quality_return.pending_qty) AS "pendingReturnQty"
                     FROM procurement_arrival_exceptions exception JOIN goods ON goods.id=exception.goods_id
                     LEFT JOIN colors color ON color.id=exception.color_id LEFT JOIN units unit ON unit.id=exception.unit_id
+                    %s
                     WHERE exception.id=:id ORDER BY exception.id
-                    """;
+                    """.formatted(ProcurementReceiptProgress.joins("exception.order_type","exception.receipt_id","exception.receipt_item_id"));
             default -> null;
         };
         int safePage=Math.max(1,linePage),safeSize=Math.max(1,Math.min(100,lineSize));
@@ -352,6 +357,9 @@ public class WarehouseInboundTaskCenterQueryService {
                 .with(com.fasterxml.jackson.databind.DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
                 .readValue(rs.getString("action_data")); }
         catch (java.io.IOException exception) { throw new SQLException("入库物理身份解析失败",exception); }
+        if (record.equals("ARRIVAL_EXCEPTION") || record.equals("PURCHASE_RECEIPT") || record.equals("SUBCONTRACT_RECEIPT")) {
+            ProcurementReceiptProgress.describe(data,rights.actor(),status);
+        }
         String proposed=rs.getString("action");
         boolean canHandle=switch(proposed) {
             case "WORKSHOP_REQUISITION" -> status.equals("RETURN_WORKSHOP_PENDING") && rights.has("workshop_material:issue");
@@ -473,7 +481,10 @@ public class WarehouseInboundTaskCenterQueryService {
             add(result,source,prefix,"EXCEPTION_PENDING_FINANCE","超量待财务审批","orange");
             add(result,source,prefix,"EXCEPTION_RECEIPT_ADJUSTED","超量批准待重新送检","success");
             add(result,source,prefix,"EXCEPTION_RETURN_REQUIRED","超量余料待退回","danger");
-            add(result,source,prefix,"EXCEPTION_RECEIPT_POSTED","异常已批准送检","warning");
+            add(result,source,prefix,"EXCEPTION_RECEIPT_POSTED","已送检，余量待退回","warning");
+            add(result,source,prefix,"EXCEPTION_PRE_STOCKED_WAITING_INSPECTION","已上架待检，余量待退回","warning");
+            add(result,source,prefix,"EXCEPTION_STOCKED_WAITING_RETURN","已入库，余量待退回","warning");
+            add(result,source,prefix,"EXCEPTION_PARTIAL_STOCKED_WAITING_RETURN","部分已入库，余量待退回","warning");
             add(result,source,prefix,"EXCEPTION_CLOSED","到货异常已办结","neutral");
             add(result,source,prefix,"EXCEPTION_CANCELED","到货异常已取消","neutral");
         }

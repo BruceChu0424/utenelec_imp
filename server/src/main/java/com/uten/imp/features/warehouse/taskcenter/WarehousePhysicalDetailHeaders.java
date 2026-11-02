@@ -14,7 +14,7 @@ final class WarehousePhysicalDetailHeaders {
             "stockPlace","place","lotId","sourceReportItemId","stockDocumentNos","decisionReason");
     private static final Set<String> NUMBERS=Set.of("quantity","orderedQty","acceptedQty","approvedRemainingQty",
             "requestedQuantity","issuedQuantity","countedQty","giftQty","unacceptedQty","passedBaseQty",
-            "failedBaseQty","stockedBaseQty","weightKg","weight");
+            "failedBaseQty","stockedBaseQty","weightKg","weight","stockedQty","pendingStockInQty","pendingReturnQty");
 
     static SqlColumnSearch.Criteria criteria(Map<String,String> filters,String json) {
         Map<String,SqlColumnSearch.Field> fields=new LinkedHashMap<>();

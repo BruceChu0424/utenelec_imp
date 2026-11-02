@@ -30,6 +30,7 @@ import org.springframework.jdbc.datasource.SingleConnectionDataSource;
 
 import java.sql.Connection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -68,7 +69,7 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
                 "production_finished_arrival_registrations","production_finished_arrival_registration_items",
                 "production_finished_arrival_registration_reversals","production_fqc_inspections",
                 "production_fqc_inspection_sheets","production_fqc_inspection_sheet_items",
-                "production_finished_in_confirmations","procurement_arrival_exceptions","goods",
+                "production_finished_in_confirmations","procurement_arrival_exceptions","supplier_return_tasks","goods",
                 "inbound_expectations","inbound_expectation_items","production_fqc_legacy_exemptions",
                 "procurement_inspection_items","procurement_inspection_events","procurement_iqc_stock_in_batch_items","procurement_iqc_stock_in_batches",
                 "procurement_iqc_rejection_cases","production_material_return_requests");
@@ -1010,6 +1011,136 @@ class WarehouseInboundTaskCenterQueryPostgresTest {
         assertThat(taskRowCounts().productionReturn(WarehouseTaskScope.ALL)).isEqualTo(3);
         execute("UPDATE stock_documents SET status=1 WHERE id=:id","id",document);
         assertThat(taskRowCounts().productionReturn(scope)).isZero();
+    }
+
+    @Test void purchaseAndSubcontractProgressSeparatesStockFromSurplusAndNavigatesOnlyAuthorizedReturns() {
+        for (String type:List.of("PURCHASE","SUBCONTRACT")) {
+            UUID goods=UUID.randomUUID(),receipt=UUID.randomUUID(),item=UUID.randomUUID(),inspection=UUID.randomUUID();
+            UUID task=UUID.randomUUID(),owner=UUID.randomUUID();
+            String table=type.equals("PURCHASE")?"purchase_receipts":"subcontract_receipts";
+            execute("INSERT INTO goods(id,code,name) VALUES(:id,:code,'Progress goods')","id",goods,"code","PROGRESS-"+type);
+            receipt(table,receipt,"PROGRESS-"+type,"2026-10-30",null);
+            execute("UPDATE "+table+" SET status=1 WHERE id=:id","id",receipt);
+            execute("INSERT INTO "+table.replace("receipts","receipt_items")+"(id,receipt_id,goods_id,qty,unit_rate,is_deleted)"
+                    +" VALUES(:id,:receipt,:goods,2.42,2,FALSE)","id",item,"receipt",receipt,"goods",goods);
+            UUID exception=arrivalException(type,"RECEIPT_POSTED",null,goods);
+            execute("UPDATE procurement_arrival_exceptions SET receipt_id=:receipt,receipt_item_id=:item,declared_qty=2.52,"
+                    +" approved_remaining_qty=2.42,accepted_qty=2.42,unaccepted_qty=0.10,receipt_bill_no_snapshot=:bill WHERE id=:id",
+                    "id",exception,"receipt",receipt,"item",item,"bill","PROGRESS-"+type);
+            execute("INSERT INTO supplier_return_tasks(id,arrival_exception_id,order_type,receipt_id,receipt_item_id,qty,status,owner_user_id)"
+                    +" VALUES(:id,:exception,:type,:receipt,:item,0.10,'PENDING_RETURN',:owner)",
+                    "id",task,"exception",exception,"type",type,"receipt",receipt,"item",item,"owner",owner);
+            execute("INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,receipt_item_id,status,quantity_tranche,"
+                    +" unit_rate,received_base_qty,passed_base_qty,failed_base_qty,warehouse_stocked_base_qty)"
+                    +" VALUES(:id,:type,:receipt,:item,'RESOLVED','CHARGED',2,4.84,4.84,0,0)",
+                    "id",inspection,"type",type,"receipt",receipt,"item",item);
+            // Gift, reversed and sibling-item quantities must never inflate this charged line's progress.
+            for(String tranche:List.of("GIFT","REVERSED","SIBLING")) execute(
+                    "INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,receipt_item_id,status,quantity_tranche,"
+                    +" unit_rate,received_base_qty,passed_base_qty,failed_base_qty,warehouse_stocked_base_qty)"
+                    +" VALUES(:id,:type,:receipt,:item,:status,:tranche,1,100,100,0,100)",
+                    "id",UUID.randomUUID(),"type",type,"receipt",receipt,"item",tranche.equals("SIBLING")?UUID.randomUUID():item,
+                    "status",tranche.equals("REVERSED")?"REVERSED":"RESOLVED","tranche",tranche.equals("GIFT")?"GIFT":"CHARGED");
+            Set<String> rights=Set.of("warehouse_inbound:view","supplier_return_task:view");
+            var actor=new AuthUser(owner,UUID.randomUUID(),"owner",rights,false,true,false);
+            var query=service(actor,WarehouseTaskScope.ALL,false);
+            var sent=query.list(filter(type,"",1,20)).items().stream().filter(r->r.id().equals(exception)).findFirst().orElseThrow();
+            assertThat(sent.status()).isEqualTo(type+"_EXCEPTION_RECEIPT_POSTED");
+            assertThat(sent.statusLabel()).contains("已送检").doesNotContain("已入库");
+            assertThat(new java.math.BigDecimal(sent.actionData().get("pendingStockInQty").toString())).isEqualByComparingTo("2.42");
+            assertThat(new java.math.BigDecimal(sent.actionData().get("pendingReturnQty").toString())).isEqualByComparingTo("0.10");
+            assertThat(sent.actionData()).containsEntry("canViewSupplierReturn",true).doesNotContainKey("returnOwnerUserId");
+            assertThat(sent.canHandle()).isFalse();
+            execute("UPDATE procurement_inspection_items SET warehouse_stocked_base_qty=2 WHERE id=:id","id",inspection);
+            assertThat(query.list(filter(type,"",1,20)).items()).anySatisfy(r->assertThat(r.status()).isEqualTo(type+"_EXCEPTION_PARTIAL_STOCKED_WAITING_RETURN"));
+            execute("UPDATE procurement_inspection_items SET warehouse_stocked_base_qty=4.84 WHERE id=:id","id",inspection);
+            var filter=filter(type,type+"_EXCEPTION_STOCKED_WAITING_RETURN",1,20).withColumnSearch(Map.of("stockedQty",">2","pendingReturnQty",">0"));
+            var page=query.list(filter);
+            assertThat(page.total()).isEqualTo(1);
+            Row stocked=page.items().getFirst();
+            assertThat(stocked.statusLabel()).contains("已入库，余量待退回");
+            assertThat(new java.math.BigDecimal(stocked.actionData().get("stockedQty").toString())).isEqualByComparingTo("2.42");
+            assertThat(stocked.line().quantity()).isEqualByComparingTo("2.52");
+            assertThat(page.facets().get("status")).anySatisfy(f->assertThat(f.value()).isEqualTo(stocked.status()));
+            var detail=query.detail(stocked.rowKey(),null);
+            var line=(Map<?,?>)((List<?>)detail.get("items")).getFirst();
+            assertThat((java.math.BigDecimal)line.get("stockedQty")).isEqualByComparingTo("2.42");
+            assertThat((java.math.BigDecimal)line.get("pendingReturnQty")).isEqualByComparingTo("0.10");
+            execute("UPDATE procurement_inspection_items SET status='PENDING',passed_base_qty=0,pre_stocked_at=now() WHERE id=:id","id",inspection);
+            var preStock=query.list(filter(type,"",1,20)).items().getFirst();
+            assertThat(preStock.status()).isEqualTo(type+"_EXCEPTION_PRE_STOCKED_WAITING_INSPECTION");
+            assertThat(preStock.statusLabel()).contains("已上架待检");
+            assertThat(preStock.actionData().get("nextStep").toString()).contains("等待品质检验");
+            execute("UPDATE procurement_inspection_items SET status='RESOLVED',passed_base_qty=4.84,pre_stocked_at=NULL WHERE id=:id","id",inspection);
+            UUID rejection=UUID.randomUUID();
+            execute("INSERT INTO procurement_iqc_rejection_cases(id,inspection_item_id,receipt_type,receipt_id,receipt_item_id,failed_base_qty,status,is_deleted)"
+                    +" VALUES(:id,:inspection,:type,:receipt,:item,0.4,'RETURN_PENDING',FALSE)",
+                    "id",rejection,"inspection",inspection,"type",type,"receipt",receipt,"item",item);
+            var withQualityReturn=query.list(filter).items().getFirst();
+            assertThat(new java.math.BigDecimal(withQualityReturn.actionData().get("pendingReturnQty").toString())).isEqualByComparingTo("0.30");
+            execute("UPDATE procurement_iqc_rejection_cases SET return_recorded_at=now() WHERE id=:id","id",rejection);
+            assertThat(new java.math.BigDecimal(query.list(filter).items().getFirst().actionData().get("pendingReturnQty").toString())).isEqualByComparingTo("0.10");
+            var allReader=service(Set.of("warehouse_inbound:view","supplier_return_task:view","supplier_return_task:view:all"),WarehouseTaskScope.ALL,false);
+            assertThat(allReader.list(filter).items().getFirst().actionData()).containsEntry("canViewSupplierReturn",true);
+            var domainCurrent=mock(SecurityContextCurrentUser.class);
+            when(domainCurrent.get()).thenReturn(Optional.of(actor));
+            when(domainCurrent.requireId()).thenReturn(owner);
+            var domain=new com.uten.imp.features.warehouse.inbound.ProcurementArrivalControlService(
+                    jdbc.getJdbcTemplate(),mapper,mock(com.uten.imp.application.port.BusinessEventPublisher.class),domainCurrent,
+                    mock(com.uten.imp.security.TxSessionVars.class),mock(com.uten.imp.application.port.FinanceReviewerEligibilityPort.class),
+                    mock(com.uten.imp.features.purchase.receipt.ReceiptPriceMasker.class),
+                    com.uten.imp.support.FulfillmentMutationLockTestSupport.procurementLocks());
+            var ownerDetail=domain.ownerDetail(exception);
+            assertThat(ownerDetail.receiptProgress().stockedQty()).isEqualByComparingTo("2.42");
+            assertThat(ownerDetail.receiptProgress().pendingReturnQty()).isEqualByComparingTo("0.10");
+            assertThat(mapper.valueToTree(ownerDetail).path("receiptProgress").path("stockedQty").isTextual()).isTrue();
+            var nonOwner=service(rights,WarehouseTaskScope.ALL,false).list(filter).items().getFirst();
+            assertThat(nonOwner.actionData()).containsEntry("canViewSupplierReturn",false);
+            var settings=mock(com.uten.imp.features.admin.systemsetting.SystemSettingsService.class);
+            when(settings.readInt(com.uten.imp.features.admin.systemsetting.SystemSettingKey.EXPORT_MAX_ROWS)).thenReturn(500);
+            var exported=new WarehouseTaskCenterExportService(null,query,settings).inbound(filter);
+            assertThat(exported.rows().getFirst()).containsEntry("stockedQty",new java.math.BigDecimal(stocked.actionData().get("stockedQty").toString()));
+            execute("UPDATE supplier_return_tasks SET status='COMPLETED' WHERE id=:id","id",task);
+            execute("UPDATE procurement_arrival_exceptions SET status='CLOSED' WHERE id=:id","id",exception);
+            assertThat(query.list(filter(type,"",1,20)).items()).noneMatch(r->r.id().equals(exception));
+            var history=query.list(new Filter(type,"","",null,null,null,null,1,20,null,null,TaskView.HISTORY));
+            assertThat(history.items()).anySatisfy(r->{
+                assertThat(r.id()).isEqualTo(exception);
+                assertThat(new java.math.BigDecimal(r.actionData().get("pendingReturnQty").toString())).isZero();
+            });
+        }
+    }
+
+    @Test void fiveThousandCompletedReceiptExceptionsKeepExactProgressCountsAndBoundedPaging() {
+        UUID goods=UUID.randomUUID();
+        execute("INSERT INTO goods(id,code,name) VALUES(:id,'PROGRESS-STRESS','Progress stress goods')","id",goods);
+        execute("CREATE INDEX ON procurement_inspection_items(receipt_type,receipt_id,receipt_item_id)");
+        execute("CREATE INDEX ON procurement_arrival_exceptions(order_type,receipt_id,receipt_item_id)");
+        execute("CREATE INDEX ON supplier_return_tasks(arrival_exception_id)");
+        execute("CREATE INDEX ON procurement_iqc_rejection_cases(inspection_item_id)");
+        execute("INSERT INTO procurement_arrival_exceptions(id,order_type,status,goods_id,receipt_id,receipt_item_id,"
+                +" declared_qty,accepted_qty,unaccepted_qty,receipt_bill_no_snapshot)"
+                +" SELECT gen_random_uuid(),'PURCHASE','RECEIPT_POSTED',:goods,gen_random_uuid(),gen_random_uuid(),"
+                +" 2.52,2.42,0.10,'STRESS-'||n FROM generate_series(1,5000) n","goods",goods);
+        execute("INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,receipt_item_id,status,quantity_tranche,"
+                +" unit_rate,received_base_qty,passed_base_qty,failed_base_qty,warehouse_stocked_base_qty)"
+                +" SELECT gen_random_uuid(),'PURCHASE',receipt_id,receipt_item_id,'RESOLVED','CHARGED',1,2.42,2.42,0,2.42"
+                +" FROM procurement_arrival_exceptions WHERE goods_id=:goods","goods",goods);
+        execute("INSERT INTO supplier_return_tasks(id,arrival_exception_id,order_type,receipt_id,receipt_item_id,qty,status)"
+                +" SELECT gen_random_uuid(),id,'PURCHASE',receipt_id,receipt_item_id,0.10,'PENDING_RETURN'"
+                +" FROM procurement_arrival_exceptions WHERE goods_id=:goods","goods",goods);
+        execute("ANALYZE procurement_arrival_exceptions");execute("ANALYZE procurement_inspection_items");execute("ANALYZE supplier_return_tasks");
+        execute("SET LOCAL statement_timeout='30s'");
+        var query=service(Set.of("warehouse_inbound:view"),WarehouseTaskScope.ALL,false);
+        var first=query.list(new Filter("PURCHASE","PURCHASE_EXCEPTION_STOCKED_WAITING_RETURN","STRESS",null,null,null,null,1,100));
+        assertThat(first.total()).isEqualTo(5000);assertThat(first.totalPages()).isEqualTo(50);
+        assertThat(first.items()).hasSize(100).allSatisfy(row->{
+            assertThat(new java.math.BigDecimal(row.actionData().get("stockedQty").toString())).isEqualByComparingTo("2.42");
+            assertThat(new java.math.BigDecimal(row.actionData().get("pendingReturnQty").toString())).isEqualByComparingTo("0.10");
+            assertThat(row.canHandle()).isFalse();
+        });
+        var last=query.list(new Filter("PURCHASE","PURCHASE_EXCEPTION_STOCKED_WAITING_RETURN","STRESS",null,null,null,null,50,100));
+        assertThat(last.items()).hasSize(100).doesNotContainAnyElementsOf(first.items());
     }
 
     private WarehouseInboundTaskCenterQueryService service(Set<String> permissions,WarehouseTaskScope scope,boolean pool) {

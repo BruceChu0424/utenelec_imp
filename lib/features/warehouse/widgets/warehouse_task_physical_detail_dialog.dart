@@ -75,6 +75,9 @@ class _WarehouseTaskPhysicalDetailDialogState
   final Set<String> _knownFields = {};
   static const _numericFields = {
     'quantity',
+    'stockedQty',
+    'pendingStockInQty',
+    'pendingReturnQty',
     'orderedQty',
     'acceptedQty',
     'approvedRemainingQty',
@@ -366,7 +369,7 @@ class _WarehouseTaskPhysicalDetailDialogState
       ('goodsCode', '货品编号'),
       ('colorName', '颜色'),
       ('unitName', '单位'),
-      ('quantity', '数量'),
+      ('quantity', row.recordType == 'ARRIVAL_EXCEPTION' ? '原申报数量' : '数量'),
       ('orderedQty', '订货数量'),
       (
         'acceptedQty',
@@ -377,7 +380,8 @@ class _WarehouseTaskPhysicalDetailDialogState
       ('issuedQuantity', '已发数量'),
       ('countedQty', '点收数量'),
       ('giftQty', '赠品数量'),
-      ('unacceptedQty', '待退回数量'),
+      ('unacceptedQty', '财务未批准数量（原决定）'),
+      ...warehouseProcurementProgressColumns,
       ('passedBaseQty', '合格基础数量'),
       ('failedBaseQty', '不合格基础数量'),
       ('stockedBaseQty', '已入库基础数量'),
@@ -434,8 +438,15 @@ class _WarehouseTaskPhysicalDetailDialogState
                       if (_uncertain && _pendingReason != null)
                         Text('原撤回原因：$_pendingReason'),
                     ],
+                    if (row.progressSummary.isNotEmpty)
+                      Text(row.progressSummary),
+                    if (row.nextStep != null) Text('下一步：${row.nextStep}'),
                     if (row.recordType == 'ARRIVAL_EXCEPTION' && row.canHandle)
-                      const Text('请在队列勾选本条，按财务批准量处理；提交时会再次核对原异常版本。'),
+                      Text(
+                        ref.read(authenticatedScopeProvider)?.readOnly == true
+                            ? '当前为只读模式，可查看处理进度。'
+                            : '返回任务列表双击本条可按批准量继续送检；提交前会再次核对原异常版本。',
+                      ),
                     const SizedBox(height: 12),
                     Expanded(
                       child: fields.isEmpty

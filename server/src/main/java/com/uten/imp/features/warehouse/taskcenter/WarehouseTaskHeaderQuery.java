@@ -22,6 +22,9 @@ final class WarehouseTaskHeaderQuery {
         });
         fields.put("quantity", SqlColumnSearch.Field.decimal(inbound
                 ? "CAST(line_data->>'quantity' AS numeric)" : "quantity"));
+        if (inbound) for (String key:java.util.List.of("stockedQty","pendingStockInQty","pendingReturnQty")) {
+            fields.put(key,SqlColumnSearch.Field.decimal("CAST(action_data->>'"+key+"' AS numeric)"));
+        }
         fields.put("businessDate", SqlColumnSearch.Field.calendarDate("business_date"));
         // 生产工单不进列搜索白名单：该值由外层 LATERAL 计算（不在 source_rows CTE 里），
         // 列搜索谓词在 CTE 内求值会引用不存在的列。排序单独放行（见 sortable）。
@@ -49,6 +52,7 @@ final class WarehouseTaskHeaderQuery {
             case "colorName" -> inbound ? "line_data->>'colorName'" : "color_name";
             case "specification" -> inbound ? "line_data->>'specification'" : "specification";
             case "quantity" -> inbound ? "CAST(line_data->>'quantity' AS numeric)" : "quantity";
+            case "stockedQty","pendingStockInQty","pendingReturnQty" -> "CAST(action_data->>'"+column+"' AS numeric)";
             case "billNo" -> "bill_no"; case "sourceDocNo" -> "source_doc_no";
             case "partyName" -> "party_name"; case "warehouseName" -> "warehouse_name";
             case "responsibleName" -> "responsible_name"; case "makerName" -> "maker_name";

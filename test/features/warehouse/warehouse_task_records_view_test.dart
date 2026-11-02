@@ -437,6 +437,10 @@ Future<_Harness> _pump(
         builder: (_, state) => target(state),
       ),
       GoRoute(
+        path: '${RouteName.procurementArrivalExceptions}/:id',
+        builder: (_, state) => target(state),
+      ),
+      GoRoute(
         path: '/production/plans/:id',
         builder: (_, state) => target(state),
       ),
@@ -473,6 +477,116 @@ Future<void> _doubleTap(WidgetTester tester, String text) async {
 }
 
 void main() {
+  for (final source in ['PURCHASE', 'SUBCONTRACT']) {
+    for (final canViewReturn in [true, false]) {
+      testWidgets('$source 已入库余量待退显示分量并按退回读取资格双击导航 $canViewReturn', (
+        tester,
+      ) async {
+        final row = warehouseTestRecord(
+          source: source,
+          record: 'ARRIVAL_EXCEPTION',
+          id: 'progress-exception',
+          billNo: 'CJ-PROGRESS',
+          status: '${source}_EXCEPTION_STOCKED_WAITING_RETURN',
+          statusLabel: '已入库，余量待退回',
+          action: 'HISTORY_DETAIL',
+          data: {
+            'stockedQty': '2.4200000000000000',
+            'pendingStockInQty': '0',
+            'pendingReturnQty': '0.1000',
+            'progressUnitName': '条',
+            'nextStep': '由采购甲退回供应商',
+            'canViewSupplierReturn': canViewReturn,
+            'returnExceptionId': 'progress-exception',
+          },
+          line: const WarehouseTaskLine(
+            key: 'progress-item',
+            unitName: '条',
+            quantity: 2.52,
+            quantityText: '2.5200',
+          ),
+        );
+        final harness = await _pump(
+          tester,
+          WarehouseTaskRecordsFakeGateway([row]),
+          spec: _ViewSpec(
+            direction: WarehouseTaskDirection.inbound,
+            source: source,
+            sources: warehouseTestInboundSources,
+          ),
+          permissions: {Perm.warehouseInboundView, Perm.supplierReturnTaskView},
+        );
+        final columns = _table(tester).columns;
+        expect(
+          columns.singleWhere((c) => c.key == 'quantity').label,
+          '申报 / 单据数量',
+        );
+        expect(
+          columns.singleWhere((c) => c.key == 'stockedQty').value(row),
+          '2.42 条',
+        );
+        expect(
+          columns.singleWhere((c) => c.key == 'pendingReturnQty').value(row),
+          '0.1 条',
+        );
+        expect(_table(tester).idOf!(row), isNull);
+        await _doubleTap(tester, row.billNo!);
+        if (canViewReturn) {
+          expect(
+            harness.opened.single.path,
+            RoutePath.procurementArrivalException('progress-exception'),
+          );
+        } else {
+          expect(harness.opened, isEmpty);
+          expect(find.textContaining('已入库 2.42 条'), findsOneWidget);
+          expect(find.textContaining('剩余待退回 0.1 条'), findsOneWidget);
+          expect(find.text('下一步：由采购甲退回供应商'), findsOneWidget);
+        }
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  testWidgets('本机只读模式双击可处理异常仍打开进度详情，不弹办理确认', (tester) async {
+    final row = warehouseTestRecord(
+      source: 'PURCHASE',
+      record: 'ARRIVAL_EXCEPTION',
+      id: 'readonly-exception',
+      billNo: 'READONLY-EXCEPTION',
+      action: 'ARRIVAL_EXCEPTION',
+      canHandle: true,
+      data: {'expectedVersion': 3, 'acceptedQty': 2.42},
+    );
+    await _pump(
+      tester,
+      WarehouseTaskRecordsFakeGateway([row]),
+      spec: const _ViewSpec(
+        direction: WarehouseTaskDirection.inbound,
+        source: 'PURCHASE',
+        sources: warehouseTestInboundSources,
+      ),
+      readOnly: true,
+    );
+    await _doubleTap(tester, row.billNo!);
+    expect(find.byType(WarehouseTaskPhysicalDetailDialog), findsOneWidget);
+    expect(find.text('当前为只读模式，可查看处理进度。'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '确认处理'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  test('进度按原十进制展示，缺失不冒充零，财务送检不冒充已入库', () {
+    final row = warehouseTestRecord(
+      source: 'PURCHASE',
+      record: 'PURCHASE_RECEIPT',
+      id: 'exact',
+      billNo: 'EXACT',
+      data: {'stockedQty': '9007199254740993.4200', 'progressUnitName': '条'},
+    );
+    expect(row.progressQuantityLabel('stockedQty'), '9007199254740993.42 条');
+    expect(row.progressQuantityLabel('pendingReturnQty'), '—');
+    expect(row.progressSummary, '已入库 9007199254740993.42 条');
+  });
+
   for (final line in <WarehouseTaskLine?>[
     null,
     const WarehouseTaskLine(key: 'empty'),
@@ -1644,6 +1758,10 @@ void main() {
         permissions: spec.permissions,
         readOnly: spec.readOnly,
       );
+      if (spec.allowed && find.text('新建其它出库').evaluate().isEmpty) {
+        await tester.tap(find.byTooltip('表格操作'));
+        await tester.pumpAndSettle();
+      }
       expect(find.text('新建其它出库'), spec.allowed ? findsOneWidget : findsNothing);
       expect(
         find.text('新建产成品出库'),
@@ -2284,6 +2402,10 @@ void main() {
     ];
     final gateway = WarehouseTaskRecordsFakeGateway(rows);
     await _pump(tester, gateway);
+    if (find.text('预览打印').evaluate().isEmpty) {
+      await tester.tap(find.byTooltip('表格操作'));
+      await tester.pumpAndSettle();
+    }
     expect(find.text('预览打印'), findsOneWidget);
     expect(find.text('下载表格'), findsOneWidget);
     await tester.tap(find.text('预览打印'));

@@ -1,3 +1,5 @@
+export '../../../shared/models/procurement_receipt_progress.dart';
+import '../../../shared/models/procurement_receipt_progress.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../shared/models/paged_result.dart';
@@ -55,6 +57,19 @@ class WarehouseTaskCenterRecord {
   final bool canHandle;
   final Map<String, dynamic> actionData;
   final WarehouseTaskLine? line;
+
+  ProcurementReceiptProgress get receiptProgress =>
+      ProcurementReceiptProgress(actionData);
+
+  String? progressQuantity(String key) => receiptProgress.quantity(key);
+
+  String progressQuantityLabel(String key) =>
+      receiptProgress.label(key, dataId('progressUnitName') ?? line?.unitName);
+
+  String get progressSummary =>
+      receiptProgress.summary(dataId('progressUnitName') ?? line?.unitName);
+
+  String? get nextStep => dataId('nextStep');
 
   String get documentRowKey => '$sourceType:$recordType:$id';
 

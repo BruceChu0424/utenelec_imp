@@ -476,7 +476,10 @@ class _WarehouseTaskRecordsViewState
         if (column == 'businessDate') {
           return CalendarColumnQuery.tryParse(query)?.matches(value) ?? false;
         }
-        if (column == 'quantity') {
+        if (column == 'quantity' ||
+            warehouseProcurementProgressColumns.any(
+              (field) => field.$1 == column,
+            )) {
           return NumericColumnQuery.tryParse(query)?.matches(value) ?? false;
         }
         return matchesKeywordSearch([value], query);
@@ -555,7 +558,8 @@ class _WarehouseTaskRecordsViewState
   Future<void> _open(WarehouseTaskCenterRecord row) async {
     if (_busy || _batchPromptOpen || _loading) return;
     if (!_history &&
-        row.action == 'ARRIVAL_CONTINUE' &&
+        ref.read(authenticatedScopeProvider)?.readOnly != true &&
+        {'ARRIVAL_CONTINUE', 'ARRIVAL_EXCEPTION'}.contains(row.action) &&
         _draftsFor(row).isEmpty &&
         row.canHandle) {
       await _batch(targets: [row]);
@@ -977,8 +981,13 @@ class _WarehouseTaskRecordsViewState
     ),
     MasterColumnDef(
       key: 'quantity',
-      label: '数量',
-      width: 130,
+      label: widget.direction == WarehouseTaskDirection.inbound
+          ? '申报 / 单据数量'
+          : '数量',
+      info: widget.direction == WarehouseTaskDirection.inbound
+          ? '到货异常为最初申报数量，收货单为单据数量，均不代表已入库。进度数量按本行单位显示，不含赠品；— 表示尚无可核对记录。'
+          : null,
+      width: 150,
       type: 'number',
       sortable: true,
       columnSearchEnabled: true,
@@ -986,6 +995,39 @@ class _WarehouseTaskRecordsViewState
           row.line?.quantityText ?? row.line?.quantity?.toString(),
       value: (row) => row.line?.quantityLabel ?? '—',
     ),
+    if (widget.direction == WarehouseTaskDirection.inbound)
+      for (final (key, label) in warehouseProcurementProgressColumns)
+        MasterColumnDef(
+          key: key,
+          label: label,
+          width: 140,
+          type: 'number',
+          sortable: true,
+          columnSearchEnabled: true,
+          info: '采购、委外按收货行单位显示，不含赠品；剩余待退回包含未批准超量与尚未记录实物退回的不合格品。— 表示无可核对记录。',
+          exactValueOf: (row) => row.progressQuantity(key),
+          value: (row) => row.progressQuantityLabel(key),
+        ),
+    if (widget.direction == WarehouseTaskDirection.inbound)
+      MasterColumnDef(
+        key: 'nextStep',
+        label: '下一步',
+        width: 270,
+        columnSearchEnabled: false,
+        value: (row) => row.nextStep ?? '—',
+        cellBuilder: (_, row) => UtenTableCellAction(
+          label: row.nextStep ?? '—',
+          tooltip: '${row.nextStep ?? ''}\n${warehouseTaskRecordOpenLabel(row)}'
+              .trim(),
+          onPressed:
+              _busy ||
+                  _loading ||
+                  row.nextStep == null ||
+                  !warehouseTaskRecordCanOpen(row)
+              ? null
+              : () => _open(row),
+        ),
+      ),
     MasterColumnDef(
       key: 'sourceDocNo',
       sortable: true,
@@ -1263,7 +1305,7 @@ class _WarehouseTaskRecordsViewState
         onRowTap: _open,
         rowMenuBuilder: (row) => [
           UtenMenuItem(
-            label: !_history && row.canHandle ? '打开办理' : '查看原单',
+            label: readOnly ? '查看详情与处理进度' : warehouseTaskRecordOpenLabel(row),
             icon: Icons.open_in_new_rounded,
             onTap: () => _open(row),
           ),

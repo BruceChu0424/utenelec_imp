@@ -2,6 +2,8 @@ import '../formatters/exact_decimal.dart';
 import 'historical_receipt_facts.dart';
 import 'procurement_quantity.dart';
 import 'inbound_allocation.dart';
+import 'procurement_receipt_progress.dart';
+export 'procurement_receipt_progress.dart';
 
 /// 到货任务在仓库流水线中的当前步骤（到货登记 → [超量待财务] → 送检 → 品质放行）。
 enum InboundArrivalStep {
@@ -566,7 +568,10 @@ class ProcurementArrivalException {
     this.allowedOverReceiptPctSnapshot,
     this.toleranceQtySnapshot,
     this.priorNetReceivedQtySnapshot,
+    this.receiptProgress,
   });
+
+  final ProcurementReceiptProgress? receiptProgress;
 
   final String id;
   final ProcurementInboundOrderType orderType;
@@ -664,7 +669,7 @@ class ProcurementArrivalException {
     'PENDING_FINANCE' => '未入库，等待财务审批超量',
     'RECEIPT_ADJUSTED' => '已调整收货草稿，等待仓库重新审核',
     'RETURN_REQUIRED' => '部分接收，余量待退供应商',
-    'RECEIPT_POSTED' => '已按批准数量入库',
+    'RECEIPT_POSTED' => '已按批准量送检，余量待退回',
     'CLOSED' => '到货异常已完成',
     'CANCELED' => '到货异常已取消',
     _ => '状态待确认，请刷新',
@@ -721,6 +726,11 @@ class ProcurementArrivalException {
           : ProcurementArrivalReturnTask.fromJson(returnTask),
       allowedActions: _actions(json['allowedActions']),
       priceMasked: json['priceMasked'] == true,
+      receiptProgress: json['receiptProgress'] is Map
+          ? ProcurementReceiptProgress(
+              Map<String, dynamic>.from(json['receiptProgress'] as Map),
+            )
+          : null,
       orderQtySnapshot: _numberOrNull(json['orderQtySnapshot']),
       allowedOverReceiptPctSnapshot: _numberOrNull(
         json['allowedOverReceiptPctSnapshot'],

@@ -1,8 +1,8 @@
+import '../../../core/l10n/localized_text.dart';
 import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 
-import 'master_inline_edit.dart';
 
 /// Present the exact archive marker written by the legacy master importer.
 /// Raw notes remain the edit/filter/export source; unknown text stays intact.
@@ -26,9 +26,9 @@ String? masterLegacyRemarkText(BuildContext context, String? raw) {
           if (code.isEmpty && alternate.isEmpty) return line;
           return [
             if (code.isNotEmpty)
-              '${masterEditText(context, '原编号', 'Original code', '원래 번호')}: $code',
+              '${localizedText(context, '原编号', 'Original code', '원래 번호')}: $code',
             if (alternate.isNotEmpty)
-              '${masterEditText(context, '原备用编号', 'Original alternate code', '원래 보조 번호')}: $alternate',
+              '${localizedText(context, '原备用编号', 'Original alternate code', '원래 보조 번호')}: $alternate',
           ].join(' · ');
         } on FormatException {
           return line;

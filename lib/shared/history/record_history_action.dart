@@ -1,3 +1,4 @@
+import '../../core/l10n/localized_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -109,7 +110,7 @@ class _MasterRecordHistoryActionState
     return UtenAppBarActionScope.withCloseBeforeAction(
       context,
       child: UtenAppBarActionButton(
-        label: masterEditText(context, '修改历史', 'Change history', '변경 기록'),
+        label: localizedText(context, '修改历史', 'Change history', '변경 기록'),
         onPressed: !widget.enabled
             ? null
             : () async {

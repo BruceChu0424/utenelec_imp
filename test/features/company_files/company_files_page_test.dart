@@ -1766,10 +1766,9 @@ void main() {
     await tester.scrollUntilVisible(
       find.text('访问密码'),
       60,
-      scrollable: find.ancestor(
-        of: find.text('访问权限'),
-        matching: find.byType(Scrollable),
-      ).first,
+      scrollable: find
+          .ancestor(of: find.text('访问权限'), matching: find.byType(Scrollable))
+          .first,
     );
     expect(find.text('访问密码'), findsOneWidget);
     await _tap(tester, find.text('访问权限'));

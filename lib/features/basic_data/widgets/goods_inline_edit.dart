@@ -1,3 +1,4 @@
+import '../../../core/l10n/localized_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -247,13 +248,13 @@ class _GoodsInlineUnitField extends ConsumerWidget {
     final capability = ref.watch(_inlineUnitCapability((row.id, row.version)));
     final detail = capability.value;
     if (detail == null && !capability.hasError) {
-      final message = masterEditText(
+      final message = localizedText(
         context,
         '正在核对基本单位',
         'Checking the basic unit',
         '기본 단위 확인 중',
       );
-      final status = masterEditText(context, '核对中', 'Checking', '확인 중');
+      final status = localizedText(context, '核对中', 'Checking', '확인 중');
       return Semantics(
         liveRegion: true,
         label: message,

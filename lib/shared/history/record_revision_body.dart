@@ -1,3 +1,4 @@
+import '../../core/l10n/localized_text.dart';
 import 'record_history_area.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/foundation.dart';
@@ -20,7 +21,6 @@ import '../../shared/auth/native_read_view_scope_mixin.dart';
 import '../../shared/auth/permissions.dart';
 import '../../shared/search/keyword_search.dart';
 import 'record_history_repository.dart';
-import '../../features/basic_data/widgets/master_inline_edit.dart';
 import 'record_history_labels.dart';
 
 class RecordRevisionBody extends ConsumerStatefulWidget {
@@ -60,7 +60,7 @@ class RecordRevisionBodyState extends ConsumerState<RecordRevisionBody>
   bool get isBusy => _loading || _mutating || _confirming;
   String get _scope => '${widget.area.name}:${widget.entityType}:${widget.id}';
   String _text(String zh, String en, String ko) =>
-      masterEditText(context, zh, en, ko);
+      localizedText(context, zh, en, ko);
   void _notifyBusy() {
     final busy = _mutating || _confirming;
     WidgetsBinding.instance.addPostFrameCallback((_) {

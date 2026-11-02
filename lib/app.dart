@@ -122,7 +122,11 @@ class UtenApp extends ConsumerWidget {
               )
             : child!;
         final settingsChild = SettingsAboutExtensions(
-          entries: const [ClientUpdateTile(), ClientReleasePublishTile(), DiagnosticLogTile()],
+          entries: const [
+            ClientUpdateTile(),
+            ClientReleasePublishTile(),
+            DiagnosticLogTile(),
+          ],
           child: UtenTooltipNavigationHost(
             navigation: router.routerDelegate,
             child: routedChild,

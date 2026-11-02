@@ -1,3 +1,4 @@
+import '../../../core/l10n/localized_text.dart';
 import 'bom_inline_edit_cell.dart';
 import '../providers/goods_bom_changes.dart';
 // 货品详情「组装信息」：默认只读；编辑模式中的每次操作进入会话草稿。
@@ -78,7 +79,6 @@ import '../models/goods_node.dart';
 import '../providers/goods_clipboard.dart';
 import '../providers/color_unit_dict.dart';
 import 'master_edit_dialog.dart' show kGoodsSourceTypeOptions;
-import 'master_inline_edit.dart' show masterEditText;
 import '../repositories/goods_bom_repository.dart';
 import '../repositories/goods_bom_edit_repository.dart';
 import 'goods_bom_import_dialog.dart';
@@ -3123,7 +3123,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       _modeRevision,
     )),
     activationKey: ValueKey('goods-bom-activate-$field-${row.occurrenceKey}'),
-    label: masterEditText(context, '编辑$label', 'Edit $label', '$label 편집'),
+    label: localizedText(context, '编辑$label', 'Edit $label', '$label 편집'),
     enabled: _canMutate && !_writeBusy,
     changed: changed,
     retainFocusWhenDisabled: retainFocusWhenDisabled,
@@ -3222,7 +3222,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       return _lazyCell(
         row,
         field,
-        masterEditText(context, '来源', 'Source', '공급 방식'),
+        localizedText(context, '来源', 'Source', '공급 방식'),
         values.sourceType ?? '',
         (_) => UtenDropdownField(
           value: values.sourceType,
@@ -3245,9 +3245,9 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
       );
     }
     final label = switch (field) {
-      'model' => masterEditText(context, '型号', 'Model', '모델'),
-      'spec' => masterEditText(context, '规格', 'Specification', '규격'),
-      _ => masterEditText(context, '材质', 'Material', '재질'),
+      'model' => localizedText(context, '型号', 'Model', '모델'),
+      'spec' => localizedText(context, '规格', 'Specification', '규격'),
+      _ => localizedText(context, '材质', 'Material', '재질'),
     };
     return _lazyCell(
       row,
@@ -3274,7 +3274,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
     return _lazyCell(
       row,
       'color',
-      masterEditText(context, '颜色', 'Color', '색상'),
+      localizedText(context, '颜色', 'Color', '색상'),
       values.colorLabel ?? '',
       (_) => Consumer(
         builder: (context, cellRef, child) {
@@ -3687,7 +3687,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                 return _lazyCell(
                   r,
                   'consumptionBasis',
-                  masterEditText(context, '计量方式', 'Consumption basis', '소모 기준'),
+                  localizedText(context, '计量方式', 'Consumption basis', '소모 기준'),
                   values.consumption.label,
                   (_) => UtenDropdownField(
                     value: values.consumption.code,
@@ -3754,10 +3754,10 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                 return _lazyCell(
                   r,
                   'allowPartialPackage',
-                  masterEditText(context, '尾包', 'Partial package', '부분 포장'),
+                  localizedText(context, '尾包', 'Partial package', '부분 포장'),
                   values.partial
-                      ? masterEditText(context, '允许', 'Allowed', '허용')
-                      : masterEditText(context, '整包', 'Whole package', '전체 포장'),
+                      ? localizedText(context, '允许', 'Allowed', '허용')
+                      : localizedText(context, '整包', 'Whole package', '전체 포장'),
                   (_) => UtenDropdownField(
                     value: values.partial ? 'yes' : 'no',
                     allowClear: false,

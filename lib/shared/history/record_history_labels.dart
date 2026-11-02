@@ -1,6 +1,6 @@
+import '../../core/l10n/localized_text.dart';
 import 'package:flutter/material.dart';
 
-import '../../features/basic_data/widgets/master_inline_edit.dart';
 
 const masterHistoryViewPermissions = <String, String>{
   'goods': 'goods:view',
@@ -45,7 +45,7 @@ String masterHistoryEntityLabel(BuildContext context, String value) {
     'payment-styles' => ('收付款类别', 'Receipt/payment categories', '입출금 분류'),
     _ => ('全部资料', 'All records', '전체 자료'),
   };
-  return masterEditText(context, labels.$1, labels.$2, labels.$3);
+  return localizedText(context, labels.$1, labels.$2, labels.$3);
 }
 
 String masterHistoryActionLabel(BuildContext context, String value) {
@@ -57,25 +57,20 @@ String masterHistoryActionLabel(BuildContext context, String value) {
     'STATUS' => ('启停变更', 'Status changed', '상태 변경'),
     _ => ('全部操作', 'All actions', '전체 작업'),
   };
-  return masterEditText(context, labels.$1, labels.$2, labels.$3);
+  return localizedText(context, labels.$1, labels.$2, labels.$3);
 }
 
 String masterHistorySourceLabel(
   BuildContext context,
   String value,
 ) => switch (value) {
-  'ACCESS' => masterEditText(context, '访问权限', 'Access permissions', '접근 권한'),
-  'PASSWORD' => masterEditText(context, '密码保护', 'Password protection', '암호 보호'),
-  'ORDER' => masterEditText(context, '排列顺序', 'Order', '정렬'),
-  'SCOPE' => masterEditText(context, '数据范围', 'Data scope', '데이터 범위'),
-  'TEMPLATE' => masterEditText(
-    context,
-    '权限模板',
-    'Permission template',
-    '권한 템플릿',
-  ),
-  'CATEGORY' => masterEditText(context, '分类', 'Category', '분류'),
-  'BOM' => masterEditText(context, '组装信息', 'Assembly', '조립 정보'),
-  'EXTENSION' => masterEditText(context, '扩展资料', 'Custom fields', '확장 필드'),
-  _ => masterEditText(context, '资料', 'Record', '자료'),
+  'ACCESS' => localizedText(context, '访问权限', 'Access permissions', '접근 권한'),
+  'PASSWORD' => localizedText(context, '密码保护', 'Password protection', '암호 보호'),
+  'ORDER' => localizedText(context, '排列顺序', 'Order', '정렬'),
+  'SCOPE' => localizedText(context, '数据范围', 'Data scope', '데이터 범위'),
+  'TEMPLATE' => localizedText(context, '权限模板', 'Permission template', '권한 템플릿'),
+  'CATEGORY' => localizedText(context, '分类', 'Category', '분류'),
+  'BOM' => localizedText(context, '组装信息', 'Assembly', '조립 정보'),
+  'EXTENSION' => localizedText(context, '扩展资料', 'Custom fields', '확장 필드'),
+  _ => localizedText(context, '资料', 'Record', '자료'),
 };

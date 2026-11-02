@@ -1,3 +1,4 @@
+import '../../core/l10n/localized_text.dart';
 import 'record_history_area.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -5,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../../components/buttons/uten_back_button.dart';
 import '../../components/layout/uten_app_bar.dart';
 import '../../components/layout/uten_content_container.dart';
-import '../../features/basic_data/widgets/master_inline_edit.dart';
 import 'record_revision_body.dart';
 
 class RecordRevisionPage extends StatefulWidget {
@@ -55,7 +55,7 @@ class _RevisionPageState extends State<RecordRevisionPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: UtenAppBar(
-      title: masterEditText(context, '修改版本详情', 'Revision details', '변경 버전 상세'),
+      title: localizedText(context, '修改版本详情', 'Revision details', '변경 버전 상세'),
       // 忙时空回调挡住返回（传 null 会回落默认返回行为）；不包 AbsorbPointer，
       // 让 UtenAppBar 认出 UtenBackButton 以收紧 leading 槽。
       leading: UtenBackButton(onPressed: _busy ? () {} : _back),

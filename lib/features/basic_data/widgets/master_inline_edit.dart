@@ -1,3 +1,4 @@
+import '../../../core/l10n/localized_text.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -61,13 +62,6 @@ class MasterInlineField<T> {
   final bool Function(T row)? enabledOf;
   final bool Function(T row)? editableOf;
 }
-
-String masterEditText(BuildContext context, String zh, String en, String ko) =>
-    switch (Localizations.localeOf(context).languageCode) {
-      'en' => en,
-      'ko' => ko,
-      _ => zh,
-    };
 
 Future<void> _paintFeedback() async {
   // UtenBusyOverlay mounts its root OverlayEntry after the first frame. Let
@@ -409,7 +403,7 @@ class MasterInlineEditController<T> extends ChangeNotifier {
       context: context,
       builder: (dialogContext) => UtenAlertDialog(
         title: Text(
-          masterEditText(
+          localizedText(
             context,
             '放弃未保存的修改？',
             'Discard unsaved changes?',
@@ -418,14 +412,14 @@ class MasterInlineEditController<T> extends ChangeNotifier {
         ),
         content: Text(
           _creation.hasUncertain
-              ? masterEditText(
+              ? localizedText(
                   context,
                   '上次新增可能已保存。放弃只清理本地草稿，不会撤销服务器上的资料，请刷新核对。',
                   'The last creation may already be saved. Discarding clears only local drafts and does not undo server records. Refresh the list to check.',
                   '이전 신규 자료가 이미 저장되었을 수 있습니다. 버리기는 로컬 초안만 지우며 서버 자료를 취소하지 않습니다. 목록을 새로 고침해 확인하세요.',
                 )
               : discardNote ??
-                    masterEditText(
+                    localizedText(
                       context,
                       '表格中的修改尚未保存。放弃后不会写入资料。',
                       'Changes in this table have not been saved.',
@@ -436,14 +430,14 @@ class MasterInlineEditController<T> extends ChangeNotifier {
           TextButton(
             onPressed: () => decide(dialogContext, false),
             child: Text(
-              masterEditText(context, '继续编辑', 'Keep editing', '계속 편집'),
+              localizedText(context, '继续编辑', 'Keep editing', '계속 편집'),
             ),
           ),
           FilledButton(
             onPressed: () => decide(dialogContext, true),
             child: Text(
               discardLabel ??
-                  masterEditText(
+                  localizedText(
                     context,
                     '放弃修改',
                     'Discard changes',
@@ -679,7 +673,7 @@ class MasterInlineEditController<T> extends ChangeNotifier {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Semantics(
-                      label: masterEditText(context, '必填', 'Required', '필수'),
+                      label: localizedText(context, '必填', 'Required', '필수'),
                       child: Text(
                         '*',
                         style: Theme.of(context).textTheme.labelLarge?.copyWith(
@@ -1036,7 +1030,7 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
         }
       } else if (field.type == MasterFieldType.custom && display.isNotEmpty) {
         // A remounted relation cell must not disclose a UUID as its label.
-        display = masterEditText(
+        display = localizedText(
           context,
           '已修改，点击查看',
           'Changed, click to view',
@@ -1073,7 +1067,7 @@ class _MasterInlineCellState<T> extends State<_MasterInlineCell<T>> {
     return UtenInlineEditCell(
       key: ObjectKey(widget.controller),
       activationKey: ValueKey('inline-activate-${widget.id}-${field.key}'),
-      semanticLabel: masterEditText(
+      semanticLabel: localizedText(
         context,
         '编辑${widget.label}',
         'Edit ${widget.label}',
@@ -1203,18 +1197,13 @@ class MasterInlineEditActions<T> extends StatelessWidget {
           UtenBusyOverlay(
             showDoNotLeaveHint: false,
             title: controller.preparing
-                ? masterEditText(
+                ? localizedText(
                     context,
                     '正在进入编辑模式',
                     'Opening edit mode',
                     '편집 모드 여는 중',
                   )
-                : masterEditText(
-                    context,
-                    '正在保存资料',
-                    'Saving records',
-                    '자료 저장 중',
-                  ),
+                : localizedText(context, '正在保存资料', 'Saving records', '자료 저장 중'),
             semanticsKey: ValueKey(
               controller.preparing
                   ? 'master-inline-preparing'
@@ -1234,7 +1223,7 @@ class MasterInlineEditActions<T> extends StatelessWidget {
         onPressed: controller.preparing
             ? null
             : () => controller.prepareToBegin(_paintFeedback),
-        child: Text(masterEditText(context, '编辑模式', 'Edit table', '표 편집')),
+        child: Text(localizedText(context, '编辑模式', 'Edit table', '표 편집')),
       ),
     if (controller.active) ...[
       if (controller.error != null)
@@ -1261,7 +1250,7 @@ class MasterInlineEditActions<T> extends StatelessWidget {
               },
         child: Text(
           cancelLabel ??
-              masterEditText(context, '取消编辑', 'Cancel editing', '편집 취소'),
+              localizedText(context, '取消编辑', 'Cancel editing', '편집 취소'),
         ),
       ),
       UtenButton(
@@ -1271,7 +1260,7 @@ class MasterInlineEditActions<T> extends StatelessWidget {
             ? null
             : () => controller.save(onSave, beforeWrite: _paintFeedback),
         child: Text(
-          masterEditText(
+          localizedText(
             context,
             '保存 ${controller.changedRows} 行修改',
             'Save ${controller.changedRows} rows',
@@ -1429,12 +1418,7 @@ class _MasterInlineOptionsCellState extends State<MasterInlineOptionsCell> {
         return TextButton(
           onPressed: () => setState(() => _options = widget.load()),
           child: Text(
-            masterEditText(
-              context,
-              '重新加载选项',
-              'Reload choices',
-              '선택 항목 다시 불러오기',
-            ),
+            localizedText(context, '重新加载选项', 'Reload choices', '선택 항목 다시 불러오기'),
           ),
         );
       }

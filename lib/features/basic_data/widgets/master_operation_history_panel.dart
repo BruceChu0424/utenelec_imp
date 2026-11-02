@@ -1,3 +1,4 @@
+import '../../../core/l10n/localized_text.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -358,7 +359,7 @@ class _MasterOperationHistoryPanelState
                   children: [
                     Expanded(
                       child: Text(
-                        masterEditText(
+                        localizedText(
                           context,
                           '操作记录与撤回',
                           'Operation history',
@@ -394,7 +395,7 @@ class _MasterOperationHistoryPanelState
             child: !canOpen
                 ? Center(
                     child: Text(
-                      masterEditText(
+                      localizedText(
                         context,
                         '当前没有可查看的操作权限。',
                         'You do not have access to this operation history.',

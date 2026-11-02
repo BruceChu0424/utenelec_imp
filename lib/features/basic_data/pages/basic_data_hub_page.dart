@@ -1,3 +1,4 @@
+import '../../../core/l10n/localized_text.dart';
 // 基础资料入口页（hub）—— 货品资料 / 模具资料 等同级入口。
 //
 // 工作台「基础资料」卡片进入本页；再点具体资料类型进入各自的分类树+主档页。
@@ -9,7 +10,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
-import '../widgets/master_inline_edit.dart';
 import '../widgets/master_record_history_labels.dart';
 import '../../../shared/drafts/form_drafts_page.dart';
 
@@ -123,7 +123,7 @@ class BasicDataHubPage extends ConsumerWidget {
           if (superAdmin ||
               masterHistoryViewPermissions.values.any(permissions.contains))
             UtenAppBarActionButton(
-              label: masterEditText(context, '修改历史', 'Change history', '변경 기록'),
+              label: localizedText(context, '修改历史', 'Change history', '변경 기록'),
               onPressed: () => pushPage(context, RouteName.basicinfoHistory),
             ),
           const FormDraftsAppBarButton(categoryId: 'basicinfo'),

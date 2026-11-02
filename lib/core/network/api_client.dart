@@ -46,7 +46,9 @@ class ApiClient {
     this.streamingDownloads = false,
     ApiMutationReloadSafety? reloadSafety,
   }) : _reloadSafety = reloadSafety ?? apiMutationReloadSafety {
-    if (!_dio.interceptors.any((item) => item is DiagnosticRequestInterceptor)) {
+    if (!_dio.interceptors.any(
+      (item) => item is DiagnosticRequestInterceptor,
+    )) {
       _dio.interceptors.add(DiagnosticRequestInterceptor());
     }
   }

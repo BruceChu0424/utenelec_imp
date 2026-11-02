@@ -136,7 +136,8 @@ class _FinanceApi extends ApiClient {
         {'id': _oldDepartment, 'name': '同 UUID 的客户陷阱'},
       ];
     }
-    if (path == '/master/accounts/dict' || path == '/business-references/accounts') {
+    if (path == '/master/accounts/dict' ||
+        path == '/business-references/accounts') {
       return [
         {
           'id': 'account-1',

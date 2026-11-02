@@ -105,7 +105,9 @@ Future<void> _source(
   await tester.pumpAndSettle();
   expect(find.bySemanticsLabel('退出全屏'), findsOneWidget);
   expect(
-    ModalRoute.of(tester.element(find.bySemanticsLabel('退出全屏')))?.barrierDismissible,
+    ModalRoute.of(
+      tester.element(find.bySemanticsLabel('退出全屏')),
+    )?.barrierDismissible,
     isFalse,
     reason: '保留原showGeneralDialog的不可点遮罩关闭合同',
   );

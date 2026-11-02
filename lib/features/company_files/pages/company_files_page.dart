@@ -1,6 +1,5 @@
+import '../../../core/l10n/localized_text.dart';
 import '../../../core/router/page_navigation_session.dart';
-import '../../../features/basic_data/widgets/master_inline_edit.dart'
-    show masterEditText;
 import '../../../shared/history/record_history_action.dart';
 import '../../../shared/history/record_history_area.dart';
 import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
@@ -639,7 +638,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
   List<UtenContextMenuEntry> _menuEntries(CompanyFile e) => [
     if (e.allows('view') && !e.locked)
       UtenMenuItem(
-        label: masterEditText(context, '修改历史', 'Change history', '변경 기록'),
+        label: localizedText(context, '修改历史', 'Change history', '변경 기록'),
         icon: Icons.history,
         enabled: !_blocked,
         onTap: () => showMasterRecordHistory(

@@ -214,7 +214,7 @@ class _MasterInlineCreation<T> {
                   icon: const Icon(Icons.more_horiz_rounded),
                   label: Text(
                     _strings?.masterInlineOtherFields ??
-                        masterEditText(
+                        localizedText(
                           context,
                           '补充必填字段',
                           'Fill required fields',
@@ -502,7 +502,7 @@ class _MasterInlineCreation<T> {
           return UtenAlertDialog(
             title: Text(
               _strings?.masterInlineNewRecord ??
-                  masterEditText(
+                  localizedText(
                     context,
                     '填写新资料',
                     'New record details',
@@ -518,7 +518,7 @@ class _MasterInlineCreation<T> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext),
-                child: Text(masterEditText(context, '取消', 'Cancel', '취소')),
+                child: Text(localizedText(context, '取消', 'Cancel', '취소')),
               ),
               FilledButton(
                 onPressed: () {
@@ -547,7 +547,7 @@ class _MasterInlineCreation<T> {
                 },
                 child: Text(
                   _strings?.masterInlineApplyDraft ??
-                      masterEditText(
+                      localizedText(
                         context,
                         '应用到表格',
                         'Apply to table',
@@ -681,7 +681,7 @@ class _MasterCreationCellState<T> extends State<_MasterCreationCell<T>> {
       activationKey: ValueKey(
         'inline-create-activate-${draft.key}-${field.key}',
       ),
-      semanticLabel: masterEditText(
+      semanticLabel: localizedText(
         context,
         '编辑${field.label}',
         'Edit ${field.label}',

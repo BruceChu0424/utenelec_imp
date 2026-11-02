@@ -1,3 +1,4 @@
+import '../../../core/l10n/localized_text.dart';
 // 仓库资料管理页(基础资料)。
 //
 // 主档形态(ADR-145)：全公司只有一个主仓(编号 001)，只作汇总、负责人范围和导航；其余仓都是
@@ -182,7 +183,7 @@ class _WarehousePageState extends ConsumerState<WarehousePage>
         final value = entry.value;
         if (value is! bool && value != 'true' && value != 'false') {
           throw StateError(
-            masterEditText(
+            localizedText(
               context,
               '请选择有效的仓库选项',
               'Select a valid warehouse option',

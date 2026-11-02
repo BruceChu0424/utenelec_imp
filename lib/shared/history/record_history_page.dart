@@ -1,3 +1,4 @@
+import '../../core/l10n/localized_text.dart';
 import 'record_history_area.dart';
 import '../../shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../shared/paging/cursor_paged_read_adapter.dart';
@@ -34,7 +35,6 @@ import 'record_history_repository.dart'
         masterRecordHistoryRepositoryProvider;
 import '../../features/basic_data/models/master_facet.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
-import '../../features/basic_data/widgets/master_inline_edit.dart';
 import 'record_history_labels.dart';
 import '../../features/basic_data/widgets/product_category_picker_panel.dart';
 
@@ -116,7 +116,7 @@ class _HistoryPageState extends ConsumerState<RecordHistoryPage>
   bool _pickingDate = false;
   String? _error;
   String t(String zh, String en, String ko) =>
-      masterEditText(context, zh, en, ko);
+      localizedText(context, zh, en, ko);
   Object get _query => (
     _entity,
     _record,

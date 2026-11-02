@@ -85,10 +85,13 @@ class ClientUpdateController extends ChangeNotifier {
   void _notify() {
     if (_loggedStage != stage) {
       _loggedStage = stage;
-      AppDiagnostics.record('update.stage', fields: {
-        'stage': stage.name,
-        if (error != null) 'exceptionType': error.runtimeType.toString(),
-      });
+      AppDiagnostics.record(
+        'update.stage',
+        fields: {
+          'stage': stage.name,
+          if (error != null) 'exceptionType': error.runtimeType.toString(),
+        },
+      );
     }
     if (!_disposed) notifyListeners();
   }
@@ -156,9 +159,17 @@ class ClientUpdateController extends ChangeNotifier {
   }
 
   Future<void> update() async {
-    AppDiagnostics.record('update.clicked', fields: {
-      'stage': stage.name, 'reason': _disposed ? 'retired' : busy ? 'busy' : 'ready',
-    });
+    AppDiagnostics.record(
+      'update.clicked',
+      fields: {
+        'stage': stage.name,
+        'reason': _disposed
+            ? 'retired'
+            : busy
+            ? 'busy'
+            : 'ready',
+      },
+    );
     final candidate = release;
     final context = installed;
     if (_disposed ||

@@ -1,7 +1,7 @@
+import '../../core/l10n/localized_text.dart';
 import '../../core/router/route_names.dart';
 import 'package:flutter/material.dart';
 
-import '../../features/basic_data/widgets/master_inline_edit.dart';
 import 'record_history_labels.dart';
 
 /// Presentation and transport differences; object visibility remains server-owned.
@@ -54,14 +54,14 @@ enum RecordHistoryArea {
     _ => superAdmin || viewPermissions.values.any(grants.contains),
   };
   String title(BuildContext context) => switch (this) {
-    master => masterEditText(context, '修改历史', 'Change history', '변경 기록'),
-    companyFiles => masterEditText(
+    master => localizedText(context, '修改历史', 'Change history', '변경 기록'),
+    companyFiles => localizedText(
       context,
       '公司资料修改历史',
       'Company file history',
       '회사 자료 변경 기록',
     ),
-    permissions => masterEditText(
+    permissions => localizedText(
       context,
       '权限修改历史',
       'Permission history',

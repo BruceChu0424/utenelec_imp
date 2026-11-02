@@ -1,3 +1,4 @@
+import '../../../core/l10n/localized_text.dart';
 import '../models/goods_detail_sequence.dart';
 import '../../../shared/widgets/read_owned_dialog.dart';
 // 货品资料分类树管理页（基础资料）
@@ -560,12 +561,12 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
           if (c.key == 'clientGoodsName')
             MasterColumnDef<GoodsListItem>(
               key: 'hasBom',
-              label: masterEditText(context, '组装信息', 'Assembly', '조립 정보'),
+              label: localizedText(context, '组装信息', 'Assembly', '조립 정보'),
               width: 120,
               exportable: false,
               value: (goods) => goods.hasBom
-                  ? masterEditText(context, '有组装信息', 'Has assembly', '조립 정보 있음')
-                  : masterEditText(context, '无组装信息', 'No assembly', '조립 정보 없음'),
+                  ? localizedText(context, '有组装信息', 'Has assembly', '조립 정보 있음')
+                  : localizedText(context, '无组装信息', 'No assembly', '조립 정보 없음'),
             ),
         ],
     ];

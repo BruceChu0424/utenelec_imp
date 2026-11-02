@@ -248,7 +248,8 @@ class _FinanceNameApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/master/accounts/dict' || path == '/business-references/accounts') {
+    if (path == '/master/accounts/dict' ||
+        path == '/business-references/accounts') {
       if (failAccounts) throw StateError('offline');
       return accounts;
     }

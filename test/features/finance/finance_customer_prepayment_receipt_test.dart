@@ -441,7 +441,8 @@ class _PrepaymentReceiptApi extends ApiClient {
           const {'id': 'client-1', 'name': '甲客户'},
       ];
     }
-    if (path == '/master/accounts/dict' || path == '/business-references/accounts') {
+    if (path == '/master/accounts/dict' ||
+        path == '/business-references/accounts') {
       return const [
         {
           'id': 'account-1',

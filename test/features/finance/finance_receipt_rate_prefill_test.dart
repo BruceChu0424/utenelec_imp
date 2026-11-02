@@ -224,7 +224,7 @@ class _DraftReceiptApi extends ApiClient {
         {'id': 'client-1', 'name': '迈顿智能'},
       ];
     }
-    if (path == '/master/accounts/dict') {
+    if (path == '/master/accounts/dict' || path == '/business-references/accounts') {
       return const [
         {
           'id': 'account-1',

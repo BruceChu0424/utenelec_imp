@@ -97,6 +97,18 @@ class GlOperatingPlStreamingTest {
         assertThat(pages).hasSize(1);assertThat(pages.getFirst().rows()).hasSize(500);
     }
 
+    @Test void unconfiguredDetailsCannotBecomeApparentlyCompleteLaborOrAdminTotals() {
+        var result = service().operatingPlPage(2026,10,2,500);
+        for (String subtotal : List.of("工费合计", "管理费合计")) {
+            var row = result.rows().stream().filter(value -> subtotal.equals(value.get("sub")))
+                    .findFirst().orElseThrow();
+            assertThat(row.get("amount")).as(subtotal).isNull();
+            assertThat(row.get("amountExact")).isNull();
+            assertThat(row.get("salesRatio")).isNull();
+            assertThat(row.get("basis").toString()).contains("尚未配置完整");
+        }
+    }
+
     @Test void headersMatchAfterAllFiveHundredAndOneCategoriesAndRetainTheOriginalSubtotalBeforePagingAndExport() {
         var service=service();
         var options=new com.uten.imp.features.finance.report.FinanceReportColumnOptions(

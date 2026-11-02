@@ -105,9 +105,13 @@ class _FinanceReportTablePageState
 
   /// 本页（cardId）对应的偏好 provider。
   NotifierProvider<ReportFilterPrefsNotifier, ReportFilterPrefs>
-  get _prefsProvider => widget.cardId == 'summary'
-      ? financeSummaryReportPrefsProvider
-      : financeDetailReportPrefsProvider;
+  get _prefsProvider => switch (widget.cardId) {
+    'summary' => financeSummaryReportPrefsProvider,
+    'recon' => financeReconReportPrefsProvider,
+    'cost' => financeCostReportPrefsProvider,
+    'gl' => financeGlReportPrefsProvider,
+    _ => financeDetailReportPrefsProvider,
+  };
 
   @override
   void dispose() {

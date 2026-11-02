@@ -1,0 +1,129 @@
+{
+  "id": "E-FINANCE-DATA-AUDIT-20261101",
+  "userDate": "2026-11-01",
+  "baseCommit": "2f4a21f71",
+  "branch": "uimp/finance-report-data-audit-20261101",
+  "scope": {
+    "visibleReportCombinations": 48,
+    "uniqueEndpoints": 40,
+    "inventoryIsNotFullLiveValidation": true
+  },
+  "readiness": "needs_revision",
+  "completeness": "partial",
+  "changesDeployed": false,
+  "productionDataWritten": false,
+  "localSnapshot": {
+    "bankTransfers": 0,
+    "arApRows": 88734,
+    "accounts": 28,
+    "migration": "987",
+    "nativeArApRows": 0,
+    "monthlySymmetricDifference": 0,
+    "log": "output-finance-local-snapshot.log",
+    "monthlyGroups": 389,
+    "balanceDifference": "-1260088.8900",
+    "accountFlowRows": 31025,
+    "latestFlowChinaDate": "2026-10-17",
+    "accountReplayDifferences": 1,
+    "glEntries": 0,
+    "container": "uten-imp-postgres-5434",
+    "readOnly": true
+  },
+  "backend": [
+    {
+      "log": "core-audit-final-junit.log",
+      "failed": 0,
+      "passed": 39,
+      "suite": "latest_bank_receipt_income"
+    },
+    {
+      "log": "tmp-finance-gl-final-test.log",
+      "failed": 0,
+      "passed": 102,
+      "suite": "gl_cost_statements_fa"
+    },
+    {
+      "logs": [
+        "export-audit-tests.log",
+        "export-snapshot-after-and-common.log",
+        "export-snapshot-final.log"
+      ],
+      "failed": 0,
+      "passed": 66,
+      "suite": "shared_export"
+    }
+  ],
+  "flutter": [
+    {
+      "log": "output-finance-regression.log",
+      "failed": 36,
+      "passed": 787,
+      "stage": "broad_initial"
+    },
+    {
+      "log": "output-finance-final-ui.log",
+      "failed": 3,
+      "passed": 138,
+      "stage": "affected_rerun"
+    },
+    {
+      "log": "output-finance-final-reference-layout.log",
+      "failed": 0,
+      "resolvesPriorThreeFailures": true,
+      "passed": 37,
+      "stage": "final_reference_layout"
+    }
+  ],
+  "remaining": [
+    "party_monthly_dirty_snapshot_invisibility",
+    "party_monthly_dirty_marker_concurrency_unreproduced",
+    "historical_account_master_ledger_difference",
+    "production_data_download_and_latency_unverified",
+    "win7_finance_unmigrated"
+  ],
+  "visualChecks": [
+    "reports-account-report-1920-1.0.png",
+    "reports-account-report-360-1.5.png"
+  ],
+  "sourceHashes": [
+    {
+      "path": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "sha256": "2710695d30229df0b8cbc12c446f80a386da06fd9b6dbc736261f67796ef7991"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_report_table_page.dart",
+      "sha256": "fddc47aa8fed5754a290329b95d1812d26e542152cc9cec71e86ef9b02266392"
+    },
+    {
+      "path": "lib/features/report/shared/report_filter_prefs.dart",
+      "sha256": "7a94b73c79de9f0a4e7dc352b6d60a3e1fa703e0d33792b5944908a226611630"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportService.java",
+      "sha256": "c0f962b73ca46fa110304ad314d35b36bc0dc0a39821abd0593d5251be4351b0"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportController.java",
+      "sha256": "f40bcdbf57a5690f733d9c975b4f4793dc3332df3f644064e9f8613bd72398c6"
+    },
+    {
+      "path": "server/src/main/java/com/uten/imp/features/finance/gl/GlReportService.java",
+      "sha256": "de02de4e9f2f59401ba9a2b4cf54b0bdbd2d63700e3a5cb1baeb1f78625a38e3"
+    },
+    {
+      "path": "scripts/finance/report-data-readonly-audit.sql",
+      "sha256": "9ba89640cab44ecd6290881c5682e91cf29a163947a054de21170e2081f15939"
+    }
+  ],
+  "staticAnalysis": {
+    "log": "output-finance-analyze-final.log",
+    "issues": 0
+  },
+  "extendedCoreAt0646Utc": {
+    "completedTests": 108,
+    "completedSuites": 20,
+    "scaleTest250000Status": "running_no_latency_result",
+    "status": "still_running",
+    "failed": 0
+  }
+}

@@ -11,10 +11,24 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/pages/finance_report_table_page.dart';
+import 'package:uten_imp/features/report/shared/report_filter_prefs.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  testWidgets('对账成本和总账各自恢复分类，不受钱流明细分类影响', (tester) async {
+    for (final entry in [
+      ('detail', '/ar-ap/detail'),
+      ('recon', '/statements/supplier'),
+      ('cost', '/cost/plastic'),
+      ('gl', '/gl/profit-monthly'),
+    ]) {
+      final api = await _pump(tester, entry.$1, separatePrefs: true);
+      expect(api.requests.first.$1, endsWith(entry.$2));
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+    }
+  });
   testWidgets(
     'report headers keep full query across page export and currency clear without replay',
     (tester) async {
@@ -266,6 +280,7 @@ Future<_HeaderApi> _pump(
   WidgetTester tester,
   String card, {
   bool serverTotals = false,
+  bool separatePrefs = false,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1800, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -281,6 +296,12 @@ Future<_HeaderApi> _pump(
           Perm.financeReportExport,
         }),
         isSuperAdminProvider.overrideWithValue(false),
+        if (separatePrefs) ...[
+          financeDetailReportPrefsProvider.overrideWith(_DetailPrefs.new),
+          financeReconReportPrefsProvider.overrideWith(_ReconPrefs.new),
+          financeCostReportPrefsProvider.overrideWith(_CostPrefs.new),
+          financeGlReportPrefsProvider.overrideWith(_GlPrefs.new),
+        ],
       ],
       child: MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -292,6 +313,26 @@ Future<_HeaderApi> _pump(
   );
   await tester.pumpAndSettle();
   return api;
+}
+
+class _DetailPrefs extends FinanceDetailReportPrefsNotifier {
+  @override
+  ReportFilterPrefs build() => const ReportFilterPrefs(docType: '1');
+}
+
+class _ReconPrefs extends FinanceReconReportPrefsNotifier {
+  @override
+  ReportFilterPrefs build() => const ReportFilterPrefs(docType: '2');
+}
+
+class _CostPrefs extends FinanceCostReportPrefsNotifier {
+  @override
+  ReportFilterPrefs build() => const ReportFilterPrefs(docType: '4');
+}
+
+class _GlPrefs extends FinanceGlReportPrefsNotifier {
+  @override
+  ReportFilterPrefs build() => const ReportFilterPrefs(docType: '3');
 }
 
 class _HeaderApi extends ApiClient {

@@ -337,6 +337,9 @@ class FinanceReportObjectScopeTest {
         List<CapturedQuery> queries = captureQueries(em);
         OwnerScope ownerScope = new OwnerScope(true, Set.of());
         when(access.scope()).thenReturn(ownerScope);
+        when(access.hasAuthority("account:view")).thenReturn(true);
+        when(access.hasAuthority("account:balance:view")).thenReturn(true);
+        when(access.hasAuthority("account:flow:view")).thenReturn(true);
         when(access.nativeReadScope(anyString(), eq(OWNERS_PARAM), eq(ownerScope)))
                 .thenReturn(new NativeReadScope("1=1", null, Set.of()));
         return fixture(em, access, queries);

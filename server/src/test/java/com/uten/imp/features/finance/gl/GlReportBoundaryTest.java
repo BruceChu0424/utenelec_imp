@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
-import java.time.ZoneOffset;
+import com.uten.imp.common.time.BusinessTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -51,14 +51,14 @@ class GlReportBoundaryTest {
                 .hasMessage("总账月度取数缺少完整月份");
     }
 
-    @Test void finishedOutputUsesACheckedCalendarYearBoundaryInUtc() {
+    @Test void finishedOutputUsesTheBusinessCalendarYearBoundary() {
         EntityManager em = mock(EntityManager.class);
         Query query = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.getResultList()).thenReturn(List.of());
         GlReportService service = new GlReportService(em, mock(GlReportLineSource.class),com.uten.imp.support.FinanceReportTestAccess.company());
         ReflectionTestUtils.invokeMethod(service, "finishedInMonthly", 2026);
-        verify(query).setParameter("from", LocalDate.of(2026, 1, 1).atStartOfDay(ZoneOffset.UTC).toOffsetDateTime());
-        verify(query).setParameter("to", LocalDate.of(2027, 1, 1).atStartOfDay(ZoneOffset.UTC).toOffsetDateTime());
+        verify(query).setParameter("from", BusinessTime.startOfDay(LocalDate.of(2026, 1, 1)));
+        verify(query).setParameter("to", BusinessTime.startOfDay(LocalDate.of(2027, 1, 1)));
     }
 }

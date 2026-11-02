@@ -591,7 +591,7 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async => switch (path) {
-    '/master/accounts/dict' => [
+    '/master/accounts/dict' || '/business-references/accounts' => [
       {
         'id': 'account-1',
         'code': 'ZH000001',

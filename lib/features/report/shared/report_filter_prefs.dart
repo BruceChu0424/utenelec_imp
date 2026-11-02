@@ -222,6 +222,21 @@ class FinanceSummaryReportPrefsNotifier extends ReportFilterPrefsNotifier {
   String get prefKey => 'report.finance.summary';
 }
 
+class FinanceReconReportPrefsNotifier extends ReportFilterPrefsNotifier {
+  @override
+  String get prefKey => 'report.finance.recon';
+}
+
+class FinanceCostReportPrefsNotifier extends ReportFilterPrefsNotifier {
+  @override
+  String get prefKey => 'report.finance.cost';
+}
+
+class FinanceGlReportPrefsNotifier extends ReportFilterPrefsNotifier {
+  @override
+  String get prefKey => 'report.finance.gl';
+}
+
 class FinanceArApOverviewReportPrefsNotifier extends ReportFilterPrefsNotifier {
   @override
   String get prefKey => 'report.finance.arApOverview';
@@ -293,6 +308,18 @@ final financeDetailReportPrefsProvider =
 final financeSummaryReportPrefsProvider =
     NotifierProvider<FinanceSummaryReportPrefsNotifier, ReportFilterPrefs>(
       FinanceSummaryReportPrefsNotifier.new,
+    );
+final financeReconReportPrefsProvider =
+    NotifierProvider<FinanceReconReportPrefsNotifier, ReportFilterPrefs>(
+      FinanceReconReportPrefsNotifier.new,
+    );
+final financeCostReportPrefsProvider =
+    NotifierProvider<FinanceCostReportPrefsNotifier, ReportFilterPrefs>(
+      FinanceCostReportPrefsNotifier.new,
+    );
+final financeGlReportPrefsProvider =
+    NotifierProvider<FinanceGlReportPrefsNotifier, ReportFilterPrefs>(
+      FinanceGlReportPrefsNotifier.new,
     );
 final financeArApOverviewReportPrefsProvider =
     NotifierProvider<FinanceArApOverviewReportPrefsNotifier, ReportFilterPrefs>(

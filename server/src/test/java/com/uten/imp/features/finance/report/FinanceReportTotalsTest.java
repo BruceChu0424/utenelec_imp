@@ -117,17 +117,10 @@ class FinanceReportTotalsTest {
     }
 
     @Test
-    void incomeDetailHasNoLineLevelAmountSoNoAggregateQueryIsIssued() {
+    void incomeDetailTotalsRealClassificationAmountsAndNeverRepeatedDocumentAmounts() {
         scopedToOwner();
-        Query query = emptyQuery();
-        when(em.createNativeQuery(anyString())).thenReturn(query);
-
-        service().incomeDetail(null, null, null, null, null, null, null, Map.of(), 1, 50, null, null);
-
-        ArgumentCaptor<String> sql = ArgumentCaptor.forClass(String.class);
-        verify(em, atLeastOnce()).createNativeQuery(sql.capture());
-        // 整张表只有重复的单头金额，没有可加的列 —— 一条聚合查询都不跑。
-        assertThat(sql.getAllValues()).noneMatch(s -> s.contains("SUM(t.\""));
+        String aggregate=aggregateSqlOf(()->service().incomeDetail(null,null,null,null,null,null,null,Map.of(),1,50,null,null));
+        assertThat(aggregate).contains("SUM(t.\"incomeAmount\")").doesNotContain("SUM(t.\"amountTotal\")");
     }
 
     private String aggregateSqlOf(Runnable call) {

@@ -1293,7 +1293,7 @@ class _ReceiptApi extends ApiClient {
           const {'id': 'agent-1', 'name': '测试外贸代理'},
       ];
     }
-    if (path == '/master/accounts/dict') {
+    if (path == '/master/accounts/dict' || path == '/business-references/accounts') {
       if (failAccounts) throw StateError('offline');
       final resolvedCurrencyId =
           accountCurrencyId ??

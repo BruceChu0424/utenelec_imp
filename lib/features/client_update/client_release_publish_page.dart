@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/buttons/uten_button.dart';
+import '../../components/cards/uten_card.dart';
 import '../../components/feedback/uten_dialog.dart';
 import '../../components/inputs/uten_dropdown_scroll_scope.dart';
 import '../../components/inputs/uten_field_hint_icon.dart';
@@ -24,6 +25,7 @@ import 'client_release.dart';
 import 'client_release_access.dart';
 import 'client_release_publish_drafts.dart';
 import 'client_release_publish_queue.dart';
+import 'client_release_publish_widgets.dart';
 import 'software_downloads_presentation.dart';
 
 typedef ClientReleaseFilePicker =
@@ -449,59 +451,117 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
           )
         : LayoutBuilder(
             builder: (context, constraints) {
-              final summary = _summary();
+              final wide =
+                  constraints.maxWidth >= 1180 &&
+                  MediaQuery.textScalerOf(context).scale(14) <= 19;
               final notice =
                   _notice != null ||
                       _storageError != null ||
                       _queue.error != null
                   ? Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: UtenSpacing.s12,
-                      ),
-                      child: Text(
-                        _storageError != null
-                            ? '本机草稿尚未保存，请保留此页并重试；未保全的项目不会继续发送。'
-                            : _notice ?? _queue.error!,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: _storageError != null
-                              ? theme.colorScheme.error
-                              : theme.colorScheme.onSurfaceVariant,
+                      padding: const EdgeInsets.only(bottom: UtenSpacing.s16),
+                      child: Container(
+                        padding: const EdgeInsets.all(UtenSpacing.s12),
+                        decoration: BoxDecoration(
+                          color:
+                              (_storageError != null
+                                      ? theme.colorScheme.error
+                                      : theme.colorScheme.primary)
+                                  .withValues(alpha: 0.06),
+                          borderRadius: UtenRadius.controlAll,
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              _storageError != null
+                                  ? Icons.error_outline_rounded
+                                  : Icons.info_outline_rounded,
+                              size: UtenSpacing.s20,
+                              color: _storageError != null
+                                  ? theme.colorScheme.error
+                                  : theme.colorScheme.primary,
+                            ),
+                            const SizedBox(width: UtenSpacing.s8),
+                            Expanded(
+                              child: Text(
+                                _storageError != null
+                                    ? '本机草稿尚未保存，请保留此页并重试；未保全的项目不会继续发送。'
+                                    : _notice ?? _queue.error!,
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     )
                   : const SizedBox.shrink();
+              final configuration = Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _contextPanel(),
+                  const SizedBox(height: UtenSpacing.s20),
+                  UtenCard(
+                    padding: const EdgeInsets.all(UtenSpacing.s20),
+                    child: _summary(),
+                  ),
+                ],
+              );
               return UtenContentContainer(
                 selectable: false,
-                child: constraints.maxWidth >= 1120
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _contextPanel(),
-                          notice,
-                          const SizedBox(height: UtenSpacing.s16),
-                          Expanded(child: _workPanel()),
-                          _summaryDisclosure(summary),
-                        ],
-                      )
-                    : SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _contextPanel(),
-                            notice,
-                            const SizedBox(height: UtenSpacing.s16),
-                            SizedBox(
-                              height: (constraints.maxHeight * .75)
-                                  .clamp(460, 720)
-                                  .toDouble(),
-                              child: _workPanel(),
-                            ),
-                            const SizedBox(height: UtenSpacing.s24),
-                            _summaryDisclosure(summary),
-                            const SizedBox(height: UtenSpacing.s24),
-                          ],
-                        ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: UtenSpacing.s16,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _workspaceHeader(),
+                      const SizedBox(height: UtenSpacing.s20),
+                      notice,
+                      Expanded(
+                        child: wide
+                            ? Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SizedBox(
+                                    width: 352,
+                                    child: SingleChildScrollView(
+                                      keyboardDismissBehavior:
+                                          ScrollViewKeyboardDismissBehavior
+                                              .onDrag,
+                                      child: configuration,
+                                    ),
+                                  ),
+                                  const SizedBox(width: UtenSpacing.s24),
+                                  Expanded(child: _workPanel()),
+                                ],
+                              )
+                            : SingleChildScrollView(
+                                keyboardDismissBehavior:
+                                    ScrollViewKeyboardDismissBehavior.onDrag,
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    _contextPanel(),
+                                    const SizedBox(height: UtenSpacing.s20),
+                                    SizedBox(
+                                      height: (constraints.maxHeight * .72)
+                                          .clamp(460, 740)
+                                          .toDouble(),
+                                      child: _workPanel(),
+                                    ),
+                                    const SizedBox(height: UtenSpacing.s20),
+                                    _summaryDisclosure(_summary()),
+                                    const SizedBox(height: UtenSpacing.s24),
+                                  ],
+                                ),
+                              ),
                       ),
+                    ],
+                  ),
+                ),
               );
             },
           );
@@ -516,59 +576,100 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
           });
         }
       },
-      child: Scaffold(
-        appBar: const UtenAppBar(
-          title: '客户端发布工作台',
-          subtitle: '选择文件、核对目标与版本，逐项上传并保留明确结果',
-          showBackButton: true,
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          appBar: const UtenAppBar(
+            title: '发布新客户端',
+            subtitle: '配置版本与分发目标，上传文件并确认发布结果',
+            showBackButton: true,
+          ),
+          body: _ready || !_current
+              ? body
+              : Center(
+                  child: _storageError == null
+                      ? const CircularProgressIndicator()
+                      : UtenButton(
+                          onPressed: _initialize,
+                          child: const Text('重试初始化草稿保护'),
+                        ),
+                ),
         ),
-        body: _ready || !_current
-            ? body
-            : Center(
-                child: _storageError == null
-                    ? const CircularProgressIndicator()
-                    : UtenButton(
-                        onPressed: _initialize,
-                        child: const Text('重试初始化草稿保护'),
-                      ),
-              ),
       ),
+    );
+  }
+
+  Future<void> _persistDraft() async {
+    try {
+      await _saveDraft();
+      if (mounted) setState(() => _notice = '发布元数据已保全。重新进入时先核对原状态，再重选需要的文件。');
+    } catch (error) {
+      if (mounted) setState(() => _storageError = error);
+    }
+  }
+
+  Widget _workspaceHeader() {
+    final theme = Theme.of(context);
+    return Wrap(
+      spacing: UtenSpacing.s16,
+      runSpacing: UtenSpacing.s12,
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Text(
+          '配置版本  /  添加文件  /  核对并发布',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        Wrap(
+          spacing: UtenSpacing.s12,
+          runSpacing: UtenSpacing.s8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            ClientPublishStatus(
+              _storageError != null ? '草稿尚未保存' : '本机草稿保护已启用',
+              tone: _storageError != null
+                  ? ClientPublishTone.attention
+                  : ClientPublishTone.success,
+            ),
+            UtenButton(
+              type: UtenButtonType.secondary,
+              icon: Icons.save_outlined,
+              onPressed: _queue.busy || _discarding ? null : _persistDraft,
+              child: const Text('保存发布草稿'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
   Widget _contextPanel() {
     final theme = Theme.of(context);
     final enabled = _ready && !_queue.busy && !_choosing;
-    return Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s16),
+    return UtenCard(
+      padding: const EdgeInsets.all(UtenSpacing.s20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: UtenSpacing.s16,
-            runSpacing: UtenSpacing.s4,
-            alignment: WrapAlignment.spaceBetween,
+          const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('本批发布设置', style: theme.textTheme.titleMedium),
-                  const UtenFieldHintIcon(
-                    dense: true,
-                    info:
-                        '顶部改动同步尚未生成发布记录且未被单行覆盖的字段。设备和版本/构建各自成组保留；单行可明确恢复使用本批设置。已绑定编号或SHA的项目不会改写。',
-                  ),
-                ],
-              ),
-              Text(
-                '可更新 ${_queue.editableCount} 项（含单独设置 ${_queue.overriddenCount} 项） · 已锁定 ${_queue.items.length - _queue.editableCount} 项',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              Expanded(
+                child: ClientPublishSectionHeading(
+                  title: '版本与适用设备',
+                  icon: Icons.tune_rounded,
+                  description: '新加入的文件默认使用这里的设置。',
                 ),
+              ),
+              UtenFieldHintIcon(
+                dense: true,
+                info: '本批设置只同步尚未提交且没有单独设置的文件。已开始发布的文件保留原设置；单个文件可单独调整或恢复使用本批设置。',
               ),
             ],
           ),
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s20),
           _TargetFields(
             metadata: _context,
             enabled: enabled,
@@ -576,27 +677,35 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
             version: _version,
             buildController: _build,
             showPackageKind: false,
+            compact: true,
           ),
-          const SizedBox(height: UtenSpacing.s12),
+          const SizedBox(height: UtenSpacing.s20),
           TextField(
             controller: _notes,
             enabled: enabled,
-            minLines: 1,
-            maxLines: 3,
+            minLines: 3,
+            maxLines: 5,
             decoration: const InputDecoration(
               labelText: '发布说明',
-              hintText: '本次更新内容与适用范围',
+              hintText: '说明本次改进、修复内容与适用范围',
             ),
           ),
           if (const {'ios', 'macos'}.contains(_context.platform) ||
               _context.storeUrl.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s12),
+            const SizedBox(height: UtenSpacing.s16),
             TextField(
               controller: _store,
               enabled: enabled,
               decoration: const InputDecoration(labelText: '官方商店链接'),
             ),
           ],
+          const SizedBox(height: UtenSpacing.s16),
+          Text(
+            '可调整 ${_queue.editableCount} 项 · 单独设置 ${_queue.overriddenCount} 项 · 已锁定 ${_queue.items.length - _queue.editableCount} 项',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );
@@ -626,7 +735,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
                   style: theme.textTheme.titleMedium,
                 ),
                 UtenButton(
-                  type: UtenButtonType.secondary,
+                  type: UtenButtonType.ghost,
                   icon: Icons.add_rounded,
                   onPressed: _queue.busy || _choosing
                       ? null
@@ -681,13 +790,23 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
                           ),
                           const SizedBox(height: UtenSpacing.s12),
                           Text(
-                            '把同一版本的文件集中在这里',
+                            '添加本次发布的客户端文件',
                             style: theme.textTheme.titleMedium,
                           ),
                           const SizedBox(height: UtenSpacing.s8),
-                          const Text(
-                            'Windows 选择 Setup.exe 和更新 ZIP。请核对每项版本和适用设备，系统会校验文件内容。',
+                          Text(
+                            _context.platform == 'windows'
+                                ? '选择同一版本的 Setup 安装包与更新 ZIP，系统会逐项校验文件。'
+                                : '选择对应平台的安装文件，或添加官方商店链接。',
                             textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: UtenSpacing.s20),
+                          UtenButton(
+                            icon: Icons.add_rounded,
+                            onPressed: _queue.busy || _choosing
+                                ? null
+                                : () => _pick(true),
+                            child: const Text('选择发布文件'),
                           ),
                         ],
                       ),
@@ -726,6 +845,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
                   style: theme.textTheme.bodySmall,
                 );
                 final action = UtenButton(
+                  size: UtenButtonSize.large,
                   key: const ValueKey('client-release-publish-batch'),
                   icon: _queue.busy ? null : Icons.publish_rounded,
                   onPressed:
@@ -772,20 +892,19 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
     );
   }
 
-  Widget _workPanel() => DefaultTabController(
-    length: 2,
-    child: Column(
-      children: [
-        const TabBar(
-          tabs: [
-            Tab(text: '发布队列'),
-            Tab(text: '发布记录'),
-          ],
-        ),
-        const SizedBox(height: UtenSpacing.s12),
-        Expanded(child: TabBarView(children: [_queuePanel(), _ledger()])),
-      ],
-    ),
+  Widget _workPanel() => Column(
+    children: [
+      const TabBar(
+        isScrollable: true,
+        tabAlignment: TabAlignment.start,
+        tabs: [
+          Tab(text: '发布队列'),
+          Tab(text: '发布记录'),
+        ],
+      ),
+      const SizedBox(height: UtenSpacing.s12),
+      Expanded(child: TabBarView(children: [_queuePanel(), _ledger()])),
+    ],
   );
   Widget _ledger() {
     final theme = Theme.of(context);
@@ -854,7 +973,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
                               spacing: UtenSpacing.s8,
                               crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
-                                Text(
+                                ClientPublishStatus(
                                   pending == ClientReleaseWithdrawState.unknown
                                       ? '撤回结果待核对'
                                       : record.state == 'PUBLISHED'
@@ -862,6 +981,13 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
                                       : record.state == 'WITHDRAWN'
                                       ? '已撤回'
                                       : '草稿',
+                                  tone:
+                                      pending ==
+                                          ClientReleaseWithdrawState.unknown
+                                      ? ClientPublishTone.attention
+                                      : record.state == 'PUBLISHED'
+                                      ? ClientPublishTone.success
+                                      : ClientPublishTone.neutral,
                                 ),
                                 if (pending ==
                                     ClientReleaseWithdrawState.unknown)
@@ -930,7 +1056,7 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
 
   Widget _summaryDisclosure(Widget summary) => ExpansionTile(
     key: const ValueKey('client-release-summary'),
-    title: const Text('交付配对与草稿'),
+    title: const Text('交付核对'),
     subtitle: Text(
       '已确认 ${_queue.confirmedCount} 项 · 待核对 ${_queue.items.where((item) => item.uncertain).length} 项',
     ),
@@ -971,10 +1097,13 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('完整配对', style: theme.textTheme.titleMedium),
+        const ClientPublishSectionHeading(
+          title: 'Windows 双包交付',
+          icon: Icons.inventory_2_outlined,
+        ),
         const SizedBox(height: UtenSpacing.s12),
         Text(
-          '新发布的 Windows 组：同适用设备、版本和构建号的 Setup 与 ZIP 都发布后，才开放该组下载。历史版本沿原发布方式保留。',
+          '每个适用设备组合需同时发布 Setup 安装包和更新 ZIP，且版本与构建号一致。历史版本沿原规则保留。',
           style: theme.textTheme.bodyMedium,
         ),
         const SizedBox(height: UtenSpacing.s16),
@@ -1007,28 +1136,33 @@ class _PublishPageState extends ConsumerState<ClientReleasePublishPage> {
         const Divider(height: UtenSpacing.s32),
         Text('发布摘要', style: theme.textTheme.titleMedium),
         const SizedBox(height: UtenSpacing.s12),
-        Text(
-          '已确认 ${_queue.confirmedCount} 项\n已撤回 ${_queue.items.where((item) => item.stage == ClientReleaseQueueStage.withdrawn).length} 项\n待核对 ${_queue.items.where((item) => item.uncertain).length} 项\n其余 ${_queue.items.where((item) => !item.terminal && !item.uncertain).length} 项',
-        ),
+        for (final entry in <String, int>{
+          '发布文件': _queue.confirmedCount,
+          '撤回文件': _queue.items
+              .where((item) => item.stage == ClientReleaseQueueStage.withdrawn)
+              .length,
+          '结果待核对': _queue.items.where((item) => item.uncertain).length,
+          '尚未完成': _queue.items
+              .where((item) => !item.terminal && !item.uncertain)
+              .length,
+        }.entries)
+          Padding(
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    entry.key,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                Text('${entry.value}', style: theme.textTheme.titleSmall),
+              ],
+            ),
+          ),
         const SizedBox(height: UtenSpacing.s16),
-        UtenButton(
-          type: UtenButtonType.secondary,
-          onPressed: _queue.busy
-              ? null
-              : () async {
-                  try {
-                    await _saveDraft();
-                    if (mounted) {
-                      setState(
-                        () => _notice = '发布元数据已保全。重新进入时先核对原状态，再重选需要的文件。',
-                      );
-                    }
-                  } catch (error) {
-                    if (mounted) setState(() => _storageError = error);
-                  }
-                },
-          child: const Text('保存发布草稿'),
-        ),
       ],
     );
   }
@@ -1115,37 +1249,67 @@ class _QueueRowState extends State<_QueueRow> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Icon(
-                item.published
-                    ? Icons.check_circle_outline_rounded
-                    : item.uncertain
-                    ? Icons.help_outline_rounded
-                    : Icons.insert_drive_file_outlined,
-                color: item.published
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: UtenSpacing.s12),
-              Expanded(
-                child: Text(
-                  item.fileName ?? '官方商店链接',
-                  style: theme.textTheme.titleSmall,
-                ),
-              ),
-              const SizedBox(width: UtenSpacing.s8),
-              Flexible(
-                child: Text(
-                  item.publishedRelease?.state == 'WITHDRAWN'
-                      ? '已撤回'
-                      : item.retentionPending
-                      ? '已发布，待保留检查'
-                      : stage,
-                  style: theme.textTheme.bodySmall,
-                ),
-              ),
-            ],
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked =
+                  constraints.maxWidth < 480 ||
+                  MediaQuery.textScalerOf(context).scale(14) > 21;
+              final identity = Row(
+                children: [
+                  Icon(
+                    item.published
+                        ? Icons.check_circle_outline_rounded
+                        : item.uncertain
+                        ? Icons.help_outline_rounded
+                        : Icons.insert_drive_file_outlined,
+                    color: item.published
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: UtenSpacing.s12),
+                  Expanded(
+                    child: Text(
+                      item.fileName ?? '官方商店链接',
+                      style: theme.textTheme.titleSmall,
+                    ),
+                  ),
+                ],
+              );
+              final status = ClientPublishStatus(
+                item.publishedRelease?.state == 'WITHDRAWN'
+                    ? '已撤回'
+                    : item.retentionPending
+                    ? '已发布，待保留检查'
+                    : stage,
+                tone:
+                    item.uncertain ||
+                        item.stage == ClientReleaseQueueStage.rejected
+                    ? ClientPublishTone.attention
+                    : item.published
+                    ? ClientPublishTone.success
+                    : item.stage == ClientReleaseQueueStage.uploading ||
+                          item.stage == ClientReleaseQueueStage.publishing
+                    ? ClientPublishTone.active
+                    : ClientPublishTone.neutral,
+              );
+              if (stacked) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    identity,
+                    const SizedBox(height: UtenSpacing.s8),
+                    Align(alignment: Alignment.centerLeft, child: status),
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: identity),
+                  const SizedBox(width: UtenSpacing.s16),
+                  status,
+                ],
+              );
+            },
           ),
           const SizedBox(height: UtenSpacing.s8),
           Text(
@@ -1240,20 +1404,25 @@ class _TargetFields extends StatelessWidget {
     this.onVersion,
     this.onBuild,
     this.showPackageKind = true,
+    this.compact = false,
   });
   final ClientReleasePublishMetadata metadata;
   final bool enabled;
   final ValueChanged<ClientReleasePublishMetadata> onChanged;
   final TextEditingController version, buildController;
   final ValueChanged<String>? onVersion, onBuild;
-  final bool showPackageKind;
+  final bool showPackageKind, compact;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) => _fields(context, constraints.maxWidth),
   );
   Widget _fields(BuildContext context, double availableWidth) {
     final fieldScale = MediaQuery.textScalerOf(context).scale(1);
-    double width(double base) => (base * fieldScale).clamp(0, availableWidth);
+    double width(double base) => compact
+        ? fieldScale > 1.35 || availableWidth < 280
+              ? availableWidth
+              : (availableWidth - UtenSpacing.s12) / 2
+        : (base * fieldScale).clamp(0, availableWidth);
     String optionLabel(String label, String option) => label == '客户端类型'
         ? windowsRuntimeLabel(option)
         : label == '架构'
@@ -1278,13 +1447,15 @@ class _TargetFields extends StatelessWidget {
       List<String> values,
       ValueChanged<String> changed,
     ) => SizedBox(
-      width: width(
-        label == '客户端类型'
-            ? 270
-            : label == '包类型'
-            ? 190
-            : 150,
-      ),
+      width: compact && label == '客户端类型'
+          ? availableWidth
+          : width(
+              label == '客户端类型'
+                  ? 270
+                  : label == '包类型'
+                  ? 190
+                  : 150,
+            ),
       child: UtenDropdownScrollScope(
         nativeDropdown: true,
         child: DropdownButtonFormField<String>(
@@ -1314,82 +1485,86 @@ class _TargetFields extends StatelessWidget {
         ),
       ),
     );
+    final fields = <Widget>[
+      select(
+        '系统',
+        metadata.platform,
+        const ['windows', 'android', 'ios', 'macos'],
+        (platform) => onChanged(
+          metadata.copyWith(
+            platform: platform,
+            runtimeFamily: ClientRuntimeFamily.flutter,
+            architecture: platform == 'windows' ? 'x64' : 'universal',
+            packageKind: 'update',
+            storeUrl: '',
+          ),
+        ),
+      ),
+      if (metadata.platform == 'windows')
+        select(
+          '客户端类型',
+          metadata.runtimeFamily,
+          const [ClientRuntimeFamily.flutter, ClientRuntimeFamily.wpfLegacy],
+          (family) => onChanged(
+            metadata.copyWith(
+              runtimeFamily: family,
+              architecture:
+                  softwareDownloadArchitectures(
+                    SoftwareDownloadPlatform.windows,
+                    runtimeFamily: family,
+                  ).contains(metadata.architecture)
+                  ? metadata.architecture
+                  : 'x64',
+            ),
+          ),
+        ),
+      select(
+        '架构',
+        metadata.architecture,
+        architectures,
+        (architecture) =>
+            onChanged(metadata.copyWith(architecture: architecture)),
+      ),
+      if (metadata.platform == 'windows' && showPackageKind)
+        select(
+          '包类型',
+          metadata.packageKind,
+          const ['installer', 'update'],
+          (kind) => onChanged(metadata.copyWith(packageKind: kind)),
+        ),
+      SizedBox(
+        width: width(150),
+        child: TextField(
+          controller: version,
+          enabled: enabled,
+          onChanged: onVersion,
+          decoration: const InputDecoration(
+            labelText: '版本',
+            hintText: '2.5.34',
+          ),
+        ),
+      ),
+      SizedBox(
+        width: width(150),
+        child: TextField(
+          controller: buildController,
+          enabled: enabled,
+          onChanged: onBuild,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: '构建号', hintText: '2534'),
+        ),
+      ),
+    ];
+    if (compact) {
+      final architecture = fields.removeAt(
+        metadata.platform == 'windows' ? 2 : 1,
+      );
+      fields.insert(1, architecture);
+    }
     return Wrap(
       spacing: UtenSpacing.s12,
-      runSpacing: UtenSpacing.s12,
-      children: [
-        select(
-          '系统',
-          metadata.platform,
-          const ['windows', 'android', 'ios', 'macos'],
-          (platform) => onChanged(
-            metadata.copyWith(
-              platform: platform,
-              runtimeFamily: ClientRuntimeFamily.flutter,
-              architecture: platform == 'windows' ? 'x64' : 'universal',
-              packageKind: 'update',
-              storeUrl: '',
-            ),
-          ),
-        ),
-        if (metadata.platform == 'windows')
-          select(
-            '客户端类型',
-            metadata.runtimeFamily,
-            const [ClientRuntimeFamily.flutter, ClientRuntimeFamily.wpfLegacy],
-            (family) => onChanged(
-              metadata.copyWith(
-                runtimeFamily: family,
-                architecture:
-                    softwareDownloadArchitectures(
-                      SoftwareDownloadPlatform.windows,
-                      runtimeFamily: family,
-                    ).contains(metadata.architecture)
-                    ? metadata.architecture
-                    : 'x64',
-              ),
-            ),
-          ),
-        select(
-          '架构',
-          metadata.architecture,
-          architectures,
-          (architecture) =>
-              onChanged(metadata.copyWith(architecture: architecture)),
-        ),
-        if (metadata.platform == 'windows' && showPackageKind)
-          select(
-            '包类型',
-            metadata.packageKind,
-            const ['installer', 'update'],
-            (kind) => onChanged(metadata.copyWith(packageKind: kind)),
-          ),
-        SizedBox(
-          width: width(150),
-          child: TextField(
-            controller: version,
-            enabled: enabled,
-            onChanged: onVersion,
-            decoration: const InputDecoration(
-              labelText: '版本',
-              hintText: '2.5.34',
-            ),
-          ),
-        ),
-        SizedBox(
-          width: width(150),
-          child: TextField(
-            controller: buildController,
-            enabled: enabled,
-            onChanged: onBuild,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: '构建号',
-              hintText: '2534',
-            ),
-          ),
-        ),
-      ],
+      runSpacing: UtenSpacing.s16,
+      children: fields,
     );
   }
 }

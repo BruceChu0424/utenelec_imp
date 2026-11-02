@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "id": "E-CLIENT-PUBLISH-PAGE-UI-20261101",
+  "date": "2026-11-01",
+  "baseCommit": "bd7e8525b",
+  "branch": "uimp/client-publish-page-redesign-20261101",
+  "scope": "Client publishing workspace UI and responsive layout; existing publish contract unchanged.",
+  "sources": [
+    {
+      "path": "lib/features/client_update/client_release_publish_page.dart",
+      "sha256": "29dbec2af0d5d3705ca8728ee2fd6c0c8057191678a9df6d1532bfaaa8cecf77"
+    },
+    {
+      "path": "lib/features/client_update/client_release_publish_widgets.dart",
+      "sha256": "2797bfd3f39b93cb4ffe4a0346e20d55b3420d82378a402dfbcc2c4837683882"
+    },
+    {
+      "path": "test/features/client_update/client_release_publish_test.dart",
+      "sha256": "92fb957c465199a1620f549870e8f164fa4a3b3dd4b23d2b372624a440e0ca04"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleasePublishView.cs",
+      "sha256": "b6dd6cfaed305e39105f17fda2f431cd4b3ee96bd63ff67d726d9496c2507a7a"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleaseTargetEditor.cs",
+      "sha256": "60474548cfcfd186444b9df53174a1438e6d0f018987f57b0a7ce1e562dfb3d5"
+    }
+  ],
+  "checks": {
+    "flutterPublishRegression": {
+      "passed": 80,
+      "warnings": 0,
+      "result": "passed"
+    },
+    "flutterAnalyze": {
+      "files": 3,
+      "issues": 0,
+      "result": "passed"
+    },
+    "webBuild": {
+      "mode": "Debug",
+      "result": "passed",
+      "apiBase": "/api",
+      "published": false
+    },
+    "nativeUi": {
+      "architectures": [
+        "x86",
+        "x64"
+      ],
+      "compiler": "MSBuild /warnaserror",
+      "result": "passed",
+      "suite": "--ui-contracts-only",
+      "realPublishViewConstructedAndArranged": true,
+      "targetMachineAcceptance": false
+    }
+  },
+  "localLogProofs": [
+    {
+      "path": "publish-ui-tests-final.log",
+      "sha256": "d8f9df957ed45c87f822d5d6da13088c493bd625618a98ea9f12c740edb7b14f"
+    },
+    {
+      "path": "publish-ui-analyze-final.log",
+      "sha256": "398abc28a6951f5839fd8b0d5d692ac3421e3c5f81581abf2fce782ab12ed221"
+    },
+    {
+      "path": "publish-ui-web-build-final.log",
+      "sha256": "c1bf8496f799a23244f9bc8a24e74a15a3d441f6bb87c34d74ece056c58f3ad5"
+    },
+    {
+      "path": "publish-ui-wpf-build-x64.log",
+      "sha256": "bc59eeb2be05cd0db54e62a7131d46d22b572720aed8b0cdde1fe6ec47a1c84b"
+    },
+    {
+      "path": "publish-ui-wpf-tests-x64.log",
+      "sha256": "dd09169378b253f1a72769f4ff2535737f15e90c77dd9331b74af8d74b53f423"
+    },
+    {
+      "path": "publish-ui-wpf-build-x86.log",
+      "sha256": "7a2cac4b75a8aa88300a62d189f2dbd3aed416219322e5d3334b729b30d8480e"
+    },
+    {
+      "path": "publish-ui-wpf-tests-x86.log",
+      "sha256": "769c2498577b802be1ff978dd004bf78f69887b91149aeaee6da60366f2e3930"
+    }
+  ],
+  "localPreviews": [
+    "output/ui/client-publish-page-20261101/desktop-light.png",
+    "output/ui/client-publish-page-20261101/desktop-dark.png",
+    "output/ui/client-publish-page-20261101/tablet-light.png",
+    "output/ui/client-publish-page-20261101/mobile-light.png",
+    "output/ui/client-publish-page-20261101/mobile-large-text.png",
+    "output/ui/client-publish-page-20261101/mobile-large-text-action.png"
+  ],
+  "businessProtection": [
+    "publisher permission and owner fences unchanged",
+    "stable original request IDs unchanged",
+    "confirmed files not retransmitted",
+    "unknown submissions reconciled before continuation",
+    "Windows paired delivery contract unchanged",
+    "full queue preserved beyond virtualized visible rows"
+  ],
+  "notCovered": [
+    "Production catalog upload/publication",
+    "Real server failure injection",
+    "Win7 target-PC UAT",
+    "Full-project CI and source-inventory refresh",
+    "Formal installers/update packages"
+  ],
+  "formalPackagesCreated": false,
+  "productionWritten": false,
+  "deploymentPerformed": false,
+  "legacyTaskStatus": "in_progress"
+}

@@ -55,7 +55,8 @@ class ApiClient {
       ? _reloadSafety.trackRead(action)
       : _reloadSafety.track(
           action,
-          retainUncertainty: !isNoticePresentationReceipt(path),
+          retainUncertainty:
+              !isNoticePresentationReceipt(path) && !isEphemeralSignIn(path),
         );
 
   /// Read one already-authorized export artifact, without accumulating its body.

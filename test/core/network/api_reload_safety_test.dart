@@ -28,6 +28,38 @@ void main() {
 
   tearDown(() => registry.dispose());
 
+  for (final path in ['/auth/login', '/api/auth/login']) {
+    test(
+      'failed sign-in $path permits server replacement after the request ends',
+      () async {
+        final request = api.post(path, body: {'loginAccount': 'fixture'});
+        final rejected = expectLater(request, throwsA(isA<ApiException>()));
+        expect(registry.snapshot.serverReloadSafe, isFalse);
+        await adapter.ready(1);
+        adapter.respond(0, '{}', status: 503);
+        await rejected;
+        expect(safety.pendingCount, 0);
+        expect(registry.snapshot.serverReloadSafe, isTrue);
+      },
+    );
+  }
+
+  for (final path in [
+    '/auth/change-password',
+    '/auth/refresh',
+    '/auth/logout',
+    '/auth/login/extra',
+  ]) {
+    test('$path retains its uncertainty protection', () async {
+      final request = api.post(path);
+      final rejected = expectLater(request, throwsA(isA<ApiException>()));
+      await adapter.ready(1);
+      adapter.respond(0, '{}', status: 503);
+      await rejected;
+      expect(registry.snapshot.serverReloadSafe, isFalse);
+    });
+  }
+
   test(
     'overlapping reads and commands remain busy until both finish',
     () async {

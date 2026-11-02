@@ -11,6 +11,11 @@ bool isPlatformValuesRead(String path) =>
 bool isReadOnlyPost(String path) =>
     isNativeFacetPath(path) || isPlatformValuesRead(path);
 
+/// A failed sign-in may leave an unused server session, but has no document
+/// commit to reconcile. Do not replay it or persist its credentials. Refresh,
+/// password changes and all business mutations keep their existing fences.
+bool isEphemeralSignIn(String path) => _apiPath(path) == '/auth/login';
+
 /// These receipts only change read/popup presentation state. A failed receipt
 /// may leave a notification unread or visible again after reload; it cannot
 /// lose business input or complete a task. This is NOT permission to retry it.

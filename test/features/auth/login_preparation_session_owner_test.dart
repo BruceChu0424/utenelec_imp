@@ -21,6 +21,7 @@ import 'package:uten_imp/core/security/auth_refresh_lock.dart';
 import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
+import 'package:uten_imp/core/web_update/web_update_safety.dart';
 import 'package:uten_imp/features/auth/models/auth_session.dart';
 import 'package:uten_imp/features/auth/pages/login_page.dart';
 import 'package:uten_imp/features/auth/repositories/auth_repository.dart';
@@ -54,7 +55,12 @@ void main() {
   testWidgets(
     'fresh cloud-to-local preparation logs in on the first click with the local issuer',
     (tester) => _withFixture(tester, (fixture) async {
+      webUpdateSafety.setReady(true);
+      await tester.enterText(_passwordField, _password);
+      expect(webUpdateSafety.snapshot.dirty, isTrue);
+      expect(webUpdateSafety.snapshot.serverReloadSafe, isTrue);
       await fixture.beginLogin(tester);
+      expect(webUpdateSafety.snapshot.serverReloadSafe, isFalse);
       expect(fixture.attempts, isEmpty);
       expect(fixture.container.read(apiBaseUrlProvider), _cloud);
 

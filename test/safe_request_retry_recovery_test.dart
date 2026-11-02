@@ -10,6 +10,8 @@ void main() {
     ('/platform-columns/goods/values:batch', 3),
     ('/api/platform-columns/expense_claim_item/values:batch', 3),
     ('/platform-columns/goods/definitions', 1),
+    ('/auth/login', 1),
+    ('/api/auth/login', 1),
     ('/platform-columns/goods/values:batch/other', 1),
     ('/notices/read-by-route', 1),
     ('/notices/11111111-1111-4111-8111-111111111111/popup-ack', 1),

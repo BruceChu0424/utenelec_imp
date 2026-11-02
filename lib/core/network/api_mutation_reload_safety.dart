@@ -28,7 +28,7 @@ class ApiMutationReloadSafety {
     blocked: _uncertain,
   );
 
-  /// Only explicitly classified notification presentation receipts opt out of
+  /// Only explicitly classified presentation receipts and sign-in opt out of
   /// uncertainty retention. They still block updates until their request ends.
   /// Idempotency or a recovered connection never relaxes a business command.
   Future<T> track<T>(

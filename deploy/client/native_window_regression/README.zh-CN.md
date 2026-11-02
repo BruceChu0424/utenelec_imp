@@ -57,8 +57,9 @@ Windows 后台任务回归独立于 Flutter 引擎，可在 `deploy/client/nativ
 
 使用 `--extreme --accessibility-probe --step-ms=700`：50,000 行合成数据就绪后运行40秒，
 反复换代/取消读取、开关弹窗，最后完成完整读取。后台持续执行原生 MSAA accHitTest 与树遍历，
+同时执行现场故障入口 `get_accValue`，只保留固定合成输入值被成功读到的次数，不保存其他值。
 仅保存 fixture 数字，不记录任意可访问文本。最终同时要求53步窗口动作、完整50,000行、发生取消、
-框架无错误及原生树计数与最终模型一致，不能只检查进程存活。
+框架无错误、原生树计数与最终模型一致及至少一次真实输入值读取，不能只检查进程存活。
 
 Web构建同入口后运行 `python tool/prepare_stability_web_fixture.py`，本地服务打开 `/?stress=1`。
 只读取本地合成JSON，不请求业务API，不把构造测试数据的耗时误记为生产解码。

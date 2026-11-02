@@ -227,7 +227,7 @@ class RegressionWindow : public FlutterWindow {
     }
     std::string outcome_reason = reason;
     const bool fixture_ok = !options_.extreme || (loaded_rows == 50000 && expected_cycle == probe.last_cycle &&
-        cancelled_reads > 0 && gap_ms >= 0 && gap_ms < 1000 && framework_clean);
+        cancelled_reads > 0 && gap_ms >= 0 && gap_ms < 1000 && framework_clean && probe.retained_value_reads > 0);
     if (success && options_.extreme && !fixture_ok) outcome_reason = "fixture_or_accessibility_validation_failed";
     if (options_.accessibility_probe && (probe.queries == 0 || probe.last_cycle < 0)) success = false;
     if (!fixture_ok) success = false;
@@ -239,6 +239,7 @@ class RegressionWindow : public FlutterWindow {
         std::to_string(actions_.size()) + ",\"realFlutterEngine\":true,\"accessibilityMode\":\"" +
         Escape(options_.accessibility_mode) + "\",\"uiaQueries\":" + std::to_string(probe.queries) +
         ",\"uiaFailures\":" + std::to_string(probe.failures) + ",\"uiaLastCycle\":" + std::to_string(probe.last_cycle) +
+        ",\"uiaValueQueries\":" + std::to_string(probe.value_queries) + ",\"uiaRetainedValueReads\":" + std::to_string(probe.retained_value_reads) +
         ",\"expectedCycle\":" + std::to_string(expected_cycle) + ",\"loadedRows\":" + std::to_string(loaded_rows) + ",\"extended\":" +
         std::string(options_.extended ? "true" : "false") + ",\"finalUiaReadWindowMs\":2000}";
     Result(receipt);

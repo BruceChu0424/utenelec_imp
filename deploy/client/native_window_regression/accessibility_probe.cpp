@@ -6,8 +6,9 @@
 namespace {
 std::atomic<bool> active{false};
 std::atomic<unsigned> queries{0}, failures{0};
+std::atomic<unsigned> value_queries{0}, retained_value_reads{0};
 std::atomic<int64_t> last_cycle{-1};
-void Name(IAccessible* object, VARIANT child) {
+void ReadAttributes(IAccessible* object, VARIANT child) {
   BSTR text = nullptr;
   if (SUCCEEDED(object->get_accName(child, &text)) && text) {
     // Never save arbitrary accessible names. Only this offline fixture's
@@ -17,12 +18,20 @@ void Name(IAccessible* object, VARIANT child) {
     if (found) last_cycle = _wcstoi64(found + (sizeof(prefix) / sizeof(wchar_t) - 1), nullptr, 10);
     SysFreeString(text);
   }
+  // Exercise the field-confirmed get_accValue path too. Persist only a count
+  // for the known offline fixture input, never an arbitrary accessible value.
+  text = nullptr;
+  ++value_queries;
+  if (SUCCEEDED(object->get_accValue(child, &text)) && text) {
+    if (wcscmp(text, L"0001. retained input") == 0) ++retained_value_reads;
+    SysFreeString(text);
+  }
 }
 void Visit(IAccessible* object, unsigned depth, unsigned& budget) {
   if (!depth || !budget) return;
   --budget;
   VARIANT self{}; self.vt = VT_I4; self.lVal = CHILDID_SELF;
-  Name(object, self);
+  ReadAttributes(object, self);
   long children = 0;
   if (FAILED(object->get_accChildCount(&children)) || children <= 0) return;
   VARIANT values[64]{};
@@ -34,7 +43,7 @@ void Visit(IAccessible* object, unsigned depth, unsigned& budget) {
       dispatch = values[i].pdispVal;
       if (dispatch) dispatch->AddRef();
     } else if (budget && values[i].vt == VT_I4) {
-      Name(object, values[i]);
+      ReadAttributes(object, values[i]);
       object->get_accChild(values[i], &dispatch);
     }
     if (dispatch) {
@@ -78,4 +87,7 @@ DWORD WINAPI Observe(void* argument) {
 }  // namespace
 void StartAccessibilityProbe(HWND window) { active = true; QueueUserWorkItem(Observe, window, WT_EXECUTELONGFUNCTION); }
 void StopAccessibilityProbe() { active = false; }
-AccessibilityProbeSnapshot ReadAccessibilityProbe() { return {queries.load(), failures.load(), last_cycle.load()}; }
+AccessibilityProbeSnapshot ReadAccessibilityProbe() {
+  return {queries.load(), failures.load(), last_cycle.load(),
+          value_queries.load(), retained_value_reads.load()};
+}

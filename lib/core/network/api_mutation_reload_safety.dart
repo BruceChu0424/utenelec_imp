@@ -6,8 +6,8 @@ import '../web_update/web_update_safety.dart';
 import 'api_exception.dart';
 
 /// One application-wide fence, including overlapping calls and auth/step-up retries.
-/// An ambiguous command stays blocked for this app instance; an unrelated success
-/// cannot prove that the earlier command did or did not commit.
+/// An ambiguous business command stays blocked for this app instance; an
+/// unrelated success cannot prove that the earlier command did or did not commit.
 final apiMutationReloadSafety = ApiMutationReloadSafety();
 
 class ApiMutationReloadSafety {
@@ -28,7 +28,13 @@ class ApiMutationReloadSafety {
     blocked: _uncertain,
   );
 
-  Future<T> track<T>(Future<T> Function() command) async {
+  /// Only explicitly classified notification presentation receipts opt out of
+  /// uncertainty retention. They still block updates until their request ends.
+  /// Idempotency or a recovered connection never relaxes a business command.
+  Future<T> track<T>(
+    Future<T> Function() command, {
+    bool retainUncertainty = true,
+  }) async {
     _pending++;
     // Re-registering also preserves protection after a registry host is replaced.
     _registry.register(this, () => state);
@@ -36,7 +42,7 @@ class ApiMutationReloadSafety {
     try {
       return await command();
     } catch (error) {
-      if (!_definiteRejection(error)) _uncertain = true;
+      if (retainUncertainty && !_definiteRejection(error)) _uncertain = true;
       rethrow;
     } finally {
       _pending--;

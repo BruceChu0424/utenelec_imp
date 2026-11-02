@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:clock/clock.dart';
 
 import '../connection_recovery.dart';
+import '../request_reload_semantics.dart';
 import '../http_response_date.dart';
 
 const _retryCountKey = 'utenSafeRetryCount';
@@ -130,8 +131,7 @@ bool shouldRetrySafeRequest(
   }
 
   final method = options.method.toUpperCase();
-  final readOnlyBatch =
-      method == 'POST' && _platformValuesRead.hasMatch(options.path);
+  final readOnlyBatch = method == 'POST' && isPlatformValuesRead(options.path);
   if (method != 'GET' &&
       method != 'HEAD' &&
       method != 'OPTIONS' &&
@@ -170,12 +170,6 @@ Duration? safeRequestRetryAfter(DioException error) {
   final delay = retryAt.difference(serverNow ?? clock.now().toUtc());
   return delay.isNegative ? Duration.zero : delay;
 }
-
-// This endpoint only projects authorized values; it never commits staged cells
-// or changes a business record. Keep write endpoints out of the retry policy.
-final _platformValuesRead = RegExp(
-  r'^/platform-columns/[a-z][a-z0-9_]*/values:batch$',
-);
 
 /// A backend-generated resolver outage is retriable for safe reads, but it is
 /// not evidence that the host or network is unreachable.

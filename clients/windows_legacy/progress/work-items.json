@@ -2030,7 +2030,7 @@
       "evidence": [
         "docs/99-项目治理/2026-11-01-Windows更新提示与页面交互修复.md"
       ],
-      "notes": "2026-10-29主线的空闲自动更新/品牌提示仍未迁移到WPF。2026-11-01 Flutter修复启动提示被后台暂存跳过、设置路由误阻安装、更新弹窗自阻与后台下载返回；接手时须对照现版共享语义并保留未保存/未知提交保护。WPF既有MainWindow.OnCheckUpdate/CanLeaveWorkspace手动链不同，无Flutter路由误判；本项继续todo，未做Win7真机或完整迁移。详见docs/99-项目治理/2026-11-01-Windows更新提示与页面交互修复.md。",
+      "notes": "2026-10-29主线的空闲自动更新/品牌提示仍未迁移到WPF。2026-11-01 Flutter修复启动提示被后台暂存跳过、设置路由误阻安装、更新弹窗自阻与后台下载返回；接手时须对照现版共享语义并保留未保存/未知提交保护。WPF既有MainWindow.OnCheckUpdate/CanLeaveWorkspace手动链不同，无Flutter路由误判；本项继续todo，未做Win7真机或完整迁移。详见docs/99-项目治理/2026-11-01-Windows更新提示与页面交互修复.md。 2026-10-29主线Flutter客户端与网页已交付居中品牌更新提示+可见倒计时自动更新（弹窗大数字+按钮秒数，稍后取消）；WPF侧未迁移，接手时先对照lib/features/client_update现版实现。2026-11-01追加接入合同：只读POST与通知已读/弹卡回执失败，不得误留业务未知提交锁；在途仍等待，真实业务未知提交仍阻止更新，回执不得因此自动重试。Dart公共入口lib/core/network/request_reload_semantics.dart；范围及本地验证见docs/99-项目治理/2026-11-01-网页更新安全锁误阻塞修复.md。WPF同责自动更新入口仍未迁移，本项保持todo，不能视为已验证或已支持。",
       "lastUpdated": "2026-11-02T00:51:46.685902+00:00"
     },
     {

@@ -6,6 +6,40 @@ import 'package:uten_imp/core/network/connection_recovery.dart';
 import 'package:uten_imp/core/network/interceptors/safe_request_retry_interceptor.dart';
 
 void main() {
+  for (final (path, attemptsExpected) in [
+    ('/platform-columns/goods/values:batch', 3),
+    ('/api/platform-columns/expense_claim_item/values:batch', 3),
+    ('/platform-columns/goods/definitions', 1),
+    ('/platform-columns/goods/values:batch/other', 1),
+    ('/notices/read-by-route', 1),
+    ('/notices/11111111-1111-4111-8111-111111111111/popup-ack', 1),
+    ('/notices/11111111-1111-4111-8111-111111111111/complete', 1),
+  ]) {
+    test(
+      'reload classification does not broaden POST retries for $path',
+      () async {
+        var attempts = 0;
+        final dio = Dio(BaseOptions(baseUrl: 'https://erp.example.test/api'));
+        addTearDown(() => dio.close(force: true));
+        dio.httpClientAdapter = _Adapter((options) {
+          attempts++;
+          throw DioException(
+            requestOptions: options,
+            type: DioExceptionType.connectionError,
+          );
+        });
+        dio.interceptors.add(
+          SafeRequestRetryInterceptor(dio, delay: (_) async {}),
+        );
+        await expectLater(
+          dio.post<dynamic>(path),
+          throwsA(isA<DioException>()),
+        );
+        expect(attempts, attemptsExpected);
+      },
+    );
+  }
+
   test(
     'slow read (timeout) is attempted once and never marks disconnected',
     () async {

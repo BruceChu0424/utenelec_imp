@@ -192,6 +192,39 @@ Windows 双包授权上传。当前完整发布必须另外完成上述 Windows 
 [沿用安装目录](https://jrsoftware.org/ishelp/topic_setup_usepreviousappdir.htm)、
 [官方版本资源写入实现](https://github.com/jrsoftware/issrc/blob/main/Projects/Src/Compiler.ExeUpdateFunc.pas#L621-L629)。
 
+## Android 本地测试 APK（USB）
+
+本地测试使用 Debug APK 和开发机测试后端，独立包名为
+`com.uten.uten_imp.local_test`，手机上显示“UTEN 本地测试”，应用数据与公司客户端分开。
+它使用 Android Debug 签名，不能上传正式客户端目录，也不作为公司版升级包。
+仅在命令进程中设置 `ORG_GRADLE_PROJECT_utenLocalTest=true`，默认 Android 构建身份保持原值；
+该开关与 Release task 一起使用时会拒绝构建。
+
+```powershell
+$env:ORG_GRADLE_PROJECT_utenLocalTest = 'true'
+flutter build apk --debug --no-pub `
+  --dart-define=API_BASE_URL=http://127.0.0.1:18081/api `
+  --dart-define=CLOUD_API_BASE_URL=http://127.0.0.1:18081/api
+Remove-Item Env:ORG_GRADLE_PROJECT_utenLocalTest
+```
+
+在手机开启 USB 调试并确认开发机授权后，使用本机 Android SDK 的 `adb`：
+
+```powershell
+adb devices
+adb reverse tcp:18081 tcp:18081
+adb install -r '<已核验的 Android-LocalTest.apk>'
+```
+
+测试后端必须在开发机 `127.0.0.1:18081` 启动并只连接本地测试数据库。手机中的
+`127.0.0.1` 通过这条 ADB 反向转发明确连接开发机；仅安装 APK、未连接 USB 或未设置
+`adb reverse` 时不能登录。断开/重连 USB 后重新核对转发；结束后执行
+`adb reverse --remove tcp:18081`。不得将测试端点改为公司生产后端来通过本地测试。
+
+构建后用同一 SDK 的 `apksigner verify --verbose --print-certs` 核验 Debug 签名，
+用 `aapt dump badging` 核验包名、测试标签、版本/构建号及 ABI，并记录 APK 的 SHA-256。
+本地构建和静态包核验不能代替 Android 真机登录、权限、下载和更新验收。
+
 ## 持久目录与写入边界
 
 | 部署 | `UTEN_CLIENT_RELEASES_DIR` | 既有 systemd 写边界 |

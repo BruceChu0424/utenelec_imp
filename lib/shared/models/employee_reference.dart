@@ -33,7 +33,8 @@ enum EmployeeReferencePurpose {
   productionSegmentOwner('PRODUCTION_SEGMENT_OWNER'),
   productionReportWorker('PRODUCTION_REPORT_WORKER'),
   productionMaterialOwner('PRODUCTION_MATERIAL_OWNER'),
-  salesOrderSellerFilter('SALES_ORDER_SELLER_FILTER');
+  salesOrderSellerFilter('SALES_ORDER_SELLER_FILTER'),
+  departmentManager('DEPARTMENT_MANAGER');
 
   const EmployeeReferencePurpose(this.apiValue);
   final String apiValue;

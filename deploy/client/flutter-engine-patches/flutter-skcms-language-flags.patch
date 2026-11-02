@@ -1,0 +1,24 @@
+diff --git a/engine/src/flutter/skia/modules/skcms/BUILD.gn b/engine/src/flutter/skia/modules/skcms/BUILD.gn
+index b9734c2485d..17fb60d00a4 100644
+--- a/engine/src/flutter/skia/modules/skcms/BUILD.gn
++++ b/engine/src/flutter/skia/modules/skcms/BUILD.gn
+@@ -27,0 +28 @@ template("arch") {
++                               "cflags_c",
+@@ -51 +51,0 @@ arch("skcms_TransformHsw") {
+-      "-std=c11",
+@@ -52,0 +53 @@ arch("skcms_TransformHsw") {
++    cflags_c = [ "-std=c11" ]
+@@ -79 +79,0 @@ arch("skcms_TransformSkx") {
+-      "-std=c11",
+@@ -80,0 +81 @@ arch("skcms_TransformSkx") {
++    cflags_c = [ "-std=c11" ]
+@@ -85,3 +86,6 @@ static_library("skcms") {
+-  cflags = []
+-  if (!is_win || is_clang) {
+-    cflags += [ "-std=c11" ]
++  if (is_win) {
++    if (is_clang) {
++      cflags_c = [ "/clang:-std=c11" ]
++    }
++  } else {
++    cflags_c = [ "-std=c11" ]

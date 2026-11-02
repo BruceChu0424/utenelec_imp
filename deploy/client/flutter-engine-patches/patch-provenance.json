@@ -17,6 +17,12 @@
       "patch": "dart-clang-cl-frame-pointer.patch",
       "sha256": "ebc410670e64e8bd02ced9301ab42d0aade03f424835aa4059e7ff96caeb8a74",
       "scope": "build tooling only"
+    },
+    {
+      "patch": "flutter-skcms-language-flags.patch",
+      "sha256": "21cd92979796aa049e1d878c493dec628653e9518abc141ddec0a2944639fae4",
+      "engineRevision": "77e2e94772b6eb43759e34ed1ad7da4674e19cab",
+      "scope": "build tooling only; C standard flags apply only to C sources with the correct clang-cl syntax"
     }
   ],
   "windowsHitTestRepair": {

@@ -128,6 +128,13 @@ git apply --unidiff-zero /path/to/flutter-3.44.2-safe-accessibility-tree.patch
 为 Windows clang-cl 正确透传 frame-pointer 参数。两者同样使用 `--unidiff-zero`。
 Windows 引擎构建选择已安装且兼容该脚本的 Visual Studio 工具链；不修改公共 SDK、全局 Git 配置或系统设置。
 
+`flutter-skcms-language-flags.patch` 在上述精确 revision 的引擎根应用，
+修改实际被编译的 `engine/src/flutter/skia/modules/skcms/BUILD.gn`，不修改未被此构建调用的
+第三方 Skia GN。skcms 已使用 C++ `.cc` 源，原 Flutter GN 包装器却将 C11 标准放进通用
+`cflags`，导致 Windows clang-cl 明确忽略 `-std=c11` 并告警。
+补丁将三处同类配置改为仅对 C 源生效的 `cflags_c`，Windows clang-cl 使用其透传语法；
+不修改 C++ 语言标准或运行时算法，不关闭任何告警。应用同样使用 `git apply --unidiff-zero`。
+
 此源码检查点只保存可独立合并的核心修补。测试包应用 AOT 来自当时包含并行改动的冻结工作树，
 此分支不冒充该整合工作树的逐字源码；公共窗口控件迁移、导航表面及业务改动仍由对应并行任务整合。
 源码提交不包含引擎二进制、客户端安装包、本机路径配置、凭据、完整日志或崩溃内存。

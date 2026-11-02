@@ -100,9 +100,9 @@ http {
         proxy_set_header X-Request-Id $request_id;
         gzip on;
         gzip_vary on;
-        gzip_comp_level 3;
+        gzip_comp_level 6;
         gzip_min_length 1024;
-        gzip_types application/javascript application/manifest+json application/wasm image/svg+xml text/css text/plain;
+        gzip_types application/javascript application/manifest+json application/wasm font/ttf font/otf image/svg+xml text/css text/plain;
         add_header Strict-Transport-Security "max-age=300" always;
         add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src 'self' blob:; img-src 'self' data: blob:; manifest-src 'self'; media-src 'self' blob:; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:" always;
         add_header Permissions-Policy "camera=(self), geolocation=(), microphone=(), payment=(), usb=()" always;
@@ -201,8 +201,14 @@ http {
         }
         location /api/ { proxy_pass http://remote_app; gzip off; }
         location = /api { return 404; }
+        # Font MIME types are absent in some distribution mime.types files.
+        # Scope the override to public fonts; never intercept API/health paths.
+        location ~* "^/(?!api(?:/|$)|actuator(?:/|$)).*\.(?:ttf|otf)$" {
+            types { font/ttf ttf; font/otf otf; }
+            try_files $uri =404;
+        }
         # Missing asset files must never return a successful HTML app shell.
-        location ~* "\.(?:js|mjs|wasm|css|json|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|otf)$" {
+        location ~* "^/(?!api(?:/|$)|actuator(?:/|$)).*\.(?:js|mjs|wasm|css|json|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|otf)$" {
             try_files $uri =404;
         }
         location / {

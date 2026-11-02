@@ -15,6 +15,7 @@ map $uri $uten_maintenance_cache_control {
     /maintenance.html "no-store";
     /maintenance.css "no-store";
     /maintenance.js "no-store";
+    "~*^/(?!api(?:/|$)|actuator(?:/|$)).*\.(?:ttf|otf)$" "no-cache";
 }
 
 upstream uten_imp_internal_test_backend {
@@ -111,7 +112,7 @@ server {
     gzip_comp_level 6;
     gzip_min_length 1024;
     gzip_types application/javascript application/json application/manifest+json
-        application/wasm image/svg+xml text/css text/plain;
+        application/wasm font/ttf font/otf image/svg+xml text/css text/plain;
 
     add_header Strict-Transport-Security "max-age=31536000" always;
     add_header Content-Security-Policy "default-src 'self'; base-uri 'self'; connect-src 'self'; font-src 'self'; form-action 'self'; frame-ancestors 'none'; frame-src 'self' blob:; img-src 'self' data: blob:; manifest-src 'self'; media-src 'self' blob:; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; worker-src 'self' blob:" always;
@@ -332,6 +333,12 @@ server {
         try_files $uri =404;
         expires 1y;
         access_log off;
+    }
+
+    # Match only public fonts; inherit all server security/cache headers.
+    location ~* "^/(?!api(?:/|$)|actuator(?:/|$)).*\.(?:ttf|otf)$" {
+        types { font/ttf ttf; font/otf otf; }
+        try_files $uri =404;
     }
 
     location = /version.json {

@@ -36,6 +36,7 @@ map $uri $uten_maintenance_cache_control {
     /maintenance.html "no-store";
     /maintenance.css "no-store";
     /maintenance.js "no-store";
+    "~*^/(?!api(?:/|$)|actuator(?:/|$)).*\.(?:ttf|otf)$" "no-cache";
 }
 
 upstream uten_imp_backend {
@@ -157,6 +158,8 @@ server {
         application/json
         application/manifest+json
         application/wasm
+        font/ttf
+        font/otf
         image/svg+xml
         text/css
         text/plain;
@@ -404,8 +407,14 @@ server {
         access_log off;
     }
 
-    # Advisory metadata for already-open tabs. It must not fall through to the
-    # SPA or use the immutable-asset cache policy.
+    # Public font MIME override must not replace the server's JavaScript/Wasm
+    # MIME table or intercept API/health paths.
+    location ~* "^/(?!api(?:/|$)|actuator(?:/|$)).*\.(?:ttf|otf)$" {
+        types { font/ttf ttf; font/otf otf; }
+        try_files $uri =404;
+    }
+
+    # Advisory metadata must not fall through to the SPA or become immutable.
     location = /version.json {
         try_files $uri =503;
         expires -1;

@@ -97,6 +97,10 @@ python3 deploy/remote-access/remote_access.py render --config /secure/remote/pro
 
 ```bash
 python3 -m unittest discover -s deploy/remote-access -p 'test_*.py' -v
+
+# Actual MIME, gzip roundtrip, cache/security inheritance and API routing
+# across the four current employee Nginx templates; no network/host ports.
+docker run --rm --network none --mount type=bind,source=/absolute/repo,target=/workspace,readonly uten-remote-contract:20261017 python3 /workspace/deploy/remote-access/tests/static_delivery_linux.py -v
 docker build -t uten-remote-contract:20261017 -f deploy/remote-access/tests/Dockerfile deploy/remote-access
 docker run --rm --network none --cap-add NET_ADMIN --mount type=bind,source=/absolute/repo/deploy/remote-access,target=/src,readonly uten-remote-contract:20261017 python3 tests/integration_linux.py --firewall
 docker run --rm --network none --cap-add NET_ADMIN --cap-add SYS_ADMIN --sysctl net.ipv4.ip_forward=1 --mount type=bind,source=/absolute/repo/deploy/remote-access,target=/src,readonly uten-remote-contract:20261017 python3 tests/network_isolation_linux.py
@@ -122,7 +126,7 @@ python3 deploy/remote-access/performance_probe.py --base-url https://erp.company
 
 本地业务远程预算默认 `UTEN_REMOTE_MAX_CONCURRENT_REQUESTS=8`，公开health/readiness/liveness另有独立2并发预算；启动条件为 **业务预算 + 2 ≤ Hikari最大连接数 − 4**，默认8+2≤20−4。该检查针对名义请求容量；嵌套事务可使一个请求占用多个连接，不能据此宣称已物理预留4个连接。remote connector 24个线程、64个连接、16个等待连接。业务短突发可等待最多100ms，不能无限排队；健康探针不等待，预算满返回429及独有结构化码`REMOTE_CAPACITY_REJECTED`。仅该准入拒绝可以确认本次未进入业务；普通429、网关错误页或其他业务错误不能这样推断，此前已有未知提交也不能被这次拒绝消除。应用 `uten.remote.request.duration` 的5分钟P50/P95/P99与 `uten.remote.request.rejected` 应通过受控本地监测读取，不能开放公网actuator。提高远程并发前先复测LAN P95与数据库池等待，不能把连接池调大当作吞吐提升。
 
-专用 Nginx 固定 2 个 worker；公司进程 CPUQuota=100%（一个 CPU 核的时间额度）、云进程150%，MemoryHigh=256MiB、MemoryMax=512MiB。它们是保护其他工作的初始资源预算，双层TLS的真实吞吐仍需测量；不要因为公司有很多核就自动启动同等数量远程worker。`2×8KiB` 是前端 header buffer 总预算，单个 header 上限仍8KiB；后端总header上限16KiB。Nginx不自行压缩API，但保留员工Accept-Encoding，后端专用connector可对≥4KiB JSON响应压缩；静态资源由Nginx低压缩等级处理。
+专用 Nginx 固定 2 个 worker；公司进程 CPUQuota=100%（一个 CPU 核的时间额度）、云进程150%，MemoryHigh=256MiB、MemoryMax=512MiB。它们是保护其他工作的初始资源预算，双层TLS的真实吞吐仍需测量；不要因为公司有很多核就自动启动同等数量远程worker。`2×8KiB` 是前端 header buffer 总预算，单个 header 上限仍8KiB；后端总header上限16KiB。Nginx不自行压缩API，但保留员工Accept-Encoding，后端专用connector可对≥4KiB JSON响应压缩；公开静态资源使用 Nginx gzip 6。字体单独声明 `font/ttf`、`font/otf`，不能依赖发行版 MIME 表，也不能全局压缩 `application/octet-stream`。字体 location 不覆盖 API/actuator、不添加覆盖继承安全头的 `add_header`；未带指纹的字体继续 `no-cache`，只有原有指纹资源可 immutable。
 
 ### 员工如何开通和日常使用
 

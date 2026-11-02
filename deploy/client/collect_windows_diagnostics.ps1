@@ -44,11 +44,52 @@ $processes = @(Get-Process -Name uten_imp,Uten.Legacy.Desktop,Uten.Legacy.Update
 $dumps = @(Get-ChildItem -LiteralPath (Join-Path $env:LOCALAPPDATA 'CrashDumps') -File -ErrorAction SilentlyContinue |
     Where-Object { $_.Name -match '^(uten_imp|Uten\.Legacy\.(Desktop|Updater))\.exe' } |
     Select-Object Name,Length,@{Name='ModifiedAtUtc';Expression={$_.LastWriteTimeUtc.ToString('o')}})
+function Read-UpdateDiagnosticFile([string]$Path, [int]$Limit) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    $file = Get-Item -LiteralPath $Path
+    if (($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        $issues.Add('Skipped a linked update diagnostic file.')
+        return $null
+    }
+    $stream = [IO.File]::Open($file.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+    try {
+        $take = [int][Math]::Min([long]$Limit, $stream.Length)
+        $offset = [Math]::Max([long]0, $stream.Length - $take)
+        [void]$stream.Seek($offset, [IO.SeekOrigin]::Begin)
+        $buffer = New-Object byte[] $take
+        $read = 0
+        while ($read -lt $take) {
+            $count = $stream.Read($buffer, $read, $take - $read)
+            if ($count -eq 0) { break }
+            $read += $count
+        }
+        return [PSCustomObject]@{ Name=$file.Name; Bytes=$file.Length; TailOnly=($offset -gt 0)
+            ModifiedAtUtc=$file.LastWriteTimeUtc.ToString('o'); Text=[Text.Encoding]::UTF8.GetString($buffer,0,$read) }
+    } finally { $stream.Dispose() }
+}
+$updateRoot = Join-Path $env:LOCALAPPDATA 'com.uten.uten_imp\client-updates'
+$updaterPath = Join-Path $install 'client_updater\client_updater.ps1'
+$flutterUpdateApplicable = Test-Path -LiteralPath (Join-Path $install 'uten_imp.exe') -PathType Leaf
+$updateDiagnostics = [ordered]@{ Applicable=$flutterUpdateApplicable; RuntimeFamily='flutter'
+    UpdaterPresent=(Test-Path -LiteralPath $updaterPath -PathType Leaf)
+    UpdaterSha256=$null; StagingDirectoryExists=(Test-Path -LiteralPath $updateRoot -PathType Container)
+    LastUpdateLog=$null; LastUpdateResult=$null; StagedPackageMetadata=@() }
+try {
+  if ($flutterUpdateApplicable) {
+    if ($updateDiagnostics.UpdaterPresent) {
+        $updateDiagnostics.UpdaterSha256 = (Get-FileHash -LiteralPath $updaterPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+    $updateDiagnostics.LastUpdateLog = Read-UpdateDiagnosticFile (Join-Path $updateRoot 'last-update.log') 65536
+    $updateDiagnostics.LastUpdateResult = Read-UpdateDiagnosticFile (Join-Path $updateRoot 'last-update-result.json') 16384
+    $updateDiagnostics.StagedPackageMetadata = @(Get-ChildItem -LiteralPath $updateRoot -File -Filter '*.zip' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 5 Name,Length,@{Name='ModifiedAtUtc';Expression={$_.LastWriteTimeUtc.ToString('o')}})
+  }
+} catch { $issues.Add('Update diagnostics could not be fully read: ' + $_.Exception.GetType().Name) }
 $report = [ordered]@{ SchemaVersion=1; CollectedAtUtc=[DateTime]::UtcNow.ToString('o')
     Os=[ordered]@{ Caption=$os.Caption; Version=$os.Version; Build=$os.BuildNumber; Architecture=$os.OSArchitecture }
     InstallDirectory=$install; Modules=@($modules); Processes=$processes; Events=$events
-    AvailableDumpMetadata=$dumps; Issues=@($issues)
-    Scope='Local read-only metadata. Dump contents and business/authentication data were not collected.' }
+    AvailableDumpMetadata=$dumps; UpdateDiagnostics=$updateDiagnostics; Issues=@($issues)
+    Scope='Local read-only diagnostics. Dump contents and business/authentication data were not collected.' }
 $reportPath = Join-Path ([IO.Path]::GetFullPath($OutputDirectory)) 'windows-diagnostics.json'
 [IO.File]::WriteAllText($reportPath, ($report | ConvertTo-Json -Depth 7), (New-Object Text.UTF8Encoding($false)))
 Write-Output $reportPath

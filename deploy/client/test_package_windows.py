@@ -177,13 +177,20 @@ class WindowsPackageTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Known crashing"):
                 validate_package(self.output, build_number=2, architecture="x64")
 
-    def test_formal_2538_2543_release_digest_is_rejected_separately_from_crash_evidence(self):
+    def test_formal_2537_2538_2543_release_digest_is_now_confirmed_crashing(self):
         digest = "011e87e890b7bfbac89f63c763341ffb8393d2b4a617dd836c471a0cdaa1346f"
-        self.assertNotIn(digest, package_module.KNOWN_CRASHING_ENGINE_DIGESTS)
-        with self.assertRaisesRegex(ValueError, "Known unrepaired"):
+        self.assertIn(digest, package_module.KNOWN_CRASHING_ENGINE_DIGESTS)
+        self.assertNotIn(digest, package_module.KNOWN_UNREPAIRED_ENGINE_DIGESTS)
+        with self.assertRaisesRegex(ValueError, "Known crashing"):
             package_module.reject_known_unsafe_engine("FLUTTER_WINDOWS.DLL", digest.upper())
         # The policy applies to the engine, not an unrelated file with that hash.
         package_module.reject_known_unsafe_engine("data/app.so", digest)
+
+    def test_common_tree_only_profile_candidate_still_requires_windows_hit_test_repair(self):
+        digest = "f10968fa4899f83d6415aaaa675aee92e96c27dde2d1c084f65c7589013df634"
+        self.assertNotIn(digest, package_module.KNOWN_CRASHING_ENGINE_DIGESTS)
+        with self.assertRaisesRegex(ValueError, "Known unrepaired"):
+            package_module.reject_known_unsafe_engine("flutter_windows.dll", digest)
 
     def test_unrepaired_engine_blocks_creation_and_independent_archive_validation(self):
         digest = hashlib.sha256((self.bundle / "flutter_windows.dll").read_bytes()).hexdigest()

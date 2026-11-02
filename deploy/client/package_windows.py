@@ -27,21 +27,22 @@ REQUIRED_FILES = {"uten_imp.exe", "flutter_windows.dll", "data/app.so", "data/ic
 UPDATER_PATH = "client_updater/client_updater.ps1"
 PACKAGE_KINDS = {"update", "installer"}
 VC_RUNTIME_CORE = {"msvcp140.dll", "vcruntime140.dll"}
-# Confirmed by symbolicated dumps and the real-window/UIA regression. This
-# rejects the exact failed runtime; an unknown digest is not a safety proof.
+# Confirmed by dumps or field events with matching symbols/native regression.
+# Reject exact failed runtimes; an unknown digest is not a safety proof.
 KNOWN_CRASHING_ENGINE_DIGESTS = {
     "72bf222a81e542348a8100ffb1e60ecee6fb066086b678a8f1c28497e7b4695e":
         "Flutter 3.44.2 Windows x64 Profile: null accessibility child on restore",
     "a5f0e1c7d685a022995ce49ed8529fb72523b0a3e9634ac10a8b0754af23df14":
         "Incomplete accessibility child guard: stale AXNodeData after tree reparent/update",
-}
-# The 2.5.38 and 2.5.43 formal x64 bundles contain this exact official Release
-# binary. Matching SDK/revision source still has unchecked ChildAtIndex and an
-# empty OnNodeReparented. This is source-confirmed exposure, not a claim that the
-# remote user's crash was symbolicated. Profile-only denylisting missed Release.
-KNOWN_UNREPAIRED_ENGINE_DIGESTS = {
     "011e87e890b7bfbac89f63c763341ffb8393d2b4a617dd836c471a0cdaa1346f":
-        "Flutter 3.44.2 Windows x64 Release: unrepaired accessibility child/reparent lifecycle",
+        "Flutter 3.44.2 Windows x64 Release: field C0000005 at HitTestSync RVA 0xF5D3",
+}
+# The earlier common-tree repair alone still leaves Windows HitTestSync unsafe.
+# Its exact DLL has not itself produced a field dump, so keep this classification
+# separate from the confirmed crashing Release binary above.
+KNOWN_UNREPAIRED_ENGINE_DIGESTS = {
+    "f10968fa4899f83d6415aaaa675aee92e96c27dde2d1c084f65c7589013df634":
+        "Common AXTree repair without Windows HitTestSync missing-delegate protection",
 }
 # These are Windows 10+ OS contracts, not libraries found on the build machine.
 # In particular, a development machine's System32 VC++ installation never makes

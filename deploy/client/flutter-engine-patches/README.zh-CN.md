@@ -1,5 +1,31 @@
 # Windows 无障碍子节点保护
 
+## 2026-11-01 现场日志补充：Windows 命中测试
+
+两台电脑日志复核与匹配 Release PDB 将第一台两次退出定位到
+`FlutterPlatformNodeDelegateWindows::HitTestSync`（RVA `0xF5D3`）。原公共树补丁不含
+这一 Windows 特有路径，旧候选 DLL `f10968fa...13df634` 已按“源码确认未修复”拒绝继续打包。
+
+在下述公共树补丁后，继续应用 `flutter-3.44.2-windows-hit-test-lifecycle.patch`：
+
+```text
+git apply --check --unidiff-zero /path/to/flutter-3.44.2-windows-hit-test-lifecycle.patch
+git apply --unidiff-zero /path/to/flutter-3.44.2-windows-hit-test-lifecycle.patch
+```
+
+增量补丁仅修改 Windows 原生 delegate 和同文件组 C++ 回归：命中前保留 bridge 强引用，
+失效 bridge/AXNode 返回空，缺少子 delegate 时继续命中仍有效的兄弟/父节点。无障碍接口
+继续可用，不捕获/吞掉原生访问异常。测试使用真实 AXTree 和 Windows delegate，旧方法
+稳定产生 `0xc0000005`；保护后新增 4 项与该组共 22 项通过，common 242 项另行通过。
+Profile 模式的测试 helper 明确 mock `RunsAOTCompiledDartCode=false`，与其既有假的 Run
+和 dummy 路径合同一致；未更改生产 AOT 策略或放宽断言。
+
+增量补丁 SHA-256、重建引擎与测试边界见 `patch-provenance.json` 及
+[两台电脑现场核对](../../../docs/99-项目治理/2026-11-01-两台Windows日志与HitTestSync崩溃修复.md)。
+这些都是内部候选验证，不表示已有正式 Release 安装包/更新 ZIP 或现网已更新。
+
+## 原公共树补丁与历史证据
+
 `flutter-3.44.2-safe-accessibility-tree.patch` 针对本地已符号化的两条窗口恢复崩溃：
 空子节点访问，以及树提交/重挂载后 delegate 指向旧 AXNode 导致字符串读取失效。
 补丁保护子项查询、预检拓扑提交并补全缺失的重挂载子树，重挂载后只重绑 AXNode、保留原生对象身份。

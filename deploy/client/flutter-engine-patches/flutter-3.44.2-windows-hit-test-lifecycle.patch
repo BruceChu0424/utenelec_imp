@@ -1,0 +1,137 @@
+diff --git a/engine/src/flutter/shell/platform/windows/accessibility_bridge_windows_unittests.cc b/engine/src/flutter/shell/platform/windows/accessibility_bridge_windows_unittests.cc
+index 64b196f025c..9c970262eb0 100644
+--- a/engine/src/flutter/shell/platform/windows/accessibility_bridge_windows_unittests.cc
++++ b/engine/src/flutter/shell/platform/windows/accessibility_bridge_windows_unittests.cc
+@@ -121,0 +122,2 @@ std::unique_ptr<FlutterWindowsEngine> GetTestEngine() {
++  // This helper mocks Run and uses dummy paths in every runtime mode.
++  modifier.embedder_api().RunsAOTCompiledDartCode = []() { return false; };
+@@ -404,0 +407,104 @@ TEST(AccessibilityBridgeWindows, OnDocumentSelectionChanged) {
++
++namespace {
++// The native delegate can remain reachable while a child AXNode's Windows
++// delegate is missing. Keep actual AXTree/native delegate objects in this
++// fixture; only screen coordinates are fixed to avoid depending on a real HWND.
++class FixedBoundsHitTestDelegate : public FlutterPlatformNodeDelegateWindows {
++ public:
++  using FlutterPlatformNodeDelegateWindows::FlutterPlatformNodeDelegateWindows;
++  gfx::Rect GetBoundsRect(ui::AXCoordinateSystem,
++                          ui::AXClippingBehavior,
++                          ui::AXOffscreenResult* result) const override {
++    if (result)
++      *result = ui::AXOffscreenResult::kOnscreen;
++    return gfx::Rect(0, 0, 100, 100);
++  }
++};
++
++std::unique_ptr<ui::AXTree> MakeHitTestTree(std::vector<int32_t> children) {
++  ui::AXTreeUpdate update;
++  update.root_id = 0;
++  ui::AXNodeData root;
++  root.id = 0;
++  root.role = ax::mojom::Role::kGenericContainer;
++  root.child_ids = children;
++  update.nodes.push_back(root);
++  for (int32_t id : children) {
++    ui::AXNodeData child;
++    child.id = id;
++    child.role = ax::mojom::Role::kStaticText;
++    update.nodes.push_back(child);
++  }
++  return std::make_unique<ui::AXTree>(update);
++}
++}  // namespace
++
++TEST(AccessibilityBridgeWindows, HitTestSyncMissingDelegateReturnsParent) {
++  auto engine = GetTestEngine();
++  FlutterWindowsViewSpy view{
++      engine.get(), std::make_unique<NiceMock<MockWindowBindingHandler>>()};
++  auto bridge =
++      std::make_shared<AccessibilityBridgeWindowsSpy>(engine.get(), &view);
++  auto tree = MakeHitTestTree({99});
++  auto root = std::make_shared<FixedBoundsHitTestDelegate>(bridge, &view);
++  root->Init(bridge, tree->root());
++  ASSERT_TRUE(bridge->GetFlutterPlatformNodeDelegateFromID(99).expired());
++  EXPECT_EQ(root->HitTestSync(5, 5), root->GetNativeViewAccessible());
++}
++
++TEST(AccessibilityBridgeWindows, HitTestSyncMissingDelegateKeepsLiveSibling) {
++  auto engine = GetTestEngine();
++  FlutterWindowsViewSpy view{
++      engine.get(), std::make_unique<NiceMock<MockWindowBindingHandler>>()};
++  auto bridge =
++      std::make_shared<AccessibilityBridgeWindowsSpy>(engine.get(), &view);
++  FlutterSemanticsFlags flags{};
++  std::vector<int32_t> children{2};
++  FlutterSemanticsNode2 parent{sizeof(FlutterSemanticsNode2), 0};
++  parent.flags2 = &flags;
++  parent.rect = FlutterRect{0, 0, 100, 100};
++  parent.transform = FlutterTransformation{1, 0, 0, 0, 1, 0, 0, 0, 1};
++  parent.child_count = children.size();
++  parent.children_in_traversal_order = children.data();
++  parent.children_in_hit_test_order = children.data();
++  FlutterSemanticsNode2 child{sizeof(FlutterSemanticsNode2), 2};
++  child.flags2 = &flags;
++  child.label = "live sibling";
++  child.rect = parent.rect;
++  child.transform = parent.transform;
++  bridge->AddFlutterSemanticsNodeUpdate(parent);
++  bridge->AddFlutterSemanticsNodeUpdate(child);
++  bridge->CommitUpdates();
++  auto live = bridge->GetFlutterPlatformNodeDelegateFromID(2).lock();
++  ASSERT_TRUE(live);
++  auto tree = MakeHitTestTree({99, 2});
++  auto root = std::make_shared<FixedBoundsHitTestDelegate>(bridge, &view);
++  root->Init(bridge, tree->root());
++  EXPECT_EQ(root->HitTestSync(5, 5), live->GetNativeViewAccessible());
++}
++
++TEST(AccessibilityBridgeWindows, HitTestSyncExpiredBridgeReturnsNull) {
++  auto engine = GetTestEngine();
++  FlutterWindowsViewSpy view{
++      engine.get(), std::make_unique<NiceMock<MockWindowBindingHandler>>()};
++  auto bridge =
++      std::make_shared<AccessibilityBridgeWindowsSpy>(engine.get(), &view);
++  auto tree = MakeHitTestTree({});
++  auto root = std::make_shared<FixedBoundsHitTestDelegate>(bridge, &view);
++  root->Init(bridge, tree->root());
++  bridge.reset();
++  EXPECT_EQ(root->HitTestSync(5, 5), nullptr);
++}
++
++TEST(AccessibilityBridgeWindows, HitTestSyncOutsideBoundsReturnsNull) {
++  auto engine = GetTestEngine();
++  FlutterWindowsViewSpy view{
++      engine.get(), std::make_unique<NiceMock<MockWindowBindingHandler>>()};
++  auto bridge =
++      std::make_shared<AccessibilityBridgeWindowsSpy>(engine.get(), &view);
++  auto tree = MakeHitTestTree({99});
++  auto root = std::make_shared<FixedBoundsHitTestDelegate>(bridge, &view);
++  root->Init(bridge, tree->root());
++  EXPECT_EQ(root->HitTestSync(101, 5), nullptr);
++}
++
+diff --git a/engine/src/flutter/shell/platform/windows/flutter_platform_node_delegate_windows.cc b/engine/src/flutter/shell/platform/windows/flutter_platform_node_delegate_windows.cc
+index a548d70c10d..bb9e45f0705 100644
+--- a/engine/src/flutter/shell/platform/windows/flutter_platform_node_delegate_windows.cc
++++ b/engine/src/flutter/shell/platform/windows/flutter_platform_node_delegate_windows.cc
+@@ -55,0 +56,7 @@ gfx::NativeViewAccessible FlutterPlatformNodeDelegateWindows::HitTestSync(
++  // Native accessibility clients can query a retiring tree. Retain its bridge
++  // before geometry work, and reject delegates that no longer have a live tree.
++  auto bridge = bridge_.lock();
++  const ui::AXNode* node = GetAXNode();
++  if (!bridge || node == nullptr) {
++    return nullptr;
++  }
+@@ -66,3 +73 @@ gfx::NativeViewAccessible FlutterPlatformNodeDelegateWindows::HitTestSync(
+-  auto bridge = bridge_.lock();
+-  FML_DCHECK(bridge);
+-  for (const ui::AXNode* child : GetAXNode()->children()) {
++  for (const ui::AXNode* child : node->children()) {
+@@ -72,2 +77,5 @@ gfx::NativeViewAccessible FlutterPlatformNodeDelegateWindows::HitTestSync(
+-    FML_DCHECK(win_delegate)
+-        << "No FlutterPlatformNodeDelegate found for node " << child->id();
++    // A child AXNode may still exist while its platform delegate is absent.
++    // A DCHECK is insufficient in release; keep searching live siblings.
++    if (!win_delegate) {
++      continue;
++    }

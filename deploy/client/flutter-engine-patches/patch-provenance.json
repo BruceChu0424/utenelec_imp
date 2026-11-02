@@ -18,5 +18,19 @@
       "sha256": "ebc410670e64e8bd02ced9301ab42d0aade03f424835aa4059e7ff96caeb8a74",
       "scope": "build tooling only"
     }
-  ]
+  ],
+  "windowsHitTestRepair": {
+    "patch": "flutter-3.44.2-windows-hit-test-lifecycle.patch",
+    "sha256": "e0dee46d8cee8f7273b550b691b51410c3b7198eecd28bf3a5e9119256288733",
+    "engineRevision": "77e2e94772b6eb43759e34ed1ad7da4674e19cab",
+    "baseCommonPatchUnchanged": true,
+    "fixture": "AccessibilityBridgeWindows.HitTestSync*",
+    "redBeforeRepair": "SEH 0xc0000005 with corrected mocked AOT fixture",
+    "windowsAccessibilityCases": 22,
+    "commonCases": 242,
+    "customerReleaseRva": "0xF5D3",
+    "customerReleasePdbGuid": "015D6F44-47AA-4576-B919-626F55044F87",
+    "customerReleasePdbAge": 1,
+    "reverseApplyCheckAgainstBuiltSource": true
+  }
 }

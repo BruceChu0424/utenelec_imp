@@ -15,6 +15,7 @@ import '../../shared/providers/shared_providers.dart';
 import 'api_base_url.dart';
 import 'server_selection.dart';
 import '../security/auth_token_issuer.dart';
+import '../runtime/client_runtime_profile.dart';
 
 final authBackendRealmPolicyProvider = Provider<AuthBackendRealmPolicy>(
   (ref) => AuthBackendRealmPolicy.fromBuildConfiguration(),
@@ -28,6 +29,7 @@ final apiBaseUrlProvider = Provider<String>((ref) {
   // prefs 未注入时 shared_providers 已给出全内存空实现（读全默认），
   // 这里保持对可空读取的容忍以适配测试注入 null 的场景。
   final prefs = ref.watch(sharedPreferencesProvider);
+  if (ClientRuntimeProfile.current.localTest) return apiBaseUrl;
   return effectiveServerUrl(
     mode: readServerMode(prefs),
     local: apiBaseUrl,

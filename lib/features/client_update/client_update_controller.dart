@@ -2,9 +2,10 @@ import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:uten_imp/core/io/guarded_url_launcher.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/runtime/client_runtime_profile.dart';
 import '../../core/diagnostics/diagnostic_log.dart';
 import '../../core/web_update/web_update_safety.dart';
 import '../../shared/providers/session_provider.dart';
@@ -64,6 +65,16 @@ class ClientUpdateController extends ChangeNotifier {
   final _ownerDisposedListeners = <VoidCallback>{};
   CancelToken? _download;
   bool _manualUpdate = false;
+  bool _localTestUpdateBlocked({bool automatic = false}) {
+    if (!ClientRuntimeProfile.isLocalTest) return false;
+    if (!automatic) {
+      error = '本地测试版不接收正式客户端更新，请重新构建本地测试软件。';
+      stage = ClientUpdateStage.failed;
+      _notify();
+    }
+    return true;
+  }
+
   ClientUpdateStage? _loggedStage;
   bool get isDisposed => _disposed;
   void addOwnerDisposedListener(VoidCallback listener) =>
@@ -97,6 +108,7 @@ class ClientUpdateController extends ChangeNotifier {
   }
 
   Future<void> check({bool automatic = false}) async {
+    if (_localTestUpdateBlocked(automatic: automatic)) return;
     if (_disposed || busy) return;
     stage = ClientUpdateStage.checking;
     error = null;
@@ -159,6 +171,7 @@ class ClientUpdateController extends ChangeNotifier {
   }
 
   Future<void> update() async {
+    if (_localTestUpdateBlocked()) return;
     AppDiagnostics.record(
       'update.clicked',
       fields: {
@@ -285,6 +298,7 @@ class ClientUpdateController extends ChangeNotifier {
     bool automatic = false,
     bool Function()? additionalSafety,
   }) async {
+    if (_localTestUpdateBlocked(automatic: automatic)) return false;
     if (_disposed || busy || !hasStagedUpdate) return false;
     bool safe() =>
         !_disposed && _canInstall() && (additionalSafety?.call() ?? true);

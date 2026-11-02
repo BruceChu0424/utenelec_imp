@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ui/opportunistic_dialog_coordinator.dart';
+import '../../core/runtime/client_runtime_profile.dart';
 import '../../core/network/user_activity.dart';
 import '../../core/web_update/web_update_safety.dart';
 import '../../shared/providers/app_visibility_provider.dart';
@@ -38,6 +39,7 @@ class _ClientUpdateHostState extends ConsumerState<ClientUpdateHost> {
   bool _dialogOpen = false;
   VoidCallback? _closeOfferForCountdown;
   bool get _active =>
+      !ClientRuntimeProfile.isLocalTest &&
       mounted &&
       widget.enabled &&
       widget.authenticated &&

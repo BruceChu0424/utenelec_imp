@@ -1,5 +1,6 @@
 #include "flutter_window.h"
 #include "native_diagnostics.h"
+#include "client_runtime_identity.h"
 #include <shellapi.h>
 
 #include <optional>
@@ -40,6 +41,15 @@ bool FlutterWindow::OnCreate() {
       flutter_controller_->engine()->messenger(), "com.uten.imp/diagnostics",
       &flutter::StandardMethodCodec::GetInstance());
   diagnostic_channel_->SetMethodCallHandler([](const auto& call, auto result) {
+    if (call.method_name() == "getRuntimeProfile") {
+      result->Success(flutter::EncodableValue(flutter::EncodableMap{
+          {flutter::EncodableValue("schemaVersion"), flutter::EncodableValue(1)},
+          {flutter::EncodableValue("buildProfile"), flutter::EncodableValue(UTEN_BUILD_PROFILE)},
+          {flutter::EncodableValue("applicationId"), flutter::EncodableValue(UTEN_APPLICATION_ID)},
+          {flutter::EncodableValue("nativeProductName"), flutter::EncodableValue(UTEN_NATIVE_PRODUCT_NAME)},
+      }));
+      return;
+    }
     const auto path = NativeDiagnosticDirectory();
     if (call.method_name() == "getLogDirectory") {
       const int length = WideCharToMultiByte(CP_UTF8, 0, path.data(),
@@ -149,6 +159,14 @@ bool FlutterWindow::OnCreate() {
         if (!has_visible_character) {
           result->Error("INVALID_TITLE", "Title must not be blank.");
           return;
+        }
+        if (UTEN_LOCAL_TEST_BUILD) {
+          const std::wstring prefix = std::wstring(UTEN_DISPLAY_NAME_W) + L" · ";
+          if (title.rfind(UTEN_DISPLAY_NAME_W, 0) != 0) title = prefix + title;
+          if (title.size() > 80) {
+            title.resize(80);
+            if (title.back() >= 0xd800 && title.back() <= 0xdbff) title.pop_back();
+          }
         }
         HWND window = GetHandle();
         if (window == nullptr || !::IsWindow(window)) {

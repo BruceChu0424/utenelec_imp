@@ -5,8 +5,9 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:uten_imp/core/io/guarded_url_launcher.dart';
 import 'diagnostic_store.dart';
+import '../runtime/client_runtime_profile.dart';
 
 const _channel = MethodChannel('com.uten.imp/diagnostics');
 String diagnosticArchitecture() {
@@ -44,7 +45,7 @@ Future<DiagnosticStore> createDiagnosticStore(String version) async {
     final local = Platform.environment['LOCALAPPDATA'];
     if (local != null) {
       final previous = File(
-        '$local/com.uten.uten_imp/client-updates/last-update.log',
+        '$local/${ClientRuntimeProfile.current.applicationId}/client-updates/last-update.log',
       );
       try {
         if (await FileSystemEntity.type(previous.path, followLinks: false) ==

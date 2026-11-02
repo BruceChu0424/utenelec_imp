@@ -1,4 +1,5 @@
 #include "client_update_channel.h"
+#include "client_runtime_identity.h"
 #include "software_download_host.h"
 #include "update_helper_process.h"
 #include "native_diagnostics.h"
@@ -52,7 +53,7 @@ fs::path StagingDirectory() {
   PWSTR raw = nullptr;
   if (FAILED(SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_CREATE,
                                  nullptr, &raw))) return {};
-  const fs::path result = fs::path(raw) / L"com.uten.uten_imp" / L"client-updates";
+  const fs::path result = fs::path(raw) / UTEN_APPLICATION_ID / L"client-updates";
   CoTaskMemFree(raw);
   std::error_code error;
   fs::create_directories(result, error);
@@ -306,6 +307,10 @@ ClientUpdateChannel::ClientUpdateChannel(flutter::BinaryMessenger* messenger,
   channel_->SetMethodCallHandler(
       [this, window](const flutter::MethodCall<Value>& call,
                std::unique_ptr<flutter::MethodResult<Value>> result) {
+    if (UTEN_LOCAL_TEST_BUILD && call.method_name() != "getSoftwareDownloadHost") {
+      result->Error("LOCAL_TEST_UPDATE_DISABLED", "LocalTest does not accept company client updates.");
+      return;
+    }
     if (call.method_name() == "getSoftwareDownloadHost") {
       const auto host = ReadSoftwareDownloadHost();
       result->Success(Value(Map{

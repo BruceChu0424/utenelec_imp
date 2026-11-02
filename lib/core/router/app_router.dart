@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../diagnostics/diagnostic_navigation.dart';
 import '../../components/buttons/uten_back_button.dart';
 import '../../components/buttons/uten_close_button.dart';
 import '../../components/layout/uten_app_bar.dart';
@@ -2467,6 +2468,7 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
     router,
     ref.read(pageResumeProvider.notifier),
   );
+  final detachDiagnostics = attachDiagnosticNavigation(router);
 
   ref.listen(sessionProvider, (_, _) {
     router.refresh();
@@ -2476,6 +2478,7 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
   });
 
   ref.onDispose(() {
+    detachDiagnostics();
     detachPageResume();
     router.dispose();
   });

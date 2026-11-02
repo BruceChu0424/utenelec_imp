@@ -24,28 +24,23 @@ namespace Uten.Legacy.Tests
                     var readChecks = typeof(SessionCoordinator).Assembly.GetTypes().Single(type => type.Name == "ReadScopeRevisionChecks");
                     readChecks.GetMethod("Run", BindingFlags.Public | BindingFlags.Static).Invoke(null, null);
                     int drafts = DurableDraftDialogChecks.Run();
-                    var previous = System.Threading.SynchronizationContext.Current;
-                    int inline;
-                    System.Threading.SynchronizationContext.SetSynchronizationContext(
-                        new System.Windows.Threading.DispatcherSynchronizationContext(System.Windows.Threading.Dispatcher.CurrentDispatcher));
-                    try { inline = UnitInlineWorkspaceChecks.Run(); }
-                    finally { System.Threading.SynchronizationContext.SetSynchronizationContext(previous); }
+                    int inline = RunUi(UnitInlineWorkspaceChecks.Run);
                     Console.WriteLine("PASS permission readonly contracts; read scope transitions; durable drafts=" + drafts
                         + "; inline preservation=" + inline + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
                     return 0;
                 }
                 if (args.Length == 1 && args[0] == "--ui-contracts-only")
                 {
-                    UiContractChecks.Run();
+                    RunUi(UiContractChecks.Run);
                     Console.WriteLine("PASS UI shell/draft/review fixtures");
-                    int historyUi = UnitHistoryContractChecks.RunUi();
-                    int printUi = NativePrintContractChecks.Run();
-                    int drafts = DurableDraftDialogChecks.Run();
-                    int exports = UnitExportUiChecks.Run();
+                    int historyUi = RunUi(UnitHistoryContractChecks.RunUi);
+                    int printUi = RunUi(NativePrintContractChecks.Run);
+                    int drafts = RunUi(DurableDraftDialogChecks.Run);
+                    int exports = RunUi(UnitExportUiChecks.Run);
                     Console.WriteLine("PASS UI history/print/draft/export fixtures");
-                    int inline = UnitInlineWorkspaceChecks.Run();
+                    int inline = RunUi(UnitInlineWorkspaceChecks.Run);
                     Console.WriteLine("PASS UI inline fixtures");
-                    int columnUi = ColumnUiContractChecks.Run();
+                    int columnUi = RunUi(ColumnUiContractChecks.Run);
                     Console.WriteLine("PASS native UI contracts only; history=" + historyUi + "; print=" + printUi + "; common drafts=" + drafts + "; exports=" + exports + "; inline=" + inline + "; column UI=" + columnUi
                         + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
                     return 0;
@@ -62,17 +57,17 @@ namespace Uten.Legacy.Tests
                 int publish = PublishContractChecks.Run();
                 int units = UnitContractChecks.Run();
                 int history = UnitHistoryContractChecks.Run();
-                int columns = ColumnModelContractChecks.Run() + ColumnServiceContractChecks.RunRead() + ColumnUiContractChecks.RunWrites();
+                int columns = ColumnModelContractChecks.Run() + ColumnServiceContractChecks.RunRead() + RunUi(ColumnUiContractChecks.RunWrites);
                 int updater = UpdaterContractChecks.Run();
                 int outcomes = UpdateOutcomeContractChecks.Run();
                 Console.WriteLine("PASS goods/downloads/publish/units/updater contracts");
-                UiContractChecks.Run();
-                int historyUiAssertions = UnitHistoryContractChecks.RunUi();
-                int printAssertions = NativePrintContractChecks.Run();
-                int draftAssertions = DurableDraftDialogChecks.Run();
-                int exportAssertions = UnitExportUiChecks.Run();
-                int inlineAssertions = UnitInlineWorkspaceChecks.Run();
-                int columnUiAssertions = ColumnUiContractChecks.Run();
+                RunUi(UiContractChecks.Run);
+                int historyUiAssertions = RunUi(UnitHistoryContractChecks.RunUi);
+                int printAssertions = RunUi(NativePrintContractChecks.Run);
+                int draftAssertions = RunUi(DurableDraftDialogChecks.Run);
+                int exportAssertions = RunUi(UnitExportUiChecks.Run);
+                int inlineAssertions = RunUi(UnitInlineWorkspaceChecks.Run);
+                int columnUiAssertions = RunUi(ColumnUiContractChecks.Run);
                 Console.WriteLine("PASS native core contracts; goods assertions=" + goods + "; downloads assertions=" + downloads
                     + "; publish assertions=" + publish + "; units assertions=" + units
                     + "; history assertions=" + history + "; history UI=" + historyUiAssertions + "; print assertions=" + printAssertions
@@ -88,6 +83,23 @@ namespace Uten.Legacy.Tests
                 Console.Error.WriteLine(inner.StackTrace);
                 return 1;
             }
+        }
+
+        private static T RunUi<T>(Func<T> check)
+        {
+            // STA alone does not install the context supplied by a real WPF
+            // application. Awaited preservation failures must return to the UI
+            // dispatcher before showing their owned guard, in every test group.
+            var previous = System.Threading.SynchronizationContext.Current;
+            System.Threading.SynchronizationContext.SetSynchronizationContext(
+                new System.Windows.Threading.DispatcherSynchronizationContext(System.Windows.Threading.Dispatcher.CurrentDispatcher));
+            try { return check(); }
+            finally { System.Threading.SynchronizationContext.SetSynchronizationContext(previous); }
+        }
+
+        private static void RunUi(Action check)
+        {
+            RunUi(() => { check(); return true; });
         }
     }
 }

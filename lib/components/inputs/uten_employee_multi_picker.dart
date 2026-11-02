@@ -15,6 +15,7 @@ import 'uten_employee_selection_panel.dart';
 import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
+import '../../shared/models/department_node.dart';
 
 class UtenEmployeeMultiPicker extends StatefulWidget {
   const UtenEmployeeMultiPicker({
@@ -28,6 +29,8 @@ class UtenEmployeeMultiPicker extends StatefulWidget {
     this.sheetTitle = '选择人员',
     this.searchHint = '搜索部门 / 姓名 / 工号',
     this.showDepartmentFilter = true,
+    this.departmentTreeLoader,
+    this.presentation = UtenEmployeePickerPresentation.standard,
     this.candidateScopeKey,
     this.emptyMessage = '未找到匹配的人员',
     this.selectedCountLabel,
@@ -48,6 +51,8 @@ class UtenEmployeeMultiPicker extends StatefulWidget {
   final String sheetTitle;
   final String searchHint;
   final bool showDepartmentFilter;
+  final Future<List<DepartmentNode>> Function()? departmentTreeLoader;
+  final UtenEmployeePickerPresentation presentation;
 
   /// Stable identity for candidates whose business scope can change.
   final Object? candidateScopeKey;
@@ -158,6 +163,8 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker>
     final result = await showUtenEmployeeSelectionPanel(
       context,
       loader: widget.loader,
+      departmentTreeLoader: widget.departmentTreeLoader,
+      presentation: widget.presentation,
       multiple: true,
       initialSelection: _selection,
       title: widget.sheetTitle,

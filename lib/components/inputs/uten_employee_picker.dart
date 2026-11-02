@@ -20,6 +20,7 @@ import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
 import 'uten_table_cell_spec.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
+import '../../shared/models/department_node.dart';
 
 export 'uten_employee_picker_models.dart';
 export 'uten_employee_selection_panel.dart';
@@ -29,6 +30,9 @@ export 'uten_employee_selection_panel.dart';
 Future<UtenEmployeePickerItem?> showUtenEmployeePickerPanel(
   BuildContext context, {
   required UtenEmployeePickerLoader loader,
+  Future<List<DepartmentNode>> Function()? departmentTreeLoader,
+  UtenEmployeePickerPresentation presentation =
+      UtenEmployeePickerPresentation.standard,
   String title = '选择员工',
   String? selectedId,
   String? departmentName,
@@ -40,6 +44,8 @@ Future<UtenEmployeePickerItem?> showUtenEmployeePickerPanel(
   final selection = await showUtenEmployeeSelectionPanel(
     context,
     loader: loader,
+    departmentTreeLoader: departmentTreeLoader,
+    presentation: presentation,
     title: title,
     selectedId: selectedId,
     departmentName: departmentName,
@@ -62,6 +68,8 @@ class UtenEmployeePicker extends StatefulWidget {
     this.hint = '员工',
     this.validator,
     this.departmentName,
+    this.departmentTreeLoader,
+    this.presentation = UtenEmployeePickerPresentation.standard,
     this.candidateScopeKey,
     this.showDepartmentFilter = true,
     this.sheetTitle = '选择员工',
@@ -89,6 +97,8 @@ class UtenEmployeePicker extends StatefulWidget {
 
   /// 当前选择范围的部门名（抽屉标题下方提示，不参与人员主展示）。
   final String? departmentName;
+  final Future<List<DepartmentNode>> Function()? departmentTreeLoader;
+  final UtenEmployeePickerPresentation presentation;
 
   /// Stable business scope, e.g. the chosen workshop ID. Loader closures can
   /// change on every build and are deliberately not used as identity.
@@ -194,6 +204,7 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
               employeeCode: current!.employeeCode,
               departmentId: next.departmentId,
               departmentName: next.departmentName,
+              positionName: next.positionName,
               accountStatus: next.accountStatus,
               employmentStatus: next.employmentStatus,
               subtitle: next.subtitle,
@@ -246,6 +257,8 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
     final selection = await showUtenEmployeeSelectionPanel(
       context,
       loader: widget.loader,
+      departmentTreeLoader: widget.departmentTreeLoader,
+      presentation: widget.presentation,
       title: widget.sheetTitle,
       initialSelection: [?_selected],
       departmentName: widget.departmentName,

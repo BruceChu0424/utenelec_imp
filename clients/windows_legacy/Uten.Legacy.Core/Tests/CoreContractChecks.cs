@@ -15,6 +15,7 @@ namespace Uten.Legacy.Core.Tests
         public static void Run()
         {
             CompanyCertificatePolicy.FromEmbeddedCertificate();
+            UserErrorMessageChecks.Run();
             MutationContractChecks.Run();
             UnitCommandContractChecks.Run();
             UnitHistoryMutationChecks.Run();

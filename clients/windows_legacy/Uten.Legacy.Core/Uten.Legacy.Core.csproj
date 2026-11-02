@@ -33,6 +33,7 @@
     <Compile Include="ClientConfiguration.cs" />
     <Compile Include="DiagnosticsLog.cs" />
     <Compile Include="Models.cs" />
+    <Compile Include="ApiErrorMessage.cs" />
     <Compile Include="CompanyCertificatePolicy.cs" />
     <Compile Include="SessionStore.cs" />
     <Compile Include="SessionCoordinator.cs" />
@@ -82,6 +83,10 @@
     <Compile Include="Tests\ManagedTlsChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="Tests\ManagedHttp11Checks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="Tests\CoreContractChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <Compile Include="Tests\UserErrorMessageChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <EmbeddedResource Include="..\..\..\contracts\user-error-message\v1.json" Condition=" '$(Configuration)' == 'Debug' ">
+      <LogicalName>Uten.Legacy.Core.UserErrorMessageFixture.json</LogicalName>
+    </EmbeddedResource>
     <Compile Include="Tests\PublishUploadSinkChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <EmbeddedResource Include="..\..\..\assets\security\uten-imp-root-ca.crt">
       <LogicalName>Uten.Legacy.Core.uten-imp-root-ca.crt</LogicalName>

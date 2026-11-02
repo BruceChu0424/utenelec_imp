@@ -665,6 +665,8 @@ abstract final class ApiEndpoints {
   static const businessReferenceWarehouses = '/business-references/warehouses';
   static const businessReferenceDepartments =
       '/business-references/departments';
+  static const productionWorkshopAssignmentDefaults =
+      '/production/workshop-assignment-defaults';
 
   /// 精确搜索 0 命中时的「类似人员」（逐字符评分，见后端 EmployeeListQuery#similar）。
   static const employeesSimilar = '/org/employees/similar';

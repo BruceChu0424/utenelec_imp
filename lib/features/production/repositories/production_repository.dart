@@ -31,10 +31,12 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/performance/ui_work_budget.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/models/employee_reference.dart';
 import '../../../shared/models/progress_ratio.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../models/analysis_linked_sales_order.dart';
@@ -247,12 +249,6 @@ class ProductionPlanRepository {
   >
   defaultWorkshops(Set<String> goodsIds, {CancelToken? cancelToken}) async {
     if (goodsIds.isEmpty) return const {};
-    // 200 个 UUID 加逗号 URL 编码后接近常见代理的 8KB request-line 上限；
-    // 客户端仍用 100 分块，但并行执行且共用一个取消令牌。该可选预填查询
-    // 每块只尝试一次、10 秒截止，不继承普通 GET 的两次自动重试。
-    const requestLimit = 100;
-    const receiveTimeout = Duration(seconds: 10);
-    final orderedIds = goodsIds.toList(growable: false)..sort();
     final result =
         <
           String,
@@ -263,32 +259,11 @@ class ProductionPlanRepository {
             String? workerName,
           })
         >{};
-    final effectiveCancelToken = cancelToken ?? CancelToken();
-    final requests = <Future<List<Map<String, dynamic>>> Function()>[];
-    for (var start = 0; start < orderedIds.length; start += requestLimit) {
-      final proposedEnd = start + requestLimit;
-      final end = proposedEnd < orderedIds.length
-          ? proposedEnd
-          : orderedIds.length;
-      final ids = orderedIds.sublist(start, end).join(',');
-      requests.add(
-        () => api.getListOnce(
-          '$_materialAnalysesBase/default-workshops', // ENDPOINT
-          query: {'ids': ids},
-          receiveTimeout: receiveTimeout,
-          cancelToken: effectiveCancelToken,
-        ),
-      );
-    }
-    List<List<Map<String, dynamic>>> batches;
-    try {
-      batches = await _runBounded(requests);
-    } catch (_) {
-      if (!effectiveCancelToken.isCancelled) {
-        effectiveCancelToken.cancel('default workshop lookup failed');
-      }
-      rethrow;
-    }
+    final batches = await _workshopDefaultBatches(
+      '$_materialAnalysesBase/default-workshops',
+      goodsIds,
+      cancelToken: cancelToken,
+    );
     for (final list in batches) {
       for (final entry in list) {
         final goodsId = entry['goodsId'] as String?;
@@ -304,6 +279,72 @@ class ProductionPlanRepository {
       }
     }
     return result;
+  }
+
+  /// Workflow-only manager fallback. Generic department references remain six-field metadata.
+  Future<Map<String, ({String? id, String? name})>> workshopAssignmentDefaults(
+    Set<String> departmentIds, {
+    required EmployeeReferencePurpose purpose,
+    CancelToken? cancelToken,
+  }) async {
+    if (!const {
+      EmployeeReferencePurpose.productionMaterialOwner,
+      EmployeeReferencePurpose.productionPlanOwner,
+      EmployeeReferencePurpose.productionSegmentOwner,
+    }.contains(purpose)) {
+      throw ArgumentError.value(purpose, 'purpose', '生产指派引用场景无效');
+    }
+    if (departmentIds.isEmpty) return const {};
+    final batches = await _workshopDefaultBatches(
+      ApiEndpoints.productionWorkshopAssignmentDefaults,
+      departmentIds,
+      parameters: {'purpose': purpose.apiValue},
+      cancelToken: cancelToken,
+    );
+    return {
+      for (final rows in batches)
+        for (final row in rows)
+          if (row['departmentId'] is String &&
+              departmentIds.contains(row['departmentId']))
+            row['departmentId'] as String: (
+              id: row['responsibleEmployeeId'] as String?,
+              name: row['responsibleEmployeeName'] as String?,
+            ),
+    };
+  }
+
+  /// Same deterministic 100-ID, four-worker, single-attempt budget for both default projections.
+  Future<List<List<Map<String, dynamic>>>> _workshopDefaultBatches(
+    String path,
+    Set<String> requestedIds, {
+    Map<String, dynamic> parameters = const {},
+    CancelToken? cancelToken,
+  }) async {
+    final orderedIds = requestedIds.toList(growable: false)..sort();
+    final effectiveCancelToken = cancelToken ?? CancelToken();
+    final requests = <Future<List<Map<String, dynamic>>> Function()>[];
+    for (var start = 0; start < orderedIds.length; start += 100) {
+      final end = start + 100 < orderedIds.length
+          ? start + 100
+          : orderedIds.length;
+      final ids = orderedIds.sublist(start, end).join(',');
+      requests.add(
+        () => api.getListOnce(
+          path,
+          query: {...parameters, 'ids': ids},
+          receiveTimeout: const Duration(seconds: 10),
+          cancelToken: effectiveCancelToken,
+        ),
+      );
+    }
+    try {
+      return await _runBounded(requests);
+    } catch (_) {
+      if (!effectiveCancelToken.isCancelled) {
+        effectiveCancelToken.cancel('default workshop lookup failed');
+      }
+      rethrow;
+    }
   }
 
   // 2026-09-16：GET /last-routes 已退役。供应方式的单一事实源是货品主档

@@ -20,6 +20,9 @@ class NativeTaskReadScopeInterceptorTest {
                 "/api/master/goods/lookup", "/api/master/suppliers/lookup"))
             assertThat(NativeTaskReadScopeInterceptor.profile(path)).isNull();
         assertThat(NativeTaskReadScopeInterceptor.profile("/api/business-references/suppliers/delete")).isNull();
+        assertThat(NativeTaskReadScopeInterceptor.profile("/api/production/workshop-assignment-defaults"))
+                .isEqualTo("native_workshop_tasks");
+        assertThat(NativeTaskReadScopeInterceptor.profile("/api/production/workshop-assignment-defaults/delete")).isNull();
     }
     @Test void physicalReadsHaveFixedProfilesWithoutMatchingCommandsOrUnrelatedWarehouseApis() {
         for(String path:List.of("/api/master/warehouses/my-scope","/api/warehouse/task-center/inbound",

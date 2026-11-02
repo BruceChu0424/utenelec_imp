@@ -652,6 +652,10 @@ abstract final class ApiEndpoints {
   static const employeeReferencesByIds = '/org/employee-references/by-ids';
   static const employeeReferenceDepartments =
       '/org/employee-references/departments';
+  static const businessReferenceAccounts = '/business-references/accounts';
+  static const businessReferenceWarehouses = '/business-references/warehouses';
+  static const businessReferenceDepartments =
+      '/business-references/departments';
 
   /// 精确搜索 0 命中时的「类似人员」（逐字符评分，见后端 EmployeeListQuery#similar）。
   static const employeesSimilar = '/org/employees/similar';

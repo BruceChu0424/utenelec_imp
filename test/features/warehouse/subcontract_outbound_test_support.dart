@@ -211,7 +211,13 @@ class SubcontractOutboundFakeApi extends ApiClient {
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => const [];
+  }) async {
+    if (path == '/org/employee-references/by-ids' && employeeResult != null) {
+      employeeLookups++;
+      return [await employeeResult!];
+    }
+    return const [];
+  }
 
   /// 领料单被委外撤回(或退回委外)：服务端软删，之后读它 404。
   void withdraw(String issueId) {

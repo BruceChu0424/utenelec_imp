@@ -44,7 +44,14 @@ class MasterDictionaryRepository {
     unawaited(() async {
       try {
         final rows = List<Map<String, dynamic>>.unmodifiable(
-          await _api.getList(dictKey),
+          await _api.getList(switch (dictKey) {
+            masterAccountsDictKey => ApiEndpoints.businessReferenceAccounts,
+            ApiEndpoints.warehousesDict =>
+              ApiEndpoints.businessReferenceWarehouses,
+            ApiEndpoints.departmentsTree =>
+              ApiEndpoints.businessReferenceDepartments,
+            _ => dictKey,
+          }),
         );
         // 在途期间被写后失效的结果不入缓存(下一次取会重新拉)。
         if (identical(_loads[dictKey], future)) _cache[dictKey] = rows;

@@ -57,6 +57,35 @@ ProviderContainer _container(_DictApi api) {
 
 void main() {
   test(
+    'business dictionaries retain original cache and invalidation keys on minimal sources',
+    () async {
+      final api = _DictApi();
+      final repository = MasterDictionaryRepository(api);
+      addTearDown(repository.dispose);
+      for (final pair in [
+        (masterAccountsDictKey, ApiEndpoints.businessReferenceAccounts),
+        (ApiEndpoints.warehousesDict, ApiEndpoints.businessReferenceWarehouses),
+        (
+          ApiEndpoints.departmentsTree,
+          ApiEndpoints.businessReferenceDepartments,
+        ),
+      ]) {
+        final values = await Future.wait([
+          repository.load(pair.$1),
+          repository.load(pair.$1),
+        ]);
+        expect(identical(values.first, values.last), true);
+        expect(api.calls[pair.$2], 1);
+        expect(api.calls[pair.$1], isNull);
+        expect(repository.cached(pair.$1), same(values.first));
+        repository.invalidate(pair.$1);
+        expect(repository.cached(pair.$1), isNull);
+        await repository.load(pair.$1);
+        expect(api.calls[pair.$2], 2);
+      }
+    },
+  );
+  test(
     'three name services and the unit dropdown share one fetch per dict',
     () async {
       final api = _DictApi();
@@ -69,7 +98,8 @@ void main() {
 
       expect(api.calls[ApiEndpoints.currenciesDict], 1);
       expect(api.calls[ApiEndpoints.unitsDict], 1);
-      expect(api.calls[ApiEndpoints.warehousesDict], 1);
+      expect(api.calls[ApiEndpoints.businessReferenceWarehouses], 1);
+      expect(api.calls[ApiEndpoints.warehousesDict], isNull);
       expect(container.read(masterNameServiceProvider).unit('unit-1'), '件');
     },
   );

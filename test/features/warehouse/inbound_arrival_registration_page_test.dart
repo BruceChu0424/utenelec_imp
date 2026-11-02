@@ -39,6 +39,8 @@ import 'inbound_arrival_test_support.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/widgets/business_employee_picker.dart';
+import '../../support/warehouse_receiver_permissions.dart';
 import '../../support/field_hint_support.dart';
 
 const _ids = ['expectation-batch-1', 'expectation-batch-2'];
@@ -52,6 +54,70 @@ final _liveArrivalPermissions = StateProvider<Set<String>>(
 final _liveArrivalScope = StateProvider<AuthenticatedScope?>((ref) => null);
 
 void main() {
+  testWidgets('真实普通仓管52权限可选择收货人并按原数量登记，无HR请求', (tester) async {
+    tester.view.physicalSize = const Size(1800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final api = _ReceiverApi();
+    final router = _router(ids: [_ids.first], route: InboundRoute.inspectFirst);
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          sessionProvider.overrideWith(_TestSessionNotifier.new),
+          currentPermissionsProvider.overrideWithValue(
+            actualWarehouseReceiverPermissions,
+          ),
+          isSuperAdminProvider.overrideWithValue(false),
+          masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      actualWarehouseReceiverPermissions,
+      isNot(contains('employee:view')),
+    );
+    final receiver = find.byType(BusinessEmployeePicker);
+    expect(find.textContaining('仓管员'), findsOneWidget);
+    await tester.tap(
+      find
+          .descendant(of: receiver, matching: find.byType(InputDecorator))
+          .first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey('employee-picker-item-emp-other')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确定').last);
+    await tester.pumpAndSettle();
+    final editor =
+        tester.state(find.byType(InboundArrivalRegistrationPage))
+            as FormDraftMixin<InboundArrivalRegistrationPage>;
+    expect(editor.captureFormDraft()['receiverId'], 'emp-other');
+    final expected = (editor.captureFormDraft()['rows'] as List)
+        .map((row) => (row as Map)['qty'])
+        .toList();
+    await tester.tap(find.byKey(InboundRoute.inspectFirst.submitKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认登记送检'));
+    await tester.pumpAndSettle();
+    final sent = api.arrivalPostBodies.single;
+    expect(sent['receiverEmployeeId'], 'emp-other');
+    expect(
+      (sent['lines'] as List).map((line) => (line as Map)['qty']),
+      expected,
+    );
+    expect(api.hrReads, 0);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('无栈到货登记取消返回预计到货任务中心', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
@@ -1501,6 +1567,65 @@ class _ExpectationsApi extends ApiClient {
 }
 
 /// 登记页桩：主档字典 + 按 id 读预计到货 + 批量登记命令回执。
+class _ReceiverApi extends _BatchApi {
+  int hrReads = 0;
+  Map<String, dynamic> person(String id) => {
+    'id': id,
+    'code': id == 'emp-me' ? '000067' : '000071',
+    'fullName': id == 'emp-me' ? '仓管员' : '另一收货人',
+    'departmentId': 'wh-dept',
+    'departmentName': '仓储部',
+    'positionName': '仓管员',
+    'status': 'active',
+    'accountStatus': 'disabled',
+  };
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (path == '/org/employee-references') {
+      return {
+        'items': [person('emp-me'), person('emp-other')],
+        'page': 1,
+        'size': 100,
+        'total': 2,
+        'totalPages': 1,
+      };
+    }
+    if (path.startsWith('/org/employees')) hrReads++;
+    return super.get(path, query: query);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (path == '/org/employee-references/by-ids') {
+      return [person(query!['ids'] as String)];
+    }
+    if (path == '/business-references/departments' ||
+        path == '/org/employee-references/departments') {
+      return [
+        {
+          'id': 'wh-dept',
+          'code': 'SUB_WH',
+          'name': '仓储部',
+          'level': '二级班组',
+          'parentId': null,
+          'children': <Object>[],
+        },
+      ];
+    }
+    if (path.startsWith('/org/employees') || path == '/org/departments/tree') {
+      hrReads++;
+    }
+    return super.getList(path, query: query);
+  }
+}
+
 class _BatchApi extends ApiClient {
   _BatchApi({
     this.customPrefills,
@@ -1535,7 +1660,8 @@ class _BatchApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/master/warehouses/dict') {
+    if (path == '/master/warehouses/dict' ||
+        path == '/business-references/warehouses') {
       return [
         {
           'id': 'warehouse-1',

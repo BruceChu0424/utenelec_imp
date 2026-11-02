@@ -61220,8 +61220,8 @@
       "id": "page:finance/pages/finance_account_flow_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_account_flow_page.dart",
-      "sha256": "2403132105514cb14a70c4c1cec7d6864e1a7351b2c4ed27c3053119b627ca2d",
-      "lineCount": 631,
+      "sha256": "934bc82ca07456e8bcbd8819c52c7ef87b822847979a0597e032d5241cd56003",
+      "lineCount": 675,
       "classes": [
         {
           "name": "FinanceAccountFlowPage",
@@ -61265,15 +61265,15 @@
         },
         {
           "directive": "import",
-          "uri": "../../../components/inputs/uten_dropdown_scroll_scope.dart",
-          "source": "lib/components/inputs/uten_dropdown_scroll_scope.dart",
+          "uri": "../../../components/inputs/uten_dropdown_field.dart",
+          "source": "lib/components/inputs/uten_dropdown_field.dart",
           "line": 14,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2ffda64679b4d30bc89c47096bab14e80e7bfd585aa4a4d5476c8badac99fba7"
+          "targetSha256": "2488f271170cb147e0bf75c90d81d323f335df764db9488681e6310b03024372"
         },
         {
           "directive": "import",
@@ -61325,21 +61325,9 @@
         },
         {
           "directive": "import",
-          "uri": "package:uten_imp/components/inputs/uten_input_decoration.dart",
-          "source": "lib/components/inputs/uten_input_decoration.dart",
-          "line": 19,
-          "role": "sharedComponents",
-          "importAlias": null,
-          "showSymbols": [],
-          "hideSymbols": [],
-          "existsInRepository": true,
-          "targetSha256": "ddeddd6c8deaadcce502d32194692e1f54f099500450bf7874f5b831c6bf575e"
-        },
-        {
-          "directive": "import",
           "uri": "package:flutter_riverpod/flutter_riverpod.dart",
           "source": null,
-          "line": 20,
+          "line": 19,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -61351,7 +61339,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/export_context_epoch_provider.dart",
           "source": "lib/shared/providers/export_context_epoch_provider.dart",
-          "line": 21,
+          "line": 20,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -61363,7 +61351,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_back_button.dart",
           "source": "lib/components/buttons/uten_back_button.dart",
-          "line": 23,
+          "line": 22,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -61375,7 +61363,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_button.dart",
           "source": "lib/components/buttons/uten_button.dart",
-          "line": 24,
+          "line": 23,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -61387,7 +61375,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_export_button.dart",
           "source": "lib/components/buttons/uten_export_button.dart",
-          "line": 25,
+          "line": 24,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -61399,7 +61387,7 @@
           "directive": "import",
           "uri": "../../../components/print/uten_print_preview.dart",
           "source": "lib/components/print/uten_print_preview.dart",
-          "line": 26,
+          "line": 25,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -61411,7 +61399,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_app_bar.dart",
           "source": "lib/components/layout/uten_app_bar.dart",
-          "line": 27,
+          "line": 26,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -61423,7 +61411,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_content_container.dart",
           "source": "lib/components/layout/uten_content_container.dart",
-          "line": 28,
+          "line": 27,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -61435,7 +61423,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_filter_toolbar.dart",
           "source": "lib/components/layout/uten_filter_toolbar.dart",
-          "line": 29,
+          "line": 28,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -61447,7 +61435,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_collapsing_header_scroll_view.dart",
           "source": "lib/components/layout/uten_collapsing_header_scroll_view.dart",
-          "line": 30,
+          "line": 29,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -61459,7 +61447,7 @@
           "directive": "import",
           "uri": "../../../core/network/api_client.dart",
           "source": "lib/core/network/api_client.dart",
-          "line": 31,
+          "line": 30,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -61471,7 +61459,7 @@
           "directive": "import",
           "uri": "../../../core/network/api_exception.dart",
           "source": "lib/core/network/api_exception.dart",
-          "line": 32,
+          "line": 31,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -61483,7 +61471,7 @@
           "directive": "import",
           "uri": "../../../core/router/nav_helpers.dart",
           "source": "lib/core/router/nav_helpers.dart",
-          "line": 33,
+          "line": 32,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -61495,7 +61483,7 @@
           "directive": "import",
           "uri": "../../../core/router/route_names.dart",
           "source": "lib/core/router/route_names.dart",
-          "line": 34,
+          "line": 33,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -61507,7 +61495,7 @@
           "directive": "import",
           "uri": "../../../core/theme/uten_tokens.dart",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 35,
+          "line": 34,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -61519,7 +61507,7 @@
           "directive": "import",
           "uri": "../../../core/responsive/breakpoint.dart",
           "source": "lib/core/responsive/breakpoint.dart",
-          "line": 36,
+          "line": 35,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -61531,7 +61519,7 @@
           "directive": "import",
           "uri": "../../../core/ui/app_notification.dart",
           "source": "lib/core/ui/app_notification.dart",
-          "line": 37,
+          "line": 36,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -61543,7 +61531,7 @@
           "directive": "import",
           "uri": "../../../core/ui/human_error_message.dart",
           "source": "lib/core/ui/human_error_message.dart",
-          "line": 38,
+          "line": 37,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -61555,7 +61543,7 @@
           "directive": "import",
           "uri": "../../../core/utils/china_datetime.dart",
           "source": "lib/core/utils/china_datetime.dart",
-          "line": 39,
+          "line": 38,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -61567,7 +61555,7 @@
           "directive": "import",
           "uri": "../../../shared/auth/permissions.dart",
           "source": "lib/shared/auth/permissions.dart",
-          "line": 40,
+          "line": 39,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -61579,7 +61567,7 @@
           "directive": "import",
           "uri": "../../basic_data/widgets/master_data_table_view.dart",
           "source": "lib/features/basic_data/widgets/master_data_table_view.dart",
-          "line": 41,
+          "line": 40,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -61591,7 +61579,7 @@
           "directive": "import",
           "uri": "../../report/shared/report_cell.dart",
           "source": "lib/features/report/shared/report_cell.dart",
-          "line": 42,
+          "line": 41,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -61603,7 +61591,7 @@
           "directive": "import",
           "uri": "../../report/shared/report_data.dart",
           "source": "lib/features/report/shared/report_data.dart",
-          "line": 43,
+          "line": 42,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -61615,7 +61603,7 @@
           "directive": "import",
           "uri": "../../report/shared/report_metadata_reuse.dart",
           "source": "lib/features/report/shared/report_metadata_reuse.dart",
-          "line": 44,
+          "line": 43,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -61627,7 +61615,7 @@
           "directive": "import",
           "uri": "../../report/shared/report_paged_read.dart",
           "source": "lib/features/report/shared/report_paged_read.dart",
-          "line": 45,
+          "line": 44,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -61639,7 +61627,7 @@
           "directive": "import",
           "uri": "../../report/shared/report_print_preview.dart",
           "source": "lib/features/report/shared/report_print_preview.dart",
-          "line": 46,
+          "line": 45,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -61651,7 +61639,7 @@
           "directive": "import",
           "uri": "../../report/shared/report_date_range.dart",
           "source": "lib/features/report/shared/report_date_range.dart",
-          "line": 47,
+          "line": 46,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -61663,7 +61651,7 @@
           "directive": "import",
           "uri": "../widgets/finance_date_range_filter.dart",
           "source": "lib/features/finance/widgets/finance_date_range_filter.dart",
-          "line": 48,
+          "line": 47,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -61675,19 +61663,19 @@
           "directive": "import",
           "uri": "../../report/shared/report_filter_prefs.dart",
           "source": "lib/features/report/shared/report_filter_prefs.dart",
-          "line": 49,
+          "line": 48,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1192c0bc11feee1c20f38624b7584c9a83222ae4066a850eafa4de630e3f6215"
+          "targetSha256": "7a94b73c79de9f0a4e7dc352b6d60a3e1fa703e0d33792b5944908a226611630"
         },
         {
           "directive": "import",
           "uri": "../../report/shared/report_sort.dart",
           "source": "lib/features/report/shared/report_sort.dart",
-          "line": 50,
+          "line": 49,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -61699,7 +61687,7 @@
           "directive": "import",
           "uri": "../../report/shared/report_total.dart",
           "source": "lib/features/report/shared/report_total.dart",
-          "line": 51,
+          "line": 50,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -61711,28 +61699,68 @@
           "directive": "import",
           "uri": "../providers/finance_name_provider.dart",
           "source": "lib/features/finance/providers/finance_name_provider.dart",
-          "line": 52,
+          "line": 51,
           "role": "providers",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
           "targetSha256": "cb684fbd3d295bc494d54db4041f613a06480bda1e7a0b66cee2ecef43dcabaa"
+        },
+        {
+          "directive": "import",
+          "uri": "../../basic_data/models/master_facet.dart",
+          "source": "lib/features/basic_data/models/master_facet.dart",
+          "line": 52,
+          "role": "models",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "7d194d0060ce6b4659c8b1b437804073c6ed02d8d79b4914b600d0c5a0d24018"
         }
       ],
       "partUnits": [],
       "permissionReferences": [
         {
+          "symbol": "Perm.accountView",
+          "literal": "account:view",
+          "line": 345,
+          "definitionSource": "lib/shared/auth/permissions.dart",
+          "definitionLine": 126
+        },
+        {
+          "symbol": "Perm.accountBalanceView",
+          "literal": "account:balance:view",
+          "line": 346,
+          "definitionSource": "lib/shared/auth/permissions.dart",
+          "definitionLine": 129
+        },
+        {
+          "symbol": "Perm.accountFlowView",
+          "literal": "account:flow:view",
+          "line": 347,
+          "definitionSource": "lib/shared/auth/permissions.dart",
+          "definitionLine": 130
+        },
+        {
+          "symbol": "Perm.financeViewAll",
+          "literal": "finance:view:all",
+          "line": 348,
+          "definitionSource": "lib/shared/auth/permissions.dart",
+          "definitionLine": 505
+        },
+        {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
-          "line": 536,
+          "line": 570,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 446
         },
         {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
-          "line": 545,
+          "line": 580,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 446
         }
@@ -61743,7 +61771,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 109,
+          "line": 112,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -61753,7 +61781,7 @@
         {
           "symbol": "update",
           "receiver": null,
-          "line": 194,
+          "line": 201,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "update"
@@ -61761,9 +61789,19 @@
           "evidenceLine": ".update(_snapshot());"
         },
         {
+          "symbol": "remove",
+          "receiver": null,
+          "line": 355,
+          "kind": "action-like-invocation",
+          "actionNameHints": [
+            "remove"
+          ],
+          "evidenceLine": "Map<String, dynamic> get _exportQuery => {..._readQuery}..remove('size');"
+        },
+        {
           "symbol": "_printLoader",
           "receiver": null,
-          "line": 320,
+          "line": 358,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "print"
@@ -61773,7 +61811,7 @@
         {
           "symbol": "loadBoundedReportPrintPreview",
           "receiver": null,
-          "line": 324,
+          "line": 362,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "print"
@@ -61781,19 +61819,9 @@
           "evidenceLine": "return loadBoundedReportPrintPreview("
         },
         {
-          "symbol": "copyWith",
-          "receiver": null,
-          "line": 460,
-          "kind": "action-like-invocation",
-          "actionNameHints": [
-            "copy"
-          ],
-          "evidenceLine": "style: theme.textTheme.bodySmall?.copyWith("
-        },
-        {
           "symbol": "UtenPrintPreviewButton",
           "receiver": null,
-          "line": 531,
+          "line": 564,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "print"
@@ -61803,7 +61831,7 @@
         {
           "symbol": "UtenExportButton",
           "receiver": null,
-          "line": 543,
+          "line": 577,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -61813,12 +61841,22 @@
         {
           "symbol": "remove",
           "receiver": "_columnQuery",
-          "line": 593,
+          "line": 628,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
           ],
           "evidenceLine": "_columnQuery.remove(key);"
+        },
+        {
+          "symbol": "remove",
+          "receiver": "_columnQuery",
+          "line": 635,
+          "kind": "action-like-invocation",
+          "actionNameHints": [
+            "remove"
+          ],
+          "evidenceLine": "_columnQuery.remove('search.${column.key}');"
         }
       ],
       "routerBindings": [
@@ -62377,7 +62415,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1192c0bc11feee1c20f38624b7584c9a83222ae4066a850eafa4de630e3f6215"
+          "targetSha256": "7a94b73c79de9f0a4e7dc352b6d60a3e1fa703e0d33792b5944908a226611630"
         },
         {
           "directive": "import",
@@ -78062,8 +78100,8 @@
       "id": "page:finance/pages/finance_report_table_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_report_table_page.dart",
-      "sha256": "931ae5a4873c54b802acb3b230895d972fec099a3322899eeb6adeca839bf3e6",
-      "lineCount": 865,
+      "sha256": "fddc47aa8fed5754a290329b95d1812d26e542152cc9cec71e86ef9b02266392",
+      "lineCount": 869,
       "classes": [
         {
           "name": "FinanceReportTablePage",
@@ -78583,7 +78621,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1192c0bc11feee1c20f38624b7584c9a83222ae4066a850eafa4de630e3f6215"
+          "targetSha256": "7a94b73c79de9f0a4e7dc352b6d60a3e1fa703e0d33792b5944908a226611630"
         },
         {
           "directive": "import",
@@ -78651,28 +78689,28 @@
         {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
-          "line": 335,
+          "line": 339,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 446
         },
         {
           "symbol": "Perm.paymentStyleEdit",
           "literal": "payment_style:edit",
-          "line": 579,
+          "line": 583,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 510
         },
         {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
-          "line": 802,
+          "line": 806,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 446
         },
         {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
-          "line": 811,
+          "line": 815,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 446
         }
@@ -78683,7 +78721,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 140,
+          "line": 144,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -78693,7 +78731,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 176,
+          "line": 180,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -78703,7 +78741,7 @@
         {
           "symbol": "update",
           "receiver": null,
-          "line": 223,
+          "line": 227,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "update"
@@ -78713,7 +78751,7 @@
         {
           "symbol": "_printLoader",
           "receiver": null,
-          "line": 298,
+          "line": 302,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "print"
@@ -78723,7 +78761,7 @@
         {
           "symbol": "loadBoundedReportPrintPreview",
           "receiver": null,
-          "line": 302,
+          "line": 306,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "print"
@@ -78733,7 +78771,7 @@
         {
           "symbol": "showUtenPrintPreview",
           "receiver": null,
-          "line": 327,
+          "line": 331,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "print"
@@ -78743,7 +78781,7 @@
         {
           "symbol": "_printLoader",
           "receiver": null,
-          "line": 332,
+          "line": 336,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "print"
@@ -78753,7 +78791,7 @@
         {
           "symbol": "remove",
           "receiver": "_filters",
-          "line": 481,
+          "line": 485,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -78763,7 +78801,7 @@
         {
           "symbol": "remove",
           "receiver": "_filters",
-          "line": 489,
+          "line": 493,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -78773,7 +78811,7 @@
         {
           "symbol": "UtenPrintPreviewButton",
           "receiver": null,
-          "line": 797,
+          "line": 801,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "print"
@@ -78783,7 +78821,7 @@
         {
           "symbol": "UtenExportButton",
           "receiver": null,
-          "line": 809,
+          "line": 813,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -83130,7 +83168,7 @@
       "id": "page:finance/pages/finance_statement_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_statement_page.dart",
-      "sha256": "9729d9e92efaa6e8f5aaed52ff51730ce908977fb2374aa13f00eef3638cdfd5",
+      "sha256": "1bec0714ba45eee13458f325ffb81c86a18d48a0979bbef70088615bbf965a92",
       "lineCount": 699,
       "classes": [
         {
@@ -83603,7 +83641,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1192c0bc11feee1c20f38624b7584c9a83222ae4066a850eafa4de630e3f6215"
+          "targetSha256": "7a94b73c79de9f0a4e7dc352b6d60a3e1fa703e0d33792b5944908a226611630"
         },
         {
           "directive": "import",
@@ -128693,7 +128731,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1192c0bc11feee1c20f38624b7584c9a83222ae4066a850eafa4de630e3f6215"
+          "targetSha256": "7a94b73c79de9f0a4e7dc352b6d60a3e1fa703e0d33792b5944908a226611630"
         },
         {
           "directive": "import",
@@ -144223,7 +144261,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1192c0bc11feee1c20f38624b7584c9a83222ae4066a850eafa4de630e3f6215"
+          "targetSha256": "7a94b73c79de9f0a4e7dc352b6d60a3e1fa703e0d33792b5944908a226611630"
         },
         {
           "directive": "import",
@@ -160339,7 +160377,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1192c0bc11feee1c20f38624b7584c9a83222ae4066a850eafa4de630e3f6215"
+          "targetSha256": "7a94b73c79de9f0a4e7dc352b6d60a3e1fa703e0d33792b5944908a226611630"
         },
         {
           "directive": "import",
@@ -177586,7 +177624,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1192c0bc11feee1c20f38624b7584c9a83222ae4066a850eafa4de630e3f6215"
+          "targetSha256": "7a94b73c79de9f0a4e7dc352b6d60a3e1fa703e0d33792b5944908a226611630"
         },
         {
           "directive": "import",
@@ -218003,7 +218041,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1192c0bc11feee1c20f38624b7584c9a83222ae4066a850eafa4de630e3f6215"
+          "targetSha256": "7a94b73c79de9f0a4e7dc352b6d60a3e1fa703e0d33792b5944908a226611630"
         },
         {
           "directive": "import",
@@ -235686,8 +235724,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportController.java",
-      "sha256": "7810ccc653ec6137c3014568fbd98e8ab2b10233c5143d2b237841ca35a427a3",
-      "lineCount": 521,
+      "sha256": "f40bcdbf57a5690f733d9c975b4f4793dc3332df3f644064e9f8613bd72398c6",
+      "lineCount": 531,
       "class": "FinanceReportController",
       "declaredBasePaths": [
         "/api/finance/reports"
@@ -235908,7 +235946,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 483,
+          "line": 493,
           "declaredPathLiterals": [
             "/export"
           ],
@@ -235918,7 +235956,7 @@
         },
         {
           "httpMethod": "POST",
-          "line": 495,
+          "line": 505,
           "declaredPathLiterals": [
             "/export"
           ],
@@ -251881,8 +251919,8 @@
     },
     {
       "source": "lib/features/finance/pages/finance_account_flow_page.dart",
-      "sha256": "2403132105514cb14a70c4c1cec7d6864e1a7351b2c4ed27c3053119b627ca2d",
-      "lineCount": 631
+      "sha256": "934bc82ca07456e8bcbd8819c52c7ef87b822847979a0597e032d5241cd56003",
+      "lineCount": 675
     },
     {
       "source": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
@@ -251956,8 +251994,8 @@
     },
     {
       "source": "lib/features/finance/pages/finance_report_table_page.dart",
-      "sha256": "931ae5a4873c54b802acb3b230895d972fec099a3322899eeb6adeca839bf3e6",
-      "lineCount": 865
+      "sha256": "fddc47aa8fed5754a290329b95d1812d26e542152cc9cec71e86ef9b02266392",
+      "lineCount": 869
     },
     {
       "source": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
@@ -251981,7 +252019,7 @@
     },
     {
       "source": "lib/features/finance/pages/finance_statement_page.dart",
-      "sha256": "9729d9e92efaa6e8f5aaed52ff51730ce908977fb2374aa13f00eef3638cdfd5",
+      "sha256": "1bec0714ba45eee13458f325ffb81c86a18d48a0979bbef70088615bbf965a92",
       "lineCount": 699
     },
     {
@@ -253391,8 +253429,8 @@
     },
     {
       "source": "lib/features/report/shared/report_filter_prefs.dart",
-      "sha256": "1192c0bc11feee1c20f38624b7584c9a83222ae4066a850eafa4de630e3f6215",
-      "lineCount": 308
+      "sha256": "7a94b73c79de9f0a4e7dc352b6d60a3e1fa703e0d33792b5944908a226611630",
+      "lineCount": 335
     },
     {
       "source": "lib/features/report/shared/report_metadata_reuse.dart",
@@ -256116,8 +256154,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportController.java",
-      "sha256": "7810ccc653ec6137c3014568fbd98e8ab2b10233c5143d2b237841ca35a427a3",
-      "lineCount": 521
+      "sha256": "f40bcdbf57a5690f733d9c975b4f4793dc3332df3f644064e9f8613bd72398c6",
+      "lineCount": 531
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/finance/statement/FinanceStatementController.java",

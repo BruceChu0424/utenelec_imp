@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/inputs/uten_reference_picker_field.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/repositories/payment_style_repository.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
@@ -99,6 +101,15 @@ class _AccountPrefs extends FinanceAccountFlowReportPrefsNotifier {
   );
 }
 
+class _BankPrefs extends FinanceAccountFlowReportPrefsNotifier {
+  @override
+  ReportFilterPrefs build() => const ReportFilterPrefs(
+    docType: 'bankDetail',
+    sortKey: 'amount',
+    extra: {'accountId': 'account-1'},
+  );
+}
+
 class _Names extends FinanceNameService {
   _Names(ApiClient api, {this.hold = false})
     : super(api, DioPaymentStyleRepository(api));
@@ -112,10 +123,18 @@ class _Names extends FinanceNameService {
   }) => hold ? ready.future : Future<void>.value();
 
   @override
-  Map<String, String> get accountEntries => {'account-1': '测试账户'};
+  Map<String, String> get accountEntries => {
+    'account-1': '测试账户',
+    'account-2': '第二账户',
+  };
 }
 
-Future<void> _mount(WidgetTester tester, Widget page, _Api api) async {
+Future<void> _mount(
+  WidgetTester tester,
+  Widget page,
+  _Api api, {
+  bool bankPrefs = false,
+}) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   final names = _Names(api, hold: page is FinanceAccountFlowPage);
@@ -132,7 +151,9 @@ Future<void> _mount(WidgetTester tester, Widget page, _Api api) async {
         currentPermissionsProvider.overrideWithValue(const {}),
         isSuperAdminProvider.overrideWithValue(false),
         financeStatementReportPrefsProvider.overrideWith(_StatementPrefs.new),
-        financeAccountFlowReportPrefsProvider.overrideWith(_AccountPrefs.new),
+        financeAccountFlowReportPrefsProvider.overrideWith(
+          bankPrefs ? _BankPrefs.new : _AccountPrefs.new,
+        ),
         financeNameServiceProvider.overrideWith((ref) => names),
         fixedBadgeSummaryOverride(badgeSummaryFixture()),
       ],
@@ -149,6 +170,137 @@ Future<void> _mount(WidgetTester tester, Widget page, _Api api) async {
 }
 
 void main() {
+  testWidgets('恢复银行原币金额排序时不带已丢失币种的排序条件', (tester) async {
+    final api = _Api();
+    await _mount(tester, const FinanceAccountFlowPage(), api, bankPrefs: true);
+    expect(api.queries.single.containsKey('sort'), isFalse);
+    api.pending.single.complete(_report('银行字段'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<UtenExportButton>(find.byType(UtenExportButton))
+          .queryParams
+          .containsKey('sort'),
+      isFalse,
+    );
+    expect(tester.takeException(), isNull);
+  });
+  Map<String, dynamic> accountReport(String label, int amount) => {
+    ..._report('单据号'),
+    'columns': [
+      {'key': 'billNo', 'label': '单据号', 'type': 'text'},
+      {'key': 'inAmount', 'label': '收入', 'type': 'money'},
+      {'key': 'balance', 'label': '余额', 'type': 'money'},
+    ],
+    'rows': [
+      {'billNo': label, 'inAmount': amount, 'balance': amount},
+    ],
+    'total': 1,
+    'totalPages': 1,
+  };
+
+  MasterDataTableView<Map<String, dynamic>> accountTable(WidgetTester tester) =>
+      tester.widget(find.byType(MasterDataTableView<Map<String, dynamic>>));
+
+  testWidgets('账户切换慢请求和失败不得将旧金额显示在新账户下，重试恢复真实金额', (tester) async {
+    final api = _Api();
+    await _mount(tester, const FinanceAccountFlowPage(), api);
+    api.pending.single.complete(accountReport('账户一金额', 100));
+    await tester.pumpAndSettle();
+    expect(accountTable(tester).items.single['inAmount'], 100);
+    tester
+        .widget<UtenDropdownField>(find.byType(UtenDropdownField))
+        .onChanged('account-2');
+    await tester.pump();
+    expect(api.queries.last['accountId'], 'account-2');
+    expect(accountTable(tester).items, isEmpty);
+    expect(accountTable(tester).isLoading, isTrue);
+    expect(accountTable(tester).totalPages, -1);
+    api.pending.last.completeError(
+      ApiException('TEMPORARY', '暂时无法读取账户二', httpStatus: 503),
+    );
+    await tester.pumpAndSettle();
+    expect(accountTable(tester).items, isEmpty);
+    expect(accountTable(tester).error, contains('暂时无法读取账户二'));
+    expect(accountTable(tester).isLoading, isFalse);
+    final export = tester.widget<UtenExportButton>(
+      find.byType(UtenExportButton),
+    );
+    expect(export.queryParams['accountId'], 'account-2');
+    accountTable(tester).onRetry!();
+    await tester.pump();
+    api.pending.last.complete(accountReport('账户二金额', 250));
+    await tester.pumpAndSettle();
+    expect(accountTable(tester).items.single['inAmount'], 250);
+    expect(accountTable(tester).error, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('快速切换账户时晚到的旧请求不能覆盖当前账户金额', (tester) async {
+    final api = _Api();
+    await _mount(tester, const FinanceAccountFlowPage(), api);
+    api.pending.single.complete(accountReport('初始', 100));
+    await tester.pumpAndSettle();
+    tester
+        .widget<UtenDropdownField>(find.byType(UtenDropdownField))
+        .onChanged('account-2');
+    await tester.pump();
+    final old = api.pending.last;
+    tester
+        .widget<UtenDropdownField>(find.byType(UtenDropdownField))
+        .onChanged('account-1');
+    await tester.pump();
+    api.pending.last.complete(accountReport('账户一最新', 300));
+    await tester.pumpAndSettle();
+    old.complete(accountReport('晚到账户二', 999));
+    await tester.pumpAndSettle();
+    expect(accountTable(tester).items.single['inAmount'], 300);
+    expect(find.text('晚到账户二'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final bank in [('银行存取明细', 'bank/detail'), ('银行存取汇总', 'bank/summary')]) {
+    testWidgets('${bank.$1}列表和下载携带相同账户日期及查询条件', (tester) async {
+      final api = _Api();
+      await _mount(tester, const FinanceAccountFlowPage(), api);
+      api.pending.single.complete(accountReport('初始', 100));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(bank.$1));
+      await tester.pump();
+      expect(api.queries.last['accountId'], 'account-1');
+      expect(api.queries.last['dateFrom'], isNotNull);
+      expect(api.queries.last['dateTo'], isNotNull);
+      api.pending.last.complete(accountReport('银行真实单据', 120));
+      await tester.pumpAndSettle();
+      final export = tester.widget<UtenExportButton>(
+        find.byType(UtenExportButton),
+      );
+      expect(export.report, bank.$2);
+      expect(export.queryParams, {
+        for (final e in api.queries.last.entries)
+          if (!const {
+            'page',
+            'size',
+            'includeCount',
+            'includeFacets',
+            'includeTotals',
+          }.contains(e.key))
+            e.key: e.value,
+      });
+      expect(find.textContaining('尚未启用'), findsNothing);
+      tester
+          .widget<UtenDropdownField>(find.byType(UtenDropdownField))
+          .onChanged(null);
+      await tester.pump();
+      expect(api.queries.last.containsKey('accountId'), isFalse);
+      expect(accountTable(tester).items, isEmpty);
+      api.pending.last.complete(accountReport('全部账户银行单据', 240));
+      await tester.pumpAndSettle();
+      expect(accountTable(tester).items.single['inAmount'], 240);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('委外出入状况表按聚合值发送排序与筛选并保留导出条件', (tester) async {
     final api = _Api();
     await _mount(

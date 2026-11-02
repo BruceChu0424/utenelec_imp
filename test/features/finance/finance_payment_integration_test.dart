@@ -685,7 +685,7 @@ class _PaymentApi extends ApiClient {
         {'id': 'supplier-1', 'name': '甲供应商'},
       ];
     }
-    if (path == '/master/accounts/dict') {
+    if (path == '/master/accounts/dict' || path == '/business-references/accounts') {
       return const [
         {
           'id': 'account-1',

@@ -14,25 +14,12 @@ final class FinancePartyStatementSql {
         String sourceExclusion=receivable ? "1=1"
                 : "(ledger.source_doc_type<>'DIRECT_PAYMENT' OR ledger.legacy_import_run_id IS NOT NULL)";
         return """
-                WITH @cashCte@, offset_facts AS (
+                WITH @cashCte@, offset_facts AS NOT MATERIALIZED (
                     SELECT allocation.*, @reason@ AS event_remark,@reverseReason@ AS reversal_remark
                     FROM @offsets@ allocation @batchJoin@
                     WHERE allocation.@party@=:pid
-                ), party_events AS (
-                    SELECT CASE WHEN ledger.legacy_import_run_id IS NOT NULL
-                                THEN ((ledger.legacy_source_resolution->>'snapshotAsOfUtc')::timestamptz
-                                    AT TIME ZONE 'Asia/Shanghai')::date ELSE ledger.bill_date END AS event_date,
-                           ledger.bill_no AS ref_no,@openingOriginal@ AS posted_original,
-                           ledger.exchange_rate AS posted_rate,@openingLocal@ AS posted_local,
-                           0::numeric AS settled_original,NULL::numeric AS settled_rate,0::numeric AS settled_local,
-                           CASE WHEN ledger.legacy_import_run_id IS NOT NULL THEN '历史期初' ELSE '立账' END AS event_type,
-                           currency.code AS currency_code,ledger.remark,ledger.currency_id,
-                           10 AS event_order,ledger.id AS event_id
-                    FROM ar_ap_ledger ledger @proofJoin@
-                    LEFT JOIN currencies currency ON currency.id=ledger.currency_id
-                    WHERE ledger.direction='@direction@' AND ledger.@party@=:pid AND @sourceExclusion@
-                      AND ((ledger.status=1 AND NOT COALESCE(ledger.is_deleted,false))
-                        OR (ledger.status=-1 AND COALESCE(ledger.is_deleted,false) AND ledger.deleted_at IS NOT NULL))
+                ), party_events AS NOT MATERIALIZED (
+                    @postingEvents@
                     UNION ALL
                     SELECT (ledger.deleted_at AT TIME ZONE 'Asia/Shanghai')::date,ledger.bill_no,
                            -ledger.amount_original,ledger.exchange_rate,-ledger.amount_original_local,
@@ -73,7 +60,9 @@ final class FinancePartyStatementSql {
                     FROM offset_facts allocation LEFT JOIN currencies currency ON currency.id=allocation.currency_id
                     WHERE allocation.status='REVERSED' AND allocation.reversed_at IS NOT NULL
                 )
-                """.replace("@cashCte@",FinanceCashEventSql.ctes(receivable,"t."+party+"=:pid AND "+documentScope))
+                """.replace("@cashCte@",FinanceCashEventSql.ctes(receivable,"t."+party+"=:pid AND "+documentScope)
+                        .replace("cash_facts AS (","cash_facts AS NOT MATERIALIZED ("))
+                .replace("@postingEvents@",postingEvents(false)+" UNION ALL "+postingEvents(true))
                 .replace("@party@",party)
                 .replace("@offsets@",offsets).replace("@reason@",reason).replace("@reverseReason@",reverseReason)
                 .replace("@batchJoin@",receivable ? "JOIN customer_open_item_offset_batches batch ON batch.id=allocation.offset_batch_id" : "")
@@ -84,6 +73,80 @@ final class FinancePartyStatementSql {
                 .replace("@offsetLabel@",receivable ? "预收转销" : "应付抵销").replace("@sourceLabel@",receivable ? "预收" : "贷项")
                 .replace("@scope@",documentScope)
                 .replace("currency.code", com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency"));
+    }
+
+    /** Separate native dates from imported snapshot dates so range predicates remain indexable. */
+    private static String postingEvents(boolean imported) {
+        return """
+                SELECT %s AS event_date,ledger.bill_no AS ref_no,%s AS posted_original,
+                       ledger.exchange_rate AS posted_rate,%s AS posted_local,
+                       0::numeric AS settled_original,NULL::numeric AS settled_rate,0::numeric AS settled_local,
+                       '%s'::text AS event_type,currency.code AS currency_code,ledger.remark,ledger.currency_id,
+                       10 AS event_order,ledger.id AS event_id
+                FROM ar_ap_ledger ledger %s
+                LEFT JOIN currencies currency ON currency.id=ledger.currency_id
+                WHERE ledger.direction='@direction@' AND ledger.@party@=:pid AND @sourceExclusion@
+                  AND ledger.legacy_import_run_id IS %sNULL
+                  AND ((ledger.status=1 AND NOT COALESCE(ledger.is_deleted,false))
+                    OR (ledger.status=-1 AND COALESCE(ledger.is_deleted,false) AND ledger.deleted_at IS NOT NULL))
+                """.formatted(imported?"((ledger.legacy_source_resolution->>'snapshotAsOfUtc')::timestamptz AT TIME ZONE 'Asia/Shanghai')::date":"ledger.bill_date",
+                        imported?"@openingOriginal@":"ledger.amount_original",
+                        imported?"@openingLocal@":"ledger.amount_original_local",
+                        imported?"历史期初":"立账",imported?"@proofJoin@":"",imported?"NOT ":"");
+    }
+
+    /** One monthly fact contract for persisted rebuilding and same-snapshot fallback. Inputs are application-owned SQL. */
+    static String monthlyAggregation(String monthExpression,String sourceClause) {
+        return """
+                SELECT event.currency_id,%s AS month_start,
+                       SUM(event.posted_original-event.settled_original) AS net_original,
+                       SUM(event.posted_local) AS posted_local_sum,SUM(event.settled_local) AS settled_local_sum,
+                       SUM(event.posted_local-event.settled_local) AS net_local,COUNT(*) AS event_count,
+                       COUNT(*) FILTER(WHERE event.posted_original IS NULL OR event.settled_original IS NULL
+                                           OR event.currency_id IS NULL) AS null_original_count
+                FROM %s GROUP BY event.currency_id,%s
+                """.formatted(monthExpression,sourceClause,monthExpression);
+    }
+
+    /**
+     * Read a monthly projection in the caller's snapshot. A REQUIRES_NEW healer
+     * cannot replace versions already visible to an outer repeatable-read export.
+     * Dirty months therefore come from that same snapshot's authoritative events;
+     * clean months stay on the bounded projection. Missing whole projections and
+     * explicit full-rebuild sentinels use an exclusive whole-party replay branch.
+     */
+    private static String snapshotMonthly(String events,String side) {
+        return events+"""
+                , party_projection_state AS MATERIALIZED (
+                    SELECT EXISTS(SELECT 1 FROM party_monthly_summaries s
+                                  WHERE s.side='@side@' AND s.party_id=:pid) AS has_summaries,
+                           EXISTS(SELECT 1 FROM party_month_dirty d
+                                  WHERE d.side='@side@' AND d.party_id=:pid
+                                    AND d.month_start=DATE '1900-01-01') AS full_replay
+                ), party_replay_months AS MATERIALIZED (
+                    SELECT d.month_start FROM party_month_dirty d CROSS JOIN party_projection_state state
+                    WHERE d.side='@side@' AND d.party_id=:pid AND state.has_summaries AND NOT state.full_replay
+                      AND d.month_start<>DATE '1900-01-01'
+                ), snapshot_monthly AS (
+                    SELECT s.currency_id,s.month_start,s.net_original,s.posted_local_sum,s.settled_local_sum,
+                           s.net_local,s.event_count,s.null_original_count
+                    FROM party_monthly_summaries s CROSS JOIN party_projection_state state
+                    WHERE s.side='@side@' AND s.party_id=:pid AND state.has_summaries AND NOT state.full_replay
+                      AND NOT EXISTS(SELECT 1 FROM party_replay_months d WHERE d.month_start=s.month_start)
+                    UNION ALL
+                    SELECT replay.currency_id,d.month_start,replay.net_original,replay.posted_local_sum,
+                           replay.settled_local_sum,replay.net_local,replay.event_count,replay.null_original_count
+                    FROM party_replay_months d CROSS JOIN LATERAL (
+                        @dirtyAggregate@
+                    ) replay
+                    UNION ALL
+                    @fullAggregate@
+                )
+                """.replace("@side@",side)
+                .replace("@dirtyAggregate@",monthlyAggregation("d.month_start","party_events event "
+                        +"WHERE event.event_date>=d.month_start AND event.event_date<d.month_start+INTERVAL '1 month'"))
+                .replace("@fullAggregate@",monthlyAggregation("date_trunc('month',event.event_date)::date",
+                        "party_projection_state state CROSS JOIN party_events event WHERE state.full_replay OR NOT state.has_summaries"));
     }
 
     /**
@@ -99,18 +162,17 @@ final class FinancePartyStatementSql {
      *       由 base_nulls（汇总列 null_original_count）+ 前缀 FILTER 计数共同判定；</li>
      *   <li>:from 为空（全历史展开）时基数为 0，与旧行为等价。</li>
      * </ul>
-     * 调用方必须先做该单位的脏键自愈（PartyMonthlySummaryService.reconcileNow）。
+     * 读前自愈用于预热；同快照脏月回放独立保证正确性，不依赖另一个事务的新投影可见。
      */
     static String running(String events, String side) {
-        return events + """
+        return snapshotMonthly(events,side) + """
                 , summary_opening AS (
                     SELECT summary.currency_id,
                            SUM(summary.net_original) AS base_original,
                            SUM(summary.null_original_count) AS base_nulls,
                            SUM(summary.net_local) AS base_local
-                    FROM party_monthly_summaries summary
-                    WHERE summary.side='@side@' AND summary.party_id=:pid
-                      AND CAST(:fromMonth AS date) IS NOT NULL
+                    FROM snapshot_monthly summary
+                    WHERE CAST(:fromMonth AS date) IS NOT NULL
                       AND summary.month_start<:fromMonth
                     GROUP BY summary.currency_id
                 ), month_tail AS (
@@ -190,12 +252,11 @@ final class FinancePartyStatementSql {
      * 「有已知事件才出行」的门槛因此可按汇总月精确表达。
      */
     static String annual(String side) {
-        return """
-                WITH summary_cells AS (
+        return snapshotMonthly(events("AR".equals(side),"1=1"),side)+"""
+                , summary_cells AS (
                     SELECT month_start,SUM(posted_local_sum) AS posted_local_sum,
                            SUM(settled_local_sum) AS settled_local_sum,SUM(net_local) AS net_local
-                    FROM party_monthly_summaries
-                    WHERE side='@side@' AND party_id=:pid
+                    FROM snapshot_monthly
                     GROUP BY month_start
                 ), monthly AS (
                     SELECT month.ms,to_char(month.ms,'YYYY-MM') AS ym,
@@ -209,7 +270,7 @@ final class FinancePartyStatementSql {
                 SELECT month.ym AS "ym",
                        COALESCE((SELECT SUM(prior.net_local)
                            FROM summary_cells prior WHERE prior.month_start<month.ms),0) AS "prevBalance",
-                       month.posted AS "posted",month.settled AS "settled",0 AS "returned",
+                       month.posted AS "posted",month.settled AS "settled",NULL::numeric AS "returned",
                        COALESCE((SELECT SUM(closing.net_local)
                            FROM summary_cells closing
                            WHERE closing.month_start<month.ms+INTERVAL '1 month'),0) AS "balance"

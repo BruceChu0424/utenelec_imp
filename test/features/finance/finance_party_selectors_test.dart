@@ -54,7 +54,8 @@ class _Api extends ApiClient {
         'totalPages': 0,
       };
     }
-    if (path == '/master/clients' || path == '/master/suppliers') {
+    if (path == '/business-references/clients' ||
+        path == '/business-references/suppliers') {
       listRequests.add((path, {...?query}));
       return {
         'items': [
@@ -84,7 +85,9 @@ class _Api extends ApiClient {
         (path.contains('clients') || path.contains('suppliers'))) {
       throw StateError('Complete party dictionaries must never be read');
     }
-    if (path.endsWith('-categories/tree')) {
+    if (path.endsWith('-categories/tree') ||
+        path == '/business-references/client-categories' ||
+        path == '/business-references/supplier-categories') {
       return [
         {
           'id': 'root',
@@ -210,7 +213,9 @@ void main() {
         await _chooseHistoricalParty(tester);
         expect(
           api.listRequests.single.$1,
-          side == 'AR' ? '/master/clients' : '/master/suppliers',
+          side == 'AR'
+              ? '/business-references/clients'
+              : '/business-references/suppliers',
         );
         expect(api.listRequests.single.$2['selectableOnly'], isNot(true));
         expect(api.lookupIds, ['historical-party']);
@@ -233,7 +238,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byType(SupplierPickerField));
       await _chooseHistoricalParty(tester);
-      expect(api.listRequests.single.$1, '/master/suppliers');
+      expect(api.listRequests.single.$1, '/business-references/suppliers');
       expect(api.listRequests.single.$2['selectableOnly'], isNot(true));
       expect(api.lookupIds, ['historical-party']);
       final field = tester.widget<SupplierPickerField>(

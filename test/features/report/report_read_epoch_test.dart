@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/features/finance/pages/finance_account_flow_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_ar_ap_overview_page.dart';
@@ -82,7 +83,8 @@ class _ReportApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.contains('/accounts/')) {
+    if (path == ApiEndpoints.businessReferenceAccounts ||
+        path.contains('/accounts/')) {
       return [
         {'id': 'account-1', 'name': '账户', 'code': 'A1'},
       ];

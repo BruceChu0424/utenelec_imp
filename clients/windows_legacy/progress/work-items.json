@@ -6036,7 +6036,7 @@
       "phase": "D",
       "feature": "finance",
       "businessSource": "lib/features/finance/pages/finance_account_flow_page.dart",
-      "sourceSha256": "2403132105514cb14a70c4c1cec7d6864e1a7351b2c4ed27c3053119b627ca2d",
+      "sourceSha256": "934bc82ca07456e8bcbd8819c52c7ef87b822847979a0597e032d5241cd56003",
       "sourceProofSha256": "09605f861c1b82de49b65869baf3abdcddee68efd98f6e913253dc40867f19f0",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
@@ -6065,9 +6065,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "docs/99-项目治理/2026-11-01-财务钱流全分类数据与导出审计.md"
+      ],
+      "notes": "2026-11-01：财务数据审计修复Flutter账户旧查询金额归属、银行明细/汇总真实取数与导出；后端共享权限/筛选/金额契约已更新，本WPF页面仍未迁移，接入要求见本次审计记录。",
+      "lastUpdated": "2026-11-02T06:44:10.327577+00:00"
     },
     {
       "id": "W7-BIZ-058",
@@ -6656,7 +6658,7 @@
       "phase": "D",
       "feature": "finance",
       "businessSource": "lib/features/finance/pages/finance_report_table_page.dart",
-      "sourceSha256": "931ae5a4873c54b802acb3b230895d972fec099a3322899eeb6adeca839bf3e6",
+      "sourceSha256": "fddc47aa8fed5754a290329b95d1812d26e542152cc9cec71e86ef9b02266392",
       "sourceProofSha256": "493bbaa18fb3aac5242bbdf77af5b5cb711425d14ebdcd62f7fbf7db48268345",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
@@ -6685,9 +6687,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "docs/99-项目治理/2026-11-01-财务钱流全分类数据与导出审计.md"
+      ],
+      "notes": "2026-11-01：本轮审计修复预收不冲减应收、收入incomeAmount分类行金额、总账北京时间/红冲/未知合计、同步导出快照与各分类偏好；Web/Flutter共用入口已改，本WPF页仍未迁移，须保持币种/NULL/来源和新返回合同。",
+      "lastUpdated": "2026-11-02T06:44:11.716063+00:00"
     },
     {
       "id": "W7-BIZ-073",
@@ -6865,7 +6869,7 @@
       "phase": "D",
       "feature": "finance",
       "businessSource": "lib/features/finance/pages/finance_statement_page.dart",
-      "sourceSha256": "9729d9e92efaa6e8f5aaed52ff51730ce908977fb2374aa13f00eef3638cdfd5",
+      "sourceSha256": "1bec0714ba45eee13458f325ffb81c86a18d48a0979bbef70088615bbf965a92",
       "sourceProofSha256": "6db6034e74041865b477a5a666ffb51d0ce0c944feb5e0973f0e4c622781b6fd",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
@@ -6894,9 +6898,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "docs/99-项目治理/2026-11-01-财务钱流全分类数据与导出审计.md"
+      ],
+      "notes": "2026-11-01财务审计续修：客户/供应商流水、明细、年度的月汇总同快照回放与重算并发保护需共享接入；年度退货不单列时为NULL并明确已并入发生额，不能伪报0。本WPF页面仍未迁移。",
+      "lastUpdated": "2026-11-02T07:03:31.967611+00:00"
     },
     {
       "id": "W7-BIZ-078",

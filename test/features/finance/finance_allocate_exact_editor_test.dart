@@ -345,7 +345,7 @@ class _ExactEditorApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/master/accounts/dict') {
+    if (path == '/master/accounts/dict' || path == '/business-references/accounts') {
       return [
         for (final id in ['account-1', 'account-2'])
           {

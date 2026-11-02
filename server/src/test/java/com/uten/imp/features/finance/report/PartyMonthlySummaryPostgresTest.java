@@ -484,7 +484,7 @@ class PartyMonthlySummaryPostgresTest {
             SELECT month.ym,
                    COALESCE((SELECT SUM(prior.posted_local-prior.settled_local)
                        FROM party_events prior WHERE prior.event_date<month.ms),0),
-                   month.posted,month.settled,0,
+                   month.posted,month.settled,NULL::numeric,
                    COALESCE((SELECT SUM(closing.posted_local-closing.settled_local)
                        FROM party_events closing WHERE closing.event_date<month.ms+INTERVAL '1 month'),0)
             FROM monthly month ORDER BY month.ym

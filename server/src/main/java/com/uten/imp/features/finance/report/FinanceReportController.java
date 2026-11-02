@@ -470,12 +470,22 @@ public class FinanceReportController {
         return service.accountStatementFacets(accountId, dateFrom, dateTo, keyword);
     }
 
-    /** Q 银行存取明细 / R 汇总（M_Bank 0 行，空结构）。 */
+    /** Q 银行存取明细 / R 汇总。 */
     @org.springframework.transaction.annotation.Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @GetMapping("/bank/{view}")
     @PreAuthorize("hasAuthority('finance_report:view')")
-    public ReportTableResponse bank(@PathVariable String view) {
-        return service.bankReport(view);
+    public ReportTableResponse bank(@PathVariable String view,
+            @RequestParam(required=false) UUID accountId,
+            @RequestParam(required=false) @DateTimeFormat(iso=ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required=false) @DateTimeFormat(iso=ISO.DATE) LocalDate dateTo,
+            @RequestParam(required=false) String keyword,
+            @RequestParam(required=false) Short status,
+            @RequestParam(defaultValue="1") int page,
+            @RequestParam(defaultValue="50") int size,
+            @RequestParam(required=false) String sort,
+            @RequestParam(required=false) String order) {
+        return service.bankReport(view,accountId,dateFrom,dateTo,keyword,status,
+                FinanceReportHeaderRequest.filters(FinanceReportHeaderRequest.current()),page,size,sort,order);
     }
 
     // ---------- 加密导出（POST，密码走 body；过滤/排序走 query，与 GET 一致） ----------

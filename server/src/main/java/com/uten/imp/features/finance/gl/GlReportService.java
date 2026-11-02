@@ -40,7 +40,7 @@ import static com.uten.imp.features.finance.gl.GlReportSourceScopes.Root.*;
  *
  * <p>附表行不再按写死的科目名取数(ADR-112)：行目录在 {@link GlReportLine}，行绑定哪些科目/部门存于
  * {@code finance_report_line_bindings}；人工行取已审核工资单应发、折旧行取固定资产折旧事实；
- * 没有绑定的行在「取数口径」列标注「未配置科目/未配置部门」，金额留空且不计入合计。
+ * 没有绑定的行在「取数口径」列标注「未配置科目/未配置部门」，金额留空，依赖该行的合计同样保留未知。
  * 附 14 按业务员拆分：费用单据无业务员维度，按绑定到「销售费用」的科目出行。</p>
  */
 @Service
@@ -407,8 +407,16 @@ public class GlReportService {
         List<Map<String, Object>> rows = new ArrayList<>();
         for (GlReportLine line : sheet) {
             boolean unconfigured = line.configurable() && !bindings.bound(line.key());
-            rows.add(pivotRow(line.label(), unconfigured ? null : zeroFilled(data.get(line.key())),
-                    basis(line, bindings)));
+            boolean businessFact = line.source() == GlReportLine.Source.FINISHED_IN
+                    || line.source() == GlReportLine.Source.SUBCONTRACT;
+            BigDecimal[] months = unconfigured ? null : businessFact ? data.get(line.key())
+                    : zeroFilled(data.get(line.key()));
+            String sourceBasis = basis(line, bindings);
+            if (businessFact && months != null
+                    && java.util.stream.IntStream.rangeClosed(1, 12).anyMatch(month -> months[month] == null)) {
+                sourceBasis += "（空值月份存在待核实金额）";
+            }
+            rows.add(pivotRow(line.label(), months, sourceBasis));
         }
         return GlComputedHeaders.apply("gl/pivot",new ReportTableResponse(pivotColumns(itemLabel), rows, new LinkedHashMap<>(), 1, rows.size(), rows.size(), 1),com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
     }
@@ -448,24 +456,27 @@ public class GlReportService {
         };
     }
 
-    /** 生产产值：成品入库流水月金额（movement_type=13, amount_local）。 */
+    /** 生产产值：业务月内成品入库净额，红冲按方向抵销；缺失成本不冒充零。 */
     private BigDecimal[] finishedInMonthly(int year) {
         var q = em.createNativeQuery("""
-                SELECT EXTRACT(MONTH FROM transaction_date)::int, SUM(amount_local)
+                SELECT EXTRACT(MONTH FROM transaction_date AT TIME ZONE 'Asia/Shanghai')::int,
+                       CASE WHEN bool_or(amount_local IS NULL) THEN NULL
+                            ELSE SUM(direction * amount_local) END
                 FROM stock_movements
                 WHERE movement_type = 13 AND transaction_date >= :from AND transaction_date < :to
                 GROUP BY 1
                 """);
         LocalDate firstDay = LocalDate.of(year, 1, 1);
-        q.setParameter("from", firstDay.atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime());
-        q.setParameter("to", firstDay.plusYears(1).atStartOfDay(java.time.ZoneOffset.UTC).toOffsetDateTime());
+        q.setParameter("from", com.uten.imp.common.time.BusinessTime.startOfDay(firstDay));
+        q.setParameter("to", com.uten.imp.common.time.BusinessTime.startOfDay(firstDay.plusYears(1)));
         return monthArray(NativeQueryResults.objectArrayRows(q));
     }
 
     /** 委外加工费：委外进仓行月金额（单头 total_local 老库全 0，取行 amount_local 合计）。 */
     private BigDecimal[] subcontractMonthly(int year) {
         var q = em.createNativeQuery("""
-                SELECT EXTRACT(MONTH FROM d.bill_date)::int, SUM(i.amount_local)
+                SELECT EXTRACT(MONTH FROM d.bill_date)::int,
+                       CASE WHEN bool_or(i.amount_local IS NULL) THEN NULL ELSE SUM(i.amount_local) END
                 FROM subcontract_receipt_items i
                 JOIN subcontract_receipts d ON d.id = i.receipt_id
                 WHERE d.status = 1 AND d.is_deleted = false AND i.is_deleted = false
@@ -478,7 +489,7 @@ public class GlReportService {
     }
 
     private static BigDecimal[] monthArray(List<Object[]> rows) {
-        BigDecimal[] months = new BigDecimal[13];
+        BigDecimal[] months = zeroMonths();
         for (Object[] r : rows) months[((Number) r[0]).intValue()] = (BigDecimal) r[1];
         return months;
     }
@@ -581,23 +592,29 @@ public class GlReportService {
         // 工费：直接/间接人员工资取已审核工资单, 福利餐费取绑定科目, 委外加工费取进仓事实。
         BigDecimal sub = subcontractMonth(year, month);
         BigDecimal laborTotal = nz(sub);
+        boolean laborComplete = sub != null;
         for (GlReportLine line : List.of(GlReportLine.OP_LABOR_DIRECT, GlReportLine.OP_LABOR_INDIRECT,
                 GlReportLine.OP_MEAL)) {
             BigDecimal amount = lineAmount(line, bindings, data, month);
             laborTotal = laborTotal.add(nz(amount));
+            laborComplete &= amount != null;
             addOpRow(output, "工费", "劳务费", line.label(), amount, base, basis(line, bindings));
         }
         addOpRow(output, "工费", "劳务费", "委外加工费", sub, base, "委外进仓金额");
-        addOpRow(output, "工费", "工费合计", "", laborTotal, base, "",true);
+        addOpRow(output, "工费", "工费合计", "", laborComplete ? laborTotal : null, base,
+                laborComplete ? "" : "组成项目尚未配置完整或来源金额待核实",true);
 
-        // 一般管理费(模板行序; 未配置的行明确标注, 不计入合计)
+        // 一般管理费(模板行序; 未配置的行明确标注, 不输出不完整合计)
         BigDecimal adminTotal = BigDecimal.ZERO;
+        boolean adminComplete = true;
         for (var e : GlReportLine.OPERATING_ADMIN.entrySet()) {
             BigDecimal amount = lineAmount(e.getKey(), bindings, data, month);
             adminTotal = adminTotal.add(nz(amount));
+            adminComplete &= amount != null;
             addOpRow(output, "一般管理费", e.getValue(), e.getKey().label(), amount, base, basis(e.getKey(), bindings));
         }
-        addOpRow(output, "一般管理费", "管理费合计", "", adminTotal, base, "",true);
+        addOpRow(output, "一般管理费", "管理费合计", "", adminComplete ? adminTotal : null, base,
+                adminComplete ? "" : "组成项目尚未配置完整或来源金额待核实",true);
         if (batches != null) {
             int total = batches.finish();
             return new ReportTableResponse(cols, List.of(), Map.of(), 1, 500, total, ReportReadPlan.totalPages(total, 500)).withColumnSearchKeys(condition.keys());
@@ -617,7 +634,8 @@ public class GlReportService {
     private BigDecimal subcontractMonth(int year, int month) {
         LocalDate from = LocalDate.of(year, month, 1);
         var q = em.createNativeQuery("""
-                SELECT COALESCE(SUM(i.amount_local),0) FROM subcontract_receipt_items i
+                SELECT CASE WHEN bool_or(i.amount_local IS NULL) THEN NULL ELSE COALESCE(SUM(i.amount_local),0) END
+                FROM subcontract_receipt_items i
                 JOIN subcontract_receipts d ON d.id = i.receipt_id
                 WHERE d.status=1 AND d.is_deleted=false AND i.is_deleted=false
                   AND d.bill_date BETWEEN :from AND :to

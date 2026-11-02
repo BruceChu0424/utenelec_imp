@@ -255,6 +255,14 @@ settings 仅映射这些已核对的 Android 原生项目；Dart 的依赖锁、
 `device_info_plus` 在各自唯一源码入口同步修正相同语法。
 脚本不会加警告过滤或新的 suppression，源码漂移时拒绝继续。CI Android 作业使用同一准备器。
 
+CI 在业务编译前用 `prepare_android_ndk.py` 显式准备 Flutter 固定的 Linux NDK
+`28.2.13676358`。来源为[Google SDK 元数据](https://dl.google.com/android/repository/repository2-3.xml)
+及[官方 r28c 归档记录](https://github.com/android/ndk/wiki/Unsupported-Downloads#r28c)：
+Linux ZIP 为 722261334 字节，官方 SHA-1 为 `a7b54a5de87fecd125a17d54f73c446199e72a64`。
+下载先核大小/摘要和 ZIP CRC，再安装并核对 `source.properties`、构建工具和真实 clang 启动。
+不更改 NDK 版本、不覆盖已有目录；HTTP 状态、长度、实际摘要、响应前缀和安装失败原因写入
+同一 CI 诊断产物，不再把“不是有效 ZIP”的安装失败混作业务编译错误。
+
 ```powershell
 python deploy/client/prepare_android_flutter_tooling.py `
   --flutter-sdk '<固定 Flutter 3.44.2 SDK>' --output '<任务私有目录/flutter-gradle>'
@@ -274,7 +282,8 @@ $env:GRADLE_OPTS = '-Dorg.gradle.java.home="<任务私有 JDK 17 路径>" -Dorg.
 try {
   flutter build apk --debug --no-pub `
     --dart-define=API_BASE_URL=http://127.0.0.1:18081/api `
-    --dart-define=CLOUD_API_BASE_URL=http://127.0.0.1:18081/api
+    --dart-define=CLOUD_API_BASE_URL=http://127.0.0.1:18081/api `
+    --dart-define=DR_CONTROL_PLANE_URL=
 } finally {
   $env:GRADLE_OPTS = $previousGradleOpts
   Remove-Item Env:ORG_GRADLE_PROJECT_utenLocalTest
@@ -284,6 +293,7 @@ try {
 
 `org.gradle.java.home` 固定实际 Gradle 编译 JVM，避免 Windows 上 Flutter 优先采用 Android Studio
 内置 JDK 而覆盖命令的 `JAVA_HOME`；不运行会写入全局设置的 `flutter config --jdk-dir`。
+测试 APK 的灾备控制面编译地址显式留空，所有业务连接固定使用本地测试服务。
 
 在手机开启 USB 调试并确认开发机授权后，使用本机 Android SDK 的 `adb`：
 

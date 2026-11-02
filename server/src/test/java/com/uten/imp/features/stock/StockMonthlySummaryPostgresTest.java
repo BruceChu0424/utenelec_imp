@@ -119,6 +119,15 @@ class StockMonthlySummaryPostgresTest {
     @Test
     @Order(4)
     void reconciliationComparesBalanceAgainstMonthlySummaries() {
+        // Flow-only dimensions still need their real identities so the
+        // diagnostic can locate them. Reading a drift report never repairs it.
+        var flowOnly = reconciliation.driftReport(50);
+        assertThat(flowOnly.total()).isEqualTo(2L);
+        assertThat(flowOnly.rows()).extracting(row -> row.get("goods_id")).containsOnly(GOODS);
+        assertThat(flowOnly.rows()).extracting(row -> row.get("warehouse_id")).containsOnly(WAREHOUSE);
+        assertThat(flowOnly.rows()).extracting(row -> row.get("color_id"))
+                .containsExactlyInAnyOrder(null, COLOR);
+        assertThat(db.queryForObject("SELECT count(*) FROM stock_balances", Long.class)).isZero();
         // Σ全部净额 = 10-4+3+5+2(有色) = 16；无色维度 14。
         db.update("INSERT INTO stock_balances(id,warehouse_id,goods_id,color_id,qty) "
                 + "VALUES(gen_random_uuid(),?,?,NULL,14)", WAREHOUSE, GOODS);

@@ -44,7 +44,9 @@ public class StockReconciliationService {
                 FROM stock_monthly_summaries s
                 GROUP BY s.goods_id, s.color_id, s.warehouse_id
             )
-            SELECT b.goods_id AS goods_id, b.warehouse_id AS warehouse_id, b.color_id AS color_id,
+            SELECT COALESCE(b.goods_id, f.goods_id) AS goods_id,
+                   COALESCE(b.warehouse_id, f.warehouse_id) AS warehouse_id,
+                   COALESCE(b.color_id, f.color_id) AS color_id,
                    COALESCE(b.qty, 0) AS balance_qty, COALESCE(f.flow_qty, 0) AS flow_qty,
                    g.name AS goods_name, g.code AS goods_code, w.name AS warehouse_name,
                    COUNT(*) OVER() AS total_count

@@ -147,7 +147,7 @@ class PartyMonthlySnapshotPostgresTest {
             writer.setAutoCommit(false);
             var source=new JdbcTemplate(new org.springframework.jdbc.datasource.SingleConnectionDataSource(writer,true));ledger(source,"AR","20","2025-01-03");
             var future=executor.submit(()->{try(var session=sessions.openSession()) {
-                var tx=session.beginTransaction();consumerPid.set(((Number)session.createNativeQuery("SELECT pg_backend_pid()").getSingleResult()).intValue());
+                var tx=session.beginTransaction();consumerPid.set(session.createNativeQuery("SELECT pg_backend_pid()",Integer.class).getSingleResult());
                 new PartyMonthlySummaryService(afterAggregation(session,aggregateReady::countDown)).reconcileNow("AR",party);tx.commit();
             }});
             assertThat(aggregateReady.await(15,TimeUnit.SECONDS)).isTrue();
@@ -161,7 +161,8 @@ class PartyMonthlySnapshotPostgresTest {
     }
     private EntityManager afterAggregation(Session session,Runnable hook) {
         EntityManager wrapped=mock(EntityManager.class);AtomicBoolean ran=new AtomicBoolean();
-        when(wrapped.createNativeQuery(anyString())).thenAnswer(call->{String sql=call.getArgument(0);Query query=session.createNativeQuery(sql);
+        EntityManager delegate=session;
+        when(wrapped.createNativeQuery(anyString())).thenAnswer(call->{String sql=call.getArgument(0);Query query=delegate.createNativeQuery(sql);
             if(!sql.contains(", recompute AS ("))return query;
             Query intercepted=mock(Query.class,org.mockito.AdditionalAnswers.delegatesTo(query));
             doAnswer(ignored->{var rows=query.getResultList();if(ran.compareAndSet(false,true))hook.run();return rows;}).when(intercepted).getResultList();return intercepted;
@@ -182,7 +183,7 @@ class PartyMonthlySnapshotPostgresTest {
         var executor=Executors.newSingleThreadExecutor(runnable->new Thread(runnable,"party-busy-report-test"));
         try(var holder=sessions.openSession()) {
             var holding=holder.beginTransaction();
-            holder.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))::text")
+            holder.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))::text",String.class)
                     .setParameter("key","party-month-summary/AR/"+party).getSingleResult();
             try {
                 long started=System.nanoTime();

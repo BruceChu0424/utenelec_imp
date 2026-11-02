@@ -221,6 +221,41 @@ Windows 双包授权上传。当前完整发布必须另外完成上述 Windows 
 
 ## Android 本地测试 APK（USB）
 
+Android 使用以下相互兼容的固定构建组合；Flutter 产品 SDK、Dart、引擎及业务依赖锁不随此工具调整变更。
+
+| 层 | 固定值与职责 |
+|---|---|
+| Flutter | 3.44.2，源码 revision `c9a6c484230f8b5e408ec57be1ef71dee1e77020` |
+| Android 构建 JDK | 17；与 CI Android 作业一致，使用命令级配置，不更改服务器的 Java 21 或全局 JDK |
+| Gradle | 8.14.3，官方分发 SHA-256 固定于 wrapper |
+| Flutter Gradle 工具的 Kotlin | 由 `kotlin-dsl` 使用 Gradle 内嵌的 2.0.21，不再额外套用不匹配的 2.2.20 编译插件 |
+| Android 应用及插件的 Kotlin | 2.2.20；其官方兼容范围覆盖 Gradle 8.14 与 AGP 8.11.1 |
+| AGP / API | 8.11.1 / compile API 36；保留既有 DSL 和 Flutter 3.44.2 要求的两个 `false` 默认，避免 CLI 构建重写受审源码 |
+
+兼容依据：[AGP 8.11](https://developer.android.com/build/releases/agp-8-11-0-release-notes)、
+[Kotlin Gradle 插件矩阵](https://kotlinlang.org/docs/gradle-configure-project.html)、
+[Gradle Kotlin DSL](https://docs.gradle.org/8.14.3/userguide/kotlin_dsl.html#sec:kotlin-dsl_plugin)。
+原 AGP 9 + 旧 DSL 兼容开关会让 SDK 和多个锁定插件产生弃用警告，不能只打开新 DSL；
+Gradle 8.14 和 9 都会对锁定 Groovy 插件的旧属性赋值报弃用，必须同时迁移该语法，
+不能靠换版本消除。当前组合保持这些插件的支持范围。
+
+构建前运行固定源码校验和私有工具准备器。它只复制 Flutter 的 Gradle 工具到独立目录，
+核对版本、revision 和五个修改文件的原始 SHA-256，保留原许可证；不改已安装 SDK 或 pub 缓存。
+修改包括显式注解 target、类型安全的应用 buildTypes、删除已无调用的旧辅助方法，以及用
+`ApplicationAndroidComponentsExtension` 的公共输出 API 保持分 ABI 版本码规则。
+准备器还校验 `file_picker 8.3.7`、`flutter_secure_storage 9.2.4`、`printing 5.15.1`
+原始 Gradle 脚本版本与 SHA-256，将各自原源码复制到同一任务目录，仅把已点名的
+`group/version/namespace/compileSdk/minSdk` 属性改成显式赋值。settings 只替换三个 Android
+原生项目目录；Dart 的依赖锁、包路径和业务源码保持原来源。仓库内 `desktop_drop`、
+`device_info_plus` 在各自唯一源码入口同步修正相同语法。
+脚本不会加警告过滤或新的 suppression，源码漂移时拒绝继续。CI Android 作业使用同一准备器。
+
+```powershell
+python deploy/client/prepare_android_flutter_tooling.py `
+  --flutter-sdk '<固定 Flutter 3.44.2 SDK>' --output '<任务私有目录/flutter-gradle>'
+$env:ORG_GRADLE_PROJECT_utenFlutterGradleTools = '<任务私有目录/flutter-gradle>'
+```
+
 本地测试使用 Debug APK 和开发机测试后端，独立包名为
 `com.uten.uten_imp.local_test`，手机上显示“UTEN 本地测试”，应用数据与公司客户端分开。
 它使用 Android Debug 签名，不能上传正式客户端目录，也不作为公司版升级包。
@@ -229,11 +264,21 @@ Windows 双包授权上传。当前完整发布必须另外完成上述 Windows 
 
 ```powershell
 $env:ORG_GRADLE_PROJECT_utenLocalTest = 'true'
-flutter build apk --debug --no-pub `
-  --dart-define=API_BASE_URL=http://127.0.0.1:18081/api `
-  --dart-define=CLOUD_API_BASE_URL=http://127.0.0.1:18081/api
-Remove-Item Env:ORG_GRADLE_PROJECT_utenLocalTest
+$previousGradleOpts = $env:GRADLE_OPTS
+$env:GRADLE_OPTS = '-Dorg.gradle.java.home="<任务私有 JDK 17 路径>" -Dorg.gradle.warning.mode=all'
+try {
+  flutter build apk --debug --no-pub `
+    --dart-define=API_BASE_URL=http://127.0.0.1:18081/api `
+    --dart-define=CLOUD_API_BASE_URL=http://127.0.0.1:18081/api
+} finally {
+  $env:GRADLE_OPTS = $previousGradleOpts
+  Remove-Item Env:ORG_GRADLE_PROJECT_utenLocalTest
+  Remove-Item Env:ORG_GRADLE_PROJECT_utenFlutterGradleTools
+}
 ```
+
+`org.gradle.java.home` 固定实际 Gradle 编译 JVM，避免 Windows 上 Flutter 优先采用 Android Studio
+内置 JDK 而覆盖命令的 `JAVA_HOME`；不运行会写入全局设置的 `flutter config --jdk-dir`。
 
 在手机开启 USB 调试并确认开发机授权后，使用本机 Android SDK 的 `adb`：
 

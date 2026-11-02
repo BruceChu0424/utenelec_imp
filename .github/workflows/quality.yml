@@ -382,6 +382,25 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       # Compile Kotlin, the FileProvider manifest, and Dart with the local debug
       # identity. This job never receives release signing material or publishes.
+      - name: Verify and prepare the fixed Android NDK
+        id: android_ndk
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/android-ndk"
+          python3 -m unittest discover -s deploy/client -p test_prepare_android_ndk.py -v 2>&1 | tee "$RUNNER_TEMP/android-ndk/prepare.log"
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$sdk_root"
+          python3 deploy/client/prepare_android_ndk.py --sdk-root "$sdk_root" --output-dir "$RUNNER_TEMP/android-ndk" 2>&1 | tee -a "$RUNNER_TEMP/android-ndk/prepare.log"
+      - name: Preserve NDK download and integrity diagnostics
+        if: ${{ always() && steps.android_ndk.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-ndk-preparation
+          path: |
+            ${{ runner.temp }}/android-ndk/receipt.json
+            ${{ runner.temp }}/android-ndk/prepare.log
+          if-no-files-found: error
+          retention-days: 14
       - name: Prepare verified private Android Gradle tooling
         run: >-
           python3 deploy/client/prepare_android_flutter_tooling.py

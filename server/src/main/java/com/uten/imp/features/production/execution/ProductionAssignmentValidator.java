@@ -163,18 +163,24 @@ public class ProductionAssignmentValidator {
         EmployeeFact employee = employees.get(
                 assignment.responsibleEmployeeId());
         if (employee == null
-                || !ASSIGNABLE_EMPLOYEE_STATUSES.contains(employee.status())) {
+                || !isAssignableEmployeeStatus(employee.status())) {
             throw validation("生产负责人必须是未删除且在职或试用的员工");
         }
 
         DepartmentFact scope = team != null ? team : workshop;
         if (scope != null
-                && (employee.departmentPath() == null
-                        || scope.path() == null
-                        || !employee.departmentPath().startsWith(
-                                scope.path()))) {
+                && !isEmployeeWithinScope(employee.departmentPath(),scope.path())) {
             throw validation("生产负责人必须属于所选班组或车间组织范围");
         }
+    }
+
+    /** Shared by authoritative writes and convenience defaults; no account-login requirement. */
+    public static boolean isAssignableEmployeeStatus(String status) {
+        return status!=null && ASSIGNABLE_EMPLOYEE_STATUSES.contains(status);
+    }
+
+    public static boolean isEmployeeWithinScope(String employeePath,String scopePath) {
+        return employeePath!=null && scopePath!=null && employeePath.startsWith(scopePath);
     }
 
     private static void validateDates(LocalDate begin, LocalDate end) {

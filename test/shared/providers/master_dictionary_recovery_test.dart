@@ -47,7 +47,7 @@ void main() {
                             ))
                           {'id': id, 'name': 'available', 'status': '使用'}
                       else
-                        {'id': options.path, 'name': 'available'},
+                        {'id': 'reference-available', 'name': 'available'},
                     ],
                   ),
                 );
@@ -57,12 +57,14 @@ void main() {
         );
       final service = MasterNameService(ApiClient(dio));
       await service.ensureLoaded();
-      expect(service.warehouse(ApiEndpoints.warehousesDict), 'available');
-      await service.loadSupplierNames([ApiEndpoints.suppliersDict]);
-      expect(service.supplier(ApiEndpoints.suppliersDict), 'available');
-      expect(service.unit(ApiEndpoints.unitsDict), '—');
+      expect(service.warehouse('reference-available'), 'available');
+      expect(calls[ApiEndpoints.businessReferenceWarehouses], 1);
+      expect(calls[ApiEndpoints.warehousesDict], isNull);
+      await service.loadSupplierNames(['supplier-available']);
+      expect(service.supplier('supplier-available'), 'available');
+      expect(service.unit('reference-available'), '—');
       await service.ensureLoaded();
-      expect(service.unit(ApiEndpoints.unitsDict), 'available');
+      expect(service.unit('reference-available'), 'available');
       expect(calls[ApiEndpoints.unitsDict], 2);
       expect(
         calls.entries
@@ -88,6 +90,14 @@ void main() {
       ]);
       await Future<void>.delayed(Duration.zero);
       expect(api.requests, hasLength(5));
+      expect(
+        api.requests.map((request) => request.path),
+        contains(ApiEndpoints.businessReferenceWarehouses),
+      );
+      expect(
+        api.requests.map((request) => request.path),
+        isNot(contains(ApiEndpoints.warehousesDict)),
+      );
       for (final request in List.of(api.requests)) {
         if (request.path == '/master/clients/lookup') {
           request.result.completeError(StateError('temporary client failure'));

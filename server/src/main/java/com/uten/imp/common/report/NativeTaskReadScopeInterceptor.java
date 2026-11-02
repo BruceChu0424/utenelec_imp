@@ -27,6 +27,7 @@ public record NativeTaskReadScopeInterceptor(ReadScopeVersionAuthority authority
             route("/api/business-references/(?:supplier-categories|client-categories|departments)","native_feature"),
             route("/api/master/(?:payment-styles/tree|reference-methods/(?:settlement|finance))","native_feature"),
             route("/api/org/employee-references(?:/(?:by-ids|departments))?","native_feature"),
+            route("/api/production/workshop-assignment-defaults","native_workshop_tasks"),
             route("/api/production/workshop-tasks(?:/(?:facets|count|"+ID+"/materials))?","native_workshop_tasks"),
             route("/api/workshop-material/segments/"+ID+"/stock-readiness","native_workshop_tasks"),
             route("/api/procurement/arrival-exceptions/(?:tasks|count|"+ID+")","native_feature"),

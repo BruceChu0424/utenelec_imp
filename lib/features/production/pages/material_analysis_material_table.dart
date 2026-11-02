@@ -4868,8 +4868,8 @@ abstract class _MaterialAnalysisMaterialTableState
   // ---------------- 下达车间前的就地指派(生产车间 / 负责人) ----------------
   //
   // 这套学习记忆原先只长在分桶详情页里。主表要在行上直接指派，就得把它提到
-  // 宿主 State：默认值优先货品学习记忆(V488 连负责人一起记)，否则组织树上
-  // 该车间的负责人，都带黄标提醒核对；两者都没有才留空手选。
+  // 宿主 State：默认值优先货品学习记忆，否则取生产业务专用接口的当前合格负责人，
+  // 都带黄标提醒核对；通用部门树只有最小层级字段，两者都没有才留空手选。
 
   Map<
     String,
@@ -4952,7 +4952,7 @@ abstract class _MaterialAnalysisMaterialTableState
     _fetchTableAssignmentDefaults(analysis, mandatory: mandatory, force: force),
   ]);
 
-  /// 车间/负责人默认值 (组织树 + 货品学习记忆) 的一类读取：返回合批套用动作。
+  /// 最小车间树、货品学习记忆与业务专用负责人默认值合批套用。
   /// 等待者 ([_tableAssignmentCompletion]) 在套用之后才放行——放行时默认值已经
   /// 落到页面状态里。
   Future<VoidCallback?> _fetchTableAssignmentDefaults(
@@ -4992,11 +4992,17 @@ abstract class _MaterialAnalysisMaterialTableState
       })
     >?
     defaults;
+    Map<String, ({String? id, String? name})> managers = const {};
     try {
       tree = await _tableWorkshopTreeOrEmpty();
       defaults = await ref
           .read(productionPlanRepositoryProvider)
           .defaultWorkshops(goodsIds);
+      managers = await ref
+          .read(productionPlanRepositoryProvider)
+          .workshopAssignmentDefaults({
+            for (final node in tree) node.id,
+          }, purpose: EmployeeReferencePurpose.productionMaterialOwner);
     } catch (_) {
       defaults = null;
     }
@@ -5014,11 +5020,7 @@ abstract class _MaterialAnalysisMaterialTableState
         if (tree != null && defaults != null) {
           _tableWorkshopTree = tree;
           _tableWorkshopDefaults = defaults;
-          _tableWorkshopManagers = {
-            for (final node in tree)
-              if (node.managerId?.isNotEmpty == true)
-                node.id: (id: node.managerId, name: node.managerName),
-          };
+          _tableWorkshopManagers = managers;
         }
         _tableAssignmentScope = scope;
       }
@@ -5030,14 +5032,12 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   Future<List<DepartmentNode>> _tableWorkshopTreeOrEmpty() async {
-    // 直读稳定的部门仓库而不是 autoDispose provider：后者被一次性 read(.future)
+    // 直读会话共享的最小部门字典而不是 autoDispose provider：后者被一次性 read(.future)
     // 时可能在请求中途回收，Future 永不完成(默认车间带不出的隐患)。
     try {
-      final tree = await ref
-          .read(employeeReferenceRepositoryProvider)
-          .departments(EmployeeReferencePurpose.productionMaterialOwner);
-      return findDepartmentByCode(tree, kDeptCodeProduction)?.children ??
-          const [];
+      return await loadProductionWorkshopReferenceTree(
+        ref.read(masterDictionaryRepositoryProvider),
+      );
     } catch (_) {
       return const [];
     }
@@ -5156,7 +5156,7 @@ abstract class _MaterialAnalysisMaterialTableState
   }
 
   /// 本行此刻的负责人：手选草稿 > 学习记忆里与本次车间一致的负责人 >
-  /// 组织树上该车间的负责人。
+  /// 生产业务默认接口给出的该车间当前合格负责人。
   ({String? id, String? name, bool autofilled}) _tableWorkerFor(
     _MaterialGroup group,
   ) {
@@ -5184,7 +5184,7 @@ abstract class _MaterialAnalysisMaterialTableState
     final manager = workshop.id == null
         ? null
         : _tableWorkshopManagers[workshop.id!];
-    if (manager != null) {
+    if (manager != null && manager.id?.isNotEmpty == true) {
       return (id: manager.id, name: manager.name, autofilled: true);
     }
     return (id: null, name: null, autofilled: false);

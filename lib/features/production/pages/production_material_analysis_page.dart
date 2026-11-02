@@ -106,6 +106,8 @@ import '../models/production_flow_stage.dart';
 import '../models/production_work_card.dart';
 import '../providers/material_analysis_warehouse_prefs_provider.dart';
 import '../providers/production_execution_refresh.dart';
+import '../providers/production_department_provider.dart';
+import '../../../shared/providers/master_dictionary_repository.dart';
 import '../repositories/production_repository.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../shared/widgets/warehouse_selection.dart';

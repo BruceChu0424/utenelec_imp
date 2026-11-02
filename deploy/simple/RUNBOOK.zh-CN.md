@@ -1,5 +1,7 @@
 # Uten IMP 简化发布链 Runbook（ADR-060）
 
+更换服务器、云账号或恢复整套业务时，先读[服务器部署、备份与迁移总手册](../SERVER_MIGRATION.zh-CN.md)，完成角色识别、恢复材料和切换/回退清单；本文继续作为 Simple 部署和发行的具体操作入口。
+
 > 唯一维护者操作手册。旧 `deploy/` 重链已退役为参考，与本文冲突时以本文为准。
 > **2026-09-02 首装实测勘误**：updater OSS 签名改 Authorization 头（版本控制桶不支持 URL 签名）、
 > releases 属主/nginx 组权限、uten-imp.service ReadWritePaths、CSP style-src、内网必须 HTTPS

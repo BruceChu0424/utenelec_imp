@@ -203,7 +203,7 @@ Android 使用以下相互兼容的固定构建组合；Flutter 产品 SDK、Dar
 | Gradle | 8.14.3，官方分发 SHA-256 固定于 wrapper |
 | Flutter Gradle 工具的 Kotlin | 由 `kotlin-dsl` 使用 Gradle 内嵌的 2.0.21，不再额外套用不匹配的 2.2.20 编译插件 |
 | Android 应用及插件的 Kotlin | 2.2.20；其官方兼容范围覆盖 Gradle 8.14 与 AGP 8.11.1 |
-| AGP / API | 8.11.1 / compile API 36；保留锁定插件的既有 DSL，移除只属于 AGP 9 过渡的两个开关 |
+| AGP / API | 8.11.1 / compile API 36；保留既有 DSL 和 Flutter 3.44.2 要求的两个 `false` 默认，避免 CLI 构建重写受审源码 |
 
 兼容依据：[AGP 8.11](https://developer.android.com/build/releases/agp-8-11-0-release-notes)、
 [Kotlin Gradle 插件矩阵](https://kotlinlang.org/docs/gradle-configure-project.html)、

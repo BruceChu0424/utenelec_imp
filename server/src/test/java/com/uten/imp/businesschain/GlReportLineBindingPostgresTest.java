@@ -88,10 +88,8 @@ class GlReportLineBindingPostgresTest {
         assertThat((BigDecimal) opRow(pl, "设备折旧费").get("amount")).as("固定资产折旧 100 + 长期待摊摊销 20")
                 .isEqualByComparingTo("120");
         assertThat((String) opRow(pl, "设备折旧费").get("basis")).contains("设备折旧费用" + token);
-        assertThat((BigDecimal) subtotal(pl, "工费合计").get("amount")).as("工费合计包含工资单应发")
-                .isEqualByComparingTo("1000");
-        assertThat((BigDecimal) subtotal(pl, "管理费合计").get("amount")).as("管理费合计包含折旧与摊销")
-                .isEqualByComparingTo("120");
+        assertThat(subtotal(pl, "工费合计").get("amount")).as("其余人工/福利行未配置，部分已知不能伪报完整小计").isNull();
+        assertThat(subtotal(pl, "管理费合计").get("amount")).as("其余管理费未配置，部分已知不能伪报完整小计").isNull();
 
         ReportTableResponse manufacturing = reports.manufacturingExpense(YEAR);
         assertThat((BigDecimal) pivotRow(manufacturing, "直接人工").get("m" + MONTH)).isEqualByComparingTo("1000");
@@ -100,6 +98,26 @@ class GlReportLineBindingPostgresTest {
                 .isEqualByComparingTo("0");
         assertThat(pivotRow(manufacturing, "间接人工").get("m" + MONTH)).as("未配置的行留空").isNull();
         assertThat(pivotRow(manufacturing, "间接人工").get("basis")).isEqualTo("未配置部门");
+
+        // Configure every remaining component through the owning binding service. These
+        // distinct departments/styles have no facts, so their amounts are genuinely known 0.
+        UUID emptyDepartment = UUID.randomUUID();
+        jdbc.update("INSERT INTO departments(id,code,name,level) VALUES(?,?,?,'一级部门')",
+                emptyDepartment, "GL-ZERO-" + token, "无工资发生部门" + token);
+        bindings.replace("LABOR_INDIRECT", List.of(emptyDepartment));
+        for (var binding : bindings.list()) {
+            if (binding.lineKey().startsWith("OP_") && binding.targets().isEmpty()) {
+                UUID emptyStyle = style("GL-Z-" + UUID.randomUUID().toString().substring(0, 8),
+                        "无费用发生科目" + binding.lineKey() + token, "EXPENSE");
+                bindings.replace(binding.lineKey(), List.of(emptyStyle));
+            }
+        }
+        ReportTableResponse complete = reports.operatingPl(YEAR, MONTH);
+        assertThat((BigDecimal) opRow(complete, "间接人员工资").get("amount")).isEqualByComparingTo("0");
+        assertThat((BigDecimal) subtotal(complete, "工费合计").get("amount")).as("工费合计包含工资单应发")
+                .isEqualByComparingTo("1000");
+        assertThat((BigDecimal) subtotal(complete, "管理费合计").get("amount")).as("管理费合计包含折旧与摊销")
+                .isEqualByComparingTo("120");
 
         // 过账后账簿改了折旧费用科目, 历史折旧仍按过账时冻结的科目归行, 与总账发生额一致。
         UUID laterStyle = style("GL-DEP2-" + token, "后改的折旧科目" + token, "EXPENSE");

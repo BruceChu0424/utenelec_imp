@@ -444,6 +444,11 @@ class DailyReportMaterialReviewMigrationPostgresTest {
             assertEquals(replacement.before(),expectedIndexes.remove(name),"The exact pre-V974 source uniqueness must be present: "+name);
             assertNull(expectedIndexes.put(name,replacement.after()));
         });
+        // V989: independently reviewed imported opening lookup indexes; no catalog-derived expectations.
+        assertNull(expectedIndexes.put("idx_arap_imported_client",
+                "CREATE INDEX idx_arap_imported_client ON public.ar_ap_ledger USING btree (client_id) WHERE ((direction = 'AR'::text) AND (legacy_import_run_id IS NOT NULL))"));
+        assertNull(expectedIndexes.put("idx_arap_imported_supplier",
+                "CREATE INDEX idx_arap_imported_supplier ON public.ar_ap_ledger USING btree (supplier_id) WHERE ((direction = 'AP'::text) AND (legacy_import_run_id IS NOT NULL))"));
         List<String> actualTables = tables();
         TreeMap<String,String> actualIndexes = catalogMap(indexes());
         if (!expectedTables.stream().toList().equals(actualTables) || !expectedIndexes.equals(actualIndexes)) {

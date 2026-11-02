@@ -63,6 +63,47 @@ class ScopedRecordHistoryPostgresTest {
     long creation(UUID id) { return db.queryForObject("SELECT min(id) FROM master_record_versions WHERE entity_type='company-files' AND record_id=?",Long.class,id); }
     void deny(UUID node) { update("INSERT INTO company_file_acl(node_id,subject_type,subject_id,effect,actions) VALUES(?,'USER',?,'DENY',ARRAY['view'])",node,actor); }
 
+    @Test void historyTriggersKeepAlwaysGuardsAndSkipOnlyUnretainedLibraryUpdates() {
+        for (var trigger : Map.of("trg_permission_record_history", "audit_log",
+                "trg_library_record_history_update", "company_file_nodes",
+                "trg_library_acl_history_update", "company_file_acl").entrySet()) {
+            assertThat(db.queryForObject("SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgname=? AND tgrelid=?::regclass",
+                    String.class, trigger.getKey(), trigger.getValue())).contains("WHEN");
+            assertThat(db.queryForObject("SELECT tgenabled::text FROM pg_trigger WHERE tgname=? AND tgrelid=?::regclass",
+                    String.class, trigger.getKey(), trigger.getValue())).isEqualTo("A");
+        }
+        UUID root = node(null, "guard-" + UUID.randomUUID(), "FOLDER");
+        long created = db.queryForObject("SELECT count(*) FROM master_record_versions WHERE record_id=?", Long.class, root);
+        update("UPDATE company_file_nodes SET updated_at=clock_timestamp() WHERE id=?", root);
+        assertThat(db.queryForObject("SELECT count(*) FROM master_record_versions WHERE record_id=?", Long.class, root)).isEqualTo(created);
+        update("UPDATE company_file_nodes SET description='retained change' WHERE id=?", root);
+        assertThat(db.queryForObject("SELECT count(*) FROM master_record_versions WHERE record_id=?", Long.class, root)).isEqualTo(created + 1);
+        update("INSERT INTO company_file_acl(node_id,subject_type,subject_id,effect,actions) VALUES(?,'USER',?,'ALLOW',ARRAY['view'])", root, actor);
+        update("UPDATE company_file_acl SET actions=actions WHERE node_id=? AND subject_id=?", root, actor);
+        assertThat(db.queryForObject("SELECT count(*) FROM master_record_versions WHERE record_id=?", Long.class, root)).isEqualTo(created + 2);
+        update("UPDATE company_file_acl SET effect='DENY' WHERE node_id=? AND subject_id=?", root, actor);
+        assertThat(db.queryForObject("SELECT count(*) FROM master_record_versions WHERE record_id=?", Long.class, root)).isEqualTo(created + 3);
+        update("DELETE FROM company_file_acl WHERE node_id=? AND subject_id=?", root, actor);
+        assertThat(db.queryForObject("SELECT count(*) FROM master_record_versions WHERE record_id=?", Long.class, root)).isEqualTo(created + 4);
+    }
+
+    @Test void permissionHistoryWhenRetainsSuccessfulSemanticFactsAndRejectsTheSameOtherEvents() {
+        long before = db.queryForObject("SELECT count(*) FROM master_record_versions WHERE entity_type='permissions' AND record_id=?", Long.class, actor);
+        String payload = "{\"added\":[\"goods:view\"],\"removed\":[]}";
+        for (var event : List.of(
+                new Object[]{"ordinary_approval", "business", 200, payload},
+                new Object[]{"user_permission_override_change", "request", 200, payload},
+                new Object[]{"user_permission_override_change", "business", 403, payload},
+                new Object[]{"user_permission_override_change", "business", 200, "{}"})) {
+            update("INSERT INTO audit_log(actor_id,action,target_type,target_id,after,event_source,status_code,result,risk_level,event_category) VALUES(?,?,'users',?,?::jsonb,?,?,'success','high','authorization')",
+                    actor, event[0], actor.toString(), event[3], event[1], event[2]);
+        }
+        assertThat(db.queryForObject("SELECT count(*) FROM master_record_versions WHERE entity_type='permissions' AND record_id=?", Long.class, actor)).isEqualTo(before);
+        update("INSERT INTO audit_log(actor_id,action,target_type,target_id,after,event_source,status_code,result,risk_level,event_category) VALUES(?,'user_permission_override_change','users',?,?::jsonb,'business',200,'success','high','authorization')",
+                actor, actor.toString(), payload);
+        assertThat(db.queryForObject("SELECT count(*) FROM master_record_versions WHERE entity_type='permissions' AND record_id=?", Long.class, actor)).isEqualTo(before + 1);
+    }
+
     @Test void currentAclHidesCreationRecordsAndDirectDetailsForFoldersAndFiles() {
         UUID root=node(null,"hidden-"+UUID.randomUUID(),"FOLDER");
         UUID child=node(root,"secret-file-"+UUID.randomUUID(),"FILE"); long id=creation(child);

@@ -161,12 +161,18 @@ class ReportExportSpecialSourcesPostgresTest {
             assertThat(batches).extracting(batch->batch.rows().size()).containsExactly(500,500,1);
             var streamed=batches.stream().flatMap(batch->batch.rows().stream()).toList();
             assertThat(streamed).containsExactlyElementsOf(original.rows());
-            // Preflight proof queries may remain; there is one unbounded data SELECT, never repeated OFFSET scans.
+            // Dirty-month checks are now embedded in the authoritative statement data CTE.
+            // Excluding every SQL containing that table would discard the real data read.
+            // The exact top-level month proof runs once for each requested batch;
+            // a nested dirty-month reference remains part of the data statement.
             var dataStatements=context.sql.stream().filter(statement->!statement.toLowerCase(Locale.ROOT).startsWith("select count(*)")
-                    && !statement.toLowerCase(Locale.ROOT).contains("from party_month_dirty")
+                    && !statement.stripLeading().toLowerCase(Locale.ROOT).startsWith("select month_start from party_month_dirty ")
                     && statement.matches("(?is).*\\bORDER\\s+BY\\b.*")).toList();
             assertThat(dataStatements)
                     .hasSize(1).allSatisfy(statement->assertThat(statement).doesNotContain("LIMIT ? OFFSET ?"));
+            if (report.startsWith("statement/")) {
+                assertThat(dataStatements.getFirst().toLowerCase(Locale.ROOT)).contains("from party_month_dirty");
+            }
             if(report.equals("account/statement")){
                 assertThat(streamed).extracting(row->row.get("billNo")).containsExactlyElementsOf(
                         IntStream.rangeClosed(1,1001).mapToObj(value->String.format("AC-%05d",value)).toList());

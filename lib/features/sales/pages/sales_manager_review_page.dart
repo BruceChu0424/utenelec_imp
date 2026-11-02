@@ -13,6 +13,7 @@ import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -565,121 +566,128 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
         ),
         body: Padding(
           padding: const EdgeInsets.all(UtenSpacing.s16),
-          child: Column(
-            children: [
-              const UtenInlineNotice(
-                message: '销售提交 → 销售负责人审核 → 财务审核。需要销售修改时请驳回并写明原因。',
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              UtenFilterToolbar<String>(
-                enabled: !_busy,
-                autoSelectBadge: false,
-                segmentsKey: const Key('sales-review-categories'),
-                searchKey: const Key('sales-review-search'),
-                segments: const [
-                  UtenFilterSegment(value: 'PENDING', label: '待审核'),
-                  UtenFilterSegment(value: 'HISTORY', label: '历史记录'),
-                ],
-                selected: {_state},
-                onSelectionChanged: (value) {
-                  if (_busy) return;
-                  _state = value;
-                  _filters.clear();
-                  _reload(clear: true);
-                },
-                searchController: _search,
-                searchHint: '搜索单据号、客户或业务员',
-                onSearchInputChanged: (_) {
-                  if (!_busy) ++_generation;
-                },
-                onSearchChanged: (_) {
-                  if (!_busy) _reload(clear: true);
-                },
-              ),
-              const SizedBox(height: UtenSpacing.s12),
-              if (_unknownSubmission)
-                const UtenInlineNotice(message: '提交结果尚未确认。请刷新核对，当前不会重复提交。'),
-              Expanded(
-                child: MasterDataTableView<SalesManagerReviewTask>(
-                  columns: columns,
-                  items: _result?.items ?? [],
-                  facets: const {},
-                  nullCounts: const {},
-                  filters: _filters,
-                  serverColumnSearch: true,
-                  onFilterChanged: (key, value) {
-                    if (_busy || !key.startsWith('search.')) return;
-                    if (value == null || value.isEmpty) {
-                      _filters.remove(key);
-                    } else {
-                      _filters[key] = value;
-                    }
+          child: UtenCollapsingHeaderScrollView(
+            collapsingHeader: Column(
+              children: [
+                const UtenInlineNotice(
+                  message: '销售提交 → 销售负责人审核 → 财务审核。需要销售修改时请驳回并写明原因。',
+                ),
+                const SizedBox(height: UtenSpacing.s12),
+                UtenFilterToolbar<String>(
+                  enabled: !_busy,
+                  autoSelectBadge: false,
+                  segmentsKey: const Key('sales-review-categories'),
+                  searchKey: const Key('sales-review-search'),
+                  segments: const [
+                    UtenFilterSegment(value: 'PENDING', label: '待审核'),
+                    UtenFilterSegment(value: 'HISTORY', label: '历史记录'),
+                  ],
+                  selected: {_state},
+                  onSelectionChanged: (value) {
+                    if (_busy) return;
+                    _state = value;
+                    _filters.clear();
                     _reload(clear: true);
                   },
-                  rowKeyOf: (r) => '${r.kind}:${r.id}',
-                  idOf: (r) =>
-                      r.kind == 'order' &&
-                          r.state == 'PENDING' &&
-                          _allowed('order', 'confirm')
-                      ? r.id
-                      : null,
-                  selectable:
-                      _state == 'PENDING' && _allowed('order', 'confirm'),
-                  batchActionsBuilder:
-                      _state == 'PENDING' && _allowed('order', 'confirm')
-                      ? (_, ids) => [
-                          UtenButton(
-                            key: const Key('sales-manager-batch-approve'),
-                            type: UtenButtonType.danger,
-                            size: UtenButtonSize.large,
-                            onPressed:
-                                _busy ||
-                                    _loading ||
-                                    _unknownSubmission ||
-                                    ids.isEmpty
-                                ? null
-                                : _batch,
-                            icon: Icons.done_all,
-                            child: const Text('批量批准'),
-                          ),
-                        ]
-                      : null,
-                  selectedIds: _selected,
-                  onSelectedIdsChanged: _busy
-                      ? null
-                      : (ids) => setState(() {
-                          _selected
-                            ..clear()
-                            ..addAll(ids);
-                        }),
-                  onRowTap: _open,
-                  onRowDoubleTap: _open,
-                  isLoading: _loading && _result == null,
-                  isRefreshing: _loading && _result != null,
-                  error: _result == null ? _error : null,
-                  refreshError: _result != null ? _error : null,
-                  onRetry: () => _reload(page: _result?.page ?? 1),
-                  paginationRevision: _tableRevision,
-                  paginationScope: (
-                    _kind,
-                    _state,
-                    _search.text.trim(),
-                    Object.hashAll(
-                      _filters.entries.map((e) => '${e.key}:${e.value}'),
-                    ),
-                    ref.watch(apiBaseUrlProvider),
-                    ref.watch(authenticatedScopeProvider),
-                    _allowed('quote', 'view'),
-                    _allowed('order', 'view'),
-                  ),
-                  currentPage: _result?.page ?? 1,
-                  totalPages: _result?.totalPages ?? 1,
-                  onPageChange: _busy ? null : (page) => _reload(page: page),
-                  emptyMessage: '当前分类没有需要处理的单据',
-                  tableKey: 'sales_manager_review_all.2',
+                  searchController: _search,
+                  searchHint: '搜索单据号、客户或业务员',
+                  onSearchInputChanged: (_) {
+                    if (!_busy) ++_generation;
+                  },
+                  onSearchChanged: (_) {
+                    if (!_busy) _reload(clear: true);
+                  },
                 ),
-              ),
-            ],
+                const SizedBox(height: UtenSpacing.s12),
+              ],
+            ),
+            body: Column(
+              children: [
+                if (_unknownSubmission)
+                  const UtenInlineNotice(message: '提交结果尚未确认。请刷新核对，当前不会重复提交。'),
+                Expanded(
+                  child: MasterDataTableView<SalesManagerReviewTask>(
+                    primary: true,
+                    columns: columns,
+                    items: _result?.items ?? [],
+                    facets: const {},
+                    nullCounts: const {},
+                    filters: _filters,
+                    serverColumnSearch: true,
+                    onFilterChanged: (key, value) {
+                      if (_busy || !key.startsWith('search.')) return;
+                      if (value == null || value.isEmpty) {
+                        _filters.remove(key);
+                      } else {
+                        _filters[key] = value;
+                      }
+                      _reload(clear: true);
+                    },
+                    rowKeyOf: (r) => '${r.kind}:${r.id}',
+                    idOf: (r) =>
+                        r.kind == 'order' &&
+                            r.state == 'PENDING' &&
+                            _allowed('order', 'confirm')
+                        ? r.id
+                        : null,
+                    selectable:
+                        _state == 'PENDING' && _allowed('order', 'confirm'),
+                    batchActionsBuilder:
+                        _state == 'PENDING' && _allowed('order', 'confirm')
+                        ? (_, ids) => [
+                            UtenButton(
+                              key: const Key('sales-manager-batch-approve'),
+                              type: UtenButtonType.danger,
+                              size: UtenButtonSize.large,
+                              onPressed:
+                                  _busy ||
+                                      _loading ||
+                                      _unknownSubmission ||
+                                      ids.isEmpty
+                                  ? null
+                                  : _batch,
+                              icon: Icons.done_all,
+                              child: const Text('批量批准'),
+                            ),
+                          ]
+                        : null,
+                    selectedIds: _selected,
+                    onSelectedIdsChanged: _busy
+                        ? null
+                        : (ids) => setState(() {
+                            _selected
+                              ..clear()
+                              ..addAll(ids);
+                          }),
+                    onRowTap: _open,
+                    onRowDoubleTap: _open,
+                    isLoading: _loading && _result == null,
+                    isRefreshing: _loading && _result != null,
+                    error: _result == null ? _error : null,
+                    refreshError: _result != null ? _error : null,
+                    onRetry: () => _reload(page: _result?.page ?? 1),
+                    paginationRevision: _tableRevision,
+                    paginationScope: (
+                      _kind,
+                      _state,
+                      _search.text.trim(),
+                      Object.hashAll(
+                        _filters.entries.map((e) => '${e.key}:${e.value}'),
+                      ),
+                      ref.watch(apiBaseUrlProvider),
+                      ref.watch(authenticatedScopeProvider),
+                      _allowed('quote', 'view'),
+                      _allowed('order', 'view'),
+                    ),
+                    currentPage: _result?.page ?? 1,
+                    totalPages: _result?.totalPages ?? 1,
+                    onPageChange: _busy ? null : (page) => _reload(page: page),
+                    emptyMessage: '当前分类没有需要处理的单据',
+                    tableKey: 'sales_manager_review_all.2',
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -809,7 +809,7 @@ class _AppNotificationBannerState extends ConsumerState<_AppNotificationBanner>
                         padding: const EdgeInsets.only(top: 4),
                         child: _notificationText(
                           text:
-                              '出问题的地方：${n.fieldErrors!.map((f) => f.field).where((s) => s.isNotEmpty).join(', ')}',
+                              '请检查：${n.fieldErrors!.map((f) => f.message.trim().isNotEmpty ? f.message.trim() : '${f.field}填写内容不符合要求').join('；')}',
                           maxLines: 2,
                           foreground: fg,
                           style: theme.textTheme.bodySmall?.copyWith(

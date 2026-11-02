@@ -66,12 +66,25 @@ void main() {
     expect(humanErrorMessage(StateError('No element')), isNull);
   });
 
-  for (final surface in ['top', 'center', 'page', 'guard']) {
+  for (final surface in ['top', 'center', 'page', 'guard', 'validation']) {
     testWidgets('specific cause is visible in the $surface error surface', (
       tester,
     ) async {
-      final error = ApiException('FORBIDDEN', 'Access Denied', httpStatus: 403);
-      final expected = surface == 'guard' ? '草稿尚未保存，请保留原输入' : error.message;
+      final error = surface == 'validation'
+          ? ApiException(
+              'VALIDATION_FAILED',
+              '填写内容有误',
+              httpStatus: 422,
+              fieldErrors: const [
+                ApiFieldError(field: 'warehouseId', message: '请选择收货仓库'),
+              ],
+            )
+          : ApiException('FORBIDDEN', 'Access Denied', httpStatus: 403);
+      final expected = switch (surface) {
+        'guard' => '草稿尚未保存，请保留原输入',
+        'validation' => '请检查：请选择收货仓库',
+        _ => error.message,
+      };
       await tester.pumpWidget(
         ProviderScope(
           child: MaterialApp(
@@ -88,6 +101,7 @@ void main() {
                               onPressed: () {
                                 switch (surface) {
                                   case 'top':
+                                  case 'validation':
                                     UtenNotify.apiError(context, error);
                                   case 'center':
                                     unawaited(
@@ -120,6 +134,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text(expected), findsOneWidget);
       expect(find.text('Access Denied'), findsNothing);
+      if (surface == 'validation') {
+        expect(find.textContaining('warehouseId'), findsNothing);
+      }
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();

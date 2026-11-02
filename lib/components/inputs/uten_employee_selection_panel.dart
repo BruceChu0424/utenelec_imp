@@ -27,6 +27,8 @@ Future<List<UtenEmployeePickerItem>?> showUtenEmployeeSelectionPanel(
   BuildContext context, {
   required UtenEmployeePickerLoader loader,
   Future<List<DepartmentNode>> Function()? departmentTreeLoader,
+  UtenEmployeePickerPresentation presentation =
+      UtenEmployeePickerPresentation.standard,
   String title = '选择人员',
   bool multiple = false,
   List<UtenEmployeePickerItem> initialSelection = const [],
@@ -55,6 +57,7 @@ Future<List<UtenEmployeePickerItem>?> showUtenEmployeeSelectionPanel(
         final panel = UtenEmployeeSelectionPanel(
           loader: loader,
           departmentTreeLoader: departmentTreeLoader,
+          presentation: presentation,
           title: title,
           multiple: multiple,
           initialSelection: initialSelection,
@@ -92,6 +95,7 @@ class UtenEmployeeSelectionPanel extends StatefulWidget {
     super.key,
     required this.loader,
     this.departmentTreeLoader,
+    this.presentation = UtenEmployeePickerPresentation.standard,
     this.title = '选择人员',
     this.multiple = false,
     this.initialSelection = const [],
@@ -111,6 +115,7 @@ class UtenEmployeeSelectionPanel extends StatefulWidget {
 
   final UtenEmployeePickerLoader loader;
   final Future<List<DepartmentNode>> Function()? departmentTreeLoader;
+  final UtenEmployeePickerPresentation presentation;
   final String title;
   final bool multiple;
   final List<UtenEmployeePickerItem> initialSelection;
@@ -580,13 +585,25 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
         description: _query.isEmpty ? widget.emptyDescription : null,
       );
     }
-    final showNotes = items.any(
-      (item) => item.subtitle?.trim().isNotEmpty == true || !item.enabled,
-    );
+    final businessReference =
+        widget.presentation == UtenEmployeePickerPresentation.businessReference;
+    final showNotes =
+        !businessReference &&
+        items.any(
+          (item) => item.subtitle?.trim().isNotEmpty == true || !item.enabled,
+        );
     return MasterDataTableView<UtenEmployeePickerItem>(
       expensiveRowMounts: false,
       key: const Key('uten-employee-picker-candidates'),
       columns: [
+        if (businessReference)
+          MasterColumnDef(
+            key: 'employeeCode',
+            label: '工号',
+            width: 130,
+            value: (item) => item.employeeCode,
+            columnSearchEnabled: false,
+          ),
         MasterColumnDef(
           key: 'name',
           label: '姓名',
@@ -594,13 +611,14 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
           value: (item) => item.name,
           columnSearchEnabled: false,
         ),
-        MasterColumnDef(
-          key: 'employeeCode',
-          label: '工号',
-          width: 130,
-          value: (item) => item.employeeCode,
-          columnSearchEnabled: false,
-        ),
+        if (!businessReference)
+          MasterColumnDef(
+            key: 'employeeCode',
+            label: '工号',
+            width: 130,
+            value: (item) => item.employeeCode,
+            columnSearchEnabled: false,
+          ),
         if (widget.showDepartmentFilter)
           MasterColumnDef(
             key: 'department',
@@ -613,7 +631,15 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
               child: Text(item.departmentName ?? '未提供部门'),
             ),
           ),
-        if (widget.showDepartmentFilter) ...[
+        if (businessReference)
+          MasterColumnDef(
+            key: 'position',
+            label: '职位',
+            width: 160,
+            value: (item) => item.positionName,
+            columnSearchEnabled: false,
+          ),
+        if (widget.showDepartmentFilter && !businessReference) ...[
           MasterColumnDef(
             key: 'accountStatus',
             label: '账号状态',

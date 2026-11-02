@@ -1,5 +1,7 @@
 import '../../shared/formatters/employee_display.dart';
 
+enum UtenEmployeePickerPresentation { standard, businessReference }
+
 /// A candidate already authorized by the calling business workflow.
 class UtenEmployeePickerItem {
   const UtenEmployeePickerItem({
@@ -8,6 +10,7 @@ class UtenEmployeePickerItem {
     this.employeeCode,
     this.departmentId,
     this.departmentName,
+    this.positionName,
     this.accountStatus,
     this.employmentStatus,
     this.subtitle,
@@ -22,6 +25,7 @@ class UtenEmployeePickerItem {
   /// Stable department identity. Names and subtitles never identify a group.
   final String? departmentId;
   final String? departmentName;
+  final String? positionName;
 
   /// Explicit account fact: notProvisioned/active/locked/disabled. Null means
   /// the source did not provide this information, never "not provisioned".
@@ -44,6 +48,7 @@ class UtenEmployeePickerItem {
       employeeCode == other.employeeCode &&
       departmentId == other.departmentId &&
       departmentName == other.departmentName &&
+      positionName == other.positionName &&
       accountStatus == other.accountStatus &&
       employmentStatus == other.employmentStatus &&
       subtitle == other.subtitle &&

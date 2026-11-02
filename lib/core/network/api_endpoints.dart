@@ -647,6 +647,11 @@ abstract final class ApiEndpoints {
 
   // 员工
   static const employees = '/org/employees';
+  // Business reference data is separately authorized; never an HR roster read.
+  static const employeeReferences = '/org/employee-references';
+  static const employeeReferencesByIds = '/org/employee-references/by-ids';
+  static const employeeReferenceDepartments =
+      '/org/employee-references/departments';
 
   /// 精确搜索 0 命中时的「类似人员」（逐字符评分，见后端 EmployeeListQuery#similar）。
   static const employeesSimilar = '/org/employees/similar';

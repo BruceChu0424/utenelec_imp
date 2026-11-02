@@ -23,7 +23,7 @@ val isReleaseBuild = gradle.startParameter.taskNames.any {
 }
 // Opt-in for the USB/adb local-backend test APK. Keep its app data and
 // installation identity separate from the company client.
-val localTestBuild = providers.gradleProperty("utenLocalTest").orNull == "true"
+val localTestBuild = gradle.extensions.extraProperties.get("utenResolvedLocalTest") as Boolean
 if (localTestBuild && isReleaseBuild) {
     throw GradleException("utenLocalTest is only supported for a Debug test APK.")
 }

@@ -115,7 +115,10 @@ class CompanyUpgradePreservationTest(unittest.TestCase):
         # An explicit local Debug test variant owns separate storage. Production
         # identity must stay fixed and must never inherit that suffix.
         self.assertEqual(android.count("applicationIdSuffix"), 1)
-        self.assertRegex(android, r'val localTestBuild = providers\.gradleProperty\("utenLocalTest"\)\.orNull == "true"')
+        self.assertRegex(android, r'val localTestBuild = gradle\.extensions\.extraProperties\.get\("utenResolvedLocalTest"\) as Boolean')
+        settings = (ROOT / "android/settings.gradle.kts").read_text(encoding="utf-8")
+        self.assertIn('nativeBuildProperty("utenLocalTest")', settings)
+        self.assertIn('settings.gradle.extensions.extraProperties.set("utenResolvedLocalTest", localTest == "true")', settings)
         self.assertRegex(android, r'if \(localTestBuild && isReleaseBuild\)\s*\{\s*throw GradleException\(')
         self.assertRegex(android, r'buildTypes\s*\{\s*debug\s*\{\s*if \(localTestBuild\)\s*\{\s*applicationIdSuffix = "\.local_test"')
         release = re.search(r'(?s)\n        release \{(.*?)\n        \}', android)

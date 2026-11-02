@@ -119,7 +119,9 @@ Name: "{localappdata}\com.uten.uten_imp\client-logs\flutter"; Flags: uninsneveru
 
 [Icons]
 Name: "{autoprograms}\{cm:AppDisplayName}"; Filename: "{app}\uten_imp.exe"; WorkingDir: "{app}"
-Name: "{autoprograms}\{cm:AppDisplayName} Logs"; Filename: "{localappdata}\com.uten.uten_imp\client-logs\flutter"; Flags: foldershortcut
+; A normal directory .lnk opens Explorer. The obsolete cascading-menu
+; foldershortcut flag was removed in Inno Setup 6.3 and never worked on Win7+.
+Name: "{autoprograms}\{cm:AppDisplayName} Logs"; Filename: "{localappdata}\com.uten.uten_imp\client-logs\flutter"
 Name: "{userdesktop}\{cm:AppDisplayName}"; Filename: "{app}\uten_imp.exe"; WorkingDir: "{app}"
 
 [Run]

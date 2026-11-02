@@ -42,6 +42,13 @@ def managed_pe(architecture: str, flags: int | None = None) -> bytes:
 
 
 class InstallationPolicyTests(unittest.TestCase):
+    def test_log_directory_link_keeps_normal_folder_target_and_retention(self):
+        script = (Path(__file__).parent / "windows_wpf_installer.iss").read_text(encoding="utf-8-sig")
+        directives = [line for line in script.splitlines() if not line.lstrip().startswith(";")]
+        self.assertIn('Name: "{localappdata}\\com.uten.uten_imp\\client-logs\\wpf_legacy"; Flags: uninsneveruninstall', directives)
+        self.assertIn('Name: "{userprograms}\\{#InstallerAppName} Logs"; Filename: "{localappdata}\\com.uten.uten_imp\\client-logs\\wpf_legacy"', directives)
+        self.assertFalse(any("foldershortcut" in line.casefold() for line in directives))
+
     def test_only_reviewed_os_architectures_pass(self):
         accepted = {(6, 1, 1), (6, 1, 2), (6, 3, 0)}
         candidates = [(6, 0, 2), (6, 1, 0), (6, 1, 1), (6, 1, 2),

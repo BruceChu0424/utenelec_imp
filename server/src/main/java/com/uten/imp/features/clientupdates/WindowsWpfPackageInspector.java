@@ -71,10 +71,6 @@ final class WindowsWpfPackageInspector {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
         catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
-    static JsonNode strictJson(byte[] bytes, ObjectMapper mapper) throws IOException {
-        return mapper.copy().enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
-                .enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(bytes);
-    }
     private static void fields(JsonNode value, Set<String> required, Set<String> optional) {
         if (value == null || !value.isObject()) throw invalid("WPF JSON 必须是对象");
         for (String key : required) if (!value.has(key)) throw invalid("WPF JSON 缺少约定字段");
@@ -98,7 +94,7 @@ final class WindowsWpfPackageInspector {
     }
     private static void inspectConfiguration(byte[] bytes, ObjectMapper mapper) throws IOException {
         JsonNode root;
-        try { root = strictJson(bytes, mapper); }
+        try { root = ClientPackageJson.read(bytes, mapper); }
         catch (com.fasterxml.jackson.core.JsonProcessingException malformed) { throw invalid("WPF 公司连接配置不是有效 JSON"); }
         if (root == null || !root.isObject() || !root.path("endpoints").isArray()
                 || root.path("endpoints").isEmpty() || root.path("endpoints").size() > 8) throw invalid("WPF 包必须携带已审核的正式公司连接配置");

@@ -104,7 +104,8 @@ public class ClientPackageInspector {
         try (InputStream input = zip.getInputStream(manifestEntry)) {
             byte[] bytes = input.readNBytes(manifestLimit + 1);
             if (wpf && (bytes.length != manifestEntry.getSize() || bytes.length > manifestLimit)) throw invalid("Windows 更新清单大小不匹配");
-            manifest = wpf ? WindowsWpfPackageInspector.strictJson(bytes, mapper) : mapper.readTree(bytes);
+            manifest = wpf || files.containsKey(WindowsRuntimeProfileContract.FILE) || WindowsRuntimeProfileContract.required(release)
+                    ? ClientPackageJson.read(bytes, mapper) : mapper.readTree(bytes);
         } catch (JsonProcessingException malformed) {
             throw invalid("Windows 更新清单不是有效的 JSON 文件");
         }
@@ -129,7 +130,8 @@ public class ClientPackageInspector {
             if (wpf) WindowsWpfPackageInspector.fileFields(item);
             String name = safePath(item.path("path").asText());
             if (name.length() > 230 || !(wpf ? WindowsWpfPackageInspector.allowedFile(name)
-                    : "uten_imp.exe".equals(name) || name.startsWith("data/") || name.matches("[^/]+\\.dll") || installer && UPDATER.equals(name)))
+                    : "uten_imp.exe".equals(name) || WindowsRuntimeProfileContract.FILE.equals(name)
+                        || name.startsWith("data/") || name.matches("[^/]+\\.dll") || installer && UPDATER.equals(name)))
                 throw invalid("Windows 软件包包含程序运行目录以外的文件");
             ZipArchiveEntry entry = files.get(name);
             if (MANIFEST.equals(name) || !recorded.add(name) || entry == null
@@ -153,7 +155,37 @@ public class ClientPackageInspector {
         }
         if (recorded.size() != files.size() - 1) throw invalid("Windows 更新包包含未登记在清单内的文件");
         if (wpf) WindowsWpfPackageInspector.inspect(zip, files, release, mapper);
-        else if (ClientDeliveryContract.paired(release)) WindowsFlutterPackageInspector.inspect(zip, files, release);
+        else {
+            boolean profile = WindowsRuntimeProfileContract.inspect(zip, files, release, mapper);
+            WindowsRuntimeProfileContract.installerBinding(manifest, release, profile);
+            if (ClientDeliveryContract.paired(release) || profile || WindowsRuntimeProfileContract.required(release))
+                WindowsFlutterPackageInspector.inspect(zip, files, release, profile);
+        }
+    }
+
+    /** Small immutable manifest reads for paired visibility; full bytes are rechecked before publication/retention. */
+    String installerBinding(Path file, ClientReleaseDto.Release release) throws IOException {
+        if (!"windows".equals(release.platform()) || !ClientRuntimeFamily.FLUTTER.equals(release.runtimeFamily())
+                || !"update".equals(release.packageKind())) return null;
+        try (ZipFile zip = ZipFile.builder().setPath(file).get()) {
+            var profile = zip.getEntry(WindowsRuntimeProfileContract.FILE);
+            if (profile == null && !WindowsRuntimeProfileContract.required(release)) return null;
+            var entry = zip.getEntry(MANIFEST);
+            if (entry == null || entry.getSize() < 1 || entry.getSize() > 8388608) throw invalid("Windows 双包清单缺失或过大");
+            JsonNode manifest;
+            try (var input = zip.getInputStream(entry)) {
+                byte[] bytes = input.readNBytes(8388609);
+                if (bytes.length != entry.getSize() || bytes.length > 8388608) throw invalid("Windows 双包清单长度不一致");
+                manifest = ClientPackageJson.read(bytes, mapper);
+            }
+            if (manifest == null || !manifest.isObject()) throw invalid("Windows 双包清单必须是对象");
+            Map<String, ZipArchiveEntry> profileFiles = new HashMap<>();
+            if (profile != null) profileFiles.put(WindowsRuntimeProfileContract.FILE, profile);
+            boolean present = WindowsRuntimeProfileContract.inspect(zip, profileFiles, release, mapper);
+            return WindowsRuntimeProfileContract.installerBinding(manifest, release, present);
+        } catch (JsonProcessingException | ZipException malformed) {
+            throw invalid("Windows 双包绑定清单无效");
+        }
     }
 
     private static boolean isWindowsPackage(ClientReleaseDto.Release release) {

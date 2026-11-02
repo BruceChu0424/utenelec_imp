@@ -9,7 +9,7 @@ import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/components/layout/uten_form_grid.dart';
 import 'dart:async';
 import 'package:file_picker/file_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:uten_imp/core/io/guarded_url_launcher.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

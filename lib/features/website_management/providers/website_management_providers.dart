@@ -1,9 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:uten_imp/core/io/guarded_url_launcher.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/network/server_config.dart';
+import '../../../core/runtime/client_runtime_profile.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../models/website_management.dart';
@@ -11,7 +12,9 @@ import '../repositories/website_management_repository.dart';
 
 final websiteManagementRepositoryProvider =
     Provider<WebsiteManagementRepository>(
-      (ref) => DioWebsiteManagementRepository(ref.watch(apiClientProvider)),
+      (ref) => ClientRuntimeProfile.isLocalTest
+          ? const LocalTestWebsiteManagementRepository()
+          : DioWebsiteManagementRepository(ref.watch(apiClientProvider)),
     );
 
 typedef WebsiteExternalLauncher = Future<bool> Function(Uri uri);

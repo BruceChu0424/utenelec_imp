@@ -1,0 +1,1 @@
+void recordLocalBootstrapPhase(String phase) {}

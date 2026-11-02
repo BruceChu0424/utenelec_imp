@@ -4,6 +4,7 @@
 
 #include "flutter_window.h"
 #include "utils.h"
+#include "client_runtime_identity.h"
 
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
@@ -29,10 +30,11 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   // Sign in starts with the custom-framed brand/form split, before Flutter's
   // first frame. Authentication restores the normal application frame.
   Win32Window::Size size(800, 540);
-  if (!window.Create(L"UTEN", origin, size)) {
+  if (!window.Create(UTEN_DISPLAY_NAME_W, origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
+  if (UTEN_LOCAL_TEST_BUILD) window.Show();
 
   ::MSG msg;
   while (::GetMessage(&msg, nullptr, 0, 0)) {

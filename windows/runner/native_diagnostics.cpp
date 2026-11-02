@@ -1,4 +1,5 @@
 #include "native_diagnostics.h"
+#include "client_runtime_identity.h"
 #include <shlobj.h>
 #include <shellapi.h>
 #include <atomic>
@@ -207,7 +208,7 @@ void StartNativeDiagnostics(HWND window, const std::wstring& test_directory,
   constexpr wchar_t architecture[] = L"x64";
 #endif
   const auto root = test_directory.empty()
-      ? fs::path(raw) / L"com.uten.uten_imp" / L"client-logs" / L"flutter" /
+      ? fs::path(raw) / UTEN_APPLICATION_ID / L"client-logs" / L"flutter" /
             architecture / UTEN_BUILD_KIND
       : fs::path(test_directory);
   CoTaskMemFree(raw);

@@ -1,6 +1,12 @@
+import '../runtime/client_runtime_profile.dart';
+
 abstract final class AppInfo {
-  static const displayName = '优腾综合管理平台';
-  static const externalName = 'UTEN';
+  static const displayName = ClientRuntimeProfile.isLocalTest
+      ? ClientRuntimeProfile.localDisplayName
+      : ClientRuntimeProfile.formalProductName;
+  static const externalName = ClientRuntimeProfile.isLocalTest
+      ? ClientRuntimeProfile.localDisplayName
+      : ClientRuntimeProfile.formalDisplayName;
   static const version = String.fromEnvironment(
     'APP_VERSION',
     defaultValue: '2.5.44',

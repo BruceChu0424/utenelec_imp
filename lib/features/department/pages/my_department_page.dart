@@ -19,7 +19,7 @@ import 'package:flutter/material.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:uten_imp/core/io/guarded_url_launcher.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/cards/uten_person_card.dart';

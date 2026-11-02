@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'api_endpoint_configuration.dart';
+import '../runtime/client_runtime_profile.dart';
 
 /// 公司内网后端地址。原生 Release 必须在构建时固定为 HTTPS；Web Release
 /// 固定走同源 `/api`，由内外网域名（split-horizon DNS）决定实际站点。
@@ -15,7 +16,14 @@ String resolveApiBaseUrl(
   String configured, {
   required bool releaseMode,
   required bool web,
+  bool localTest = ClientRuntimeProfile.isLocalTest,
 }) {
+  if (localTest) {
+    if (web) throw StateError('LocalTest runtime is native only.');
+    return const ClientRuntimeProfile(
+      localTest: true,
+    ).localApi(configured).toString();
+  }
   var value = configured.trim();
   if (value.isEmpty) {
     if (releaseMode) {

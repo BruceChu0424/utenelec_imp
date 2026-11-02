@@ -4,13 +4,14 @@ import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../components/layout/uten_section_header.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:uten_imp/core/io/guarded_url_launcher.dart';
 
 import '../../components/buttons/uten_button.dart';
 import '../../components/cards/uten_card.dart';
 import '../../components/layout/uten_app_bar.dart';
 import '../../components/layout/uten_content_container.dart';
 import '../../core/network/api_client.dart';
+import '../../core/runtime/client_runtime_profile.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/server_config.dart';
 import '../../core/router/route_names.dart';
@@ -46,7 +47,9 @@ Uri? trustedRescueUri(String value, {required bool releaseMode}) {
 }
 
 final disasterRecoveryUriProvider = Provider<Uri?>(
-  (ref) => trustedRescueUri(_configuredRescueUrl, releaseMode: kReleaseMode),
+  (ref) => ClientRuntimeProfile.isLocalTest
+      ? null
+      : trustedRescueUri(_configuredRescueUrl, releaseMode: kReleaseMode),
 );
 
 typedef RescueLauncher = Future<bool> Function(Uri uri);
@@ -90,6 +93,7 @@ class _DisasterRecoveryPageState extends ConsumerState<DisasterRecoveryPage> {
   }
 
   Future<void> _enroll(Uri base) async {
+    if (ClientRuntimeProfile.isLocalTest) return;
     if (_busy) return;
     setState(() {
       _busy = true;

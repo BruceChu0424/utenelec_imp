@@ -2,6 +2,7 @@
 //
 #pragma code_page(65001)
 #include "resource.h"
+#include "client_runtime_identity.h"
 
 #define APSTUDIO_READONLY_SYMBOLS
 /////////////////////////////////////////////////////////////////////////////
@@ -87,21 +88,33 @@ VS_VERSION_INFO VERSIONINFO
 BEGIN
     BLOCK "StringFileInfo"
     BEGIN
+#if UTEN_LOCAL_TEST_BUILD
+        // path_provider_windows reads only English VERSIONINFO. Formal keeps
+        // its historical table and therefore its existing storage behavior.
+        BLOCK "040904b0"
+#else
         BLOCK "080404b0"
+#endif
         BEGIN
             VALUE "CompanyName", "Uten" "\0"
-            VALUE "FileDescription", "UTEN" "\0"
+            VALUE "FileDescription", UTEN_DISPLAY_NAME "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "uten_imp" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.uten. All rights reserved." "\0"
             VALUE "OriginalFilename", "uten_imp.exe" "\0"
-            VALUE "ProductName", "优腾综合管理平台" "\0"
+            VALUE "ProductName", UTEN_NATIVE_PRODUCT_NAME "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
+            VALUE "UtenBuildProfile", UTEN_BUILD_PROFILE "\0"
+            VALUE "UtenApplicationId", UTEN_APPLICATION_ID "\0"
         END
     END
     BLOCK "VarFileInfo"
     BEGIN
+#if UTEN_LOCAL_TEST_BUILD
+        VALUE "Translation", 0x409, 1200
+#else
         VALUE "Translation", 0x804, 1200
+#endif
     END
 END
 

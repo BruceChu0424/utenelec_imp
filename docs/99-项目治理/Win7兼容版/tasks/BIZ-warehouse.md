@@ -22,9 +22,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`；`clients/windows_legacy/progress/evidence/category-loading-closeout-20261101.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 必要读范围合同增量仍未迁移：新的车间/仓库浏览投影不替代原内料command车间资格；本页原SETUP/OPEN/ENABLE/REVOKE、请领/履行及盘点等实际适用动作须沿owning入口分别核对，不能因VIEW全读开放操作。原状态/DoD/证据保留。。
+接续/限制：2026-11-01 Flutter/Web 内料仓库存先呈现，期间/结算状态独立等待，新操作仍待完整就绪证明；数量、仓库范围、在办草稿和未知提交不改。WPF 此业务仍未迁移，保持 todo；见 E-CATEGORY-LOADING-CLOSEOUT-20261101。。
 
 ## W7-BIZ-174
 

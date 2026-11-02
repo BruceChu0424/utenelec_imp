@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../components/buttons/uten_close_button.dart';
 
 import '../../../components/feedback/uten_inline_notice.dart';
 import 'goods_bom_comparison_table.dart';
@@ -500,13 +501,12 @@ class _GoodsBomComparisonWorkspaceState
             icon: const Icon(Icons.refresh_rounded),
             label: const Text('重新分析'),
           ),
-          TextButton.icon(
+          UtenCloseButton(
+            tooltip: '返回资料窗口',
             onPressed:
                 _busy || _replacement?.draft.isCommitRecoveryPending == true
                 ? null
                 : widget.onClose,
-            icon: const Icon(Icons.close_rounded),
-            label: const Text('返回资料窗口'),
           ),
         ],
       ),

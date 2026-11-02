@@ -78,6 +78,10 @@ Future<void> _doubleTapRow(WidgetTester tester, Finder finder) async {
 }
 
 class _ContextRepository extends FakeWorkshopMaterialRepository {
+  Completer<List<WmPeriod>>? pendingPeriods;
+  @override
+  Future<List<WmPeriod>> periods(String binId) async =>
+      pendingPeriods?.future ?? super.periods(binId);
   final positionReads = <String>[];
   final materialReads = <String>[];
   final pendingPositions = <String, Completer<WmPosition>>{};
@@ -187,6 +191,41 @@ void _expectNoCodes() {
 }
 
 void main() {
+  testWidgets(
+    'inventory is readable while period metadata waits; commands remain locked',
+    (tester) async {
+      final periods = Completer<List<WmPeriod>>();
+      final repo = _ContextRepository()
+        ..settingsResult = const [wmTestWorkshop]
+        ..pendingPeriods = periods
+        ..positionByBin = const {
+          'bin1': WmPosition(rows: [_row], allowedActions: ['REQUEST']),
+        };
+      await pumpWorkshopMaterialPage(
+        tester,
+        const WorkshopMaterialBinPage(workshopId: 'w1'),
+        repo: repo,
+        settle: false,
+      );
+      for (var frame = 0; frame < 8; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      try {
+        final table = tester.widget<MasterDataTableView<dynamic>>(
+          find.byWidgetPredicate((widget) => widget is MasterDataTableView),
+        );
+        expect(table.items, hasLength(1));
+        expect(table.isLoading, isFalse);
+        expect(find.byKey(const Key('wm-bin-request')), findsNothing);
+        expect(periods.isCompleted, isFalse);
+      } finally {
+        periods.complete([]);
+        await tester.pumpAndSettle();
+      }
+      expect(find.byKey(const Key('wm-bin-request')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('explicit disabled workshop does not borrow another enabled '
       'workshop stock or actions', (tester) async {
     final repo = _ContextRepository()

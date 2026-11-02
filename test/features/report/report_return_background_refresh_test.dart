@@ -203,6 +203,11 @@ void main() {
         expect(tableFinder, findsNothing);
         expect(find.textContaining('FRESH-2-'), findsNothing);
         expect(tester.takeException(), isNull);
+        // The rejected route has retired its consumers; the external owner
+        // still holds short-lived category snapshots until explicitly closed.
+        await tester.pumpWidget(const SizedBox.shrink());
+        container.dispose();
+        await tester.pump();
       },
     );
   }

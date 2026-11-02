@@ -19,9 +19,34 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
+import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('refreshing month-end processing preserves the period input', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _pumpWorkbench(tester, repository: _FakeAssetRepository());
+    await tester.tap(find.text('月末处理'));
+    await tester.pumpAndSettle();
+    final input = find.descendant(
+      of: find.byKey(const Key('finance-asset-posting-period')),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(input, '2025-04');
+    final refresh = tester.widget<UtenRefreshButton>(
+      find.byKey(const Key('finance-asset-refresh')),
+    );
+    final pending = Future<void>.sync(refresh.onRefresh);
+    await tester.pumpAndSettle();
+    await pending;
+    expect(tester.widget<TextField>(input).controller!.text, '2025-04');
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('ledger headers send independent name and state queries', (
     tester,
@@ -58,7 +83,7 @@ void main() {
   });
 
   testWidgets(
-    'header refresh waits for both visited ledgers and skips unopened tabs',
+    'header refresh waits for visible ledger and revalidates hidden ledger on return',
     (tester) async {
       await tester.binding.setSurfaceSize(const Size(1280, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -89,14 +114,97 @@ void main() {
         total: 0,
         totalPages: 1,
       );
-      fixed.complete(empty());
-      await tester.pump();
-      expect(finished, isFalse);
       deferred.complete(empty());
       await tester.pumpAndSettle();
       await operation;
       expect(finished, isTrue);
+      expect(
+        repository.nextLists,
+        contains(FinanceAssetLedger.fixedAsset),
+        reason: 'The hidden ledger must not start a foreground read',
+      );
+      await tester.tap(find.text('固定资产'));
+      await tester.pump();
+      expect(
+        repository.nextLists,
+        isNot(contains(FinanceAssetLedger.fixedAsset)),
+        reason: 'Returning to a dirty ledger starts its own fresh read',
+      );
+      fixed.complete(empty());
+      await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('asset draft count can finish before its foreground rows', (
+    tester,
+  ) async {
+    final rows = Completer<PagedResult<FinanceAssetSummary>>();
+    final repository = _FakeAssetRepository(
+      items: [
+        FinanceAssetSummary.fromJson({
+          'id': 'fixture-asset',
+          'code': 'FA-1',
+          'name': '计数独立读取',
+          'status': 'DRAFT',
+        }, FinanceAssetLedger.fixedAsset),
+      ],
+    )..nextLists[FinanceAssetLedger.fixedAsset] = rows;
+    await _pumpWorkbench(tester, repository: repository, waitForRows: false);
+    try {
+      final label = find.descendant(
+        of: find.byKey(const ValueKey('asset-draft-category-FIXED_ASSET')),
+        matching: find.byType(UtenSegmentBadgeLabel),
+      );
+      expect(tester.widget<UtenSegmentBadgeLabel>(label).count, 1);
+      expect(rows.isCompleted, isFalse);
+      final table = tester.widget<MasterDataTableView<FinanceAssetSummary>>(
+        find.byType(MasterDataTableView<FinanceAssetSummary>),
+      );
+      expect(table.isLoading, isTrue);
+      expect(table.columns, isNotEmpty);
+    } finally {
+      rows.complete(
+        const PagedResult(
+          items: [],
+          page: 1,
+          size: 20,
+          total: 0,
+          totalPages: 1,
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+  });
+
+  testWidgets(
+    'asset refresh completion does not wait for optional category names',
+    (tester) async {
+      final categories = _FakeCategoryRepository();
+      await _pumpWorkbench(
+        tester,
+        repository: _FakeAssetRepository(),
+        categories: categories,
+      );
+      final slow = Completer<List<FinanceAssetCategory>>();
+      categories.next = slow;
+      var finished = false;
+      final refresh = tester.widget<UtenRefreshButton>(
+        find.byKey(const Key('finance-asset-refresh')),
+      );
+      final operation = Future<void>.sync(
+        refresh.onRefresh,
+      ).then((_) => finished = true);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 32));
+      try {
+        expect(finished, isTrue);
+        expect(slow.isCompleted, isFalse);
+      } finally {
+        slow.complete([]);
+        await tester.pumpAndSettle();
+        await operation;
+      }
     },
   );
 
@@ -374,12 +482,12 @@ void main() {
     final draftCounts = repository.listQueries
         .where((query) => query.status == 'DRAFT')
         .toList();
-    expect(draftCounts, hasLength(1));
+    expect(draftCounts, hasLength(2));
     expect(
-      draftCounts.single.size,
-      1,
+      draftCounts.every((query) => query.size == 1),
+      isTrue,
       reason:
-          'the draft badge uses a bounded count lookup after successful retry',
+          'draft counts use bounded reads independently of row failure and explicit retry',
     );
     expect(
       find.byKey(const Key('finance-asset-retry-FIXED_ASSET')),
@@ -698,14 +806,20 @@ Future<void> _pumpWorkbench(
   List<String> missingPolicyItems = const <String>[],
   List<FormDraft>? formDrafts,
   StateProvider<Set<String>>? permissionState,
+  _FakeCategoryRepository? categories,
+  bool waitForRows = true,
 }) async {
   SharedPreferences.setMockInitialValues(<String, Object>{});
   final preferences = await SharedPreferences.getInstance();
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        if (formDrafts != null)
-          formDraftsProvider.overrideWith(() => _FixedAssetDrafts(formDrafts)),
+        formDraftsProvider.overrideWith(
+          () => _FixedAssetDrafts(formDrafts ?? []),
+        ),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'finance-assets-fixture'),
+        ),
         currentPermissionsProvider.overrideWith(
           (ref) => permissionState == null
               ? permissions
@@ -722,13 +836,19 @@ Future<void> _pumpWorkbench(
           ),
         ),
         financeAssetCategoryRepositoryProvider.overrideWithValue(
-          _FakeCategoryRepository(),
+          categories ?? _FakeCategoryRepository(),
         ),
       ],
       child: const MaterialApp(home: FinanceAssetWorkbenchPage()),
     ),
   );
-  await tester.pumpAndSettle();
+  if (waitForRows) {
+    await tester.pumpAndSettle();
+  } else {
+    for (var frame = 0; frame < 6; frame++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+  }
 }
 
 class _FixedAssetDrafts extends FormDraftsNotifier {
@@ -769,6 +889,7 @@ class _FakeOverviewRepository implements FinanceAssetOverviewRepository {
 }
 
 class _FakeCategoryRepository implements FinanceAssetCategoryRepository {
+  Completer<List<FinanceAssetCategory>>? next;
   @override
   Future<FinanceAssetCategory> activate(
     String id, {
@@ -784,6 +905,9 @@ class _FakeCategoryRepository implements FinanceAssetCategoryRepository {
 
   @override
   Future<List<FinanceAssetCategory>> list(FinanceAssetLedger objectType) async {
+    final pending = next;
+    next = null;
+    if (pending != null) return pending.future;
     return const <FinanceAssetCategory>[];
   }
 
@@ -812,6 +936,7 @@ class _FakeAssetRepository implements FinanceAssetWorkbenchRepository {
   final List<FinanceAssetSummary> items;
   int deleteCalls = 0;
   int listCalls = 0;
+  int foregroundListCalls = 0;
   final listQueries = <FinanceAssetQuery>[];
   final nextLists =
       <FinanceAssetLedger, Completer<PagedResult<FinanceAssetSummary>>>{};
@@ -827,10 +952,13 @@ class _FakeAssetRepository implements FinanceAssetWorkbenchRepository {
     listQueries.add(query);
     listCalls++;
     if (query.size != 1) {
+      foregroundListCalls++;
+      if (failFirstList && foregroundListCalls == 1) {
+        throw StateError('offline');
+      }
       final pending = nextLists.remove(ledger);
       if (pending != null) return pending.future;
     }
-    if (failFirstList && listCalls == 1) throw StateError('offline');
     return PagedResult<FinanceAssetSummary>(
       items: items,
       page: query.page,

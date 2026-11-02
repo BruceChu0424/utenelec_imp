@@ -20,6 +20,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../models/finance_asset_models.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../repositories/finance_asset_workbench_repository.dart';
 import 'finance_asset_ui.dart';
 
@@ -28,10 +29,12 @@ class FinanceAssetPostingPanel extends ConsumerStatefulWidget {
     super.key,
     required this.capabilities,
     this.refreshCompletion,
+    this.refreshToken = 0,
   });
 
   final FinanceAssetCapabilities capabilities;
   final Completer<void>? refreshCompletion;
+  final int refreshToken;
 
   @override
   ConsumerState<FinanceAssetPostingPanel> createState() =>
@@ -54,6 +57,7 @@ class _FinanceAssetPostingPanelState
   bool _runsLoading = true;
   bool _periodsLoading = true;
   bool _busy = false;
+  bool _refreshAfterBusy = false;
 
   /// 过账/期间动作的网络段统一挂全屏遮罩（2026-09-25 统一口径）。确认弹窗
   /// 等用户操作段不算在内——只在网络调用期间转。
@@ -62,7 +66,13 @@ class _FinanceAssetPostingPanelState
     try {
       await body();
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() => _busy = false);
+        if (_refreshAfterBusy) {
+          _refreshAfterBusy = false;
+          unawaited(_refreshReads());
+        }
+      }
     }
   }
 
@@ -72,12 +82,50 @@ class _FinanceAssetPostingPanelState
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      _runsGuard.begin();
+      _periodsGuard.begin();
+      setState(() {
+        _preview = null;
+        _workflowVersion = null;
+        _workflowAllowedActions = const {};
+        _workflowStatus = '';
+        _runs = const [];
+        _periods = const [];
+        _runsError = null;
+        _periodsError = null;
+      });
+    });
+    unawaited(_refreshReads());
+  }
+
+  @override
+  void didUpdateWidget(covariant FinanceAssetPostingPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshToken != widget.refreshToken) {
+      if (_busy) {
+        _refreshAfterBusy = true;
+      } else {
+        unawaited(_refreshReads());
+      }
+    }
+  }
+
+  Future<void> _refreshReads() async {
     final completion = widget.refreshCompletion;
-    Future.wait([_loadRuns(), _loadPeriods()]).whenComplete(() {
+    setState(() {
+      _preview = null;
+      _workflowVersion = null;
+      _workflowAllowedActions = const {};
+      _workflowStatus = '';
+    });
+    try {
+      await Future.wait([_loadRuns(), _loadPeriods()]);
+    } finally {
       if (completion != null && !completion.isCompleted) {
         completion.complete();
       }
-    });
+    }
   }
 
   @override
@@ -91,6 +139,7 @@ class _FinanceAssetPostingPanelState
   }
 
   Future<void> _loadRuns() async {
+    final current = captureReadOwner(ref);
     final generation = _runsGuard.begin();
     setState(() {
       _runsLoading = true;
@@ -100,13 +149,13 @@ class _FinanceAssetPostingPanelState
       final result = await ref
           .read(financeAssetWorkbenchRepositoryProvider)
           .listPostingRuns();
-      if (!mounted || !_runsGuard.isCurrent(generation)) return;
+      if (!current() || !_runsGuard.isCurrent(generation)) return;
       setState(() {
         _runs = result.items;
         _runsLoading = false;
       });
     } catch (_) {
-      if (!mounted || !_runsGuard.isCurrent(generation)) return;
+      if (!current() || !_runsGuard.isCurrent(generation)) return;
       setState(() {
         _runsLoading = false;
         _runsError = '过账批次加载失败';
@@ -115,6 +164,7 @@ class _FinanceAssetPostingPanelState
   }
 
   Future<void> _loadPeriods() async {
+    final current = captureReadOwner(ref);
     final generation = _periodsGuard.begin();
     setState(() {
       _periodsLoading = true;
@@ -124,13 +174,13 @@ class _FinanceAssetPostingPanelState
       final result = await ref
           .read(financeAssetWorkbenchRepositoryProvider)
           .listPeriods();
-      if (!mounted || !_periodsGuard.isCurrent(generation)) return;
+      if (!current() || !_periodsGuard.isCurrent(generation)) return;
       setState(() {
         _periods = result;
         _periodsLoading = false;
       });
     } catch (_) {
-      if (!mounted || !_periodsGuard.isCurrent(generation)) return;
+      if (!current() || !_periodsGuard.isCurrent(generation)) return;
       setState(() {
         _periodsLoading = false;
         _periodsError = '资产期间加载失败';
@@ -139,6 +189,7 @@ class _FinanceAssetPostingPanelState
   }
 
   Future<void> _previewPosting() async {
+    final current = captureReadOwner(ref);
     final error = validateFinancePeriod(_periodController.text);
     if (error != null) {
       setState(() => _previewError = error);
@@ -159,7 +210,7 @@ class _FinanceAssetPostingPanelState
               runType: _runType,
               period: _periodController.text.trim(),
             );
-        if (!mounted) return;
+        if (!mounted || !current()) return;
         setState(() {
           _preview = preview;
           _workflowStatus = preview.status.toUpperCase();
@@ -173,12 +224,15 @@ class _FinanceAssetPostingPanelState
         }
         await _loadRuns();
       } catch (error) {
-        if (mounted) context.appApiError(error, fallback: '计提预览失败，请重试');
+        if (mounted && current()) {
+          context.appApiError(error, fallback: '计提预览失败，请重试');
+        }
       }
     });
   }
 
   Future<void> _runPreviewAction(String action) async {
+    final current = captureReadOwner(ref);
     final preview = _preview;
     if (preview == null || preview.errors.isNotEmpty) return;
     if (action == 'approve') {
@@ -189,8 +243,9 @@ class _FinanceAssetPostingPanelState
         confirmLabel: '确认审批',
         actionLabel: '资产计提批次审批',
       );
-      if (!confirmed || !mounted) return;
+      if (!confirmed || !current()) return;
     }
+    if (!current() || !identical(preview, _preview)) return;
     await _runBusy(() async {
       try {
         final response = await ref
@@ -201,7 +256,7 @@ class _FinanceAssetPostingPanelState
               token: preview.token,
               expectedVersion: _workflowVersion,
             );
-        if (!mounted) return;
+        if (!mounted || !current()) return;
         setState(() {
           _workflowVersion = response.version ?? _workflowVersion;
           _workflowAllowedActions = response.allowedActions;
@@ -223,7 +278,9 @@ class _FinanceAssetPostingPanelState
         await _loadRuns();
         await _loadPeriods();
       } catch (error) {
-        if (mounted) context.appApiError(error, fallback: '批次操作失败，请刷新后重试');
+        if (mounted && current()) {
+          context.appApiError(error, fallback: '批次操作失败，请刷新后重试');
+        }
       }
     });
   }
@@ -277,13 +334,14 @@ class _FinanceAssetPostingPanelState
   }
 
   Future<void> _reverse(AssetPostingRun run) async {
+    final current = captureReadOwner(ref);
     if (_busy ||
         !widget.capabilities.canReverse ||
         !actionAllowed(run.allowedActions, 'REVERSE')) {
       return;
     }
     final reason = await _reasonDialog('撤销入账');
-    if (reason == null || !mounted || !widget.capabilities.canReverse) return;
+    if (reason == null || !current() || !widget.capabilities.canReverse) return;
     await _runBusy(() async {
       try {
         await ref
@@ -295,12 +353,14 @@ class _FinanceAssetPostingPanelState
               expectedVersion: run.version,
               reason: reason,
             );
-        if (!mounted) return;
+        if (!mounted || !current()) return;
         context.appSuccess('撤销入账申请已提交，待复核与入账');
         await _loadRuns();
         await _loadPeriods();
       } catch (error) {
-        if (mounted) context.appApiError(error, fallback: '撤销入账失败，请重试');
+        if (mounted && current()) {
+          context.appApiError(error, fallback: '撤销入账失败，请重试');
+        }
       }
     });
   }
@@ -312,6 +372,7 @@ class _FinanceAssetPostingPanelState
       actionAllowed(run.allowedActions, 'POST');
 
   Future<void> _runHistoryAction(AssetPostingRun run, String action) async {
+    final current = captureReadOwner(ref);
     if (action == 'post' && !_canPostRun(run)) return;
     if (action == 'approve') {
       final confirmed = await showUtenReviewerConfirmDialog(
@@ -321,7 +382,7 @@ class _FinanceAssetPostingPanelState
         confirmLabel: '确认审批',
         actionLabel: '资产计提批次审批',
       );
-      if (!confirmed || !mounted) return;
+      if (!confirmed || !current()) return;
     }
     await _runBusy(() async {
       try {
@@ -333,7 +394,7 @@ class _FinanceAssetPostingPanelState
               token: run.token,
               expectedVersion: run.version,
             );
-        if (!mounted) return;
+        if (!mounted || !current()) return;
         context.appSuccess(switch (action) {
           'submit' => '过账批次已提交',
           'approve' => '过账批次已审批',
@@ -343,7 +404,7 @@ class _FinanceAssetPostingPanelState
         await _loadRuns();
         await _loadPeriods();
       } catch (error) {
-        if (mounted) {
+        if (mounted && current()) {
           context.appApiError(error, fallback: '批次操作失败，请刷新后重试');
         }
       }
@@ -351,10 +412,11 @@ class _FinanceAssetPostingPanelState
   }
 
   Future<void> _periodAction(AssetPeriod period, String action) async {
+    final current = captureReadOwner(ref);
     final reason = await _reasonDialog(
       action == 'close' ? '关闭资产期间' : '重新开放资产期间',
     );
-    if (reason == null || !mounted) return;
+    if (reason == null || !current()) return;
     await _runBusy(() async {
       try {
         await ref
@@ -365,11 +427,13 @@ class _FinanceAssetPostingPanelState
               reason: reason,
               expectedVersion: period.version,
             );
-        if (!mounted) return;
+        if (!mounted || !current()) return;
         context.appSuccess(action == 'close' ? '资产期间已关闭' : '资产期间已重新开放');
         await _loadPeriods();
       } catch (error) {
-        if (mounted) context.appApiError(error, fallback: '期间操作失败，请重试');
+        if (mounted && current()) {
+          context.appApiError(error, fallback: '期间操作失败，请重试');
+        }
       }
     });
   }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../components/feedback/uten_floating_window.dart';
+import '../../components/feedback/uten_dialog.dart';
 import '../../components/layout/uten_page_window_scope.dart';
 import '../../components/layout/uten_page_layout.dart';
 import '../../components/layout/uten_split_handle.dart';
@@ -140,17 +141,21 @@ class _BusinessWindowHostState extends ConsumerState<BusinessWindowHost> {
         ? others.single
         : await showDialog<BusinessWindow>(
             context: context,
-            builder: (context) => SimpleDialog(
+            builder: (context) => UtenAlertDialog(
               title: const Text('选择另一个对比窗口'),
-              children: [
-                for (final candidate in others)
-                  SimpleDialogOption(
-                    onPressed: () => Navigator.pop(context, candidate),
-                    child: Text(
-                      '窗口 ${all.indexOf(candidate) + 1} · ${candidate.title}',
+              showCloseButton: true,
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final candidate in others)
+                    SimpleDialogOption(
+                      onPressed: () => Navigator.pop(context, candidate),
+                      child: Text(
+                        '窗口 ${all.indexOf(candidate) + 1} · ${candidate.title}',
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           );
     if (mounted && other != null) await _openComparison([window, other]);

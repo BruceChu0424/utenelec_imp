@@ -436,7 +436,24 @@ class _WorkshopMaterialBinPageState
     final binId = setting.binWarehouseId!;
     // 只开通、没开整批领料的内料仓没有期间。
     final results = await Future.wait<Object>([
-      _repo.position(binId),
+      _repo.position(binId).then((position) {
+        if (mounted &&
+            seq == _loadSeq &&
+            boundary == ref.read(sensitiveReadBoundaryProvider) &&
+            _current?.binWarehouseId == binId) {
+          // The authoritative inventory can be read before period/status
+          // references finish. Keep business commands locked until that
+          // complete lifecycle snapshot is accepted below.
+          setState(() {
+            _position = position;
+            _positionBoundary = null;
+            _periods = const [];
+            _statusPeriod = null;
+            _closeStatus = null;
+          });
+        }
+        return position;
+      }),
       if (setting.periodic) _repo.periods(binId),
     ]);
     if (!mounted ||
@@ -572,6 +589,7 @@ class _WorkshopMaterialBinPageState
   };
 
   Future<void> _openRequest(String kind) async {
+    if (_positionBoundary != ref.read(sensitiveReadBoundaryProvider)) return;
     final setting = _current;
     if (setting == null) return;
     if (kind == 'ISSUE') {
@@ -603,6 +621,7 @@ class _WorkshopMaterialBinPageState
   }
 
   Future<void> _openOtherIssue() async {
+    if (_positionBoundary != ref.read(sensitiveReadBoundaryProvider)) return;
     final setting = _current;
     if (setting == null) return;
     final rows = [
@@ -623,6 +642,7 @@ class _WorkshopMaterialBinPageState
 
   /// 盘点: 有"盘点中"的一期就接着盘; 否则进开着的那一期 (盘点页里点"开始盘点")。
   Future<void> _openCount() async {
+    if (_positionBoundary != ref.read(sensitiveReadBoundaryProvider)) return;
     WmPeriod? target;
     for (final p in _periods) {
       if (p.status == WmPeriodStatus.counting) target = p;
@@ -1064,7 +1084,9 @@ class _WorkshopMaterialBinPageState
     VoidCallback? startInventoryCount,
     VoidCallback? openCountHistory,
   }) {
-    bool can(String action) => _position?.can(action) ?? false;
+    bool can(String action) =>
+        _positionBoundary == ref.read(sensitiveReadBoundaryProvider) &&
+        (_position?.can(action) ?? false);
     final starting = openCountHistory != null && startInventoryCount == null;
     final more = <Widget>[
       MenuItemButton(

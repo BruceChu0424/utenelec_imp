@@ -14,6 +14,7 @@ import 'components/feedback/uten_tooltip_navigation_host.dart';
 import 'core/l10n/gen/app_localizations.dart';
 import 'core/platform/platform_window_title.dart';
 import 'core/platform/desktop_window.dart';
+import 'core/platform/android_system_ui.dart';
 import 'core/responsive/display_zoom.dart';
 import 'core/router/app_router.dart';
 import 'core/router/page_resume_provider.dart';
@@ -244,34 +245,37 @@ class UtenApp extends ConsumerWidget {
             ),
           ),
         );
-        return Consumer(
-          child: UtenActionOwnerScope(
-            identity: actionOwnerIdentity,
-            child: appContent,
+        return UtenAndroidSystemUi(
+          child: Consumer(
+            child: UtenActionOwnerScope(
+              identity: actionOwnerIdentity,
+              child: appContent,
+            ),
+            builder: (context, ref, child) {
+              // push keeps the address at its source route. Use the actual top
+              // page so login's transparent drag strip cannot cover recovery.
+              // The shared route observer defers notifications out of build.
+              final location = ref.watch(
+                pageResumeProvider.select((state) => state.location),
+              );
+              final connectionPhase = ref.watch(
+                connectionRecoveryProvider.select((state) => state.phase),
+              );
+              return DesktopWindowHost(
+                // The connection banner needs its own pointer area. Otherwise
+                // the native drag strip covers retry and macOS covers the text.
+                overlayControls:
+                    location == RouteName.login &&
+                    connectionPhase == ConnectionRecoveryPhase.connected,
+                // Recovery needs the regular workspace without a business session.
+                mode:
+                    session.isLoggedIn || location == RouteName.disasterRecovery
+                    ? DesktopWindowMode.main
+                    : DesktopWindowMode.login,
+                child: child!,
+              );
+            },
           ),
-          builder: (context, ref, child) {
-            // push keeps the address at its source route. Use the actual top
-            // page so login's transparent drag strip cannot cover recovery.
-            // The shared route observer defers notifications out of build.
-            final location = ref.watch(
-              pageResumeProvider.select((state) => state.location),
-            );
-            final connectionPhase = ref.watch(
-              connectionRecoveryProvider.select((state) => state.phase),
-            );
-            return DesktopWindowHost(
-              // The connection banner needs its own pointer area. Otherwise
-              // the native drag strip covers retry and macOS covers the text.
-              overlayControls:
-                  location == RouteName.login &&
-                  connectionPhase == ConnectionRecoveryPhase.connected,
-              // Recovery needs the regular workspace without a business session.
-              mode: session.isLoggedIn || location == RouteName.disasterRecovery
-                  ? DesktopWindowMode.main
-                  : DesktopWindowMode.login,
-              child: child!,
-            );
-          },
         );
       },
 

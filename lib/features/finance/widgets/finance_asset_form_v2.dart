@@ -1,3 +1,5 @@
+import '../../../shared/repositories/employee_reference_repository.dart';
+import '../../../shared/models/employee_reference.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -28,14 +30,12 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../shared/widgets/uten_department_picker.dart';
-import '../../employee/repositories/employee_repository.dart';
 import '../models/finance_asset_category_models.dart';
 import '../models/finance_asset_models.dart';
 import '../repositories/finance_asset_category_repository.dart';
 import '../repositories/finance_asset_workbench_repository.dart';
 import 'finance_asset_entry_l10n.dart';
 import 'finance_asset_ui.dart';
-import '../../employee/repositories/employee_picker_candidates.dart';
 
 Future<bool> showFinanceAssetForm(
   BuildContext context, {
@@ -401,7 +401,11 @@ class _FinanceAssetFormSurfaceState
     final selectionRevision = _custodianSelectionRevision;
     final ownerCurrent = captureReadOwner(ref);
     try {
-      final profile = await ref.read(employeeRepositoryProvider).getById(id);
+      final profiles = await ref
+          .read(employeeReferenceRepositoryProvider)
+          .byIds([id], purpose: EmployeeReferencePurpose.financeAssetCustodian);
+      final profile = profiles.where((value) => value.id == id).firstOrNull;
+      if (profile == null) return;
       if (!ownerCurrent() ||
           !_custodianRequests.isCurrent(generation) ||
           selectionRevision != _custodianSelectionRevision ||
@@ -409,17 +413,7 @@ class _FinanceAssetFormSurfaceState
         return;
       }
       setState(() {
-        _custodian = UtenEmployeePickerItem(
-          id: profile.id,
-          name: profile.fullName ?? '',
-          employeeCode: profile.code,
-          accountStatus: profile.accountDeleted
-              ? 'notProvisioned'
-              : profile.accountStatus ?? 'notProvisioned',
-          employmentStatus: profile.status,
-          departmentId: profile.departmentId,
-          departmentName: profile.departmentName,
-        );
+        _custodian = profile.toPickerItem();
       });
     } catch (_) {
       // Existing ID remains preserved even if its display name cannot load.
@@ -428,8 +422,9 @@ class _FinanceAssetFormSurfaceState
 
   Future<List<UtenEmployeePickerItem>> _loadEmployees(String? keyword) async {
     final result = await ref
-        .read(employeeRepositoryProvider)
+        .read(employeeReferenceRepositoryProvider)
         .listPickerCandidates(
+          purpose: EmployeeReferencePurpose.financeAssetCustodian,
           size: 30,
           search: keyword,
           departmentId: _departmentId,
@@ -445,6 +440,7 @@ class _FinanceAssetFormSurfaceState
           employmentStatus: employee.status,
           departmentId: employee.departmentId,
           departmentName: employee.departmentName,
+          positionName: employee.positionName,
         ),
     ];
   }
@@ -762,6 +758,17 @@ class _FinanceAssetFormSurfaceState
                                           controller: _costCenterCode,
                                         ),
                                         UtenEmployeePicker(
+                                          presentation:
+                                              UtenEmployeePickerPresentation
+                                                  .businessReference,
+                                          departmentTreeLoader: () => ref
+                                              .read(
+                                                employeeReferenceRepositoryProvider,
+                                              )
+                                              .departments(
+                                                EmployeeReferencePurpose
+                                                    .financeAssetCustodian,
+                                              ),
                                           candidateScopeKey: (
                                             'asset-custodian',
                                             _departmentId,

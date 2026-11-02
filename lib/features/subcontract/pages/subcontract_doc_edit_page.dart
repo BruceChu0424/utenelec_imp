@@ -1,3 +1,7 @@
+import '../../../shared/auth/permissions.dart';
+import '../../../shared/models/employee_reference.dart';
+import '../../../shared/repositories/employee_reference_repository.dart';
+import '../../../shared/widgets/business_employee_picker.dart';
 import '../../../shared/providers/master_party_options.dart';
 import '../../../shared/pricing/procurement_price_check.dart';
 import '../../../shared/models/procurement_source_terms.dart';
@@ -70,8 +74,6 @@ import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/providers/editable_grid_column_prefs.dart';
 import '../../../shared/models/department_node.dart';
-import '../../../shared/repositories/department_repository.dart';
-import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../config/subcontract_doc_config.dart';
 import '../models/subcontract_doc.dart';
@@ -86,7 +88,6 @@ import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../../warehouse/repositories/warehouse_place_suggestion_repository.dart';
-import '../../employee/repositories/employee_picker_candidates.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class SubcontractDocEditPage extends ConsumerStatefulWidget {
@@ -449,29 +450,20 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
 
   /// 并发按 id 拉 3 个人员字段的名字（picker 的 initial 显示用）。失败静默。
   Future<void> _preloadEmployees(Iterable<String?> ids) async {
-    final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
-    if (uniq.isEmpty) return;
-    final repo = ref.read(employeeRepositoryProvider);
-    await Future.wait(
-      uniq.map((id) async {
-        try {
-          final p = await repo.getById(id);
-          _empCache[id] = UtenEmployeePickerItem(
-            id: p.id,
-            name: p.fullName ?? '',
-            employeeCode: p.code,
-            accountStatus: p.accountDeleted
-                ? 'notProvisioned'
-                : p.accountStatus ?? 'notProvisioned',
-            employmentStatus: p.status,
-            departmentId: p.departmentId,
-            departmentName: p.departmentName,
-          );
-        } catch (_) {
-          // 静默：picker 的 initial 为 null 时不显示名字，不阻塞流程。
-        }
-      }),
-    );
+    final unique = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
+    if (unique.isEmpty) return;
+    try {
+      final rows = await ref
+          .read(employeeReferenceRepositoryProvider)
+          .byIds(unique, purpose: _employeeReferencePurpose);
+      if (!mounted) return;
+      for (final row in rows) {
+        _empCache[row.id] = row.toPickerItem();
+      }
+    } catch (_) {
+      // The visible business picker owns any label-read failure and retry;
+      // preloading must not replace or abort the document's own read.
+    }
   }
 
   bool get _commercialTermsInheritedFromSource =>
@@ -1483,44 +1475,43 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   }
 
   /// 人员选择器：关键字为空且指定 [defaultDeptCode] 时收敛到该部门子树、否则全公司搜。
+  EmployeeReferencePurpose get _employeeReferencePurpose => switch (_cfg.type) {
+    SubcontractDocType.inquiry =>
+      EmployeeReferencePurpose.subcontractInquiryPerson,
+    SubcontractDocType.application =>
+      EmployeeReferencePurpose.subcontractApplicationPerson,
+    SubcontractDocType.order => EmployeeReferencePurpose.subcontractOrderPerson,
+    SubcontractDocType.receipt =>
+      EmployeeReferencePurpose.subcontractReceiptPerson,
+    SubcontractDocType.materialIssue =>
+      EmployeeReferencePurpose.subcontractMaterialIssuePerson,
+    SubcontractDocType.returnDoc =>
+      EmployeeReferencePurpose.subcontractReturnPerson,
+    SubcontractDocType.materialReturn =>
+      EmployeeReferencePurpose.subcontractMaterialReturnPerson,
+    SubcontractDocType.waste => EmployeeReferencePurpose.subcontractWastePerson,
+  };
+
   Widget _employeePicker({
     required String label,
     required String? currentId,
-    required ValueChanged<String?> onChanged,
     String? defaultDeptCode,
+
+    required ValueChanged<String?> onChanged,
   }) {
-    return UtenEmployeePicker(
+    return BusinessEmployeePicker(
       key: ValueKey('${label}_$currentId'),
+      purpose: _employeeReferencePurpose,
+      enabled:
+          ref.watch(isSuperAdminProvider) ||
+          ref.watch(currentPermissionsProvider).contains(_cfg.createPerm) ||
+          ref.watch(currentPermissionsProvider).contains(_cfg.editPerm),
+      selectedId: currentId,
       label: label,
-      hint: '请选择$label',
-      sheetTitle: '选择$label',
+
       initial: currentId == null ? null : _empCache[currentId],
-      loader: (kw) async {
-        final deptId = (kw == null || kw.isEmpty) && defaultDeptCode != null
-            ? (ref.read(departmentCodeIdMapProvider).value ??
-                  const {})[defaultDeptCode]
-            : null;
-        final res = await ref
-            .read(employeeRepositoryProvider)
-            .listPickerCandidates(
-              size: 30,
-              search: kw,
-              departmentId: deptId,
-              includeSubtree: true,
-            );
-        return [
-          for (final e in res)
-            UtenEmployeePickerItem(
-              id: e.id,
-              name: e.fullName,
-              employeeCode: e.code,
-              accountStatus: e.accountStatus,
-              employmentStatus: e.status,
-              departmentId: e.departmentId,
-              departmentName: e.departmentName,
-            ),
-        ];
-      },
+      departmentCode: defaultDeptCode,
+      onResolved: (item) => _empCache[item.id] = item,
       onChanged: (item) {
         if (item != null) _empCache[item.id] = item;
         onChanged(item?.id);

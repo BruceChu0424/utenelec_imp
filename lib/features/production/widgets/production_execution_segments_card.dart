@@ -1,3 +1,5 @@
+import '../../../shared/repositories/employee_reference_repository.dart';
+import '../../../shared/models/employee_reference.dart';
 import '../../../core/router/page_navigation_session.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
@@ -20,7 +22,6 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/models/department_node.dart';
-import '../../employee/repositories/employee_repository.dart';
 import '../models/production_execution_planning.dart';
 import '../models/production_flow_stage.dart';
 import '../providers/production_department_provider.dart';
@@ -29,7 +30,6 @@ import '../repositories/production_repository.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import 'production_flow_stage_cell.dart';
-import '../../employee/repositories/employee_picker_candidates.dart';
 
 /// 执行段状态 → 徽章档位（ADR-169 收编：原先裸 Colors.green.shade700 画
 /// READY/COMPLETED）：READY=success 绿（齐套·可开工/去领料，就绪可动手）、
@@ -514,14 +514,23 @@ class _ProductionExecutionSegmentsCardState
                     ),
                     const SizedBox(height: UtenSpacing.s12),
                     UtenEmployeePicker(
+                      presentation:
+                          UtenEmployeePickerPresentation.businessReference,
+                      departmentTreeLoader: () => ref
+                          .read(employeeReferenceRepositoryProvider)
+                          .departments(
+                            EmployeeReferencePurpose.productionSegmentOwner,
+                          ),
                       candidateScopeKey: ('segment-owner', teamId, workshopId),
                       key: ValueKey(responsible?.id ?? ''),
                       initial: responsible,
                       hint: '选择负责人',
                       loader: (keyword) async {
                         final result = await ref
-                            .read(employeeRepositoryProvider)
+                            .read(employeeReferenceRepositoryProvider)
                             .listPickerCandidates(
+                              purpose: EmployeeReferencePurpose
+                                  .productionSegmentOwner,
                               size: 30,
                               search: keyword,
                               statuses: const {'active', 'probation'},
@@ -539,6 +548,7 @@ class _ProductionExecutionSegmentsCardState
                               employmentStatus: employee.status,
                               departmentId: employee.departmentId,
                               departmentName: employee.departmentName,
+                              positionName: employee.positionName,
                             ),
                         ];
                       },

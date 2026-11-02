@@ -1,3 +1,6 @@
+import '../../../shared/models/employee_reference.dart';
+import '../../../shared/repositories/employee_reference_repository.dart';
+import '../../../shared/widgets/business_employee_picker.dart';
 import 'dart:async';
 // 销售单据编辑页（新建/编辑，全页路由）：主表头表单 + 明细可编辑 Excel 表（UtenEditableGrid）+ 保存。
 //
@@ -82,8 +85,6 @@ import '../../basic_data/models/reference_method_option.dart';
 import '../../basic_data/providers/master_dict_add.dart';
 import '../../basic_data/widgets/client_ship_address_sheet.dart';
 import '../../../shared/models/department_node.dart';
-import '../../../shared/repositories/department_repository.dart';
-import '../../employee/repositories/employee_repository.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/pricing/line_pricing_controller.dart';
@@ -118,7 +119,6 @@ import '../../basic_data/widgets/uten_client_picker.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../widgets/sales_grid_columns.dart';
 import '../../../shared/formatters/exact_decimal.dart';
-import '../../employee/repositories/employee_picker_candidates.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 /// Debug-only work counter for editor selection/quantity performance checks.
@@ -1298,29 +1298,20 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
 
   /// 并发按 id 拉人员字段的名字（picker 的 initial 显示用）。失败静默。
   Future<void> _preloadEmployees(Iterable<String?> ids) async {
-    final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
-    if (uniq.isEmpty) return;
-    final repo = ref.read(employeeRepositoryProvider);
-    await Future.wait(
-      uniq.map((id) async {
-        try {
-          final p = await repo.getById(id);
-          _empCache[id] = UtenEmployeePickerItem(
-            id: p.id,
-            name: p.fullName ?? '',
-            employeeCode: p.code,
-            accountStatus: p.accountDeleted
-                ? 'notProvisioned'
-                : p.accountStatus ?? 'notProvisioned',
-            employmentStatus: p.status,
-            departmentId: p.departmentId,
-            departmentName: p.departmentName,
-          );
-        } catch (_) {
-          // 静默：picker 的 initial 为 null 时不显示名字，不阻塞流程。
-        }
-      }),
-    );
+    final unique = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
+    if (unique.isEmpty) return;
+    try {
+      final rows = await ref
+          .read(employeeReferenceRepositoryProvider)
+          .byIds(unique, purpose: _employeeReferencePurpose);
+      if (!mounted) return;
+      for (final row in rows) {
+        _empCache[row.id] = row.toPickerItem();
+      }
+    } catch (_) {
+      // The visible business picker owns any label-read failure and retry;
+      // preloading must not replace or abort the document's own read.
+    }
   }
 
   /// 点货品：滑窗除未分类外全部分类都展示（含原材料，问题 #17），支持多选——
@@ -4753,46 +4744,35 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   }
 
   /// 人员选择器：关键字为空且指定 [defaultDeptCode] 时收敛到该部门子树、否则全公司搜。
+  EmployeeReferencePurpose get _employeeReferencePurpose => switch (_cfg.type) {
+    SalesDocType.quote => EmployeeReferencePurpose.salesQuotePerson,
+    SalesDocType.order => EmployeeReferencePurpose.salesOrderPerson,
+    SalesDocType.shipment => EmployeeReferencePurpose.salesShipmentPerson,
+    SalesDocType.otherShipment || SalesDocType.customerShipment =>
+      EmployeeReferencePurpose.salesOtherShipmentPerson,
+    SalesDocType.returnDoc => EmployeeReferencePurpose.salesReturnPerson,
+  };
+
   Widget _employeePicker({
     required String label,
     required String? currentId,
-    required ValueChanged<String?> onChanged,
     String? defaultDeptCode,
     bool required = false,
+    required ValueChanged<String?> onChanged,
   }) {
-    return UtenEmployeePicker(
+    return BusinessEmployeePicker(
       key: ValueKey('${label}_$currentId'),
+      purpose: _employeeReferencePurpose,
+      enabled:
+          ref.watch(isSuperAdminProvider) ||
+          ref.watch(currentPermissionsProvider).contains(_cfg.createPerm) ||
+          ref.watch(currentPermissionsProvider).contains(_cfg.editPerm),
+      selectedId: currentId,
       label: label,
       required: required,
-      hint: '请选择$label',
-      sheetTitle: '选择$label',
       initial: currentId == null ? null : _empCache[currentId],
-      loader: (kw) async {
-        final deptId = (kw == null || kw.isEmpty) && defaultDeptCode != null
-            ? (ref.read(departmentCodeIdMapProvider).value ??
-                  const {})[defaultDeptCode]
-            : null;
-        final res = await ref
-            .read(employeeRepositoryProvider)
-            .listPickerCandidates(
-              size: 30,
-              search: kw,
-              departmentId: deptId,
-              includeSubtree: true,
-            );
-        return [
-          for (final e in res)
-            UtenEmployeePickerItem(
-              id: e.id,
-              name: e.fullName,
-              employeeCode: e.code,
-              accountStatus: e.accountStatus,
-              employmentStatus: e.status,
-              departmentId: e.departmentId,
-              departmentName: e.departmentName,
-            ),
-        ];
-      },
+      departmentCode: defaultDeptCode,
+      onResolved: (item) => _empCache[item.id] = item,
       onChanged: (item) {
         if (item != null) _empCache[item.id] = item;
         onChanged(item?.id);

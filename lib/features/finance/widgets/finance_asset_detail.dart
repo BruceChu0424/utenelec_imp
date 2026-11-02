@@ -1,3 +1,5 @@
+import '../../../shared/repositories/employee_reference_repository.dart';
+import '../../../shared/models/employee_reference.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
@@ -25,12 +27,10 @@ import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/formatters/money_display.dart';
 import '../../../shared/widgets/uten_department_picker.dart';
-import '../../employee/repositories/employee_repository.dart';
 import '../models/finance_asset_models.dart';
 import '../repositories/finance_asset_workbench_repository.dart';
 import 'finance_asset_ui.dart';
 import 'finance_asset_revision_section.dart';
-import '../../employee/repositories/employee_picker_candidates.dart';
 
 const _assetReviewerActions = <String>{
   'APPROVE',
@@ -946,8 +946,9 @@ class _FinanceAssetActionInputState
 
   Future<List<UtenEmployeePickerItem>> _loadEmployees(String? keyword) async {
     final result = await ref
-        .read(employeeRepositoryProvider)
+        .read(employeeReferenceRepositoryProvider)
         .listPickerCandidates(
+          purpose: EmployeeReferencePurpose.financeAssetCustodian,
           size: 30,
           search: keyword,
           departmentId: _department?.id,
@@ -963,6 +964,7 @@ class _FinanceAssetActionInputState
           employmentStatus: employee.status,
           departmentId: employee.departmentId,
           departmentName: employee.departmentName,
+          positionName: employee.positionName,
         ),
     ];
   }
@@ -1067,6 +1069,13 @@ class _FinanceAssetActionInputState
                       UtenInput(label: '新地点', controller: _location),
                     if (transfer)
                       UtenEmployeePicker(
+                        presentation:
+                            UtenEmployeePickerPresentation.businessReference,
+                        departmentTreeLoader: () => ref
+                            .read(employeeReferenceRepositoryProvider)
+                            .departments(
+                              EmployeeReferencePurpose.financeAssetCustodian,
+                            ),
                         candidateScopeKey: ('asset-transfer', _department?.id),
                         key: ValueKey(
                           'asset-transfer-employee-${_department?.id}',

@@ -27,6 +27,8 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/models/employee_reference.dart';
+import '../../../shared/repositories/employee_reference_repository.dart';
 import '../models/mould_node.dart';
 import '../models/product_category_node.dart';
 import '../models/goods_node.dart' show goodsQtyText;
@@ -49,7 +51,6 @@ import '../widgets/category_tree_search.dart';
 import '../widgets/system_master_category_guard.dart';
 import '../../../shared/models/department_node.dart';
 import '../../../shared/widgets/uten_department_picker.dart';
-import '../../employee/repositories/employee_repository.dart';
 import '../../employee/widgets/department_employee_picker.dart';
 import '../providers/mould_workshop_tree.dart';
 
@@ -681,24 +682,41 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
             initialId: id,
             initialName: iv['keeperName'],
             initialLoader: (employeeId) async {
-              final employee = await ref
-                  .read(employeeRepositoryProvider)
-                  .getById(employeeId);
-              return UtenEmployeePickerItem(
-                id: employee.id,
-                name: employee.fullName ?? '',
-                employeeCode: employee.code,
-                accountStatus: employee.accountDeleted
-                    ? 'notProvisioned'
-                    : employee.accountStatus ?? 'notProvisioned',
-                employmentStatus: employee.status,
-                departmentId: employee.departmentId,
-                departmentName: employee.departmentName,
-              );
+              final rows = await ref
+                  .read(employeeReferenceRepositoryProvider)
+                  .byIds([
+                    employeeId,
+                  ], purpose: EmployeeReferencePurpose.mouldCustodian);
+              final employee = rows
+                  .where((row) => row.id == employeeId)
+                  .firstOrNull;
+              if (employee == null) {
+                throw ApiException('REFERENCE_NOT_FOUND', '原保管人目前不可读取');
+              }
+              return employee.toPickerItem();
             },
             onChanged: ctx.onChanged,
-            onPick: () =>
-                showUtenDepartmentEmployeePicker(context, ref, title: '选择保管人'),
+            onPick: () => showUtenEmployeePickerPanel(
+              context,
+              title: '选择保管人',
+              selectedId: id,
+              presentation: UtenEmployeePickerPresentation.businessReference,
+              departmentTreeLoader: () => ref
+                  .read(employeeReferenceRepositoryProvider)
+                  .departments(EmployeeReferencePurpose.mouldCustodian),
+              loader: (keyword) async {
+                final rows = await ref
+                    .read(employeeReferenceRepositoryProvider)
+                    .listPickerCandidates(
+                      purpose: EmployeeReferencePurpose.mouldCustodian,
+                      search: keyword,
+                      statuses: const {'active', 'probation', 'onLeave'},
+                    );
+                return rows
+                    .map((row) => row.toPickerItem())
+                    .toList(growable: false);
+              },
+            ),
           );
         },
       ),

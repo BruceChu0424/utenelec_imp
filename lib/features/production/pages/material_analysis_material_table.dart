@@ -5033,7 +5033,9 @@ abstract class _MaterialAnalysisMaterialTableState
     // 直读稳定的部门仓库而不是 autoDispose provider：后者被一次性 read(.future)
     // 时可能在请求中途回收，Future 永不完成(默认车间带不出的隐患)。
     try {
-      final tree = await ref.read(departmentRepositoryProvider).tree();
+      final tree = await ref
+          .read(employeeReferenceRepositoryProvider)
+          .departments(EmployeeReferencePurpose.productionMaterialOwner);
       return findDepartmentByCode(tree, kDeptCodeProduction)?.children ??
           const [];
     } catch (_) {
@@ -5229,13 +5231,18 @@ abstract class _MaterialAnalysisMaterialTableState
     final current = _tableWorkerFor(group);
     final picked = await showUtenEmployeePickerPanel(
       context,
+      presentation: UtenEmployeePickerPresentation.businessReference,
+      departmentTreeLoader: () => ref
+          .read(employeeReferenceRepositoryProvider)
+          .departments(EmployeeReferencePurpose.productionMaterialOwner),
       title: '选择生产负责人',
       selectedId: current.id,
       departmentName: workshop.name,
       loader: (keyword) async {
         final result = await ref
-            .read(employeeRepositoryProvider)
+            .read(employeeReferenceRepositoryProvider)
             .listPickerCandidates(
+              purpose: EmployeeReferencePurpose.productionMaterialOwner,
               size: 30,
               search: keyword,
               departmentId: (keyword?.trim().isEmpty ?? true)
@@ -5253,6 +5260,7 @@ abstract class _MaterialAnalysisMaterialTableState
               employmentStatus: employee.status,
               departmentId: employee.departmentId,
               departmentName: employee.departmentName,
+              positionName: employee.positionName,
             ),
         ];
       },

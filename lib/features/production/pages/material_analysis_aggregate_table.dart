@@ -1725,12 +1725,17 @@ final class _MaterialAggregateTableController {
     final workshop = workshops.first;
     final picked = await showUtenEmployeePickerPanel(
       owner.context,
+      presentation: UtenEmployeePickerPresentation.businessReference,
+      departmentTreeLoader: () => owner.ref
+          .read(employeeReferenceRepositoryProvider)
+          .departments(EmployeeReferencePurpose.productionMaterialOwner),
       title: '选择生产负责人',
       departmentName: workshop.name,
       loader: (keyword) async {
         final result = await owner.ref
-            .read(employeeRepositoryProvider)
+            .read(employeeReferenceRepositoryProvider)
             .listPickerCandidates(
+              purpose: EmployeeReferencePurpose.productionMaterialOwner,
               size: 30,
               search: keyword,
               departmentId: keyword?.trim().isEmpty != false
@@ -1748,6 +1753,7 @@ final class _MaterialAggregateTableController {
               employmentStatus: employee.status,
               departmentId: employee.departmentId,
               departmentName: employee.departmentName,
+              positionName: employee.positionName,
             ),
         ];
       },

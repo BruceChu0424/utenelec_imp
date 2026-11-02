@@ -7,8 +7,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../employee/repositories/employee_repository.dart';
-import '../../employee/models/employee_api_models.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../shared/models/employee_reference.dart';
+import '../../../shared/repositories/employee_reference_repository.dart';
 import '../../employee/widgets/department_employee_picker.dart';
 import '../models/currency_node.dart';
 import 'client_master_edit.dart' show loadClientCurrencies;
@@ -67,29 +68,46 @@ List<MasterFieldDef> buildSupplierFields(
       initialId: ctx.initialValue,
       initialName: iv['ownerEmployeeName'],
       initialLoader: (employeeId) async {
-        Future<EmployeeProfile> read() =>
-            ref.read(employeeRepositoryProvider).getById(employeeId);
-        final employee = owner == null ? await read() : await owner.run(read);
-        return UtenEmployeePickerItem(
-          id: employee.id,
-          name: employee.fullName ?? '',
-          employeeCode: employee.code,
-          accountStatus: employee.accountDeleted
-              ? 'notProvisioned'
-              : employee.accountStatus ?? 'notProvisioned',
-          employmentStatus: employee.status,
-          departmentId: employee.departmentId,
-          departmentName: employee.departmentName,
-        );
+        Future<List<EmployeeReference>> read() =>
+            ref.read(employeeReferenceRepositoryProvider).byIds([
+              employeeId,
+            ], purpose: EmployeeReferencePurpose.supplierOwner);
+        final rows = owner == null ? await read() : await owner.run(read);
+        final employee = rows.where((row) => row.id == employeeId).firstOrNull;
+        if (employee == null) {
+          throw ApiException('REFERENCE_NOT_FOUND', '原业务员目前不可读取');
+        }
+        return employee.toPickerItem();
       },
       onChanged: ctx.onChanged,
-      onPick: () => showUtenDepartmentEmployeePicker(
-        context,
-        ref,
-        title: '选择业务员',
-        dialogScopeBuilder: owner?.ownDialog,
-        isCurrent: owner == null ? null : () => owner.isCurrent,
-      ),
+      onPick: () async {
+        if (owner != null && !owner.isCurrent) return null;
+        final repository = ref.read(employeeReferenceRepositoryProvider);
+        const purpose = EmployeeReferencePurpose.supplierOwner;
+        final result = await showUtenEmployeeSelectionPanel(
+          context,
+          title: '选择业务员',
+          selectedId: ctx.initialValue,
+          presentation: UtenEmployeePickerPresentation.businessReference,
+          scopeBuilder: owner?.ownDialog,
+          departmentTreeLoader: () => owner == null
+              ? repository.departments(purpose)
+              : owner.run(() => repository.departments(purpose)),
+          loader: (keyword) async {
+            Future<List<EmployeeReference>> read() =>
+                repository.listPickerCandidates(
+                  purpose: purpose,
+                  search: keyword,
+                  statuses: const {'active', 'probation', 'onLeave'},
+                );
+            final rows = owner == null ? await read() : await owner.run(read);
+            return rows
+                .map((row) => row.toPickerItem())
+                .toList(growable: false);
+          },
+        );
+        return owner == null || owner.isCurrent ? result?.firstOrNull : null;
+      },
     ),
   ),
   ...const <MasterFieldDef>[

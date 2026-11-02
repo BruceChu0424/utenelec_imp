@@ -9,6 +9,9 @@ import 'package:uten_imp/features/department/widgets/department_edit_dialog.dart
 import 'package:uten_imp/shared/widgets/uten_department_tree_view.dart';
 import 'package:uten_imp/features/employee/providers/employee_picker_department_tree_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/models/employee_reference.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/repositories/employee_reference_repository.dart';
 import 'package:uten_imp/shared/widgets/uten_location_field.dart';
 
 void main() {
@@ -245,6 +248,38 @@ void main() {
   });
 }
 
+class _DepartmentPersonReferences implements EmployeeReferenceRepository {
+  _DepartmentPersonReferences(this.tree);
+  final List<DepartmentNode> tree;
+
+  @override
+  Future<List<DepartmentNode>> departments(
+    EmployeeReferencePurpose purpose,
+  ) async {
+    expect(purpose, EmployeeReferencePurpose.departmentManager);
+    return tree;
+  }
+
+  @override
+  Future<List<EmployeeReference>> byIds(
+    Iterable<String> ids, {
+    required EmployeeReferencePurpose purpose,
+  }) => throw StateError('This dialog keeps its injected manager labels');
+
+  @override
+  Future<PagedResult<EmployeeReference>> list({
+    required EmployeeReferencePurpose purpose,
+    int page = 1,
+    int size = 100,
+    String? search,
+    String? departmentId,
+    bool includeSubtree = false,
+    Set<String>? statuses,
+  }) => throw StateError(
+    'This dialog keeps its injected direct-department loader',
+  );
+}
+
 Future<void> _pumpWideApp(
   WidgetTester tester, {
   required DepartmentInfo editing,
@@ -263,6 +298,9 @@ Future<void> _pumpWideApp(
         sharedPreferencesProvider.overrideWithValue(preferences),
         employeePickerDepartmentTreeProvider.overrideWith(
           (ref) async => tree ?? [_company()],
+        ),
+        employeeReferenceRepositoryProvider.overrideWithValue(
+          _DepartmentPersonReferences(tree ?? [_company()]),
         ),
       ],
       child: MaterialApp(

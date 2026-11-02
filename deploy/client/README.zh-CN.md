@@ -209,12 +209,18 @@ Android 使用以下相互兼容的固定构建组合；Flutter 产品 SDK、Dar
 [Kotlin Gradle 插件矩阵](https://kotlinlang.org/docs/gradle-configure-project.html)、
 [Gradle Kotlin DSL](https://docs.gradle.org/8.14.3/userguide/kotlin_dsl.html#sec:kotlin-dsl_plugin)。
 原 AGP 9 + 旧 DSL 兼容开关会让 SDK 和多个锁定插件产生弃用警告，不能只打开新 DSL；
-原 Gradle 9 同时会对锁定 Groovy 插件的旧属性赋值报弃用。当前组合保持这些插件的支持范围。
+Gradle 8.14 和 9 都会对锁定 Groovy 插件的旧属性赋值报弃用，必须同时迁移该语法，
+不能靠换版本消除。当前组合保持这些插件的支持范围。
 
 构建前运行固定源码校验和私有工具准备器。它只复制 Flutter 的 Gradle 工具到独立目录，
 核对版本、revision 和五个修改文件的原始 SHA-256，保留原许可证；不改已安装 SDK 或 pub 缓存。
 修改包括显式注解 target、类型安全的应用 buildTypes、删除已无调用的旧辅助方法，以及用
 `ApplicationAndroidComponentsExtension` 的公共输出 API 保持分 ABI 版本码规则。
+准备器还校验 `file_picker 8.3.7`、`flutter_secure_storage 9.2.4`、`printing 5.15.1`
+原始 Gradle 脚本版本与 SHA-256，将各自原源码复制到同一任务目录，仅把已点名的
+`group/version/namespace/compileSdk/minSdk` 属性改成显式赋值。settings 只替换三个 Android
+原生项目目录；Dart 的依赖锁、包路径和业务源码保持原来源。仓库内 `desktop_drop`、
+`device_info_plus` 在各自唯一源码入口同步修正相同语法。
 脚本不会加警告过滤或新的 suppression，源码漂移时拒绝继续。CI Android 作业使用同一准备器。
 
 ```powershell

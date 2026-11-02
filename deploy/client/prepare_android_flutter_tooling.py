@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 
@@ -21,6 +22,25 @@ SOURCE_HASHES = {
     "src/main/kotlin/plugins/PluginHandler.kt": "2e0aabbee4b6699ded8fb75fa38347d1fe6d1c719051a2177bfc6ea7595b4817",
     "src/main/kotlin/FlutterPlugin.kt": "f8fc0e97adf2c492ed519bee5fb2b6cc2d00e6ff8ccd42a78f6ba506cac5fa80",
     "src/main/kotlin/FlutterPluginUtils.kt": "4edac47ab150a5e3f6c1ffb7b75bada24e5e5e96bd2e568caf5551cf51d4945d",
+}
+ANDROID_PLUGINS = {
+    "file_picker": ("8.3.7", "f407f99bc9c6daf2cd4bb3680c6df407b7258e39e7b481e08d640a0517915777", (
+        ("group 'com.mr.flutter.plugin.filepicker'", "group = 'com.mr.flutter.plugin.filepicker'"),
+        ("version '1.0-SNAPSHOT'", "version = '1.0-SNAPSHOT'"),
+        ("    compileSdk 34", "    compileSdk = 34"),
+        ("        minSdk 21", "        minSdk = 21"),
+        ("        namespace 'com.mr.flutter.plugin.filepicker'", "        namespace = 'com.mr.flutter.plugin.filepicker'"),
+    )),
+    "flutter_secure_storage": ("9.2.4", "fd69c260d8c1af9ed6baa65928d32ba396fff05c3071cab02b29ab81cd4ce535", (
+        ("group 'com.it_nomads.fluttersecurestorage'", "group = 'com.it_nomads.fluttersecurestorage'"),
+        ("version '1.0-SNAPSHOT'", "version = '1.0-SNAPSHOT'"),
+        ('        namespace("com.it_nomads.fluttersecurestorage")', '        namespace = "com.it_nomads.fluttersecurestorage"'),
+        ("    compileSdk 34", "    compileSdk = 34"),
+    )),
+    "printing": ("5.15.1", "d82ce58961d67457c1e655f64d20350e7f2fb977096e6709d39104cc04613d13", (
+        ('group "net.nfet.flutter.printing"', 'group = "net.nfet.flutter.printing"'),
+        ('version "1.0"', 'version = "1.0"'),
+    )),
 }
 
 
@@ -164,16 +184,56 @@ def prepare(sdk: Path, output: Path) -> dict:
     return receipt
 
 
+def prepare_android_plugins(project: Path, output: Path) -> dict:
+    """Keep pinned native plugin sources private without changing Dart resolution."""
+    dependencies = json.loads((project / ".flutter-plugins-dependencies").read_text(encoding="utf-8"))
+    android = {entry["name"]: entry for entry in dependencies["plugins"]["android"]}
+    receipt = {}
+    plans = {}
+    for name, (version, original_hash, replacements) in ANDROID_PLUGINS.items():
+        if name not in android:
+            raise ValueError(f"Pinned Android plugin is missing from the generated dependency inventory: {name}")
+        source = Path(android[name]["path"]).resolve(strict=True)
+        declared_version = re.search(r"(?m)^version:\s*([^\s]+)", source_text(source / "pubspec.yaml"))
+        if not declared_version or declared_version.group(1).strip("\"'") != version:
+            raise ValueError(f"Pinned Android plugin version changed: {name}")
+        original = source_text(source / "android/build.gradle")
+        if digest(original) != original_hash:
+            raise ValueError(f"Pinned Android plugin source checksum changed: {name}")
+        patched = original
+        for old, new in replacements:
+            patched = replace(patched, old, new)
+        receipt[name] = {"version": version, "upstreamBuildHash": original_hash,
+                         "patchedBuildHash": digest(patched)}
+        plans[name] = source, patched
+    manifest = output / "manifest.json"
+    if output.exists():
+        if (not manifest.is_file() or json.loads(manifest.read_text(encoding="utf-8")) != receipt
+                or any(digest(source_text(output / name / "android/build.gradle")) != entry["patchedBuildHash"]
+                       for name, entry in receipt.items())):
+            raise ValueError("Existing private Android plugins differ; use a new task-owned tooling directory")
+        return receipt
+    output.mkdir(parents=True)
+    for name, (source, patched) in plans.items():
+        shutil.copytree(source, output / name,
+                        ignore=shutil.ignore_patterns(".gradle", ".dart_tool", ".kotlin", ".git", "build"))
+        (output / name / "android/build.gradle").write_text(patched, encoding="utf-8", newline="\n")
+    manifest.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    return receipt
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--flutter-sdk", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--project-root", type=Path, default=Path(__file__).resolve().parents[2])
     args = parser.parse_args()
     try:
         receipt = prepare(args.flutter_sdk, args.output)
+        native = prepare_android_plugins(args.project_root, args.output / "uten-android-plugins")
     except (OSError, ValueError, subprocess.SubprocessError) as failure:
         parser.exit(1, f"Android tooling preparation rejected: {failure}\n")
-    print(json.dumps({"output": str(args.output.resolve()), **receipt}, indent=2))
+    print(json.dumps({"output": str(args.output.resolve()), **receipt, "androidPlugins": native}, indent=2))
     return 0
 
 

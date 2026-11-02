@@ -27,3 +27,17 @@ plugins {
 }
 
 include(":app")
+
+// The verified preparation recipe copies only the three reviewed native plugin
+// projects that need Groovy assignment fixes. Dart keeps its original lock and
+// package paths; the shared pub cache is never edited.
+providers.gradleProperty("utenFlutterGradleTools").orNull?.let { tooling ->
+    val privatePlugins = File(tooling, "uten-android-plugins")
+    check(File(privatePlugins, "manifest.json").isFile) {
+        "Run prepare_android_flutter_tooling.py before using private Android tooling."
+    }
+    rootProject.children.forEach { descriptor ->
+        val androidSource = File(privatePlugins, "${descriptor.name}/android")
+        if (androidSource.isDirectory) descriptor.projectDir = androidSource
+    }
+}

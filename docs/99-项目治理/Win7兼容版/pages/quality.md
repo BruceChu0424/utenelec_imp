@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProductionFqcInspectionsPage @45 (page-class)<br>_ProductionFqcInspectionsPageState @53 (state-class) |
-| 真实路由绑定 | /quality/production-inspections；router @1371；builder ['ProductionFqcInspectionsPage']；redirect None |
+| 真实路由绑定 | /quality/production-inspections；router @1408；builder ['ProductionFqcInspectionsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | QualityBatchApprovalSelection @64 (supporting-class)<br>_FqcSheetGroup @77 (supporting-class)<br>_EditableIqcRow @90 (supporting-class)<br>_IqcReceiptGroup @173 (supporting-class)<br>_ApprovalRow @185 (supporting-class)<br>QualityBatchApprovalPage @231 (page-class)<br>_QualityBatchApprovalPageState @246 (state-class) |
-| 真实路由绑定 | /warehouse/inspections/batch-approval；router @1237；builder ['QualityBatchApprovalPage', 'QualityBatchApprovalSelection']；redirect None |
+| 真实路由绑定 | /warehouse/inspections/batch-approval；router @1274；builder ['QualityBatchApprovalPage', 'QualityBatchApprovalSelection']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | QualityInspectionRecordsPage @38 (page-class)<br>_QualityInspectionRecordsPageState @78 (state-class)<br>_QualityInspectionRecordDetailPanel @871 (supporting-class)<br>_QualityInspectionRecordDetailPanelState @881 (state-class)<br>_DetailSection @1172 (supporting-class)<br>_DetailField @1202 (supporting-class)<br>_DetailFieldTable @1213 (supporting-class)<br>_DetailQuantityRow @1252 (supporting-class)<br>_InlineRecordError @1264 (supporting-class) |
-| 真实路由绑定 | /quality/inspection-records；router @1359；builder ['QualityInspectionRecordsPage']；redirect None |
+| 真实路由绑定 | /quality/inspection-records；router @1396；builder ['QualityInspectionRecordsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | procurement_inspection:view @131；定义 lib/shared/auth/permissions.dart:293<br>production_quality_inspection:view @134；定义 lib/shared/auth/permissions.dart:418 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | QualityPendingDisposalPage @77 (page-class)<br>_QualityPendingDisposalPageState @85 (state-class)<br>_DisposalRow @994 (supporting-class)<br>ProcurementInspectionDetailPage @1074 (page-class)<br>_ProcurementInspectionDetailPageState @1094 (state-class)<br>_InspectionReportRow @1971 (supporting-class)<br>_InlineWorkbenchError @2001 (supporting-class)<br>_ReceiptHeaderRow @2042 (supporting-class) |
-| 真实路由绑定 | /warehouse/inspections；router @1225；builder ['QualityPendingDisposalPage']；redirect None<br>/warehouse/inspections/:receiptType/:receiptId；router @1262；builder ['ProcurementInspectionDetailPage']；redirect None |
+| 真实路由绑定 | /warehouse/inspections；router @1262；builder ['QualityPendingDisposalPage']；redirect None<br>/warehouse/inspections/:receiptType/:receiptId；router @1299；builder ['ProcurementInspectionDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | procurement_inspection:view @129；定义 lib/shared/auth/permissions.dart:293<br>production_quality_inspection:view @135；定义 lib/shared/auth/permissions.dart:418<br>procurement_inspection:handle @141；定义 lib/shared/auth/permissions.dart:294<br>production_quality_inspection:approve @270；定义 lib/shared/auth/permissions.dart:420<br>procurement_inspection:handle @1166；定义 lib/shared/auth/permissions.dart:294 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -94,12 +94,12 @@
 
 ## W7-BIZ-133 · lib/features/quality/pages/quality_task_center_page.dart
 
-模块 `quality`；222 行；SHA256 `f4e13ab2f0b6ab8617003c04aa2b08cb27b39633913de001cbf1d9dfac5f165f`。
+模块 `quality`；223 行；SHA256 `fdad2f310afca9072aa801c6e98e7b0b9bab3de7a0399c1ea4f6cc28edc3f285`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | QualityTaskCenterPage @38 (page-class)<br>_QualityEntry @168 (supporting-class)<br>_QualityDisposalPendingBadge @190 (supporting-class) |
-| 真实路由绑定 | /quality/task-center；router @1354；builder ['QualityTaskCenterPage']；redirect None |
+| 页面/状态类 | QualityTaskCenterPage @38 (page-class)<br>_QualityEntry @169 (supporting-class)<br>_QualityDisposalPendingBadge @191 (supporting-class) |
+| 真实路由绑定 | /quality/task-center；router @1391；builder ['QualityTaskCenterPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | procurement_inspection:view @49；定义 lib/shared/auth/permissions.dart:293<br>production_quality_inspection:view @52；定义 lib/shared/auth/permissions.dart:418 |
 | 接口常量 | 未静态确认；不能当作不存在 |

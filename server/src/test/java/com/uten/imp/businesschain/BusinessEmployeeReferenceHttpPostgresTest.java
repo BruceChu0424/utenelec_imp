@@ -44,6 +44,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 @Import(BusinessEmployeeReferenceHttpPostgresTest.ProbeConfiguration.class)
 class BusinessEmployeeReferenceHttpPostgresTest {
     static final String API="/api/org/employee-references";
+    static final String WORKSHOP_DEFAULTS="/api/production/workshop-assignment-defaults";
     static final String ARRIVAL="WAREHOUSE_ARRIVAL_RECEIVER";
     static final String OUTBOUND="WAREHOUSE_SUBCONTRACT_OPERATOR";
     static final String MATERIAL="WORKSHOP_MATERIAL_ISSUER";
@@ -210,6 +211,66 @@ class BusinessEmployeeReferenceHttpPostgresTest {
         read(API+"/by-ids",Map.of("purpose","SUBCONTRACT_INQUIRY_PERSON","ids",world.employeeId().toString()),200);
     }
 
+    @Test void workshopManagerFallbackUsesTheOperationPurposeWithoutGoodsLearningOrHrTreeAccess() throws Exception {
+        UUID production=db.queryForObject("SELECT id FROM departments WHERE code='DEPT_PROD' AND NOT is_deleted",UUID.class);
+        UUID workshop=department(production,"assignment-workshop");
+        UUID manager=person(workshop,null,"assignment-manager","active",null);
+        db.update("UPDATE departments SET manager_id=? WHERE id=?",manager,workshop);
+        db.update("UPDATE goods SET owning_workshop_department_id=NULL,owning_responsible_employee_id=NULL WHERE id=?",world.goodsA());
+        UUID writer=createOperator("-material-assigner","production_material_analysis:view","production_material_analysis:generate");
+        fixture.loginAs(writer);
+        String purpose="PRODUCTION_MATERIAL_OWNER";
+        assertTrue(read("/api/production/material-analyses/default-workshops",Map.of("ids",world.goodsA().toString()),200).isEmpty(),
+                "The old learned-default response must remain unchanged when no goods preference exists");
+        JsonNode rows=read(WORKSHOP_DEFAULTS,Map.of("purpose",purpose,"ids",workshop.toString()),200);
+        assertEquals(1,rows.size());assertEquals(manager.toString(),rows.get(0).path("responsibleEmployeeId").asText());
+        assertEquals(Set.of("departmentId","departmentName","responsibleEmployeeId","responsibleEmployeeName"),fields(rows.get(0)));
+        JsonNode tree=read(API+"/departments",Map.of("purpose",purpose),200);
+        assertTrue(tree.findValues("managerId").isEmpty());assertTrue(tree.findValues("managerName").isEmpty());
+        read("/api/org/departments/tree",Map.of(),403);read("/api/org/employees",Map.of(),403);
+        var auth=SecurityContextHolder.getContext().getAuthentication();
+        var response=http.perform(get(WORKSHOP_DEFAULTS).with(authentication(auth)).param("purpose",purpose)
+                .param("ids",workshop.toString())).andReturn().getResponse();
+        assertEquals(200,response.getStatus());assertNotNull(response.getHeader("X-Uten-Read-Scope-Version"));
+        assertEquals("native_workshop_tasks:browse",response.getHeader("X-Uten-Read-Scope-Domain"));
+        read(WORKSHOP_DEFAULTS,Map.of("purpose","SUPPLIER_OWNER","ids",workshop.toString()),422);
+        for(String[] grants:List.of(new String[]{"production_material_analysis:view"},new String[]{"employee:view"},new String[]{"finance_expense:create"})) {
+            UUID reader=createOperator("-assignment-reader-"+UUID.randomUUID(),grants);fixture.loginAs(reader);
+            read(WORKSHOP_DEFAULTS,Map.of("purpose",purpose,"ids",workshop.toString()),403);
+        }
+        UUID planner=createOperator("-plan-assigner","production_plan:create");fixture.loginAs(planner);
+        read(WORKSHOP_DEFAULTS,Map.of("purpose","PRODUCTION_PLAN_OWNER","ids",workshop.toString()),200);
+        read(WORKSHOP_DEFAULTS,Map.of("purpose",purpose,"ids",workshop.toString()),403);
+        UUID dispatcher=createOperator("-segment-assigner","production_execution:assign");fixture.loginAs(dispatcher);
+        read(WORKSHOP_DEFAULTS,Map.of("purpose","PRODUCTION_SEGMENT_OWNER","ids",workshop.toString()),200);
+        db.update("UPDATE users SET must_change_password=true WHERE id=?",dispatcher);
+        read(WORKSHOP_DEFAULTS,Map.of("purpose","PRODUCTION_SEGMENT_OWNER","ids",workshop.toString()),403);
+    }
+
+    @Test void workshopDefaultPublicationRejectsAChangedManagerLifecycleAndActorAuthority() throws Exception {
+        UUID production=db.queryForObject("SELECT id FROM departments WHERE code='DEPT_PROD' AND NOT is_deleted",UUID.class);
+        UUID workshop=department(production,"fenced-workshop");
+        UUID manager=person(workshop,null,"fenced-manager","active",null);
+        db.update("UPDATE departments SET manager_id=? WHERE id=?",manager,workshop);
+        UUID writer=createOperator("-fenced-assigner","production_material_analysis:view","production_material_analysis:generate");
+        fixture.loginAs(writer);
+        Map<String,String> params=Map.of("purpose","PRODUCTION_MATERIAL_OWNER","ids",workshop.toString());
+        PublicationProbe.PENDING.set(()->db.update("UPDATE employees SET status='resigned' WHERE id=?",manager));
+        assertEquals("READ_SCOPE_CHANGED",read(WORKSHOP_DEFAULTS,params,403).path("code").asText());
+        fixture.loginAs(writer);
+        JsonNode rows=read(WORKSHOP_DEFAULTS,params,200);
+        assertTrue(rows.get(0).path("responsibleEmployeeId").isNull());
+        assertTrue(rows.get(0).path("responsibleEmployeeName").isNull());
+        db.update("UPDATE employees SET status='probation' WHERE id=?",manager);
+        fixture.loginAs(writer);
+        assertEquals(manager.toString(),read(WORKSHOP_DEFAULTS,params,200).get(0).path("responsibleEmployeeId").asText());
+        PublicationProbe.PENDING.set(()->revoke(writer,"production_material_analysis:generate"));
+        assertEquals("READ_SCOPE_CHANGED",read(WORKSHOP_DEFAULTS,params,403).path("code").asText());
+        AuthUser visitor=AuthUser.visitor(UUID.randomUUID(),"synthetic-visitor","V-ASSIGN",Set.of("production_material_analysis:view","production_material_analysis:generate"));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(visitor,null,visitor.getAuthorities()));
+        read(WORKSHOP_DEFAULTS,params,403);
+    }
+
     @TestConfiguration(proxyBeanMethods=false) static class ProbeConfiguration {
         @Bean PublicationProbe publicationProbe(){return new PublicationProbe();}
     }
@@ -220,7 +281,7 @@ class BusinessEmployeeReferenceHttpPostgresTest {
         @Override public boolean supports(org.springframework.core.MethodParameter p,Class<? extends org.springframework.http.converter.HttpMessageConverter<?>> c){return true;}
         @Override public Object beforeBodyWrite(Object body,org.springframework.core.MethodParameter p,org.springframework.http.MediaType media,
                 Class<? extends org.springframework.http.converter.HttpMessageConverter<?>> c,org.springframework.http.server.ServerHttpRequest request,org.springframework.http.server.ServerHttpResponse response) {
-            Runnable pending=PENDING.get();if(pending!=null&&request.getURI().getPath().equals(API)){PENDING.remove();pending.run();}return body;
+            Runnable pending=PENDING.get();if(pending!=null&&(request.getURI().getPath().equals(API)||request.getURI().getPath().equals(WORKSHOP_DEFAULTS))){PENDING.remove();pending.run();}return body;
         }
     }
 }

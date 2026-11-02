@@ -2,15 +2,33 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/models/department_node.dart';
-import '../../../shared/repositories/department_repository.dart';
+import '../../../core/network/api_endpoints.dart';
+import '../../../shared/providers/master_dictionary_repository.dart';
+
+Future<List<DepartmentNode>> loadProductionDepartmentReferenceTree(
+  MasterDictionaryRepository dictionaries,
+) async => [
+  for (final row in await dictionaries.load(ApiEndpoints.departmentsTree))
+    DepartmentNode.fromJson(row),
+];
+
+Future<List<DepartmentNode>> loadProductionWorkshopReferenceTree(
+  MasterDictionaryRepository dictionaries,
+) async =>
+    findDepartmentByCode(
+      await loadProductionDepartmentReferenceTree(dictionaries),
+      kDeptCodeProduction,
+    )?.children ??
+    const [];
 
 /// 生产部子车间列表（不含生产部本身，避免误选一级部门）。
 /// 树加载前为空（picker 回退默认整树），加载后只显示车间。
 final productionWorkshopTreeProvider =
     FutureProvider.autoDispose<List<DepartmentNode>>((ref) async {
-      final tree = await ref.read(departmentRepositoryProvider).tree();
-      final prod = findDepartmentByCode(tree, kDeptCodeProduction);
-      return prod?.children ?? const [];
+      ref.watch(masterDictionaryRevisionProvider);
+      return loadProductionWorkshopReferenceTree(
+        ref.watch(masterDictionaryRepositoryProvider),
+      );
     });
 
 const _kManufacturingCenterCode = 'MFG_CENTER';
@@ -33,7 +51,10 @@ class ProductionWorkforceTree {
 
 final productionWorkforceTreeProvider =
     FutureProvider.autoDispose<ProductionWorkforceTree>((ref) async {
-      final tree = await ref.read(departmentRepositoryProvider).tree();
+      ref.watch(masterDictionaryRevisionProvider);
+      final tree = await loadProductionDepartmentReferenceTree(
+        ref.watch(masterDictionaryRepositoryProvider),
+      );
       final center = findDepartmentByCode(tree, _kManufacturingCenterCode);
       final production = center == null
           ? findDepartmentByCode(tree, kDeptCodeProduction)
@@ -51,10 +72,7 @@ final productionWorkforceTreeProvider =
         name: center.name,
         level: center.level,
         parentId: center.parentId,
-        managerId: center.managerId,
-        managerName: center.managerName,
         sortOrder: center.sortOrder,
-        headcount: center.headcount,
         children: [production],
       );
       return ProductionWorkforceTree(

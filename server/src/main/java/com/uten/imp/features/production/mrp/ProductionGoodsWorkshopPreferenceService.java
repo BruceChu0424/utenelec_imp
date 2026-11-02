@@ -2,6 +2,8 @@ package com.uten.imp.features.production.mrp;
 
 import com.uten.imp.common.util.PostgresUuidOrder;
 import com.uten.imp.features.production.fulfillment.ProductionExecutionSegment;
+import com.uten.imp.features.production.execution.ProductionAssignmentValidator;
+import com.uten.imp.features.production.execution.WorkshopAssignmentDefaultView;
 import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -129,6 +131,31 @@ public class ProductionGoodsWorkshopPreferenceService {
                         (UUID) row[3],
                         (String) row[4]))
                 .toList();
+    }
+
+    /** Current manager fallback for requested production workshops, separate from learned goods defaults. */
+    @Transactional(readOnly = true)
+    public List<WorkshopAssignmentDefaultView> findWorkshopAssignmentDefaults(Set<UUID> departmentIds) {
+        if(departmentIds==null || departmentIds.isEmpty())return List.of();
+        List<Object[]> rows=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(
+                em.createNativeQuery("""
+                    SELECT workshop.id,workshop.name,employee.id,employee.full_name,
+                           employee.status,employee_department.path,workshop.path
+                    FROM departments workshop
+                    JOIN departments production ON production.id=workshop.parent_id
+                      AND production.code='DEPT_PROD' AND NOT production.is_deleted
+                    LEFT JOIN employees employee ON employee.id=workshop.manager_id AND NOT employee.is_deleted
+                    LEFT JOIN departments employee_department ON employee_department.id=employee.department_id
+                      AND NOT employee_department.is_deleted
+                    WHERE workshop.id IN (:departmentIds) AND NOT workshop.is_deleted
+                    ORDER BY workshop.id
+                    """).setParameter("departmentIds",departmentIds));
+        return rows.stream().map(row->{
+            boolean valid=row[2]!=null && ProductionAssignmentValidator.isAssignableEmployeeStatus((String)row[4])
+                    && ProductionAssignmentValidator.isEmployeeWithinScope((String)row[5],(String)row[6]);
+            return new WorkshopAssignmentDefaultView((UUID)row[0],(String)row[1],
+                    valid?(UUID)row[2]:null,valid?(String)row[3]:null);
+        }).toList();
     }
 
     /** 最近一次学习直接回写货品表两列（值没变不写，避免无谓审计行）。 */

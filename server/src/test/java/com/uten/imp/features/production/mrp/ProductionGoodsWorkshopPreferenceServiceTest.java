@@ -170,6 +170,33 @@ class ProductionGoodsWorkshopPreferenceServiceTest {
     }
 
     @Test
+    void managerDefaultsUseTheSameCurrentEmployeeAndWorkshopScopeRulesAsWrites() {
+        EntityManager em=mock(EntityManager.class);Query query=mock(Query.class);
+        when(em.createNativeQuery(anyString())).thenReturn(query);
+        when(query.setParameter(anyString(),any())).thenReturn(query);
+        UUID workshop=UUID.randomUUID(),active=UUID.randomUUID(),probation=UUID.randomUUID();
+        when(query.getResultList()).thenReturn(List.<Object[]>of(
+            new Object[]{workshop,"车间",active,"在职负责人","active","/company/prod/work/team/","/company/prod/work/"},
+            new Object[]{workshop,"车间",probation,"试用负责人","probation","/company/prod/work/","/company/prod/work/"},
+            new Object[]{workshop,"车间",UUID.randomUUID(),"离职负责人","resigned","/company/prod/work/","/company/prod/work/"},
+            new Object[]{workshop,"车间",UUID.randomUUID(),"其他车间负责人","active","/company/prod/other/","/company/prod/work/"},
+            new Object[]{workshop,"车间",UUID.randomUUID(),"已删除部门负责人","active",null,"/company/prod/work/"},
+            new Object[]{workshop,"车间",null,null,null,null,"/company/prod/work/"}));
+        var result=new ProductionGoodsWorkshopPreferenceService(em).findWorkshopAssignmentDefaults(Set.of(workshop));
+        assertThat(result).hasSize(6);
+        assertThat(result.get(0).responsibleEmployeeId()).isEqualTo(active);
+        assertThat(result.get(1).responsibleEmployeeId()).isEqualTo(probation);
+        assertThat(result.subList(2,6)).allSatisfy(value->{
+            assertThat(value.responsibleEmployeeId()).isNull();assertThat(value.responsibleEmployeeName()).isNull();
+        });
+        ArgumentCaptor<String> sql=ArgumentCaptor.forClass(String.class);verify(em).createNativeQuery(sql.capture());
+        assertThat(normalize(sql.getValue())).contains("production.code='dept_prod'", "workshop.id in (:departmentids)",
+            "not workshop.is_deleted","not production.is_deleted","not employee.is_deleted","not employee_department.is_deleted")
+            .doesNotContain("join users","production_goods_workshop_preferences");
+        verify(query).setParameter("departmentIds",Set.of(workshop));
+    }
+
+    @Test
     void learningRequiresTheOuterConfirmationTransaction() throws Exception {
         Transactional transaction =
                 ProductionGoodsWorkshopPreferenceService.class

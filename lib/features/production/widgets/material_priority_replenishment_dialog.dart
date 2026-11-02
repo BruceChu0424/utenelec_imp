@@ -20,7 +20,6 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../../shared/models/department_node.dart';
 import '../../../shared/widgets/uten_department_picker.dart';
 import '../models/material_priority_replenishment.dart';
 import '../models/production_material_analysis.dart';
@@ -120,6 +119,7 @@ class _MaterialPriorityReplenishmentDialogState
   String? _departmentId;
   String? _departmentName;
   UtenEmployeePickerItem? _worker;
+  int _workshopPickGeneration = 0;
 
   bool get _locked => _saving || _uncertain;
   BigInt? _units(String key, double legacy) =>
@@ -385,29 +385,48 @@ class _MaterialPriorityReplenishmentDialogState
 
   Future<void> _pickWorkshop() async {
     if (_locked) return;
+    final generation = ++_workshopPickGeneration;
     try {
       final tree = await ref.read(productionWorkshopTreeProvider.future);
-      if (!mounted) return;
+      if (!mounted ||
+          generation != _workshopPickGeneration ||
+          !_validateOwner()) {
+        return;
+      }
       final ids = tree.map((node) => node.id).toSet();
       final picked = await showUtenDepartmentPickerPanel(
         context,
         tree: tree,
         selectablePredicate: (node) => ids.contains(node.id),
       );
-      if (!mounted || picked == null || picked.isEmpty) return;
-      final selected = picked.first;
-      DepartmentNode? node;
-      for (final item in tree) {
-        if (item.id == selected.id) node = item;
+      if (!mounted ||
+          picked == null ||
+          picked.isEmpty ||
+          generation != _workshopPickGeneration ||
+          !_validateOwner()) {
+        return;
       }
+      final selected = picked.first;
+      final defaults = await ref
+          .read(productionPlanRepositoryProvider)
+          .workshopAssignmentDefaults({
+            selected.id,
+          }, purpose: EmployeeReferencePurpose.productionMaterialOwner);
+      if (!mounted ||
+          _locked ||
+          generation != _workshopPickGeneration ||
+          !_validateOwner()) {
+        return;
+      }
+      final manager = defaults[selected.id];
       setState(() {
         _departmentId = selected.id;
         _departmentName = selected.name;
-        _worker = node?.managerId == null
+        _worker = manager?.id == null
             ? null
             : UtenEmployeePickerItem(
-                id: node!.managerId!,
-                name: node.managerName ?? '车间负责人',
+                id: manager!.id!,
+                name: manager.name ?? '车间负责人',
               );
       });
     } catch (error) {

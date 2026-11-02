@@ -2,6 +2,7 @@ package com.uten.imp.features.org.employee;
 
 import com.uten.imp.common.identity.CurrentEmployeeStatusPolicy;
 import com.uten.imp.application.port.CurrentStaffAuthorityPort;
+import com.uten.imp.application.port.BusinessEmployeeReferenceAuthorizationPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.PermissionResolver;
@@ -16,11 +17,12 @@ import java.util.Set;
 /** The operator must have the actual owning command authority; a read grant is insufficient. */
 @Component
 @RequiredArgsConstructor
-public class BusinessEmployeeReferenceAccess implements CurrentStaffAuthorityPort {
+public class BusinessEmployeeReferenceAccess implements CurrentStaffAuthorityPort, BusinessEmployeeReferenceAuthorizationPort {
     private final SecurityContextCurrentUser currentUser;
     private final JdbcTemplate jdbc;
     private final PermissionResolver permissions;
 
+    @Override
     public void require(String rawPurpose) {
         var purpose=BusinessEmployeeReferencePurpose.parse(rawPurpose);
         if(!purpose.mayListCandidates(currentStaffPermissions())) throw denied();

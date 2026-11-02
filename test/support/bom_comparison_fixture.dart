@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
@@ -114,6 +115,13 @@ class ComparisonFixtureApi extends GoodsBomEditTestApi {
   final requests = <Map<String, dynamic>>[];
   final snapshots = <String>[];
   bool loseCommitReply = false;
+  bool enforceSnapshots = false;
+  String _fingerprint(String id) => jsonEncode(
+    (repository as ComparisonFixtureBom).rows[id]
+            ?.map(bomItemTestJson)
+            .toList() ??
+        [],
+  );
   Map<String, dynamic>? _saved;
 
   @override
@@ -144,6 +152,7 @@ class ComparisonFixtureApi extends GoodsBomEditTestApi {
 
       return {
         ...response,
+        if (enforceSnapshots) 'fingerprint': _fingerprint(id),
         'goods': master(id),
         'componentGoods': [
           for (final item in await bom.list(id)) master(item.componentGoodsId),
@@ -161,6 +170,15 @@ class ComparisonFixtureApi extends GoodsBomEditTestApi {
     Map<String, dynamic>? query,
   }) async {
     requests.add(Map<String, dynamic>.from(body! as Map));
+    if (enforceSnapshots) {
+      for (final raw in (body as Map)['snapshots'] as List) {
+        final snapshot = raw as Map;
+        if (snapshot['fingerprint'] !=
+            _fingerprint(snapshot['goodsId'] as String)) {
+          throw ApiException('BOM_EDIT_CONFLICT', '快照已变化');
+        }
+      }
+    }
     if (path.endsWith('/commit') && _saved != null) {
       commitCalls++;
       return _saved!;

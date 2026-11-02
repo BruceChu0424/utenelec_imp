@@ -202,5 +202,93 @@
     "pdfSha256": "5a95d7d88f250d33c3f934684ee68dc874d8b46f2ee989d14cf2a61be78a15da",
     "deployed": false,
     "productionWritten": false
+  },
+  "stagedReplacementAndSideActionsFollowup": {
+    "date": "2026-11-01",
+    "presentation": "Target-side two-button groups follow the same splitter ratio, header and horizontal viewport; shared top AppNotificationHost replaces inline blue feedback.",
+    "draftWorkflow": "Linked selection; valid edits may be copied without first saving; replacement forks existing target edits and stages only after modal confirmation; final side save previews and confirms separately.",
+    "closeWorkflow": "Save/discard/continue for dirty exit; save loops dirty roots and exits only on success; discard confirmation; modal red-circle close preserves drafts; owned dialogs dismissed at boundary/dispose.",
+    "contracts": [
+      "independent root transactions",
+      "exact decimal text",
+      "permission and authenticated identity scope",
+      "unselected/other-root draft retention",
+      "persisted copy origin resolution excludes new client IDs and changed component identities",
+      "refresh borrowed read-only source evidence only; never rebase target or master versions",
+      "same reviewed request for unknown commit recovery"
+    ],
+    "publicReuse": [
+      "GoodsBomEditDraft snapshot/preview/commit and fork/copy provenance",
+      "bomComponentCopyBody design field contract",
+      "MasterDataTableView and shared assembly editors",
+      "UtenAlertDialog/UtenCloseButton",
+      "AppNotificationHost appInfo/appSuccess"
+    ],
+    "tests": {
+      "passed": 163,
+      "skipped": 1,
+      "failed": 0,
+      "log": ".test-staged-acceptance.log",
+      "scope": "comparison model/drafts, ordinary add/edit callers, actual workspace, common windows/navigation/splits/notifications",
+      "skipReason": "existing screenshot capture gated by UTEN_CAPTURE_UI in uten_split_view_test.dart"
+    },
+    "earlierBroadRun": {
+      "passed": 1737,
+      "failed": 5,
+      "log": ".test-staged-full.log",
+      "explanation": "One shared fake transport failed because the new client-ID map did an unnecessary canonical read. Fixed by mapping only IDs referenced by later commands. Four supplied test paths did not exist; final acceptance uses discovered owning test paths. All checks kept running. The affected add/edit cases and public callers passed in final acceptance; broad run is not reported as green."
+    },
+    "analysis": {
+      "issues": 0,
+      "log": ".analyze-staged-acceptance.log"
+    },
+    "windowControlAudit": {
+      "sourceFiles": 1754,
+      "unclassified": 0,
+      "staleExceptions": 0,
+      "parseErrors": 0,
+      "log": ".audit-staged-close.log"
+    },
+    "capture": {
+      "passed": 1,
+      "log": ".test-staged-pdf-capture2.log",
+      "data": "isolated fixture; no company backend connection"
+    },
+    "pdf": {
+      "output": "D:\\Projects\\uten_imp\\output\\pdf\\多窗口与BOM对比操作指南_补充修订版.pdf",
+      "pageCount": 12,
+      "bytes": 4151977,
+      "allPagesIllustrated": true,
+      "visualReview": "All 12 rendered pages inspected; pages 6 and 11 corrected and individually reinspected. No clipping or overlapping text.",
+      "pdfSha256": "2e044294cdab47e806fddde8b1e820a38563a8ac184829e2cf7b6dc9b8e1bdd8"
+    },
+    "sourceSha256": {
+      "lib/features/basic_data/models/goods_bom_comparison.dart": "e06d366d3e8f52d667cbc2b5ebcfe2767d292418fcf64b1ed49602cb698cefce",
+      "lib/features/basic_data/repositories/goods_bom_edit_repository.dart": "e30ef22d4e2f091465a61f2e0fce46fdfefe374cba2070578e3e888a0c4db990",
+      "lib/features/basic_data/widgets/goods_bom_comparison_editor.dart": "de35c743c209ec61ac8b2c494bbd8649344644868781fd9c5683e3d18cbe375e",
+      "lib/features/basic_data/widgets/goods_bom_comparison_table.dart": "cb54db048e96f5ed0c40db60b012c97637de9530f0b437358a8e4177b9eacb46",
+      "lib/features/basic_data/widgets/goods_bom_comparison_workspace.dart": "4349b1595151c1de1268ae7194ebf0ee23d1c7dc63f672b0d03234b1242b7281",
+      "test/features/basic_data/goods_bom_comparison_test.dart": "55ec91fbb8f1ef0fef72981876ba2163d238875405731a35db07643abf7444ec",
+      "test/features/basic_data/goods_bom_edit_repository_test.dart": "4c1b08ac348174001586d6875cda2330cc17a308e7d90da337ea3d8700bef0c5",
+      "test/features/basic_data/widgets/goods_bom_comparison_workspace_test.dart": "4b1b0939ec7aa15444d370890ea1323d53e7f835735b8e27374dc0f917bedb06",
+      "test/support/bom_comparison_fixture.dart": "f8d80febbf6bcfe53cffb00f9a462808d5d3955021383b5e2732e29cd4364560",
+      "test/support/goods_bom_edit_test_api.dart": "6a5711aae865405fc987985e064eca525f25e36d68f2e67c57984bf185c4f3e1"
+    },
+    "platforms": {
+      "web": "shared Flutter source",
+      "flutterDesktop": "shared Flutter source",
+      "wpfLegacy": "full goods detail/BOM comparison unported; W7-BIZ-025/034 remain in_progress"
+    },
+    "notRun": [
+      "company server writes",
+      "multi-user or native installed UAT",
+      "Win7 target acceptance",
+      "complete CI or global source inventory validation"
+    ],
+    "merged": false,
+    "pushed": false,
+    "deployed": false,
+    "packaged": false,
+    "productionWritten": false
   }
 }

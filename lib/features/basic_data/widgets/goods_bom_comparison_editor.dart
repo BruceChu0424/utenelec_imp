@@ -392,6 +392,45 @@ class GoodsBomComparisonEditor extends ChangeNotifier {
     }
   }
 
+  Future<void> acceptReplacement(
+    String root,
+    GoodsBomEditDraft draft, {
+    required String sourceRoot,
+    required Set<String> components,
+  }) async {
+    await flush(root: root);
+    if (!current || draft.rootGoodsId != root) {
+      throw ApiException('BOM_EDIT_CHANGED', '对比对象已变化');
+    }
+    final source =
+        await drafts[sourceRoot]?.list(sourceRoot) ?? const <GoodsBomItem>[];
+    final targets = await draft.list(root);
+    for (final key
+        in _inputs.keys.where((key) => key.startsWith('$root|')).toList()) {
+      _inputs.remove(key)!.dispose();
+    }
+    drafts.remove(root)?.close();
+    drafts[root] = draft;
+    generation++;
+    for (final item in targets.where(
+      (item) => components.contains(item.componentGoodsId),
+    )) {
+      final origin = source
+          .where(
+            (candidate) => candidate.componentGoodsId == item.componentGoodsId,
+          )
+          .firstOrNull;
+      _colors.remove('$root|${item.id}');
+      if (origin != null && _colors.containsKey('$sourceRoot|${origin.id}')) {
+        _colors['$root|${item.id}'] = _colors['$sourceRoot|${origin.id}'];
+      }
+    }
+    if (current) {
+      await onChanged();
+      notifyListeners();
+    }
+  }
+
   @override
   void dispose() {
     _closed = true;

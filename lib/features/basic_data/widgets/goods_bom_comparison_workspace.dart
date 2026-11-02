@@ -15,6 +15,7 @@ import '../../../core/network/api_error.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/web_update/web_update_safety.dart';
+import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/drafts/form_draft_navigation.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
@@ -53,7 +54,7 @@ class _GoodsBomComparisonWorkspaceState
     extends ConsumerState<GoodsBomComparisonWorkspace> {
   GoodsBomComparison? _comparison;
   GoodsDetail? _left, _right;
-  String? _error, _message;
+  String? _error;
   int _epoch = 0;
   bool _loading = true, _busy = false, _onlyDifferences = false;
   Set<String> _selected = {};
@@ -61,10 +62,11 @@ class _GoodsBomComparisonWorkspaceState
   BomComparisonReplacement? _replacement;
   BomEditPreview? _preview;
   GoodsBomComparisonEditor? _editor;
-  bool _inlineReview = false;
   bool _toLeft = true;
   GoRouter? _hostRouter;
   ModalRoute<dynamic>? _leaveRoute;
+  ModalRoute<dynamic>? _reviewRoute;
+  bool _reviewDialogOpen = false;
   ProviderSubscription<SensitiveReadBoundary>? _boundarySubscription;
 
   String? _goodsId(BusinessWindow window) {
@@ -122,6 +124,7 @@ class _GoodsBomComparisonWorkspaceState
   }
 
   Future<bool> _canLeave() async {
+    if (_reviewDialogOpen) return false;
     if (!_busy && _replacement?.draft.isCommitRecoveryPending != true) {
       final editor = _editor;
       if (editor?.hasChanges != true) return true;
@@ -170,8 +173,11 @@ class _GoodsBomComparisonWorkspaceState
         }
       }
       if (choice == 'save') {
-        final root = editor!.details.keys.firstWhere(editor.changed);
-        await _reviewEdits(root);
+        for (final root in editor!.details.keys) {
+          if (editor.changed(root) && !await _reviewEdits(root)) return false;
+          if (!mounted || !identical(editor, _editor)) return false;
+        }
+        return !editor.hasChanges;
       }
       return false;
     }
@@ -211,11 +217,13 @@ class _GoodsBomComparisonWorkspaceState
   }
 
   void _dismissLeaveDialog() {
-    final route = _leaveRoute;
+    final routes = [_leaveRoute, _reviewRoute];
     _leaveRoute = null;
-    if (route == null) return;
+    _reviewRoute = null;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (route.isActive) route.navigator?.removeRoute(route);
+      for (final route in routes) {
+        if (route?.isActive == true) route!.navigator?.removeRoute(route);
+      }
     });
   }
 
@@ -234,7 +242,7 @@ class _GoodsBomComparisonWorkspaceState
     _editor = null;
     setState(() {
       _replacement = null;
-      _inlineReview = false;
+      _reviewDialogOpen = false;
       _preview = null;
       _comparison = null;
       _left = null;
@@ -243,7 +251,6 @@ class _GoodsBomComparisonWorkspaceState
       _loading = true;
       _busy = false;
       _error = null;
-      _message = null;
     });
     try {
       if (!boundary.superAdmin &&
@@ -324,6 +331,9 @@ class _GoodsBomComparisonWorkspaceState
         _loading = false;
       });
       editor.addListener(_editorStateChanged);
+      if (leftId == rightId && current() && mounted) {
+        context.appInfo('两侧是同一货品。更换任一侧货品后即可比较；同一货品无需替换。');
+      }
     } catch (error) {
       if (current()) {
         setState(() {
@@ -386,9 +396,9 @@ class _GoodsBomComparisonWorkspaceState
     }
   }
 
-  Future<void> _reviewEdits(String root) async {
+  Future<bool> _reviewEdits(String root) async {
     final editor = _editor;
-    if (_locked || editor == null || !editor.changed(root)) return;
+    if (_locked || editor == null || !editor.changed(root)) return false;
     setState(() {
       _busy = true;
       _error = null;
@@ -400,8 +410,9 @@ class _GoodsBomComparisonWorkspaceState
           !identical(editor, _editor) ||
           draft == null ||
           !draft.hasChanges) {
-        return;
+        return false;
       }
+      await draft.refreshCopySources();
       BomEditPreview preview;
       while (true) {
         try {
@@ -415,7 +426,7 @@ class _GoodsBomComparisonWorkspaceState
             confirmations,
             isCurrent: () => mounted && identical(editor, _editor),
           );
-          if (fields == null || !mounted) return;
+          if (fields == null || !mounted) return false;
           draft.confirmPeriodicFields(fields);
         }
       }
@@ -429,19 +440,45 @@ class _GoodsBomComparisonWorkspaceState
             moved: 0,
           );
           _preview = preview;
-          _inlineReview = true;
           _toLeft = root == _comparison?.leftId;
         });
+        final confirmed = await _confirmAction(
+          title: '确认保存${_toLeft ? '左侧' : '右侧'}修改',
+          content: _reviewBody(_replacement!, preview),
+          confirm: '确认保存${_toLeft ? '左侧' : '右侧'}修改',
+          confirmKey: const Key('bom-compare-confirm'),
+          cancel: '返回继续编辑',
+        );
+        if (!mounted || !identical(editor, _editor)) return false;
+        if (!confirmed) {
+          setState(() {
+            _replacement = null;
+            _preview = null;
+          });
+          return false;
+        }
+        setState(() => _busy = false);
+        return await _commit();
       }
     } catch (error) {
       if (mounted) setState(() => _error = _errorText(error));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+    return false;
   }
 
   Future<void> _discardEdits(String root) async {
     if (_locked || _editor == null) return;
+    if (!await _confirmAction(
+          title: '放弃${root == _comparison?.leftId ? '左侧' : '右侧'}修改？',
+          content: const Text('该侧未保存的编辑和替换将全部放弃，恢复为已保存的组件。'),
+          confirm: '确认放弃',
+          confirmKey: const Key('bom-compare-discard-confirm'),
+        ) ||
+        !mounted) {
+      return;
+    }
     setState(() => _busy = true);
     try {
       await _editor!.reset(root);
@@ -465,7 +502,6 @@ class _GoodsBomComparisonWorkspaceState
     if (comparison == null ||
         _busy ||
         _replacement != null ||
-        _editor?.hasChanges == true ||
         comparison.leftId == comparison.rightId ||
         (toLeft ? _left : _right)?.writable != true) {
       return false;
@@ -492,7 +528,7 @@ class _GoodsBomComparisonWorkspaceState
 
   Future<void> _prepare(bool toLeft, bool all) async {
     if (!_canReplace(toLeft, all)) return;
-    final comparison = _comparison!;
+    final editor = _editor!;
     final epoch = _epoch, boundary = ref.read(sensitiveReadBoundaryProvider);
     bool current() =>
         mounted &&
@@ -501,20 +537,33 @@ class _GoodsBomComparisonWorkspaceState
     setState(() {
       _busy = true;
       _error = null;
-      _message = null;
     });
     BomComparisonReplacement? replacement;
+    bool accepted = false;
     try {
+      await editor.flush();
+      await _refreshComparison();
+      if (!current()) return;
+      final comparison = _comparison!;
+      final targetId = toLeft ? comparison.leftId : comparison.rightId;
+      final sourceId = toLeft ? comparison.rightId : comparison.leftId;
+      final selected = all ? null : Set.of(_selected);
       replacement = await comparison.prepare(
         toLeft: toLeft,
-        selected: all ? null : Set.of(_selected),
+        selected: selected,
         repository: ref.read(goodsBomRepositoryProvider),
         api: ref.read(apiClientProvider),
         isCurrent: current,
+        targetDraft: editor.draftFor(targetId),
+        sourceDraft: editor.draftFor(sourceId),
       );
       if (!current()) return;
-      if (!replacement.draft.hasChanges) {
-        setState(() => _message = '两侧组件一致，无需替换');
+      if (replacement.added +
+              replacement.removed +
+              replacement.updated +
+              replacement.moved ==
+          0) {
+        if (mounted) context.appInfo('两侧组件一致，无需替换');
         return;
       }
       BomEditPreview preview;
@@ -535,23 +584,40 @@ class _GoodsBomComparisonWorkspaceState
         }
       }
       if (!current()) return;
-      setState(() {
-        _replacement = replacement;
-        _preview = preview;
-        _toLeft = toLeft;
-        _inlineReview = false;
-      });
+      _toLeft = toLeft;
+      final confirmed = await _confirmAction(
+        title: '确认${all ? '全部' : '所选'}组件替换',
+        content: _reviewBody(replacement, preview, replacing: true),
+        confirm: '确认替换${toLeft ? '左侧' : '右侧'}草稿',
+        confirmKey: const Key('bom-compare-stage-confirm'),
+        cancel: '取消替换',
+      );
+      if (!confirmed || !current()) return;
+      await editor.acceptReplacement(
+        targetId,
+        replacement.draft,
+        sourceRoot: sourceId,
+        components: selected ?? comparison.rows.map((row) => row.key).toSet(),
+      );
+      accepted = true;
+      if (current() && mounted) context.appSuccess('组件替换已暂存，点击保存后生效');
     } catch (error) {
       if (current()) setState(() => _error = _errorText(error));
     } finally {
-      if (!identical(replacement, _replacement)) replacement?.draft.close();
+      if (!accepted &&
+          !identical(
+            editor.draftFor(replacement?.draft.rootGoodsId ?? ''),
+            replacement?.draft,
+          )) {
+        replacement?.draft.close();
+      }
       if (current()) setState(() => _busy = false);
     }
   }
 
-  Future<void> _commit() async {
+  Future<bool> _commit() async {
     final replacement = _replacement, preview = _preview;
-    if (_busy || replacement == null || preview == null) return;
+    if (_busy || replacement == null || preview == null) return false;
     final epoch = _epoch;
     setState(() {
       _busy = true;
@@ -562,23 +628,14 @@ class _GoodsBomComparisonWorkspaceState
         preview.previewToken,
         confirmSharedChanges: true,
       );
-      if (!mounted || epoch != _epoch) return;
+      if (!mounted || epoch != _epoch) return false;
       ref.read(goodsBomChangesProvider.notifier).saved();
-      final inline = _inlineReview;
       final root = _toLeft ? _comparison!.leftId : _comparison!.rightId;
       _replacement = null;
       _preview = null;
-      _inlineReview = false;
-      if (inline) {
-        await _editor!.reset(root, committed: true);
-      } else {
-        await _load();
-      }
-      if (mounted) {
-        setState(
-          () => _message = inline ? '修改已保存，已重新核对左右 BOM' : '组件已替换，已重新分析左右 BOM',
-        );
-      }
+      await _editor!.reset(root, committed: true);
+      if (mounted) context.appSuccess('修改已保存，已重新核对左右 BOM');
+      return true;
     } catch (error) {
       if (mounted && epoch == _epoch) {
         setState(
@@ -590,9 +647,19 @@ class _GoodsBomComparisonWorkspaceState
     } finally {
       if (mounted && epoch == _epoch) setState(() => _busy = false);
     }
+    return false;
   }
 
-  bool get _locked => _busy || _replacement != null;
+  Future<void> _resumeReview() async {
+    final root = _toLeft ? _comparison!.leftId : _comparison!.rightId;
+    setState(() {
+      _replacement = null;
+      _preview = null;
+    });
+    await _reviewEdits(root);
+  }
+
+  bool get _locked => _busy || _reviewDialogOpen || _replacement != null;
 
   Future<void> _choose(bool left) async {
     if (_locked) return;
@@ -762,45 +829,187 @@ class _GoodsBomComparisonWorkspaceState
     );
   }
 
+  Widget? _sideActions(bool toLeft) {
+    if (_replacement != null) return null;
+    final root = toLeft ? _comparison?.leftId : _comparison?.rightId;
+    final side = toLeft ? 'left' : 'right';
+    final owned =
+        root != null &&
+        _editor?.changed(root) == true &&
+        (toLeft || root != _comparison?.leftId);
+    return Semantics(
+      container: true,
+      label: toLeft ? '左侧 BOM 操作' : '右侧 BOM 操作',
+      child: DecoratedBox(
+        key: ValueKey('bom-compare-actions-$side'),
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(UtenSpacing.s12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (owned) ...[
+                Wrap(
+                  spacing: UtenSpacing.s8,
+                  runSpacing: UtenSpacing.s8,
+                  children: [
+                    FilledButton(
+                      key: ValueKey('bom-compare-save-$root'),
+                      onPressed: _locked ? null : () => _reviewEdits(root),
+                      child: Text(toLeft ? '保存左侧修改' : '保存右侧修改'),
+                    ),
+                    TextButton(
+                      onPressed: _locked ? null : () => _discardEdits(root),
+                      child: Text(toLeft ? '放弃左侧修改' : '放弃右侧修改'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: UtenSpacing.s8),
+              ],
+              Wrap(
+                spacing: UtenSpacing.s8,
+                runSpacing: UtenSpacing.s8,
+                children: [
+                  FilledButton.tonal(
+                    key: Key('bom-compare-selected-$side'),
+                    onPressed: _canReplace(toLeft, false)
+                        ? () => _prepare(toLeft, false)
+                        : null,
+                    child: Text(toLeft ? '← 用右侧替换所选' : '用左侧替换所选 →'),
+                  ),
+                  OutlinedButton(
+                    key: Key('bom-compare-all-$side'),
+                    onPressed: _canReplace(toLeft, true)
+                        ? () => _prepare(toLeft, true)
+                        : null,
+                    child: Text(toLeft ? '← 用右侧全部组件替换左侧' : '用左侧全部组件替换右侧 →'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _confirmAction({
+    required String title,
+    required Widget content,
+    required String confirm,
+    required Key confirmKey,
+    String cancel = '继续编辑',
+  }) async {
+    final wasBusy = _busy;
+    final epoch = _epoch;
+    setState(() {
+      _reviewDialogOpen = true;
+      _busy = false;
+    });
+    try {
+      return await showDialog<bool>(
+            context: context,
+            builder: (ctx) {
+              _reviewRoute = ModalRoute.of(ctx);
+              void finish(bool value) {
+                if (ModalRoute.of(ctx)?.isCurrent == true) {
+                  Navigator.pop(ctx, value);
+                }
+              }
+
+              return UtenAlertDialog(
+                showCloseButton: true,
+                closeTooltip: '关闭确认并继续编辑',
+                onClose: () => finish(false),
+                title: Text(title),
+                content: content,
+                actions: [
+                  OutlinedButton(
+                    onPressed: () => finish(false),
+                    child: Text(cancel),
+                  ),
+                  FilledButton(
+                    key: confirmKey,
+                    onPressed: () => finish(true),
+                    child: Text(confirm),
+                  ),
+                ],
+              );
+            },
+          ) ==
+          true;
+    } finally {
+      _reviewRoute = null;
+      if (mounted && epoch == _epoch) {
+        setState(() {
+          _reviewDialogOpen = false;
+          _busy = wasBusy;
+        });
+      }
+    }
+  }
+
+  Widget _reviewBody(
+    BomComparisonReplacement replacement,
+    BomEditPreview preview, {
+    bool replacing = false,
+  }) {
+    final target = _toLeft ? _left : _right, source = _toLeft ? _right : _left;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          replacing
+              ? '用${_toLeft ? '右侧' : '左侧'}「${source?.code}」替换${_toLeft ? '左侧' : '右侧'}「${target?.code}」'
+              : '保存${_toLeft ? '左侧' : '右侧'}「${target?.code}」的全部暂存修改',
+        ),
+        const SizedBox(height: UtenSpacing.s12),
+        Text(
+          replacing
+              ? '新增 ${replacement.added} 项，修改 ${replacement.updated} 项，删除 ${replacement.removed} 项，调整顺序 ${replacement.moved} 项。'
+              : '暂存 ${preview.operationCount} 项操作，涉及 ${preview.affectedParents.length} 个父件。',
+        ),
+        if (replacing) const Text('确认后仅更新草稿，最后点击保存并确认后才会生效。'),
+        if (replacing &&
+            (_toLeft ? _comparison?.right : _comparison?.left)?.isEmpty == true)
+          Text(
+            '来源没有组件，将清空目标组件。',
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        if (replacing && _left?.unitName != _right?.unitName)
+          Text(
+            '左右基本单位不同：${_left?.unitName ?? '未设置'} / ${_right?.unitName ?? '未设置'}。按原设计数量复制，不自动换算。',
+          ),
+        if (preview.otherUsageCount > 0)
+          Text(
+            '目标 BOM 还被 ${preview.otherUsageCount} 处引用，保存将同步影响这些引用。',
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        if (preview.warnings.isNotEmpty) Text(preview.warnings.join('\n')),
+      ],
+    );
+  }
+
   Widget _actions() {
+    if (_reviewDialogOpen) return const SizedBox.shrink();
     final replacement = _replacement, preview = _preview;
     if (replacement != null && preview != null) {
-      final target = _toLeft ? _left : _right,
-          source = _toLeft ? _right : _left;
       return Padding(
         padding: const EdgeInsets.all(UtenSpacing.s12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              _inlineReview
-                  ? '保存${_toLeft ? '左侧' : '右侧'}「${target?.code}」的编辑'
-                  : '用${_toLeft ? '右侧' : '左侧'}「${source?.code}」替换${_toLeft ? '左侧' : '右侧'}「${target?.code}」',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            Text(
-              _inlineReview
-                  ? '暂存 ${preview.operationCount} 项操作，涉及 ${preview.affectedParents.length} 个父件。'
-                  : '新增 ${replacement.added} 项，修改 ${replacement.updated} 项，删除 ${replacement.removed} 项，调整顺序 ${replacement.moved} 项。',
-            ),
-            if (!_inlineReview &&
-                (_toLeft ? _comparison?.right : _comparison?.left)?.isEmpty ==
-                    true)
-              Text(
-                '来源没有组件，确认后将清空目标的全部组件。',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            if (!_inlineReview && _left?.unitName != _right?.unitName)
-              Text(
-                '左右货品基本单位不同：${_left?.unitName ?? '未设置'} / ${_right?.unitName ?? '未设置'}。本次按原设计数量复制，不自动换算。',
-              ),
-            if (preview.otherUsageCount > 0)
-              Text(
-                '目标 BOM 还被 ${preview.otherUsageCount} 处引用，将同步受影响。',
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            if (preview.warnings.isNotEmpty) Text(preview.warnings.join('\n')),
+            _reviewBody(replacement, preview),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -808,26 +1017,24 @@ class _GoodsBomComparisonWorkspaceState
                 OutlinedButton(
                   onPressed: _busy || replacement.draft.isCommitRecoveryPending
                       ? null
-                      : () {
-                          if (!_inlineReview) replacement.draft.close();
-                          setState(() {
-                            _replacement = null;
-                            _preview = null;
-                            _error = null;
-                            _inlineReview = false;
-                          });
-                        },
-                  child: Text(_inlineReview ? '返回继续编辑' : '取消替换'),
+                      : () => setState(() {
+                          _replacement = null;
+                          _preview = null;
+                          _error = null;
+                        }),
+                  child: const Text('返回继续编辑'),
                 ),
                 FilledButton(
                   key: const Key('bom-compare-confirm'),
-                  onPressed: _busy ? null : _commit,
+                  onPressed: _busy
+                      ? null
+                      : () => replacement.draft.isCommitRecoveryPending
+                            ? _commit()
+                            : _resumeReview(),
                   child: Text(
                     replacement.draft.isCommitRecoveryPending
                         ? '核对上次保存结果'
-                        : _inlineReview
-                        ? '确认保存${_toLeft ? '左侧' : '右侧'}修改'
-                        : '确认替换${_toLeft ? '左侧' : '右侧'}组件',
+                        : '重新核对并保存',
                   ),
                 ),
               ],
@@ -843,24 +1050,7 @@ class _GoodsBomComparisonWorkspaceState
         runSpacing: 8,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          if (_editor != null)
-            for (final root in _editor!.details.keys)
-              if (_editor!.changed(root)) ...[
-                FilledButton(
-                  key: ValueKey('bom-compare-save-$root'),
-                  onPressed: _locked ? null : () => _reviewEdits(root),
-                  child: Text(
-                    '保存${root == _comparison?.leftId ? '左侧' : '右侧'}修改',
-                  ),
-                ),
-                TextButton(
-                  onPressed: _locked ? null : () => _discardEdits(root),
-                  child: Text(
-                    '放弃${root == _comparison?.leftId ? '左侧' : '右侧'}修改',
-                  ),
-                ),
-              ],
-          if (_editor?.hasChanges == true) const Text('有未保存编辑，请先保存或放弃后再替换组件'),
+          if (_editor?.hasChanges == true) const Text('有未保存修改 · 编辑和替换均在保存后生效'),
           if (_editor?.hasMasterChanges == true)
             const Text('规格、型号等属于共用货品属性，保存会同步相同组件'),
           if (_editor?.hasStaleRoots == true)
@@ -881,34 +1071,6 @@ class _GoodsBomComparisonWorkspaceState
                     }
                   }),
             child: Text(_selected.isEmpty ? '全选差异' : '全选 / 清空'),
-          ),
-          FilledButton.tonal(
-            key: const Key('bom-compare-selected-left'),
-            onPressed: _canReplace(true, false)
-                ? () => _prepare(true, false)
-                : null,
-            child: const Text('← 用右侧替换所选'),
-          ),
-          FilledButton.tonal(
-            key: const Key('bom-compare-selected-right'),
-            onPressed: _canReplace(false, false)
-                ? () => _prepare(false, false)
-                : null,
-            child: const Text('用左侧替换所选 →'),
-          ),
-          OutlinedButton(
-            key: const Key('bom-compare-all-left'),
-            onPressed: _canReplace(true, true)
-                ? () => _prepare(true, true)
-                : null,
-            child: const Text('← 用右侧全部组件替换左侧'),
-          ),
-          OutlinedButton(
-            key: const Key('bom-compare-all-right'),
-            onPressed: _canReplace(false, true)
-                ? () => _prepare(false, true)
-                : null,
-            child: const Text('用左侧全部组件替换右侧 →'),
           ),
         ],
       ),
@@ -942,19 +1104,6 @@ class _GoodsBomComparisonWorkspaceState
                   ),
                 ),
               ),
-            if (_message != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: UtenInlineNotice(message: _message!),
-              ),
-            if (_comparison?.leftId == _comparison?.rightId &&
-                _comparison != null)
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12),
-                child: UtenInlineNotice(
-                  message: '两侧是同一货品。更换任一侧货品后即可比较；同一货品无需替换。',
-                ),
-              ),
             Expanded(
               child: GoodsBomComparisonTables(
                 editor: _editor,
@@ -964,6 +1113,8 @@ class _GoodsBomComparisonWorkspaceState
                 comparison: _comparison,
                 leftHeader: _product(true),
                 rightHeader: _product(false),
+                leftActions: _sideActions(true),
+                rightActions: _sideActions(false),
                 selected: _selected,
                 onSelected: (next) => setState(() {
                   _selected = Set.of(next);

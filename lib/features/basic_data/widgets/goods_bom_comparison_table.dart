@@ -56,11 +56,14 @@ class GoodsBomComparisonTables extends ConsumerStatefulWidget {
     required this.onlyDifferences,
     required this.loading,
     required this.initialRatio,
+    this.leftActions,
+    this.rightActions,
     this.editor,
     this.onEditError,
   });
   final GoodsBomComparison? comparison;
   final Widget leftHeader, rightHeader;
+  final Widget? leftActions, rightActions;
   final Set<String> selected;
   final ValueChanged<Set<String>> onSelected;
   final bool enabled, onlyDifferences, loading;
@@ -994,38 +997,77 @@ class _GoodsBomComparisonTablesState
             child: SizedBox(
               width: width,
               height: area.maxHeight,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              child: Column(
                 children: [
-                  SizedBox(
-                    width: leftWidth,
-                    child: Column(
-                      children: [
-                        widget.leftHeader,
-                        Expanded(child: _table(true, rows)),
-                      ],
+                  ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: area.maxHeight * .3),
+                    child: SingleChildScrollView(
+                      child: IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            SizedBox(
+                              width: leftWidth,
+                              child: widget.leftHeader,
+                            ),
+                            const SizedBox(width: UtenSpacing.s24),
+                            Expanded(child: widget.rightHeader),
+                          ],
+                        ),
+                      ),
                     ),
-                  ),
-                  UtenSplitHandle(
-                    key: _handleKey,
-                    width: UtenSpacing.s24,
-                    tooltip: '拖动调整对比比例 · 点击展开对比操作',
-                    onDelta: (delta) => setState(
-                      () => _ratio =
-                          ((leftWidth + delta).clamp(360.0, usable - 360)) /
-                          usable,
-                    ),
-                    onReset: () => setState(() => _ratio = .5),
-                    onTap: _menu,
                   ),
                   Expanded(
-                    child: Column(
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        widget.rightHeader,
+                        SizedBox(width: leftWidth, child: _table(true, rows)),
+                        UtenSplitHandle(
+                          key: _handleKey,
+                          width: UtenSpacing.s24,
+                          tooltip: '拖动调整对比比例 · 点击展开对比操作',
+                          onDelta: (delta) => setState(
+                            () => _ratio =
+                                ((leftWidth + delta).clamp(
+                                  360.0,
+                                  usable - 360,
+                                )) /
+                                usable,
+                          ),
+                          onReset: () => setState(() => _ratio = .5),
+                          onTap: _menu,
+                        ),
                         Expanded(child: _table(false, rows)),
                       ],
                     ),
                   ),
+                  if (widget.leftActions != null || widget.rightActions != null)
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: area.maxHeight * .35,
+                      ),
+                      child: SingleChildScrollView(
+                        child: IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              SizedBox(
+                                width: leftWidth,
+                                child:
+                                    widget.leftActions ??
+                                    const SizedBox.shrink(),
+                              ),
+                              const SizedBox(width: UtenSpacing.s24),
+                              Expanded(
+                                child:
+                                    widget.rightActions ??
+                                    const SizedBox.shrink(),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),

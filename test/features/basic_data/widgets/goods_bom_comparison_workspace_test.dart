@@ -13,6 +13,9 @@ import 'package:uten_imp/features/basic_data/widgets/bom_component_picker.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/uten_colors.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
+import 'package:uten_imp/components/feedback/uten_inline_notice.dart';
+import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:uten_imp/components/data_display/uten_table_surface.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
 import 'package:uten_imp/features/basic_data/models/goods_detail_sequence.dart';
@@ -176,6 +179,15 @@ _mount(
     UncontrolledProviderScope(
       container: container,
       child: MaterialApp(
+        builder: (context, child) => Stack(
+          children: [
+            ?child,
+            const Align(
+              alignment: Alignment.topCenter,
+              child: AppNotificationHost(),
+            ),
+          ],
+        ),
         theme: _capture ? auditScreenshotTheme(theme) : theme,
         locale: const Locale('zh'),
         supportedLocales: AppLocalizations.supportedLocales,
@@ -235,6 +247,258 @@ Future<Finder> editText(
 }
 
 void main() {
+  testWidgets(
+    'edited values can be copied, cancelled, staged, then saved in either order',
+    (tester) async {
+      final env = await _mount(tester);
+      env.api.enforceSnapshots = true;
+      await _open(tester);
+      await editText(tester, 'left', 'qty', 'box', '0.3');
+      await editText(tester, 'right', 'qty', 'changed', '7.12345');
+      FocusManager.instance.primaryFocus?.unfocus();
+      for (final scroll in tester.widgetList<Scrollable>(
+        find.descendant(
+          of: find.byType(GoodsBomComparisonWorkspace),
+          matching: find.byWidgetPredicate(
+            (w) => w is Scrollable && w.axisDirection == AxisDirection.right,
+          ),
+        ),
+      )) {
+        if (scroll.controller?.hasClients == true) scroll.controller!.jumpTo(0);
+      }
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find
+            .descendant(
+              of: find
+                  .byKey(const ValueKey('bom-compare-left-changed|component'))
+                  .first,
+              matching: find.byType(Checkbox),
+            )
+            .first,
+      );
+      await tester.pumpAndSettle();
+      final right = find.byKey(const ValueKey('bom-comparison-table-right'));
+      expect(tester.widget<MasterDataTableView<dynamic>>(right).selectedIds, {
+        'changed',
+      });
+      await tester.tap(find.byKey(const Key('bom-compare-selected-left')));
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenAlertDialog), findsOneWidget);
+      await tester.tap(find.text('取消替换'));
+      await tester.pumpAndSettle();
+      expect(env.api.commitCalls, 0);
+      expect(find.byKey(const ValueKey('bom-compare-save-a')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('bom-compare-selected-left')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('bom-compare-stage-confirm')));
+      await tester.pumpAndSettle();
+      expect(env.bom.writes, 0);
+      expect(find.text('7.12345 个'), findsWidgets);
+      for (final root in ['b', 'a']) {
+        await tester.tap(find.byKey(ValueKey('bom-compare-save-$root')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('bom-compare-confirm')));
+        await tester.pumpAndSettle();
+      }
+      expect(env.bom.rows['a']![1].qtyExactText, '7.12345');
+      expect(env.bom.rows['b']![1].qtyExactText, '7.12345');
+      expect(env.bom.rows['a']![2].qty, .3);
+      expect(env.api.commitCalls, 2);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'replacement remains editable and close saves all staged changes after confirmation',
+    (tester) async {
+      final env = await _mount(tester);
+      await _open(tester);
+      await tester.tap(find.byKey(const Key('bom-compare-all-left')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('bom-compare-stage-confirm')));
+      await tester.pumpAndSettle();
+      await editText(tester, 'left', 'qty', 'bag', '3');
+      expect(env.bom.writes, 0);
+      await tester.tap(find.byKey(const Key('bom-compare-close')));
+      await tester.pumpAndSettle();
+      expect(find.text('还有未保存的 BOM 修改'), findsOneWidget);
+      await tester.tap(find.text('先核对并保存'));
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenAlertDialog), findsOneWidget);
+      await tester.tap(find.byKey(const Key('bom-compare-confirm')));
+      await tester.pumpAndSettle();
+      expect(find.byType(GoodsBomComparisonWorkspace), findsNothing);
+      expect(env.bom.rows['a']!.last.qty, 3);
+      expect(env.api.commitCalls, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'closing a replacement confirmation cancels only the proposed copy',
+    (tester) async {
+      final env = await _mount(tester);
+      await _open(tester);
+      await editText(tester, 'left', 'qty', 'changed', '4');
+      await tester.tap(find.byKey(const Key('bom-compare-all-left')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('关闭确认并继续编辑'));
+      await tester.pumpAndSettle();
+      expect(find.text('4 个'), findsWidgets);
+      expect(env.bom.writes, 0);
+      await tester.tap(find.byKey(const Key('bom-compare-close')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('放弃并继续'));
+      await tester.pumpAndSettle();
+      expect(find.byType(GoodsBomComparisonWorkspace), findsNothing);
+      expect(env.api.commitCalls, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets('two views of one goods record keep a single save owner', (
+    tester,
+  ) async {
+    final env = await _mount(tester);
+    final window = env.container.read(businessWindowsProvider).windows.last;
+    window.activeRouter!.replace<void>(
+      '/basicinfo/goods/a?tab=bom',
+      extra: window.extra,
+    );
+    await tester.pumpAndSettle();
+    await _open(tester);
+    await editText(tester, 'right', 'qty', 'changed', '4');
+    expect(find.byKey(const ValueKey('bom-compare-save-a')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('bom-compare-actions-left')),
+        matching: find.byKey(const ValueKey('bom-compare-save-a')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<OutlinedButton>(find.byKey(const Key('bom-compare-all-left')))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<OutlinedButton>(
+            find.byKey(const Key('bom-compare-all-right')),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(env.bom.writes, 0);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets(
+    'replacement pairs follow their destination panes and splitter ratio',
+    (tester) async {
+      await _mount(tester);
+      await _open(tester);
+      Rect group(String side) =>
+          tester.getRect(find.byKey(ValueKey('bom-compare-actions-$side')));
+      void aligned() {
+        for (final side in ['left', 'right']) {
+          final owner = find.byKey(ValueKey('bom-compare-actions-$side'));
+          final grid = tester.getRect(
+            find.byKey(ValueKey('bom-comparison-table-$side')),
+          );
+          expect(group(side).left, closeTo(grid.left, 1));
+          expect(group(side).width, closeTo(grid.width, 1));
+          for (final mode in ['selected', 'all']) {
+            final button = find.byKey(Key('bom-compare-$mode-$side'));
+            expect(
+              find.descendant(of: owner, matching: button),
+              findsOneWidget,
+            );
+            expect(group(side).contains(tester.getCenter(button)), true);
+            expect(
+              find.descendant(
+                of: owner,
+                matching: find.byKey(
+                  Key('bom-compare-$mode-${side == 'left' ? 'right' : 'left'}'),
+                ),
+              ),
+              findsNothing,
+            );
+          }
+        }
+        expect(group('left').right, lessThan(group('right').left));
+        expect(group('left').height, closeTo(group('right').height, 1));
+        expect(
+          tester
+              .getTopLeft(
+                find.byKey(const ValueKey('bom-comparison-table-left')),
+              )
+              .dy,
+          closeTo(
+            tester
+                .getTopLeft(
+                  find.byKey(const ValueKey('bom-comparison-table-right')),
+                )
+                .dy,
+            1,
+          ),
+        );
+      }
+
+      aligned();
+      final before = group('left').width;
+      await tester.drag(
+        find.byTooltip('拖动调整对比比例 · 点击展开对比操作'),
+        const Offset(430, 0),
+      );
+      await tester.pumpAndSettle();
+      aligned();
+      expect(group('left').width, greaterThan(before));
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'save feedback slides from the shared top host without resizing the grid',
+    (tester) async {
+      final env = await _mount(tester);
+      await _open(tester);
+      final grid = find.byKey(const ValueKey('bom-comparison-table-left'));
+      final before = tester.getTopLeft(grid).dy;
+      await tester.tap(find.byKey(const Key('bom-compare-all-left')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('bom-compare-stage-confirm')));
+      await tester.pumpAndSettle();
+      expect(env.bom.writes, 0);
+      await tester.tap(find.byKey(const ValueKey('bom-compare-save-a')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('bom-compare-confirm')));
+      await tester.pumpAndSettle();
+      const message = '修改已保存，已重新核对左右 BOM';
+      expect(env.container.read(appNotificationProvider).last.message, message);
+      expect(
+        env.container.read(appNotificationProvider).last.kind,
+        AppNotificationKind.success,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(GoodsBomComparisonWorkspace),
+          matching: find.byWidgetPredicate(
+            (w) => w is UtenInlineNotice && w.message == message,
+          ),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(AppNotificationHost),
+          matching: find.text(message),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.getTopLeft(grid).dy, closeTo(before, 1));
+      expect(tester.getTopLeft(find.text(message)).dy, lessThan(before));
+      expect(find.byType(Dialog), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'comparison and its dialogs use the common close control without discarding edits',
     (tester) async {
@@ -309,7 +573,7 @@ void main() {
       await editText(tester, 'right', 'qty', 'changed', 'abc');
       await tester.tap(find.byKey(const ValueKey('bom-compare-save-a')));
       await tester.pumpAndSettle();
-      expect(find.text('确认保存左侧修改'), findsOneWidget);
+      expect(find.text('确认保存左侧修改'), findsNWidgets(2));
       await tester.tap(find.byKey(const Key('bom-compare-confirm')));
       await tester.pumpAndSettle();
       expect(env.bom.rows['a']![1].qty, 4);
@@ -479,13 +743,13 @@ void main() {
               find.byKey(const Key('bom-compare-all-left')),
             )
             .onPressed,
-        isNull,
+        isNotNull,
       );
       await tester.tap(find.byKey(const ValueKey('bom-compare-save-a')));
       await tester.pumpAndSettle();
       expect(env.api.previewCalls, 1);
       expect(env.bom.writes, 0);
-      expect(find.text('确认保存左侧修改'), findsOneWidget);
+      expect(find.text('确认保存左侧修改'), findsNWidgets(2));
       await tester.tap(find.byKey(const Key('bom-compare-confirm')));
       await tester.pumpAndSettle();
       expect(env.api.commitCalls, 1);
@@ -526,6 +790,8 @@ void main() {
         'abc',
       );
       await tester.tap(find.text('放弃左侧修改'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('bom-compare-discard-confirm')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('bom-compare-save-a')), findsNothing);
       expect(env.bom.writes, 0);
@@ -815,6 +1081,11 @@ void main() {
             'bom-comparison-preview-${scenario.width.toInt()}',
           );
         }
+        await tester.tap(find.byKey(const Key('bom-compare-stage-confirm')));
+        await tester.pumpAndSettle();
+        expect(env.bom.writes, 0);
+        await tester.tap(find.byKey(const ValueKey('bom-compare-save-a')));
+        await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('bom-compare-confirm')));
         await tester.pumpAndSettle();
         expect(env.api.commitCalls, 1);
@@ -872,19 +1143,25 @@ void main() {
       await _open(tester);
       await tester.tap(find.byKey(const Key('bom-compare-all-left')));
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('bom-compare-stage-confirm')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('bom-compare-save-a')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('bom-compare-confirm')));
       await tester.pumpAndSettle();
       expect(find.text('核对上次保存结果'), findsOneWidget);
       final writes = env.bom.writes;
       expect(
         tester
-            .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '取消替换'))
+            .widget<OutlinedButton>(
+              find.widgetWithText(OutlinedButton, '返回继续编辑'),
+            )
             .onPressed,
         isNull,
       );
       await tester.tap(find.byKey(const Key('bom-compare-confirm')));
       await tester.pumpAndSettle();
-      expect(env.api.previewCalls, 1);
+      expect(env.api.previewCalls, 2);
       expect(env.api.commitCalls, 2);
       expect(env.bom.writes, writes);
       expect(find.text('相同 3'), findsOneWidget);

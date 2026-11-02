@@ -22,7 +22,13 @@ public class BusinessEmployeeReferenceAccess {
 
     public void require(String rawPurpose) {
         var purpose=BusinessEmployeeReferencePurpose.parse(rawPurpose);
-        if(!currentStaffPermissions().containsAll(purpose.authorities())) throw denied();
+        if(!purpose.mayListCandidates(currentStaffPermissions())) throw denied();
+    }
+
+    /** Labels in an already authorized read view do not enable the candidate picker or a write. */
+    public void requireEcho(String rawPurpose) {
+        var purpose=BusinessEmployeeReferencePurpose.parse(rawPurpose);
+        if(!purpose.mayEcho(currentStaffPermissions())) throw denied();
     }
 
     /** Shared minimal-reference caller validation; does not grant a business or HR capability. */
@@ -30,7 +36,7 @@ public class BusinessEmployeeReferenceAccess {
     public Set<String> currentStaffPermissions() {
         var actor=currentUser.get().orElseThrow(()->new ApiException(ErrorCode.UNAUTHORIZED));
         if(actor.isVisitor() || actor.getEmployeeId()==null || !actor.isAccountNonLocked()
-                || actor.isMustChangePassword() || actor.getImpersonatedBy()!=null) throw denied();
+                || actor.isMustChangePassword()) throw denied();
         // This is the caller's login eligibility, not the referenced employee's.
         // A recipient may legitimately have no login or a disabled account.
         List<Boolean> states=jdbc.queryForList("""

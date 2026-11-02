@@ -63,3 +63,13 @@ Windows 后台任务回归独立于 Flutter 引擎，可在 `deploy/client/nativ
 
 Web构建同入口后运行 `python tool/prepare_stability_web_fixture.py`，本地服务打开 `/?stress=1`。
 只读取本地合成JSON，不请求业务API，不把构造测试数据的耗时误记为生产解码。
+# 最大化客户区几何回归
+
+同一 CMake 工程增加 `uten_native_geometry_regression` 目标。它只创建隐藏测试 HWND，直接验证真实 runner 的两种 `WM_NCCALCSIZE` 参数形式，并通过 `SetWindowPos`、`GetClientRect`、`ClientToScreen`、子 HWND 边界核对最终物理客户区。不会显示或激活窗口，不操作用户正在运行的 ERP。
+
+```powershell
+cmake --build '<harness-build>' --config Release --target uten_native_geometry_regression
+& '<harness-runtime>/uten_native_geometry_regression.exe'
+```
+
+测试 runtime 需要同一已验证引擎及配套 VC runtime DLL。回执包含 `maximizedBothForms`、`alreadyExact`、`physicalClientAndChild`、`restoredUnchanged`、实际 DPI/work/client 和 `visible:false`；退出码非零即失败。工作区随监视器和任务栏读取，不写死 8px 或 DPI。它不代替 ERP 全页面或多显示器真机验收。

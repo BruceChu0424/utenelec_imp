@@ -7944,8 +7944,9 @@ Future<void> _pump(
           request,
           handler,
           departmentRows: departmentTree ?? const [],
-        ))
+        )) {
           return;
+        }
         requestObserver?.call(request);
         requests.add((
           method: request.method,

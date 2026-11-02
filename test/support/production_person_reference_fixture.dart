@@ -16,8 +16,9 @@ Future<bool> resolveProductionPersonReferenceFixture(
 }) async {
   if (!request.path.startsWith('/org/employee-references') &&
       request.path != '/production/workshop-assignment-defaults' &&
-      request.path != '/business-references/departments')
+      request.path != '/business-references/departments') {
     return false;
+  }
   expect(request.method, 'GET');
   if (request.path != '/business-references/departments') {
     expect(request.queryParameters['purpose'], purpose.apiValue);

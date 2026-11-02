@@ -1156,12 +1156,9 @@ Future<void> _pump(
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (request, handler) async {
-        if (await resolveProductionPersonReferenceFixture(
-          request,
-          handler,
-          departmentRows: const [],
-        ))
+        if (await resolveProductionPersonReferenceFixture(request, handler)) {
           return;
+        }
         requests.add((
           method: request.method,
           path: request.path,

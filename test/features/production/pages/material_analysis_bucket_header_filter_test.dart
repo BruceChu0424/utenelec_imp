@@ -136,8 +136,9 @@ Future<void> _pump(WidgetTester tester) async {
           request,
           handler,
           departments: fixtureDepartmentRepository.tree,
-        ))
+        )) {
           return;
+        }
         final data = switch (request.path) {
           '/business-references/warehouses' => [
             {'id': 'warehouse-1', 'name': '主仓', 'selectableForNew': true},

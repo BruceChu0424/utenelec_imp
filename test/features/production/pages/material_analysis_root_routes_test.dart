@@ -696,8 +696,9 @@ Future<_Harness> _pump(
           request,
           handler,
           departments: fixtureDepartmentRepository.tree,
-        ))
+        )) {
           return;
+        }
         harness.requests.add(request);
         dynamic result = <String, dynamic>{};
         if (request.path == '/business-references/warehouses') {

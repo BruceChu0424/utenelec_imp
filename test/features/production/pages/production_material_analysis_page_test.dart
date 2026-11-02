@@ -10173,8 +10173,9 @@ ApiClient _api(
           request,
           handler,
           departments: _FakeDepartmentRepository().tree,
-        ))
+        )) {
           return;
+        }
         requests.add(request);
         final failure = errorOverride?.call(request);
         if (failure != null) {

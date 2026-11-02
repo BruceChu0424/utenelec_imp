@@ -28,9 +28,9 @@ plugins {
 
 include(":app")
 
-// The verified preparation recipe copies only the three reviewed native plugin
-// projects that need Groovy assignment fixes. Dart keeps its original lock and
-// package paths; the shared pub cache is never edited.
+// The verified recipe prepares reviewed native source fixes and relocates
+// foreign-volume Windows native inputs for Kotlin's relative-path caches.
+// Dart keeps its original lock and package paths; the shared pub cache is not edited.
 providers.gradleProperty("utenFlutterGradleTools").orNull?.let { tooling ->
     val privatePlugins = File(tooling, "uten-android-plugins")
     check(File(privatePlugins, "manifest.json").isFile) {

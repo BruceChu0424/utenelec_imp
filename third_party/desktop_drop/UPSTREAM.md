@@ -14,6 +14,10 @@ explicit KGP application. No warnings, compiler checks, or runtime behavior are
 disabled. Package metadata changes only mark this as an unpublished local
 0.8.4+uten.1 package and remove upstream workspace-only resolution.
 
+The 2026-11-02 build cleanup uses explicit `=` assignment for `group`, `version`,
+`namespace`, and `compileSdk`. Values and Android behavior are unchanged; this
+removes the Gradle-generated setter syntax that Gradle 8.14 deprecates.
+
 Upstream 0.9.2 addresses the KGP warning but requires Flutter 3.47.7/Dart 3.13.5
 and a different drop callback/provider-lifetime API. Keep the current application's
 reviewed API until that migration is performed. Remove this override and directory

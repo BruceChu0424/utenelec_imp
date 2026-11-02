@@ -15,7 +15,7 @@
         "UPSTREAM.md"
       ],
       "files": {
-        "android/build.gradle": "9ea27a397f05edad478a4c26d86ed7f202320748349136ed0c1ea3c069692cb3",
+        "android/build.gradle": "04236beffceb69a90425a435f254e36a7d0e96f4d522e27d50caa9d3ebd05638",
         "android/settings.gradle": "771622d213186e99ec875e0a269aa8c30b0d310221bd33fbdd9d31c51e9a6a0b",
         "android/src/main/AndroidManifest.xml": "571f2735faf5e857752ee057ac8ef63425576a721616c60b86ee5d4c0a2d682f",
         "android/src/main/kotlin/one/mixin/desktop/drop/DesktopDropPlugin.kt": "f9b65ff2476b48a8469fa5e5dcf4b8f5d4e11effd75b3d51b4c39236ceadc9dd",
@@ -38,7 +38,7 @@
         "pubspec.yaml": "c25849293163837dd4b77868aa5260d5ad44fdfee284f742a61d8c2e9ed3592d",
         "README.md": "4d050d29fca1e4e558c1983d48b1648567acdc2c58e4b8805eecdd97ba2b6da4",
         "UPSTREAM-FILES.json": "ad69528ae4dc66d6b79ffe0acad686711407e543a1533a6186cb9472a61bd4d7",
-        "UPSTREAM.md": "e1d1723192198188df3c2b2867ad1a362c633410abf0d71c4dde5a5bc5baba49",
+        "UPSTREAM.md": "0b4c9bd5ca587571f98b2af09322a653dcfa5c8f88f8d7d070b5f6ea11526c2b",
         "windows/CMakeLists.txt": "dbfab72ac038f3e55fdb380e194ec061110ffb194ec2839607ae815a4f8fd6ee",
         "windows/desktop_drop_plugin.cpp": "3c30e832a5a17ca182d085ea5322ffab6290dc0c56a0d166c0c5c6b225691f89",
         "windows/include/desktop_drop/desktop_drop_plugin.h": "b2d23cdd5b5351dbf7588e112a08c29ce58b52288f75173d31df5698aecfa6c4"
@@ -63,7 +63,7 @@
         "UPSTREAM.md"
       ],
       "files": {
-        "android/build.gradle": "d7c0b0d39382c18403eebc5ae225a2038c722378e906375c6f9ca116e759a865",
+        "android/build.gradle": "04986de816c0ef26438f2dca4b1f6c5ab2dbb07c7bb0e02848eca9033f2c3a30",
         "android/gradle/wrapper/gradle-wrapper.properties": "0bb54ba7e58a9fbb012d10c5df2a63439a14e6291ed372e2a28c74d8b9e7129b",
         "android/gradle.properties": "034fd3f15ac7a699cf7393150e318cd3e0afb51826b0decc69a548db53fa1116",
         "android/settings.gradle": "26e94e4f9e41a9c22f0e4b5fad6483f901cc5cb343de0c4a8c99bc671b98166c",
@@ -100,7 +100,7 @@
         "pubspec.yaml": "c8e27aea5373eac65459cb853cb6b7fc5f6623b38a3b23b22f253a6ebd36a52c",
         "README.md": "52dc72ab68d566b4aa31884eefd449d68f9af3d2ac80ea9ad574a6d517fcb9e4",
         "UPSTREAM-FILES.json": "ebce733eef925aa1009f54df1355b2ac57f05c1d0c8a2b689717aaa120679e94",
-        "UPSTREAM.md": "6254c9a55bda226519ed01c410c2e12c377de5d45c6a184eefc3a2babc2c7b75"
+        "UPSTREAM.md": "5503e767c6e7ed9e44d930919ab5f15a472841b8adb8a44fccda189f810fc2ad"
       },
       "hygieneFiles": [
         "ios/device_info_plus.podspec"

@@ -387,9 +387,22 @@ jobs:
           python3 deploy/client/prepare_android_flutter_tooling.py
           --flutter-sdk "$FLUTTER_ROOT" --output "${{ runner.temp }}/uten-flutter-gradle"
       - name: Compile Android application and native package installer bridge
+        id: android_build
         env:
           ORG_GRADLE_PROJECT_utenFlutterGradleTools: ${{ runner.temp }}/uten-flutter-gradle
-        run: flutter build apk --debug --no-pub --target-platform android-arm64
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s deploy/client -p test_check_android_build_log.py -v 2>&1 | tee "$RUNNER_TEMP/android-build.log"
+          flutter build apk --debug --no-pub --target-platform android-arm64 2>&1 | tee -a "$RUNNER_TEMP/android-build.log"
+          python3 deploy/client/check_android_build_log.py "$RUNNER_TEMP/android-build.log"
+      - name: Preserve Android compiler diagnostics
+        if: ${{ always() && steps.android_build.outcome != 'skipped' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-build-log
+          path: ${{ runner.temp }}/android-build.log
+          if-no-files-found: error
+          retention-days: 14
 
   website:
     name: Website / Node 22

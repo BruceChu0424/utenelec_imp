@@ -245,8 +245,13 @@ Gradle 8.14 和 9 都会对锁定 Groovy 插件的旧属性赋值报弃用，必
 `ApplicationAndroidComponentsExtension` 的公共输出 API 保持分 ABI 版本码规则。
 准备器还校验 `file_picker 8.3.7`、`flutter_secure_storage 9.2.4`、`printing 5.15.1`
 原始 Gradle 脚本版本与 SHA-256，将各自原源码复制到同一任务目录，仅把已点名的
-`group/version/namespace/compileSdk/minSdk` 属性改成显式赋值。settings 只替换三个 Android
-原生项目目录；Dart 的依赖锁、包路径和业务源码保持原来源。仓库内 `desktop_drop`、
+`group/version/namespace/compileSdk/minSdk` 属性改成显式赋值；对 `mobile_scanner 7.4.2`
+的固定构造参数注解显式使用 `@param:VisibleForTesting`，保持当前参数 target 和业务行为。
+Windows 中 pub 源码与项目跨盘会使 Kotlin 增量缓存记录相对路径失败；准备器把所有跨盘 Android
+原生项目原样复制到项目同一盘的任务目录，并逐包核对锁定版本和完整源码树摘要。保持增量编译，
+不关闭编译器检查、不删除共享缓存。生成目录（包括 pdfrx CMake 的 `.lib` 下载产物）在私有目录重建。
+settings 仅映射这些已核对的 Android 原生项目；Dart 的依赖锁、包路径和业务源码保持原来源。
+仓库内 `desktop_drop`、
 `device_info_plus` 在各自唯一源码入口同步修正相同语法。
 脚本不会加警告过滤或新的 suppression，源码漂移时拒绝继续。CI Android 作业使用同一准备器。
 

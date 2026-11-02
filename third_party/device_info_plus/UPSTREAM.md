@@ -13,6 +13,10 @@ Flutter 3.44 owns the documented transitional KGP application; newer hosts can u
 AGP built-in Kotlin. No warnings or compiler checks are suppressed. Package
 metadata marks this unpublished local package as 11.5.0+uten.1.
 
+The 2026-11-02 build cleanup uses explicit `=` assignment for `group`, `version`,
+`namespace`, `compileSdk`, and `minSdk`. Values and Android behavior are unchanged;
+this removes the Gradle-generated setter syntax that Gradle 8.14 deprecates.
+
 Hosted 13.2+ adds built-in Kotlin support, but its dependency/platform requirements
 also change. Remove this override and directory together after a reviewed hosted
 upgrade passes the device-audit tests and native build jobs. Never patch the

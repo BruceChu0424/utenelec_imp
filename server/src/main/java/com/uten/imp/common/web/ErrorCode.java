@@ -12,7 +12,7 @@ public enum ErrorCode {
     UNAUTHORIZED(401, "未登录或会话已过期"),
     // 单设备顶号：会话被新的一次登录撤销。与普通过期区分，客户端据此弹「当前设备已下线」。
     SESSION_REPLACED(401, "账号已在其他设备登录，本设备已自动下线"),
-    FORBIDDEN(403, "当前账号无权执行此操作，请联系管理员核对操作权限和数据范围"),
+    FORBIDDEN(403, "此账号没有进行该操作的权限，请联系管理员"),
     READ_SCOPE_CHANGED(403, "数据访问范围已变化，请重新打开页面后核对"),
     PASSWORD_CHANGE_REQUIRED(403, "首次登录必须修改密码后才能继续"),
     REMOTE_ACCESS_DENIED(403, "该账号未授权外网(云端)访问"),
@@ -52,7 +52,7 @@ public enum ErrorCode {
     AUTH_BUSY(503, "登录验证的人较多，请稍后几秒再试"),
     SERVER_OPERATIONS_UNAVAILABLE(503, "服务器运维助手暂不可用"),
     SERVER_OPERATION_OUTCOME_UNCERTAIN(503, "服务器操作结果待确认，请刷新状态后核对，不要重复提交"),
-    INTERNAL(500, "服务器内部错误");
+    INTERNAL(500, "服务器处理异常，请先刷新核对操作结果");
 
     private final int httpStatus;
     private final String defaultMessage;

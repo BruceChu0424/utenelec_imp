@@ -16,10 +16,10 @@ namespace Uten.Legacy.Core
         public bool HasResponseCode { get; private set; }
 
         public ApiException(string code, string userMessage, int? statusCode = null,
-            bool isSubmissionUnknown = false, bool hasResponseCode = false) : base(userMessage)
+            bool isSubmissionUnknown = false, bool hasResponseCode = false) : base(ApiErrorMessage.Normalize(code, userMessage, statusCode))
         {
             Code = code;
-            UserMessage = userMessage;
+            UserMessage = Message;
             StatusCode = statusCode;
             IsSubmissionUnknown = isSubmissionUnknown;
             HasResponseCode = hasResponseCode;

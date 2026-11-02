@@ -21,6 +21,12 @@ val missingReleaseSigningKeys = releaseSigningKeys.filter {
 val isReleaseBuild = gradle.startParameter.taskNames.any {
     it.contains("Release", ignoreCase = true)
 }
+// Opt-in for the USB/adb local-backend test APK. Keep its app data and
+// installation identity separate from the company client.
+val localTestBuild = providers.gradleProperty("utenLocalTest").orNull == "true"
+if (localTestBuild && isReleaseBuild) {
+    throw GradleException("utenLocalTest is only supported for a Debug test APK.")
+}
 if (isReleaseBuild && missingReleaseSigningKeys.isNotEmpty()) {
     throw GradleException(
         "Android release signing is not configured. Copy key.properties.example to " +
@@ -46,6 +52,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["utenApplicationLabel"] = "UTEN"
     }
 
     signingConfigs {
@@ -60,6 +67,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (localTestBuild) {
+                applicationIdSuffix = ".local_test"
+                manifestPlaceholders["utenApplicationLabel"] = "UTEN 本地测试"
+            }
+        }
         release {
             // Never ship a release signed with the shared debug key.
             signingConfig = signingConfigs.findByName("release")

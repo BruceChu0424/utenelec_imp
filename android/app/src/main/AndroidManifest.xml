@@ -6,7 +6,7 @@
     <!-- 访客扫码（保安端 mobile_scanner） -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <application
-        android:label="UTEN"
+        android:label="${utenApplicationLabel}"
         android:name="${applicationName}"
         android:allowBackup="false"
         android:fullBackupContent="@xml/backup_rules"

@@ -443,7 +443,11 @@ class _UtenEmployeeSelectionPanelState extends State<UtenEmployeeSelectionPanel>
       key: const Key('uten-employee-picker-search'),
       controller: _searchController,
       hint:
-          !widget.showDepartmentFilter && widget.searchHint == '搜索部门 / 姓名 / 工号'
+          widget.presentation ==
+              UtenEmployeePickerPresentation.businessReference
+          ? '搜索工号 / 姓名 / 部门 / 职位'
+          : !widget.showDepartmentFilter &&
+                widget.searchHint == '搜索部门 / 姓名 / 工号'
           ? '搜索姓名 / 工号'
           : widget.searchHint,
       onInputChanged: _onInput,

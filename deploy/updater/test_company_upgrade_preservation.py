@@ -112,7 +112,15 @@ class CompanyUpgradePreservationTest(unittest.TestCase):
     def test_mobile_and_other_desktop_installation_ids_remain_fixed(self):
         android = source("android/app/build.gradle.kts")
         self.assertEqual(re.findall(r'applicationId\s*=\s*"([^"]+)"', android), ["com.uten.uten_imp"])
-        self.assertNotIn("applicationIdSuffix", android)
+        # An explicit local Debug test variant owns separate storage. Production
+        # identity must stay fixed and must never inherit that suffix.
+        self.assertEqual(android.count("applicationIdSuffix"), 1)
+        self.assertRegex(android, r'val localTestBuild = providers\.gradleProperty\("utenLocalTest"\)\.orNull == "true"')
+        self.assertRegex(android, r'if \(localTestBuild && isReleaseBuild\)\s*\{\s*throw GradleException\(')
+        self.assertRegex(android, r'buildTypes\s*\{\s*debug\s*\{\s*if \(localTestBuild\)\s*\{\s*applicationIdSuffix = "\.local_test"')
+        release = re.search(r'(?s)\n        release \{(.*?)\n        \}', android)
+        self.assertIsNotNone(release)
+        self.assertNotIn("applicationIdSuffix", release.group(1))
         ios = re.findall(r"PRODUCT_BUNDLE_IDENTIFIER\s*=\s*([^;]+);", source("ios/Runner.xcodeproj/project.pbxproj"))
         self.assertTrue(ios)
         self.assertEqual(set(ios), {"com.uten.utenImp", "com.uten.utenImp.RunnerTests"})

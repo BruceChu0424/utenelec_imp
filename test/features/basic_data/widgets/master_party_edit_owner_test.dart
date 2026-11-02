@@ -27,12 +27,12 @@ import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_edit_owner.dart';
 import 'package:uten_imp/features/basic_data/widgets/supplier_master_edit.dart';
 import 'package:uten_imp/shared/models/department_node.dart';
-import 'package:uten_imp/shared/widgets/uten_department_tree_view.dart';
-import 'package:uten_imp/features/employee/models/employee_api_models.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/features/employee/widgets/department_employee_picker.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/models/employee_reference.dart';
+import 'package:uten_imp/shared/repositories/employee_reference_repository.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
@@ -118,37 +118,66 @@ class _Suppliers implements SupplierRepository {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
-class _Employees implements EmployeeRepository {
+class _EmployeeReferences implements EmployeeReferenceRepository {
+  static const person = EmployeeReference(
+    id: 'employee-one',
+    code: 'E-100',
+    fullName: '张三',
+    departmentId: 'sales',
+    departmentName: '销售部',
+    status: 'active',
+    accountStatus: 'notProvisioned',
+    positionName: null,
+  );
+  final purposes = <EmployeeReferencePurpose>[];
+
   @override
-  Future<PagedResult<EmployeeSummary>> list({
+  Future<PagedResult<EmployeeReference>> list({
+    required EmployeeReferencePurpose purpose,
     int page = 1,
-    int size = 20,
+    int size = 100,
     String? search,
     Set<String>? statuses,
     String? departmentId,
     bool includeSubtree = false,
-    String? sort,
-    String? order,
-  }) async => PagedResult(
-    items: departmentId == 'sales'
-        ? const [
-            EmployeeSummary(
-              id: 'employee-one',
-              code: 'E-100',
-              fullName: '张三',
-              departmentId: 'sales',
-              departmentName: '销售部',
-            ),
-          ]
-        : const [],
-    page: page,
-    size: size,
-    total: departmentId == 'sales' ? 1 : 0,
-    totalPages: departmentId == 'sales' ? 1 : 0,
-  );
+  }) async {
+    purposes.add(purpose);
+    final matches =
+        (departmentId == null || departmentId == 'sales') &&
+        (statuses == null || statuses.contains(person.status));
+    return PagedResult(
+      items: page == 1 && matches ? const [person] : const [],
+      page: page,
+      size: size,
+      total: matches ? 1 : 0,
+      totalPages: matches ? 1 : 0,
+    );
+  }
 
   @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+  Future<List<EmployeeReference>> byIds(
+    Iterable<String> ids, {
+    required EmployeeReferencePurpose purpose,
+  }) async {
+    purposes.add(purpose);
+    return ids.contains(person.id) ? const [person] : const [];
+  }
+
+  @override
+  Future<List<DepartmentNode>> departments(
+    EmployeeReferencePurpose purpose,
+  ) async {
+    purposes.add(purpose);
+    return [
+      DepartmentNode(
+        id: 'sales',
+        code: 'D1',
+        name: '销售部',
+        level: '一级部门',
+        children: const [],
+      ),
+    ];
+  }
 }
 
 class _Api extends ApiClient {
@@ -256,6 +285,7 @@ class _World {
   final writes = _Writes();
   final references = _References();
   final currencies = _Currencies();
+  final employeeReferences = _EmployeeReferences();
   final api = _Api();
   final navigator = GlobalKey<NavigatorState>();
   late GoRouter router;
@@ -297,17 +327,11 @@ Future<_World> _pump(WidgetTester tester, String kind, [_World? world]) async {
         currencyRepositoryProvider.overrideWithValue(w.currencies),
         clientRepositoryProvider.overrideWithValue(_Clients(w.writes)),
         supplierRepositoryProvider.overrideWithValue(_Suppliers(w.writes)),
-        employeeRepositoryProvider.overrideWithValue(_Employees()),
-        employeePickerDepartmentTreeProvider.overrideWith(
-          (_) async => [
-            DepartmentNode(
-              id: 'sales',
-              code: 'D1',
-              name: '销售部',
-              level: '一级部门',
-              children: const [],
-            ),
-          ],
+        employeeRepositoryProvider.overrideWith(
+          (_) => throw StateError('业务员引用选择不能读取员工主档名册'),
+        ),
+        employeeReferenceRepositoryProvider.overrideWithValue(
+          w.employeeReferences,
         ),
       ],
       child: MaterialApp.router(
@@ -436,13 +460,13 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(employee);
         await tester.pumpAndSettle();
-        expect(find.byType(UtenDepartmentTreeView), findsOneWidget);
+        final departmentTree = find.byKey(
+          const Key('uten-employee-picker-departments'),
+        );
+        expect(departmentTree, findsOneWidget);
         if (select) {
           await tester.tap(
-            find.descendant(
-              of: find.byType(UtenDepartmentTreeView),
-              matching: find.text('销售部'),
-            ),
+            find.descendant(of: departmentTree, matching: find.text('销售部')),
           );
           await tester.pumpAndSettle();
           await tester.tap(find.text('张三'));
@@ -462,6 +486,15 @@ void main() {
           select ? 'employee-one' : null,
         );
         expect(find.byType(MasterEditForm), findsNothing);
+        expect(
+          w.container.read(_permissions),
+          isNot(contains(Perm.employeeView)),
+        );
+        expect(w.employeeReferences.purposes, isNotEmpty);
+        expect(
+          w.employeeReferences.purposes,
+          everyElement(EmployeeReferencePurpose.supplierOwner),
+        );
         expect(tester.takeException(), isNull);
       },
     );

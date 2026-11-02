@@ -2,6 +2,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../../support/uten_test_actions.dart';
+import '../../../support/uten_search_test_actions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
@@ -198,7 +201,7 @@ void main() {
     await tester.tap(find.text('打开选择器'));
     await tester.pumpAndSettle();
     await _search(tester, '自定义');
-    expect(api.requests.where((r) => r.path == '/master/goods'), isEmpty);
+    expect(api.requests.where((r) => r.path == api.listPath), isEmpty);
     await selectFilterSegment(tester, '全部可选货品');
     await tester.pumpAndSettle();
     expect(api.lastList.queryParameters, isNot(contains('categoryRootIds')));
@@ -386,7 +389,7 @@ void main() {
       await tester.tap(find.text('打开选择器'));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('goods-picker-sheet')), findsNothing);
-      expect(api.requests.where((r) => r.path == '/master/goods'), isEmpty);
+      expect(api.requests.where((r) => r.path == api.listPath), isEmpty);
       expect(results.single, isEmpty);
       expect(tester.takeException(), isNull);
     });
@@ -464,9 +467,9 @@ List<String> _ids(WidgetTester t) => _table(t).items.map((r) => r.id).toList();
 UtenCategoryTreeView<ProductCategoryNode> _tree(WidgetTester t) =>
     t.widget(find.byType(UtenCategoryTreeView<ProductCategoryNode>));
 Future<void> _search(WidgetTester t, String text) async {
-  final search = find.descendant(
-    of: find.byType(UtenSearchBar).first,
-    matching: find.byType(TextField),
+  final search = await showUtenTestSearchInput(
+    t,
+    find.byType(UtenSearchBar).first,
   );
   await t.enterText(search, text);
   await t.pump(const Duration(milliseconds: 350));
@@ -484,8 +487,9 @@ Future<void> _pump(
   Size size = const Size(1800, 1000),
   double scale = 1,
 }) async {
-  await t.binding.setSurfaceSize(size);
-  addTearDown(() => t.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(t, size);
+  api.businessReferences = picker;
+  addTearDown(() => setUtenTestSurfaceSize(t, null));
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
   await t.pumpWidget(
@@ -612,8 +616,13 @@ class _GoodsApi {
   bool unknownCategory = false;
   bool emptyTree = false;
   bool failTree = false;
-  RequestOptions get lastList =>
-      requests.lastWhere((r) => r.path == '/master/goods');
+  bool businessReferences = false;
+  String get listPath =>
+      businessReferences ? '/business-references/goods' : '/master/goods';
+  String get treePath => businessReferences
+      ? '/business-references/goods/categories'
+      : '/master/material-categories/tree';
+  RequestOptions get lastList => requests.lastWhere((r) => r.path == listPath);
   void release(int index, String id) {
     final (r, h) = held[index];
     h.resolve(
@@ -627,9 +636,13 @@ class _GoodsApi {
 
   void _request(RequestOptions r, RequestInterceptorHandler h) {
     requests.add(r);
+    if (businessReferences) {
+      expect(r.path, isNot('/master/goods'));
+      expect(r.path, isNot('/master/material-categories/tree'));
+    }
     final q = r.queryParameters;
     Object data = <String, dynamic>{};
-    if (r.path == '/master/material-categories/tree') {
+    if (r.path == treePath) {
       if (failTree) {
         h.reject(DioException(requestOptions: r));
         return;
@@ -670,7 +683,7 @@ class _GoodsApi {
                 (q['categoryId'] == null || q['categoryId'] == id),
           )
           .toList();
-    } else if (r.path == '/master/goods') {
+    } else if (r.path == listPath) {
       if (holdRelated && q['includeRelated'] == true) {
         held.add((r, h));
         return;

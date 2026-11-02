@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -7,6 +8,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uten_imp/components/buttons/uten_back_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/streaming_download_contract.dart';
@@ -17,6 +21,12 @@ import 'package:uten_imp/features/client_update/client_auto_update_preferences.d
 import 'package:uten_imp/features/client_update/client_staged_update.dart';
 import 'package:uten_imp/core/network/user_activity.dart';
 import 'package:uten_imp/core/web_update/web_update_safety.dart';
+import 'package:uten_imp/core/web_update/app_update_safety_host.dart';
+import 'package:uten_imp/core/web_update/update_safety_navigation.dart';
+import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/features/client_update/client_update_page.dart';
+import 'package:uten_imp/features/client_update/client_update_tile.dart';
+import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
 import 'package:uten_imp/shared/platform_branding/platform_branding_provider.dart';
 
@@ -36,6 +46,7 @@ class _CompanyServer implements HttpClientAdapter {
   int downloadStatus = 200;
   int checkStatus = 200;
   bool available = true;
+  Completer<void>? downloadGate;
   Map<String, Object> releaseOverrides = {};
   int get downloads =>
       requests.where((r) => r.path.endsWith('/download')).length;
@@ -47,9 +58,9 @@ class _CompanyServer implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     requests.add(options);
-    expect(options.method, 'GET');
+    expectSync(options.method, 'GET');
     if (options.path == '/client-updates/check') {
-      expect(options.queryParameters, {
+      expectSync(options.queryParameters, {
         'platform': 'windows',
         'architecture': 'x64',
         'currentBuildNumber': 2527,
@@ -78,9 +89,10 @@ class _CompanyServer implements HttpClientAdapter {
         },
       );
     }
-    expect(options.path, '/client-updates/$_releaseId/download');
-    expect(options.extra[streamingDownloadRequestKey], isTrue);
-    expect(options.followRedirects, isFalse);
+    expectSync(options.path, '/client-updates/$_releaseId/download');
+    expectSync(options.extra[streamingDownloadRequestKey], isTrue);
+    expectSync(options.followRedirects, isFalse);
+    await downloadGate?.future;
     final bytes = downloadBytes ?? package;
     return ResponseBody(
       Stream.fromIterable([
@@ -127,17 +139,17 @@ void main() {
               'supportsInPlaceUpdate': true,
             };
           }
-          expect(call.method, 'installUpdate');
+          expectSync(call.method, 'installUpdate');
           installCalls.add(call);
           if (failInstall) throw PlatformException(code: 'INSTALL_FAILED');
           final arguments = Map<String, dynamic>.from(call.arguments as Map);
-          expect(arguments['buildNumber'], 2528);
-          expect(
+          expectSync(arguments['buildNumber'], 2528);
+          expectSync(
             arguments['sha256'],
             sha256.convert(server.package).toString(),
           );
           final file = File(arguments['packagePath'] as String);
-          expect(await file.readAsBytes(), server.package);
+          expectSync(await file.readAsBytes(), server.package);
           return {'status': 'installerOpened'};
         });
     controller = ClientUpdateController(
@@ -400,6 +412,259 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
     }
   }
+
+  Future<void> pumpSettings(
+    WidgetTester tester, {
+    bool host = false,
+    bool openUpdate = true,
+  }) async {
+    // Use the production safety gate and both real navigation layers, rather
+    // than the controller's permissive unit-test default.
+    controller.dispose();
+    controller = ClientUpdateController(
+      api: ApiClient(dio),
+      bridge: ClientUpdateBridge(),
+      canInstall: () => webUpdateSafety.safeToReload,
+    );
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    webUpdateSafety.setReady(true);
+    final rootSafety = UpdateSafetyNavigation();
+    final shellSafety = UpdateSafetyNavigation();
+    final navigator = GlobalKey<NavigatorState>();
+    final router = GoRouter(
+      navigatorKey: navigator,
+      initialLocation: RouteName.settings,
+      observers: [rootSafety],
+      routes: [
+        ShellRoute(
+          observers: [shellSafety],
+          builder: (_, _, child) => child,
+          routes: [
+            GoRoute(
+              path: RouteName.settings,
+              builder: (_, _) => const Scaffold(body: ClientUpdateTile()),
+            ),
+          ],
+        ),
+      ],
+    );
+    addTearDown(() {
+      router.dispose();
+      rootSafety.dispose();
+      shellSafety.dispose();
+      webUpdateSafety.setReady(false);
+    });
+    tester.view.physicalSize = const Size(1000, 1100);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          clientUpdateControllerProvider.overrideWithValue(controller),
+          clientStagedUpdateStoreProvider.overrideWithValue(
+            controller.stagedUpdates,
+          ),
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          platformBrandingSnapshotProvider.overrideWithValue(
+            PlatformBranding.defaults,
+          ),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          builder: (_, child) => Column(
+            children: [
+              AppUpdateSafetyHost(router: router),
+              if (host)
+                ClientUpdateHost(
+                  enabled: true,
+                  dialogContext: () => navigator.currentContext,
+                ),
+              Expanded(child: child!),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    if (openUpdate) {
+      await tester.tap(find.byType(ClientUpdateTile));
+      await tester.pumpAndSettle();
+    }
+  }
+
+  testWidgets(
+    'settings update installs with the production route safety gate',
+    (tester) async {
+      await pumpSettings(tester);
+      await tester.tap(find.byKey(const ValueKey('client-update-now')));
+      await flushInstallChain(tester);
+      expect(installCalls, hasLength(1));
+      expect(controller.waitingForSafeInstall, isFalse);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets('settings update returns through the root above a nested shell', (
+    tester,
+  ) async {
+    await pumpSettings(tester);
+    await tester.tap(find.byType(UtenBackButton));
+    await tester.pumpAndSettle();
+    expect(find.byType(ClientUpdatePage), findsNothing);
+    expect(find.byType(ClientUpdateTile), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final blocker in ['dirty', 'busy', 'blocked']) {
+    testWidgets(
+      '$blocker work gives feedback and a saved retry installs once',
+      (tester) async {
+        var blocked = true;
+        final owner = Object();
+        webUpdateSafety.register(
+          owner,
+          () => WebUpdateSafetyState(
+            dirty: blocked && blocker == 'dirty',
+            busy: blocked && blocker == 'busy',
+            blocked: blocked && blocker == 'blocked',
+          ),
+        );
+        addTearDown(() => webUpdateSafety.unregister(owner));
+        await pumpSettings(tester);
+        await tester.tap(find.byKey(const ValueKey('client-update-now')));
+        await flushInstallChain(tester);
+        expect(installCalls, isEmpty);
+        expect(controller.waitingForSafeInstall, isTrue);
+        final message = tester
+            .widget<Text>(
+              find.byKey(const ValueKey('client-update-install-wait')),
+            )
+            .data!;
+        expect(
+          message,
+          contains(switch (blocker) {
+            'dirty' => '保存正在编辑的内容',
+            'busy' => '等待当前操作完成',
+            _ => '处理未完成的操作',
+          }),
+        );
+        blocked = false;
+        webUpdateSafety.changed();
+        await tester.pumpAndSettle();
+        expect(find.text('更新已下载，可以点击“立即更新”继续安装。'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('client-update-now')));
+        await flushInstallChain(tester);
+        expect(server.downloads, 1);
+        expect(installCalls, hasLength(1));
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
+
+  testWidgets('background preparation leaves the settings return usable', (
+    tester,
+  ) async {
+    await pumpSettings(tester);
+    final download = controller.prepareUpdate();
+    expect(controller.stage, ClientUpdateStage.downloading);
+    expect(controller.blocksNavigation, isFalse);
+    await tester.pump();
+    expect(
+      tester.widget<UtenBackButton>(find.byType(UtenBackButton)).enabled,
+      isTrue,
+    );
+    await tester.tap(find.byType(UtenBackButton));
+    await flushInstallChain(tester);
+    await download;
+    await tester.pumpAndSettle();
+    expect(find.byType(ClientUpdatePage), findsNothing);
+    expect(find.byType(ClientUpdateTile), findsOneWidget);
+    expect(
+      controller.hasStagedUpdate,
+      isTrue,
+      reason: '${controller.stage}: ${controller.error}',
+    );
+    expect(installCalls, isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('default-on automatic download still announces the new release', (
+    tester,
+  ) async {
+    server.downloadGate = Completer<void>();
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final navigator = GlobalKey<NavigatorState>();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(preferences),
+          clientUpdateControllerProvider.overrideWithValue(controller),
+          platformBrandingSnapshotProvider.overrideWithValue(
+            PlatformBranding.defaults,
+          ),
+        ],
+        child: MaterialApp(
+          navigatorKey: navigator,
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: ClientUpdateHost(
+              enabled: true,
+              dialogContext: () => navigator.currentContext,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 2));
+    await flushInstallChain(tester);
+    expect(find.text('有新的版本（2.5.28）'), findsOneWidget);
+    expect(controller.stage, ClientUpdateStage.downloading);
+    expect(installCalls, isEmpty);
+    server.downloadGate!.complete();
+    await flushInstallChain(tester);
+    expect(controller.hasStagedUpdate, isTrue);
+    await tester.tap(find.text('稍后'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(minutes: 5));
+    await flushInstallChain(tester);
+    expect(find.text('有新的版本（2.5.28）'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+    'an untouched startup offer becomes the idle countdown and installs',
+    (tester) async {
+      UserActivity.reset();
+      UserActivity.clock = () => tester.binding.clock.now();
+      addTearDown(UserActivity.reset);
+      await pumpSettings(tester, host: true, openUpdate: false);
+      await tester.pump(const Duration(seconds: 2));
+      await flushInstallChain(tester);
+      expect(find.text('查看详情'), findsOneWidget);
+      expect(controller.hasStagedUpdate, isTrue);
+      expect(installCalls, isEmpty);
+      await tester.pump(const Duration(minutes: 5));
+      // The first tick dismisses this exact offer. A later tick opens countdown.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.text('查看详情'), findsNothing);
+      expect(find.textContaining(RegExp('立即更新（\\d+）')), findsOneWidget);
+      expect(installCalls, isEmpty);
+      await tester.pump(const Duration(seconds: 12));
+      await flushInstallChain(tester);
+      expect(installCalls, hasLength(1));
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 
   testWidgets(
     'default-on staged login update waits for clean idle, counts down and installs at zero',

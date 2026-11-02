@@ -64,10 +64,37 @@ void main() {
     const path = '/unverified/editor';
     expect(canAutomaticallyUpdateRoute(path), isFalse);
     expect(canAutomaticallyUpdateRoute(RouteName.dashboard), isTrue);
+    expect(canAutomaticallyUpdateRoute(RouteName.settings), isTrue);
     final owner = Object();
     FormDraftNavigation.register(owner, path, () async => true);
     addTearDown(() => FormDraftNavigation.unregister(owner));
     expect(canAutomaticallyUpdateRoute(path), isFalse);
+  });
+
+  test('owned update dialogs stay safe without hiding business blockers', () {
+    final safety = WebUpdateSafetyRegistry()..setReady(true);
+    final observer = UpdateSafetyNavigation(registry: safety);
+    addTearDown(observer.dispose);
+    addTearDown(safety.dispose);
+    final page = pageRoute(RouteName.settings);
+    observer.didPush(page, null);
+    for (final name in [
+      RouteName.clientUpdateOffer,
+      RouteName.clientUpdateCountdown,
+    ]) {
+      final update = RawDialogRoute<void>(
+        settings: RouteSettings(name: name),
+        pageBuilder: (_, _, _) => const SizedBox(),
+      );
+      observer.didPush(update, page);
+      expect(safety.safeToReload, isTrue);
+      final business = dialogRoute();
+      observer.didPush(business, update);
+      expect(safety.safeToReload, isFalse);
+      observer.didPop(business, update);
+      expect(safety.safeToReload, isTrue);
+      observer.didPop(update, page);
+    }
   });
 
   test('only an explicit lifecycle probe attests to saved route state', () {

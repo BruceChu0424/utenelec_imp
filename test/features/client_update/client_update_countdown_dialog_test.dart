@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/web_update/web_update_safety.dart';
+import 'package:uten_imp/core/web_update/update_safety_navigation.dart';
 import 'package:uten_imp/features/client_update/client_release.dart';
 import 'package:uten_imp/features/client_update/client_update_dialog.dart';
 import 'package:uten_imp/shared/platform_branding/platform_branding.dart';
@@ -27,6 +29,32 @@ Future<void> pumpDialog(
 }) async {
   webUpdateSafety.setReady(true);
   addTearDown(() => webUpdateSafety.setReady(false));
+  final safetyNavigation = UpdateSafetyNavigation();
+  addTearDown(safetyNavigation.dispose);
+  final router = GoRouter(
+    observers: [safetyNavigation],
+    routes: [
+      GoRoute(
+        path: '/',
+        builder: (context, _) => Scaffold(
+          body: TextButton(
+            onPressed: () => unawaited(
+              showClientUpdateCountdownDialog(
+                context,
+                release: release,
+                currentVersion: '2.5.27',
+                onInstall: ({required bool automatic}) async {
+                  installs.add(automatic);
+                },
+              ),
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ],
+  );
+  addTearDown(router.dispose);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -34,7 +62,8 @@ Future<void> pumpDialog(
           PlatformBranding.defaults,
         ),
       ],
-      child: MaterialApp(
+      child: MaterialApp.router(
+        routerConfig: router,
         locale: const Locale('zh'),
         localizationsDelegates: const [
           AppLocalizations.delegate,
@@ -43,23 +72,6 @@ Future<void> pumpDialog(
           GlobalCupertinoLocalizations.delegate,
         ],
         supportedLocales: AppLocalizations.supportedLocales,
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => unawaited(
-                showClientUpdateCountdownDialog(
-                  context,
-                  release: release,
-                  currentVersion: '2.5.27',
-                  onInstall: ({required bool automatic}) async {
-                    installs.add(automatic);
-                  },
-                ),
-              ),
-              child: const Text('open'),
-            ),
-          ),
-        ),
       ),
     ),
   );
@@ -127,6 +139,7 @@ void main() {
     await tester.pump(const Duration(seconds: 10));
     expect(installs, isEmpty);
     expect(find.text('当前操作完成后自动更新'), findsOneWidget);
+    expect(find.text('0'), findsOneWidget);
     dirty = false;
     webUpdateSafety.changed();
     await tester.pump();

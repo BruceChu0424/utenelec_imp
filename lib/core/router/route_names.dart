@@ -70,6 +70,10 @@ abstract final class RouteName {
   static const String notFound = '/not-found';
   static const String profile = '/profile';
   static const String settings = '/settings';
+  static const String clientUpdate = '/settings/software-update';
+  static const String clientUpdateOffer = '/settings/software-update-offer';
+  static const String clientUpdateCountdown =
+      '/settings/software-update-countdown';
   static const String disasterRecovery = '/operations/recovery';
   static const String deviceAuditReceipts = '/settings/device-receipts';
   static const String changePassword = '/change-password';

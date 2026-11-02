@@ -11,6 +11,7 @@ import 'web_update_safety.dart';
 bool canAutomaticallyUpdateRoute(String path) =>
     const {
       RouteName.dashboard,
+      RouteName.settings,
       RouteName.accessDenied,
       RouteName.notFound,
       RouteName.adminAuditLogs,

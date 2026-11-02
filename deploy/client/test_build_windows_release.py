@@ -68,6 +68,24 @@ class BuildWindowsReleaseTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "bump the release version"):
             orchestrator.read_release_version(self.repository)
 
+    def test_default_pair_forwards_the_shared_runner_to_the_actual_compiler_boundary(self):
+        self.fixture_repository()
+        calls = []
+
+        def recording_runner(command, **options):
+            calls.append(command)
+            if command[0] == "git":
+                return self.clean_git(command, **options)
+            self.assertEqual(str(self.compiler), command[0])
+            self.assertTrue(options["capture_output"])
+            return fixture_compiler_runner(command, **options)
+
+        result = orchestrator.build_formal_release(
+            self.repository, self.output_dir, api=ENDPOINTS[0], cloud_api=ENDPOINTS[1],
+            iscc=self.compiler, runner=recording_runner, skip_build=True)
+        self.assertTrue(result["preflight"]["ok"])
+        self.assertEqual(1, sum(command[0] == str(self.compiler) for command in calls))
+
     def test_default_build_enforces_the_locked_registry_and_keeps_utf8_logs(self):
         lock = b'packages:\n  fixture:\n    description:\n      url: "https://pub.dev"\n'
         (self.repository / "pubspec.lock").write_bytes(lock)

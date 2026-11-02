@@ -251,7 +251,7 @@ def _default_package_pair(bundle: Path, setup_path: Path, update_path: Path, *, 
                           runner=subprocess.run) -> None:
     build_windows_setup(bundle, setup_path, version=version, build_number=build_number,
                         architecture=architecture, compiler=compiler, compile=True,
-                        update_output=update_path, source_root=repository)
+                        update_output=update_path, source_root=repository, runner=runner)
 
 
 def main(argv: list[str] | None = None) -> int:

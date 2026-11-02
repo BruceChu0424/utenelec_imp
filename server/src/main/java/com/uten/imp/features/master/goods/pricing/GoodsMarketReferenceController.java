@@ -3,6 +3,7 @@ package com.uten.imp.features.master.goods.pricing;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
+import com.uten.imp.security.PriceAnalysisAccessPolicy;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.UUID;
@@ -11,7 +12,7 @@ import static com.uten.imp.features.master.goods.pricing.MaterialForecastContrac
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/master/goods/{goodsId}/price-analysis/market")
-@PreAuthorize("hasAuthority('goods:view') and hasAuthority('goods:price_analysis:view') and (hasAuthority('purchase_order:view') or hasAuthority('finance_order_approval:view')) and (hasAuthority('purchase_order:price:view') or hasAuthority('finance:view:all'))")
+@PreAuthorize(PriceAnalysisAccessPolicy.PURCHASE_READ)
 public class GoodsMarketReferenceController {
     private final GoodsMarketReferenceService service;
     private final AuditDetailViewRecorder audit;
@@ -24,6 +25,6 @@ public class GoodsMarketReferenceController {
     @GetMapping("/catalog")
     public List<Benchmark> catalog(@PathVariable UUID goodsId){return service.catalog(goodsId);}
     @PutMapping
-    @PreAuthorize("hasAuthority('goods:edit') and hasAuthority('goods:view') and hasAuthority('goods:price_analysis:view') and (hasAuthority('purchase_order:view') or hasAuthority('finance_order_approval:view')) and (hasAuthority('purchase_order:price:view') or hasAuthority('finance:view:all'))")
+    @PreAuthorize(PriceAnalysisAccessPolicy.PURCHASE_WRITE)
     public Envelope put(@PathVariable UUID goodsId,@RequestBody BindingRequest request){return service.put(goodsId,request);}
 }

@@ -38,65 +38,66 @@ public class CommercialPriceVisibility {
     private final SecurityContextCurrentUser currentUser;
 
     public boolean canViewPurchaseOrder() {
-        return canViewPurchaseCommercial(PURCHASE_ORDER_PERMISSION);
+        return canViewCommercial(PURCHASE_ORDER_PERMISSION);
     }
 
     public boolean canViewPurchaseReceipt() {
-        return canViewPurchaseCommercial(PURCHASE_PERMISSION);
+        return canViewCommercial(PURCHASE_PERMISSION);
     }
 
     public boolean canViewPurchaseReturn() {
-        return canViewPurchaseCommercial(PURCHASE_RETURN_PERMISSION);
+        return canViewCommercial(PURCHASE_RETURN_PERMISSION);
     }
 
     public boolean canViewPurchaseReport() {
-        return canViewPurchaseCommercial(PURCHASE_REPORT_PERMISSION);
+        return canViewCommercial(PURCHASE_REPORT_PERMISSION);
     }
 
     public boolean canViewSubcontractInquiry() {
-        return canViewSubcontractCommercial(SUBCONTRACT_INQUIRY_PERMISSION);
+        return canViewCommercial(SUBCONTRACT_INQUIRY_PERMISSION);
     }
 
     public boolean canViewSubcontractOrder() {
-        return canViewSubcontractCommercial(SUBCONTRACT_ORDER_PERMISSION);
+        return canViewCommercial(SUBCONTRACT_ORDER_PERMISSION);
     }
 
     public boolean canViewSubcontractReceipt() {
-        return canViewSubcontractCommercial(SUBCONTRACT_RECEIPT_PERMISSION);
+        return canViewCommercial(SUBCONTRACT_RECEIPT_PERMISSION);
     }
 
     public boolean canViewSubcontractReturn() {
-        return canViewSubcontractCommercial(SUBCONTRACT_RETURN_PERMISSION);
+        return canViewCommercial(SUBCONTRACT_RETURN_PERMISSION);
     }
 
     public boolean canViewSubcontractWasteSuggestion() {
-        return canViewSubcontractCommercial(
+        return canViewCommercial(
                 SUBCONTRACT_WASTE_SUGGESTION_PERMISSION);
     }
 
     public boolean canViewSubcontractReport() {
-        return canViewSubcontractCommercial(SUBCONTRACT_REPORT_PERMISSION);
+        return canViewCommercial(SUBCONTRACT_REPORT_PERMISSION);
     }
 
     /**
      * Historical material issue/return DTOs still carry cost-shaped columns,
      * while their current business pages expose no commercial price fact.
-     * Only finance-wide authority may unmask those compatibility fields.
+     * Finance-wide source scope and explicit goods cost visibility are both required.
      */
     public boolean canViewSubcontractMaterialCost() {
-        return canViewFinance();
+        return canViewFinance() && hasPermission("goods:cost:view");
     }
 
     public boolean canViewFinance() {
         return hasPermission(FINANCE_PERMISSION);
     }
 
-    private boolean canViewSubcontractCommercial(String pagePermission) {
-        return hasPermission(pagePermission) || canViewFinance();
+    private boolean canViewCommercial(String pagePermission) {
+        return currentUser.get().map(user -> canViewCommercial(user.getPermissions(),pagePermission)).orElse(false);
     }
 
-    private boolean canViewPurchaseCommercial(String pagePermission) {
-        return hasPermission(pagePermission) || canViewFinance();
+
+    public static boolean canViewCommercial(java.util.Set<String> permissions,String pricePermission) {
+        return pricePermission != null && permissions.contains(pricePermission);
     }
 
     private boolean hasPermission(String permission) {

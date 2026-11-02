@@ -1,3 +1,4 @@
+import '../../../shared/pricing/price_analysis_access.dart';
 import '../models/goods_detail_sequence.dart';
 import 'goods_bom_navigation.dart';
 // 货品详情/编辑主体 (基础资料-货品资料): 页签 (基本信息 / 组装信息 / 成本预算 /
@@ -1308,11 +1309,10 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
             onPressed: _refreshPage,
           ),
         if (_goodsId != null &&
-            (ref.watch(isSuperAdminProvider) ||
-                ref.watch(currentPermissionsProvider).containsAll({
-                  Perm.goodsView,
-                  Perm.goodsPriceAnalysisView,
-                })))
+            canOpenPriceAnalysis(
+              ref.watch(currentPermissionsProvider),
+              ref.watch(isSuperAdminProvider),
+            ))
           UtenAppBarActionButton(
             key: const Key('goods-price-analysis-entry'),
             label: priceText(context, 'title'),
@@ -1320,6 +1320,12 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
               if (!await (_bomKey.currentState?.finishEditing() ??
                       Future.value(true)) ||
                   !mounted) {
+                return;
+              }
+              if (!canOpenPriceAnalysis(
+                ref.read(currentPermissionsProvider),
+                ref.read(isSuperAdminProvider),
+              )) {
                 return;
               }
               context.push(

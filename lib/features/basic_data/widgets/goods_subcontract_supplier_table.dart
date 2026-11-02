@@ -1,3 +1,4 @@
+import '../../../shared/pricing/price_analysis_access.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -196,12 +197,11 @@ class _SupplierDetailState extends ConsumerState<GoodsSubcontractSupplierDetail>
   String _summary = '';
   final _chromeKey = GlobalKey();
   final _bodyKey = GlobalKey();
-  bool get _allowed =>
-      ref.read(isSuperAdminProvider) ||
-      ref.read(currentPermissionsProvider).containsAll({
-        Perm.goodsView,
-        Perm.goodsPriceAnalysisView,
-      });
+  bool get _allowed => canAnalyzePriceKind(
+    ref.read(currentPermissionsProvider),
+    ref.read(isSuperAdminProvider),
+    'SUBCONTRACT',
+  );
   String get _identity =>
       '${widget.goodsId}|${widget.days}|${supplierGroupEvidence(widget.group)}';
   @override
@@ -209,6 +209,10 @@ class _SupplierDetailState extends ConsumerState<GoodsSubcontractSupplierDetail>
     super.initState();
     initializeNativeReadScope();
     ref.listenManual(currentPermissionsProvider, (_, _) {
+      invalidateNativeReadAccess();
+      _clear();
+    });
+    ref.listenManual(isSuperAdminProvider, (_, _) {
       invalidateNativeReadAccess();
       _clear();
     });

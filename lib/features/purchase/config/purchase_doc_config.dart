@@ -1,3 +1,4 @@
+import '../../../shared/auth/commercial_price_visibility.dart';
 // 采购单据配置（4 单据差异声明，驱动 list/detail/edit 页）。
 //
 // 一套页面 ×4 配置，保证 UI 一致。差异：申请无供应商/币种；订货有采购员/交货日+链到申请；
@@ -56,12 +57,8 @@ class PurchaseDocConfig {
   /// Purchase requests have no commercial price fact and keep this null.
   final String? commercialViewPerm;
 
-  bool canViewCommercial(Iterable<String> granted) {
-    final pagePermission = commercialViewPerm;
-    return pagePermission != null &&
-        (granted.contains(pagePermission) ||
-            granted.contains(Perm.financeViewAll));
-  }
+  bool canViewCommercial(Iterable<String> granted) =>
+      canViewCommercialPrice(granted, commercialViewPerm);
 
   /// 该单据的列表路径（「草稿(N)」按钮的落点）。
   String get listLocation => '/purchase/${type.pathSegment}';

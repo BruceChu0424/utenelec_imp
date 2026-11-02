@@ -19,7 +19,7 @@ class GoodsPriceAccessTest {
     }
     @Test void financePricePrivilegeStillRequiresSourceReadAndAnalytics(){
         assertThat(access(Set.of("goods:view",GoodsPriceAccess.VIEW,"finance:view:all")).available(Kind.PURCHASE)).isFalse();
-        assertThat(access(Set.of("goods:view",GoodsPriceAccess.VIEW,"finance:view:all","finance_order_approval:view")).available(Kind.PURCHASE)).isTrue();
+        assertThat(access(Set.of("goods:view",GoodsPriceAccess.VIEW,"finance:view:all","finance_order_approval:view")).available(Kind.PURCHASE)).isFalse();
     }
     @Test void salesPricesAreNotImpliedByProcurementOrFinancePrices(){
         assertThat(access(Set.of("goods:view",GoodsPriceAccess.VIEW,"sales_order:view","finance:view:all")).available(Kind.SALES)).isFalse();

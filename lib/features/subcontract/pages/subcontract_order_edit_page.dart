@@ -1507,7 +1507,9 @@ class _SubcontractOrderEditPageState
       }
       if (!mounted || !formDraftIdentityIsCurrent) return;
       context.appSuccess(_canSubmitFinance ? '委外订货单已提交财务审核' : '委外订货单草稿已保存');
-      notifySavedPriceAssessment(context, ref, [d.priceAssessment]);
+      notifySavedPriceAssessment(context, ref, [
+        d.priceAssessment,
+      ], kind: 'SUBCONTRACT');
       bumpListRefresh(ref, _cfg.refreshKey);
       popSavedEditOrReplace(
         context,
@@ -1583,7 +1585,12 @@ class _SubcontractOrderEditPageState
               : '委外订货单草稿已保存',
         );
       }
-      notifySavedPriceAssessment(context, ref, assessments.values);
+      notifySavedPriceAssessment(
+        context,
+        ref,
+        assessments.values,
+        kind: 'SUBCONTRACT',
+      );
       await completeFormDraft();
       if (!mounted || !formDraftIdentityIsCurrent) return;
       if (created.length == 1) {

@@ -10,6 +10,7 @@ import '../../core/network/api_exception.dart';
 import '../../core/network/server_config.dart';
 import '../../core/network/read_scope_revision.dart';
 import '../providers/authenticated_scope_provider.dart';
+import '../providers/export_context_epoch_provider.dart';
 import 'session_snapshot_provider.dart';
 
 /// Owns already rendered native details as well as their pending callbacks.
@@ -75,6 +76,11 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
       _privateRoutes.clear();
       _dialogAccess.clear();
       _accessChanges.value++;
+      // Me may already have settled before this owner listener is delivered.
+      // Resample its confirmed state instead of waiting for an event that has
+      // already happened; captureNativeRead still checks its exact generation.
+      _refreshNativeReadReadiness();
+      _scheduleNativeReadReload();
     }
 
     ref.listenManual(authenticatedScopeProvider, (previous, next) {
@@ -82,6 +88,16 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
     });
     ref.listenManual(apiBaseUrlProvider, (previous, next) {
       if (previous != next) ownerChanged();
+    });
+    ref.listenManual(exportContextEpochProvider, (previous, next) {
+      if (previous == next || !mounted) return;
+      // Paged readers retire on this same monotonic boundary. Retire native
+      // acceptance and pending tokens with them, including transport changes at
+      // an unchanged URL, so a retired page cannot suppress its successor read.
+      invalidateNativeReadAccess();
+      nativeReadPermissionChanged();
+      _refreshNativeReadReadiness();
+      _scheduleNativeReadReload();
     });
     ref.listenManual(readScopeRevisionProvider, (previous, next) {
       if (previous == next ||
@@ -126,6 +142,12 @@ mixin NativeReadViewScopeMixin<T extends ConsumerStatefulWidget>
         _scheduleNativeReadReload();
       }
     });
+  }
+
+  void _refreshNativeReadReadiness() {
+    _permissionReady =
+        ref.read(authenticatedScopeProvider) != null &&
+        confirmedSessionSnapshot(ref.read(sessionSnapshotProvider)) != null;
   }
 
   void _scheduleNativeReadReload() {

@@ -24,6 +24,9 @@ public interface OrganizationReferencePort {
 
     Map<UUID, String> findActiveDepartmentNames(Collection<UUID> departmentIds);
 
+    /** Minimal hierarchy only; the consuming business must authorize its own reference operation. */
+    List<DepartmentPickerNode> departmentPickerTree();
+
     record EmployeeReference(UUID id, Integer legacyId, UUID departmentId) {}
 
     record DepartmentReference(

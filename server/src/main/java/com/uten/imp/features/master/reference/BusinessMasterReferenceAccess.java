@@ -2,7 +2,7 @@ package com.uten.imp.features.master.reference;
 
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
-import com.uten.imp.features.org.employee.BusinessEmployeeReferenceAccess;
+import com.uten.imp.application.port.CurrentStaffAuthorityPort;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import java.util.Set;
@@ -11,7 +11,7 @@ import java.util.Set;
 @Component
 @RequiredArgsConstructor
 public class BusinessMasterReferenceAccess {
-    private final BusinessEmployeeReferenceAccess staff;
+    private final CurrentStaffAuthorityPort staff;
     private static final Set<String> DOCUMENT_ACTIONS = Set.of("view", "create", "edit", "approve", "confirm", "execute",
             "stock_in", "issue", "assign", "generate", "notify", "submit", "request", "count", "choose", "setup", "reopen");
     private static final Set<String> SUPPLIER_CONTEXTS = Set.of(

@@ -3,6 +3,7 @@ package com.uten.imp.features.org;
 import com.uten.imp.application.port.OrganizationReferencePort;
 import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.department.DepartmentRepository;
+import com.uten.imp.features.org.department.DepartmentService;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import org.junit.jupiter.api.Test;
@@ -22,7 +23,7 @@ class OrganizationReferenceAdapterTest {
     private final EmployeeRepository employees = mock(EmployeeRepository.class);
     private final DepartmentRepository departments = mock(DepartmentRepository.class);
     private final OrganizationReferenceAdapter adapter =
-            new OrganizationReferenceAdapter(employees, departments);
+            new OrganizationReferenceAdapter(employees, departments, mock(DepartmentService.class));
 
     @Test
     void exposesOnlyImmutableActiveIdentityProjection() {

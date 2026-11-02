@@ -1,7 +1,7 @@
 package com.uten.imp.features.org.employee;
 
 import com.uten.imp.common.web.PageResponse;
-import com.uten.imp.features.org.department.dto.DepartmentPickerNode;
+import com.uten.imp.application.port.DepartmentPickerNode;
 import com.uten.imp.features.org.employee.dto.BusinessEmployeeReference;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;

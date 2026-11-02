@@ -1,6 +1,7 @@
 package com.uten.imp.features.org.employee;
 
 import com.uten.imp.common.identity.CurrentEmployeeStatusPolicy;
+import com.uten.imp.application.port.CurrentStaffAuthorityPort;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.auth.PermissionResolver;
@@ -15,7 +16,7 @@ import java.util.Set;
 /** The operator must have the actual owning command authority; a read grant is insufficient. */
 @Component
 @RequiredArgsConstructor
-public class BusinessEmployeeReferenceAccess {
+public class BusinessEmployeeReferenceAccess implements CurrentStaffAuthorityPort {
     private final SecurityContextCurrentUser currentUser;
     private final JdbcTemplate jdbc;
     private final PermissionResolver permissions;
@@ -32,6 +33,7 @@ public class BusinessEmployeeReferenceAccess {
     }
 
     /** Shared minimal-reference caller validation; does not grant a business or HR capability. */
+    @Override
     @Transactional(readOnly=true)
     public Set<String> currentStaffPermissions() {
         var actor=currentUser.get().orElseThrow(()->new ApiException(ErrorCode.UNAUTHORIZED));

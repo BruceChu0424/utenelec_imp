@@ -1,6 +1,7 @@
 #include "client_update_channel.h"
 #include "software_download_host.h"
 #include "update_helper_process.h"
+#include "native_diagnostics.h"
 
 #include <bcrypt.h>
 #include <shlobj.h>
@@ -196,6 +197,7 @@ struct UpdatePreparation {
 
 UpdatePreparation PrepareUpdate(const std::string& path_arg,
     const std::string& expected_hash, int64_t build, HANDLE cancelled) {
+  LogNativeDiagnostic("update.native_prepare");
   const auto staging = StagingDirectory();
   const auto executable = Executable();
   const auto script = executable.parent_path() / L"client_updater" / L"client_updater.ps1";
@@ -356,6 +358,7 @@ ClientUpdateChannel::ClientUpdateChannel(flutter::BinaryMessenger* messenger,
       auto prepared = PrepareUpdate(path_arg, expected_hash, build, cancelled);
       return [window, reply, prepared = std::move(prepared)]() {
         if (!prepared.error.empty()) {
+          LogNativeDiagnostic("update.native_failed", prepared.error.c_str());
           reply->Error(prepared.error, prepared.message);
           return;
         }
@@ -365,10 +368,12 @@ ClientUpdateChannel::ClientUpdateChannel(flutter::BinaryMessenger* messenger,
         }
         // This closure runs on the platform thread with its channel still alive.
         if (!prepared.helper->Accept()) {
+          LogNativeDiagnostic("update.native_failed", "AUTHORIZE_FAILED");
           reply->Error("UPDATE_START_FAILED", "Could not authorize the ready updater.");
           return;
         }
         reply->Success(Value(Map{{Value("status"), Value("restarting")}}));
+        LogNativeDiagnostic("update.native_handoff");
         PostMessageW(window, WM_CLOSE, 0, 0);
       };
     });

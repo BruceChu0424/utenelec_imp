@@ -601,9 +601,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`；`clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json`。
 
-接续/限制：尚未迁移；2026-10-31 Flutter已接入workshop-tasks Excel公共后台导出，须同步production_execution:view与production_report:export、原任务范围/筛选及native_workshop_tasks下载围栏；见2026-10-31仓库选仓与车间任务导出记录。 2026-10-31整合复核：导出状态须消费workshop-task-stage-v1共享样例，区分报完/待检/点收入库及备料阶段；不得仅映射底层segmentStatus，本地报工草稿不作为已审核事实导出。；2026-11-01 必要合同增量仍未迁移：production_execution:view + production_workshop_task:view:all只扩列表/历史/详情/材料阅读；assignment、原动作、count/徽章不扩大，缓存弹窗及迟到响应须按Me/范围ABA失效。原状态和DoD保留。。
+接续/限制：尚未迁移；2026-10-31 Flutter已接入workshop-tasks Excel公共后台导出，须同步production_execution:view与production_report:export、原任务范围/筛选及native_workshop_tasks下载围栏；见2026-10-31仓库选仓与车间任务导出记录。 2026-10-31整合复核：导出状态须消费workshop-task-stage-v1共享样例，区分报完/待检/点收入库及备料阶段；不得仅映射底层segmentStatus，本地报工草稿不作为已审核事实导出。；2026-11-01 必要合同增量仍未迁移：production_execution:view + production_workshop_task:view:all只扩列表/历史/详情/材料阅读；assignment、原动作、count/徽章不扩大，缓存弹窗及迟到响应须按Me/范围ABA失效。原状态和DoD保留。；2026-11-01 同责车间表格的销售要求动作改用单行公共控件；WPF 本页仍未迁移，后续迁移须保留完整备注与紧凑行高，不得用固定高度裁掉内容。。
 
 ## W7-BIZ-116
 

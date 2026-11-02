@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "paths": [
+    {"input":"/api/goods/123?token=fixture","expected":"/api/goods/:id"},
+    {"input":"https://fixture.invalid/api/goods/01398765-4321-4321-4321-abcdef123456?password=fixture","expected":"/api/goods/:id"},
+    {"input":"/api/finance/reports/2026/11","expected":"/api/finance/reports/:id/:id"},
+    {"input":"/api/attachments/业务文件.xlsx","expected":"/api/attachments/:id"},
+    {"input":"/api/stock/OUTBOUND","expected":"/api/stock/:id"}
+  ],
+  "limits":{"pendingRecords":256,"fileBytes":2097152,"retainedFiles":16,"exportFiles":8,"exportTailBytes":131072},
+  "prohibited":["requestBody","responseBody","authorization","password","accessToken","refreshToken","widgetText"]
+}

@@ -313,6 +313,9 @@ namespace Uten.Legacy.Tests
                         Dispatcher.CurrentDispatcher.Invoke(DispatcherPriority.ContextIdle, new Action(() => { }));
                         if (queryInput.Text != "续期保留筛选") throw new InvalidOperationException("Ordinary token refresh must preserve the current unit query.");
                         var codeFilter = FindVisual<ComboBox>(view, item => Equals(item.ToolTip, "全部编号"));
+                        // Table and facet reads are intentionally independent.
+                        // Dispatcher idle does not mean their background I/O finished.
+                        PumpUntil(() => codeFilter.Items.Count >= 3, "The fixture must first finish loading a real code facet.");
                         if (codeFilter.Items.Count < 3) throw new InvalidOperationException("The fixture must first load a real code facet.");
                         handler.Proof = "scope-b"; handler.FailFacets = true;
                         try { session.GetAsync("/master/units?page=1&size=20", CancellationToken.None).GetAwaiter().GetResult(); }

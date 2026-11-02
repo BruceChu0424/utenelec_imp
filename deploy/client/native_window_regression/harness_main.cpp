@@ -4,13 +4,17 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
 
 #include "flutter_window.h"
 #include "utils.h"
+#include "native_diagnostics.h"
+#include "accessibility_probe.h"
 
 namespace {
 constexpr UINT_PTR kHarnessTimer = 0x7a51;
@@ -53,6 +57,7 @@ void Result(const std::string& entry) {
 }
 
 LONG WINAPI CaptureException(EXCEPTION_POINTERS* pointers) {
+  RecordNativeException(pointers);
   char receipt[512]{};
   const unsigned long code = pointers->ExceptionRecord->ExceptionCode;
   const auto address = reinterpret_cast<unsigned long long>(
@@ -80,6 +85,9 @@ struct Options {
   std::string accessibility_mode = "default";
   bool extended = false;
   bool hold_open = false;
+  bool accessibility_probe = false;
+  bool extreme = false;
+  std::string fixture_receipt;
 };
 
 bool NumberOption(const std::string& text, const std::string& prefix, UINT& value) {
@@ -143,6 +151,7 @@ class RegressionWindow : public FlutterWindow {
   bool OnCreate() override {
     if (!FlutterWindow::OnCreate()) return false;
     if (!SetTimer(GetHandle(), kHarnessTimer, options_.start_delay_ms, nullptr)) return false;
+    if (options_.accessibility_probe) StartAccessibilityProbe(GetHandle());
     SetUnhandledExceptionFilter(CaptureException);
     Log("{\"event\":\"flutter_created\",\"pid\":" + std::to_string(GetCurrentProcessId()) +
         ",\"hwnd\":" + std::to_string(reinterpret_cast<uintptr_t>(GetHandle())) +
@@ -199,11 +208,38 @@ class RegressionWindow : public FlutterWindow {
     finished_ = true;
     exit_code_ = success ? 0 : 2;
     KillTimer(GetHandle(), kHarnessTimer);
+    const auto probe = ReadAccessibilityProbe();
+    int64_t expected_cycle = -1, loaded_rows = -1, cancelled_reads = -1, gap_ms = -1;
+    bool framework_clean = true;
+    if (!options_.fixture_receipt.empty()) {
+      std::ifstream input(std::filesystem::u8path(options_.fixture_receipt), std::ios::binary);
+      std::ostringstream buffer; buffer << input.rdbuf();
+      const auto text = buffer.str();
+      const auto number = [&text](const char* key) -> int64_t {
+        const auto found = text.find(key);
+        return found == std::string::npos ? -1 : _strtoi64(text.c_str() + found + strlen(key), nullptr, 10);
+      };
+      expected_cycle = number("\"tick\":");
+      loaded_rows = number("\"loadedRows\":");
+      cancelled_reads = number("\"cancelledReads\":");
+      gap_ms = number("\"maxEventLoopGapMs\":");
+      framework_clean = text.find("\"frameworkErrors\":[]") != std::string::npos;
+    }
+    std::string outcome_reason = reason;
+    const bool fixture_ok = !options_.extreme || (loaded_rows == 50000 && expected_cycle == probe.last_cycle &&
+        cancelled_reads > 0 && gap_ms >= 0 && gap_ms < 1000 && framework_clean);
+    if (success && options_.extreme && !fixture_ok) outcome_reason = "fixture_or_accessibility_validation_failed";
+    if (options_.accessibility_probe && (probe.queries == 0 || probe.last_cycle < 0)) success = false;
+    if (!fixture_ok) success = false;
+    StopAccessibilityProbe();
+    if (!success) exit_code_ = 2;
     const std::string receipt = "{\"status\":\"" + std::string(success ? "passed" : "failed") +
-        "\",\"reason\":\"" + Escape(reason) + "\",\"completedActions\":" +
+        "\",\"reason\":\"" + Escape(outcome_reason) + "\",\"completedActions\":" +
         std::to_string(action_index_) + ",\"plannedActions\":" +
         std::to_string(actions_.size()) + ",\"realFlutterEngine\":true,\"accessibilityMode\":\"" +
-        Escape(options_.accessibility_mode) + "\",\"extended\":" +
+        Escape(options_.accessibility_mode) + "\",\"uiaQueries\":" + std::to_string(probe.queries) +
+        ",\"uiaFailures\":" + std::to_string(probe.failures) + ",\"uiaLastCycle\":" + std::to_string(probe.last_cycle) +
+        ",\"expectedCycle\":" + std::to_string(expected_cycle) + ",\"loadedRows\":" + std::to_string(loaded_rows) + ",\"extended\":" +
         std::string(options_.extended ? "true" : "false") + ",\"finalUiaReadWindowMs\":2000}";
     Result(receipt);
     Log(receipt);
@@ -336,6 +372,9 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, wchar_t*, int) {
       options.hold_open = true;
       continue;
     }
+    if (argument == "--accessibility-probe") { options.accessibility_probe = true; continue; }
+    if (argument == "--extreme") { options.extreme = true; continue; }
+    if (argument.rfind("--fixture-receipt=", 0) == 0) options.fixture_receipt = argument.substr(18);
     if (NumberOption(argument, "--start-delay-ms=", options.start_delay_ms) ||
         NumberOption(argument, "--step-ms=", options.step_ms)) continue;
     if (argument.rfind("--receipt-dir=", 0) == 0) options.receipt_directory = argument.substr(14);

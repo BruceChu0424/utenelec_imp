@@ -105,7 +105,11 @@ Source: "{#UpdaterX64}.config"; DestDir: "{app}\client_updater"; DestName: "Uten
 Source: "{#AppConfiguration}"; DestDir: "{app}"; DestName: "uten.client.json"; Flags: ignoreversion
 Source: "{#AppIcon}"; DestDir: "{app}"; DestName: "uten-wpf.ico"; Flags: ignoreversion
 
+[Dirs]
+Name: "{localappdata}\com.uten.uten_imp\client-logs\wpf_legacy"; Flags: uninsneveruninstall
+
 [Icons]
+Name: "{userprograms}\{#InstallerAppName} Logs"; Filename: "{localappdata}\com.uten.uten_imp\client-logs\wpf_legacy"; Flags: foldershortcut
 Name: "{userprograms}\{#InstallerAppName}"; Filename: "{app}\Uten.Legacy.Desktop.exe"; WorkingDir: "{app}"; IconFilename: "{app}\uten-wpf.ico"; AppUserModelID: "{#InstallerAppId}"
 Name: "{userdesktop}\{#InstallerAppName}"; Filename: "{app}\Uten.Legacy.Desktop.exe"; WorkingDir: "{app}"; IconFilename: "{app}\uten-wpf.ico"; AppUserModelID: "{#InstallerAppId}"
 

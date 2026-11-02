@@ -13,7 +13,8 @@
     <Reference Include="System"/><Reference Include="System.Core"/><Reference Include="System.Net.Http"/>
     <Reference Include="System.Xaml"/><Reference Include="WindowsBase"/><Reference Include="PresentationCore"/><Reference Include="PresentationFramework"/>
     <Reference Include="System.Web.Extensions"/><Reference Include="System.IO.Compression"/><Reference Include="System.IO.Compression.FileSystem"/>
-    <Compile Include="Program.cs"/><Compile Include="UiContractChecks.cs"/><Compile Include="UpdaterContractChecks.cs"/>
+    <EmbeddedResource Include="..\..\..\test\fixtures\client_diagnostics_v1.json"><LogicalName>Uten.ClientDiagnosticsFixture.json</LogicalName></EmbeddedResource>
+    <Compile Include="Program.cs"/><Compile Include="UiContractChecks.cs"/><Compile Include="UpdaterContractChecks.cs"/><Compile Include="DiagnosticsLogChecks.cs"/>
     <ProjectReference Include="..\Uten.Legacy.Core\Uten.Legacy.Core.csproj"><Project>{9FC37E48-AF39-4671-AFAD-E365597E96D8}</Project><Name>Uten.Legacy.Core</Name></ProjectReference>
     <ProjectReference Include="..\Uten.Legacy.Desktop\Uten.Legacy.Desktop.csproj"><Project>{D8B39060-10F6-40A8-A125-CA42E9630D8E}</Project><Name>Uten.Legacy.Desktop</Name></ProjectReference>
     <ProjectReference Include="..\Uten.Legacy.Updater\Uten.Legacy.Updater.csproj"><Project>{AA9ED4E2-EA37-4F83-B161-33798FA32B84}</Project><Name>Uten.Legacy.Updater</Name></ProjectReference>

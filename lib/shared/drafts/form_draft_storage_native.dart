@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/performance/responsive_data_codec.dart';
 import '../../core/performance/ui_work_budget.dart';
+import '../../core/performance/data_work_queue.dart';
 import 'form_draft_storage_api.dart';
 
 FormDraftStorage createFormDraftStorage() => NativeFormDraftStorage();
@@ -80,7 +81,9 @@ class NativeFormDraftStorage
       return false;
     }
     if (left.length < 64 * 1024) return left == right;
-    return Isolate.run(() => left == right);
+    // CAS comparisons are valid writes' prerequisites: FIFO admission, never
+    // silently discarded or replayed. Both strings are immutable snapshots.
+    return dataWorkQueue.run(() => Isolate.run(() => left == right));
   }
 
   Future<void> _replace(File target, String value) async {

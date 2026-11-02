@@ -11,6 +11,7 @@ add_executable(${BINARY_NAME} WIN32
   "client_update_channel.cpp"
   "window_background_task.cpp"
   "update_helper_process.cpp"
+  "native_diagnostics.cpp"
   "software_download_host.cpp"
   "main.cpp"
   "utils.cpp"
@@ -30,6 +31,7 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_MAJOR=${FLUTT
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_MINOR=${FLUTTER_VERSION_MINOR}")
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_PATCH=${FLUTTER_VERSION_PATCH}")
 target_compile_definitions(${BINARY_NAME} PRIVATE "FLUTTER_VERSION_BUILD=${FLUTTER_VERSION_BUILD}")
+target_compile_definitions(${BINARY_NAME} PRIVATE "UTEN_BUILD_KIND=\"$<CONFIG>\"")
 
 # Disable Windows macros that collide with C++ standard library functions.
 target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")

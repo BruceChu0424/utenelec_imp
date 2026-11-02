@@ -1,4 +1,6 @@
 #include "flutter_window.h"
+#include "native_diagnostics.h"
+#include <shellapi.h>
 
 #include <optional>
 #include <string>
@@ -11,6 +13,7 @@ FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
 
 FlutterWindow::~FlutterWindow() {
+  ResetDiagnosticChannel();
   client_update_channel_.reset();
   ResetWindowTitleChannel();
   ResetDesktopWindowChannel();
@@ -22,6 +25,7 @@ bool FlutterWindow::OnCreate() {
   }
 
   RECT frame = GetClientArea();
+  StartNativeDiagnostics(GetHandle());
 
   // The size here must match the window dimensions to avoid unnecessary surface
   // creation / destruction in the startup path.
@@ -32,6 +36,29 @@ bool FlutterWindow::OnCreate() {
     return false;
   }
   RegisterPlugins(flutter_controller_->engine());
+  diagnostic_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(), "com.uten.imp/diagnostics",
+      &flutter::StandardMethodCodec::GetInstance());
+  diagnostic_channel_->SetMethodCallHandler([](const auto& call, auto result) {
+    const auto path = NativeDiagnosticDirectory();
+    if (call.method_name() == "getLogDirectory") {
+      const int length = WideCharToMultiByte(CP_UTF8, 0, path.data(),
+          static_cast<int>(path.size()), nullptr, 0, nullptr, nullptr);
+      std::string utf8(static_cast<size_t>(length), '\0');
+      WideCharToMultiByte(CP_UTF8, 0, path.data(), static_cast<int>(path.size()), utf8.data(), length, nullptr, nullptr);
+      if (utf8.empty()) result->Error("LOG_UNAVAILABLE", "Log directory unavailable.");
+      else result->Success(flutter::EncodableValue(utf8));
+    } else if (call.method_name() == "openLogDirectory") {
+      if (path.empty()) {
+        result->Error("LOG_UNAVAILABLE", "Log directory unavailable.");
+        return;
+      }
+      const auto opened = reinterpret_cast<intptr_t>(ShellExecuteW(
+          nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL));
+      if (!path.empty() && opened > 32) result->Success();
+      else result->Error("LOG_UNAVAILABLE", "Log directory unavailable.");
+    } else result->NotImplemented();
+  });
   client_update_channel_ = std::make_unique<ClientUpdateChannel>(
       flutter_controller_->engine()->messenger(), GetHandle());
   desktop_window_channel_ =
@@ -154,6 +181,8 @@ bool FlutterWindow::OnCreate() {
 }
 
 void FlutterWindow::OnDestroy() {
+  LogNativeDiagnostic("engine.teardown");
+  ResetDiagnosticChannel();
   client_update_channel_.reset();
   ResetWindowTitleChannel();
   ResetDesktopWindowChannel();
@@ -162,6 +191,14 @@ void FlutterWindow::OnDestroy() {
   }
 
   Win32Window::OnDestroy();
+  StopNativeDiagnostics();
+}
+
+void FlutterWindow::ResetDiagnosticChannel() {
+  if (diagnostic_channel_) {
+    diagnostic_channel_->SetMethodCallHandler(nullptr);
+    diagnostic_channel_.reset();
+  }
 }
 
 void FlutterWindow::ResetDesktopWindowChannel() {
@@ -198,6 +235,10 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
+  if (message == kDiagnosticHeartbeat) {
+    AcknowledgeDiagnosticHeartbeat();
+    return 0;
+  }
   // The shared custom frame owns these messages, including resize edges.
   // Plugins still receive ordinary content, keyboard and lifecycle messages.
   if (message == WM_NCCALCSIZE || message == WM_NCHITTEST ||

@@ -6,25 +6,39 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:dio/dio.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/responsive/display_zoom_pointer_binding.dart';
+import 'package:uten_imp/core/diagnostics/diagnostic_log.dart';
+import 'package:uten_imp/core/network/responsive_json_decoder.dart';
+import 'package:uten_imp/core/performance/ui_work_budget.dart';
+import 'package:uten_imp/shared/widgets/diagnostic_log_tile.dart';
 
 import 'stability_receipt_stub.dart'
     if (dart.library.io) 'stability_receipt_native.dart';
 
-void main(List<String> arguments) {
+Future<void> main(List<String> arguments) async {
   UtenWidgetsFlutterBinding();
+  await AppDiagnostics.initialize();
   final receipt = arguments
       .where((value) => value.startsWith('--fixture-receipt='))
       .map((value) => value.substring('--fixture-receipt='.length))
       .firstOrNull;
-  runApp(_Fixture(receipt: receipt));
+  runApp(
+    _Fixture(
+      receipt: receipt,
+      extreme:
+          arguments.contains('--extreme') ||
+          Uri.base.queryParameters['stress'] == '1',
+    ),
+  );
 }
 
 class _Fixture extends StatefulWidget {
-  const _Fixture({this.receipt});
+  const _Fixture({this.receipt, this.extreme = false});
   final String? receipt;
+  final bool extreme;
   @override
   State<_Fixture> createState() => _FixtureState();
 }
@@ -38,12 +52,31 @@ class _FixtureState extends State<_Fixture> {
   int tick = 0, lastPulse = 0, maxGap = 0, pulses = 0;
   bool dialogOpen = false, moving = true;
   final errors = <String>[];
+  bool logExportOk = false;
+  final decoder = ResponsiveJsonDecoder();
+  Uint8List? payload;
+  int? payloadReadyAt;
+  int generation = 0,
+      activeReads = 0,
+      cancelledReads = 0,
+      completeReads = 0,
+      loadedRows = 0;
   final updateRejections = <String, int>{};
   void Function(FlutterErrorDetails)? oldError;
 
   @override
   void initState() {
     super.initState();
+    if (widget.extreme) {
+      unawaited(
+        (kIsWeb ? _largeWebFixture(50000) : compute(_largeFixture, 50000)).then(
+          (bytes) {
+            payload = bytes;
+            payloadReadyAt = watch.elapsedMilliseconds;
+          },
+        ),
+      );
+    }
     oldError = FlutterError.onError;
     FlutterError.onError = (details) {
       errors.add(details.exceptionAsString());
@@ -92,9 +125,25 @@ class _FixtureState extends State<_Fixture> {
       lastPulse = now;
       pulses++;
     });
-    churn = Timer.periodic(const Duration(milliseconds: 80), (_) {
+    churn = Timer.periodic(Duration(milliseconds: widget.extreme ? 8 : 80), (
+      _,
+    ) {
       if (!moving || !mounted) return;
+      if (widget.extreme &&
+          payloadReadyAt != null &&
+          watch.elapsedMilliseconds - payloadReadyAt! >= 40000) {
+        setState(() => moving = false);
+        generation++;
+        if (dialogOpen) navigator.currentState!.pop();
+        unawaited(_read(finalRead: true));
+        unawaited(_save());
+        return;
+      }
       setState(() => tick++);
+      if (widget.extreme && tick % 3 == 0) {
+        generation++;
+        if (activeReads < 2) unawaited(_read());
+      }
       if (tick % 25 == 0 && !dialogOpen) {
         dialogOpen = true;
         showDialog<void>(
@@ -120,10 +169,58 @@ class _FixtureState extends State<_Fixture> {
       'frameworkErrors': errors,
       'updateRejections': updateRejections,
       'offlineFixture': true,
+      'extreme': widget.extreme,
+      'cancelledReads': cancelledReads,
+      'completeReads': completeReads,
+      'loadedRows': loadedRows,
+      'logExportOk': logExportOk,
     });
     if (kIsWeb) debugPrint('STABILITY_RECEIPT $json');
     if (widget.receipt != null) {
       await writeStabilityReceipt(widget.receipt!, json);
+    }
+  }
+
+  Future<void> _read({bool finalRead = false}) async {
+    final bytes = payload;
+    if (bytes == null || !mounted) return;
+    final own = generation;
+    activeReads++;
+    try {
+      if (!finalRead && own.isOdd) {
+        await Future<void>.delayed(const Duration(milliseconds: 30));
+      }
+      final value = await decoder.decodeBytes(
+        bytes,
+        isCurrent: () => mounted && own == generation,
+      );
+      if (!mounted || own != generation) throw const UiWorkCancelled();
+      final items = (value as Map)['items'] as List;
+      if (items.length != 50000 ||
+          (items.last as Map)['quantity'] != '0001.0000000000000001') {
+        errors.add('Large fixture lost rows or precision');
+      }
+      completeReads++;
+      if (finalRead) {
+        setState(() => loadedRows = items.length);
+        final exported = utf8.decode(await AppDiagnostics.log!.export());
+        logExportOk =
+            exported.contains('app.start') &&
+            (kIsWeb || exported.contains('native.start'));
+        if (!logExportOk) errors.add('Log export omitted a required layer');
+        AppDiagnostics.record(
+          'stress.final_load',
+          fields: {'count': loadedRows},
+        );
+        await _save();
+      }
+    } on UiWorkCancelled {
+      cancelledReads++;
+    } catch (error, stack) {
+      if (mounted) errors.add(error.runtimeType.toString());
+      AppDiagnostics.recordError('stress.load_failed', error, stack);
+    } finally {
+      activeReads--;
     }
   }
 
@@ -133,6 +230,8 @@ class _FixtureState extends State<_Fixture> {
     churn?.cancel();
     FlutterError.onError = oldError;
     editor.dispose();
+    generation++;
+    decoder.dispose();
     super.dispose();
   }
 
@@ -172,6 +271,8 @@ class _FixtureState extends State<_Fixture> {
         body: Column(
           children: [
             Text('Semantics reparent cycles: $tick'),
+            if (widget.extreme) Text('Loaded synthetic rows: $loadedRows'),
+            const DiagnosticLogTile(),
             Row(
               children: [
                 Expanded(
@@ -223,5 +324,37 @@ class _FixtureState extends State<_Fixture> {
         ),
       ),
     );
+  }
+}
+
+Uint8List _largeFixture(int count) => Uint8List.fromList(
+  utf8.encode(
+    jsonEncode({
+      'items': List.generate(
+        count,
+        (index) => {
+          'id': 'synthetic-$index',
+          'name': 'Synthetic item $index',
+          'quantity': '0001.0000000000000001',
+          'amount': '9999999999999.1234567890',
+        },
+      ),
+    }),
+  ),
+);
+
+Future<Uint8List> _largeWebFixture(int count) async {
+  // Served only by the offline test server. Avoid measuring fixture creation
+  // as if it were production decoding; this is synthetic data with no auth.
+  final client = Dio();
+  try {
+    final response = await client.get<List<int>>(
+      Uri.base.resolve('stress-fixture.json').toString(),
+      options: Options(responseType: ResponseType.bytes),
+    );
+    final bytes = response.data!;
+    return bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
+  } finally {
+    client.close();
   }
 }

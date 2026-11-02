@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/diagnostics/diagnostic_log.dart';
 import '../../core/web_update/web_update_safety.dart';
 import '../../shared/providers/session_provider.dart';
 import 'client_package_download.dart';
@@ -62,6 +63,7 @@ class ClientUpdateController extends ChangeNotifier {
   bool _disposed = false;
   final _ownerDisposedListeners = <VoidCallback>{};
   CancelToken? _download;
+  ClientUpdateStage? _loggedStage;
   bool get isDisposed => _disposed;
   void addOwnerDisposedListener(VoidCallback listener) =>
       _ownerDisposedListeners.add(listener);
@@ -76,6 +78,13 @@ class ClientUpdateController extends ChangeNotifier {
       stage == ClientUpdateStage.installing;
 
   void _notify() {
+    if (_loggedStage != stage) {
+      _loggedStage = stage;
+      AppDiagnostics.record('update.stage', fields: {
+        'stage': stage.name,
+        if (error != null) 'exceptionType': error.runtimeType.toString(),
+      });
+    }
     if (!_disposed) notifyListeners();
   }
 
@@ -142,6 +151,9 @@ class ClientUpdateController extends ChangeNotifier {
   }
 
   Future<void> update() async {
+    AppDiagnostics.record('update.clicked', fields: {
+      'stage': stage.name, 'reason': _disposed ? 'retired' : busy ? 'busy' : 'ready',
+    });
     final candidate = release;
     final context = installed;
     if (_disposed || busy || candidate == null || context == null) return;
@@ -248,6 +260,7 @@ class ClientUpdateController extends ChangeNotifier {
     bool safe() =>
         !_disposed && _canInstall() && (additionalSafety?.call() ?? true);
     if (!safe()) {
+      AppDiagnostics.record('update.deferred', fields: {'reason': 'unsafe'});
       waitingForSafeInstall = true;
       _notify();
       return false;

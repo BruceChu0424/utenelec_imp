@@ -1,4 +1,5 @@
 #include "update_helper_process.h"
+#include "native_diagnostics.h"
 
 #include <vector>
 
@@ -6,11 +7,12 @@ std::shared_ptr<UpdateHelperProcess> UpdateHelperProcess::Start(
     const std::wstring& application, std::wstring command,
     const std::wstring& directory) {
   HANDLE job = CreateJobObjectW(nullptr, nullptr);
-  if (!job) return nullptr;
+  if (!job) { LogNativeWin32Failure("update.job_failed", GetLastError()); return nullptr; }
   JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
   limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
   if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation,
           &limits, sizeof(limits))) {
+    LogNativeWin32Failure("update.job_limits_failed", GetLastError());
     CloseHandle(job);
     return nullptr;
   }
@@ -23,6 +25,7 @@ std::shared_ptr<UpdateHelperProcess> UpdateHelperProcess::Start(
   std::vector<BYTE> storage(attribute_bytes);
   auto attributes = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
   if (!InitializeProcThreadAttributeList(attributes, 1, 0, &attribute_bytes)) {
+    LogNativeWin32Failure("update.attributes_failed", GetLastError());
     CloseHandle(job);
     return nullptr;
   }
@@ -39,8 +42,10 @@ std::shared_ptr<UpdateHelperProcess> UpdateHelperProcess::Start(
       CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr,
       directory.empty() ? nullptr : directory.c_str(),
       &startup.StartupInfo, &process);
+  const DWORD start_error = started ? ERROR_SUCCESS : GetLastError();
   DeleteProcThreadAttributeList(attributes);
   if (!started) {
+    LogNativeWin32Failure("update.process_failed", start_error);
     CloseHandle(job);
     return nullptr;
   }

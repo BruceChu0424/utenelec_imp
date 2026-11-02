@@ -6,6 +6,9 @@
 #include <functional>
 #include <memory>
 
+int RunNativeDiagnosticChild(int argc, wchar_t** argv);
+int RunNativeDiagnosticChecks();
+
 namespace {
 int failures = 0;
 void Check(bool value, const char* name) {
@@ -27,8 +30,12 @@ bool PumpUntil(const std::function<bool()>& condition, DWORD timeout = 3000) {
 }
 }  // namespace
 
-int main(int argc, char**) {
-  if (argc > 1) { Sleep(30000); return 0; }
+int wmain(int argc, wchar_t** argv) {
+  if (argc > 1) {
+    const int result = RunNativeDiagnosticChild(argc, argv);
+    if (result >= 0) return result;
+    Sleep(30000); return 0;
+  }
   const DWORD platform_thread = GetCurrentThreadId();
   {
     WindowBackgroundTask task;
@@ -115,6 +122,7 @@ int main(int argc, char**) {
       CloseHandle(observed);
     }
   }
+  failures += RunNativeDiagnosticChecks();
   std::printf("failures=%d\n", failures);
   return failures ? 1 : 0;
 }

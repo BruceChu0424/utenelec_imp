@@ -7,6 +7,7 @@ import 'dart:typed_data';
 import 'package:web/web.dart' as web;
 
 import '../performance/ui_work_budget.dart';
+import '../performance/data_work_queue.dart';
 
 @JS('Object.keys')
 external JSArray<JSString> _objectKeys(JSObject value);
@@ -42,6 +43,21 @@ class ResponsiveJsonDecoder {
     if (bytes.length < 64 * 1024) {
       return jsonDecode(utf8.decode(bytes, allowMalformed: true));
     }
+    try {
+      return await dataWorkQueue.run(
+        () => _decodeLarge(bytes, isCurrent),
+        isCurrent: () => !_disposed && isCurrent?.call() != false,
+      );
+    } on UiWorkCancelled {
+      if (_disposed) throw StateError('JSON decoder is disposed');
+      rethrow;
+    }
+  }
+
+  Future<Object?> _decodeLarge(
+    Uint8List bytes,
+    bool Function()? isCurrent,
+  ) async {
     final worker = _ensureWorker();
     final id = ++_nextId;
     final result = Completer<JSAny?>();

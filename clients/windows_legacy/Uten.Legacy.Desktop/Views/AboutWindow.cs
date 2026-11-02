@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using Uten.Legacy.Desktop.Controls;
+using Uten.Legacy.Core;
 
 namespace Uten.Legacy.Desktop.Views
 {
@@ -17,6 +18,10 @@ namespace Uten.Legacy.Desktop.Views
             Body.Children.Add(new TextBlock { Text = "Windows 兼容版 · " + version, FontWeight = FontWeights.SemiBold });
             AddLicense("Noto Sans SC · SIL Open Font License", "PrintAssets/OFL.txt");
             AddLicense("Bouncy Castle · MIT License", "Licenses/BouncyCastle-LICENSE.md");
+            ActionButton("打开日志文件夹", () =>
+            {
+                DiagnosticsLog.Current?.OpenDirectory();
+            });
             ActionButton("关闭", () => Close());
         }
         private void AddLicense(string title, string resource)

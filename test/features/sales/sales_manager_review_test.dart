@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:uten_imp/shared/sales_review/sales_order_review.dart';
 import 'package:uten_imp/features/finance/models/sales_quote_finance_review.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import '../../support/audit_screenshot_support.dart';
@@ -18,6 +19,7 @@ import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/layout/uten_app_bar.dart';
+import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -218,6 +220,35 @@ class _Api extends ApiClient {
   }
 }
 
+class _ScrollQueueApi extends _Api {
+  _ScrollQueueApi({this.rowCount = 60});
+
+  final int rowCount;
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    final result = await super.get(path, query: query);
+    if (path != '/sales/manager-review') return result;
+    final seed = (result['items'] as List).first as Map<String, dynamic>;
+    return {
+      ...result,
+      'size': 60,
+      'total': rowCount,
+      'items': [
+        for (var i = 0; i < rowCount; i++)
+          {
+            ...seed,
+            'id': i == 0 ? 'order-1' : 'scroll-order-$i',
+            'billNo': 'SCROLL-${i.toString().padLeft(3, '0')}',
+          },
+      ],
+    };
+  }
+}
+
 Future<FinanceClaimFixture> _pump(
   WidgetTester tester,
   _Api api,
@@ -351,6 +382,169 @@ void main() {
       Perm.salesOrderManagerView,
     ]);
   });
+  for (final scale in [1.0, 1.5]) {
+    testWidgets(
+      'manager queue pins before scrolling rows and restores header at scale $scale',
+      (tester) async {
+        await _pump(tester, _ScrollQueueApi(), '/sales/manager-review', {
+          Perm.salesOrderManagerView,
+          Perm.salesOrderManagerConfirm,
+        }, textScale: scale);
+        final table = find.byType(MasterDataTableView<SalesManagerReviewTask>);
+        final categories = find.byKey(const Key('sales-review-categories'));
+        final initialTableTop = tester.getTopLeft(table).dy;
+        final initialCategoryTop = tester.getTopLeft(categories).dy;
+        final pointer = TestPointer(41, PointerDeviceKind.mouse);
+        await tester.sendEventToBinding(pointer.hover(tester.getCenter(table)));
+        Future<void> wheel(double delta) async {
+          await tester.sendEventToBinding(pointer.scroll(Offset(0, delta)));
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+
+        if (_capture) {
+          await saveAuditScreenshot(
+            tester,
+            _captureKey,
+            'manager-pin-before-$scale',
+          );
+        }
+        await wheel(40);
+        expect(tester.getTopLeft(table).dy, lessThan(initialTableTop));
+        expect(tester.getTopLeft(categories).dy, lessThan(initialCategoryTop));
+        final nested = tester.state<NestedScrollViewState>(
+          find.byType(NestedScrollView),
+        );
+        final outer = nested.outerController;
+        final inner = nested.innerController;
+        expect(outer.offset, closeTo(40, .01));
+        expect(
+          inner.offset,
+          0,
+          reason: 'header must collapse before any rows scroll',
+        );
+
+        await wheel(1000);
+        expect(outer.offset, closeTo(outer.position.maxScrollExtent, .01));
+        expect(
+          inner.offset,
+          0,
+          reason: 'the wheel crossing the pin point must stop',
+        );
+        final pinnedTop = tester.getTopLeft(table).dy;
+        expect(
+          pinnedTop,
+          closeTo(
+            tester.getTopLeft(find.byType(UtenCollapsingHeaderScrollView)).dy,
+            .01,
+          ),
+        );
+        expect(find.text('SCROLL-000').hitTestable(), findsOneWidget);
+        expect(
+          find.byKey(const Key('sales-manager-review-refresh')).hitTestable(),
+          findsOneWidget,
+        );
+        if (_capture) {
+          await saveAuditScreenshot(
+            tester,
+            _captureKey,
+            'manager-pin-after-$scale',
+          );
+        }
+        await wheel(100);
+        expect(
+          inner.offset,
+          0,
+          reason: 'the existing wheel hold must remain effective',
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        await wheel(100);
+        expect(inner.offset, greaterThan(0));
+        expect(tester.getTopLeft(table).dy, closeTo(pinnedTop, .01));
+
+        await wheel(-1000);
+        expect(inner.offset, 0);
+        expect(
+          outer.offset,
+          closeTo(outer.position.maxScrollExtent, .01),
+          reason: 'rows return to top before the header expands',
+        );
+        await wheel(-100);
+        expect(tester.getTopLeft(table).dy, closeTo(pinnedTop, .01));
+        await tester.pump(const Duration(milliseconds: 400));
+        await wheel(-1000);
+        expect(outer.offset, 0);
+        expect(tester.getTopLeft(table).dy, closeTo(initialTableTop, .01));
+        expect(
+          find.byKey(const Key('sales-review-search')).hitTestable(),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+        debugDefaultTargetPlatformOverride = null;
+      },
+    );
+  }
+  testWidgets('manager queue wheel over filters collapses the header first', (
+    tester,
+  ) async {
+    await _pump(tester, _ScrollQueueApi(), '/sales/manager-review', {
+      Perm.salesOrderManagerView,
+    });
+    final table = find.byType(MasterDataTableView<SalesManagerReviewTask>);
+    final before = tester.getTopLeft(table).dy;
+    final pointer = TestPointer(42, PointerDeviceKind.mouse);
+    await tester.sendEventToBinding(
+      pointer.hover(
+        tester.getCenter(find.byKey(const Key('sales-review-categories'))),
+      ),
+    );
+    await tester.sendEventToBinding(pointer.scroll(const Offset(0, 40)));
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(tester.getTopLeft(table).dy, lessThan(before));
+    final nested = tester.state<NestedScrollViewState>(
+      find.byType(NestedScrollView),
+    );
+    expect(nested.innerController.offset, 0);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pumpAndSettle();
+    debugDefaultTargetPlatformOverride = null;
+  });
+  for (final rows in [0, 1]) {
+    testWidgets('manager queue can pin a short table with $rows rows', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        _ScrollQueueApi(rowCount: rows),
+        '/sales/manager-review',
+        {Perm.salesOrderManagerView},
+      );
+      final table = find.byType(MasterDataTableView<SalesManagerReviewTask>);
+      final before = tester.getTopLeft(table).dy;
+      final pointer = TestPointer(43, PointerDeviceKind.mouse);
+      await tester.sendEventToBinding(pointer.hover(tester.getCenter(table)));
+      await tester.sendEventToBinding(pointer.scroll(const Offset(0, 1000)));
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(table).dy, lessThan(before));
+      expect(
+        tester.getTopLeft(table).dy,
+        closeTo(
+          tester.getTopLeft(find.byType(UtenCollapsingHeaderScrollView)).dy,
+          .01,
+        ),
+      );
+      expect(
+        rows == 0 ? find.text('当前分类没有需要处理的单据') : find.text('SCROLL-000'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      debugDefaultTargetPlatformOverride = null;
+    });
+  }
   for (final size in [const Size(1440, 1000), const Size(430, 900)]) {
     testWidgets(
       'manager selection and approval float together with refresh in header at $size',

@@ -1,3 +1,6 @@
+import '../../../shared/models/employee_reference.dart';
+import '../../../shared/repositories/employee_reference_repository.dart';
+import '../../../shared/widgets/business_employee_picker.dart';
 // 钱流单据编辑页（新建/编辑，全页路由，按 docType 参数化）。
 //
 // 主表头表单 + 明细可编辑 Excel 表（UtenEditableGrid）+ 保存。
@@ -58,8 +61,6 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/models/department_node.dart';
-import '../../../shared/repositories/department_repository.dart';
-import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/widgets/sales_order_picker.dart';
 import '../../basic_data/models/client_node.dart';
 import '../../basic_data/models/reference_method_option.dart';
@@ -95,7 +96,6 @@ import '../../../core/l10n/gen/app_localizations_zh.dart';
 import '../../../core/ui/human_error_message.dart';
 import '../widgets/finance_receipt_totals.dart';
 import '../widgets/finance_entry_file_picker.dart';
-import '../../employee/repositories/employee_picker_candidates.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 const _receiptKindArSettlement = 'AR_SETTLEMENT';
@@ -644,29 +644,20 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
   }
 
   Future<void> _preloadEmployees(Iterable<String?> ids) async {
-    final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
-    if (uniq.isEmpty) return;
-    final repo = ref.read(employeeRepositoryProvider);
-    await Future.wait(
-      uniq.map((id) async {
-        try {
-          final p = await repo.getById(id);
-          _empCache[id] = UtenEmployeePickerItem(
-            id: p.id,
-            name: p.fullName ?? '',
-            employeeCode: p.code,
-            accountStatus: p.accountDeleted
-                ? 'notProvisioned'
-                : p.accountStatus ?? 'notProvisioned',
-            employmentStatus: p.status,
-            departmentId: p.departmentId,
-            departmentName: p.departmentName,
-          );
-        } catch (_) {
-          /* 静默 */
-        }
-      }),
-    );
+    final unique = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
+    if (unique.isEmpty) return;
+    try {
+      final rows = await ref
+          .read(employeeReferenceRepositoryProvider)
+          .byIds(unique, purpose: _employeeReferencePurpose);
+      if (!mounted) return;
+      for (final row in rows) {
+        _empCache[row.id] = row.toPickerItem();
+      }
+    } catch (_) {
+      // The visible business picker owns any label-read failure and retry;
+      // preloading must not replace or abort the document's own read.
+    }
   }
 
   void _syncReceiptRateToRows() {
@@ -2987,44 +2978,36 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     );
   }
 
+  EmployeeReferencePurpose get _employeeReferencePurpose => switch (_cfg.type) {
+    FinanceDocType.receipt => EmployeeReferencePurpose.financeReceiptPerson,
+    FinanceDocType.payment => EmployeeReferencePurpose.financePaymentPerson,
+    FinanceDocType.expense => EmployeeReferencePurpose.financeExpensePerson,
+    FinanceDocType.otherIncome =>
+      EmployeeReferencePurpose.financeOtherIncomePerson,
+    FinanceDocType.bankTransfer =>
+      EmployeeReferencePurpose.financeBankTransferPerson,
+  };
+
   Widget _employeePicker({
     required String label,
     required String? currentId,
-    required ValueChanged<String?> onChanged,
     String? defaultDeptCode,
+
+    required ValueChanged<String?> onChanged,
   }) {
-    return UtenEmployeePicker(
+    return BusinessEmployeePicker(
       key: ValueKey('${label}_$currentId'),
+      purpose: _employeeReferencePurpose,
+      enabled:
+          ref.watch(isSuperAdminProvider) ||
+          ref.watch(currentPermissionsProvider).contains(_cfg.createPerm) ||
+          ref.watch(currentPermissionsProvider).contains(_cfg.editPerm),
+      selectedId: currentId,
       label: label,
-      hint: '请选择$label',
-      sheetTitle: '选择$label',
+
       initial: currentId == null ? null : _empCache[currentId],
-      loader: (kw) async {
-        final deptId = (kw == null || kw.isEmpty) && defaultDeptCode != null
-            ? (ref.read(departmentCodeIdMapProvider).value ??
-                  const {})[defaultDeptCode]
-            : null;
-        final res = await ref
-            .read(employeeRepositoryProvider)
-            .listPickerCandidates(
-              size: 30,
-              search: kw,
-              departmentId: deptId,
-              includeSubtree: true,
-            );
-        return [
-          for (final e in res)
-            UtenEmployeePickerItem(
-              id: e.id,
-              name: e.fullName,
-              employeeCode: e.code,
-              accountStatus: e.accountStatus,
-              employmentStatus: e.status,
-              departmentId: e.departmentId,
-              departmentName: e.departmentName,
-            ),
-        ];
-      },
+      departmentCode: defaultDeptCode,
+      onResolved: (item) => _empCache[item.id] = item,
       onChanged: (item) {
         if (item != null) _empCache[item.id] = item;
         onChanged(item?.id);

@@ -1,3 +1,5 @@
+import '../../../shared/repositories/employee_reference_repository.dart';
+import '../../../shared/models/employee_reference.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,14 +21,12 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/department_node.dart';
 import '../../../shared/widgets/uten_department_picker.dart';
-import '../../employee/repositories/employee_repository.dart';
 import '../models/material_priority_replenishment.dart';
 import '../models/production_material_analysis.dart';
 import '../models/material_transfer_quantity.dart';
 import '../models/production_exact_quantity.dart';
 import '../providers/production_department_provider.dart';
 import '../repositories/production_repository.dart';
-import '../../employee/repositories/employee_picker_candidates.dart';
 
 Future<ProductionMaterialAnalysisView?>
 showMaterialPriorityReplenishmentDialog({
@@ -588,6 +588,17 @@ class _MaterialPriorityReplenishmentDialogState
                                     ),
                                     const SizedBox(height: UtenSpacing.s12),
                                     UtenEmployeePicker(
+                                      presentation:
+                                          UtenEmployeePickerPresentation
+                                              .businessReference,
+                                      departmentTreeLoader: () => ref
+                                          .read(
+                                            employeeReferenceRepositoryProvider,
+                                          )
+                                          .departments(
+                                            EmployeeReferencePurpose
+                                                .productionMaterialOwner,
+                                          ),
                                       candidateScopeKey: (
                                         'replenishment-owner',
                                         _departmentId,
@@ -598,8 +609,12 @@ class _MaterialPriorityReplenishmentDialogState
                                       enabled: !_locked,
                                       loader: (keyword) async {
                                         final result = await ref
-                                            .read(employeeRepositoryProvider)
+                                            .read(
+                                              employeeReferenceRepositoryProvider,
+                                            )
                                             .listPickerCandidates(
+                                              purpose: EmployeeReferencePurpose
+                                                  .productionMaterialOwner,
                                               size: 30,
                                               search: keyword,
                                               statuses: const {

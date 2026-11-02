@@ -1,3 +1,6 @@
+import '../../../shared/models/employee_reference.dart';
+import '../../../shared/repositories/employee_reference_repository.dart';
+import '../../../shared/widgets/business_employee_picker.dart';
 // 生产计划单编辑页（编辑既有草稿，全页路由）：主表头表单 + 明细可编辑 Excel 表
 // （UtenEditableGrid）+ 保存。
 //
@@ -53,9 +56,7 @@ import '../../../core/ui/human_error_message.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../basic_data/widgets/uten_goods_picker.dart';
 import '../../../shared/models/department_node.dart';
-import '../../../shared/repositories/department_repository.dart';
 import '../../../shared/widgets/uten_department_picker.dart';
-import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/auth/document_scope_capability.dart';
 import '../../../shared/attachments/business_attachment_section.dart';
 import '../../../shared/auth/permissions.dart';
@@ -72,7 +73,6 @@ import '../../../core/router/nav_helpers.dart';
 import '../widgets/production_grid_columns.dart';
 import '../widgets/production_overproduction_rate_field.dart';
 import '../../../shared/badges/badge_registry.dart';
-import '../../employee/repositories/employee_picker_candidates.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class ProductionPlanEditPage extends ConsumerStatefulWidget {
@@ -120,8 +120,6 @@ class _ProductionPlanEditPageState
   bool _sellerAutoFilled = false;
 
   /// 部门化 picker 默认范围 id（_init 预解析；解析前 picker 回退全公司）。
-  String? _marketingDeptId;
-  String? _productionDeptId;
 
   final _grid = UtenEditableGridController<ProductionGridRow>();
   final _scrollCtl = ScrollController();
@@ -173,7 +171,6 @@ class _ProductionPlanEditPageState
     try {
       await ref.read(masterNameServiceProvider).ensureLoaded();
       if (!isCurrent()) return;
-      await _resolveDeptIds();
       if (!isCurrent()) return;
       if (widget.id == null) {
         // 跟单员默认当前登录人（生产工是车间侧人员，不预填）。
@@ -285,54 +282,22 @@ class _ProductionPlanEditPageState
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  /// 预解析跟单员（MKT_CENTER）/生产工（DEPT_PROD）默认部门 id，供 picker loader 收敛范围。
-  Future<void> _resolveDeptIds() async {
-    try {
-      final tree = await ref.read(departmentRepositoryProvider).tree();
-      _marketingDeptId = findDepartmentByCode(tree, kDeptCodeMarketing)?.id;
-      _productionDeptId = findDepartmentByCode(tree, kDeptCodeProduction)?.id;
-    } catch (_) {
-      // 解析失败：picker 回退全公司，不阻塞编辑。
-    }
-  }
-
-  /// 按 code 取已解析的部门 id（loader 关键字为空时用）。
-  String? _deptIdFor(String code) {
-    switch (code) {
-      case kDeptCodeMarketing:
-        return _marketingDeptId;
-      case kDeptCodeProduction:
-        return _productionDeptId;
-      default:
-        return null;
-    }
-  }
-
   /// 并发按 id 拉人员名字（picker 的 initial 显示用）。失败静默。
   Future<void> _preloadEmployees(Iterable<String?> ids) async {
-    final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
-    if (uniq.isEmpty) return;
-    final repo = ref.read(employeeRepositoryProvider);
-    await Future.wait(
-      uniq.map((id) async {
-        try {
-          final p = await repo.getById(id);
-          _empCache[id] = UtenEmployeePickerItem(
-            id: p.id,
-            name: p.fullName ?? '',
-            employeeCode: p.code,
-            accountStatus: p.accountDeleted
-                ? 'notProvisioned'
-                : p.accountStatus ?? 'notProvisioned',
-            employmentStatus: p.status,
-            departmentId: p.departmentId,
-            departmentName: p.departmentName,
-          );
-        } catch (_) {
-          // 静默：picker 的 initial 为 null 时不显示名字，不阻塞流程。
-        }
-      }),
-    );
+    final unique = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
+    if (unique.isEmpty) return;
+    try {
+      final rows = await ref
+          .read(employeeReferenceRepositoryProvider)
+          .byIds(unique, purpose: _employeeReferencePurpose);
+      if (!mounted) return;
+      for (final row in rows) {
+        _empCache[row.id] = row.toPickerItem();
+      }
+    } catch (_) {
+      // The visible business picker owns any label-read failure and retry;
+      // preloading must not replace or abort the document's own read.
+    }
   }
 
   Future<void> _pickGoods(ProductionGridRow row) async {
@@ -651,43 +616,34 @@ class _ProductionPlanEditPageState
   }
 
   /// 人员选择器：关键字为空时默认收敛到职能部门子树、有关键字时全公司搜（兼顾别部门下单人）。
+  EmployeeReferencePurpose get _employeeReferencePurpose =>
+      EmployeeReferencePurpose.productionPlanOwner;
+
   Widget _employeePicker({
     required String label,
     required String? currentId,
     required String defaultDeptCode,
     required ValueChanged<String?> onChanged,
   }) {
-    return UtenEmployeePicker(
+    return BusinessEmployeePicker(
       key: ValueKey('${label}_$currentId'),
+      purpose: _employeeReferencePurpose,
+      enabled:
+          ref.watch(isSuperAdminProvider) ||
+          ref
+              .watch(currentPermissionsProvider)
+              .contains(Perm.productionPlanCreate) ||
+          ref
+              .watch(currentPermissionsProvider)
+              .contains(Perm.productionPlanEdit) ||
+          ref
+              .watch(currentPermissionsProvider)
+              .contains(Perm.productionMaterialAnalysisCreate),
+      selectedId: currentId,
       label: label,
-      hint: '请选择$label',
-      sheetTitle: '选择$label',
       initial: currentId == null ? null : _empCache[currentId],
-      loader: (kw) async {
-        final deptId = (kw == null || kw.isEmpty)
-            ? _deptIdFor(defaultDeptCode)
-            : null;
-        final res = await ref
-            .read(employeeRepositoryProvider)
-            .listPickerCandidates(
-              size: 30,
-              search: kw,
-              departmentId: deptId,
-              includeSubtree: true,
-            );
-        return [
-          for (final e in res)
-            UtenEmployeePickerItem(
-              id: e.id,
-              name: e.fullName,
-              employeeCode: e.code,
-              accountStatus: e.accountStatus,
-              employmentStatus: e.status,
-              departmentId: e.departmentId,
-              departmentName: e.departmentName,
-            ),
-        ];
-      },
+      departmentCode: defaultDeptCode,
+      onResolved: (item) => _empCache[item.id] = item,
       onChanged: (item) {
         if (item != null) _empCache[item.id] = item;
         onChanged(item?.id);

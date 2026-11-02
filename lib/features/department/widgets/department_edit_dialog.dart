@@ -11,6 +11,8 @@
 // 成功时对话框自行关闭。替代了部门页内联的 _showCreateDialog/_showEditDialog。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
+import '../../../shared/models/employee_reference.dart';
+import '../../../shared/repositories/employee_reference_repository.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/drafts/form_draft_mixin.dart';
 import '../../../shared/drafts/form_draft_values.dart';
@@ -389,6 +391,10 @@ class _DepartmentEditDialogState extends ConsumerState<DepartmentEditDialog>
             if (_canAssignManager && widget.managerLoader != null) ...[
               const SizedBox(height: UtenSpacing.s12),
               UtenEmployeePicker(
+                presentation: UtenEmployeePickerPresentation.businessReference,
+                departmentTreeLoader: () => ref
+                    .read(employeeReferenceRepositoryProvider)
+                    .departments(EmployeeReferencePurpose.departmentManager),
                 candidateScopeKey: ('department-manager', widget.editing?.id),
                 loader: widget.managerLoader!,
                 initial: _manager,

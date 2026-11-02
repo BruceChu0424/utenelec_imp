@@ -22,9 +22,51 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 import 'package:uten_imp/shared/models/user.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/widgets/business_employee_picker.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
 
 void main() {
+  testWidgets('采购编辑权限可选择业务员且不读取员工档案', (tester) async {
+    final api = _PersonSelectionApi();
+    await _openSourcePreview(tester, api, drafts: MemoryFormDraftStorage());
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PurchaseOrderEditPage)),
+    );
+    expect(
+      container.read(currentPermissionsProvider),
+      isNot(contains(Perm.employeeView)),
+    );
+    final field = find.byType(BusinessEmployeePicker).first;
+    await tester.ensureVisible(field);
+    await tester.tap(field);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('业务经办甲'),
+      findsOneWidget,
+      reason:
+          'Actual reads: ${api.reads}; candidate queries: ${api.personQueries}',
+    );
+    expect(find.text('采购专员'), findsOneWidget);
+    expect(find.text('职位'), findsOneWidget);
+    expect(find.text('账号状态'), findsNothing);
+    await tester.tap(find.text('业务经办甲'));
+    await tester.pump();
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    expect(api.personQueries, isNotEmpty);
+    expect(
+      api.personQueries.every(
+        (query) => query['purpose'] == 'PURCHASE_ORDER_PERSON',
+      ),
+      isTrue,
+    );
+    expect(
+      api.reads.where((path) => path.startsWith('/org/employees')),
+      isEmpty,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('新建采购订货纯勾选变化自动保存业务选择且不发业务写入', (tester) async {
     final api = _SelectionApi();
     final drafts = MemoryFormDraftStorage();
@@ -461,8 +503,70 @@ class _DraftSessionNotifier extends SessionNotifier {
   );
 }
 
+class _PersonSelectionApi extends _SelectionApi {
+  _PersonSelectionApi() : super(apiBaseUrl: 'https://example.invalid/api');
+  final reads = <String>[];
+  final personQueries = <Map<String, dynamic>>[];
+  static const person = {
+    'id': 'person-reference-1',
+    'code': '000321',
+    'fullName': '业务经办甲',
+    'departmentId': 'purchase-dept',
+    'departmentName': '采购部',
+    'positionName': '采购专员',
+    'status': 'active',
+    'accountStatus': 'notProvisioned',
+  };
+
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    reads.add(path);
+    if (path == ApiEndpoints.employeeReferences) {
+      personQueries.add(Map.of(query!));
+      return {
+        'items': [person],
+        'page': query['page'],
+        'size': query['size'],
+        'total': 1,
+        'totalPages': 1,
+      };
+    }
+    return super.get(path, query: query);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    reads.add(path);
+    if (path == ApiEndpoints.employeeReferenceDepartments) {
+      personQueries.add(Map.of(query!));
+      return const [
+        {
+          'id': 'purchase-dept',
+          'code': 'SUB_PURCHASE',
+          'name': '采购部',
+          'level': '一级部门',
+          'parentId': null,
+          'children': <Map<String, dynamic>>[],
+        },
+      ];
+    }
+    if (path == ApiEndpoints.employeeReferencesByIds) {
+      personQueries.add(Map.of(query!));
+      return const [person];
+    }
+    return super.getList(path, query: query);
+  }
+}
+
 class _SelectionApi extends ApiClient {
-  _SelectionApi({this.previewRows}) : super(Dio());
+  _SelectionApi({this.previewRows, String apiBaseUrl = ''})
+    : super(Dio(BaseOptions(baseUrl: apiBaseUrl)));
   final List<Map<String, dynamic>>? previewRows;
   final writes = <Object?>[];
 

@@ -1,3 +1,5 @@
+import '../../../shared/repositories/employee_reference_repository.dart';
+import '../../../shared/models/employee_reference.dart';
 // 生产日报编辑页（新建/编辑，全页路由）：与生产计划/销售编辑页同构（统一模板）。
 //
 // 日报特点：
@@ -62,9 +64,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/models/department_node.dart';
-import '../../../shared/repositories/department_repository.dart';
 import '../../../shared/widgets/uten_department_picker.dart';
-import '../../employee/repositories/employee_repository.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../models/daily_output_allocation.dart';
 import '../models/production_daily_report.dart';
@@ -84,7 +84,6 @@ import '../repositories/production_actual_output_supplement_repository.dart';
 import '../repositories/production_overproduction_rate_repository.dart';
 import '../widgets/reportable_plan_line_picker.dart';
 import '../../../shared/badges/badge_registry.dart';
-import '../../employee/repositories/employee_picker_candidates.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class ProductionDailyReportEditPage extends ConsumerStatefulWidget {
@@ -1257,27 +1256,25 @@ class _ProductionDailyReportEditPageState
   Future<void> _preloadEmployees(Iterable<String?> ids) async {
     final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
     if (uniq.isEmpty) return;
-    final repo = ref.read(employeeRepositoryProvider);
-    await Future.wait(
-      uniq.map((id) async {
-        try {
-          final p = await repo.getById(id);
-          _empCache[id] = UtenEmployeePickerItem(
-            id: p.id,
-            name: p.fullName ?? '',
-            employeeCode: p.code,
-            accountStatus: p.accountDeleted
-                ? 'notProvisioned'
-                : p.accountStatus ?? 'notProvisioned',
-            employmentStatus: p.status,
-            departmentId: p.departmentId,
-            departmentName: p.departmentName,
-          );
-        } catch (_) {
-          // 静默
-        }
-      }),
-    );
+    try {
+      final repository = ref.read(employeeReferenceRepositoryProvider);
+      final identities = uniq.toList(growable: false);
+      final rows = <EmployeeReference>[];
+      for (var offset = 0; offset < identities.length; offset += 100) {
+        rows.addAll(
+          await repository.byIds(
+            identities.skip(offset).take(100),
+            purpose: EmployeeReferencePurpose.productionReportWorker,
+          ),
+        );
+      }
+      if (!mounted) return;
+      for (final row in rows) {
+        _empCache[row.id] = row.toPickerItem();
+      }
+    } catch (_) {
+      // Preserve the original document references if label enrichment fails.
+    }
   }
 
   Future<void> _pickGoods(DailyGridRow row) async {
@@ -3808,7 +3805,9 @@ class _ProductionDailyReportEditPageState
   /// 预解析生产部（DEPT_PROD）子树 id，供生产工 picker 默认收敛范围。
   Future<void> _resolveDeptIds() async {
     try {
-      final tree = await ref.read(departmentRepositoryProvider).tree();
+      final tree = await ref
+          .read(employeeReferenceRepositoryProvider)
+          .departments(EmployeeReferencePurpose.productionReportWorker);
       _productionDeptId = findDepartmentByCode(tree, kDeptCodeProduction)?.id;
     } catch (_) {
       // 解析失败：picker 回退全公司，不阻塞编辑。
@@ -3817,6 +3816,10 @@ class _ProductionDailyReportEditPageState
 
   Widget _workerPicker() {
     return UtenEmployeeMultiPicker(
+      presentation: UtenEmployeePickerPresentation.businessReference,
+      departmentTreeLoader: () => ref
+          .read(employeeReferenceRepositoryProvider)
+          .departments(EmployeeReferencePurpose.productionReportWorker),
       candidateScopeKey: (
         'production-workers',
         _departmentId ?? _productionDeptId,
@@ -3837,8 +3840,9 @@ class _ProductionDailyReportEditPageState
         final deptId = _departmentId ?? _productionDeptId;
         if (deptId == null) return const <UtenEmployeePickerItem>[];
         final res = await ref
-            .read(employeeRepositoryProvider)
+            .read(employeeReferenceRepositoryProvider)
             .listPickerCandidates(
+              purpose: EmployeeReferencePurpose.productionReportWorker,
               search: kw,
               statuses: const {'active', 'probation'},
               departmentId: deptId,
@@ -3854,6 +3858,7 @@ class _ProductionDailyReportEditPageState
               employmentStatus: e.status,
               departmentId: e.departmentId,
               departmentName: e.departmentName,
+              positionName: e.positionName,
             ),
         ];
       },

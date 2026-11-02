@@ -1,3 +1,5 @@
+import '../repositories/employee_reference_repository.dart';
+import '../models/employee_reference.dart';
 import '../paging/scoped_paged_read_view_mixin.dart';
 // 销售订单选择器（右滑入单选）：跨模块共享（生产计划「来源单号」、财务客户预收选订单）。
 //
@@ -22,12 +24,9 @@ import '../../core/network/api_exception.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
 import '../models/department_node.dart';
-import '../repositories/department_repository.dart';
-import '../../features/employee/repositories/employee_repository.dart';
 import '../../features/sales/models/sales_doc.dart';
 import '../../features/sales/repositories/sales_repository.dart';
 import '../models/paged_result.dart';
-import '../../features/employee/repositories/employee_picker_candidates.dart';
 
 // 调用方（财务预收等）只依赖列表项类型与已审状态常量，不再直接 import 销售 feature 模型。
 export '../../features/sales/models/sales_doc.dart'
@@ -122,7 +121,9 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
 
   Future<void> _resolveMarketingDept() async {
     try {
-      final tree = await ref.read(departmentRepositoryProvider).tree();
+      final tree = await ref
+          .read(employeeReferenceRepositoryProvider)
+          .departments(EmployeeReferencePurpose.salesOrderSellerFilter);
       final node = findDepartmentByCode(tree, kDeptCodeMarketing);
       if (node != null && mounted) {
         setState(() => _marketingDeptId = node.id);
@@ -245,6 +246,13 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
                   const SizedBox(height: UtenSpacing.s12),
                   // 销售员筛选：默认 MKT_CENTER 营销体系、搜索全公司、可清空。
                   UtenEmployeePicker(
+                    presentation:
+                        UtenEmployeePickerPresentation.businessReference,
+                    departmentTreeLoader: () => ref
+                        .read(employeeReferenceRepositoryProvider)
+                        .departments(
+                          EmployeeReferencePurpose.salesOrderSellerFilter,
+                        ),
                     label: '销售员',
                     hint: '全部销售员',
                     sheetTitle: '选择销售员',
@@ -252,8 +260,10 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
                     allowClear: true,
                     loader: (kw) async {
                       final res = await ref
-                          .read(employeeRepositoryProvider)
+                          .read(employeeReferenceRepositoryProvider)
                           .listPickerCandidates(
+                            purpose:
+                                EmployeeReferencePurpose.salesOrderSellerFilter,
                             size: 30,
                             search: kw,
                             departmentId: (kw == null || kw.isEmpty)
@@ -271,6 +281,7 @@ class _SalesOrderPickerSheetState extends ConsumerState<_SalesOrderPickerSheet>
                             employmentStatus: e.status,
                             departmentId: e.departmentId,
                             departmentName: e.departmentName,
+                            positionName: e.positionName,
                           ),
                       ];
                     },

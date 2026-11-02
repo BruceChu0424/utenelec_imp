@@ -5,6 +5,8 @@
 // 文档：docs/03-页面/部门管理页.md
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
+import '../../../shared/models/employee_reference.dart';
+import '../../../shared/repositories/employee_reference_repository.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/feedback/uten_context_menu.dart';
@@ -33,7 +35,6 @@ import '../widgets/department_edit_dialog.dart';
 import '../widgets/department_overview_pane.dart';
 import '../../basic_data/widgets/category_tree_search.dart';
 import '../../../shared/widgets/uten_department_tree_view.dart';
-import '../../employee/repositories/employee_picker_candidates.dart';
 
 class DepartmentPage extends ConsumerStatefulWidget {
   const DepartmentPage({super.key});
@@ -378,8 +379,9 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
     String? keyword,
   ) async {
     final result = await ref
-        .read(employeeRepositoryProvider)
+        .read(employeeReferenceRepositoryProvider)
         .listPickerCandidates(
+          purpose: EmployeeReferencePurpose.departmentManager,
           search: keyword,
           statuses: const {'active', 'probation', 'onLeave'},
           departmentId: departmentId,
@@ -394,6 +396,7 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
             employmentStatus: employee.status,
             departmentId: employee.departmentId,
             departmentName: employee.departmentName,
+            positionName: employee.positionName,
           ),
         )
         .toList();

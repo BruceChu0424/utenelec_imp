@@ -101,7 +101,8 @@ public class SalesManagerReviewService implements com.uten.imp.application.port.
         String normalized=state==null?"PENDING":state.toUpperCase(java.util.Locale.ROOT);
         if(!List.of("PENDING","APPROVED","REJECTED","HISTORY").contains(normalized))
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"审核分类不正确");
-        String union=kinds.stream().map(value -> taskProjection(value,normalized))
+        boolean history="HISTORY".equals(normalized), pending="PENDING".equals(normalized);
+        String union=kinds.stream().map(value -> taskProjection(value,history,pending))
                 .collect(java.util.stream.Collectors.joining(" UNION ALL "));
         String search=com.uten.imp.common.util.KeywordSearch.phrase(keyword);
         var fields=new java.util.LinkedHashMap<String,com.uten.imp.common.util.SqlColumnSearch.Field>();
@@ -120,6 +121,7 @@ public class SalesManagerReviewService implements com.uten.imp.application.port.
         String from=" FROM ("+union+") t WHERE "+headers.predicate()
                 +(search.isEmpty()?"":" AND "+com.uten.imp.common.util.TaskKeywordSearch.conditionParameter("keyword","t.billNo","t.client","t.seller"));
         var count=em.createNativeQuery("SELECT COUNT(*)"+from);
+        if(!history) count.setParameter("managerState",normalized);
         headers.bind(count); if(!search.isEmpty()) count.setParameter("keyword",search);
         long total=((Number)count.getSingleResult()).longValue();
         int sz=Math.max(1,Math.min(size,100)),pages=(int)((total+sz-1)/sz);
@@ -128,6 +130,7 @@ public class SalesManagerReviewService implements com.uten.imp.application.port.
                 +"t.reason,t.approvedAt,t.approver,t.rejectedAt,t.rejector,t.remark,t.kind"+from
                 +" ORDER BY t.billDate,t.billNo,t.id LIMIT :lim OFFSET :off")
                 .setParameter("lim",sz).setParameter("off",(long)(p-1)*sz);
+        if(!history) query.setParameter("managerState",normalized);
         headers.bind(query); if(!search.isEmpty()) query.setParameter("keyword",search);
         @SuppressWarnings("unchecked") List<Object[]> rows=query.getResultList();
         List<Task> result=rows.stream().map(r -> new Task(NativeValueConverters.uuid(r[0]),(String)r[1],NativeValueConverters.toLocalDate(r[2]),
@@ -137,20 +140,22 @@ public class SalesManagerReviewService implements com.uten.imp.application.port.
         return new PageResponse<>(result,p,sz,total,pages);
     }
 
-    private static String taskProjection(String kind,String state) {
+    private static String taskProjection(String kind,boolean history,boolean pending) {
+        String sourceTable=table(kind);
         String revision="quote".equals(kind)?"o.review_revision":"o.finance_review_revision";
-        String status="HISTORY".equals(state)?"o.manager_review_state IN ('APPROVED','REJECTED')":"o.manager_review_state='"+state+"'";
+        String kindLiteral="quote".equals(kind)?"'quote'":"'order'";
+        String status=history?"o.manager_review_state IN ('APPROVED','REJECTED')":"o.manager_review_state=:managerState";
         // Stable unique aliases keep both document projections and native row mapping consistent.
         return "SELECT o.id AS id,o.bill_no AS billNo,o.bill_date AS billDate,COALESCE(c.name,'') AS client,"
                 +"COALESCE(seller.full_name,'') AS seller,COALESCE(cur.name,'') AS currency,o.total_original AS amount,"
                 +"o.manager_review_state AS state,"+revision+" AS revision,o.manager_reject_reason AS reason,"
                 +"o.manager_approved_at AS approvedAt,approver.full_name AS approver,o.manager_rejected_at AS rejectedAt,"
-                +"rejector.full_name AS rejector,o.manager_review_remark AS remark,'"+kind+"' AS kind"
-                +" FROM "+table(kind)+" o LEFT JOIN clients c ON c.id=o.client_id"
+                +"rejector.full_name AS rejector,o.manager_review_remark AS remark,"+kindLiteral+" AS kind"
+                +" FROM "+sourceTable+" o LEFT JOIN clients c ON c.id=o.client_id"
                 +" LEFT JOIN employees seller ON seller.id=COALESCE(o.seller_id,o.maker_id)"
                 +" LEFT JOIN currencies cur ON cur.id=o.currency_id LEFT JOIN employees approver ON approver.id=o.manager_approved_by"
                 +" LEFT JOIN employees rejector ON rejector.id=o.manager_rejected_by WHERE NOT o.is_deleted AND "+status
-                +("PENDING".equals(state)?" AND "+reviewable(kind):"");
+                +(pending?" AND "+reviewable(kind):"");
     }
 
     @Transactional(readOnly=true)

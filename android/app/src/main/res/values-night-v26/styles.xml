@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Flutter draws through the system-bar area; do not add a gray scrim. -->
+    <style name="UtenSystemUiTheme" parent="UtenSystemUiBase">
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

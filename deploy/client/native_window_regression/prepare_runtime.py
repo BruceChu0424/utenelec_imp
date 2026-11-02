@@ -9,13 +9,15 @@ HERE = Path(__file__).resolve().parent
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--project', type=Path, required=True)
 parser.add_argument('--output', type=Path, required=True)
+parser.add_argument('--configuration', choices=('Profile', 'Release'), default='Profile',
+                    help='Use the exact completed Flutter build configuration')
 args = parser.parse_args()
 if args.output.is_symlink() or args.output.is_junction():
     raise RuntimeError('Test output cannot be a link or junction')
 target = args.output.resolve()
 if target.exists():
     raise RuntimeError('Refusing to replace an existing task runtime')
-source_path = args.project.resolve(strict=True) / 'build/windows/x64/runner/Profile'
+source_path = args.project.resolve(strict=True) / 'build/windows/x64/runner' / args.configuration
 if source_path.is_symlink() or source_path.is_junction():
     raise RuntimeError('Input bundle cannot be a link or junction')
 source = source_path.resolve(strict=True)
@@ -32,6 +34,7 @@ for entry in source.rglob('*'):
         raise RuntimeError('Test payload cannot contain links or junctions')
 shutil.copytree(source, target)
 manifest = {'project': str(args.project.resolve()), 'runtime': str(target),
+            'buildConfiguration': args.configuration,
             'payloadCopiedWithoutRecompilingDart': True,
             'files': {str(path.relative_to(target)): hashlib.sha256(path.read_bytes()).hexdigest()
                       for path in target.rglob('*') if path.is_file()}}

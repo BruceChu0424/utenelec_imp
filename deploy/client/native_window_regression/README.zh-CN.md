@@ -4,6 +4,11 @@
 独立入口在自己的窗口中执行最大化、还原、最小化恢复；它不会替换生产入口或调用发布 API。
 应用 AOT 会执行正常启动行为，因此只使用已批准测试后端的 payload，并由测试人员自行登录。
 
+验证正式 Release 引擎时，先用匹配的本地引擎与 `gen_snapshot` 完成 Release AOT 构建，
+复制命令显式加 `--configuration Release`，CMake 显式加 `-DSUT_CONFIGURATION=Release`。
+两处配置必须一致；Profile 仍为默认值，不能用 Profile 的插件或 wrapper 验证 Release payload。
+原生回归程序自身继续按 `--config Release` 编译。复制回执记录实际 `buildConfiguration`。
+
 先完成匹配版本的 Windows Profile 构建。将 payload 复制到新的独立目录：
 
 ```powershell

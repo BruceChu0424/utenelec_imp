@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/models/employee_reference.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -368,6 +369,19 @@ class _Repository extends ProductionPlanRepository {
       workerName: '原负责人',
     ),
   };
+
+  @override
+  Future<Map<String, ({String? id, String? name})>> workshopAssignmentDefaults(
+    Set<String> departmentIds, {
+    required EmployeeReferencePurpose purpose,
+    CancelToken? cancelToken,
+  }) async {
+    expect(purpose, EmployeeReferencePurpose.productionMaterialOwner);
+    return {
+      if (departmentIds.contains('workshop'))
+        'workshop': (id: 'worker', name: '原负责人'),
+    };
+  }
 
   @override
   Future<ProductionMaterialGenerateResult> issueWorkshopPlans({

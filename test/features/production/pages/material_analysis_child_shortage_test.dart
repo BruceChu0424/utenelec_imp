@@ -1,3 +1,4 @@
+import '../../../support/production_person_reference_fixture.dart';
 // ADR-117 下单后查子层：弹窗「下层物料还不够」→「补下层物料」页 → 一键下单；
 // 页面顶部提示条(已下单的件下层还缺 / 车间在催)。
 //
@@ -1151,10 +1152,17 @@ Future<void> _pump(
     return data;
   }
 
+  final fixtureDepartmentRepository = DioDepartmentRepository(api);
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (request, handler) async {
+        if (await resolveProductionPersonReferenceFixture(
+          request,
+          handler,
+          departments: fixtureDepartmentRepository.tree,
+        ))
+          return;
         requests.add((
           method: request.method,
           path: request.path,
@@ -1164,7 +1172,7 @@ Future<void> _pump(
         ));
         Object result = <Object>[];
         final path = request.path;
-        if (path == '/master/warehouses/dict') {
+        if (path == '/business-references/warehouses') {
           result = [
             {
               'id': 'warehouse-1',
@@ -1283,6 +1291,7 @@ Future<void> _pump(
       productionPlanRepositoryProvider.overrideWithValue(
         ProductionPlanRepository(api),
       ),
+      apiClientProvider.overrideWithValue(api),
       masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
       materialAnalysisWarehousePrefsProvider.overrideWith(_WarehousePrefs.new),
       currentPermissionsProvider.overrideWithValue({
@@ -1294,7 +1303,7 @@ Future<void> _pump(
       // 负责人默认值那批附带读取永远挂着，提交前「必填车间」校验过不去)。
       // 假后端对未知路径回空列表，与迁移前「取树失败 → 空树」的落点一致。
       departmentRepositoryProvider.overrideWithValue(
-        DioDepartmentRepository(api),
+        fixtureDepartmentRepository,
       ),
     ],
     child: MaterialApp(

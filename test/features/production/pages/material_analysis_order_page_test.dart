@@ -1,3 +1,4 @@
+import '../../../support/production_person_reference_fixture.dart';
 // 准备三桶与主表共用核对页：沿原 BOM 行输入、预览、选择和下达。
 import 'dart:convert';
 import 'package:dio/dio.dart';
@@ -596,10 +597,16 @@ Future<_Harness> _pump(
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (request, handler) async {
+        if (await resolveProductionPersonReferenceFixture(
+          request,
+          handler,
+          departments: _DepartmentRepository().tree,
+        ))
+          return;
         if (request.method != 'GET') harness.writes.add(request);
         final base = persisted;
         final data = switch (request.path) {
-          '/master/warehouses/dict' => [
+          '/business-references/warehouses' => [
             {'id': 'warehouse-1', 'name': '主仓', 'selectableForNew': true},
           ],
           '/production/material-analyses/default-workshops' => [
@@ -668,6 +675,7 @@ Future<_Harness> _pump(
         purchaseRepositoryProvider.overrideWith(
           (ref, type) => PurchaseRepository(api, type),
         ),
+        apiClientProvider.overrideWithValue(api),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         departmentRepositoryProvider.overrideWithValue(_DepartmentRepository()),
         materialAnalysisWarehousePrefsProvider.overrideWith(

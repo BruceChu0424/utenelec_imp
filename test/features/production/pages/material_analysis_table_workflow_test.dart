@@ -375,7 +375,7 @@ Future<_Harness> _pump(
         Object result = <Object>[];
         if (request.path.endsWith('/last-routes')) {
           result = <String, dynamic>{};
-        } else if (request.path == '/master/warehouses/dict') {
+        } else if (request.path == '/business-references/warehouses') {
           result = [
             {'id': 'main', 'name': '综合主仓', 'code': '001'},
             {
@@ -463,6 +463,7 @@ Future<_Harness> _pump(
         productionPlanRepositoryProvider.overrideWithValue(
           ProductionPlanRepository(api),
         ),
+        apiClientProvider.overrideWithValue(api),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         materialAnalysisWarehousePrefsProvider.overrideWith(
           _WarehousePrefs.new,

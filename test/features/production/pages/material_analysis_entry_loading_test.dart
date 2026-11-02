@@ -198,7 +198,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(_requestCounts(server), {
-          'GET /master/warehouses/dict': 1,
+          'GET /business-references/warehouses': 1,
           if (existing)
             'GET /production/material-analyses/analysis-1': 1
           else
@@ -309,7 +309,8 @@ void main() {
         find.byKey(const Key('material-analysis-results')),
         findsOneWidget,
       );
-      expect(server.count(ApiEndpoints.warehousesDict), 1);
+      expect(server.count(ApiEndpoints.businessReferenceWarehouses), 1);
+      expect(server.count(ApiEndpoints.warehousesDict), 0);
       expect(
         server.requests.where((request) => unrelated.contains(request.path)),
         isEmpty,
@@ -555,7 +556,7 @@ class _Server {
       if (request.path.endsWith(entry.key)) await entry.value.future;
     }
     final path = request.path;
-    if (path == '/master/warehouses/dict') {
+    if (path == '/business-references/warehouses') {
       return [
         {
           'id': 'warehouse-1',
@@ -696,6 +697,7 @@ Future<void> _pumpPage(
         productionPlanRepositoryProvider.overrideWithValue(
           ProductionPlanRepository(api),
         ),
+        apiClientProvider.overrideWithValue(api),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         materialAnalysisWarehousePrefsProvider.overrideWith(_Prefs.new),
         if (scopeControls)

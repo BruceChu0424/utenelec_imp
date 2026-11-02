@@ -1,3 +1,4 @@
+import '../../../support/production_person_reference_fixture.dart';
 import '../../../support/table_cell_geometry.dart';
 import '../../../support/material_analysis_tree.dart';
 // ADR-102「一张表」：把分桶详情页与「父件 + 下层一起下单」弹窗的能力搬进主
@@ -7935,10 +7936,17 @@ Future<void> _pump(
     return data;
   }
 
+  final fixtureDepartmentRepository = DioDepartmentRepository(api);
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (request, handler) async {
+        if (await resolveProductionPersonReferenceFixture(
+          request,
+          handler,
+          departments: fixtureDepartmentRepository.tree,
+        ))
+          return;
         requestObserver?.call(request);
         requests.add((
           method: request.method,
@@ -7948,7 +7956,7 @@ Future<void> _pump(
               : null,
         ));
         Object result = <Object>[];
-        if (request.path == '/master/warehouses/dict') {
+        if (request.path == '/business-references/warehouses') {
           result = [
             {'id': 'main', 'name': '综合主仓', 'code': '001'},
             {
@@ -8185,6 +8193,7 @@ Future<void> _pump(
         productionPlanRepositoryProvider.overrideWithValue(
           ProductionPlanRepository(api),
         ),
+        apiClientProvider.overrideWithValue(api),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         materialAnalysisWarehousePrefsProvider.overrideWith(
           _WarehousePrefs.new,
@@ -8205,7 +8214,7 @@ Future<void> _pump(
         // 车间/负责人默认值那一批附带读取)。没给 departmentTree 时假后端按
         // 未知路径回空列表——与迁移前「取树失败 → 空树」的落点一致。
         departmentRepositoryProvider.overrideWithValue(
-          DioDepartmentRepository(api),
+          fixtureDepartmentRepository,
         ),
       ],
       child: MaterialApp(

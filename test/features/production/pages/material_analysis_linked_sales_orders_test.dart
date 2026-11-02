@@ -1,3 +1,4 @@
+import '../../../support/production_person_reference_fixture.dart';
 // ADR-088 物料分析顶部卡片「关联销售订单」。
 //
 // 两条口径必须钉死：
@@ -81,12 +82,19 @@ Future<void> _pump(WidgetTester tester) async {
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+  final fixtureDepartmentRepository = _DepartmentRepository();
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
-      onRequest: (request, handler) {
+      onRequest: (request, handler) async {
+        if (await resolveProductionPersonReferenceFixture(
+          request,
+          handler,
+          departments: fixtureDepartmentRepository.tree,
+        ))
+          return;
         final data = switch (request.path) {
-          '/master/warehouses/dict' => [
+          '/business-references/warehouses' => [
             {'id': 'warehouse-1', 'name': '主仓', 'selectableForNew': true},
           ],
           '/production/material-analyses/analysis-1' => _analysis(),
@@ -144,8 +152,11 @@ Future<void> _pump(WidgetTester tester) async {
         productionPlanRepositoryProvider.overrideWithValue(
           ProductionPlanRepository(api),
         ),
+        apiClientProvider.overrideWithValue(api),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
-        departmentRepositoryProvider.overrideWithValue(_DepartmentRepository()),
+        departmentRepositoryProvider.overrideWithValue(
+          fixtureDepartmentRepository,
+        ),
         materialAnalysisWarehousePrefsProvider.overrideWith(
           _WarehousePrefs.new,
         ),

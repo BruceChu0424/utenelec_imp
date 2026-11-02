@@ -244,7 +244,7 @@ class _Server {
 
   Future<Object?> respond(RequestOptions request) async {
     final path = request.path;
-    if (path == '/master/warehouses/dict') {
+    if (path == '/business-references/warehouses') {
       return [
         {
           'id': 'warehouse-1',
@@ -304,6 +304,7 @@ Future<void> _pumpPlanEntry(
         productionPlanRepositoryProvider.overrideWithValue(
           ProductionPlanRepository(api),
         ),
+        apiClientProvider.overrideWithValue(api),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         materialAnalysisWarehousePrefsProvider.overrideWith(_Prefs.new),
         currentPermissionsProvider.overrideWithValue(_permissions),
@@ -336,6 +337,7 @@ Future<void> _pumpWithRouter(
         productionPlanRepositoryProvider.overrideWithValue(
           ProductionPlanRepository(api),
         ),
+        apiClientProvider.overrideWithValue(api),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         materialAnalysisWarehousePrefsProvider.overrideWith(_Prefs.new),
         currentPermissionsProvider.overrideWithValue(_permissions),

@@ -1,3 +1,4 @@
+import '../../../support/production_person_reference_fixture.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 import 'package:uten_imp/components/layout/uten_pagination.dart';
@@ -89,7 +90,7 @@ void main() {
       final lines =
           ((response['items'] as List).single as Map)['lines'] as List;
       (lines.last as Map)['remainingQty'] = 0;
-      await _pumpPage(
+      final harness = await _pumpPage(
         tester,
         size: const Size(1400, 900),
         seeded: false,
@@ -102,6 +103,18 @@ void main() {
             find.byKey(const Key('material-analysis-candidate-table')),
           );
       expect(table.items.map((row) => row.salesOrderItemId), ['sales-line-a']);
+      expect(
+        harness.requests.any(
+          (request) => request.path == '/business-references/warehouses',
+        ),
+        isTrue,
+      );
+      expect(
+        harness.requests.where(
+          (request) => request.path == '/master/warehouses/dict',
+        ),
+        isEmpty,
+      );
       final binding = readWindowBindingOf(table.items);
       expect(binding, isNotNull);
       expect(
@@ -10024,6 +10037,7 @@ Future<_Harness> _pumpPage(
         productionPlanRepositoryProvider.overrideWithValue(
           ProductionPlanRepository(api),
         ),
+        apiClientProvider.overrideWithValue(api),
         masterNameServiceProvider.overrideWithValue(MasterNameService(api)),
         employeeRepositoryProvider.overrideWithValue(
           DioEmployeeRepository(api),
@@ -10155,6 +10169,12 @@ ApiClient _api(
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (request, handler) async {
+        if (await resolveProductionPersonReferenceFixture(
+          request,
+          handler,
+          departments: _FakeDepartmentRepository().tree,
+        ))
+          return;
         requests.add(request);
         final failure = errorOverride?.call(request);
         if (failure != null) {
@@ -10165,7 +10185,7 @@ ApiClient _api(
         final data =
             custom ??
             switch (request.path) {
-              '/master/warehouses/dict' => warehouseEntries,
+              '/business-references/warehouses' => warehouseEntries,
               // 路线「学习预填」（2026-09 新增）：默认无记忆，避免页面加载时
               // 因该路径未注册而抛错/多打异常请求。
               '/production/material-analyses/last-routes' =>

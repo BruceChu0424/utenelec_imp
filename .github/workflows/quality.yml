@@ -382,7 +382,13 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       # Compile Kotlin, the FileProvider manifest, and Dart with the local debug
       # identity. This job never receives release signing material or publishes.
+      - name: Prepare verified private Android Gradle tooling
+        run: >-
+          python3 deploy/client/prepare_android_flutter_tooling.py
+          --flutter-sdk "$FLUTTER_ROOT" --output "${{ runner.temp }}/uten-flutter-gradle"
       - name: Compile Android application and native package installer bridge
+        env:
+          ORG_GRADLE_PROJECT_utenFlutterGradleTools: ${{ runner.temp }}/uten-flutter-gradle
         run: flutter build apk --debug --no-pub --target-platform android-arm64
 
   website:

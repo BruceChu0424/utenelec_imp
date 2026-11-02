@@ -51,7 +51,7 @@ class _DrawDetailApi extends ApiClient {
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => path == '/master/warehouses/dict'
+  }) async => path == '/business-references/warehouses'
       ? [
           {'id': 'main', 'name': '主仓库', 'accountable': false, 'status': '使用'},
           {

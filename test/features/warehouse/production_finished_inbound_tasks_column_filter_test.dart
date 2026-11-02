@@ -36,7 +36,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(api.dictionaryPaths, [ApiEndpoints.warehousesDict]);
+    expect(api.dictionaryPaths, [ApiEndpoints.businessReferenceWarehouses]);
 
     final table = tester
         .widget<MasterDataTableView<ProductionFinishedInboundTask>>(
@@ -169,7 +169,7 @@ class _FinishedTaskApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     dictionaryPaths.add(path);
-    if (path.contains('warehouses')) {
+    if (path == ApiEndpoints.businessReferenceWarehouses) {
       return const [
         {'id': 'warehouse-1', 'name': '一号仓'},
       ];

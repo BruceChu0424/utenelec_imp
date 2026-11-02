@@ -1660,8 +1660,7 @@ class _BatchApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/master/warehouses/dict' ||
-        path == '/business-references/warehouses') {
+    if (path == '/business-references/warehouses') {
       return [
         {
           'id': 'warehouse-1',

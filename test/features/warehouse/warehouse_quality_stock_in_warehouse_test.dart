@@ -238,7 +238,7 @@ void main() {
       expect(find.textContaining('请选择本次实际入库的目标叶仓'), findsWidgets);
 
       await _pickFirstWarehouse(tester);
-      expect(api.calls, ['/master/warehouses/dict']);
+      expect(api.calls, ['/business-references/warehouses']);
       expect(find.text('本部库-塑胶叶仓'), findsOneWidget);
       expect(find.text('目标叶仓已调整，提交时重新核定去向'), findsOneWidget);
       expect(
@@ -685,7 +685,7 @@ class _WarehouseApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     calls.add(path);
-    if (path != '/master/warehouses/dict') {
+    if (path != '/business-references/warehouses') {
       throw StateError('Unexpected master request $path');
     }
     return const [

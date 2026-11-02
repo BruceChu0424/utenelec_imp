@@ -1445,7 +1445,7 @@ class _FakeApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/master/warehouses/dict') {
+    if (path == '/business-references/warehouses') {
       return const [
         {'id': 'warehouse-1', 'name': '成品仓', 'selectableForNew': true},
         {'id': 'warehouse-2', 'name': '原料仓', 'selectableForNew': true},

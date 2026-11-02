@@ -160,7 +160,32 @@ class CompanyUpgradePreservationTest(unittest.TestCase):
         self.assertIn("window.location.replace(url.toString())", update)
         self.assertIn('credentials: "same-origin"', update)
         self.assertIn("utenWebUpdateSafetyProbe", update)
-        self.assertIn("IDLE_MS", update)
+        # Server-follow reload replaced the manual idle countdown. It still
+        # awaits durable drafts and rejects ambiguous/busy or stale snapshots.
+        live = update[update.index("async function check()"):
+                      update.index("// A fresh entry")]
+        for contract in (
+            'health?.status !== "UP"',
+            'const prepared = await prepare()',
+            'const safety = window.utenWebUpdateSafetyProbe?.()',
+            'prepared !== true',
+            'safety?.schemaVersion !== 1',
+            'safety.ready !== true',
+            'safety.serverReloadSafe !== true',
+            'safety.busy !== false',
+            'Date.now() - safety.updatedAt > 25_000',
+            'safety.updatedAt > Date.now() + 1_000',
+        ):
+            self.assertIn(contract, live)
+        self.assertLess(live.index('const prepared = await prepare()'),
+                        live.index('const safety = window.utenWebUpdateSafetyProbe?.()'))
+        self.assertLess(live.index('safety.updatedAt > Date.now() + 1_000'),
+                        live.index('navigate(latest,'))
+        self.assertGreaterEqual(live.count('observed !== generation || !canResume()'), 3)
+        registry = source("lib/core/web_update/web_update_safety.dart")
+        self.assertIn('await checkpoint();', registry)
+        self.assertIn('return snapshot.serverReloadSafe;', registry)
+        self.assertIn('serverReloadSafe &= state.serverReloadSafe && !state.busy;', registry)
         self.assertIn("url.searchParams.set(RELEASE_PARAM", update)
         self.assertIn("new URL(window.location.href)", update)
         # Flutter's versioned asset cache may be refreshed. User storage must

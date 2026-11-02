@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -42,6 +43,10 @@ ANDROID_PLUGINS = {
         ('version "1.0"', 'version = "1.0"'),
     )),
 }
+MOBILE_SCANNER_FILE = "android/src/main/kotlin/dev/steenbakker/mobile_scanner/MobileScanner.kt"
+# pdfrx's CMake stage creates android/.lib/latest as a generated link to its
+# downloaded native payload. Rebuild it inside the private native project.
+GENERATED_DIRECTORIES = {".gradle", ".dart_tool", ".kotlin", ".git", ".cxx", ".lib", "build"}
 
 
 def source_text(path: Path) -> str:
@@ -184,40 +189,96 @@ def prepare(sdk: Path, output: Path) -> dict:
     return receipt
 
 
-def prepare_android_plugins(project: Path, output: Path) -> dict:
-    """Keep pinned native plugin sources private without changing Dart resolution."""
+def package_files(root: Path) -> dict[str, str]:
+    files = {}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root)
+        if any(part in GENERATED_DIRECTORIES for part in relative.parts):
+            continue
+        if path.is_symlink():
+            raise ValueError("Native plugin copy requires a source closure without symbolic links")
+        if path.is_file():
+            files[relative.as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return files
+
+
+def tree_digest(files: dict[str, str]) -> str:
+    return digest(json.dumps(files, sort_keys=True, separators=(",", ":")))
+
+
+def prepare_android_plugins(project: Path, output: Path, sdk: Path) -> dict:
+    """Keep native inputs on the project's volume; preserve incremental compilation."""
+    project, output, sdk = project.resolve(strict=True), output.resolve(), sdk.resolve(strict=True)
+    if os.name == "nt" and output.drive.casefold() != project.drive.casefold():
+        raise ValueError("Private Android tooling must be on the Windows project's volume")
     dependencies = json.loads((project / ".flutter-plugins-dependencies").read_text(encoding="utf-8"))
     android = {entry["name"]: entry for entry in dependencies["plugins"]["android"]}
-    receipt = {}
-    plans = {}
-    for name, (version, original_hash, replacements) in ANDROID_PLUGINS.items():
-        if name not in android:
-            raise ValueError(f"Pinned Android plugin is missing from the generated dependency inventory: {name}")
-        source = Path(android[name]["path"]).resolve(strict=True)
-        declared_version = re.search(r"(?m)^version:\s*([^\s]+)", source_text(source / "pubspec.yaml"))
-        if not declared_version or declared_version.group(1).strip("\"'") != version:
-            raise ValueError(f"Pinned Android plugin version changed: {name}")
-        original = source_text(source / "android/build.gradle")
-        if digest(original) != original_hash:
-            raise ValueError(f"Pinned Android plugin source checksum changed: {name}")
-        patched = original
-        for old, new in replacements:
-            patched = replace(patched, old, new)
-        receipt[name] = {"version": version, "upstreamBuildHash": original_hash,
-                         "patchedBuildHash": digest(patched)}
-        plans[name] = source, patched
+    recipes = {name: (version, {"android/build.gradle": (sha, replacements)})
+               for name, (version, sha, replacements) in ANDROID_PLUGINS.items()}
+    recipes["mobile_scanner"] = ("7.4.2", {MOBILE_SCANNER_FILE: (
+        "4450332824fcee320bf5f4733b6aeb93085029eb77c4edde8da3dc876a1cba40",
+        (("    @VisibleForTesting internal val inputImageFactory:",
+          "    @param:VisibleForTesting internal val inputImageFactory:"),))})
+    if not recipes.keys() <= android.keys():
+        raise ValueError("A pinned native plugin is missing from the generated dependency inventory")
+    lock = source_text(project / "pubspec.lock")
+    receipt, plans = {}, {}
+    for name, entry in android.items():
+        source = Path(entry["path"]).resolve(strict=True)
+        foreign_volume = os.name == "nt" and source.drive.casefold() != project.drive.casefold()
+        if name not in recipes and not foreign_volume:
+            continue
+        if not ((source / "android/build.gradle").is_file() or (source / "android/build.gradle.kts").is_file()):
+            continue
+        block = re.search(r"(?ms)^  " + re.escape(name) + r":\n(.*?)(?=^  [a-z_]|\Z)", lock)
+        versions = re.findall(r'(?m)^    version: "([^\n]+)"$', block[1]) if block else []
+        if len(versions) != 1:
+            raise ValueError(f"Native plugin is not bound to one locked version: {name}")
+        version = versions[0]
+        declared = re.search(r"(?m)^version:\s*([^\s]+)", source_text(source / "pubspec.yaml"))
+        if declared:
+            if declared.group(1).strip("\"'") != version:
+                raise ValueError(f"Native plugin source and lock versions differ: {name}")
+        elif source.is_relative_to(sdk) and re.search(r"(?m)^    source: sdk$", block[1]):
+            check = subprocess.run(["git", "-C", str(sdk), "diff", "--quiet", "--", source.relative_to(sdk).as_posix()],
+                                   check=False, capture_output=True)
+            if check.returncode != 0:
+                raise ValueError(f"Native SDK package has local changes: {name}")
+        else:
+            raise ValueError(f"Native plugin source version is missing: {name}")
+        patches = {}
+        if name in recipes:
+            expected_version, files = recipes[name]
+            if version != expected_version:
+                raise ValueError(f"Pinned Android plugin version changed: {name}")
+            for relative, (original_hash, replacements) in files.items():
+                original = source_text(source / relative)
+                if digest(original) != original_hash:
+                    raise ValueError(f"Pinned Android plugin source checksum changed: {name}/{relative}")
+                patched = original
+                for old, new in replacements:
+                    patched = replace(patched, old, new)
+                patches[relative] = patched
+        original_files = package_files(source)
+        expected_files = {**original_files, **{relative: digest(text) for relative, text in patches.items()}}
+        receipt[name] = {"version": version, "sourceTreeSha256": tree_digest(original_files),
+                         "preparedTreeSha256": tree_digest(expected_files), "sourceFiles": len(expected_files),
+                         "windowsVolumeRelocation": foreign_volume, "modifiedFiles": sorted(patches)}
+        plans[name] = source, patches
     manifest = output / "manifest.json"
     if output.exists():
         if (not manifest.is_file() or json.loads(manifest.read_text(encoding="utf-8")) != receipt
-                or any(digest(source_text(output / name / "android/build.gradle")) != entry["patchedBuildHash"]
+                or any(tree_digest(package_files(output / name)) != entry["preparedTreeSha256"]
                        for name, entry in receipt.items())):
             raise ValueError("Existing private Android plugins differ; use a new task-owned tooling directory")
         return receipt
     output.mkdir(parents=True)
-    for name, (source, patched) in plans.items():
-        shutil.copytree(source, output / name,
-                        ignore=shutil.ignore_patterns(".gradle", ".dart_tool", ".kotlin", ".git", "build"))
-        (output / name / "android/build.gradle").write_text(patched, encoding="utf-8", newline="\n")
+    for name, (source, patches) in plans.items():
+        shutil.copytree(source, output / name, ignore=shutil.ignore_patterns(*GENERATED_DIRECTORIES))
+        for relative, text in patches.items():
+            (output / name / relative).write_text(text, encoding="utf-8", newline="\n")
+        if tree_digest(package_files(output / name)) != receipt[name]["preparedTreeSha256"]:
+            raise ValueError(f"Private native source copy does not match its reviewed source: {name}")
     manifest.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
     return receipt
 
@@ -230,7 +291,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         receipt = prepare(args.flutter_sdk, args.output)
-        native = prepare_android_plugins(args.project_root, args.output / "uten-android-plugins")
+        native = prepare_android_plugins(args.project_root, args.output / "uten-android-plugins", args.flutter_sdk)
     except (OSError, ValueError, subprocess.SubprocessError) as failure:
         parser.exit(1, f"Android tooling preparation rejected: {failure}\n")
     print(json.dumps({"output": str(args.output.resolve()), **receipt, "androidPlugins": native}, indent=2))

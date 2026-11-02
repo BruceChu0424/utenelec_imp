@@ -14,6 +14,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/rendering.dart';
 import '../../components/data_display/uten_selection_lifecycle.dart';
 import '../../components/data_display/uten_tree_branch_guide.dart';
 
@@ -197,6 +198,44 @@ class _HierarchyBranchMotion {
   _HierarchyBranchMotion(this.controller);
   final AnimationController controller;
   bool closing = false;
+}
+
+/// Keep the flexible title/selection surface as tall as real row controls.
+/// Unlike IntrinsicHeight this supports the title's LayoutBuilder, and only
+/// relays a shorter flexible slot after the ordinary row measured its height.
+class _HierarchyRow extends Row {
+  const _HierarchyRow({required super.children});
+
+  @override
+  RenderFlex createRenderObject(BuildContext context) =>
+      _HierarchyRenderRow(textDirection: Directionality.of(context));
+
+  @override
+  void updateRenderObject(BuildContext context, RenderFlex renderObject) {
+    renderObject.textDirection = Directionality.of(context);
+  }
+}
+
+class _HierarchyRenderRow extends RenderFlex {
+  _HierarchyRenderRow({required super.textDirection})
+    : super(direction: Axis.horizontal);
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    var child = firstChild;
+    while (child != null) {
+      final data = child.parentData! as FlexParentData;
+      if ((data.flex ?? 0) > 0 && child.size.height != size.height) {
+        child.layout(
+          BoxConstraints.tightFor(width: child.size.width, height: size.height),
+          parentUsesSize: true,
+        );
+        data.offset = Offset(data.offset.dx, 0);
+      }
+      child = childAfter(child);
+    }
+  }
 }
 
 class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
@@ -956,7 +995,7 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           final hasControls = trailing != null || selection != null;
           // Measure only the space left after trailing controls/checks. The
           // fill translates rigidly under the title; both feedbacks coexist.
-          body = Row(
+          body = _HierarchyRow(
             children: [
               Expanded(
                 child: LayoutBuilder(
@@ -1057,7 +1096,12 @@ class _UtenHierarchyTreeViewState<T extends UtenTreeNode<T>>
           child: Material(
             color: rowBg,
             borderRadius: rowRadius,
-            clipBehavior: Clip.antiAlias,
+            // Paint the base and sliding selection together before applying
+            // the outer curve. Separate antialiased passes bleed the old row
+            // color into an opaque selection at first/last row corners.
+            clipBehavior: flat && rowRadius != BorderRadius.zero
+                ? Clip.antiAliasWithSaveLayer
+                : Clip.antiAlias,
             child: InkWell(
               onTap: enabled || node.hasChildren ? () => _onRowTap(node) : null,
               child: DecoratedBox(

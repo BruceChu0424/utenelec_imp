@@ -117,7 +117,10 @@ class _BusinessEmployeePickerState extends ConsumerState<BusinessEmployeePicker>
 
   Future<void> _resolveSelected() async {
     final id = widget.selectedId;
-    if (id == null || id.isEmpty || _invalidated || !widget.enabled) return;
+    if (id == null || id.isEmpty || _invalidated) return;
+    if (!widget.enabled && widget.initial?.name.trim().isNotEmpty == true) {
+      return; // Existing read-only document label needs no enhancement request.
+    }
     final generation = _generation;
     final repository = ref.read(employeeReferenceRepositoryProvider);
     try {

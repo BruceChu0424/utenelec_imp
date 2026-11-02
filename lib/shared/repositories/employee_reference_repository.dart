@@ -7,6 +7,7 @@ import '../models/department_node.dart';
 import '../models/employee_reference.dart';
 import '../models/paged_result.dart';
 import '../paging/complete_paged_snapshot.dart';
+import '../providers/sensitive_read_boundary_provider.dart';
 
 abstract interface class EmployeeReferenceRepository {
   Future<PagedResult<EmployeeReference>> list({
@@ -32,6 +33,8 @@ abstract interface class EmployeeReferenceRepository {
 class DioEmployeeReferenceRepository implements EmployeeReferenceRepository {
   DioEmployeeReferenceRepository(this.api);
   final ApiClient api;
+  final _labelLoads =
+      <(EmployeeReferencePurpose, String), Future<List<EmployeeReference>>>{};
 
   @override
   Future<PagedResult<EmployeeReference>> list({
@@ -68,11 +71,23 @@ class DioEmployeeReferenceRepository implements EmployeeReferenceRepository {
     if (unique.length > 100) {
       throw ArgumentError('人员引用回显一次最多100项');
     }
-    final rows = await api.getList(
-      ApiEndpoints.employeeReferencesByIds,
-      query: {'purpose': purpose.apiValue, 'ids': unique.join(',')},
+    final ordered = unique.toList()..sort();
+    final key = (purpose, ordered.join(','));
+    return _labelLoads.putIfAbsent(
+      key,
+      () => api
+          .getList(
+            ApiEndpoints.employeeReferencesByIds,
+            query: {'purpose': purpose.apiValue, 'ids': unique.join(',')},
+          )
+          .then(
+            (rows) =>
+                rows.map(EmployeeReference.fromJson).toList(growable: false),
+          )
+          .whenComplete(() {
+            _labelLoads.remove(key);
+          }),
     );
-    return rows.map(EmployeeReference.fromJson).toList(growable: false);
   }
 
   @override
@@ -139,6 +154,7 @@ extension EmployeeReferencePickerCandidates on EmployeeReferenceRepository {
 }
 
 final employeeReferenceRepositoryProvider =
-    Provider<EmployeeReferenceRepository>(
-      (ref) => DioEmployeeReferenceRepository(ref.watch(apiClientProvider)),
-    );
+    Provider<EmployeeReferenceRepository>((ref) {
+      ref.watch(sensitiveReadBoundaryProvider);
+      return DioEmployeeReferenceRepository(ref.watch(apiClientProvider));
+    });

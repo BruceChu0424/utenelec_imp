@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "scope": "PURCHASE and SUBCONTRACT charged receipt items; gifts retain their separate tranche",
+  "quantityEncoding": "decimal strings in receipt-line unit; null or absent means unknown, never zero",
+  "authority": "ProcurementReceiptProgress SQL, scoped by original receipt_type + receipt_id + receipt_item_id; reversed inspections excluded",
+  "fields": {
+    "stockedQty": "warehouse_stocked_base_qty / original inspection unit_rate",
+    "pendingStockInQty": "sum(max(passed_base_qty - warehouse_stocked_base_qty, 0) / unit_rate)",
+    "pendingReturnQty": "pending supplier surplus returns plus quality rejection quantities without recorded physical return"
+  },
+  "examples": [
+    {
+      "name": "stocked_with_surplus",
+      "declaredQty": "2.5200",
+      "acceptedQty": "2.4200",
+      "stockedQty": "2.4200",
+      "pendingStockInQty": "0",
+      "pendingReturnQty": "0.1000",
+      "viewStatusSuffix": "EXCEPTION_STOCKED_WAITING_RETURN",
+      "warehouseWriteAllowed": false
+    },
+    {
+      "name": "passed_not_stocked",
+      "declaredQty": "2.5200",
+      "acceptedQty": "2.4200",
+      "stockedQty": "0",
+      "pendingStockInQty": "2.4200",
+      "pendingReturnQty": "0.1000",
+      "warehouseAction": "QUALITY_RESULT"
+    },
+    {
+      "name": "partial_stock",
+      "declaredQty": "2.5200",
+      "acceptedQty": "2.4200",
+      "stockedQty": "1",
+      "pendingStockInQty": "1.4200",
+      "pendingReturnQty": "0.1000",
+      "viewStatusSuffix": "EXCEPTION_PARTIAL_STOCKED_WAITING_RETURN"
+    },
+    {
+      "name": "pre_stock_waiting_quality",
+      "stockedQty": "2.4200",
+      "pendingStockInQty": "0",
+      "pendingReturnQty": "0.1000",
+      "viewStatusSuffix": "EXCEPTION_PRE_STOCKED_WAITING_INSPECTION",
+      "nextStepIncludes": "等待品质检验"
+    },
+    {
+      "name": "surplus_return_completed",
+      "stockedQty": "2.4200",
+      "pendingStockInQty": "0",
+      "pendingReturnQty": "0",
+      "exceptionStatus": "CLOSED",
+      "active": false
+    },
+    {
+      "name": "decimal_precision",
+      "stockedQty": "9007199254740993.4200",
+      "display": "9007199254740993.42 条"
+    },
+    {
+      "name": "unknown",
+      "stockedQty": null,
+      "display": "—"
+    }
+  ],
+  "navigation": {
+    "ARRIVAL_EXCEPTION_RECEIPT_ADJUSTED": "open existing version-bound confirmation, no POST before confirmation",
+    "completed_with_return": "open original exception return detail only with owner or explicit view-all reading authority; completion remains original owner + permission + version",
+    "other_read_only": "open physical detail with progress and next step"
+  },
+  "wpf": "Business pages are not migrated; contract is an additive requirement, not evidence of implemented native support"
+}

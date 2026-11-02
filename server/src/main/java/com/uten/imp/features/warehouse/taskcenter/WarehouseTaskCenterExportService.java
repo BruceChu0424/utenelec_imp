@@ -85,8 +85,14 @@ public class WarehouseTaskCenterExportService {
         columns.add(new ExportColumn("goodsCode", "货品编码", ExportColumn.TEXT, 150d));
         columns.add(new ExportColumn("colorName", "颜色", ExportColumn.TEXT, 100d));
         columns.add(new ExportColumn("specification", "规格", ExportColumn.TEXT, 140d));
-        columns.add(new ExportColumn("quantity", "数量", ExportColumn.QTY, 130d));
+        columns.add(new ExportColumn("quantity", outboundDirection ? "数量" : "申报 / 单据数量", ExportColumn.QTY, 150d));
         columns.add(new ExportColumn("unitName", "单位", ExportColumn.TEXT, 80d));
+        if (!outboundDirection) {
+            columns.add(new ExportColumn("stockedQty","已入库",ExportColumn.QTY,140d));
+            columns.add(new ExportColumn("pendingStockInQty","合格待入库",ExportColumn.QTY,140d));
+            columns.add(new ExportColumn("pendingReturnQty","剩余待退回",ExportColumn.QTY,140d));
+            columns.add(new ExportColumn("nextStep","下一步",ExportColumn.TEXT,270d));
+        }
         if (outboundDirection) {
             columns.add(new ExportColumn("productionOrderNo", "生产工单", ExportColumn.TEXT, 150d));
         }
@@ -111,6 +117,13 @@ public class WarehouseTaskCenterExportService {
         values.put("quantity", line == null ? null : line.quantity());
         values.put("unitName", line == null ? null : line.unitName());
         if (outboundDirection) values.put("productionOrderNo", row.productionOrderNo());
+        if (!outboundDirection) {
+            for (String key:List.of("stockedQty","pendingStockInQty","pendingReturnQty")) {
+                Object value=row.actionData().get(key);
+                values.put(key,value==null?null:new java.math.BigDecimal(value.toString()));
+            }
+            values.put("nextStep",row.actionData().get("nextStep"));
+        }
         values.put("sourceDocNo", row.sourceDocNo());
         values.put("partyName", row.partyName());
         values.put("warehouseName", row.warehouseName());

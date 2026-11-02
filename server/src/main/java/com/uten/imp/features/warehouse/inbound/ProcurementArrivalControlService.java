@@ -1230,7 +1230,7 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                 task.detectedAt(), task.decidedAt(), task.returnTask(),
                 task.allowedActions(), task.orderQtySnapshot(),
                 task.allowedOverReceiptPctSnapshot(), task.toleranceQtySnapshot(),
-                task.priorNetReceivedQtySnapshot(), true);
+                task.priorNetReceivedQtySnapshot(), true, task.receiptProgress());
     }
 
     /**
@@ -2173,7 +2173,10 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                        return_task.version AS return_version,
                         return_task.completion_note, return_task.completed_at,
                         return_task.owner_user_id AS return_owner_user_id,
-                        return_task.owner_employee_id AS return_owner_employee_id
+                        return_task.owner_employee_id AS return_owner_employee_id,
+                        receipt_progress.stocked_qty AS progress_stocked_qty,
+                        receipt_progress.pending_stock_qty AS progress_pending_stock_qty,
+                        surplus_return.pending_qty+quality_return.pending_qty AS progress_pending_return_qty
                 FROM procurement_arrival_exceptions exception
                 LEFT JOIN suppliers supplier ON supplier.id = exception.supplier_id
                 LEFT JOIN warehouses warehouse ON warehouse.id = exception.warehouse_id
@@ -2184,7 +2187,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                   ON detector.id = exception.detected_by_employee_id
                 LEFT JOIN supplier_return_tasks return_task
                   ON return_task.arrival_exception_id = exception.id
-                """ + " WHERE " + whereClause
+                """ + ProcurementReceiptProgress.joins("exception.order_type","exception.receipt_id","exception.receipt_item_id")
+                + " WHERE " + whereClause
                 + " " + orderByClause + " " + tailClause;
         return jdbc.query(sql, (rs, rowNum) -> {
             SupplierReturnTask returnTask = rs.getObject("return_task_id") == null
@@ -2261,7 +2265,9 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                     rs.getBigDecimal("allowed_over_receipt_pct_snapshot"),
                     rs.getBigDecimal("tolerance_qty_snapshot"),
                     rs.getBigDecimal("prior_net_received_qty_snapshot"),
-                    false);
+                    false,new ProcurementArrivalContracts.ReceiptProgress(
+                        rs.getBigDecimal("progress_stocked_qty"),rs.getBigDecimal("progress_pending_stock_qty"),
+                        rs.getBigDecimal("progress_pending_return_qty")));
         }, args);
     }
 

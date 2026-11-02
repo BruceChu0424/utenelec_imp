@@ -13,6 +13,26 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
 
 void main() {
+  test('到货异常旧入口与退回详情共用精确进度，送检状态不再误报已入库', () {
+    final task = ProcurementArrivalException.fromJson({
+      ..._exception(
+        id: 'progress',
+        receiptBillNo: 'PROGRESS',
+        status: 'RECEIPT_POSTED',
+        acceptedQty: 2.42,
+        unacceptedQty: 0.1,
+      ),
+      'receiptProgress': {
+        'stockedQty': '2.4200',
+        'pendingStockInQty': '0',
+        'pendingReturnQty': '0.1000',
+      },
+    });
+    expect(task.receiptProgress!.label('stockedQty', '条'), '2.42 条');
+    expect(task.receiptProgress!.label('pendingReturnQty', '条'), '0.1 条');
+    expect(task.statusLabel, '已按批准量送检，余量待退回');
+  });
+
   testWidgets(
     'desktop table single-clicks multi-select and double-click opens stock-in detail',
     (tester) async {

@@ -708,6 +708,10 @@ void main() {
     await tester.tap(find.text('其它出库'));
     await tester.pump();
     await tester.pump();
+    if (find.text('新建其它出库').evaluate().isEmpty) {
+      await tester.tap(find.byTooltip('表格操作'));
+      await tester.pumpAndSettle();
+    }
     expect(find.text('新建其它出库'), findsOneWidget);
     expect(find.byType(WarehouseTaskRecordsView), findsOneWidget);
     expect(

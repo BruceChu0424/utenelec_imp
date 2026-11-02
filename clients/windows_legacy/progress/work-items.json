@@ -8,7 +8,7 @@
     "mergeMainAllowed": false,
     "productionDeploymentAllowed": false
   },
-  "inventorySha256": "b07d869a85913c0529c985603bb3efde85afa5c4a8c1a2753e696deef8a1403b",
+  "inventorySha256": "ea9a10cc0df20871117ab2ddc4e8c84fdeedc4c17c3112a39776499b36e73593",
   "baselineCounts": {
     "businessPagePackages": 220,
     "retainedBusinessPagePackages": 3,
@@ -8988,7 +8988,7 @@
       "feature": "purchase",
       "businessSource": "lib/features/purchase/pages/purchase_hub_page.dart",
       "sourceSha256": "3e680402761295830fbaf2b9f11677e57745901ab2c66b80e46af44619f9efaf",
-      "sourceProofSha256": "0081dcd043074d2df61782dac802c1611ce93a7161bbbd707bc13de0cfd92405",
+      "sourceProofSha256": "6ad32605aa2f8898e53a1768cd45c3d4f12e1d9779fa6314958f70843a2fb6a5",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -10490,7 +10490,7 @@
       "feature": "subcontract",
       "businessSource": "lib/features/subcontract/pages/subcontract_hub_page.dart",
       "sourceSha256": "2b2366c7dfebb2c0981af97af2176bf90ae0cef75a64428e15b6ac185955914e",
-      "sourceProofSha256": "e8ec532d12481ddf06f223d4243d434d05eaf57fef0494a9a9a889ab8e23efbc",
+      "sourceProofSha256": "10569af714ae7888e4f0a404952e9e9f36dc8e913c7c25a170dfe7c5d32107c0",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -11331,7 +11331,7 @@
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/finance_arrival_exception_pages.dart",
       "sourceSha256": "9516e45c56196a0770daf16cc7e9c3d6e6063b6b740e640dc4680c6195f1967c",
-      "sourceProofSha256": "11dce684b711daa1fc76672d82c99ca8705620bdc46f60c0d5ace416c65d9cd6",
+      "sourceProofSha256": "0237231c27bf01d1ef2235c9c21271b5369c5842de9a0655009c8bdad6246c92",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -11376,7 +11376,7 @@
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/inbound_arrival_registration_page.dart",
       "sourceSha256": "8fb9e4018e61c76f6c106f31311129c7b55044d16010d823964db158725a4a3f",
-      "sourceProofSha256": "6fa05c34d8114cb2d83ac169d1a8f57043308d5a3c2b4fbc62bfd206118aab53",
+      "sourceProofSha256": "1377a48842e0ab8c27adda5f3eeb3b610a11d679c91052e4c9745289dd2c6233",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -11418,8 +11418,8 @@
       "phase": "D",
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
-      "sourceSha256": "5a5d54e0c0a04706ef2f8079664833360880f40b7d9f33f85f7bf4895c89d123",
-      "sourceProofSha256": "ee85c688cd2db6b593d811250dcaa6d6211245aa0ff6037a79b0bd0e1faa5e4c",
+      "sourceSha256": "ab44c85c28ec6afc98daea54b9ce7c41072de81e60dbcba707d1962fef291445",
+      "sourceProofSha256": "703849ee5479204f4eab31558419965810e7c348290e573a9530e9b248616138",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -11449,10 +11449,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json"
+        "clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json",
+        "clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 新登记未迁移伴随源：/procurement/arrival-exceptions与/:id真实列表/详情。基本supplier_return_task:view与supplier_return_task:view:all全读分离；complete仍需原user/employee owner、supplier_return_task:complete及expectedVersion。必须同步Me/身份/范围ABA围栏、只读allowedActions、原任务ID及未知提交核对。",
-      "lastUpdated": "2026-11-01T14:24:51.716430+00:00"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 新登记未迁移伴随源：/procurement/arrival-exceptions与/:id真实列表/详情。基本supplier_return_task:view与supplier_return_task:view:all全读分离；complete仍需原user/employee owner、supplier_return_task:complete及expectedVersion。必须同步Me/身份/范围ABA围栏、只读allowedActions、原任务ID及未知提交核对。\n2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。",
+      "lastUpdated": "2026-11-02T21:35:41.316298+00:00"
     },
     {
       "id": "W7-BIZ-179",
@@ -11831,7 +11832,7 @@
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/warehouse_arrival_exceptions_page.dart",
       "sourceSha256": "580ae2d474a5a357c753c901fdece0500e69b3b8d220cf5de75e7700197c18c6",
-      "sourceProofSha256": "00a03674882a311c34069fa88e9904283abe975c8b0ec33a72628ca2f544f23c",
+      "sourceProofSha256": "4975edb9795b81a46429286456322986a9de30dae52059250612dea83e4a8234",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -11858,9 +11859,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。",
+      "lastUpdated": "2026-11-02T21:35:41.316298+00:00"
     },
     {
       "id": "W7-BIZ-189",
@@ -12075,7 +12078,7 @@
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/warehouse_inbound_task_center_page.dart",
       "sourceSha256": "0099ad41222b3db2885f498c84201e7d9b7db01e447a651bd683e46cf745775f",
-      "sourceProofSha256": "6d02acb80b859bc7a949204dfb0d0f4bd3587b5aa7809a32d7fbb048a12c88a5",
+      "sourceProofSha256": "e2162fa31c9a44b35040841bc7c7a5959b68cd1cddbdcc3c69a25b66a24211e5",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -12102,9 +12105,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。",
+      "lastUpdated": "2026-11-02T21:35:41.316298+00:00"
     },
     {
       "id": "W7-BIZ-195",
@@ -12197,7 +12202,7 @@
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart",
       "sourceSha256": "46ac737d86f54a61f85eab2afbd62f3a9eb9d2a752dbca4bfca3120b05f2640a",
-      "sourceProofSha256": "4c6bd6fdbbe47edebe697939c30d69bf72df1ab5f99aa6959f37eeeab2f31921",
+      "sourceProofSha256": "3d0cb7e5acb15bfc69b5588029aad7e1d248937c84ef56e240ebce4b207cf868",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -12348,9 +12353,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。",
+      "lastUpdated": "2026-11-02T21:35:41.316298+00:00"
     },
     {
       "id": "W7-BIZ-201",
@@ -12761,10 +12768,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json"
+        "clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json",
+        "clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 仓库多工单弹窗先关闭根弹窗再跳详情；无指定材料的申请显示待仓库填写材料，不生成虚构货品数量。WPF 本页仍未迁移。",
-      "lastUpdated": "2026-11-01"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 仓库多工单弹窗先关闭根弹窗再跳详情；无指定材料的申请显示待仓库填写材料，不生成虚构货品数量。WPF 本页仍未迁移。\n2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。",
+      "lastUpdated": "2026-11-02T21:35:41.316298+00:00"
     },
     {
       "id": "W7-BIZ-211",

@@ -73,6 +73,8 @@ WarehouseTaskCenterRecord _record(
   String action = 'NONE',
   bool canHandle = false,
   Map<String, dynamic> data = const {},
+  num? quantity,
+  String unitName = '件',
 }) => WarehouseTaskCenterRecord(
   rowKey: '$source:$record:visual-$index',
   id: 'visual-$index',
@@ -100,12 +102,30 @@ WarehouseTaskCenterRecord _record(
     goodsName: index.isEven ? '不锈钢六角螺栓' : '接线端子',
     specification: index.isEven ? 'M8 × 30' : 'UT-2.5',
     colorName: '本色',
-    unitName: '件',
-    quantity: index * 120,
+    unitName: unitName,
+    quantity: quantity ?? index * 120,
   ),
 );
 
 final _inbound = [
+  _record(
+    8,
+    'PURCHASE',
+    'ARRIVAL_EXCEPTION',
+    '采购已入库，余量待退回',
+    'warning',
+    status: 'PURCHASE_EXCEPTION_STOCKED_WAITING_RETURN',
+    action: 'HISTORY_DETAIL',
+    quantity: 2.52,
+    unitName: '条',
+    data: {
+      'stockedQty': '2.4200',
+      'pendingStockInQty': '0',
+      'pendingReturnQty': '0.1000',
+      'progressUnitName': '条',
+      'nextStep': '由采购甲退回供应商',
+    },
+  ),
   _record(
     1,
     'PURCHASE',
@@ -260,6 +280,18 @@ final _outbound = [
 
 void main() {
   for (final scenario in [
+    (
+      'warehouse-inbound-progress-1920',
+      'inbound',
+      false,
+      const Size(1920, 900),
+    ),
+    (
+      'warehouse-inbound-progress-dark-1920',
+      'inbound',
+      true,
+      const Size(1920, 900),
+    ),
     ('warehouse-inbound-light-1440', 'inbound', false, const Size(1440, 900)),
     ('warehouse-all-dark-1440', 'outbound', true, const Size(1440, 900)),
     ('warehouse-inbound-light-375', 'inbound', false, const Size(375, 900)),

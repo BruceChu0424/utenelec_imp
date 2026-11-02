@@ -1,5 +1,7 @@
 package com.uten.imp.features.warehouse.taskcenter;
 
+import com.uten.imp.features.warehouse.inbound.ProcurementReceiptProgress;
+
 import com.uten.imp.application.port.WarehouseTaskScopePort.WarehouseTaskScope;
 import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.features.warehouse.finishedin.ProductionFinishedInboundTaskService;
@@ -23,12 +25,14 @@ final class WarehouseInboundTaskCenterSql {
               'PURCHASE_PARTIAL_PASSED','PURCHASE_RETURN_REQUIRED','PURCHASE_RECEIPT_DRAFT',
               'PURCHASE_EXCEPTION_PENDING_FINANCE','PURCHASE_EXCEPTION_RECEIPT_ADJUSTED',
               'PURCHASE_EXCEPTION_RETURN_REQUIRED','PURCHASE_EXCEPTION_RECEIPT_POSTED',
+              'PURCHASE_EXCEPTION_PRE_STOCKED_WAITING_INSPECTION','PURCHASE_EXCEPTION_STOCKED_WAITING_RETURN','PURCHASE_EXCEPTION_PARTIAL_STOCKED_WAITING_RETURN',
               'SUBCONTRACT_READY_REGISTER','SUBCONTRACT_BLOCKED','SUBCONTRACT_CONTINUE_INSPECTION',
               'SUBCONTRACT_EXCESS_PENDING_FINANCE','SUBCONTRACT_WAITING_INSPECTION',
               'SUBCONTRACT_PRE_STOCKED_WAITING_INSPECTION','SUBCONTRACT_PASSED_WAITING_STOCK_IN',
               'SUBCONTRACT_PARTIAL_PASSED','SUBCONTRACT_RETURN_REQUIRED','SUBCONTRACT_RECEIPT_DRAFT',
               'SUBCONTRACT_EXCEPTION_PENDING_FINANCE','SUBCONTRACT_EXCEPTION_RECEIPT_ADJUSTED',
               'SUBCONTRACT_EXCEPTION_RETURN_REQUIRED','SUBCONTRACT_EXCEPTION_RECEIPT_POSTED',
+              'SUBCONTRACT_EXCEPTION_PRE_STOCKED_WAITING_INSPECTION','SUBCONTRACT_EXCEPTION_STOCKED_WAITING_RETURN','SUBCONTRACT_EXCEPTION_PARTIAL_STOCKED_WAITING_RETURN',
               'FINISHED_READY_REGISTER','FINISHED_READY_COUNT','FINISHED_RESIDUAL_COUNT',
               'FINISHED_WAITING_FQC','FINISHED_PRE_STOCKED_FQC','FINISHED_FQC_PARTIAL',
               'FINISHED_DRAFT','OTHER_DRAFT','RETURN_DRAFT','RETURN_PENDING_RECEIVE','RETURN_WORKSHOP_PENDING')
@@ -236,13 +240,20 @@ final class WarehouseInboundTaskCenterSql {
                        (exception.detected_at AT TIME ZONE 'Asia/Shanghai')::date AS business_date, supplier.name AS party_name,
                        warehouse.name AS warehouse_name, detector.full_name AS responsible_name, NULL::text AS maker_name,
                        1 AS line_count,
-                       exception.order_type || '_EXCEPTION_' || exception.status AS workflow_status,
+                       exception.order_type || '_EXCEPTION_' || CASE
+                           WHEN exception.status='RECEIPT_POSTED' AND receipt_progress.pre_stocked_open_count>0
+                                THEN 'PRE_STOCKED_WAITING_INSPECTION'
+                           WHEN exception.status='RECEIPT_POSTED' AND receipt_progress.stocked_qty>=exception.accepted_qty
+                                AND exception.accepted_qty>0 THEN 'STOCKED_WAITING_RETURN'
+                           WHEN exception.status='RECEIPT_POSTED' AND receipt_progress.stocked_qty>0
+                                THEN 'PARTIAL_STOCKED_WAITING_RETURN'
+                           ELSE exception.status END AS workflow_status,
                        'ARRIVAL_EXCEPTION'::text AS action, exception.id AS target_id,
                        jsonb_strip_nulls(jsonb_build_object('exceptionId',exception.id,
                           'receiptType',exception.order_type,'receiptId',exception.receipt_id,
                           'expectedVersion',exception.version,'acceptedQty',exception.accepted_qty,
                           'unacceptedQty',exception.unaccepted_qty,'unitName',unit.name,
-                          'goodsName',goods.name)) AS action_data,
+                          'goodsName',goods.name) || %s) AS action_data,
                        NULL::uuid AS maker_id, FALSE AS production_linked,
                        exception.detected_at AS sort_time,
                        concat_ws(' ',exception.id,exception.receipt_bill_no_snapshot,exception.order_bill_no_snapshot,
@@ -258,8 +269,10 @@ final class WarehouseInboundTaskCenterSql {
                 LEFT JOIN units unit ON unit.id=exception.unit_id
                 LEFT JOIN colors color ON color.id=exception.color_id
                 LEFT JOIN employees detector ON detector.id=exception.detected_by_employee_id
+                %s
                 WHERE exception.order_type IN('PURCHASE','SUBCONTRACT')
-                """ + scope(scope,"ARRAY[exception.warehouse_id]");
+                """.formatted(ProcurementReceiptProgress.data("unit.name"),
+                    ProcurementReceiptProgress.joins("exception.order_type","exception.receipt_id","exception.receipt_item_id")) + scope(scope,"ARRAY[exception.warehouse_id]");
     }
 
     private static String receipts(String type, boolean history, WarehouseTaskScope scope) {
@@ -296,7 +309,7 @@ final class WarehouseInboundTaskCenterSql {
                           'pendingSliceCount',COALESCE(pending_release.pending_slice_count,0),
                           'pendingReturnCount',COALESCE(pending_return.pending_return_count,0),
                           'openItemCount',COALESCE(inspection.open_item_count,0),
-                          'preStockedLineCount',COALESCE(inspection.pre_stocked_line_count,0))) AS action_data,
+                          'preStockedLineCount',COALESCE(inspection.pre_stocked_line_count,0)) || %s) AS action_data,
                        h.maker_id, FALSE AS production_linked, h.created_at AS sort_time,
                        concat_ws(' ',h.bill_no,h.source_doc_no,supplier.name,warehouse.name,physical.goods_text) AS search_text,
                        physical.goods_codes, physical.goods_names, physical.line_data
@@ -363,8 +376,12 @@ final class WarehouseInboundTaskCenterSql {
                     FROM (SELECT 1) single_line LEFT JOIN goods ON goods.id=line.goods_id
                     LEFT JOIN colors color ON color.id=line.color_id LEFT JOIN units unit ON unit.id=line.unit_id
                 ) physical
+                %s
                 WHERE NOT h.is_deleted
-                """).formatted(type,type,type,stage,type,historyType,table,itemTable,type,type,type,type,type,type,type)
+                """).formatted(type,type,type,stage,type,historyType,
+                    ProcurementReceiptProgress.data("(SELECT name FROM units WHERE id=line.unit_id)"),
+                    table,itemTable,type,type,type,type,type,type,type,
+                    ProcurementReceiptProgress.joins("'"+type+"'","h.id","line.id"))
                 + (history ? "" : " AND h.status=1 AND h.legacy_id IS NULL AND inspection.receipt_id IS NOT NULL")
                 + scope(scope,"physical.warehouse_ids");
     }

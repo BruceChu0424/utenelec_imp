@@ -141930,7 +141930,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a423263988cc9c534f4e403dcf5fed891a962ed87a347c7c9ead2840134771c9"
+          "targetSha256": "34a2635941a0157bca4a1da449dd33400fcd0c31645223f04448fe66fbb36fb2"
         },
         {
           "directive": "import",
@@ -141942,7 +141942,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "5a5d54e0c0a04706ef2f8079664833360880f40b7d9f33f85f7bf4895c89d123"
+          "targetSha256": "ab44c85c28ec6afc98daea54b9ce7c41072de81e60dbcba707d1962fef291445"
         },
         {
           "directive": "import",
@@ -175896,7 +175896,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a423263988cc9c534f4e403dcf5fed891a962ed87a347c7c9ead2840134771c9"
+          "targetSha256": "34a2635941a0157bca4a1da449dd33400fcd0c31645223f04448fe66fbb36fb2"
         },
         {
           "directive": "import",
@@ -175908,7 +175908,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "5a5d54e0c0a04706ef2f8079664833360880f40b7d9f33f85f7bf4895c89d123"
+          "targetSha256": "ab44c85c28ec6afc98daea54b9ce7c41072de81e60dbcba707d1962fef291445"
         },
         {
           "directive": "import",
@@ -199196,7 +199196,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a423263988cc9c534f4e403dcf5fed891a962ed87a347c7c9ead2840134771c9"
+          "targetSha256": "34a2635941a0157bca4a1da449dd33400fcd0c31645223f04448fe66fbb36fb2"
         },
         {
           "directive": "import",
@@ -200524,7 +200524,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a423263988cc9c534f4e403dcf5fed891a962ed87a347c7c9ead2840134771c9"
+          "targetSha256": "34a2635941a0157bca4a1da449dd33400fcd0c31645223f04448fe66fbb36fb2"
         },
         {
           "directive": "import",
@@ -201420,8 +201420,8 @@
       "id": "page:warehouse/pages/procurement_return_task_pages.dart",
       "feature": "warehouse",
       "source": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
-      "sha256": "5a5d54e0c0a04706ef2f8079664833360880f40b7d9f33f85f7bf4895c89d123",
-      "lineCount": 1001,
+      "sha256": "ab44c85c28ec6afc98daea54b9ce7c41072de81e60dbcba707d1962fef291445",
+      "lineCount": 1006,
       "classes": [
         {
           "name": "ProcurementReturnTasksPage",
@@ -201467,13 +201467,13 @@
         },
         {
           "name": "_Fact",
-          "line": 956,
+          "line": 961,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         },
         {
           "name": "_Pager",
-          "line": 977,
+          "line": 982,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         }
@@ -201885,7 +201885,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a423263988cc9c534f4e403dcf5fed891a962ed87a347c7c9ead2840134771c9"
+          "targetSha256": "34a2635941a0157bca4a1da449dd33400fcd0c31645223f04448fe66fbb36fb2"
         },
         {
           "directive": "import",
@@ -211811,7 +211811,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "929d48bcd3fbc1b5c6dcb26c1a165a09a2b4282400321bc54d2fcd0f8fce47fe"
+          "targetSha256": "ac6140b62599f96a51c6bef98d9c2d20d830e69993bfd77680b8853bbdf67456"
         }
       ],
       "partUnits": [],
@@ -213036,7 +213036,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "3f9c91a4ad21c8a2c69e7afae15da12a3a21b95d39888d0e47622eda67a0a287"
+          "targetSha256": "50ec31460fce3801a88aa4a295a31d9f53d5e5f29ae07e458387eefd0c491a49"
         }
       ],
       "partUnits": [],
@@ -215015,7 +215015,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "3f9c91a4ad21c8a2c69e7afae15da12a3a21b95d39888d0e47622eda67a0a287"
+          "targetSha256": "50ec31460fce3801a88aa4a295a31d9f53d5e5f29ae07e458387eefd0c491a49"
         }
       ],
       "partUnits": [],
@@ -255390,8 +255390,8 @@
     },
     {
       "source": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
-      "sha256": "5a5d54e0c0a04706ef2f8079664833360880f40b7d9f33f85f7bf4895c89d123",
-      "lineCount": 1001
+      "sha256": "ab44c85c28ec6afc98daea54b9ce7c41072de81e60dbcba707d1962fef291445",
+      "lineCount": 1006
     },
     {
       "source": "lib/features/warehouse/pages/production_draw_batch_issue_page.dart",
@@ -255710,8 +255710,8 @@
     },
     {
       "source": "lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart",
-      "sha256": "929d48bcd3fbc1b5c6dcb26c1a165a09a2b4282400321bc54d2fcd0f8fce47fe",
-      "lineCount": 1124
+      "sha256": "ac6140b62599f96a51c6bef98d9c2d20d830e69993bfd77680b8853bbdf67456",
+      "lineCount": 1139
     },
     {
       "source": "lib/features/warehouse/widgets/warehouse_arrival_source_field.dart",
@@ -255790,8 +255790,8 @@
     },
     {
       "source": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
-      "sha256": "3f9c91a4ad21c8a2c69e7afae15da12a3a21b95d39888d0e47622eda67a0a287",
-      "lineCount": 1352
+      "sha256": "50ec31460fce3801a88aa4a295a31d9f53d5e5f29ae07e458387eefd0c491a49",
+      "lineCount": 1394
     },
     {
       "source": "lib/features/warehouse/widgets/warehouse_task_session_guard.dart",
@@ -256350,8 +256350,8 @@
     },
     {
       "source": "lib/shared/models/procurement_inbound.dart",
-      "sha256": "a423263988cc9c534f4e403dcf5fed891a962ed87a347c7c9ead2840134771c9",
-      "lineCount": 956
+      "sha256": "34a2635941a0157bca4a1da449dd33400fcd0c31645223f04448fe66fbb36fb2",
+      "lineCount": 966
     },
     {
       "source": "lib/shared/models/procurement_order_closure.dart",

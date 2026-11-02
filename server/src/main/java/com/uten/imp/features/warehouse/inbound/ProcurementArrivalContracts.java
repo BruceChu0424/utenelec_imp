@@ -416,11 +416,16 @@ public final class ProcurementArrivalContracts {
             BigDecimal toleranceQtySnapshot,
             BigDecimal priorNetReceivedQtySnapshot,
             /** 价格族字段已对当前用户脱敏（仓库视角无收货单价格权限时置 null；V302）。 */
-            boolean priceMasked) {
+            boolean priceMasked, ReceiptProgress receiptProgress) {
         public ArrivalExceptionTask {
             allowedActions = List.copyOf(allowedActions);
         }
     }
+
+    public record ReceiptProgress(
+            @JsonSerialize(using = ToStringSerializer.class) BigDecimal stockedQty,
+            @JsonSerialize(using = ToStringSerializer.class) BigDecimal pendingStockInQty,
+            @JsonSerialize(using = ToStringSerializer.class) BigDecimal pendingReturnQty) { }
 
     public record InboundExpectationItem(
             UUID id,

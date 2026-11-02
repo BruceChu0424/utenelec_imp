@@ -611,7 +611,7 @@ class _WarehouseArrivalExceptionsViewState
             MasterFacetBucket(
               value: 'RECEIPT_POSTED',
               count: 0,
-              label: '已按批准数量入库',
+              label: '已按批准量送检，余量待退回',
             ),
             MasterFacetBucket(value: 'CLOSED', count: 0, label: '到货异常已完成'),
             MasterFacetBucket(value: 'CANCELED', count: 0, label: '到货异常已取消'),
@@ -902,6 +902,16 @@ class _WarehouseArrivalExceptionsViewState
       value: (task) =>
           task.unacceptedQty > 0 ? procurementQty(task.unacceptedQty) : '—',
     ),
+    for (final (key, label) in warehouseProcurementProgressColumns)
+      MasterColumnDef(
+        key: key,
+        label: label,
+        width: 140,
+        type: 'number',
+        columnSearchEnabled: false,
+        value: (task) => task.receiptProgress?.label(key, task.unitName) ?? '—',
+        exactValueOf: (task) => task.receiptProgress?.quantity(key),
+      ),
     const MasterColumnDef(
       key: 'nextAction',
       label: '下一步',
@@ -1022,6 +1032,11 @@ class _WarehouseExceptionDetailDialog extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: UtenSpacing.s16),
+                if (task.receiptProgress != null)
+                  _DetailLine(
+                    label: '入库 / 退回进度',
+                    value: task.receiptProgress!.summary(task.unitName),
+                  ),
                 _DetailLine(label: '订货单', value: task.orderBillNo),
                 _DetailLine(label: '供应商', value: task.supplierName ?? '—'),
                 _DetailLine(label: '仓库', value: task.warehouseName ?? '—'),

@@ -1,0 +1,123 @@
+{
+  "date": "2026-11-02",
+  "branch": "uimp/warehouse-inbound-clarity-20261102",
+  "classification": [
+    "frontend",
+    "backend",
+    "shared-contract"
+  ],
+  "supportedConsumers": [
+    "Web / Flutter",
+    "existing Flutter desktop consumers"
+  ],
+  "nativeUnmigratedWorkItems": [
+    "W7-BIZ-188",
+    "W7-BIZ-194",
+    "W7-BIZ-200",
+    "W7-BIZ-210",
+    "W7-BIZ-223"
+  ],
+  "nativeStatusChanged": false,
+  "nativeWritesEnabled": false,
+  "sharedContract": "contracts/warehouse-procurement-progress/v1.json",
+  "receipt": "docs/99-项目治理/2026-11-02-入库退回进度与双击办理.md",
+  "win7Accepted": false,
+  "verification": {
+    "frontendUniqueCases": 134,
+    "backendCases": 71,
+    "backendSuites": [
+      {
+        "suite": "WarehouseInboundTaskCenterQueryServiceTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "WarehouseInboundTaskCenterQueryPostgresTest",
+        "tests": 25,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "WarehousePhysicalDetailHeaderPostgresTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "ProcurementArrivalWorkflowContractTest",
+        "tests": 11,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "ProcurementArrivalOwnerTaskHistoryContractTest",
+        "tests": 5,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "WarehouseArrivalExceptionStockInBatchServiceTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "ProcurementArrivalGuardPostgresTest",
+        "tests": 16,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "suite": "ProcurementArrivalColumnFilterTest",
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ],
+    "visualScenarios": 5,
+    "staticAnalysisTargets": 13,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "stress": {
+      "rows": 5000,
+      "pageSize": 100,
+      "pages": 50,
+      "durationSeconds": 1.427,
+      "passed": true
+    },
+    "readOnlyFollowup": "one already-counted gesture case rerun after clarifying readonly dialog copy; passed",
+    "logs": "task worktree build-frontend-accepted.log / build-backend-accepted.log / build-visual-tests.log / build-analyze-accepted.log / build-readonly-accepted.log",
+    "visualOutput": "C:/Users/bruce/.codex/visualizations/2026/11/02/01a19e17-8af9-73a0-b93b-a58290f0e10e",
+    "productionWrites": false,
+    "productionDeployed": false,
+    "nativeUat": false,
+    "fullCiRun": false
+  },
+  "sourceSha256": {
+    "lib/shared/models/procurement_receipt_progress.dart": "bf024e59848738af3faf741cf4596b348b4d2d0587949b2ab0859a105223e104",
+    "lib/shared/models/procurement_inbound.dart": "34a2635941a0157bca4a1da449dd33400fcd0c31645223f04448fe66fbb36fb2",
+    "lib/features/warehouse/models/warehouse_task_center_record.dart": "18d90e4d7b75f549a1469f26bd4ba36a553aaa51381ab0ab624660c29cfbe4f2",
+    "lib/features/warehouse/widgets/warehouse_task_records_view.dart": "50ec31460fce3801a88aa4a295a31d9f53d5e5f29ae07e458387eefd0c491a49",
+    "lib/features/warehouse/widgets/warehouse_task_record_actions.dart": "486451ef8169454cab11a0a24fb110ba8479df9ebe24ef345e195269cb806ea2",
+    "lib/features/warehouse/widgets/warehouse_task_physical_detail_dialog.dart": "f18bbb5ae95d27818a0ce1d018eb70e3d7ef0ccddec4e97a4bfc13b3dab88b41",
+    "lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart": "ac6140b62599f96a51c6bef98d9c2d20d830e69993bfd77680b8853bbdf67456",
+    "lib/features/warehouse/pages/procurement_return_task_pages.dart": "ab44c85c28ec6afc98daea54b9ce7c41072de81e60dbcba707d1962fef291445",
+    "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementReceiptProgress.java": "b6b88609c66e3c7756f03f68f2703190060781eea9c3e5b59e889f071b41ed7b",
+    "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalControlService.java": "18634f03ac74cdd33bd3ba631ed2983918851e61282044b771b5d9d7f900fa9d",
+    "server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementArrivalContracts.java": "f5ee8419ddd5cb347df356c2dd069083a3c3d0f521c599adc23143f91915c96d",
+    "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterQueryService.java": "ea4921e8f09b4c4d1ee4a79bcd058161c08dfd49f7a4c959e2df9767eea178de",
+    "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseInboundTaskCenterSql.java": "ac5b2d2f7f541673c1af18ab130cc6eb31ce1b91ce316ae590502471445eef92",
+    "server/src/main/java/com/uten/imp/features/warehouse/taskcenter/WarehouseTaskCenterExportService.java": "652d128e741daec8b77c573be13a4cce3c5a382794aa9f242edb726586301a29",
+    "contracts/warehouse-procurement-progress/v1.json": "76f243cc42cf93f157c95e1203b329e432e385de7f46504a3d8658e82e1c91b5"
+  }
+}

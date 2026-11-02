@@ -927,6 +927,11 @@ class _ReturnFactsCard extends StatelessWidget {
               value: '${task.orderType.label} ${task.orderBillNo}',
             ),
             _Fact(label: '收货单', value: task.receiptBillNo),
+            if (task.receiptProgress != null)
+              _Fact(
+                label: '入库 / 退回进度',
+                value: task.receiptProgress!.summary(task.unitName),
+              ),
             _Fact(label: '供应商', value: task.supplierName ?? '—'),
             _Fact(label: '仓库', value: task.warehouseName ?? '—'),
             _Fact(

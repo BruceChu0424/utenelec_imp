@@ -403,7 +403,7 @@ class _ReturnQualityApi extends ApiClient {
       qualityReads++;
       return qualityRows;
     }
-    if (path == ApiEndpoints.warehousesDict) {
+    if (path == ApiEndpoints.businessReferenceWarehouses) {
       return const [
         {'id': 'warehouse-1', 'name': '成品仓', 'selectableForNew': true},
       ];

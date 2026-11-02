@@ -64,7 +64,7 @@ class _Api extends ApiClient {
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => path == '/master/warehouses/dict'
+  }) async => path == '/business-references/warehouses'
       ? [
           for (final w in _warehouses)
             {

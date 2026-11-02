@@ -383,7 +383,7 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == ApiEndpoints.warehousesDict) {
+    if (path == ApiEndpoints.businessReferenceWarehouses) {
       return const [
         {
           'id': _whMain,

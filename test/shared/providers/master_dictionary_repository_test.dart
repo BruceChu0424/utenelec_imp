@@ -145,6 +145,19 @@ void main() {
   );
 
   test('write paths map to the right dictionaries', () {
+    expect(masterDictKeysForWrite('/api/master/warehouses/warehouse-1'), [
+      ApiEndpoints.warehousesDict,
+    ]);
+    expect(masterDictKeysForWrite('/api/master/accounts/account-1'), [
+      masterAccountsDictKey,
+    ]);
+    expect(masterDictKeysForWrite('/api/org/departments/department-1'), [
+      ApiEndpoints.departmentsTree,
+    ]);
+    expect(
+      masterDictKeysForWrite('/api/business-references/warehouses'),
+      isEmpty,
+    );
     expect(masterDictKeysForWrite('/api/master/units/u-1'), [
       ApiEndpoints.unitsDict,
     ]);

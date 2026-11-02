@@ -34,7 +34,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(api.dictionaryPaths, [ApiEndpoints.warehousesDict]);
+    expect(api.dictionaryPaths, [ApiEndpoints.businessReferenceWarehouses]);
 
     final table = tester
         .widget<MasterDataTableView<ProcurementArrivalException>>(
@@ -160,7 +160,7 @@ class _ArrivalExceptionApi extends ApiClient {
         {'id': 'supplier-1', 'name': '供应商甲'},
       ];
     }
-    if (path.contains('warehouses')) {
+    if (path == ApiEndpoints.businessReferenceWarehouses) {
       return const [
         {'id': 'warehouse-1', 'name': '一号仓'},
       ];

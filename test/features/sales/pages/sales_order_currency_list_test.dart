@@ -266,7 +266,7 @@ class _ShipmentListApi extends ApiClient {
         {'id': 'client-1', 'name': '甲客户'},
       ];
     }
-    if (path == '/master/warehouses/dict') {
+    if (path == '/business-references/warehouses') {
       return const [
         {'id': 'warehouse-1', 'name': '成品仓', 'selectableForNew': true},
       ];

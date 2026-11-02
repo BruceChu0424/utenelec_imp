@@ -22,7 +22,7 @@ void main() {
         names.ensureWarehousesLoaded(),
         names.ensureWarehousesLoaded(),
       ]);
-      expect(api.paths, [ApiEndpoints.warehousesDict]);
+      expect(api.paths, [ApiEndpoints.businessReferenceWarehouses]);
       expect(names.warehouseHierarchy.single.id, 'leaf');
     },
   );
@@ -138,7 +138,7 @@ class _DictionaryApi extends ApiClient {
     Map<String, dynamic>? query,
   }) async {
     paths.add(path);
-    if (path != ApiEndpoints.warehousesDict) {
+    if (path != ApiEndpoints.businessReferenceWarehouses) {
       throw StateError('unrelated dictionary');
     }
     return [

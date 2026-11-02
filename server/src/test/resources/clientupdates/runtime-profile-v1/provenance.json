@@ -1,0 +1,37 @@
+{
+  "sourceCommit": "012ea92dcd38f80bc42a765139add5c5fb28e3b2",
+  "sources": {
+    "tool/generate_native_runtime_profile.dart": "a902ba650b7be617cbe3769ad89e9a06ab627aea4ed3e774f3f493ee1a1af389",
+    "lib/core/runtime/client_runtime_profile.dart": "54a0cd8b5f603d887cdb24833e83098cbc8a7d9d53e7bcbf09becf11b07f7d8f"
+  },
+  "profiles": {
+    "formal": {
+      "sha256": "6be3338730d94ddfba5dc51ba121f9090770931aec82d7622e5d28582505a93e",
+      "fields": [
+        "applicationId",
+        "buildProfile",
+        "displayName",
+        "nativeProductName",
+        "networkScope",
+        "runtimeFamily",
+        "schemaVersion",
+        "selfUpdatesAllowed"
+      ],
+      "generatorResult": "formal"
+    },
+    "local_test": {
+      "sha256": "705c6d54c26b9b700cb2feeb2a89dc56238d7ad8d2bffce01972d64b90431f2f",
+      "fields": [
+        "applicationId",
+        "buildProfile",
+        "displayName",
+        "nativeProductName",
+        "networkScope",
+        "runtimeFamily",
+        "schemaVersion",
+        "selfUpdatesAllowed"
+      ],
+      "generatorResult": "local_test"
+    }
+  }
+}

@@ -40,6 +40,7 @@ class WindowsRuntimeProfileContractTest {
         rejects(archive("2.5.44", 2544, Map.of("UtenBuildProfile", "formal"), null, HASH), "2.5.44", 2544);
         rejects(archive("2.5.44", 2544, Map.of(), profile(), HASH), "2.5.44", 2544);
         rejects(archive("2.5.44", 2544, Map.of("UtenBuildProfile", "formal"), profile(), null), "2.5.44", 2544);
+        rejects(archive("2.5.43", 2543, Map.of("UtenBuildProfile", "formal"), null, null), "2.5.43", 2543);
     }
 
     @Test void actualLocalTestPeIsRejectedDespiteFormalNameUrlsAndLegacyVersionClaim() throws Exception {
@@ -54,6 +55,8 @@ class WindowsRuntimeProfileContractTest {
     @Test void everyRuntimeIdentityFieldIsAuthoritativeAndDuplicateJsonIsRejected() throws Exception {
         for (var change : List.<Map.Entry<String, Object>>of(Map.entry("buildProfile", "local_test"),
                 Map.entry("applicationId", "com.uten.uten_imp.local_test"), Map.entry("nativeProductName", "UTEN Local Test"),
+                Map.entry("displayName", "UTEN 本地测试"), Map.entry("networkScope", "loopback-only"),
+                Map.entry("selfUpdatesAllowed", false), Map.entry("selfUpdatesAllowed", "true"),
                 Map.entry("runtimeFamily", "wpf_legacy"), Map.entry("schemaVersion", "1"), Map.entry("unknown", "formal"))) {
             var values = new HashMap<>(WindowsRuntimeProfileFixture.formal());
             values.put(change.getKey(), change.getValue());
@@ -62,6 +65,22 @@ class WindowsRuntimeProfileContractTest {
         String duplicate = new String(profile(), StandardCharsets.UTF_8).replace("\"buildProfile\":\"formal\"",
                 "\"buildProfile\":\"formal\",\"buildProfile\":\"local_test\"");
         rejects(archive("2.5.44", 2544, Map.of("UtenBuildProfile", "formal"), duplicate.getBytes(StandardCharsets.UTF_8), HASH), "2.5.44", 2544);
+    }
+
+    @Test void actualDartGeneratedNativeHeaderAndMetadataCarryTheSameIdentity() throws Exception {
+        for (String name : List.of("formal", "local_test")) {
+            var values = WindowsRuntimeProfileFixture.generated(name);
+            try (var input = getClass().getResourceAsStream("/clientupdates/runtime-profile-v1/" + name + ".g.h")) {
+                assertThat(input).isNotNull();
+                String header = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+                assertThat(header).contains("#define UTEN_BUILD_PROFILE " + mapper.writeValueAsString(values.get("buildProfile")),
+                        "#define UTEN_NATIVE_PRODUCT_NAME " + mapper.writeValueAsString(values.get("nativeProductName")),
+                        "#define UTEN_APPLICATION_ID " + mapper.writeValueAsString(values.get("applicationId")),
+                        "#define UTEN_DISPLAY_NAME " + mapper.writeValueAsString(values.get("displayName")));
+            }
+        }
+        rejects(archive("2.5.44", 2544, Map.of("UtenBuildProfile", "formal"),
+                mapper.writeValueAsBytes(WindowsRuntimeProfileFixture.generated("local_test")), HASH), "2.5.44", 2544);
     }
 
     private byte[] profile() throws Exception { return mapper.writeValueAsBytes(WindowsRuntimeProfileFixture.formal()); }

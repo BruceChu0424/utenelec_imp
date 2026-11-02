@@ -27,10 +27,11 @@ import zipfile
 from pathlib import Path
 
 from build_windows_installer import validate_setup
-from package_windows import MANIFEST_NAME, inspect_executable_info, inspect_pe_imports
+from package_windows import MANIFEST_NAME, inspect_executable_info, inspect_pe_imports, validate_package
 
 MANIFEST_LIMIT_BYTES = 8 * 1024 * 1024
 REQUIRED_ENTRIES = ("uten_imp.exe", "flutter_windows.dll", "data/app.so", "data/icudtl.dat", MANIFEST_NAME)
+RUNTIME_PROFILE = "data/uten-runtime-profile.json"
 EXECUTABLE_IDENTITY = {"originalfilename": "uten_imp.exe", "internalname": "uten_imp",
                        "companyname": "Uten", "productname": "优腾综合管理平台"}
 PE_CHARACTERISTICS_EXECUTABLE = 0x2
@@ -73,7 +74,12 @@ def verify_update_zip(path: Path, *, version: str, build_number: int, architectu
     except zipfile.BadZipFile:
         return {**report, "ok": False, "failures": ["update ZIP is not a valid ZIP file"]}
     with archive:
+        try:
+            validate_package(path, build_number=build_number, architecture=architecture, kind="update", version=version)
+        except (ValueError, OSError, KeyError, TypeError) as malformed:
+            failures.append(f"shared package validation: {malformed}")
         entries: dict[str, zipfile.ZipInfo] = {}
+        expanded = 0
         for entry in archive.infolist():
             name = entry.filename.rstrip("/") if entry.filename.endswith("/") else entry.filename
             folded = name.casefold()
@@ -87,9 +93,13 @@ def verify_update_zip(path: Path, *, version: str, build_number: int, architectu
             if (mode & 0o170000) == 0o120000:
                 failures.append(f"archive must not contain a symlink: {name}")
                 continue
-            if name != entry.filename or name.startswith(("/", "\\")) or "\\" in name or ":" in name:
+            if (name != entry.filename or name.startswith(("/", "\\")) or "\\" in name or ":" in name
+                    or any(part in ("", ".", "..") for part in name.split("/"))):
                 failures.append(f"archive entry has an unsafe path: {entry.filename!r}")
                 continue
+            expanded += entry.file_size
+            if entry.file_size > 536870912 or expanded > 2147483648 or len(entries) >= 20001:
+                return {**report, "ok": False, "failures": failures + ["archive exceeds the bounded Windows package contract"]}
             entries[folded] = entry
         for required in REQUIRED_ENTRIES:
             if required.casefold() not in entries:
@@ -104,7 +114,28 @@ def verify_update_zip(path: Path, *, version: str, build_number: int, architectu
         if manifest_entry.file_size > MANIFEST_LIMIT_BYTES:
             failures.append("manifest is larger than 8 MiB")
             return {**report, "ok": False, "failures": failures}
-        manifest = json.loads(archive.read(manifest_entry))
+        try:
+            manifest = json.loads(archive.read(manifest_entry))
+        except (ValueError, zipfile.BadZipFile):
+            return {**report, "ok": False, "failures": failures + ["update manifest is not valid JSON"]}
+        if not isinstance(manifest, dict):
+            return {**report, "ok": False, "failures": failures + ["update manifest must be an object"]}
+        profile_entry = entries.get(RUNTIME_PROFILE.casefold())
+        if profile_entry is not None:
+            if profile_entry.file_size > 16384:
+                failures.append("runtime profile exceeds the bounded identity contract")
+            else:
+                try:
+                    report["runtimeProfile"] = json.loads(archive.read(profile_entry))
+                except (ValueError, zipfile.BadZipFile):
+                    failures.append("runtime profile is not valid JSON")
+        binding_required = profile_entry is not None or _version_tuple(version, build_number)[:3] >= (2, 5, 44)
+        if binding_required:
+            binding = manifest.get("installerSha256")
+            if not isinstance(binding, str) or len(binding) != 64 or any(ch not in "0123456789abcdef" for ch in binding):
+                failures.append("new formal update ZIP must bind the actual Setup.exe SHA-256")
+            else:
+                report["installerSha256"] = binding
 
         # Field-by-field mirror of the server's paired_v1 comparison; the
         # server collapses all of these into one message.
@@ -208,11 +239,11 @@ def verify_update_zip(path: Path, *, version: str, build_number: int, architectu
 def verify_setup(path: Path, *, version: str, build_number: int, architecture: str) -> dict:
     """Outer PE version-resource check, identical to the server's setup gate."""
     try:
-        validate_setup(path, version=version, build_number=build_number,
-                       architecture=architecture, local_test=False)
+        receipt = validate_setup(path, version=version, build_number=build_number,
+                                 architecture=architecture, local_test=False)
     except ValueError as error:
         return {"package": str(path), "kind": "installer", "ok": False, "failures": [f"Setup.exe: {error}"]}
-    return {"package": str(path), "kind": "installer", "ok": True, "failures": []}
+    return {"package": str(path), "kind": "installer", "ok": True, "failures": [], "sha256": receipt["sha256"]}
 
 
 def verify_pair(setup: Path, update: Path, *, version: str, build_number: int, architecture: str,
@@ -221,6 +252,9 @@ def verify_pair(setup: Path, update: Path, *, version: str, build_number: int, a
                verify_update_zip(update, version=version, build_number=build_number,
                                  architecture=architecture, required_endpoints=required_endpoints)]
     failures = [failure for report in reports for failure in report["failures"]]
+    binding = reports[1].get("installerSha256")
+    if binding is not None and reports[0].get("sha256") != binding:
+        failures.append("update ZIP installerSha256 does not match the actual Setup.exe bytes")
     return {"ok": not failures, "version": version, "buildNumber": build_number,
             "architecture": architecture, "reports": reports, "failures": failures}
 

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "buildProfile": "local_test",
+  "applicationId": "com.uten.uten_imp.local_test",
+  "nativeProductName": "UTEN Local Test",
+  "displayName": "UTEN 本地测试",
+  "runtimeFamily": "flutter",
+  "networkScope": "loopback-only",
+  "selfUpdatesAllowed": false
+}

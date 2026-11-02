@@ -1,4 +1,5 @@
 import json
+import hashlib
 import struct
 import tempfile
 import unittest
@@ -7,8 +8,8 @@ from pathlib import Path
 
 from package_windows import MANIFEST_NAME, package_release
 from test_build_windows_installer import setup_fixture
-from test_package_windows import fixture_executable, runtime_fixtures
-from verify_windows_release import verify_pair, verify_update_zip
+from test_package_windows import fixture_executable, generated_runtime_profile, runtime_fixtures
+from verify_windows_release import RUNTIME_PROFILE, verify_pair, verify_update_zip
 
 ENDPOINTS = ("https://company.example/api", "https://cloud.example/api")
 IDENTITY = {"CompanyName": "Uten", "ProductName": "优腾综合管理平台",
@@ -89,6 +90,36 @@ class VerifyWindowsReleaseTest(unittest.TestCase):
                               architecture="x64", required_endpoints=ENDPOINTS)
         self.assertEqual([], verdict["failures"], verdict["failures"])
         self.assertTrue(verdict["ok"])
+
+    def bound_profile_pair(self):
+        setup = self.root / "setup.exe"
+        setup.write_bytes(setup_fixture(build=2531))
+        bundle = formal_bundle(self.root / "bundle", exe_identity={**IDENTITY, "UtenBuildProfile": "formal"})
+        profile = generated_runtime_profile("formal")
+        (bundle / RUNTIME_PROFILE).write_text(json.dumps(profile), encoding="utf-8")
+        package_release(bundle, self.output, build_number=2531, architecture="x64", version="2.5.31",
+                        installer_sha256=hashlib.sha256(setup.read_bytes()).hexdigest())
+        return setup
+
+    def test_new_profile_pair_binds_the_actual_setup_bytes(self):
+        setup = self.bound_profile_pair()
+        verdict = verify_pair(setup, self.output, version="2.5.31", build_number=2531, architecture="x64")
+        self.assertTrue(verdict["ok"], verdict["failures"])
+
+    def test_same_version_setup_substitution_is_not_a_matching_pair(self):
+        setup = self.bound_profile_pair()
+        with setup.open("ab") as stream:
+            stream.write(b"different actual setup bytes with identical PE identity")
+        verdict = verify_pair(setup, self.output, version="2.5.31", build_number=2531, architecture="x64")
+        self.assertFalse(verdict["ok"])
+        self.assertIn("does not match the actual Setup.exe bytes", "; ".join(verdict["failures"]))
+
+    def test_profiled_update_without_installer_binding_is_rejected(self):
+        self.bound_profile_pair()
+        self.rewrite_manifest(lambda manifest: manifest.pop("installerSha256"))
+        report = self.verify()
+        self.assertFalse(report["ok"])
+        self.assertIn("bind the actual Setup.exe", "; ".join(report["failures"]))
 
     def test_manifest_without_version_is_rejected_exactly_like_the_server(self):
         self.build_update()

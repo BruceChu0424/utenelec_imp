@@ -109,7 +109,9 @@ Source: "{#AppIcon}"; DestDir: "{app}"; DestName: "uten-wpf.ico"; Flags: ignorev
 Name: "{localappdata}\com.uten.uten_imp\client-logs\wpf_legacy"; Flags: uninsneveruninstall
 
 [Icons]
-Name: "{userprograms}\{#InstallerAppName} Logs"; Filename: "{localappdata}\com.uten.uten_imp\client-logs\wpf_legacy"; Flags: foldershortcut
+; Keep the directory shortcut; the obsolete cascading-menu flag was removed
+; in Inno Setup 6.3 and was already ignored on the Win7+ target systems.
+Name: "{userprograms}\{#InstallerAppName} Logs"; Filename: "{localappdata}\com.uten.uten_imp\client-logs\wpf_legacy"
 Name: "{userprograms}\{#InstallerAppName}"; Filename: "{app}\Uten.Legacy.Desktop.exe"; WorkingDir: "{app}"; IconFilename: "{app}\uten-wpf.ico"; AppUserModelID: "{#InstallerAppId}"
 Name: "{userdesktop}\{#InstallerAppName}"; Filename: "{app}\Uten.Legacy.Desktop.exe"; WorkingDir: "{app}"; IconFilename: "{app}\uten-wpf.ico"; AppUserModelID: "{#InstallerAppId}"
 

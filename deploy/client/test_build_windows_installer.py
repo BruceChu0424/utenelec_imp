@@ -179,6 +179,13 @@ class WindowsSetupSourceTest(unittest.TestCase):
         self.assertIn("VersionInfoProductName=" + setup.LOCAL_PRODUCT_NAME, script)
         self.assertIn("VersionInfoOriginalFileName=" + setup.LOCAL_ORIGINAL_FILENAME, script)
 
+    def test_log_directory_shortcut_is_preserved_without_obsolete_menu_flags(self):
+        script = setup.SCRIPT.read_text(encoding="utf-8-sig")
+        directives = [line for line in script.splitlines() if not line.lstrip().startswith(";")]
+        self.assertIn('Name: "{localappdata}\\com.uten.uten_imp\\client-logs\\flutter"; Flags: uninsneveruninstall', directives)
+        self.assertIn('Name: "{autoprograms}\\{cm:AppDisplayName} Logs"; Filename: "{localappdata}\\com.uten.uten_imp\\client-logs\\flutter"', directives)
+        self.assertFalse(any("foldershortcut" in line.casefold() for line in directives))
+
     @unittest.skipUnless(os.environ.get("UTEN_TEST_ISCC"), "An explicitly supplied verified ISCC is required")
     def test_actual_verified_iscc_compiles_only_an_isolated_synthetic_local_test_installer(self):
         self.local_test_runtime()
@@ -187,6 +194,38 @@ class WindowsSetupSourceTest(unittest.TestCase):
         self.assertGreater(result["sizeBytes"], 0)
         with self.assertRaises(ValueError):
             setup.validate_setup(self.output, version="2.5.31", build_number=2531, architecture="x64")
+
+    @unittest.skipUnless(os.environ.get("UTEN_TEST_ISCC"), "An explicitly supplied verified ISCC is required")
+    def test_actual_verified_iscc_compiles_formal_profile_and_bound_update_pair(self):
+        from test_verify_windows_release import elf_blob, with_pe_characteristics
+        profile = generated_runtime_profile("formal")
+        (self.bundle / "uten_imp.exe").write_bytes(with_pe_characteristics(fixture_executable(2531, version=(2, 5, 31),
+            strings={"CompanyName": "Uten", "ProductName": profile["nativeProductName"],
+                     "OriginalFilename": "uten_imp.exe", "InternalName": "uten_imp",
+                     "UtenBuildProfile": "formal", "UtenApplicationId": profile["applicationId"]}), 0x0002))
+        for dll in self.bundle.glob("*.dll"):
+            dll.write_bytes(with_pe_characteristics(dll.read_bytes(), 0x2002))
+        (self.bundle / "data/app.so").write_bytes(elf_blob("x64"))
+        (self.bundle / "data/uten-runtime-profile.json").write_text(json.dumps(profile), encoding="utf-8")
+        captured = []
+
+        def recording_compiler(command, **options):
+            result = subprocess.run(command, **options)
+            captured.append(result)
+            self.assertNotRegex(result.stdout + result.stderr, r"(?i)\b(?:warning|error|deprecated)\b")
+            return result
+
+        result = self.build(compiler=Path(os.environ["UTEN_TEST_ISCC"]), compile=True,
+                            update_output=self.update_output, runner=recording_compiler)
+        self.assertEqual(1, len(captured))
+        self.assertNotIn("localTest", result)
+        with zipfile.ZipFile(self.update_output) as archive:
+            manifest = json.loads(archive.read(MANIFEST_NAME))
+        self.assertEqual(hashlib.sha256(self.output.read_bytes()).hexdigest(), manifest["installerSha256"])
+        from verify_windows_release import verify_pair
+        checked = verify_pair(self.output, self.update_output, version="2.5.31",
+                              build_number=2531, architecture="x64")
+        self.assertTrue(checked["ok"], checked["failures"])
 
     def test_cli_local_test_cannot_relabel_a_formal_runtime_payload(self):
         with self.assertRaisesRegex(ValueError, "actual LocalTest runtime|generated runtime metadata"):

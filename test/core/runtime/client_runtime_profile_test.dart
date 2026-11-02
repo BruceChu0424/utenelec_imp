@@ -17,10 +17,7 @@ void main() {
     final checkedHeader = File(
       'windows/runner/client_runtime_profile.default.g.h',
     ).readAsStringSync().replaceAll('\r\n', '\n');
-    expect(
-      checkedHeader,
-      const ClientRuntimeProfile(localTest: false).toNativeHeader(),
-    );
+    expect(checkedHeader, formal.toNativeHeader());
   });
 
   test('LocalTest requires one explicit loopback API and no control plane', () {

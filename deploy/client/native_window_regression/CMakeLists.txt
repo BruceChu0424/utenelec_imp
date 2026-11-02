@@ -8,6 +8,11 @@ if(NOT DEFINED SUT_PROJECT)
 endif()
 set(EPHEMERAL "${SUT_PROJECT}/windows/flutter/ephemeral")
 set(SUT_BUILD "${SUT_PROJECT}/build/windows/x64")
+set(SUT_CONFIGURATION "Profile" CACHE STRING "Completed Flutter build configuration")
+set_property(CACHE SUT_CONFIGURATION PROPERTY STRINGS Profile Release)
+if(NOT SUT_CONFIGURATION MATCHES "^(Profile|Release)$")
+  message(FATAL_ERROR "SUT_CONFIGURATION must be Profile or Release")
+endif()
 set(SUT_SOURCE_DIR "${SUT_PROJECT}/windows" CACHE PATH
   "Frozen task-only source tree containing runner/ and flutter/")
 set(SUT "${SUT_SOURCE_DIR}")
@@ -56,7 +61,7 @@ target_include_directories(uten_native_window_regression PRIVATE
   "${EPHEMERAL}/cpp_client_wrapper/include"
 )
 target_link_libraries(uten_native_window_regression PRIVATE
-  "${SUT_BUILD}/flutter/Profile/flutter_wrapper_app.lib"
+  "${SUT_BUILD}/flutter/${SUT_CONFIGURATION}/flutter_wrapper_app.lib"
   "${EPHEMERAL}/flutter_windows.dll.lib"
   dwmapi comctl32 bcrypt shell32 ole32 oleacc oleaut32
 )
@@ -69,7 +74,7 @@ foreach(PLUGIN IN LISTS NATIVE_PLUGINS)
   target_include_directories(uten_native_window_regression PRIVATE
     "${SUT_PROJECT}/windows/flutter/ephemeral/.plugin_symlinks/${PLUGIN}/windows/include")
   target_link_libraries(uten_native_window_regression PRIVATE
-    "${SUT_BUILD}/plugins/${PLUGIN}/Profile/${PLUGIN}_plugin.lib")
+    "${SUT_BUILD}/plugins/${PLUGIN}/${SUT_CONFIGURATION}/${PLUGIN}_plugin.lib")
 endforeach()
 set_target_properties(uten_native_window_regression PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY "${HARNESS_RUNTIME}"

@@ -291,6 +291,13 @@ python deploy/client/prepare_android_flutter_tooling.py `
 $env:ORG_GRADLE_PROJECT_utenFlutterGradleTools = '<任务私有目录/flutter-gradle>'
 ```
 
+Windows 上 [Dart 的环境映射会把键转为大写](https://api.dart.dev/dart-io/Platform/environment.html)，
+Gradle 的项目属性名则区分大小写。`settings.gradle.kts` 在插件加载前统一解析 `utenFlutterGradleTools`、
+`utenLocalTest` 及其实际大写传输形式，冲突值、空工具链路径和非 `true/false` 测试标志均拒绝。
+同一解析结果控制工具链 include、全部原生插件重定位和 Android 安装身份；Windows 私有原生项目
+还必须与应用处于同一卷，缺失的复制不能静默回退到另一卷的 pub cache。
+实际 APK 仍须用 `aapt` 核验 `.local_test`，不能只根据命令传过参数或 Gradle 最终 exit 0 判断。
+
 本地测试使用 Debug APK 和开发机测试后端，独立包名为
 `com.uten.uten_imp.local_test`，手机上显示“UTEN 本地测试”，应用数据与公司客户端分开。
 它使用 Android Debug 签名，不能上传正式客户端目录，也不作为公司版升级包。

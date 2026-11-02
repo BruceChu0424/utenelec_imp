@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/server_config.dart';
+import '../../core/network/api_client.dart';
 import '../../core/network/read_scope_revision.dart';
 import '../auth/permissions.dart';
 import 'authenticated_scope_provider.dart';
@@ -22,6 +23,14 @@ class ExportContextEpoch extends Notifier<int> {
     ref.listen(currentPermissionsProvider, (previous, next) {
       if (!setEquals(previous, next)) state++;
     });
+    ref.listen(isSuperAdminProvider, (previous, next) {
+      if (previous != next) state++;
+    });
+    // Transport/realm replacement at an unchanged URL is still a new reader.
+    // Weak observation must not instantiate networking just to fence a pure UI.
+    ref.listen(apiClientProvider, (previous, next) {
+      if (previous != null && !identical(previous, next)) state++;
+    }, weak: true);
     return 0;
   }
 }
@@ -36,5 +45,7 @@ final exportContextEpochProvider = NotifierProvider<ExportContextEpoch, int>(
     authenticatedScopeProvider,
     apiBaseUrlProvider,
     currentPermissionsProvider,
+    isSuperAdminProvider,
+    apiClientProvider,
   ],
 );

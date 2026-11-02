@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/data_display/paged_list_controller.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_server_column_filters.dart';
@@ -37,6 +39,21 @@ final _permissions = NotifierProvider<_Permissions, Set<String>>(
   _Permissions.new,
 );
 final _server = NotifierProvider<_Server, String>(_Server.new);
+
+class _Role extends Notifier<bool> {
+  @override
+  bool build() => false;
+  void change(bool value) => state = value;
+}
+
+class _Client extends Notifier<ApiClient> {
+  @override
+  ApiClient build() => ApiClient(Dio());
+  void replace() => state = ApiClient(Dio());
+}
+
+final _role = NotifierProvider<_Role, bool>(_Role.new);
+final _client = NotifierProvider<_Client, ApiClient>(_Client.new);
 
 class _Harness extends ConsumerStatefulWidget {
   const _Harness({required this.controller, required this.ready});
@@ -114,6 +131,11 @@ Future<void> _changeOwner(
           .change(const AuthenticatedScope(userId: 'B'));
     case 'permissions':
       container.read(_permissions.notifier).change({});
+    case 'super-admin':
+      container.read(_role.notifier).change(true);
+    case 'api-instance':
+      container.read(_client.notifier).replace();
+      container.read(apiClientProvider);
     case 'server':
       container.read(_server.notifier).change('https://b.invalid/api');
     case 'reset':
@@ -146,6 +168,26 @@ Future<void> _changeOwner(
 }
 
 void main() {
+  test('reader fencing does not initialize unused networking', () {
+    var starts = 0;
+    final container = ProviderContainer(
+      overrides: [
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'fixture'),
+        ),
+        currentPermissionsProvider.overrideWithValue(const {}),
+        isSuperAdminProvider.overrideWithValue(false),
+        apiBaseUrlProvider.overrideWithValue('https://fixture.invalid/api'),
+        apiClientProvider.overrideWith((ref) {
+          starts++;
+          return ApiClient(Dio());
+        }),
+      ],
+    );
+    addTearDown(container.dispose);
+    container.read(exportContextEpochProvider);
+    expect(starts, 0);
+  });
   for (final transition in [
     'account',
     'permissions',
@@ -153,6 +195,8 @@ void main() {
     'A-B-A',
     'reset',
     'dataset',
+    'super-admin',
+    'api-instance',
   ]) {
     for (final lateError in [false, true]) {
       testWidgets(
@@ -167,9 +211,12 @@ void main() {
                 (ref) => ref.watch(_permissions),
               ),
               apiBaseUrlProvider.overrideWith((ref) => ref.watch(_server)),
+              isSuperAdminProvider.overrideWith((ref) => ref.watch(_role)),
+              apiClientProvider.overrideWith((ref) => ref.watch(_client)),
             ],
           );
           addTearDown(container.dispose);
+          container.read(apiClientProvider);
           final controller = PagedListController<String>();
           addTearDown(controller.dispose);
           late WidgetRef pageRef;

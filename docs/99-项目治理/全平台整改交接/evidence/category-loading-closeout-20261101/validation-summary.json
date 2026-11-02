@@ -1,0 +1,94 @@
+{
+  "baseline": "a667078df",
+  "branch": "uimp/category-all-pages-20261101",
+  "scope": "User requested full related-path sweep, then closeout of evidenced issues. No claim that all possible defects or full platform UAT are complete.",
+  "readOwnerFixes": [
+    "super-admin flag at unchanged permission codes",
+    "API client replacement at unchanged address",
+    "weak transport observation does not initialize networking"
+  ],
+  "assetFixes": [
+    "independent draft count before rows",
+    "refresh only active tab; defer hidden-tab refresh until return",
+    "optional category names do not hold refresh completion",
+    "preserve month-end period input by keeping the posting panel state",
+    "retire late overview/list/category/workflow responses and confirmation intents on reader change"
+  ],
+  "workshopFixes": [
+    "show complete authoritative inventory before slow periods/status finish",
+    "new period-dependent command entry points retain full-readiness gate",
+    "keep original quantities, drafts and unknown-submit ownership"
+  ],
+  "baselineUiContractFixes": [
+    "business-window selector uses public dialog shell",
+    "BOM comparison return uses public close control with original busy/unknown-submit guard"
+  ],
+  "checks": {
+    "category-closeout-all": {
+      "finalLine": "01:18 +166: All tests passed!",
+      "sha256": "5132f01e3a26a72f274f7a4139384cd6e970a69ccb0d18910416e573b2a19315"
+    },
+    "category-last-changes": {
+      "finalLine": "00:19 +58: All tests passed!",
+      "sha256": "659507cc2d7cd2b3f966f3474d2dc7f854276d8f944b25e6687e79efa2a1db24"
+    },
+    "category-owner-closeout": {
+      "finalLine": "00:03 +19: All tests passed!",
+      "sha256": "0965f8bca88e796fd8b6e125b2de73dc88649bd4a8f5e0e1c5037ae63b9acf7b"
+    },
+    "category-sweep-ui-contracts": {
+      "finalLine": "01:00 +35: All tests passed!",
+      "sha256": "24752ae457eef81c0260d5eb975b41c2446d302d998bbd4962831fef37a5b9ac"
+    },
+    "category-baseline-failures-fixed": {
+      "finalLine": "00:35 +34: All tests passed!",
+      "sha256": "a7b24b78b0d47a3b1a854bfe83ffb1cb69b5026cfe9e3cab06ae85bd07d4a1ea"
+    }
+  },
+  "staticAnalysis": "No issues found",
+  "sourceHashes": {
+    "lib/core/router/business_window_host.dart": "c4d95b5c4176f01334c76db24888e9a8302c4ff0f9f3d0260d3fa3938955cdaa",
+    "lib/features/basic_data/widgets/goods_bom_comparison_workspace.dart": "14649872f893f6e35a988cb64de276dac947c21de5a72c5de9cfc42fd20b54e9",
+    "lib/features/finance/pages/finance_asset_workbench_page.dart": "c2a94c5a7a290922d2da09673275de87e1f3aab511c9d5e846b30723f532689b",
+    "lib/features/finance/widgets/finance_asset_ledger_panel.dart": "8b9169b0e90e0bc9156515df2222322d6850c5bf8fc73b539bdc690a051ed201",
+    "lib/features/finance/widgets/finance_asset_posting_panel.dart": "aea6f701ac9568e094c65b0c6093fa8806bf327a87a8561bf6cc79bf63fe3386",
+    "lib/features/warehouse/materialbin/pages/workshop_material_bin_page.dart": "5b132eac076046f0b7ef18a351c036a441531a7420ca7d6da803ef0149cc3336",
+    "lib/shared/providers/export_context_epoch_provider.dart": "e388bf33389d36235303df329eec9c62e207abb740f74515ca919968908340d6",
+    "test/features/finance/finance_asset_workbench_page_test.dart": "71e4ac25641d3f28e14749d9904246a57e7daedcf65b0aa13d2f954cad0de3aa",
+    "test/features/report/report_return_background_refresh_test.dart": "66ed308653965d65e05f7122ccd49a5fc6bcc598a7d02a54968ce7632c312c6d",
+    "test/features/sales/pages/sales_hub_badge_test.dart": "cb734abe7c6cd75b4aeae614906e7b92451d8e321d35f3151ea27626c6caf89b",
+    "test/features/warehouse/workshop_material_bin_page_test.dart": "2223a95477a883f04eaf4d6b7aff0ff09e0e65c00ee0d7015a3454abd44d6372",
+    "test/shared/auth/read_owner_fence_test.dart": "ce055061906a55e8cb0d40f9e735b0dfa757d8fc35a76b10f8ac2b975dceb804",
+    "tool/audit_page_read_dependencies.dart": "3a8a15600f68a30b62daadc7bcb7009eec081cdf35244dbe788c71148f109581"
+  },
+  "fullPreviousCommitBaseline": {
+    "commit": "a667078df",
+    "status": "running",
+    "latest": "85:55 +10792 ~63 -4: D:/Projects/uten_imp_worktrees/category-table-loading-20261101/test/features/warehouse/stock_doc_detail_weight_test.dart: DRAW actual issue keeps a decimal delta lost by legacy doubles",
+    "failures": [
+      "09:47 +2149 ~3 -1: D:/Projects/uten_imp_worktrees/category-table-loading-20261101/test/core/ui_geometry_contract_test.dart: all modal constructors use the constrained platform shells [E]",
+      "10:03 +2277 ~3 -2: D:/Projects/uten_imp_worktrees/category-table-loading-20261101/test/core/window_close_source_contract_test.dart: repository window close controls use the public source contract [E]",
+      "70:27 +9456 ~60 -3: D:/Projects/uten_imp_worktrees/category-table-loading-20261101/test/features/report/report_return_background_refresh_test.dart: production return revalidates without resetting table or scroll [E]",
+      "73:02 +9750 ~60 -4: D:/Projects/uten_imp_worktrees/category-table-loading-20261101/test/features/sales/pages/sales_hub_badge_test.dart: 只有订货草稿时，订货进度与外层任务中心卡都显示红徽章 [E]"
+    ],
+    "logPath": "D:\\Projects\\uten_imp_worktrees\\category-table-loading-20261101\\build\\category-full-baseline.log",
+    "interpretation": "Frozen previous commit, not current candidate full-suite acceptance; retain its run and do not label it green."
+  },
+  "webPageTests": {
+    "status": "bootstrap-blocked",
+    "sharedSdkModified": false,
+    "privateWorkaround": "CanvasKit and selector URI separators normalized only in build/private-flutter-tools",
+    "remainingFailure": "DDC uten_scroll_behavior module initialization refers to undefined uten_page_scrollbar_host",
+    "acceptedAsPassed": false
+  },
+  "native": {
+    "sourceModified": false,
+    "parity": "SessionCoordinator.ProfileFenceChanged already includes SuperAdmin; implemented native transport remains the prior checked source. Asset/BOM full business UIs remain unported."
+  },
+  "release": {
+    "mergedMain": false,
+    "pushed": false,
+    "deployed": false,
+    "formalPackages": false
+  }
+}

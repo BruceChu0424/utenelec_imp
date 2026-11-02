@@ -282,7 +282,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       ref.read(masterNameServiceProvider).ensureLoaded();
-      _loadBadge();
+      _loadBadge(force: false);
       if (isDraftStatusQuery(widget.initialStatus)) _reload(1);
     });
   }
@@ -670,14 +670,14 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
   /// 订货单有两个计数段：「草稿」=status=0 且未提交（NONE），
   /// 「等待财务审核」=status=0 且在审（PENDING）——在审单已交由财务处理，
   /// 不再算草稿（与 hub 红徽章/服务端草稿计数同一口径）。
-  Future<void> _loadBadge() async {
+  Future<void> _loadBadge({bool force = true}) async {
     final requestId = ++_badgeRequestId;
     final type = widget.docType;
     // 订货/收货/退货: 分段计数走 documentStatusCountsProvider(全部桶一次请求), 这里只
     // 失效重取; 申请页仍按下方 list(size:1) 数「计划已下达」。
     final statusScope = _statusScope;
     if (statusScope != null) {
-      ref.invalidate(documentStatusCountsProvider(statusScope));
+      refreshDocumentStatusCounts(ref, statusScope, force: force);
       return;
     }
     try {

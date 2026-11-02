@@ -168,7 +168,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(masterNameServiceProvider).ensureLoaded();
-      _loadBadge();
+      _loadBadge(force: false);
       if (isDraftStatusQuery(widget.initialStatus)) _reload(1);
     });
   }
@@ -451,8 +451,8 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
   );
 
   /// 分段计数刷新(2026-09-21 起走 documentStatusCountsProvider, 不再 list(size:1) 数草稿)。
-  void _loadBadge() {
-    ref.invalidate(documentStatusCountsProvider(_statusScope));
+  void _loadBadge({bool force = true}) {
+    refreshDocumentStatusCounts(ref, _statusScope, force: force);
   }
 
   // ---- 列定义 -----------------------------------------------------------

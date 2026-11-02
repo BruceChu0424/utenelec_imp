@@ -292,7 +292,7 @@
 
 ## W7-BIZ-187 · lib/features/warehouse/pages/stock_doc_list_page.dart
 
-模块 `warehouse`；815 行；SHA256 `a7241ecb87c5351ba4228cecd84635f56ac9f3159e61cc3c2cc139832e90d335`。
+模块 `warehouse`；815 行；SHA256 `d030c52d5c4b523aaa39cf6dbbad5cf5930fe5b229197dc541466a85ca326905`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

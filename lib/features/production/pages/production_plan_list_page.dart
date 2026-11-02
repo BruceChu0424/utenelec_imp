@@ -229,7 +229,7 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
     final cacheQuery = _pageQueryScope;
     final ownerCurrent = captureReadOwner(ref);
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
-    ref.invalidate(documentStatusCountsProvider(_statusScope));
+    refreshDocumentStatusCounts(ref, _statusScope, force: page == null);
     if (!_statusFilterSelected || (_historyMode && _historyTime.isNone)) {
       // Deselecting a query also supersedes pending data and errors.
       final keyword = _list.keyword;

@@ -1,0 +1,1502 @@
+{
+  "fixture": "Private fully migrated PostgreSQL fixture, real Spring security/controller/query/JSON, MockMvc excludes WAN/TLS/browser, no backend query change",
+  "samples": [
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 1698.747
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 870.442
+    },
+    {
+      "path": "/api/admin/server-operations/status",
+      "status": 200,
+      "elapsedMs": 7.391
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 225.442
+    },
+    {
+      "path": "/api/admin/server-operations/status",
+      "status": 200,
+      "elapsedMs": 7.103
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 211.528
+    },
+    {
+      "path": "/api/admin/server-operations/status",
+      "status": 200,
+      "elapsedMs": 12.958
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 199.138
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 192.664
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 876.649
+    },
+    {
+      "path": "/api/visitor-approval/pending-count",
+      "status": 200,
+      "elapsedMs": 36.307
+    },
+    {
+      "path": "/api/visitor-approval/host-pending-count",
+      "status": 200,
+      "elapsedMs": 39.051
+    },
+    {
+      "path": "/api/hr/profile-changes/pending-count",
+      "status": 200,
+      "elapsedMs": 39.325
+    },
+    {
+      "path": "/api/org/hr-tasks/count",
+      "status": 200,
+      "elapsedMs": 61.317
+    },
+    {
+      "path": "/api/expense-claims/counts",
+      "status": 200,
+      "elapsedMs": 62.379
+    },
+    {
+      "path": "/api/sales/orders/progress/stage-counts",
+      "status": 200,
+      "elapsedMs": 24.623
+    },
+    {
+      "path": "/api/sales/orders/finance-confirmation/count",
+      "status": 200,
+      "elapsedMs": 68.351
+    },
+    {
+      "path": "/api/sales/shipments/pending-finance-count",
+      "status": 200,
+      "elapsedMs": 53.682
+    },
+    {
+      "path": "/api/warehouse/sales-outbound/counts",
+      "status": 200,
+      "elapsedMs": 230.704
+    },
+    {
+      "path": "/api/sales/quotes/counts",
+      "status": 200,
+      "elapsedMs": 41.627
+    },
+    {
+      "path": "/api/sales/quotes/finance-review/count",
+      "status": 200,
+      "elapsedMs": 49.742
+    },
+    {
+      "path": "/api/sales/manager-review/count",
+      "status": 200,
+      "elapsedMs": 62.761
+    },
+    {
+      "path": "/api/finance/procurement-approvals/count",
+      "status": 200,
+      "elapsedMs": 49.048
+    },
+    {
+      "path": "/api/procurement/iqc-rejections/counts",
+      "status": 200,
+      "elapsedMs": 10.774
+    },
+    {
+      "path": "/api/warehouse/inbound/expectations/count",
+      "status": 200,
+      "elapsedMs": 182.584
+    },
+    {
+      "path": "/api/warehouse/inbound/arrival-exceptions/count",
+      "status": 200,
+      "elapsedMs": 117.585
+    },
+    {
+      "path": "/api/finance/procurement-arrival-exceptions/count",
+      "status": 200,
+      "elapsedMs": 31.05
+    },
+    {
+      "path": "/api/procurement/arrival-exceptions/count",
+      "status": 200,
+      "elapsedMs": 97.992
+    },
+    {
+      "path": "/api/procurement/arrival-exceptions/count",
+      "status": 200,
+      "elapsedMs": 92.196
+    },
+    {
+      "path": "/api/procurement/inspection/pending-count",
+      "status": 200,
+      "elapsedMs": 33.502
+    },
+    {
+      "path": "/api/warehouse/production-finished-in/tasks/count",
+      "status": 200,
+      "elapsedMs": 141.38
+    },
+    {
+      "path": "/api/warehouse/quality-results/type-counts",
+      "status": 200,
+      "elapsedMs": 138.949
+    },
+    {
+      "path": "/api/warehouse/subcontract-outbound/tasks/count",
+      "status": 200,
+      "elapsedMs": 146.914
+    },
+    {
+      "path": "/api/production/schedule/pending-count",
+      "status": 200,
+      "elapsedMs": 45.341
+    },
+    {
+      "path": "/api/production/overproduction-rate/count",
+      "status": 200,
+      "elapsedMs": 43.514
+    },
+    {
+      "path": "/api/production/over-limit-dispositions/count",
+      "status": 200,
+      "elapsedMs": 48.374
+    },
+    {
+      "path": "/api/production/material-increments/count",
+      "status": 200,
+      "elapsedMs": 45.219
+    },
+    {
+      "path": "/api/production/material-analyses/workshop-urges/count",
+      "status": 200,
+      "elapsedMs": 41.834
+    },
+    {
+      "path": "/api/production/workshop-tasks/count",
+      "status": 200,
+      "elapsedMs": 211.116
+    },
+    {
+      "path": "/api/production/execution-workbench/count",
+      "status": 200,
+      "elapsedMs": 164.684
+    },
+    {
+      "path": "/api/production/quality-inspections/count",
+      "status": 200,
+      "elapsedMs": 49.06
+    },
+    {
+      "path": "/api/rd-tasks/count",
+      "status": 200,
+      "elapsedMs": 31.298
+    },
+    {
+      "path": "/api/operations/workbench/purchase/count",
+      "status": 200,
+      "elapsedMs": 67.393
+    },
+    {
+      "path": "/api/operations/workbench/subcontract/count",
+      "status": 200,
+      "elapsedMs": 71.347
+    },
+    {
+      "path": "/api/subcontract/draw-tasks/count",
+      "status": 200,
+      "elapsedMs": 86.408
+    },
+    {
+      "path": "/api/operations/workbench/warehouse/count",
+      "status": 200,
+      "elapsedMs": 95.845
+    },
+    {
+      "path": "/api/stock/production-materials/return-requests/warehouse/count",
+      "status": 200,
+      "elapsedMs": 46.472
+    },
+    {
+      "path": "/api/documents/drafts/count",
+      "status": 200,
+      "elapsedMs": 64.848
+    },
+    {
+      "path": "/api/finance/expenses/gl-confirmation-count",
+      "status": 200,
+      "elapsedMs": 48.75
+    },
+    {
+      "path": "/api/documents/finance-rejected/count",
+      "status": 200,
+      "elapsedMs": 55.611
+    },
+    {
+      "path": "/api/documents/manager-rejected/count",
+      "status": 200,
+      "elapsedMs": 47.526
+    },
+    {
+      "path": "/api/subcontract/short-deliveries/count",
+      "status": 200,
+      "elapsedMs": 8.495
+    },
+    {
+      "path": "/api/workshop-material/badge-counts",
+      "status": 200,
+      "elapsedMs": 58.586
+    },
+    {
+      "path": "/api/admin/server-status",
+      "status": 200,
+      "elapsedMs": 6.409
+    },
+    {
+      "path": "/api/admin/server-operations/status",
+      "status": 200,
+      "elapsedMs": 5.883
+    },
+    {
+      "path": "/api/stock/count-review-badges/finance",
+      "status": 200,
+      "elapsedMs": 53.734
+    },
+    {
+      "path": "/api/stock/count-review-badges/warehouse",
+      "status": 200,
+      "elapsedMs": 66.923
+    },
+    {
+      "path": "/api/notices/unread-index",
+      "status": 200,
+      "elapsedMs": 152.485
+    },
+    {
+      "path": "/api/website-inquiries/counts",
+      "status": 200,
+      "elapsedMs": 10.58
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 225.097
+    },
+    {
+      "path": "/api/admin/server-operations/status",
+      "status": 200,
+      "elapsedMs": 6.891
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 203.293
+    },
+    {
+      "path": "/api/admin/server-operations/status",
+      "status": 200,
+      "elapsedMs": 4.545
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 189.052
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 214.103
+    },
+    {
+      "path": "/api/operations/workbench/purchase/overview",
+      "status": 200,
+      "elapsedMs": 68.677
+    },
+    {
+      "path": "/api/operations/workbench/subcontract/overview",
+      "status": 200,
+      "elapsedMs": 119.507
+    },
+    {
+      "path": "/api/visitor-approval",
+      "status": 200,
+      "elapsedMs": 44.707
+    },
+    {
+      "path": "/api/hr/profile-changes",
+      "status": 200,
+      "elapsedMs": 42.207
+    },
+    {
+      "path": "/api/expense-claims/browse",
+      "status": 200,
+      "elapsedMs": 67.158
+    },
+    {
+      "path": "/api/dashboard/overview",
+      "status": 200,
+      "elapsedMs": 244.489
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 519.201
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 132.028
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 552.907
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 150.727
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 131.312
+    },
+    {
+      "path": "/api/notices/unread-index",
+      "status": 200,
+      "elapsedMs": 48.068
+    },
+    {
+      "path": "/api/notices/unread-index",
+      "status": 200,
+      "elapsedMs": 61.899
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 229.571
+    },
+    {
+      "path": "/api/notices/unread-index",
+      "status": 200,
+      "elapsedMs": 45.043
+    },
+    {
+      "path": "/api/notices/unread-index",
+      "status": 200,
+      "elapsedMs": 46.434
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 563.703
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 617.41
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 160.533
+    },
+    {
+      "path": "/api/visitor-approval/pending-count",
+      "status": 403,
+      "elapsedMs": 37.28
+    },
+    {
+      "path": "/api/visitor-approval/host-pending-count",
+      "status": 403,
+      "elapsedMs": 41.055
+    },
+    {
+      "path": "/api/hr/profile-changes/pending-count",
+      "status": 403,
+      "elapsedMs": 43.84
+    },
+    {
+      "path": "/api/org/hr-tasks/count",
+      "status": 403,
+      "elapsedMs": 47.538
+    },
+    {
+      "path": "/api/expense-claims/counts",
+      "status": 200,
+      "elapsedMs": 34.649
+    },
+    {
+      "path": "/api/sales/orders/progress/stage-counts",
+      "status": 403,
+      "elapsedMs": 16.111
+    },
+    {
+      "path": "/api/sales/orders/finance-confirmation/count",
+      "status": 403,
+      "elapsedMs": 46.185
+    },
+    {
+      "path": "/api/sales/shipments/pending-finance-count",
+      "status": 403,
+      "elapsedMs": 41.684
+    },
+    {
+      "path": "/api/warehouse/sales-outbound/counts",
+      "status": 403,
+      "elapsedMs": 135.346
+    },
+    {
+      "path": "/api/sales/quotes/counts",
+      "status": 403,
+      "elapsedMs": 40.907
+    },
+    {
+      "path": "/api/sales/quotes/finance-review/count",
+      "status": 403,
+      "elapsedMs": 46.324
+    },
+    {
+      "path": "/api/sales/manager-review/count",
+      "status": 403,
+      "elapsedMs": 41.469
+    },
+    {
+      "path": "/api/finance/procurement-approvals/count",
+      "status": 403,
+      "elapsedMs": 47.574
+    },
+    {
+      "path": "/api/procurement/iqc-rejections/counts",
+      "status": 403,
+      "elapsedMs": 17.501
+    },
+    {
+      "path": "/api/warehouse/inbound/expectations/count",
+      "status": 403,
+      "elapsedMs": 115.287
+    },
+    {
+      "path": "/api/warehouse/inbound/arrival-exceptions/count",
+      "status": 403,
+      "elapsedMs": 132.757
+    },
+    {
+      "path": "/api/finance/procurement-arrival-exceptions/count",
+      "status": 403,
+      "elapsedMs": 42.228
+    },
+    {
+      "path": "/api/procurement/arrival-exceptions/count",
+      "status": 403,
+      "elapsedMs": 73.761
+    },
+    {
+      "path": "/api/procurement/arrival-exceptions/count",
+      "status": 403,
+      "elapsedMs": 72.559
+    },
+    {
+      "path": "/api/procurement/inspection/pending-count",
+      "status": 403,
+      "elapsedMs": 45.8
+    },
+    {
+      "path": "/api/warehouse/production-finished-in/tasks/count",
+      "status": 403,
+      "elapsedMs": 120.68
+    },
+    {
+      "path": "/api/warehouse/quality-results/type-counts",
+      "status": 403,
+      "elapsedMs": 113.688
+    },
+    {
+      "path": "/api/warehouse/subcontract-outbound/tasks/count",
+      "status": 403,
+      "elapsedMs": 146.483
+    },
+    {
+      "path": "/api/production/schedule/pending-count",
+      "status": 403,
+      "elapsedMs": 50.836
+    },
+    {
+      "path": "/api/production/overproduction-rate/count",
+      "status": 403,
+      "elapsedMs": 48.987
+    },
+    {
+      "path": "/api/production/over-limit-dispositions/count",
+      "status": 403,
+      "elapsedMs": 41.722
+    },
+    {
+      "path": "/api/production/material-increments/count",
+      "status": 403,
+      "elapsedMs": 42.435
+    },
+    {
+      "path": "/api/production/material-analyses/workshop-urges/count",
+      "status": 403,
+      "elapsedMs": 46.183
+    },
+    {
+      "path": "/api/production/workshop-tasks/count",
+      "status": 403,
+      "elapsedMs": 103.037
+    },
+    {
+      "path": "/api/production/execution-workbench/count",
+      "status": 403,
+      "elapsedMs": 53.21
+    },
+    {
+      "path": "/api/production/quality-inspections/count",
+      "status": 403,
+      "elapsedMs": 39.346
+    },
+    {
+      "path": "/api/rd-tasks/count",
+      "status": 200,
+      "elapsedMs": 27.724
+    },
+    {
+      "path": "/api/operations/workbench/purchase/count",
+      "status": 403,
+      "elapsedMs": 14.05
+    },
+    {
+      "path": "/api/operations/workbench/subcontract/count",
+      "status": 403,
+      "elapsedMs": 14.305
+    },
+    {
+      "path": "/api/subcontract/draw-tasks/count",
+      "status": 403,
+      "elapsedMs": 14.772
+    },
+    {
+      "path": "/api/operations/workbench/warehouse/count",
+      "status": 403,
+      "elapsedMs": 73.729
+    },
+    {
+      "path": "/api/stock/production-materials/return-requests/warehouse/count",
+      "status": 403,
+      "elapsedMs": 35.375
+    },
+    {
+      "path": "/api/documents/drafts/count",
+      "status": 200,
+      "elapsedMs": 33.913
+    },
+    {
+      "path": "/api/finance/expenses/gl-confirmation-count",
+      "status": 403,
+      "elapsedMs": 39.448
+    },
+    {
+      "path": "/api/documents/finance-rejected/count",
+      "status": 200,
+      "elapsedMs": 32.076
+    },
+    {
+      "path": "/api/documents/manager-rejected/count",
+      "status": 200,
+      "elapsedMs": 28.827
+    },
+    {
+      "path": "/api/subcontract/short-deliveries/count",
+      "status": 403,
+      "elapsedMs": 12.389
+    },
+    {
+      "path": "/api/workshop-material/badge-counts",
+      "status": 403,
+      "elapsedMs": 47.06
+    },
+    {
+      "path": "/api/admin/server-status",
+      "status": 403,
+      "elapsedMs": 14.454
+    },
+    {
+      "path": "/api/admin/server-operations/status",
+      "status": 403,
+      "elapsedMs": 12.54
+    },
+    {
+      "path": "/api/stock/count-review-badges/finance",
+      "status": 403,
+      "elapsedMs": 45.652
+    },
+    {
+      "path": "/api/stock/count-review-badges/warehouse",
+      "status": 403,
+      "elapsedMs": 49.671
+    },
+    {
+      "path": "/api/notices/unread-index",
+      "status": 200,
+      "elapsedMs": 46.122
+    },
+    {
+      "path": "/api/website-inquiries/counts",
+      "status": 403,
+      "elapsedMs": 17.331
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 269.38
+    },
+    {
+      "path": "/api/visitor-approval/pending-count",
+      "status": 403,
+      "elapsedMs": 49.828
+    },
+    {
+      "path": "/api/visitor-approval/host-pending-count",
+      "status": 403,
+      "elapsedMs": 47.521
+    },
+    {
+      "path": "/api/hr/profile-changes/pending-count",
+      "status": 403,
+      "elapsedMs": 49.847
+    },
+    {
+      "path": "/api/org/hr-tasks/count",
+      "status": 403,
+      "elapsedMs": 39.453
+    },
+    {
+      "path": "/api/expense-claims/counts",
+      "status": 200,
+      "elapsedMs": 39.618
+    },
+    {
+      "path": "/api/sales/orders/progress/stage-counts",
+      "status": 403,
+      "elapsedMs": 15.852
+    },
+    {
+      "path": "/api/sales/orders/finance-confirmation/count",
+      "status": 403,
+      "elapsedMs": 46.259
+    },
+    {
+      "path": "/api/sales/shipments/pending-finance-count",
+      "status": 403,
+      "elapsedMs": 48.327
+    },
+    {
+      "path": "/api/warehouse/sales-outbound/counts",
+      "status": 403,
+      "elapsedMs": 132.31
+    },
+    {
+      "path": "/api/sales/quotes/counts",
+      "status": 403,
+      "elapsedMs": 37.077
+    },
+    {
+      "path": "/api/sales/quotes/finance-review/count",
+      "status": 403,
+      "elapsedMs": 37.199
+    },
+    {
+      "path": "/api/sales/manager-review/count",
+      "status": 403,
+      "elapsedMs": 33.546
+    },
+    {
+      "path": "/api/finance/procurement-approvals/count",
+      "status": 403,
+      "elapsedMs": 36.926
+    },
+    {
+      "path": "/api/procurement/iqc-rejections/counts",
+      "status": 403,
+      "elapsedMs": 11.295
+    },
+    {
+      "path": "/api/warehouse/inbound/expectations/count",
+      "status": 403,
+      "elapsedMs": 113.704
+    },
+    {
+      "path": "/api/warehouse/inbound/arrival-exceptions/count",
+      "status": 403,
+      "elapsedMs": 107.509
+    },
+    {
+      "path": "/api/finance/procurement-arrival-exceptions/count",
+      "status": 403,
+      "elapsedMs": 39.752
+    },
+    {
+      "path": "/api/procurement/arrival-exceptions/count",
+      "status": 403,
+      "elapsedMs": 71.053
+    },
+    {
+      "path": "/api/procurement/arrival-exceptions/count",
+      "status": 403,
+      "elapsedMs": 76.0
+    },
+    {
+      "path": "/api/procurement/inspection/pending-count",
+      "status": 403,
+      "elapsedMs": 44.143
+    },
+    {
+      "path": "/api/warehouse/production-finished-in/tasks/count",
+      "status": 403,
+      "elapsedMs": 111.821
+    },
+    {
+      "path": "/api/warehouse/quality-results/type-counts",
+      "status": 403,
+      "elapsedMs": 106.438
+    },
+    {
+      "path": "/api/warehouse/subcontract-outbound/tasks/count",
+      "status": 403,
+      "elapsedMs": 107.633
+    },
+    {
+      "path": "/api/production/schedule/pending-count",
+      "status": 403,
+      "elapsedMs": 42.092
+    },
+    {
+      "path": "/api/production/overproduction-rate/count",
+      "status": 403,
+      "elapsedMs": 41.51
+    },
+    {
+      "path": "/api/production/over-limit-dispositions/count",
+      "status": 403,
+      "elapsedMs": 49.449
+    },
+    {
+      "path": "/api/production/material-increments/count",
+      "status": 403,
+      "elapsedMs": 39.981
+    },
+    {
+      "path": "/api/production/material-analyses/workshop-urges/count",
+      "status": 403,
+      "elapsedMs": 35.21
+    },
+    {
+      "path": "/api/production/workshop-tasks/count",
+      "status": 403,
+      "elapsedMs": 89.156
+    },
+    {
+      "path": "/api/production/execution-workbench/count",
+      "status": 403,
+      "elapsedMs": 38.72
+    },
+    {
+      "path": "/api/production/quality-inspections/count",
+      "status": 403,
+      "elapsedMs": 52.662
+    },
+    {
+      "path": "/api/rd-tasks/count",
+      "status": 403,
+      "elapsedMs": 60.352
+    },
+    {
+      "path": "/api/operations/workbench/purchase/count",
+      "status": 403,
+      "elapsedMs": 18.355
+    },
+    {
+      "path": "/api/operations/workbench/subcontract/count",
+      "status": 403,
+      "elapsedMs": 17.051
+    },
+    {
+      "path": "/api/subcontract/draw-tasks/count",
+      "status": 403,
+      "elapsedMs": 15.817
+    },
+    {
+      "path": "/api/operations/workbench/warehouse/count",
+      "status": 200,
+      "elapsedMs": 141.454
+    },
+    {
+      "path": "/api/stock/production-materials/return-requests/warehouse/count",
+      "status": 403,
+      "elapsedMs": 45.166
+    },
+    {
+      "path": "/api/documents/drafts/count",
+      "status": 200,
+      "elapsedMs": 31.004
+    },
+    {
+      "path": "/api/finance/expenses/gl-confirmation-count",
+      "status": 403,
+      "elapsedMs": 38.959
+    },
+    {
+      "path": "/api/documents/finance-rejected/count",
+      "status": 200,
+      "elapsedMs": 28.232
+    },
+    {
+      "path": "/api/documents/manager-rejected/count",
+      "status": 200,
+      "elapsedMs": 31.548
+    },
+    {
+      "path": "/api/subcontract/short-deliveries/count",
+      "status": 403,
+      "elapsedMs": 12.668
+    },
+    {
+      "path": "/api/workshop-material/badge-counts",
+      "status": 403,
+      "elapsedMs": 39.37
+    },
+    {
+      "path": "/api/admin/server-status",
+      "status": 403,
+      "elapsedMs": 12.549
+    },
+    {
+      "path": "/api/admin/server-operations/status",
+      "status": 403,
+      "elapsedMs": 13.807
+    },
+    {
+      "path": "/api/stock/count-review-badges/finance",
+      "status": 403,
+      "elapsedMs": 39.137
+    },
+    {
+      "path": "/api/stock/count-review-badges/warehouse",
+      "status": 403,
+      "elapsedMs": 47.961
+    },
+    {
+      "path": "/api/notices/unread-index",
+      "status": 200,
+      "elapsedMs": 56.733
+    },
+    {
+      "path": "/api/website-inquiries/counts",
+      "status": 403,
+      "elapsedMs": 15.313
+    },
+    {
+      "path": "/api/workbench/badges",
+      "status": 200,
+      "elapsedMs": 232.867
+    },
+    {
+      "path": "/api/visitor-approval/pending-count",
+      "status": 403,
+      "elapsedMs": 45.053
+    },
+    {
+      "path": "/api/visitor-approval/host-pending-count",
+      "status": 403,
+      "elapsedMs": 39.343
+    },
+    {
+      "path": "/api/hr/profile-changes/pending-count",
+      "status": 403,
+      "elapsedMs": 39.244
+    },
+    {
+      "path": "/api/org/hr-tasks/count",
+      "status": 403,
+      "elapsedMs": 39.612
+    },
+    {
+      "path": "/api/expense-claims/counts",
+      "status": 200,
+      "elapsedMs": 33.009
+    },
+    {
+      "path": "/api/sales/orders/progress/stage-counts",
+      "status": 200,
+      "elapsedMs": 13.628
+    },
+    {
+      "path": "/api/sales/orders/finance-confirmation/count",
+      "status": 200,
+      "elapsedMs": 32.48
+    },
+    {
+      "path": "/api/sales/shipments/pending-finance-count",
+      "status": 403,
+      "elapsedMs": 39.334
+    },
+    {
+      "path": "/api/warehouse/sales-outbound/counts",
+      "status": 403,
+      "elapsedMs": 127.405
+    },
+    {
+      "path": "/api/sales/quotes/counts",
+      "status": 403,
+      "elapsedMs": 37.309
+    },
+    {
+      "path": "/api/sales/quotes/finance-review/count",
+      "status": 403,
+      "elapsedMs": 35.223
+    },
+    {
+      "path": "/api/sales/manager-review/count",
+      "status": 403,
+      "elapsedMs": 32.946
+    },
+    {
+      "path": "/api/finance/procurement-approvals/count",
+      "status": 403,
+      "elapsedMs": 37.427
+    },
+    {
+      "path": "/api/procurement/iqc-rejections/counts",
+      "status": 403,
+      "elapsedMs": 13.367
+    },
+    {
+      "path": "/api/warehouse/inbound/expectations/count",
+      "status": 403,
+      "elapsedMs": 104.864
+    },
+    {
+      "path": "/api/warehouse/inbound/arrival-exceptions/count",
+      "status": 403,
+      "elapsedMs": 111.616
+    },
+    {
+      "path": "/api/finance/procurement-arrival-exceptions/count",
+      "status": 403,
+      "elapsedMs": 37.564
+    },
+    {
+      "path": "/api/procurement/arrival-exceptions/count",
+      "status": 403,
+      "elapsedMs": 67.623
+    },
+    {
+      "path": "/api/procurement/arrival-exceptions/count",
+      "status": 403,
+      "elapsedMs": 102.25
+    },
+    {
+      "path": "/api/procurement/inspection/pending-count",
+      "status": 403,
+      "elapsedMs": 51.372
+    },
+    {
+      "path": "/api/warehouse/production-finished-in/tasks/count",
+      "status": 403,
+      "elapsedMs": 133.392
+    },
+    {
+      "path": "/api/warehouse/quality-results/type-counts",
+      "status": 403,
+      "elapsedMs": 177.487
+    },
+    {
+      "path": "/api/warehouse/subcontract-outbound/tasks/count",
+      "status": 403,
+      "elapsedMs": 168.685
+    },
+    {
+      "path": "/api/production/schedule/pending-count",
+      "status": 403,
+      "elapsedMs": 42.346
+    },
+    {
+      "path": "/api/production/overproduction-rate/count",
+      "status": 403,
+      "elapsedMs": 38.503
+    },
+    {
+      "path": "/api/production/over-limit-dispositions/count",
+      "status": 403,
+      "elapsedMs": 40.291
+    },
+    {
+      "path": "/api/production/material-increments/count",
+      "status": 403,
+      "elapsedMs": 44.633
+    },
+    {
+      "path": "/api/production/material-analyses/workshop-urges/count",
+      "status": 403,
+      "elapsedMs": 37.478
+    },
+    {
+      "path": "/api/production/workshop-tasks/count",
+      "status": 403,
+      "elapsedMs": 88.484
+    },
+    {
+      "path": "/api/production/execution-workbench/count",
+      "status": 403,
+      "elapsedMs": 39.696
+    },
+    {
+      "path": "/api/production/quality-inspections/count",
+      "status": 403,
+      "elapsedMs": 33.106
+    },
+    {
+      "path": "/api/rd-tasks/count",
+      "status": 403,
+      "elapsedMs": 38.039
+    },
+    {
+      "path": "/api/operations/workbench/purchase/count",
+      "status": 403,
+      "elapsedMs": 14.499
+    },
+    {
+      "path": "/api/operations/workbench/subcontract/count",
+      "status": 403,
+      "elapsedMs": 13.648
+    },
+    {
+      "path": "/api/subcontract/draw-tasks/count",
+      "status": 403,
+      "elapsedMs": 12.189
+    },
+    {
+      "path": "/api/operations/workbench/warehouse/count",
+      "status": 403,
+      "elapsedMs": 71.113
+    },
+    {
+      "path": "/api/stock/production-materials/return-requests/warehouse/count",
+      "status": 403,
+      "elapsedMs": 41.531
+    },
+    {
+      "path": "/api/documents/drafts/count",
+      "status": 200,
+      "elapsedMs": 32.089
+    },
+    {
+      "path": "/api/finance/expenses/gl-confirmation-count",
+      "status": 403,
+      "elapsedMs": 41.096
+    },
+    {
+      "path": "/api/documents/finance-rejected/count",
+      "status": 200,
+      "elapsedMs": 32.355
+    },
+    {
+      "path": "/api/documents/manager-rejected/count",
+      "status": 200,
+      "elapsedMs": 41.4
+    },
+    {
+      "path": "/api/subcontract/short-deliveries/count",
+      "status": 403,
+      "elapsedMs": 11.422
+    },
+    {
+      "path": "/api/workshop-material/badge-counts",
+      "status": 403,
+      "elapsedMs": 37.348
+    },
+    {
+      "path": "/api/admin/server-status",
+      "status": 403,
+      "elapsedMs": 18.202
+    },
+    {
+      "path": "/api/admin/server-operations/status",
+      "status": 403,
+      "elapsedMs": 14.081
+    },
+    {
+      "path": "/api/stock/count-review-badges/finance",
+      "status": 403,
+      "elapsedMs": 42.641
+    },
+    {
+      "path": "/api/stock/count-review-badges/warehouse",
+      "status": 403,
+      "elapsedMs": 44.072
+    },
+    {
+      "path": "/api/notices/unread-index",
+      "status": 200,
+      "elapsedMs": 49.782
+    },
+    {
+      "path": "/api/website-inquiries/counts",
+      "status": 403,
+      "elapsedMs": 13.781
+    }
+  ],
+  "successfulPathStats": {
+    "/api/admin/server-operations/status": {
+      "samples": 6,
+      "p50Ms": 6.997,
+      "p95Ms": 12.958,
+      "maxMs": 12.958
+    },
+    "/api/admin/server-status": {
+      "samples": 1,
+      "p50Ms": 6.409,
+      "p95Ms": 6.409,
+      "maxMs": 6.409
+    },
+    "/api/dashboard/overview": {
+      "samples": 1,
+      "p50Ms": 244.489,
+      "p95Ms": 244.489,
+      "maxMs": 244.489
+    },
+    "/api/documents/drafts/count": {
+      "samples": 4,
+      "p50Ms": 33.001,
+      "p95Ms": 64.848,
+      "maxMs": 64.848
+    },
+    "/api/documents/finance-rejected/count": {
+      "samples": 4,
+      "p50Ms": 32.215,
+      "p95Ms": 55.611,
+      "maxMs": 55.611
+    },
+    "/api/documents/manager-rejected/count": {
+      "samples": 4,
+      "p50Ms": 36.474,
+      "p95Ms": 47.526,
+      "maxMs": 47.526
+    },
+    "/api/expense-claims/browse": {
+      "samples": 1,
+      "p50Ms": 67.158,
+      "p95Ms": 67.158,
+      "maxMs": 67.158
+    },
+    "/api/expense-claims/counts": {
+      "samples": 4,
+      "p50Ms": 37.133,
+      "p95Ms": 62.379,
+      "maxMs": 62.379
+    },
+    "/api/finance/expenses/gl-confirmation-count": {
+      "samples": 1,
+      "p50Ms": 48.75,
+      "p95Ms": 48.75,
+      "maxMs": 48.75
+    },
+    "/api/finance/procurement-approvals/count": {
+      "samples": 1,
+      "p50Ms": 49.048,
+      "p95Ms": 49.048,
+      "maxMs": 49.048
+    },
+    "/api/finance/procurement-arrival-exceptions/count": {
+      "samples": 1,
+      "p50Ms": 31.05,
+      "p95Ms": 31.05,
+      "maxMs": 31.05
+    },
+    "/api/hr/profile-changes": {
+      "samples": 1,
+      "p50Ms": 42.207,
+      "p95Ms": 42.207,
+      "maxMs": 42.207
+    },
+    "/api/hr/profile-changes/pending-count": {
+      "samples": 1,
+      "p50Ms": 39.325,
+      "p95Ms": 39.325,
+      "maxMs": 39.325
+    },
+    "/api/notices/unread-index": {
+      "samples": 8,
+      "p50Ms": 48.925,
+      "p95Ms": 152.485,
+      "maxMs": 152.485
+    },
+    "/api/operations/workbench/purchase/count": {
+      "samples": 1,
+      "p50Ms": 67.393,
+      "p95Ms": 67.393,
+      "maxMs": 67.393
+    },
+    "/api/operations/workbench/purchase/overview": {
+      "samples": 1,
+      "p50Ms": 68.677,
+      "p95Ms": 68.677,
+      "maxMs": 68.677
+    },
+    "/api/operations/workbench/subcontract/count": {
+      "samples": 1,
+      "p50Ms": 71.347,
+      "p95Ms": 71.347,
+      "maxMs": 71.347
+    },
+    "/api/operations/workbench/subcontract/overview": {
+      "samples": 1,
+      "p50Ms": 119.507,
+      "p95Ms": 119.507,
+      "maxMs": 119.507
+    },
+    "/api/operations/workbench/warehouse/count": {
+      "samples": 2,
+      "p50Ms": 118.65,
+      "p95Ms": 141.454,
+      "maxMs": 141.454
+    },
+    "/api/org/hr-tasks/count": {
+      "samples": 1,
+      "p50Ms": 61.317,
+      "p95Ms": 61.317,
+      "maxMs": 61.317
+    },
+    "/api/procurement/arrival-exceptions/count": {
+      "samples": 2,
+      "p50Ms": 95.094,
+      "p95Ms": 97.992,
+      "maxMs": 97.992
+    },
+    "/api/procurement/inspection/pending-count": {
+      "samples": 1,
+      "p50Ms": 33.502,
+      "p95Ms": 33.502,
+      "maxMs": 33.502
+    },
+    "/api/procurement/iqc-rejections/counts": {
+      "samples": 1,
+      "p50Ms": 10.774,
+      "p95Ms": 10.774,
+      "maxMs": 10.774
+    },
+    "/api/production/execution-workbench/count": {
+      "samples": 1,
+      "p50Ms": 164.684,
+      "p95Ms": 164.684,
+      "maxMs": 164.684
+    },
+    "/api/production/material-analyses/workshop-urges/count": {
+      "samples": 1,
+      "p50Ms": 41.834,
+      "p95Ms": 41.834,
+      "maxMs": 41.834
+    },
+    "/api/production/material-increments/count": {
+      "samples": 1,
+      "p50Ms": 45.219,
+      "p95Ms": 45.219,
+      "maxMs": 45.219
+    },
+    "/api/production/over-limit-dispositions/count": {
+      "samples": 1,
+      "p50Ms": 48.374,
+      "p95Ms": 48.374,
+      "maxMs": 48.374
+    },
+    "/api/production/overproduction-rate/count": {
+      "samples": 1,
+      "p50Ms": 43.514,
+      "p95Ms": 43.514,
+      "maxMs": 43.514
+    },
+    "/api/production/quality-inspections/count": {
+      "samples": 1,
+      "p50Ms": 49.06,
+      "p95Ms": 49.06,
+      "maxMs": 49.06
+    },
+    "/api/production/schedule/pending-count": {
+      "samples": 1,
+      "p50Ms": 45.341,
+      "p95Ms": 45.341,
+      "maxMs": 45.341
+    },
+    "/api/production/workshop-tasks/count": {
+      "samples": 1,
+      "p50Ms": 211.116,
+      "p95Ms": 211.116,
+      "maxMs": 211.116
+    },
+    "/api/rd-tasks/count": {
+      "samples": 2,
+      "p50Ms": 29.511,
+      "p95Ms": 31.298,
+      "maxMs": 31.298
+    },
+    "/api/sales/manager-review/count": {
+      "samples": 1,
+      "p50Ms": 62.761,
+      "p95Ms": 62.761,
+      "maxMs": 62.761
+    },
+    "/api/sales/orders/finance-confirmation/count": {
+      "samples": 2,
+      "p50Ms": 50.415,
+      "p95Ms": 68.351,
+      "maxMs": 68.351
+    },
+    "/api/sales/orders/progress/stage-counts": {
+      "samples": 2,
+      "p50Ms": 19.126,
+      "p95Ms": 24.623,
+      "maxMs": 24.623
+    },
+    "/api/sales/quotes/counts": {
+      "samples": 1,
+      "p50Ms": 41.627,
+      "p95Ms": 41.627,
+      "maxMs": 41.627
+    },
+    "/api/sales/quotes/finance-review/count": {
+      "samples": 1,
+      "p50Ms": 49.742,
+      "p95Ms": 49.742,
+      "maxMs": 49.742
+    },
+    "/api/sales/shipments/pending-finance-count": {
+      "samples": 1,
+      "p50Ms": 53.682,
+      "p95Ms": 53.682,
+      "maxMs": 53.682
+    },
+    "/api/stock/count-review-badges/finance": {
+      "samples": 1,
+      "p50Ms": 53.734,
+      "p95Ms": 53.734,
+      "maxMs": 53.734
+    },
+    "/api/stock/count-review-badges/warehouse": {
+      "samples": 1,
+      "p50Ms": 66.923,
+      "p95Ms": 66.923,
+      "maxMs": 66.923
+    },
+    "/api/stock/production-materials/return-requests/warehouse/count": {
+      "samples": 1,
+      "p50Ms": 46.472,
+      "p95Ms": 46.472,
+      "maxMs": 46.472
+    },
+    "/api/subcontract/draw-tasks/count": {
+      "samples": 1,
+      "p50Ms": 86.408,
+      "p95Ms": 86.408,
+      "maxMs": 86.408
+    },
+    "/api/subcontract/short-deliveries/count": {
+      "samples": 1,
+      "p50Ms": 8.495,
+      "p95Ms": 8.495,
+      "maxMs": 8.495
+    },
+    "/api/visitor-approval": {
+      "samples": 1,
+      "p50Ms": 44.707,
+      "p95Ms": 44.707,
+      "maxMs": 44.707
+    },
+    "/api/visitor-approval/host-pending-count": {
+      "samples": 1,
+      "p50Ms": 39.051,
+      "p95Ms": 39.051,
+      "maxMs": 39.051
+    },
+    "/api/visitor-approval/pending-count": {
+      "samples": 1,
+      "p50Ms": 36.307,
+      "p95Ms": 36.307,
+      "maxMs": 36.307
+    },
+    "/api/warehouse/inbound/arrival-exceptions/count": {
+      "samples": 1,
+      "p50Ms": 117.585,
+      "p95Ms": 117.585,
+      "maxMs": 117.585
+    },
+    "/api/warehouse/inbound/expectations/count": {
+      "samples": 1,
+      "p50Ms": 182.584,
+      "p95Ms": 182.584,
+      "maxMs": 182.584
+    },
+    "/api/warehouse/production-finished-in/tasks/count": {
+      "samples": 1,
+      "p50Ms": 141.38,
+      "p95Ms": 141.38,
+      "maxMs": 141.38
+    },
+    "/api/warehouse/quality-results/type-counts": {
+      "samples": 1,
+      "p50Ms": 138.949,
+      "p95Ms": 138.949,
+      "maxMs": 138.949
+    },
+    "/api/warehouse/sales-outbound/counts": {
+      "samples": 1,
+      "p50Ms": 230.704,
+      "p95Ms": 230.704,
+      "maxMs": 230.704
+    },
+    "/api/warehouse/subcontract-outbound/tasks/count": {
+      "samples": 1,
+      "p50Ms": 146.914,
+      "p95Ms": 146.914,
+      "maxMs": 146.914
+    },
+    "/api/website-inquiries/counts": {
+      "samples": 1,
+      "p50Ms": 10.58,
+      "p95Ms": 10.58,
+      "maxMs": 10.58
+    },
+    "/api/workbench/badges": {
+      "samples": 22,
+      "p50Ms": 225.269,
+      "p95Ms": 876.649,
+      "maxMs": 1698.747
+    },
+    "/api/workshop-material/badge-counts": {
+      "samples": 1,
+      "p50Ms": 58.586,
+      "p95Ms": 58.586,
+      "maxMs": 58.586
+    }
+  }
+}

@@ -1,0 +1,2375 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "bd7e8525b",
+  "interpretation": "Lexical consumer inventory, not workflow count or proof of per-page interaction acceptance; see the companion verification report.",
+  "publicEntries": {
+    "transport": "lib/core/network/interceptors/page_read_priority_interceptor.dart",
+    "documentCategories": "lib/shared/providers/document_status_counts_provider.dart",
+    "categoryRetention": "lib/shared/providers/retain_read_snapshot.dart",
+    "overviewReads": "lib/shared/paging/scoped_category_read.dart",
+    "warehouseCategories": "lib/shared/warehouse/warehouse_task_badges.dart",
+    "nativeTransport": "clients/windows_legacy/Uten.Legacy.Core/PageReadPriorityGate.cs"
+  },
+  "scopeContract": [
+    "monotonic reader epoch",
+    "account/actor/dataset",
+    "server/API instance",
+    "permissions",
+    "document kind",
+    "shipment kind",
+    "document type",
+    "warehouse",
+    "keyword and domain-specific category predicates",
+    "local write revision"
+  ],
+  "documentCategoryConsumers": [
+    {
+      "source": "lib/features/finance/pages/finance_doc_list_page.dart",
+      "sha256": "d4675a07688fc9e1c9dc87fe046958c79e5abca6e707e900514daccf2f872dfb",
+      "lines": [
+        311,
+        657
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_daily_report_list_page.dart",
+      "sha256": "5c72e2c6bd1fdaa5abcc466c23aa1402e9883f8a275ae848d636b8c85ade834c",
+      "lines": [
+        191,
+        377
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_plan_list_page.dart",
+      "sha256": "44bb6bd56d1e5f52518a0a61c45bbecb4e202581328de0ac4345fc23e686ed7d",
+      "lines": [
+        199,
+        538
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_report_page.dart",
+      "sha256": "1bfc5eaa69a57c3ec8085d9efb6ec81b30491f61d3f597b89da0965c6ded6f9a",
+      "lines": [
+        381,
+        440
+      ]
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "sha256": "55b9e1b1198ec861cbfe2b22d9b6dc84f56a18c0d14dd13b3e2ab5817f8e4734",
+      "lines": [
+        423,
+        424,
+        816
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "sha256": "16f33f816d8353691339423c186262b184bcf1383446f7b80e838a0a69283933",
+      "lines": [
+        376,
+        378,
+        385,
+        1053,
+        1398
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_task_center_page.dart",
+      "sha256": "4ad6bd48826ac472ba2fff220f4faa771dc4b9fe10aac513629bd1d43968b1c2",
+      "lines": [
+        101,
+        102,
+        108,
+        109,
+        115,
+        116
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "sha256": "d4243b84f35df8501d90400952891db56a37d17264090b9dc7302018622d576c",
+      "lines": [
+        456,
+        459,
+        930
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "sha256": "d030c52d5c4b523aaa39cf6dbbad5cf5930fe5b229197dc541466a85ca326905",
+      "lines": [
+        448,
+        576
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+      "sha256": "33b2f7518e62b203cbc859e91d5e4aa2b3f190c13647bd459e33ccc321a73a8b",
+      "lines": [
+        679,
+        680
+      ]
+    }
+  ],
+  "categoryTableSources": [
+    {
+      "source": "lib/features/expense/pages/expense_approval_list_page.dart",
+      "sha256": "c512b72663bd94de7fc738308fb7bfba03023ecd7f46f02f44fc8318d89b5cef",
+      "lines": [
+        4,
+        225
+      ]
+    },
+    {
+      "source": "lib/features/expense/pages/expense_list_page.dart",
+      "sha256": "1267a55980e208526771cbb31fbda82cf4a5b9818ff8f70c8733ef76712fe99c",
+      "lines": [
+        6,
+        208
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "sha256": "2403132105514cb14a70c4c1cec7d6864e1a7351b2c4ed27c3053119b627ca2d",
+      "lines": [
+        6,
+        385
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_ar_ap_page.dart",
+      "sha256": "5e4bbb2fcb17b258f40d1b25d16b17c901f3f36ff9da2e145feff8fd2503b923",
+      "lines": [
+        637
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "sha256": "d711f7569382905a1414fb460f2827d0a5de4d815404d73131558e978fc0b5a0",
+      "lines": [
+        1043,
+        1073
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_quote_review_list_page.dart",
+      "sha256": "c3e87893042bedbcca8deaeb7114be4caf13f432d66a974b7bae8e37cf0b0e0f",
+      "lines": [
+        341
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_reconciliation_page.dart",
+      "sha256": "fb1d532e8a633182d028af2f662a354058ccfc069d32971551da2233ede95dbe",
+      "lines": [
+        379
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_report_table_page.dart",
+      "sha256": "931ae5a4873c54b802acb3b230895d972fec099a3322899eeb6adeca839bf3e6",
+      "lines": [
+        6,
+        599
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+      "sha256": "a86d16e7a517f29d28c6a9fd34318f6e8bb97d49fcac2cbb76dac8298745fb40",
+      "lines": [
+        1209
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_statement_page.dart",
+      "sha256": "9729d9e92efaa6e8f5aaed52ff51730ce908977fb2374aa13f00eef3638cdfd5",
+      "lines": [
+        425,
+        435
+      ]
+    },
+    {
+      "source": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "sha256": "fdd1efc6fdfa4ac57424a4003e35609e27123337fb1b734da3b83d3a9721f553",
+      "lines": [
+        880
+      ]
+    },
+    {
+      "source": "lib/features/finance/payables/widgets/subcontract_loss_claim_panel.dart",
+      "sha256": "b59b71b217aa017885f1d4ffb1607a24f0c9d7139d90057a348d17986777ebf2",
+      "lines": [
+        328
+      ]
+    },
+    {
+      "source": "lib/features/finance/payables/widgets/supplier_settlement_panel.dart",
+      "sha256": "520bdfc82b1b542c7f47988eee8ace8f463e598cc761765f14131b58e1c1f089",
+      "lines": [
+        366
+      ]
+    },
+    {
+      "source": "lib/features/finance/widgets/finance_asset_ledger_panel.dart",
+      "sha256": "36fa80bfd1fc776bc90597e94736990cf396c35c7b12466742e866849d131dd3",
+      "lines": [
+        444
+      ]
+    },
+    {
+      "source": "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+      "sha256": "ddee108481068d0533115a78251430ee01bc48880ecaadd6f8ded4c0b4d7967d",
+      "lines": [
+        15,
+        339
+      ]
+    },
+    {
+      "source": "lib/features/hr_task/pages/hr_task_list_page.dart",
+      "sha256": "cbacb5afcfccad77b2272f9800a6a1f2112d361eb2ddb79c997146b40c89dfc1",
+      "lines": [
+        294
+      ]
+    },
+    {
+      "source": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "sha256": "0f3b6e62509ea3bccfa728ddbea7b92918d16205266f2123196cc8c1483987ea",
+      "lines": [
+        4,
+        130,
+        151,
+        411,
+        522,
+        535,
+        544,
+        546,
+        633,
+        678,
+        1279,
+        1328,
+        1350,
+        1471
+      ]
+    },
+    {
+      "source": "lib/features/payroll/pages/payroll_review_page.dart",
+      "sha256": "ff5d34693565ef238b3523b66c666359a08f7a12aef917e5e633777b7ae263fc",
+      "lines": [
+        155
+      ]
+    },
+    {
+      "source": "lib/features/payroll/pages/payroll_slip_list_page.dart",
+      "sha256": "08d0e814cd088be59b9d9b99fe0e215dbac06dad5f923699e9fb940365cb40c0",
+      "lines": [
+        113
+      ]
+    },
+    {
+      "source": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
+      "sha256": "b103e33decbc67ef8f9e3d0f8101174977cf66dd2742ac8c08eadbbea5006742",
+      "lines": [
+        442,
+        488
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/material_analysis_bucket_detail.dart",
+      "sha256": "04ad340e6b5689f21cd19571968fda004085a6f55bf66d98172767ad4301bf67",
+      "lines": [
+        644
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/material_analysis_candidates.dart",
+      "sha256": "c9911c755f115cdf55fae4f6af18fdddd6a1a13ad38a3c6cf01397f47304bb55",
+      "lines": [
+        525
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_board_page.dart",
+      "sha256": "b16f41d67f3f8715565c62de78c9b07b3f95bdbbc0a9ec84297aaba31f5f1126",
+      "lines": [
+        187
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_chain_health_page.dart",
+      "sha256": "8d7e14665f4cea1e7de71e3ccee95fa4983aca2159ff2c9bc970516ec9b69923",
+      "lines": [
+        154
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_material_increment_pages.dart",
+      "sha256": "7d2c0bc31f2b3337a91228535bba98736847b3aae5b030284d46adf0e2a24870",
+      "lines": [
+        136
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_over_limit_pages.dart",
+      "sha256": "fa1b4ee2575dbcb5b9cfc0ec995c2a3477a81b48b4c125fa16d27f11a3094afb",
+      "lines": [
+        200
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_overproduction_rate_pages.dart",
+      "sha256": "4393a51d33caccb63dbdb94e9d5f2ed40e915d4d104383d56383e485f2c1edb3",
+      "lines": [
+        170
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_report_page.dart",
+      "sha256": "1bfc5eaa69a57c3ec8085d9efb6ec81b30491f61d3f597b89da0965c6ded6f9a",
+      "lines": [
+        6,
+        13,
+        451
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "sha256": "6edeb35d554d44b781a14226e1b8331edc611ae3455489eb25f625ae79d33baa",
+      "lines": [
+        2916
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/workshop_material_reports_page.dart",
+      "sha256": "42bc4477b6ae698193562a121a2451d47d6b95900db9408b6afce5a5a74a175e",
+      "lines": [
+        646
+      ]
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "sha256": "55b9e1b1198ec861cbfe2b22d9b6dc84f56a18c0d14dd13b3e2ab5817f8e4734",
+      "lines": [
+        872
+      ]
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "sha256": "9e72ec601ea0b5d21f5b3945447845ccbd34aeaf29b9ff5cda24c0c8e81d64e0",
+      "lines": [
+        6,
+        13,
+        435
+      ]
+    },
+    {
+      "source": "lib/features/quality/pages/production_fqc_inspections_page.dart",
+      "sha256": "b437092317366bfdbeea74c2cb9d85bdf04b1a1990968c1f80e4902aaee1c57e",
+      "lines": [
+        498
+      ]
+    },
+    {
+      "source": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "sha256": "39441d6103effabf7a7c02286832a8d9d7c03b1c43ea44ffc575aab352ccd850",
+      "lines": [
+        530
+      ]
+    },
+    {
+      "source": "lib/features/quality/pages/quality_pending_disposal_page.dart",
+      "sha256": "b75488fd2696859af55bdcda0afa9f5d892ce442b1f3d670364e4222547d7895",
+      "lines": [
+        753
+      ]
+    },
+    {
+      "source": "lib/features/rd_task/pages/rd_task_page.dart",
+      "sha256": "54f4d5ccec4402afc7f05eca748ebd54c30963b141cd09a3b49dcf3fbeb1494c",
+      "lines": [
+        7,
+        160
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "sha256": "16f33f816d8353691339423c186262b184bcf1383446f7b80e838a0a69283933",
+      "lines": [
+        1090,
+        1133
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_manager_review_page.dart",
+      "sha256": "3750bf1ecc2a3cf30f60c548e6d19e96f40024403c8dbaa29d291ffe7cee9ac4",
+      "lines": [
+        574
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "sha256": "bb985526ae51fd03065c2be774bb34bce72c17c77fc764cf1b939b8546040bb3",
+      "lines": [
+        669
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_report_page.dart",
+      "sha256": "23e2afb3278da77d05a700da1b06541e134bf0ee30ce840d76250b7263945dea",
+      "lines": [
+        5,
+        13,
+        497
+      ]
+    },
+    {
+      "source": "lib/features/sales/widgets/sales_shipment_task_workbench.dart",
+      "sha256": "dba15292eaf9d8cea7d28fca5e828d1b54791601f0deb3c90d0c933ba1efdf4e",
+      "lines": [
+        1016,
+        1020
+      ]
+    },
+    {
+      "source": "lib/features/stock/counts/pages/stock_count_review_page.dart",
+      "sha256": "a08970e6a19c3f0cd1ac8795cb5068c534fc82e8c96243687d0eb2cb9ff8e672",
+      "lines": [
+        736
+      ]
+    },
+    {
+      "source": "lib/features/stock/counts/pages/stock_count_session_page.dart",
+      "sha256": "ed70cf719c8be7d60e679e1c24d5cd87084d03a738162f07c55abdcf9132d6f4",
+      "lines": [
+        850
+      ]
+    },
+    {
+      "source": "lib/features/stock/pages/instant_inventory_page.dart",
+      "sha256": "1b2e1e6a29db05d9bf7ceb7670bca2a0d0de24e8ebb2f83da9b7f4faa4e7efcf",
+      "lines": [
+        850
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "sha256": "d4243b84f35df8501d90400952891db56a37d17264090b9dc7302018622d576c",
+      "lines": [
+        10,
+        992,
+        1053
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "sha256": "b25b15d2d811ac041daaec52693f71fbfa27859497df4dff17aae1da55333890",
+      "lines": [
+        29,
+        180,
+        260,
+        531,
+        721,
+        730,
+        739,
+        741,
+        839,
+        889,
+        1806,
+        1886,
+        1901,
+        1948
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "sha256": "8d22519033987b7480775f4c43fbd75523c226617d5f6bbd9116acb39981377e",
+      "lines": [
+        5,
+        14,
+        450
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "sha256": "d3da1a7099634ba37a01f52b3848015fa3936861efce7974215272674b5887fc",
+      "lines": [
+        478
+      ]
+    },
+    {
+      "source": "lib/features/suggestion/pages/suggestion_list_page.dart",
+      "sha256": "bcb9c61a8307244e492cebb9f66eaa74c6bf733b3170ee79fce9c5a8a4c95c00",
+      "lines": [
+        171
+      ]
+    },
+    {
+      "source": "lib/features/visitor/pages/visitor_home_page.dart",
+      "sha256": "5f191ec65f3a2a03c623b2fb548c6da2eea87a1a6450286e0c3e1e9bb0229007",
+      "lines": [
+        169
+      ]
+    },
+    {
+      "source": "lib/features/visitor_approval/pages/my_visitors_page.dart",
+      "sha256": "72e36f04297a01ed24c8cbdd631e79037ca69867e77ff5c1e144386b8474fa00",
+      "lines": [
+        410
+      ]
+    },
+    {
+      "source": "lib/features/visitor_approval/pages/visitor_approval_list_page.dart",
+      "sha256": "4e9a7491f9911b5a7b84c3ba52031759810cdfcac0a71162fe59294e659d985b",
+      "lines": [
+        5,
+        400
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_bin_page.dart",
+      "sha256": "84e262ad4982cf24668f62126741b9352750b3d688a1f09c4c7d87bc8a32abe2",
+      "lines": [
+        875,
+        961
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/materialbin/widgets/workshop_material_overview.dart",
+      "sha256": "01d766ae0f1b5daa1f85bbee3fb47494b127ff563f62d516fdfcb2c7e57c0402",
+      "lines": [
+        324
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/shelf_label_page.dart",
+      "sha256": "f3e35fde9a8ada310eeb28123af550ff13800c61942c0973ab3492369b6de3f2",
+      "lines": [
+        572
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "sha256": "d030c52d5c4b523aaa39cf6dbbad5cf5930fe5b229197dc541466a85ca326905",
+      "lines": [
+        7,
+        631
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_insight_page.dart",
+      "sha256": "5e79468848a50c8f2605d21ee4fc4c5712cfa370d801d00aee3e5cb2e950f8f8",
+      "lines": [
+        1291
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "sha256": "d320622717ca4a4366015711da3a4ef13ade7a2b5925310da298e2e7aea4bd9d",
+      "lines": [
+        150,
+        283,
+        335,
+        463,
+        504,
+        924
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "sha256": "31cd6e7fd3b09e5014ed4b5aff06b467f40ee8bb593f177c21c18397cbe9a4b2",
+      "lines": [
+        5,
+        13,
+        438
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart",
+      "sha256": "929d48bcd3fbc1b5c6dcb26c1a165a09a2b4282400321bc54d2fcd0f8fce47fe",
+      "lines": [
+        724
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_document_history_view.dart",
+      "sha256": "f5f969d0379a9aca08e9dd1b7b34d11ef765ace3d99522440a8f39f435e62cc2",
+      "lines": [
+        440
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_draw_task_segment.dart",
+      "sha256": "a8cc7d9c6d96a9271256deb4931acf28db715fd584ff50679338d54e82875f7e",
+      "lines": [
+        127,
+        345,
+        354,
+        553,
+        561
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart",
+      "sha256": "31d02858515d39e46423e5ac69d093b098d26f71aaaa5c5803e60890eff1615a",
+      "lines": [
+        925
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart",
+      "sha256": "db8bd65347e2996b555f276501491d4a00e6035f08362629d9787390ceaaeecd",
+      "lines": [
+        599
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+      "sha256": "33b2f7518e62b203cbc859e91d5e4aa2b3f190c13647bd459e33ccc321a73a8b",
+      "lines": [
+        712
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_subcontract_outbound_workbench.dart",
+      "sha256": "10abcaa0ab03191fc9cd474ce503471543ee4ee73aa8616d3206980ccf5fd470",
+      "lines": [
+        410
+      ]
+    }
+  ],
+  "directFeatureApiReadSources": [
+    {
+      "source": "lib/features/admin/repositories/admin_repository.dart",
+      "sha256": "01374e5488557b1c0fd59fcea6be5c921411895439c360ce20824e64ae615b2b",
+      "lines": [
+        127,
+        141,
+        147,
+        178,
+        184,
+        190,
+        232,
+        252,
+        258,
+        310,
+        355
+      ]
+    },
+    {
+      "source": "lib/features/admin/repositories/ai_provider_repository.dart",
+      "sha256": "c878c0cc6b189ec818f3c49ed425c097eff830ba14387cc07dfd4af7c980006b",
+      "lines": [
+        70,
+        78,
+        83
+      ]
+    },
+    {
+      "source": "lib/features/admin/repositories/ai_usage_audit_repository.dart",
+      "sha256": "42124ea865a730fd3a80029635e7bd0e279aa0c76a626b553bf0b05f3f09175e",
+      "lines": [
+        49,
+        70,
+        90
+      ]
+    },
+    {
+      "source": "lib/features/admin/repositories/ai_usage_dashboard_repository.dart",
+      "sha256": "9d494ab98289ba2baba24afe82fcc2756cee2399b64d547fb6d42db4f9c814b7",
+      "lines": [
+        41,
+        52
+      ]
+    },
+    {
+      "source": "lib/features/admin/repositories/audit_log_repository.dart",
+      "sha256": "08ce3282e533078eb1ceba563bedf17fd2b6cc8e6fb61ec532aa007670c80c18",
+      "lines": [
+        109,
+        119,
+        129,
+        143,
+        164,
+        184,
+        200,
+        236,
+        290,
+        324
+      ]
+    },
+    {
+      "source": "lib/features/admin/repositories/impersonation_repository.dart",
+      "sha256": "407a81e3f1bcc3d455af11a18b1ffad6a9c05e2e39ae93985ef8074f8e2870db",
+      "lines": [
+        42
+      ]
+    },
+    {
+      "source": "lib/features/admin/repositories/material_forecast_runtime_repository.dart",
+      "sha256": "f0b66003a783fb63480e82312f491a7a47d20b9a233a666f446cef1af0237a16",
+      "lines": [
+        16
+      ]
+    },
+    {
+      "source": "lib/features/admin/repositories/permission_configuration_repository.dart",
+      "sha256": "eed9f42bd2b5e37b7f7e7786741a5f0b6922353242e22ade08e454ff86a0584e",
+      "lines": [
+        37,
+        65
+      ]
+    },
+    {
+      "source": "lib/features/admin/repositories/permission_template_repository.dart",
+      "sha256": "1abd1b4157dec86259de86463a766fdf7bcf9b750ace20bf05ef20b632773641",
+      "lines": [
+        12,
+        14
+      ]
+    },
+    {
+      "source": "lib/features/admin/repositories/platform_settings_repository.dart",
+      "sha256": "a5959e62a91227bae72ebaa8c44605ec7d8208c734b9aa582796aea5d05bc296",
+      "lines": [
+        27,
+        30
+      ]
+    },
+    {
+      "source": "lib/features/admin/repositories/server_operations_repository.dart",
+      "sha256": "39429463e0b4e0119e848d97dd1bcac43f15e89824988c019b22417f252d06c9",
+      "lines": [
+        38,
+        70,
+        80,
+        88
+      ]
+    },
+    {
+      "source": "lib/features/admin/repositories/server_status_repository.dart",
+      "sha256": "682c1b73296e06d0c133b69da0d88a350b2dced2fea16bf18b9cf19b85076ab8",
+      "lines": [
+        11
+      ]
+    },
+    {
+      "source": "lib/features/admin/repositories/server_storage_repository.dart",
+      "sha256": "34ac4bbe339b50ed3a7f0e66c3b3a4493b1d6c2c82fbbadbc8ca35916b60ae2d",
+      "lines": [
+        28,
+        35,
+        77
+      ]
+    },
+    {
+      "source": "lib/features/admin/repositories/sms_settings_repository.dart",
+      "sha256": "6663090fa60dde53439fdaa576a8be1d75472b9a05249f7e09870ccdd602ca2e",
+      "lines": [
+        21
+      ]
+    },
+    {
+      "source": "lib/features/admin/repositories/system_setting_repository.dart",
+      "sha256": "dd182049397ebc468c4ea694faaaa980081b04f1f25d53b2873c5189e5be5028",
+      "lines": [
+        28,
+        85
+      ]
+    },
+    {
+      "source": "lib/features/auth/repositories/auth_repository.dart",
+      "sha256": "93cb7dcb22d9bb1b2ad0b63b916c84eb3509d3efbd8af31229dc4346b8a3c22e",
+      "lines": [
+        120
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/account_repository.dart",
+      "sha256": "11cebe8620fefd5757b0e8fa2853125e157daac459292876f493450fb9ccac7e",
+      "lines": [
+        113,
+        124,
+        130,
+        136,
+        142,
+        177,
+        202
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/client_category_repository.dart",
+      "sha256": "6ced0aeac4601d7d4e3d1968725a59375d8503dc70b8e4d8b8ed541bed554fe9",
+      "lines": [
+        39,
+        45,
+        51,
+        60,
+        73
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/client_goods_alias_repository.dart",
+      "sha256": "bd6686d417c03a7d8fd0599cdd12cec93ecbab1963f1587778ae3747db63b398",
+      "lines": [
+        48
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/client_repository.dart",
+      "sha256": "5e51d53dfb7fdb0398971c6b2fc60f9d0944f119b583485f1dcf0696147eddcb",
+      "lines": [
+        194,
+        219,
+        230,
+        241,
+        250,
+        256,
+        290
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/client_ship_address_repository.dart",
+      "sha256": "b2f1af81ac212ec7e799f7e8ab3f3c755a7c2783559c8f5fe01f8ffcbdade189",
+      "lines": [
+        38
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/color_repository.dart",
+      "sha256": "81eab4addaf1c96139c095b990f248e48490a7f7b5ba45e6f509ede71a59a61d",
+      "lines": [
+        69,
+        75,
+        81,
+        87
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/currency_repository.dart",
+      "sha256": "08ee349afc70c42695c689a5f8df58761f2a8769319cb434cbf334a52583022e",
+      "lines": [
+        68,
+        74,
+        80,
+        86
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/goods_bom_edit_repository.dart",
+      "sha256": "3356da0e24d819b43aaa35fb7d6c08d6b957a3fc2665974d6abfc44bbe3e4488",
+      "lines": [
+        134,
+        606
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/goods_bom_repository.dart",
+      "sha256": "a085b1b4b83a056ebeafa353fe8f7ce13f78320aa7f699697a92311d77197dab",
+      "lines": [
+        138,
+        211
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/goods_cost_repository.dart",
+      "sha256": "6ad08b4a1ebaf06ed1d84850d8f4027cdd13b03f8ed7359f5ff7685ad23036c6",
+      "lines": [
+        76,
+        119,
+        127,
+        147,
+        210,
+        213,
+        218,
+        234
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/goods_facet_repository.dart",
+      "sha256": "33a6deddcd2abd982330744a3bb53cc22d5a54a41801cfce95cd1b05eafce299",
+      "lines": [
+        26
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/goods_import_repository.dart",
+      "sha256": "4c9377fdcdb0206e0974953ad24e6d4f15d813626143a3745787e1911c4e1eef",
+      "lines": [
+        117
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/goods_issue_method_repository.dart",
+      "sha256": "06de6fe62cd2c33392a7566fa6f5bc8d7eb977ba53b28e9dd691aafd2a9dbfb0",
+      "lines": [
+        36
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/goods_location_repository.dart",
+      "sha256": "8e9133b6ff935b811ad3dee3404be53de30264582513fbd76ae4bf37f0098fe4",
+      "lines": [
+        21
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/goods_operation_history_repository.dart",
+      "sha256": "8f2dbf06824ac98ee0a52a4f97efee6f665c33ae3258fdb9d5f787f10f43c849",
+      "lines": [
+        21
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/goods_quote_history_repository.dart",
+      "sha256": "92ae5c75e1ef6a98ae668661096b99f8259ce3b3d1ba516f939f41238fd7f4c6",
+      "lines": [
+        38
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/goods_repository.dart",
+      "sha256": "fc2cd929ca0ec6e5963d9fce82d31af1652061dce656a012af85dd9f0729b342",
+      "lines": [
+        232,
+        279,
+        381,
+        551
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/master_identifier_repository.dart",
+      "sha256": "8b42fa182c3115e1383253733a5a26ee619c63faba8de693900225f3a377ce1b",
+      "lines": [
+        16
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/master_operation_history_repository.dart",
+      "sha256": "2ced28b365b3a045d6dd5a3caabc32f7fed90121f434e55907ae7a85b3d1c757",
+      "lines": [
+        17
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/master_record_history_repository.dart",
+      "sha256": "c9e57e07b78e90b79c5bcd22c1b9cde5246f4b364bfae25190fdd705fceb86be",
+      "lines": [
+        114,
+        134,
+        156
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/mould_category_repository.dart",
+      "sha256": "c463dc86aef8b825c5b14c195d6dec175f35ee79ee9b422a6d93ec174b0d7778",
+      "lines": [
+        41,
+        47,
+        53,
+        62,
+        75,
+        84
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/mould_repository.dart",
+      "sha256": "223b7998f0028d8a65ef4c6427a160264f4b9e79c3de4935edc5745cba3673a9",
+      "lines": [
+        131,
+        142,
+        155,
+        164,
+        170
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/party_directory_repository.dart",
+      "sha256": "866671bd6b62b32000aa14089a9670dfcc12c9589e652bbfaf26320aafd90ddf",
+      "lines": [
+        26,
+        54,
+        82,
+        100
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/payment_style_repository.dart",
+      "sha256": "ddecff1e5fb8b28b29f5208da6d8685304295241ee7a1a56195479fb3150b933",
+      "lines": [
+        38,
+        47,
+        53
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/posting_style_role_repository.dart",
+      "sha256": "5de6c1b493ec3160bce510271b1f5c04f84699e6590f98b5c120c34f698d107d",
+      "lines": [
+        62
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/product_category_repository.dart",
+      "sha256": "e6a72cca695492f3251f9193c2ad87176aeaa7952ae3d4012c30ae4c52e9ba4f",
+      "lines": [
+        43,
+        49,
+        58,
+        64,
+        73,
+        86,
+        95
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/reference_method_repository.dart",
+      "sha256": "1be9aec29c03e44fc41ffc13e947ce4939a3815c06a728fdeb1f48653c059a74",
+      "lines": [
+        15,
+        41,
+        57,
+        74,
+        87
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/supplier_category_repository.dart",
+      "sha256": "751a521409a7b7b94fd267c29eaa64c5fe3a0ea711a78916460ed3ccb6f9fd4d",
+      "lines": [
+        38,
+        44,
+        50,
+        59,
+        72
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/supplier_repository.dart",
+      "sha256": "57b07fcc6f332118ffe0e9ca0f9b0f5488ba0f5a1695de20242f62cd67e977d5",
+      "lines": [
+        165,
+        188,
+        199,
+        208,
+        214
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/unit_repository.dart",
+      "sha256": "f94c5c745701f00795e7a054e2d1c85cd1b87bb186b30836831f31c5b4f6bab8",
+      "lines": [
+        69,
+        75,
+        81,
+        87
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/warehouse_keeper_repository.dart",
+      "sha256": "2186e577687acc34f767b6e1bfa83fadc7a1522e7dcb5b29ad17ab9fcb179f16",
+      "lines": [
+        95,
+        100,
+        107
+      ]
+    },
+    {
+      "source": "lib/features/basic_data/repositories/warehouse_repository.dart",
+      "sha256": "38d7801cd588d99a8ef0004b032d112b0582c4c7e2ffdb54d9f3075d8818d524",
+      "lines": [
+        63,
+        69,
+        75,
+        81,
+        87
+      ]
+    },
+    {
+      "source": "lib/features/client_update/client_release_publish_queue.dart",
+      "sha256": "3e89f129f2aec8bf7d970f32659639d4529b275aa659da27391a8dbe0396bdb4",
+      "lines": [
+        355,
+        361
+      ]
+    },
+    {
+      "source": "lib/features/client_update/client_update_controller.dart",
+      "sha256": "774d2df337ba76ac9caee89a07e5ec97b112ff70b18e38088d12145437b470bc",
+      "lines": [
+        100
+      ]
+    },
+    {
+      "source": "lib/features/client_update/software_downloads_controller.dart",
+      "sha256": "2cef1400c362a58fadeb7067f9981ea1708d5bdf558c988b7858cee91c63c982",
+      "lines": [
+        79
+      ]
+    },
+    {
+      "source": "lib/features/company_files/repositories/company_file_repository.dart",
+      "sha256": "3a2d9391e0b93552ab959545ec1c422a28ecc5bc8527f692b656c7c8c3a0c189",
+      "lines": [
+        24,
+        41,
+        122,
+        156,
+        167
+      ]
+    },
+    {
+      "source": "lib/features/dashboard/repositories/dashboard_overview_repository.dart",
+      "sha256": "3152714caccdb4dcb7dd876dc8deab997fe4fdec354b67a0af823d2f78d7c831",
+      "lines": [
+        16
+      ]
+    },
+    {
+      "source": "lib/features/department/repositories/my_department_repository.dart",
+      "sha256": "949fe617c14ea546341fbf353231d7f96efb1b2c3e1b5d10f941205ece118bcd",
+      "lines": [
+        17,
+        23
+      ]
+    },
+    {
+      "source": "lib/features/department/repositories/position_repository.dart",
+      "sha256": "22192045ec0312231e6e005a3f1c23a80c5fa286c504681f575f5da11ac7f34f",
+      "lines": [
+        21
+      ]
+    },
+    {
+      "source": "lib/features/employee/repositories/employee_repository.dart",
+      "sha256": "96a57436a5c0cb80a6714b4fe2453db2d558f14ce5ca00ec5df23041199a22ee",
+      "lines": [
+        170,
+        249,
+        255,
+        267,
+        274,
+        302,
+        333
+      ]
+    },
+    {
+      "source": "lib/features/expense/repositories/expense_repository.dart",
+      "sha256": "d834b8850037b5490853d81011b0cbee0ea955b1d7fa3f83629bd3f6e0f76275",
+      "lines": [
+        306,
+        332,
+        348,
+        354,
+        452
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "sha256": "2403132105514cb14a70c4c1cec7d6864e1a7351b2c4ed27c3053119b627ca2d",
+      "lines": [
+        249
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_report_table_page.dart",
+      "sha256": "931ae5a4873c54b802acb3b230895d972fec099a3322899eeb6adeca839bf3e6",
+      "lines": [
+        389
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_statement_page.dart",
+      "sha256": "9729d9e92efaa6e8f5aaed52ff51730ce908977fb2374aa13f00eef3638cdfd5",
+      "lines": [
+        252
+      ]
+    },
+    {
+      "source": "lib/features/finance/payables/repositories/finance_payables_repository.dart",
+      "sha256": "9484f2e76f5de46443a61eabddcfaacc47d7d44a5058f804baaaa0114562dc31",
+      "lines": [
+        66,
+        100
+      ]
+    },
+    {
+      "source": "lib/features/finance/payables/repositories/subcontract_loss_claim_repository.dart",
+      "sha256": "2fad051e4e822b9b3e0714cbbbbad9e635c4a6b41b31be60eac8bca01c0b6f97",
+      "lines": [
+        23,
+        47,
+        59
+      ]
+    },
+    {
+      "source": "lib/features/finance/payables/repositories/supplier_settlement_repository.dart",
+      "sha256": "6055ba20db1d14764ad653b8926a4fd02d49ba65db2d95d62a9893be5b70d5ed",
+      "lines": [
+        23,
+        43
+      ]
+    },
+    {
+      "source": "lib/features/finance/repositories/customer_prepayment_repository.dart",
+      "sha256": "d3b42da077d9bb2498969c8fb656d351b84fa4b225bca12fd6bc13fae1c8a5ef",
+      "lines": [
+        18,
+        33
+      ]
+    },
+    {
+      "source": "lib/features/finance/repositories/finance_asset_category_repository.dart",
+      "sha256": "5873c10942b834cddb0d291a1fea3fc39e2091ae19022dc8a1e13444e10977df",
+      "lines": [
+        38
+      ]
+    },
+    {
+      "source": "lib/features/finance/repositories/finance_asset_overview_repository.dart",
+      "sha256": "be9f905090b7b2fb5c1909531bc526d132a9fbe90a7824ae2e7e08dff12b8b29",
+      "lines": [
+        69
+      ]
+    },
+    {
+      "source": "lib/features/finance/repositories/finance_asset_workbench_repository.dart",
+      "sha256": "bc432ed59dc5aeba0d0e04041ab2ff9bf6d0041e1364f744027cea71ebeee305",
+      "lines": [
+        85,
+        94,
+        107,
+        206,
+        225
+      ]
+    },
+    {
+      "source": "lib/features/finance/repositories/finance_procurement_workflow_repository.dart",
+      "sha256": "7c8d88abaaa43df0ecd601b3517d51aabfa93849296649bff517ea172f0fc2dc",
+      "lines": [
+        150,
+        177,
+        194,
+        206
+      ]
+    },
+    {
+      "source": "lib/features/finance/repositories/finance_repository.dart",
+      "sha256": "80c258f51dad33dea78557ce95e0f413f434539ba9b2becd108bf3d4b1fcd5b3",
+      "lines": [
+        148,
+        177,
+        185,
+        314,
+        341,
+        365,
+        442,
+        462
+      ]
+    },
+    {
+      "source": "lib/features/finance/repositories/sales_quote_finance_review_repository.dart",
+      "sha256": "2f1d564bdbb13efabef2905b4b9ef54390b24732c5447efde1b7f7cfdfecd443",
+      "lines": [
+        74,
+        91
+      ]
+    },
+    {
+      "source": "lib/features/finance/widgets/gl_report_line_bindings_dialog.dart",
+      "sha256": "989d696378f6505cb2408ac52941db9ab032f7b7fa83861b870707f537e46e40",
+      "lines": [
+        154,
+        193,
+        196
+      ]
+    },
+    {
+      "source": "lib/features/finance/widgets/inventory_cost_posting_dialog.dart",
+      "sha256": "7e6dcc100622caba5b834f332dc9223f42bac506b2af0fbbcf2e15b0c7f9d1a7",
+      "lines": [
+        89,
+        96,
+        97
+      ]
+    },
+    {
+      "source": "lib/features/hr_task/repositories/hr_reconcile_repository.dart",
+      "sha256": "c734900dce709601c0956359d949e65c8dd7b77fa730ccb62ad4ec2af00c14eb",
+      "lines": [
+        34,
+        42,
+        52
+      ]
+    },
+    {
+      "source": "lib/features/hr_task/repositories/hr_task_repository.dart",
+      "sha256": "d347c9b405250ed3961da3f2a92ece1e2bfd83feb4c685d5e4389dbac307dc51",
+      "lines": [
+        22,
+        43
+      ]
+    },
+    {
+      "source": "lib/features/notice/repositories/notice_repository.dart",
+      "sha256": "32c1f407f9b34c975e1224b9a53472347036b0a72e87950bf0cdbb6546653f04",
+      "lines": [
+        280,
+        300,
+        327,
+        353,
+        386,
+        394,
+        402,
+        443,
+        500,
+        509,
+        529,
+        578,
+        603
+      ]
+    },
+    {
+      "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
+      "sha256": "fb990bfe96b801d6dccee58620fea1721b92c090e8561f2b9d77dd5638ef97c4",
+      "lines": [
+        90,
+        118
+      ]
+    },
+    {
+      "source": "lib/features/payroll/repositories/payroll_repository.dart",
+      "sha256": "4df52e473e03be4619e40ff23c2518293035b2ca47fe0c2a20b8f7b9cd2b527a",
+      "lines": [
+        65,
+        89,
+        112,
+        128,
+        164
+      ]
+    },
+    {
+      "source": "lib/features/procurement_iqc_rejection/repositories/procurement_iqc_rejection_repository.dart",
+      "sha256": "074c4aff5f579a29c16928141033d99a47d2744dfb699ccaf3369e84f9a2031b",
+      "lines": [
+        59,
+        70,
+        83
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_daily_report_detail_page.dart",
+      "sha256": "9f03a1c581e35d6b5a4e19759af2ee74f5144146a28a40660db3b0c60988b4c8",
+      "lines": [
+        1016
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_report_page.dart",
+      "sha256": "1bfc5eaa69a57c3ec8085d9efb6ec81b30491f61d3f597b89da0965c6ded6f9a",
+      "lines": [
+        245
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/where_used_report_page.dart",
+      "sha256": "4bbcd9f87be34d0a11b7a3ecdcfe7639472ccc0374e5e350287ad7e1c52dd29e",
+      "lines": [
+        487
+      ]
+    },
+    {
+      "source": "lib/features/production/repositories/production_actual_output_supplement_repository.dart",
+      "sha256": "f2702e737b2bbe590fa3815c7ccc79783edd4459f3988a94383f622037517d71",
+      "lines": [
+        198
+      ]
+    },
+    {
+      "source": "lib/features/production/repositories/production_execution_workbench_repository.dart",
+      "sha256": "09d98b83b8c8fd6fc86d482843b7c1e85e3107230f79b562ac983b8c07252216",
+      "lines": [
+        24,
+        46,
+        70,
+        100,
+        138,
+        165
+      ]
+    },
+    {
+      "source": "lib/features/production/repositories/production_fqc_replenishment_repository.dart",
+      "sha256": "09767b9be88cbc312d19588cd38dc4ecc7ebc5245697dbdb75ada036af2ec39f",
+      "lines": [
+        17,
+        31,
+        42
+      ]
+    },
+    {
+      "source": "lib/features/production/repositories/production_material_discovery_request_repository.dart",
+      "sha256": "826935e9b4fb4f920cbe0700957125d7c188aac372ef4616c6029cf461d9b1c9",
+      "lines": [
+        11,
+        17
+      ]
+    },
+    {
+      "source": "lib/features/production/repositories/production_material_increment_repository.dart",
+      "sha256": "3f0ee147e0f2b5114446d3920ced330464983f55dc91e10a0cfb39915a7edecd",
+      "lines": [
+        71,
+        74,
+        95
+      ]
+    },
+    {
+      "source": "lib/features/production/repositories/production_material_repository.dart",
+      "sha256": "439f607cdc921939c1f6541dd6c4dc8ea6a000087305898c70abffcc6600d2d6",
+      "lines": [
+        264,
+        281,
+        296,
+        306,
+        317,
+        375,
+        383
+      ]
+    },
+    {
+      "source": "lib/features/production/repositories/production_over_limit_repository.dart",
+      "sha256": "429316bc9860b909d91e8bc603cf3e8fd329132b5489aa423133f65e6fced9b3",
+      "lines": [
+        83,
+        101
+      ]
+    },
+    {
+      "source": "lib/features/production/repositories/production_overproduction_rate_repository.dart",
+      "sha256": "e7802b01823b47a49fa5a37dbce1573f0cca893428e234f618328ec56aed9977",
+      "lines": [
+        95,
+        98,
+        111,
+        131
+      ]
+    },
+    {
+      "source": "lib/features/production/repositories/production_repository.dart",
+      "sha256": "a60995025206dbd5e6636152ef0b0a5864c2bd7d55e9498fb5fce2034c6f7132",
+      "lines": [
+        121,
+        181,
+        189,
+        203,
+        342,
+        356,
+        373,
+        438,
+        462,
+        476,
+        506,
+        525,
+        548,
+        575,
+        587,
+        723,
+        740,
+        771,
+        791,
+        810,
+        826,
+        1115,
+        1140,
+        1217,
+        1240,
+        1314,
+        1520,
+        1539,
+        1548,
+        2272,
+        2283,
+        2295,
+        2379,
+        2387
+      ]
+    },
+    {
+      "source": "lib/features/production/repositories/workshop_material_choice_repository.dart",
+      "sha256": "a71a80ba9b1503d73a0b4c47b26091d16d3cc1946488c1ac3028d17f149fafda",
+      "lines": [
+        346,
+        356,
+        386
+      ]
+    },
+    {
+      "source": "lib/features/production/repositories/workshop_material_report_repository.dart",
+      "sha256": "5f5f7f0534a327e1dedde0c16497586a37843a9bf3a7d26db7e60ff6ff67ae40",
+      "lines": [
+        76,
+        83,
+        98,
+        145,
+        158,
+        170,
+        179,
+        195
+      ]
+    },
+    {
+      "source": "lib/features/production/widgets/where_used_material_picker.dart",
+      "sha256": "19db700c8e0950054df839f0a1f95440b53863825a7507f6d14dd3c886417da8",
+      "lines": [
+        93,
+        136,
+        167
+      ]
+    },
+    {
+      "source": "lib/features/profile/repositories/my_vehicle_phone_repository.dart",
+      "sha256": "b45662fb1e0684b25c45b254a46697954bb226320ec4d381187eab58ca9351d5",
+      "lines": [
+        14,
+        26
+      ]
+    },
+    {
+      "source": "lib/features/profile/repositories/profile_change_repository.dart",
+      "sha256": "191642cef9212dbd1ed3abd8c7f54b2ef0431714a6fb5d5d0ea8ec5e47ea888a",
+      "lines": [
+        143,
+        149,
+        178,
+        186,
+        202
+      ]
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_report_page.dart",
+      "sha256": "8db962e0c38423e45bbbc95a8fbc21ca0c5a8a71eb84f637287b908c50af52cf",
+      "lines": [
+        96,
+        105
+      ]
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "sha256": "9e72ec601ea0b5d21f5b3945447845ccbd34aeaf29b9ff5cda24c0c8e81d64e0",
+      "lines": [
+        248
+      ]
+    },
+    {
+      "source": "lib/features/purchase/repositories/purchase_repository.dart",
+      "sha256": "6427fe3e83bf0d7de083b240d3d7a31f5dd91b1c0f491aece88468bac0ab37ff",
+      "lines": [
+        92,
+        114,
+        119,
+        125
+      ]
+    },
+    {
+      "source": "lib/features/quality/repositories/production_fqc_repository.dart",
+      "sha256": "d0e8a82f5984fd076fb6ae74cebbcd2fd33f49ec1542d9daf258c991d7d97ea2",
+      "lines": [
+        25,
+        49,
+        65,
+        72,
+        79
+      ]
+    },
+    {
+      "source": "lib/features/quality/repositories/quality_inspection_record_repository.dart",
+      "sha256": "84059715adba74cbdb0a9ad85bc4cb939a998906d1fdb2373c9eb968c4985950",
+      "lines": [
+        35,
+        97,
+        128
+      ]
+    },
+    {
+      "source": "lib/features/rd_task/repositories/rd_task_repository.dart",
+      "sha256": "4ff1eda46a58a8067c6a481fea837e7463002b7cc1134982dc166c64013667bd",
+      "lines": [
+        20,
+        52
+      ]
+    },
+    {
+      "source": "lib/features/report/shared/report_print_preview.dart",
+      "sha256": "f0f75708cd7f2f69afc3ab587d7c693904346924f137e168258d34604aa1d6c3",
+      "lines": [
+        75
+      ]
+    },
+    {
+      "source": "lib/features/sales/intake/sales_learning_status.dart",
+      "sha256": "6fe098bbf0c4db3aa022e3b103124915bb80e31429eaa06f74dadc3396a84cba",
+      "lines": [
+        67
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_report_page.dart",
+      "sha256": "23e2afb3278da77d05a700da1b06541e134bf0ee30ce840d76250b7263945dea",
+      "lines": [
+        252,
+        874
+      ]
+    },
+    {
+      "source": "lib/features/sales/repositories/sales_repository.dart",
+      "sha256": "4427325171ecccf2b09304b6e4a281cd4191fc504cd6d9cd82400ab3a26acd83",
+      "lines": [
+        128,
+        166,
+        171,
+        176,
+        186,
+        198,
+        206,
+        228,
+        254,
+        269,
+        330,
+        429,
+        528,
+        603
+      ]
+    },
+    {
+      "source": "lib/features/sales/repositories/sales_return_quality_repository.dart",
+      "sha256": "706b698966ced7dc4fb3d41d39220f90459be0f9a43b15983ab22e8c70ff480d",
+      "lines": [
+        16
+      ]
+    },
+    {
+      "source": "lib/features/sales/templates/sales_quote_template_repository.dart",
+      "sha256": "5edb82b41cd23bed28b632a413819a737c8e5c219cc35de90f63bad2131b065e",
+      "lines": [
+        11,
+        25
+      ]
+    },
+    {
+      "source": "lib/features/stock/counts/repositories/stock_count_request_repository.dart",
+      "sha256": "dc3e60d9c4d85210c68e885a921cb9b3accc21df6818206e6dd2de492b74ff41",
+      "lines": [
+        16,
+        32,
+        54,
+        105,
+        121,
+        123
+      ]
+    },
+    {
+      "source": "lib/features/stock/repositories/defective_move_repository.dart",
+      "sha256": "ca54f68646892b6ad9748fd9d18bbcec8096b9f0cb204684061f4da87a410569",
+      "lines": [
+        39
+      ]
+    },
+    {
+      "source": "lib/features/stock/repositories/stock_query_repository.dart",
+      "sha256": "ae1ddb641314f72579e8ff62e213fb65c3708777127faf7976ddf4c9b5c21e69",
+      "lines": [
+        30,
+        51,
+        145,
+        174
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "sha256": "8d22519033987b7480775f4c43fbd75523c226617d5f6bbd9116acb39981377e",
+      "lines": [
+        255
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/repositories/subcontract_draw_repository.dart",
+      "sha256": "23451d00e485f873522b5fdbe9a4b8e83d91defcc3026d5f0532c46bfd386fe9",
+      "lines": [
+        79,
+        106,
+        118
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/repositories/subcontract_kit_repository.dart",
+      "sha256": "b98684bd95f346d5bcdb3331a88a93593c1c859962258a9bb57fdd0b706868cd",
+      "lines": [
+        24
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/repositories/subcontract_repository.dart",
+      "sha256": "59c3fc0eacf3e2239dfaf282470694acb723185c764638d2a49da88214fc32de",
+      "lines": [
+        104,
+        138,
+        143,
+        213,
+        237,
+        281
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/repositories/subcontract_short_delivery_repository.dart",
+      "sha256": "59cb8370f3ea98bad6b032dfd310b577962d240a43427b1821d16994d151327d",
+      "lines": [
+        32,
+        72,
+        89,
+        94
+      ]
+    },
+    {
+      "source": "lib/features/suggestion/repositories/suggestion_repository.dart",
+      "sha256": "3c19cab9a919dbd3215e83ab74e74056b19d09be83ae82c5eb3fc092a5274bef",
+      "lines": [
+        62,
+        78
+      ]
+    },
+    {
+      "source": "lib/features/visitor/repositories/visitor_repository.dart",
+      "sha256": "239ce39f8f656568d2aa6edacd020a6f7b08e74f34b263d62e3f5f648e818774",
+      "lines": [
+        116,
+        149,
+        182,
+        205
+      ]
+    },
+    {
+      "source": "lib/features/visitor/repositories/visitor_staff_repository.dart",
+      "sha256": "06d54cf8e932e7af8bd33d786e3294f7363de176b945f208e48effb839f3c8f0",
+      "lines": [
+        122,
+        135,
+        150,
+        205,
+        271
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/materialbin/repositories/workshop_material_repository.dart",
+      "sha256": "9a41f99e493b67bbf9349feb459e76f0380aef1191b9645bcdb45227f7efd433",
+      "lines": [
+        45,
+        52,
+        61,
+        120,
+        133,
+        207,
+        224,
+        241,
+        263,
+        279,
+        299,
+        385,
+        421,
+        433,
+        470,
+        549,
+        570
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "sha256": "31cd6e7fd3b09e5014ed4b5aff06b467f40ee8bb593f177c21c18397cbe9a4b2",
+      "lines": [
+        257
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/repositories/procurement_inbound_repository.dart",
+      "sha256": "803b83b4226117cc8ce4249a88edd9621589cc9ded2e751a5b1faab3f44ada02",
+      "lines": [
+        145,
+        172,
+        201,
+        239,
+        311,
+        367,
+        388,
+        398,
+        410
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/repositories/procurement_inspection_repository.dart",
+      "sha256": "0042491bc4d7e8613a27fcd5d902656b513970794280ed87692ccb6069446009",
+      "lines": [
+        296,
+        308,
+        319
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/repositories/production_draw_task_repository.dart",
+      "sha256": "eb4987a2ea6f52ac31bd4cb0d58a41ddc381bc902e41bb77184abf3240ac5293",
+      "lines": [
+        17,
+        101
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/repositories/production_finished_inbound_task_repository.dart",
+      "sha256": "55c909f421ff415b256732aac6f007f9270419e76e1144170151fc8a327fb864",
+      "lines": [
+        29,
+        69,
+        127
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/repositories/production_material_discovery_repository.dart",
+      "sha256": "8ecac8230152c5db518aeb94ff7e0d035246e6b694a0ca0dc3e82d7ecd914a87",
+      "lines": [
+        13
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/repositories/stock_doc_repository.dart",
+      "sha256": "4051c73249b3cba1c39f0eaabc3c0ee49e57c2c674d3b1b7cfe0713762cfe88d",
+      "lines": [
+        79,
+        117,
+        146,
+        186,
+        191
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/repositories/warehouse_document_history_repository.dart",
+      "sha256": "eaa163ea03f17a3f93635e45aaf97fc9e49cd3b202474620500eb8ac69fb7d66",
+      "lines": [
+        89,
+        114,
+        125
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/repositories/warehouse_insight_repository.dart",
+      "sha256": "6b3cc023491da04ddb820fd9d57d71275db63414c69778ba9c333b2997ffb45d",
+      "lines": [
+        38,
+        64,
+        79,
+        99
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/repositories/warehouse_quality_result_repository.dart",
+      "sha256": "e8ecc18dd1791c16683459ad7f94f81b2824b570a8b22c8970226b72ca46716b",
+      "lines": [
+        81,
+        117,
+        140,
+        164
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/repositories/warehouse_sales_outbound_repository.dart",
+      "sha256": "c1147270ee37b32f99d12d0b2d48d5fc85966361e50117bd1252860fac05a7f0",
+      "lines": [
+        85,
+        108,
+        114
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/repositories/warehouse_subcontract_outbound_repository.dart",
+      "sha256": "29644f0edebe4877009b7a9bd4cc5168aa9cfe8a4d6e5a91e6f5c5914d98e8a1",
+      "lines": [
+        28,
+        41
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/repositories/warehouse_task_center_repository.dart",
+      "sha256": "92b3b11669f9b51c472a658ee3219eb419b8440b7f49e07676f410874c7b887d",
+      "lines": [
+        52
+      ]
+    },
+    {
+      "source": "lib/features/webinquiry/repositories/website_inquiry_repository.dart",
+      "sha256": "b8ac70e0cc8f40121d4197de71ef521d75e1e7c98dad49cfba90481e10e4e38a",
+      "lines": [
+        46,
+        60
+      ]
+    },
+    {
+      "source": "lib/features/website_management/repositories/website_management_repository.dart",
+      "sha256": "e4bfe43e7290c139c194e1e629e8722adec01ac4af0500e4b8e61c9e8ac8ef9e",
+      "lines": [
+        25
+      ]
+    }
+  ],
+  "existingFactCategoryProviders": [
+    {
+      "source": "lib/features/expense/providers/expense_counts_provider.dart",
+      "sha256": "277425d87c98d180035318891e3cf365afa42529c20c85069be4cb1304cfbac8",
+      "lines": [
+        46
+      ]
+    },
+    {
+      "source": "lib/features/expense/providers/expense_providers.dart",
+      "sha256": "ce13fa68dd4ce1c8a5a443ad183184eb10fa4ada6294833af9e2d6cafa607355",
+      "lines": []
+    },
+    {
+      "source": "lib/features/finance/providers/sales_order_finance_confirmation_count_provider.dart",
+      "sha256": "cd1324a98f2643295dc1c988c3acb579d571e72f224c76f17236c27779a73912",
+      "lines": [
+        8
+      ]
+    },
+    {
+      "source": "lib/features/hr_task/providers/hr_task_summary_provider.dart",
+      "sha256": "591a639d8697522812aba26ae140d55a9f297b312bff2569b16de64875ee3561",
+      "lines": [
+        24,
+        164,
+        195
+      ]
+    },
+    {
+      "source": "lib/features/notice/providers/notice_arrival.dart",
+      "sha256": "ba92fa990bbf4536ddc4037243d24cd8f95e5e4399f7f415bb4e75a99f4943cc",
+      "lines": [
+        232,
+        306
+      ]
+    },
+    {
+      "source": "lib/features/notice/providers/notice_providers.dart",
+      "sha256": "1798c05f390328665736461f57f1ebddf4deaf80b3101cb13c8262ef1b82abb9",
+      "lines": [
+        111
+      ]
+    },
+    {
+      "source": "lib/features/notice/providers/notice_unread_index_provider.dart",
+      "sha256": "f370ffd72f78aa62d60d80d443536de1f7f8e557a909ac18c31a47212dfc124c",
+      "lines": [
+        39,
+        49
+      ]
+    },
+    {
+      "source": "lib/features/production/providers/production_execution_group_count_provider.dart",
+      "sha256": "436a7aa0158e9944fd02822c4453732d6d605ed0231bf3e02ac361799d96d272",
+      "lines": [
+        19
+      ]
+    },
+    {
+      "source": "lib/features/production/providers/production_pending_provider.dart",
+      "sha256": "eec7a419b94d366d30955c2982c658fdd76719242d7c75b86ba06f72e0b4772d",
+      "lines": [
+        33,
+        34,
+        35
+      ]
+    },
+    {
+      "source": "lib/features/production/providers/production_workshop_task_count_provider.dart",
+      "sha256": "9361ca1f71121ce1b110798ad793004d30705e877fae69a61585facf00e4dde2",
+      "lines": [
+        14,
+        15,
+        16,
+        18
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/providers/subcontract_short_delivery_count_provider.dart",
+      "sha256": "0ad79d2ed722b7bceed342f21009a7f2ceb63a87b45b8b6cd02e9def86e2bbce",
+      "lines": [
+        16,
+        19,
+        22
+      ]
+    },
+    {
+      "source": "lib/features/visitor_approval/providers/visitor_pending_count_provider.dart",
+      "sha256": "91588eae36a5add6f6b268857e204977d4224dd8687e5c076009c5087ee240f4",
+      "lines": [
+        14,
+        15,
+        16,
+        18
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/providers/warehouse_count_refresh.dart",
+      "sha256": "52460f6f44fbe86351ad9c0f1b6e15ba459e8748a561f991700fc0b0c486fd75",
+      "lines": []
+    },
+    {
+      "source": "lib/features/warehouse/providers/warehouse_quality_result_count_provider.dart",
+      "sha256": "1557e5b0a1e78d98f36a865992d610929c5a11de0e298818300846002775adce",
+      "lines": [
+        19
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/providers/warehouse_sales_outbound_count_provider.dart",
+      "sha256": "fb6d95c7f58e5caa2381b33d35b63e8a671a00d0c5d283f3a5be1ab134f71cc1",
+      "lines": [
+        18,
+        22
+      ]
+    }
+  ],
+  "nativePackages": [
+    {
+      "id": "W7-BIZ-052",
+      "source": "lib/features/expense/pages/expense_approval_list_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-055",
+      "source": "lib/features/expense/pages/expense_list_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-057",
+      "source": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-059",
+      "source": "lib/features/finance/pages/finance_ar_ap_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-065",
+      "source": "lib/features/finance/pages/finance_doc_list_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-068",
+      "source": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-069",
+      "source": "lib/features/finance/pages/finance_quote_review_list_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-071",
+      "source": "lib/features/finance/pages/finance_reconciliation_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-072",
+      "source": "lib/features/finance/pages/finance_report_table_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-073",
+      "source": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-077",
+      "source": "lib/features/finance/pages/finance_statement_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-078",
+      "source": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-080",
+      "source": "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-082",
+      "source": "lib/features/hr_task/pages/hr_task_list_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-087",
+      "source": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-089",
+      "source": "lib/features/payroll/pages/payroll_review_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-091",
+      "source": "lib/features/payroll/pages/payroll_slip_list_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-093",
+      "source": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-098",
+      "source": "lib/features/production/pages/production_board_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-099",
+      "source": "lib/features/production/pages/production_chain_health_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-103",
+      "source": "lib/features/production/pages/production_daily_report_list_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-218",
+      "source": "lib/features/production/pages/production_material_increment_pages.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-219",
+      "source": "lib/features/production/pages/production_over_limit_pages.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-220",
+      "source": "lib/features/production/pages/production_overproduction_rate_pages.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-112",
+      "source": "lib/features/production/pages/production_plan_list_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-114",
+      "source": "lib/features/production/pages/production_report_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-115",
+      "source": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-117",
+      "source": "lib/features/production/pages/workshop_material_reports_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-123",
+      "source": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-127",
+      "source": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-129",
+      "source": "lib/features/quality/pages/production_fqc_inspections_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-131",
+      "source": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-132",
+      "source": "lib/features/quality/pages/quality_pending_disposal_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-134",
+      "source": "lib/features/rd_task/pages/rd_task_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-137",
+      "source": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-217",
+      "source": "lib/features/sales/pages/sales_manager_review_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-139",
+      "source": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-140",
+      "source": "lib/features/sales/pages/sales_report_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-142",
+      "source": "lib/features/sales/pages/sales_task_center_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-149",
+      "source": "lib/features/stock/counts/pages/stock_count_review_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-150",
+      "source": "lib/features/stock/counts/pages/stock_count_session_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-152",
+      "source": "lib/features/stock/pages/instant_inventory_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-221",
+      "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-154",
+      "source": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-160",
+      "source": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-161",
+      "source": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-163",
+      "source": "lib/features/suggestion/pages/suggestion_list_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-167",
+      "source": "lib/features/visitor/pages/visitor_home_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-170",
+      "source": "lib/features/visitor_approval/pages/my_visitors_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-172",
+      "source": "lib/features/visitor_approval/pages/visitor_approval_list_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-173",
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_bin_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-184",
+      "source": "lib/features/warehouse/pages/shelf_label_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-187",
+      "source": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-195",
+      "source": "lib/features/warehouse/pages/warehouse_insight_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-201",
+      "source": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    },
+    {
+      "id": "W7-BIZ-202",
+      "source": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "status": "todo",
+      "interpretation": "Unmigrated/candidate status preserved; shared transport coverage does not finish this business package."
+    }
+  ]
+}

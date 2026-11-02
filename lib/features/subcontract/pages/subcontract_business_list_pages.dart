@@ -488,7 +488,7 @@ class _SubcontractBusinessListPageState
       if (!mounted) return;
       ref.read(mn.masterNameServiceProvider).ensureLoaded();
       if (_shouldLoad) _reload();
-      _loadBadge();
+      _loadBadge(force: false);
     });
   }
 
@@ -883,7 +883,7 @@ class _SubcontractBusinessListPageState
   /// 订货单有两个计数段：「草稿」=status=0 且未提交（NONE），
   /// 「等待财务审核」=status=0 且在审（PENDING）——在审单已交由财务处理，
   /// 不再算草稿（与 hub 红徽章/服务端草稿计数同一口径）。
-  Future<void> _loadBadge() async {
+  Future<void> _loadBadge({bool force = true}) async {
     if (widget.archiveOnly) return;
     final requestId = ++_badgeRequestId;
     final type = _p.type;
@@ -891,7 +891,7 @@ class _SubcontractBusinessListPageState
     // 请求), 这里只失效重取; 没有 hub 徽章的单据仍按下方 list(size:1) 数草稿。
     final statusScope = _statusScope;
     if (statusScope != null) {
-      ref.invalidate(documentStatusCountsProvider(statusScope));
+      refreshDocumentStatusCounts(ref, statusScope, force: force);
       return;
     }
     final status = _actionableStatus;

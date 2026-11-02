@@ -2,6 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/paging/scoped_category_read.dart';
+import '../../../shared/paging/scoped_paged_read.dart';
 import '../models/operations_workbench.dart';
 
 abstract interface class OperationsWorkbenchGateway {
@@ -30,6 +33,35 @@ abstract interface class OperationsWorkbenchOverviewGateway {
     required OperationsWorkbenchDepartment department,
     String? keyword,
   });
+}
+
+/// Rows and an entry overview may finish independently. Keep the overview's
+/// exact department/keyword/warehouse repository scope and never let a late
+/// overview overwrite a newer accepted table summary.
+Future<void> readWorkbenchCategoryOverview(
+  WidgetRef ref, {
+  required OperationsWorkbenchOverviewGateway repository,
+  required OperationsWorkbenchDepartment department,
+  required String? keyword,
+  required bool Function() isCurrent,
+  required void Function(Map<String, int>) accept,
+  required void Function() rejected,
+}) async {
+  final owner = captureReadOwner(ref);
+  try {
+    final data = await ref
+        .read(scopedCategoryReadProvider)
+        .read(
+          query: [repository, department, keyword],
+          fetch: () =>
+              repository.loadOverview(department: department, keyword: keyword),
+        );
+    if (owner() && isCurrent()) {
+      accept(Map.unmodifiable(data.summary.statusCounts));
+    }
+  } catch (error) {
+    if (owner() && isCurrent() && pagedReadAccessDenied(error)) rejected();
+  }
 }
 
 /// 委外任务中心缺 BOM 的申请行「通知研发完善」(ADR-143 §二.3)。

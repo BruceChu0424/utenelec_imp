@@ -7,14 +7,20 @@
 // 有自己的分段与徽章(后端草稿口径同步收紧, 见 DocumentDraftCountQueryService)。
 //
 // 计数与列表同一对象级读范围, 一次请求带回该类型全部桶; 分桶键见 [DocumentStatusBucket]。
+import 'dart:collection';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
+import '../../core/network/data_write_revision.dart';
+import '../../core/network/api_exception.dart';
 import '../auth/permissions.dart';
 import '../badges/badge_registry.dart';
 import '../drafts/form_draft_category.dart';
 import 'draft_counts_provider.dart';
+import 'export_context_epoch_provider.dart';
+import 'retain_read_snapshot.dart';
 
 /// 分桶键(与后端 DocumentStatusCountQueryService 逐字一致)。
 abstract final class DocumentStatusBucket {
@@ -90,40 +96,67 @@ FormDraftCategoryScope formDraftScopeForDocumentStatus(
 
 /// 原始服务端桶保持不变；分类列表已合并本机草稿，因此草稿红数也采用同一投影。
 final effectiveDocumentStatusCountsProvider = Provider.autoDispose
-    .family<AsyncValue<Map<String, int>>, DocumentStatusScope>((ref, scope) {
-      final server = ref.watch(documentStatusCountsProvider(scope));
-      final local = ref.watch(
-        formDraftCategoryCountProvider(formDraftScopeForDocumentStatus(scope)),
-      );
-      if (!server.hasValue && local == 0) return server;
-      final counts = server.value;
-      return AsyncData({
-        ...?counts,
-        for (final bucket in const [
-          DocumentStatusBucket.draft,
-          DocumentStatusBucket.managerRejected,
-          DocumentStatusBucket.financeRejected,
-          DocumentStatusBucket.pendingGlConfirmation,
-        ])
-          if (counts?.containsKey(bucket) ?? false)
-            bucket: counts?['ACTIONABLE_$bucket'] ?? 0,
-        for (final bucket in const [
-          DocumentStatusBucket.pendingManager,
-          DocumentStatusBucket.pendingFinance,
-          'FINANCE_APPROVED',
-          DocumentStatusBucket.executing,
-        ])
-          if (counts?.containsKey(bucket) ?? false)
-            bucket: counts?['RESPONSIBLE_$bucket'] ?? 0,
-        DocumentStatusBucket.draft: (counts?['ACTIONABLE_DRAFT'] ?? 0) + local,
-      });
-    });
+    .family<AsyncValue<Map<String, int>>, DocumentStatusScope>(
+      (ref, scope) {
+        final server = ref.watch(documentStatusCountsProvider(scope));
+        final epoch = ref.watch(exportContextEpochProvider);
+        final local = ref.watch(
+          formDraftCategoryCountProvider(
+            formDraftScopeForDocumentStatus(scope),
+          ),
+        );
+        if (!server.hasValue && local == 0) return server;
+        final previous = server.value;
+        final denied =
+            server.error is ApiException &&
+            ({401, 403}.contains((server.error as ApiException).httpStatus) ||
+                const {
+                  'READ_SCOPE_CHANGED',
+                  'SESSION_CHANGED',
+                  'SESSION_STATE_UNAVAILABLE',
+                }.contains((server.error as ApiException).code));
+        // Riverpod may carry a previous value while rebuilding after an owner
+        // change. Never project that old account/permission/warehouse proof.
+        final counts =
+            denied ||
+                (previous is _DocumentStatusSnapshot &&
+                    previous.readerEpoch != epoch)
+            ? null
+            : previous;
+        if (counts == null && local == 0) return const AsyncLoading();
+        return AsyncData({
+          ...?counts,
+          for (final bucket in const [
+            DocumentStatusBucket.draft,
+            DocumentStatusBucket.managerRejected,
+            DocumentStatusBucket.financeRejected,
+            DocumentStatusBucket.pendingGlConfirmation,
+          ])
+            if (counts?.containsKey(bucket) ?? false)
+              bucket: counts?['ACTIONABLE_$bucket'] ?? 0,
+          for (final bucket in const [
+            DocumentStatusBucket.pendingManager,
+            DocumentStatusBucket.pendingFinance,
+            'FINANCE_APPROVED',
+            DocumentStatusBucket.executing,
+          ])
+            if (counts?.containsKey(bucket) ?? false)
+              bucket: counts?['RESPONSIBLE_$bucket'] ?? 0,
+          DocumentStatusBucket.draft:
+              (counts?['ACTIONABLE_DRAFT'] ?? 0) + local,
+        });
+      },
+      dependencies: [documentStatusCountsProvider, exportContextEpochProvider],
+    );
 
-/// 列表页分段计数: 桶键 → 张数。autoDispose——只在列表页打开期间存活; 不再自带 60s 轮询
-/// (ADR-108), 列表重拉时由页面 `ref.invalidate(documentStatusCountsProvider(scope))` 与列表
-/// 同步重取; 无该类型 *:view 权限不发请求(返回空表, 分段不渲染数字)。
+/// Exact-scope counts survive a brief page departure. Local writes and the
+/// monotonic reader boundary retire them automatically; explicit refresh stays
+/// fresh. Pagination/filtering within this scope need not restart the aggregate.
 final documentStatusCountsProvider = FutureProvider.autoDispose
     .family<Map<String, int>, DocumentStatusScope>((ref, scope) async {
+      final epoch = ref.watch(exportContextEpochProvider);
+      ref.watch(dataWriteRevisionProvider);
+      retainReadSnapshot(ref);
       final permissions = ref.watch(currentPermissionsProvider);
       final viewPermission =
           scope.kind == DraftDocKind.salesShipment &&
@@ -147,11 +180,53 @@ final documentStatusCountsProvider = FutureProvider.autoDispose
                 'scopeWarehouseId': scope.scopeWarehouseId,
             },
           );
-      return {
+      return _DocumentStatusSnapshot({
         for (final entry in json.entries)
           if (entry.value is num) entry.key: (entry.value as num).toInt(),
-      };
-    });
+      }, epoch);
+    }, dependencies: [exportContextEpochProvider]);
+
+/// Coalesce page-entry/category/pagination reads for the same exact scope.
+/// Counts do not depend on the chosen status, row sort or page number. A short
+/// freshness window only avoids redundant reads; explicit refresh and writes
+/// always revalidate, and no values are inferred from the parent badge.
+void refreshDocumentStatusCounts(
+  WidgetRef ref,
+  DocumentStatusScope scope, {
+  bool force = false,
+}) {
+  final provider = documentStatusCountsProvider(scope);
+  final state = ref.read(provider);
+  if (state.isLoading && !force) return;
+  final value = state.value;
+  if (!force &&
+      !state.hasError &&
+      value is _DocumentStatusSnapshot &&
+      value.readerEpoch == ref.read(exportContextEpochProvider) &&
+      value.age.elapsed < const Duration(seconds: 15)) {
+    return;
+  }
+  ref.invalidate(provider);
+}
+
+class _DocumentStatusSnapshot extends MapBase<String, int> {
+  _DocumentStatusSnapshot(Map<String, int> values, this.readerEpoch)
+    : _values = Map.unmodifiable(values);
+  final Map<String, int> _values;
+  final int readerEpoch;
+  final age = Stopwatch()..start();
+  @override
+  int? operator [](Object? key) => _values[key];
+  @override
+  Iterable<String> get keys => _values.keys;
+  @override
+  void operator []=(String key, int value) =>
+      throw UnsupportedError('snapshot');
+  @override
+  void clear() => throw UnsupportedError('snapshot');
+  @override
+  int? remove(Object? key) => throw UnsupportedError('snapshot');
+}
 
 /// 三类单据的「财务已退回」张数快照。
 class FinanceRejectedCounts {

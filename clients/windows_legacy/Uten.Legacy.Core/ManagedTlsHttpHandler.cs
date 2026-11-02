@@ -27,6 +27,7 @@ namespace Uten.Legacy.Core
         private readonly ManagedCertificateValidator validator;
         private readonly Func<Uri, CancellationToken, TcpClient> connector;
         private readonly SemaphoreSlim connectionSlots = new SemaphoreSlim(8, 8);
+        private readonly PageReadPriorityGate pageReads = new PageReadPriorityGate();
         private readonly ConcurrentDictionary<TcpClient, byte> active = new ConcurrentDictionary<TcpClient, byte>();
         private volatile bool disposed;
         internal int LastNegotiatedCipherSuite { get; private set; }
@@ -49,13 +50,16 @@ namespace Uten.Legacy.Core
         {
             if (disposed) throw new ObjectDisposedException(nameof(ManagedTlsHttpHandler));
             ValidateRequestOrigin(request);
-            await connectionSlots.WaitAsync(cancellationToken).ConfigureAwait(false);
-            try
+            using (await pageReads.EnterAsync(request, cancellationToken).ConfigureAwait(false))
             {
-                // BC's blocking stream API runs off the UI thread. Cancellation closes the owned socket.
-                return await Task.Run(() => SendBlocking(request, cancellationToken)).ConfigureAwait(false);
+                await connectionSlots.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    // BC's blocking stream API runs off the UI thread. Cancellation closes the owned socket.
+                    return await Task.Run(() => SendBlocking(request, cancellationToken)).ConfigureAwait(false);
+                }
+                finally { connectionSlots.Release(); }
             }
-            finally { connectionSlots.Release(); }
         }
 
         private HttpResponseMessage SendBlocking(HttpRequestMessage request, CancellationToken originalCancellation)

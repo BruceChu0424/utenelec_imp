@@ -531,6 +531,25 @@ class _OperationsWorkbenchPageState
     });
     try {
       final repository = _repository;
+      if (listing &&
+          _categoryCounts == null &&
+          exception == null &&
+          repository is OperationsWorkbenchOverviewGateway) {
+        unawaited(
+          readWorkbenchCategoryOverview(
+            ref,
+            repository: repository as OperationsWorkbenchOverviewGateway,
+            department: department,
+            keyword: keyword,
+            isCurrent: () => current() && _categoryCounts == null,
+            accept: (counts) => setState(() {
+              _categoryCounts = counts;
+              _acceptedCategoryScope = categoryScope;
+            }),
+            rejected: scopedPagedReadOwnerChanged,
+          ),
+        );
+      }
       Future<OperationsWorkbenchData> fetchNetwork(int requestedPage) {
         if (!listing && repository is OperationsWorkbenchOverviewGateway) {
           return (repository as OperationsWorkbenchOverviewGateway)

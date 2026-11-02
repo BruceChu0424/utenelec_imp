@@ -5662,7 +5662,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -17177,7 +17177,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -31927,7 +31927,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -36608,7 +36608,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "523ca071f6e66dde5681028aa1d933c4f8bab47384624a67b889e567d8f90862"
+          "targetSha256": "f843806418158d789e9d63c199239fa6cc773ae78533effadd57ad11e0281c77"
         },
         {
           "directive": "import",
@@ -36620,7 +36620,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "71825069efdef44346bd5a4471481d1836cc2f44d282cc9dec103eb9e344d8da"
+          "targetSha256": "c37a707fe06ea0ee74a666fd53569133f74bae54d843a35bbbe3bfaf601d0a3e"
         },
         {
           "directive": "import",
@@ -46270,7 +46270,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -51461,7 +51461,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -61465,7 +61465,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -62077,7 +62077,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -69983,8 +69983,8 @@
       "id": "page:finance/pages/finance_doc_list_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_doc_list_page.dart",
-      "sha256": "2f5806368c36880de2307e02adf6864536810f482c35ea79a933b65c03efa401",
-      "lineCount": 862,
+      "sha256": "d4675a07688fc9e1c9dc87fe046958c79e5abca6e707e900514daccf2f872dfb",
+      "lineCount": 860,
       "classes": [
         {
           "name": "FinanceDocListPage",
@@ -70442,7 +70442,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4955b160356c14d4d407d65357e3d708a201e47ac319b1690d4234e432075c71"
+          "targetSha256": "0e75faf1e1145f417a0e7312180a22ff63b6719b68fc5f3d59e7142a2396a180"
         },
         {
           "directive": "import",
@@ -70707,7 +70707,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 400,
+          "line": 398,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -70717,7 +70717,7 @@
         {
           "symbol": "_createButton",
           "receiver": null,
-          "line": 699,
+          "line": 697,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -70727,7 +70727,7 @@
         {
           "symbol": "_createButton",
           "receiver": null,
-          "line": 729,
+          "line": 727,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -70737,7 +70737,7 @@
         {
           "symbol": "_deleteDraft",
           "receiver": null,
-          "line": 732,
+          "line": 730,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "delete"
@@ -70746,7 +70746,7 @@
         },
         {
           "symbol": "draftDeleteBusy",
-          "line": 725,
+          "line": 723,
           "kind": "callback-reference",
           "callback": "onSelectedIdsChanged",
           "actionNameHints": [
@@ -78271,7 +78271,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -83339,7 +83339,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -85015,7 +85015,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -90508,8 +90508,8 @@
       "id": "page:operations_workbench/pages/operations_workbench_page.dart",
       "feature": "operations_workbench",
       "source": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
-      "sha256": "321d2f54a55d32c1ee09d80869b0043089e3177402e11b808b3aa40623f61ce2",
-      "lineCount": 1922,
+      "sha256": "0f3b6e62509ea3bccfa728ddbea7b92918d16205266f2123196cc8c1483987ea",
+      "lineCount": 1941,
       "classes": [
         {
           "name": "_WorkbenchSeg",
@@ -90531,13 +90531,13 @@
         },
         {
           "name": "_SelectionPrimaryAction",
-          "line": 1458,
+          "line": 1477,
           "role": "supporting-class",
           "extends": null
         },
         {
           "name": "_DesktopTaskTable",
-          "line": 1491,
+          "line": 1510,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         }
@@ -90834,7 +90834,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -91098,7 +91098,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "400a9e1226f85e31dbe672d39b1de88fd162395f84d0c6579a2507103d804101"
+          "targetSha256": "fb990bfe96b801d6dccee58620fea1721b92c090e8561f2b9d77dd5638ef97c4"
         },
         {
           "directive": "import",
@@ -91166,21 +91166,21 @@
         {
           "symbol": "Perm.purchaseOrderSubmitFinance",
           "literal": "purchase_order:submit_finance",
-          "line": 1091,
+          "line": 1110,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 101
         },
         {
           "symbol": "Perm.subcontractOrderSubmitFinance",
           "literal": "subcontract_order:submit_finance",
-          "line": 1092,
+          "line": 1111,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 346
         },
         {
           "symbol": "Perm.purchaseReportExport",
           "literal": "purchase_report:export",
-          "line": 1828,
+          "line": 1847,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 526
         }
@@ -91189,12 +91189,12 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-          "sha256": "400a9e1226f85e31dbe672d39b1de88fd162395f84d0c6579a2507103d804101",
-          "lineCount": 127,
+          "sha256": "fb990bfe96b801d6dccee58620fea1721b92c090e8561f2b9d77dd5638ef97c4",
+          "lineCount": 159,
           "apiEndpointReferences": [
             {
               "symbol": "ApiEndpoints.subcontractApplicationItemForwardBom",
-              "line": 118,
+              "line": 150,
               "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
               "template": null,
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -91203,14 +91203,14 @@
             },
             {
               "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-              "line": 59,
+              "line": 91,
               "template": "/operations/workbench/{department.apiValue}/overview",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-              "line": 87,
+              "line": 119,
               "template": "/operations/workbench/{department.apiValue}",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
@@ -91232,7 +91232,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 638,
+          "line": 657,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -91242,7 +91242,7 @@
         {
           "symbol": "removeWhere",
           "receiver": "_selectedIds",
-          "line": 643,
+          "line": 662,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -91252,7 +91252,7 @@
         {
           "symbol": "remove",
           "receiver": "_columnFilters",
-          "line": 782,
+          "line": 801,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -91262,7 +91262,7 @@
         {
           "symbol": "remove",
           "receiver": "_columnFilters",
-          "line": 800,
+          "line": 819,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -91272,7 +91272,7 @@
         {
           "symbol": "_purchaseSelectionIssue",
           "receiver": null,
-          "line": 922,
+          "line": 941,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "issue"
@@ -91282,7 +91282,7 @@
         {
           "symbol": "_purchaseExportIssue",
           "receiver": null,
-          "line": 940,
+          "line": 959,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export",
@@ -91293,7 +91293,7 @@
         {
           "symbol": "_purchaseSelectionIssue",
           "receiver": null,
-          "line": 979,
+          "line": 998,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "issue"
@@ -91303,7 +91303,7 @@
         {
           "symbol": "_exportSelection",
           "receiver": null,
-          "line": 1015,
+          "line": 1034,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "export"
@@ -91313,7 +91313,7 @@
         {
           "symbol": "_exportOrderDocumentsOf",
           "receiver": null,
-          "line": 1025,
+          "line": 1044,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "export"
@@ -91323,7 +91323,7 @@
         {
           "symbol": "_exportSelection",
           "receiver": null,
-          "line": 1027,
+          "line": 1046,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -91333,7 +91333,7 @@
         {
           "symbol": "_purchaseExportIssue",
           "receiver": null,
-          "line": 1029,
+          "line": 1048,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "export",
@@ -91344,7 +91344,7 @@
         {
           "symbol": "_exportSelection",
           "receiver": null,
-          "line": 1030,
+          "line": 1049,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -91354,7 +91354,7 @@
         {
           "symbol": "_exportSelectedOrderDocs",
           "receiver": null,
-          "line": 1032,
+          "line": 1051,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "export"
@@ -91364,7 +91364,7 @@
         {
           "symbol": "_purchaseExportIssue",
           "receiver": null,
-          "line": 1038,
+          "line": 1057,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export",
@@ -91375,7 +91375,7 @@
         {
           "symbol": "_exportOrderDocumentsOf",
           "receiver": null,
-          "line": 1043,
+          "line": 1062,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -91385,7 +91385,7 @@
         {
           "symbol": "export",
           "receiver": null,
-          "line": 1054,
+          "line": 1073,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -91395,7 +91395,7 @@
         {
           "symbol": "UtenExportButton",
           "receiver": null,
-          "line": 1824,
+          "line": 1843,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -91404,7 +91404,7 @@
         },
         {
           "symbol": "issue",
-          "line": 953,
+          "line": 972,
           "kind": "callback-reference",
           "callback": "onRun",
           "actionNameHints": [
@@ -91445,13 +91445,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-              "line": 59,
+              "line": 91,
               "template": "/operations/workbench/{department.apiValue}/overview",
               "controllerBase": "/api/operations/workbench"
             },
             {
               "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-              "line": 87,
+              "line": 119,
               "template": "/operations/workbench/{department.apiValue}",
               "controllerBase": "/api/operations/workbench"
             }
@@ -91464,13 +91464,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-              "line": 59,
+              "line": 91,
               "template": "/operations/workbench/{department.apiValue}/overview",
               "controllerBase": "/api/operations/workbench"
             },
             {
               "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-              "line": 87,
+              "line": 119,
               "template": "/operations/workbench/{department.apiValue}",
               "controllerBase": "/api/operations/workbench"
             }
@@ -99294,7 +99294,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -101112,7 +101112,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -105965,7 +105965,7 @@
       "id": "page:production/pages/production_daily_report_list_page.dart",
       "feature": "production",
       "source": "lib/features/production/pages/production_daily_report_list_page.dart",
-      "sha256": "752d864eeffaf5bba38c9a007612bbf493e1d9f1406c4f29194824b6122d9905",
+      "sha256": "5c72e2c6bd1fdaa5abcc466c23aa1402e9883f8a275ae848d636b8c85ade834c",
       "lineCount": 489,
       "classes": [
         {
@@ -106124,7 +106124,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4955b160356c14d4d407d65357e3d708a201e47ac319b1690d4234e432075c71"
+          "targetSha256": "0e75faf1e1145f417a0e7312180a22ff63b6719b68fc5f3d59e7142a2396a180"
         },
         {
           "directive": "import",
@@ -125345,7 +125345,7 @@
       "id": "page:production/pages/production_plan_list_page.dart",
       "feature": "production",
       "source": "lib/features/production/pages/production_plan_list_page.dart",
-      "sha256": "271e2852a25af443ed5eccaf1e18e7f6a983316efd2f790c9a488b16758f2bfe",
+      "sha256": "44bb6bd56d1e5f52518a0a61c45bbecb4e202581328de0ac4345fc23e686ed7d",
       "lineCount": 689,
       "classes": [
         {
@@ -125552,7 +125552,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4955b160356c14d4d407d65357e3d708a201e47ac319b1690d4234e432075c71"
+          "targetSha256": "0e75faf1e1145f417a0e7312180a22ff63b6719b68fc5f3d59e7142a2396a180"
         },
         {
           "directive": "import",
@@ -128220,7 +128220,7 @@
       "id": "page:production/pages/production_report_page.dart",
       "feature": "production",
       "source": "lib/features/production/pages/production_report_page.dart",
-      "sha256": "598b9abb0eb13792298a73c326ab499c9599bdf1f94acd194892c2f12798fccd",
+      "sha256": "1bfc5eaa69a57c3ec8085d9efb6ec81b30491f61d3f597b89da0965c6ded6f9a",
       "lineCount": 675,
       "classes": [
         {
@@ -128429,7 +128429,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -128573,7 +128573,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4955b160356c14d4d407d65357e3d708a201e47ac319b1690d4234e432075c71"
+          "targetSha256": "0e75faf1e1145f417a0e7312180a22ff63b6719b68fc5f3d59e7142a2396a180"
         },
         {
           "directive": "import",
@@ -132104,7 +132104,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -139810,7 +139810,7 @@
       "id": "page:purchase/pages/purchase_doc_list_page.dart",
       "feature": "purchase",
       "source": "lib/features/purchase/pages/purchase_doc_list_page.dart",
-      "sha256": "e92b39482bca813d2e125bdd7abdefc23efd76d460e7217971f662396388fd19",
+      "sha256": "55b9e1b1198ec861cbfe2b22d9b6dc84f56a18c0d14dd13b3e2ab5817f8e4734",
       "lineCount": 1093,
       "classes": [
         {
@@ -140275,7 +140275,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4955b160356c14d4d407d65357e3d708a201e47ac319b1690d4234e432075c71"
+          "targetSha256": "0e75faf1e1145f417a0e7312180a22ff63b6719b68fc5f3d59e7142a2396a180"
         },
         {
           "directive": "import",
@@ -143553,7 +143553,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -143995,7 +143995,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -156278,7 +156278,7 @@
       "id": "page:sales/pages/sales_doc_list_page.dart",
       "feature": "sales",
       "source": "lib/features/sales/pages/sales_doc_list_page.dart",
-      "sha256": "b3b3964a8e5e49a8f2d6f9a26684c78bacc6f740e0427fae3e3d82c343697d6f",
+      "sha256": "16f33f816d8353691339423c186262b184bcf1383446f7b80e838a0a69283933",
       "lineCount": 1604,
       "classes": [
         {
@@ -156779,7 +156779,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4955b160356c14d4d407d65357e3d708a201e47ac319b1690d4234e432075c71"
+          "targetSha256": "0e75faf1e1145f417a0e7312180a22ff63b6719b68fc5f3d59e7142a2396a180"
         },
         {
           "directive": "import",
@@ -158138,7 +158138,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -160111,7 +160111,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -161537,7 +161537,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4955b160356c14d4d407d65357e3d708a201e47ac319b1690d4234e432075c71"
+          "targetSha256": "0e75faf1e1145f417a0e7312180a22ff63b6719b68fc5f3d59e7142a2396a180"
         },
         {
           "directive": "import",
@@ -161573,7 +161573,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b3b3964a8e5e49a8f2d6f9a26684c78bacc6f740e0427fae3e3d82c343697d6f"
+          "targetSha256": "16f33f816d8353691339423c186262b184bcf1383446f7b80e838a0a69283933"
         },
         {
           "directive": "import",
@@ -163100,7 +163100,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -164669,7 +164669,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6f05c77622888b4cffe801049266c7f8bc925c7a4a275f5c1dc18b0ca0625b24"
+          "targetSha256": "e6cb563977132ad66c56810268ed6a93964dc29b8f21a746579b8282c3794e25"
         },
         {
           "directive": "import",
@@ -168435,7 +168435,7 @@
       "id": "page:subcontract/pages/subcontract_business_list_pages.dart",
       "feature": "subcontract",
       "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
-      "sha256": "b58dffcb12b766e04c654238e683775069a6f465d72d69fd72b00aa692bd3596",
+      "sha256": "d4243b84f35df8501d90400952891db56a37d17264090b9dc7302018622d576c",
       "lineCount": 1432,
       "classes": [
         {
@@ -168930,7 +168930,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4955b160356c14d4d407d65357e3d708a201e47ac319b1690d4234e432075c71"
+          "targetSha256": "0e75faf1e1145f417a0e7312180a22ff63b6719b68fc5f3d59e7142a2396a180"
         },
         {
           "directive": "import",
@@ -169486,60 +169486,60 @@
       "id": "page:subcontract/pages/subcontract_decomposition_page.dart",
       "feature": "subcontract",
       "source": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
-      "sha256": "ec7dd08885c2a1882eccd9a94cfde289c5ee814aa6484de737b837d66e215067",
-      "lineCount": 3050,
+      "sha256": "b25b15d2d811ac041daaec52693f71fbfa27859497df4dff17aae1da55333890",
+      "lineCount": 3071,
       "classes": [
         {
           "name": "_DecompositionSeg",
-          "line": 100,
+          "line": 102,
           "role": "supporting-class",
           "extends": null
         },
         {
           "name": "_RetainedRefreshBatch",
-          "line": 118,
+          "line": 120,
           "role": "supporting-class",
           "extends": null
         },
         {
           "name": "SubcontractDecompositionPage",
-          "line": 123,
+          "line": 125,
           "role": "page-class",
           "extends": "ConsumerStatefulWidget"
         },
         {
           "name": "_SubcontractDecompositionPageState",
-          "line": 171,
+          "line": 173,
           "role": "state-class",
           "extends": "ConsumerState<SubcontractDecompositionPage>\n    with\n        UtenRefreshParticipant<SubcontractDecompositionPage>,\n        ScopedPagedReadViewMixin<SubcontractDecompositionPage>"
         },
         {
           "name": "SubcontractPendingRow",
-          "line": 2912,
+          "line": 2933,
           "role": "supporting-class",
           "extends": null
         },
         {
           "name": "SubcontractApplicationRow",
-          "line": 2918,
+          "line": 2939,
           "role": "supporting-class",
           "extends": "SubcontractPendingRow"
         },
         {
           "name": "SubcontractPendingDrawRow",
-          "line": 2927,
+          "line": 2948,
           "role": "supporting-class",
           "extends": "SubcontractPendingRow"
         },
         {
           "name": "_DrawStatusCell",
-          "line": 2938,
+          "line": 2959,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         },
         {
           "name": "_ProgressStatusCell",
-          "line": 2989,
+          "line": 3010,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         }
@@ -169559,7 +169559,7 @@
         },
         {
           "directive": "import",
-          "uri": "package:flutter/material.dart",
+          "uri": "dart:async",
           "source": null,
           "line": 36,
           "role": "other",
@@ -169571,9 +169571,21 @@
         },
         {
           "directive": "import",
+          "uri": "package:flutter/material.dart",
+          "source": null,
+          "line": 38,
+          "role": "other",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": false,
+          "targetSha256": null
+        },
+        {
+          "directive": "import",
           "uri": "package:flutter/foundation.dart",
           "source": null,
-          "line": 37,
+          "line": 39,
           "role": "other",
           "importAlias": null,
           "showSymbols": [
@@ -169588,7 +169600,7 @@
           "directive": "import",
           "uri": "package:flutter_riverpod/flutter_riverpod.dart",
           "source": null,
-          "line": 38,
+          "line": 40,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -169600,7 +169612,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/draft_counts_provider.dart",
           "source": "lib/shared/providers/draft_counts_provider.dart",
-          "line": 39,
+          "line": 41,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169612,7 +169624,7 @@
           "directive": "import",
           "uri": "../../../shared/badges/badge_registry.dart",
           "source": "lib/shared/badges/badge_registry.dart",
-          "line": 40,
+          "line": 42,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169624,7 +169636,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/authenticated_scope_provider.dart",
           "source": "lib/shared/providers/authenticated_scope_provider.dart",
-          "line": 41,
+          "line": 43,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169636,7 +169648,7 @@
           "directive": "import",
           "uri": "../../../shared/auth/session_snapshot_provider.dart",
           "source": "lib/shared/auth/session_snapshot_provider.dart",
-          "line": 42,
+          "line": 44,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169648,7 +169660,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/form_draft_category.dart",
           "source": "lib/shared/drafts/form_draft_category.dart",
-          "line": 43,
+          "line": 45,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169660,7 +169672,7 @@
           "directive": "import",
           "uri": "../widgets/subcontract_draft_task_category.dart",
           "source": "lib/features/subcontract/widgets/subcontract_draft_task_category.dart",
-          "line": 44,
+          "line": 46,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -169672,7 +169684,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_back_button.dart",
           "source": "lib/components/buttons/uten_back_button.dart",
-          "line": 46,
+          "line": 48,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169684,7 +169696,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_refresh_button.dart",
           "source": "lib/components/buttons/uten_refresh_button.dart",
-          "line": 47,
+          "line": 49,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169696,7 +169708,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_button.dart",
           "source": "lib/components/buttons/uten_button.dart",
-          "line": 48,
+          "line": 50,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169708,7 +169720,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_export_button.dart",
           "source": "lib/components/buttons/uten_export_button.dart",
-          "line": 49,
+          "line": 51,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169720,7 +169732,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_status_badge.dart",
           "source": "lib/components/data_display/uten_status_badge.dart",
-          "line": 50,
+          "line": 52,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169732,7 +169744,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_status_cell_color.dart",
           "source": "lib/components/data_display/uten_status_cell_color.dart",
-          "line": 51,
+          "line": 53,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169744,7 +169756,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_empty.dart",
           "source": "lib/components/feedback/uten_empty.dart",
-          "line": 52,
+          "line": 54,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169756,7 +169768,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_segment_badge_label.dart",
           "source": "lib/components/feedback/uten_segment_badge_label.dart",
-          "line": 53,
+          "line": 55,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169768,7 +169780,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_app_bar.dart",
           "source": "lib/components/layout/uten_app_bar.dart",
-          "line": 54,
+          "line": 56,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169780,7 +169792,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_pagination.dart",
           "source": "lib/components/layout/uten_pagination.dart",
-          "line": 55,
+          "line": 57,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169792,7 +169804,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_content_container.dart",
           "source": "lib/components/layout/uten_content_container.dart",
-          "line": 56,
+          "line": 58,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169804,7 +169816,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_collapsing_header_scroll_view.dart",
           "source": "lib/components/layout/uten_collapsing_header_scroll_view.dart",
-          "line": 57,
+          "line": 59,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169816,7 +169828,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_filter_toolbar.dart",
           "source": "lib/components/layout/uten_filter_toolbar.dart",
-          "line": 58,
+          "line": 60,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169828,7 +169840,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_refresh_scope.dart",
           "source": "lib/components/layout/uten_refresh_scope.dart",
-          "line": 59,
+          "line": 61,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169840,7 +169852,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_history_time_filter.dart",
           "source": "lib/components/layout/uten_history_time_filter.dart",
-          "line": 60,
+          "line": 62,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169852,7 +169864,7 @@
           "directive": "import",
           "uri": "../../../core/network/api_exception.dart",
           "source": "lib/core/network/api_exception.dart",
-          "line": 61,
+          "line": 63,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -169864,19 +169876,19 @@
           "directive": "import",
           "uri": "../../../core/network/api_client.dart",
           "source": "lib/core/network/api_client.dart",
-          "line": 62,
+          "line": 64,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
           "uri": "../../../core/router/nav_helpers.dart",
           "source": "lib/core/router/nav_helpers.dart",
-          "line": 63,
+          "line": 65,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -169888,7 +169900,7 @@
           "directive": "import",
           "uri": "../../../core/router/page_navigation_session.dart",
           "source": "lib/core/router/page_navigation_session.dart",
-          "line": 64,
+          "line": 66,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -169900,7 +169912,7 @@
           "directive": "import",
           "uri": "../../../core/router/page_resume_provider.dart",
           "source": "lib/core/router/page_resume_provider.dart",
-          "line": 65,
+          "line": 67,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -169912,7 +169924,7 @@
           "directive": "import",
           "uri": "../../../core/router/route_names.dart",
           "source": "lib/core/router/route_names.dart",
-          "line": 66,
+          "line": 68,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -169924,7 +169936,7 @@
           "directive": "import",
           "uri": "../../../core/theme/uten_tokens.dart",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 67,
+          "line": 69,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -169936,7 +169948,7 @@
           "directive": "import",
           "uri": "../../../core/ui/app_notification.dart",
           "source": "lib/core/ui/app_notification.dart",
-          "line": 68,
+          "line": 70,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -169948,7 +169960,7 @@
           "directive": "import",
           "uri": "../../../core/utils/china_datetime.dart",
           "source": "lib/core/utils/china_datetime.dart",
-          "line": 69,
+          "line": 71,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -169960,7 +169972,7 @@
           "directive": "import",
           "uri": "../../../shared/auth/permissions.dart",
           "source": "lib/shared/auth/permissions.dart",
-          "line": 70,
+          "line": 72,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169972,7 +169984,7 @@
           "directive": "import",
           "uri": "../../../shared/export/order_document_selection.dart",
           "source": "lib/shared/export/order_document_selection.dart",
-          "line": 71,
+          "line": 73,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169984,7 +169996,7 @@
           "directive": "import",
           "uri": "../../../shared/export/order_documents_export.dart",
           "source": "lib/shared/export/order_documents_export.dart",
-          "line": 72,
+          "line": 74,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -169996,7 +170008,7 @@
           "directive": "import",
           "uri": "../../../shared/formatters/quantity_display.dart",
           "source": "lib/shared/formatters/quantity_display.dart",
-          "line": 73,
+          "line": 75,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -170008,7 +170020,7 @@
           "directive": "import",
           "uri": "../../../shared/presentation/workflow_field_guidance.dart",
           "source": "lib/shared/presentation/workflow_field_guidance.dart",
-          "line": 74,
+          "line": 76,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -170020,7 +170032,7 @@
           "directive": "import",
           "uri": "../../basic_data/widgets/master_data_table_view.dart",
           "source": "lib/features/basic_data/widgets/master_data_table_view.dart",
-          "line": 75,
+          "line": 77,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -170032,7 +170044,7 @@
           "directive": "import",
           "uri": "../../basic_data/models/master_facet.dart",
           "source": "lib/features/basic_data/models/master_facet.dart",
-          "line": 76,
+          "line": 78,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -170044,7 +170056,7 @@
           "directive": "import",
           "uri": "../../operations_workbench/models/operations_workbench.dart",
           "source": "lib/features/operations_workbench/models/operations_workbench.dart",
-          "line": 77,
+          "line": 79,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -170056,19 +170068,19 @@
           "directive": "import",
           "uri": "../../operations_workbench/repositories/operations_workbench_repository.dart",
           "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-          "line": 78,
+          "line": 80,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "400a9e1226f85e31dbe672d39b1de88fd162395f84d0c6579a2507103d804101"
+          "targetSha256": "fb990bfe96b801d6dccee58620fea1721b92c090e8561f2b9d77dd5638ef97c4"
         },
         {
           "directive": "import",
           "uri": "../../../shared/models/subcontract_short_delivery.dart",
           "source": "lib/shared/models/subcontract_short_delivery.dart",
-          "line": 79,
+          "line": 81,
           "role": "models",
           "importAlias": null,
           "showSymbols": [
@@ -170082,7 +170094,7 @@
           "directive": "import",
           "uri": "../models/subcontract_draw.dart",
           "source": "lib/features/subcontract/models/subcontract_draw.dart",
-          "line": 81,
+          "line": 83,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -170094,7 +170106,7 @@
           "directive": "import",
           "uri": "../repositories/subcontract_draw_repository.dart",
           "source": "lib/features/subcontract/repositories/subcontract_draw_repository.dart",
-          "line": 82,
+          "line": 84,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
@@ -170106,7 +170118,7 @@
           "directive": "import",
           "uri": "../repositories/subcontract_kit_repository.dart",
           "source": "lib/features/subcontract/repositories/subcontract_kit_repository.dart",
-          "line": 83,
+          "line": 85,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
@@ -170118,7 +170130,7 @@
           "directive": "import",
           "uri": "../widgets/subcontract_application_kit_dialog.dart",
           "source": "lib/features/subcontract/widgets/subcontract_application_kit_dialog.dart",
-          "line": 84,
+          "line": 86,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -170130,7 +170142,7 @@
           "directive": "import",
           "uri": "../widgets/subcontract_application_detail_dialog.dart",
           "source": "lib/features/subcontract/widgets/subcontract_application_detail_dialog.dart",
-          "line": 85,
+          "line": 87,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -170142,7 +170154,7 @@
           "directive": "import",
           "uri": "../widgets/subcontract_draw_status.dart",
           "source": "lib/features/subcontract/widgets/subcontract_draw_status.dart",
-          "line": 86,
+          "line": 88,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -170154,7 +170166,7 @@
           "directive": "import",
           "uri": "../widgets/subcontract_draw_task_detail_dialog.dart",
           "source": "lib/features/subcontract/widgets/subcontract_draw_task_detail_dialog.dart",
-          "line": 87,
+          "line": 89,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -170166,7 +170178,7 @@
           "directive": "import",
           "uri": "../../../shared/widgets/procurement_order_closure_dialog.dart",
           "source": "lib/shared/widgets/procurement_order_closure_dialog.dart",
-          "line": 88,
+          "line": 90,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -170178,7 +170190,7 @@
           "directive": "import",
           "uri": "../../../shared/widgets/procurement_difference_column.dart",
           "source": "lib/shared/widgets/procurement_difference_column.dart",
-          "line": 89,
+          "line": 91,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -170190,7 +170202,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_context_menu.dart",
           "source": "lib/components/feedback/uten_context_menu.dart",
-          "line": 90,
+          "line": 92,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -170202,7 +170214,7 @@
           "directive": "import",
           "uri": "../../../core/l10n/gen/app_localizations.dart",
           "source": "lib/core/l10n/gen/app_localizations.dart",
-          "line": 91,
+          "line": 93,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -170214,7 +170226,7 @@
           "directive": "import",
           "uri": "../../../shared/models/procurement_order_closure.dart",
           "source": "lib/shared/models/procurement_order_closure.dart",
-          "line": 92,
+          "line": 94,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -170226,7 +170238,7 @@
           "directive": "import",
           "uri": "../../../shared/paging/scoped_paged_read.dart",
           "source": "lib/shared/paging/scoped_paged_read.dart",
-          "line": 93,
+          "line": 95,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -170238,7 +170250,7 @@
           "directive": "import",
           "uri": "../../../shared/paging/paged_read_window_binding.dart",
           "source": "lib/shared/paging/paged_read_window_binding.dart",
-          "line": 94,
+          "line": 96,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -170250,7 +170262,7 @@
           "directive": "import",
           "uri": "../../../shared/paging/scoped_paged_read_view_mixin.dart",
           "source": "lib/shared/paging/scoped_paged_read_view_mixin.dart",
-          "line": 95,
+          "line": 97,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -170262,7 +170274,7 @@
           "directive": "import",
           "uri": "../../../shared/widgets/procurement_order_closure_batch_dialog.dart",
           "source": "lib/shared/widgets/procurement_order_closure_batch_dialog.dart",
-          "line": 96,
+          "line": 98,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -170274,7 +170286,7 @@
           "directive": "import",
           "uri": "../../../shared/widgets/procurement_order_closure_selection_action.dart",
           "source": "lib/shared/widgets/procurement_order_closure_selection_action.dart",
-          "line": 97,
+          "line": 99,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -170288,42 +170300,42 @@
         {
           "symbol": "Perm.subcontractApplicationView",
           "literal": "subcontract_application:view",
-          "line": 1510,
+          "line": 1531,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 342
         },
         {
           "symbol": "Perm.subcontractOrderView",
           "literal": "subcontract_order:view",
-          "line": 1511,
+          "line": 1532,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 343
         },
         {
           "symbol": "Perm.subcontractOrderCreate",
           "literal": "subcontract_order:create",
-          "line": 1512,
+          "line": 1533,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 680
         },
         {
           "symbol": "Perm.subcontractOrderDecompose",
           "literal": "subcontract_order:decompose",
-          "line": 1513,
+          "line": 1534,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 683
         },
         {
           "symbol": "Perm.subcontractOrderSubmitFinance",
           "literal": "subcontract_order:submit_finance",
-          "line": 1619,
+          "line": 1640,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 346
         },
         {
           "symbol": "Perm.subcontractReportExport",
           "literal": "subcontract_report:export",
-          "line": 2233,
+          "line": 2254,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 373
         }
@@ -170332,12 +170344,12 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-          "sha256": "400a9e1226f85e31dbe672d39b1de88fd162395f84d0c6579a2507103d804101",
-          "lineCount": 127,
+          "sha256": "fb990bfe96b801d6dccee58620fea1721b92c090e8561f2b9d77dd5638ef97c4",
+          "lineCount": 159,
           "apiEndpointReferences": [
             {
               "symbol": "ApiEndpoints.subcontractApplicationItemForwardBom",
-              "line": 118,
+              "line": 150,
               "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
               "template": null,
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -170346,14 +170358,14 @@
             },
             {
               "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-              "line": 59,
+              "line": 91,
               "template": "/operations/workbench/{department.apiValue}/overview",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-              "line": 87,
+              "line": 119,
               "template": "/operations/workbench/{department.apiValue}",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
@@ -170395,7 +170407,7 @@
         {
           "symbol": "update",
           "receiver": "_taskRows",
-          "line": 251,
+          "line": 253,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "update"
@@ -170405,7 +170417,7 @@
         {
           "symbol": "update",
           "receiver": "_pendingRows",
-          "line": 252,
+          "line": 254,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "update"
@@ -170415,7 +170427,7 @@
         {
           "symbol": "removeWhere",
           "receiver": "results",
-          "line": 786,
+          "line": 807,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -170425,7 +170437,7 @@
         {
           "symbol": "removeWhere",
           "receiver": "_selectedIds",
-          "line": 844,
+          "line": 865,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -170435,7 +170447,7 @@
         {
           "symbol": "removeWhere",
           "receiver": "_selectedDrawIds",
-          "line": 1080,
+          "line": 1101,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -170445,7 +170457,7 @@
         {
           "symbol": "removeAll",
           "receiver": "_selectedDrawIds",
-          "line": 1297,
+          "line": 1318,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -170455,7 +170467,7 @@
         {
           "symbol": "_exportSelectedOrderDocs",
           "receiver": null,
-          "line": 1370,
+          "line": 1391,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "export"
@@ -170465,7 +170477,7 @@
         {
           "symbol": "export",
           "receiver": null,
-          "line": 1390,
+          "line": 1411,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -170475,7 +170487,7 @@
         {
           "symbol": "_exportOrderButton",
           "receiver": null,
-          "line": 1406,
+          "line": 1427,
           "kind": "action-ui-factory",
           "actionNameHints": [
             "export"
@@ -170485,7 +170497,7 @@
         {
           "symbol": "_createOrder",
           "receiver": null,
-          "line": 1575,
+          "line": 1596,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "create"
@@ -170495,7 +170507,7 @@
         {
           "symbol": "_createOrderButton",
           "receiver": null,
-          "line": 1664,
+          "line": 1685,
           "kind": "action-ui-factory",
           "actionNameHints": [
             "create"
@@ -170505,7 +170517,7 @@
         {
           "symbol": "remove",
           "receiver": "_columnFilters",
-          "line": 2160,
+          "line": 2181,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -170515,7 +170527,7 @@
         {
           "symbol": "_exportOrderButton",
           "receiver": null,
-          "line": 2225,
+          "line": 2246,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -170525,7 +170537,7 @@
         {
           "symbol": "_createOrderButton",
           "receiver": null,
-          "line": 2226,
+          "line": 2247,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -170535,7 +170547,7 @@
         {
           "symbol": "UtenExportButton",
           "receiver": null,
-          "line": 2229,
+          "line": 2250,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -170545,7 +170557,7 @@
         {
           "symbol": "_createOrderButton",
           "receiver": null,
-          "line": 2244,
+          "line": 2265,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -170555,7 +170567,7 @@
         {
           "symbol": "remove",
           "receiver": "_columnFilters",
-          "line": 2692,
+          "line": 2713,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -170565,7 +170577,7 @@
         {
           "symbol": "_createOrderButton",
           "receiver": null,
-          "line": 2752,
+          "line": 2773,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -170575,7 +170587,7 @@
         {
           "symbol": "_createOrderButton",
           "receiver": null,
-          "line": 2758,
+          "line": 2779,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -170585,7 +170597,7 @@
         {
           "symbol": "copyWith",
           "receiver": "inherited",
-          "line": 3018,
+          "line": 3039,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -170594,7 +170606,7 @@
         },
         {
           "symbol": "issue",
-          "line": 1417,
+          "line": 1438,
           "kind": "callback-reference",
           "callback": "onPressed",
           "actionNameHints": [
@@ -170603,7 +170615,7 @@
         },
         {
           "symbol": "issue",
-          "line": 1420,
+          "line": 1441,
           "kind": "callback-reference",
           "callback": "onDisabledTap",
           "actionNameHints": [
@@ -170612,7 +170624,7 @@
         },
         {
           "symbol": "issue",
-          "line": 1677,
+          "line": 1698,
           "kind": "callback-reference",
           "callback": "onPressed",
           "actionNameHints": [
@@ -170621,7 +170633,7 @@
         },
         {
           "symbol": "issue",
-          "line": 1678,
+          "line": 1699,
           "kind": "callback-reference",
           "callback": "onDisabledTap",
           "actionNameHints": [
@@ -170630,7 +170642,7 @@
         },
         {
           "symbol": "issue",
-          "line": 1713,
+          "line": 1734,
           "kind": "callback-reference",
           "callback": "onPressed",
           "actionNameHints": [
@@ -170639,7 +170651,7 @@
         },
         {
           "symbol": "issue",
-          "line": 1714,
+          "line": 1735,
           "kind": "callback-reference",
           "callback": "onDisabledTap",
           "actionNameHints": [
@@ -170680,13 +170692,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-              "line": 59,
+              "line": 91,
               "template": "/operations/workbench/{department.apiValue}/overview",
               "controllerBase": "/api/operations/workbench"
             },
             {
               "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-              "line": 87,
+              "line": 119,
               "template": "/operations/workbench/{department.apiValue}",
               "controllerBase": "/api/operations/workbench"
             }
@@ -170699,13 +170711,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-              "line": 59,
+              "line": 91,
               "template": "/operations/workbench/{department.apiValue}/overview",
               "controllerBase": "/api/operations/workbench"
             },
             {
               "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-              "line": 87,
+              "line": 119,
               "template": "/operations/workbench/{department.apiValue}",
               "controllerBase": "/api/operations/workbench"
             }
@@ -177346,7 +177358,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -209724,7 +209736,7 @@
       "id": "page:warehouse/pages/stock_doc_list_page.dart",
       "feature": "warehouse",
       "source": "lib/features/warehouse/pages/stock_doc_list_page.dart",
-      "sha256": "a7241ecb87c5351ba4228cecd84635f56ac9f3159e61cc3c2cc139832e90d335",
+      "sha256": "d030c52d5c4b523aaa39cf6dbbad5cf5930fe5b229197dc541466a85ca326905",
       "lineCount": 815,
       "classes": [
         {
@@ -210153,7 +210165,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4955b160356c14d4d407d65357e3d708a201e47ac319b1690d4234e432075c71"
+          "targetSha256": "0e75faf1e1145f417a0e7312180a22ff63b6719b68fc5f3d59e7142a2396a180"
         },
         {
           "directive": "import",
@@ -212058,7 +212070,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6f05c77622888b4cffe801049266c7f8bc925c7a4a275f5c1dc18b0ca0625b24"
+          "targetSha256": "e6cb563977132ad66c56810268ed6a93964dc29b8f21a746579b8282c3794e25"
         },
         {
           "directive": "import",
@@ -214037,7 +214049,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6f05c77622888b4cffe801049266c7f8bc925c7a4a275f5c1dc18b0ca0625b24"
+          "targetSha256": "e6cb563977132ad66c56810268ed6a93964dc29b8f21a746579b8282c3794e25"
         },
         {
           "directive": "import",
@@ -217727,7 +217739,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -222501,7 +222513,7 @@
           ],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -223956,7 +223968,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6f05c77622888b4cffe801049266c7f8bc925c7a4a275f5c1dc18b0ca0625b24"
+          "targetSha256": "e6cb563977132ad66c56810268ed6a93964dc29b8f21a746579b8282c3794e25"
         },
         {
           "directive": "import",
@@ -225643,7 +225655,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1"
+          "targetSha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e"
         },
         {
           "directive": "import",
@@ -250064,8 +250076,8 @@
     },
     {
       "source": "lib/core/network/api_client.dart",
-      "sha256": "a798a9cc584cf3050665dbac36c2ae17d097f40a351140e3ca55f1f9da4e22a1",
-      "lineCount": 761
+      "sha256": "bfb20be4d7c8d998f4cc7f8f44f851352e76d9383275bdef562d523a0692f54e",
+      "lineCount": 769
     },
     {
       "source": "lib/core/network/api_endpoints.dart",
@@ -250169,8 +250181,8 @@
     },
     {
       "source": "lib/core/router/business_window_host.dart",
-      "sha256": "a2a304bdbeb5da9c8131f0195521c6157946e59d19b1a53fd82e33ac333a0822",
-      "lineCount": 444
+      "sha256": "6f70afe9ef091b9e327b48fdec40ae23026a1d751259b94d3fa31d74f814ad98",
+      "lineCount": 456
     },
     {
       "source": "lib/core/router/editor_resource_key.dart",
@@ -251099,8 +251111,8 @@
     },
     {
       "source": "lib/features/basic_data/widgets/bom_component_quantity_field.dart",
-      "sha256": "71825069efdef44346bd5a4471481d1836cc2f44d282cc9dec103eb9e344d8da",
-      "lineCount": 94
+      "sha256": "c37a707fe06ea0ee74a666fd53569133f74bae54d843a35bbbe3bfaf601d0a3e",
+      "lineCount": 105
     },
     {
       "source": "lib/features/basic_data/widgets/category_deletion_safety.dart",
@@ -251154,7 +251166,7 @@
     },
     {
       "source": "lib/features/basic_data/widgets/goods_bom_batch_maintenance_dialog.dart",
-      "sha256": "523ca071f6e66dde5681028aa1d933c4f8bab47384624a67b889e567d8f90862",
+      "sha256": "f843806418158d789e9d63c199239fa6cc773ae78533effadd57ad11e0281c77",
       "lineCount": 602
     },
     {
@@ -251909,8 +251921,8 @@
     },
     {
       "source": "lib/features/finance/pages/finance_doc_list_page.dart",
-      "sha256": "2f5806368c36880de2307e02adf6864536810f482c35ea79a933b65c03efa401",
-      "lineCount": 862
+      "sha256": "d4675a07688fc9e1c9dc87fe046958c79e5abca6e707e900514daccf2f872dfb",
+      "lineCount": 860
     },
     {
       "source": "lib/features/finance/pages/finance_hub_page.dart",
@@ -252309,13 +252321,13 @@
     },
     {
       "source": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
-      "sha256": "321d2f54a55d32c1ee09d80869b0043089e3177402e11b808b3aa40623f61ce2",
-      "lineCount": 1922
+      "sha256": "0f3b6e62509ea3bccfa728ddbea7b92918d16205266f2123196cc8c1483987ea",
+      "lineCount": 1941
     },
     {
       "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
-      "sha256": "400a9e1226f85e31dbe672d39b1de88fd162395f84d0c6579a2507103d804101",
-      "lineCount": 127
+      "sha256": "fb990bfe96b801d6dccee58620fea1721b92c090e8561f2b9d77dd5638ef97c4",
+      "lineCount": 159
     },
     {
       "source": "lib/features/payroll/models/payroll_batch.dart",
@@ -252689,7 +252701,7 @@
     },
     {
       "source": "lib/features/production/pages/production_daily_report_list_page.dart",
-      "sha256": "752d864eeffaf5bba38c9a007612bbf493e1d9f1406c4f29194824b6122d9905",
+      "sha256": "5c72e2c6bd1fdaa5abcc466c23aa1402e9883f8a275ae848d636b8c85ade834c",
       "lineCount": 489
     },
     {
@@ -252749,7 +252761,7 @@
     },
     {
       "source": "lib/features/production/pages/production_plan_list_page.dart",
-      "sha256": "271e2852a25af443ed5eccaf1e18e7f6a983316efd2f790c9a488b16758f2bfe",
+      "sha256": "44bb6bd56d1e5f52518a0a61c45bbecb4e202581328de0ac4345fc23e686ed7d",
       "lineCount": 689
     },
     {
@@ -252759,7 +252771,7 @@
     },
     {
       "source": "lib/features/production/pages/production_report_page.dart",
-      "sha256": "598b9abb0eb13792298a73c326ab499c9599bdf1f94acd194892c2f12798fccd",
+      "sha256": "1bfc5eaa69a57c3ec8085d9efb6ec81b30491f61d3f597b89da0965c6ded6f9a",
       "lineCount": 675
     },
     {
@@ -253179,7 +253191,7 @@
     },
     {
       "source": "lib/features/purchase/pages/purchase_doc_list_page.dart",
-      "sha256": "e92b39482bca813d2e125bdd7abdefc23efd76d460e7217971f662396388fd19",
+      "sha256": "55b9e1b1198ec861cbfe2b22d9b6dc84f56a18c0d14dd13b3e2ab5817f8e4734",
       "lineCount": 1093
     },
     {
@@ -253484,7 +253496,7 @@
     },
     {
       "source": "lib/features/sales/pages/sales_doc_list_page.dart",
-      "sha256": "b3b3964a8e5e49a8f2d6f9a26684c78bacc6f740e0427fae3e3d82c343697d6f",
+      "sha256": "16f33f816d8353691339423c186262b184bcf1383446f7b80e838a0a69283933",
       "lineCount": 1604
     },
     {
@@ -253764,13 +253776,13 @@
     },
     {
       "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
-      "sha256": "b58dffcb12b766e04c654238e683775069a6f465d72d69fd72b00aa692bd3596",
+      "sha256": "d4243b84f35df8501d90400952891db56a37d17264090b9dc7302018622d576c",
       "lineCount": 1432
     },
     {
       "source": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
-      "sha256": "ec7dd08885c2a1882eccd9a94cfde289c5ee814aa6484de737b837d66e215067",
-      "lineCount": 3050
+      "sha256": "b25b15d2d811ac041daaec52693f71fbfa27859497df4dff17aae1da55333890",
+      "lineCount": 3071
     },
     {
       "source": "lib/features/subcontract/pages/subcontract_doc_detail_page.dart",
@@ -254319,7 +254331,7 @@
     },
     {
       "source": "lib/features/warehouse/pages/stock_doc_list_page.dart",
-      "sha256": "a7241ecb87c5351ba4228cecd84635f56ac9f3159e61cc3c2cc139832e90d335",
+      "sha256": "d030c52d5c4b523aaa39cf6dbbad5cf5930fe5b229197dc541466a85ca326905",
       "lineCount": 815
     },
     {
@@ -255394,8 +255406,8 @@
     },
     {
       "source": "lib/shared/providers/document_status_counts_provider.dart",
-      "sha256": "4955b160356c14d4d407d65357e3d708a201e47ac319b1690d4234e432075c71",
-      "lineCount": 209
+      "sha256": "0e75faf1e1145f417a0e7312180a22ff63b6719b68fc5f3d59e7142a2396a180",
+      "lineCount": 284
     },
     {
       "source": "lib/shared/providers/draft_counts_provider.dart",
@@ -255564,8 +255576,8 @@
     },
     {
       "source": "lib/shared/warehouse/warehouse_task_badges.dart",
-      "sha256": "6f05c77622888b4cffe801049266c7f8bc925c7a4a275f5c1dc18b0ca0625b24",
-      "lineCount": 119
+      "sha256": "e6cb563977132ad66c56810268ed6a93964dc29b8f21a746579b8282c3794e25",
+      "lineCount": 145
     },
     {
       "source": "lib/shared/warehouse/warehouse_task_scope.dart",

@@ -41,6 +41,28 @@ void main() {
   for (final subcontract in [false, true]) {
     final name = subcontract ? 'subcontract' : 'purchase';
     testWidgets(
+      '$name overview counts appear while first category rows remain pending',
+      (tester) async {
+        final gateway = _IndependentOverviewGateway(subcontract);
+        await _mount(tester, gateway, subcontract);
+        await tester.pump();
+        await _select(tester, '进行中');
+        for (var frame = 0; frame < 4; frame++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        expect(gateway.overviewReads, 2);
+        expect(gateway.rows.isCompleted, isFalse);
+        expect(_progressCounts(tester), (2, null));
+        gateway.initial.complete(_page(subcontract, 9, null));
+        await tester.pump();
+        expect(_progressCounts(tester), (2, null));
+        gateway.rows.complete(_page(subcontract, 3, 'IN_PROGRESS'));
+        await tester.pumpAndSettle();
+        expect(_progressCounts(tester), (3, null));
+        expect(tester.takeException(), isNull);
+      },
+    );
+    testWidgets(
       '$name keeps returned category counts across empty drafts and pending rows',
       (tester) async {
         final gateway = _Gateway();
@@ -445,6 +467,23 @@ class _Gateway implements OperationsWorkbenchGateway {
           )
         : gates.removeFirst().future;
   }
+}
+
+class _IndependentOverviewGateway extends _Gateway
+    implements OperationsWorkbenchOverviewGateway {
+  _IndependentOverviewGateway(this.subcontract) {
+    gates.add(rows);
+  }
+  final bool subcontract;
+  final initial = Completer<OperationsWorkbenchData>();
+  final rows = Completer<OperationsWorkbenchData>();
+  int overviewReads = 0;
+  @override
+  Future<OperationsWorkbenchData> loadOverview({
+    required OperationsWorkbenchDepartment department,
+    String? keyword,
+  }) async =>
+      ++overviewReads == 1 ? initial.future : _page(subcontract, 2, null);
 }
 
 class _Snapshots extends SessionSnapshotNotifier {

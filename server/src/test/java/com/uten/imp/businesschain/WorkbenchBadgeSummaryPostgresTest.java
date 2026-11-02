@@ -692,7 +692,7 @@ class WorkbenchBadgeSummaryPostgresTest {
     }
 
     private Map<String, Long> endpointFacts(String source, String endpoint, Authentication actor) throws Exception {
-        var response = http.perform(get(endpoint).with(authentication(actor))).andReturn().getResponse();
+        var response = measuredCategoryGet(endpoint, actor);
         if (response.getStatus() == 403 || response.getStatus() == 401) return null;
         assertThat(response.getStatus()).as("原端点 %s", endpoint).isEqualTo(200);
         JsonNode body = json.readTree(response.getContentAsByteArray());
@@ -784,9 +784,23 @@ class WorkbenchBadgeSummaryPostgresTest {
     }
 
     private JsonNode getJson(String path, Authentication actor) throws Exception {
-        var response = http.perform(get(path).with(authentication(actor))).andReturn().getResponse();
+        var response = measuredCategoryGet(path, actor);
         assertThat(response.getStatus()).as("GET %s", path).isEqualTo(200);
         return json.readTree(response.getContentAsByteArray());
+    }
+
+    /** Opt-in timings of the real security/controller/query/JSON path on this
+     * test's private migrated PostgreSQL fixture. No actor, query values, body
+     * or credentials are logged; MockMvc excludes WAN/TLS/browser costs. */
+    private org.springframework.mock.web.MockHttpServletResponse measuredCategoryGet(
+            String path, Authentication actor) throws Exception {
+        long started = System.nanoTime();
+        var response = http.perform(get(path).with(authentication(actor))).andReturn().getResponse();
+        if ("true".equalsIgnoreCase(System.getenv("UTEN_MEASURE_CATEGORY_READS"))) {
+            System.out.printf(Locale.ROOT, "CATEGORY_READ_TIMING path=%s status=%d elapsedMs=%.3f%n",
+                    path.split("\\?", 2)[0], response.getStatus(), (System.nanoTime() - started) / 1_000_000d);
+        }
+        return response;
     }
 
     private Authentication auth(UUID userId) {

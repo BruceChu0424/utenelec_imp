@@ -53,6 +53,8 @@ namespace Uten.Legacy.Tests
                 if (args.Length != 0) throw new ArgumentException("Unknown native test group.");
                 var checks = typeof(SessionCoordinator).Assembly.GetTypes().Single(type => type.Name == "CoreContractChecks");
                 checks.GetMethod("Run", BindingFlags.Public | BindingFlags.Static).Invoke(null, null);
+                typeof(SessionCoordinator).Assembly.GetTypes().Single(type => type.Name == "PageReadPriorityChecks")
+                    .GetMethod("Run", BindingFlags.Public | BindingFlags.Static).Invoke(null, null);
                 Console.WriteLine("PASS native Core contracts");
                 int goods = GoodsReadContractChecks.Run();
                 int downloads = DownloadsContractChecks.Run();

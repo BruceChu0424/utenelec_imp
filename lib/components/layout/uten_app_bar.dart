@@ -19,6 +19,7 @@ import '../buttons/uten_back_button.dart';
 import '../buttons/uten_close_button.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 import 'uten_adaptive_panel.dart';
+import 'uten_anchored_popup.dart';
 import 'uten_app_bar_action_scope.dart';
 import 'uten_app_bar_action_feedback.dart';
 import 'uten_app_bar_action_row.dart';
@@ -104,6 +105,7 @@ class UtenAppBar extends StatefulWidget implements PreferredSizeWidget {
 }
 
 class _UtenAppBarState extends State<UtenAppBar> {
+  final _moreAnchorKey = GlobalKey();
   final _navigation = PageNavigationSession();
   int _actionRevision = 0;
   _AppBarActionPanel? _actionPanel;
@@ -392,12 +394,15 @@ class _UtenAppBarState extends State<UtenAppBar> {
         );
         final compactAction = UtenAppBarActionPresentation(
           child: compactWindow
-              ? IconButton(
-                  key: const Key('uten-app-bar-more-actions'),
-                  tooltip: '更多操作',
-                  icon: const Icon(Icons.more_horiz_rounded, size: 20),
-                  onPressed: () =>
-                      _showActions(context, presentedActions, revision),
+              ? KeyedSubtree(
+                  key: _moreAnchorKey,
+                  child: IconButton(
+                    key: const Key('uten-app-bar-more-actions'),
+                    tooltip: '更多操作',
+                    icon: const Icon(Icons.more_horiz_rounded, size: 20),
+                    onPressed: () =>
+                        _showActions(context, presentedActions, revision),
+                  ),
                 )
               : UtenAppBarActionButton(
                   key: const Key('uten-app-bar-more-actions'),
@@ -600,21 +605,23 @@ class _UtenAppBarState extends State<UtenAppBar> {
       return source;
     }
 
-    return showUtenAdaptivePanel<void>(
-      context: context,
-      compactHeightFactor: 0.5,
-      // 溢出操作是菜单不是内容面板，保持紧凑宽（不随 browse 档放大）。
-      widthFraction: UtenPanelWidth.none,
-      builder: (panelContext) {
-        panel.route = ModalRoute.of<void>(panelContext);
-        return ValueListenableBuilder<_AppBarActionPresentation>(
-          valueListenable: panel.presentation,
-          builder: (_, presentation, _) => UtenAppBarActionScope(
+    final compactMenu = UtenCompactPresentation.of(context);
+    Widget content(BuildContext panelContext) {
+      panel.route = ModalRoute.of<void>(panelContext);
+      return ValueListenableBuilder<_AppBarActionPresentation>(
+        valueListenable: panel.presentation,
+        builder: (_, presentation, _) {
+          final controls = [
+            for (final action in presentation.actions)
+              present(action, panelContext, presentation.revision),
+          ];
+          return UtenAppBarActionScope(
             actionContext: this.context,
             navigation: _navigation,
             claimAction: () => claim(presentation.revision),
             dismiss: dismiss,
             child: Column(
+              mainAxisSize: compactMenu ? MainAxisSize.min : MainAxisSize.max,
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
@@ -635,31 +642,49 @@ class _UtenAppBarState extends State<UtenAppBar> {
                     ],
                   ),
                 ),
-                Expanded(
+                Flexible(
+                  fit: compactMenu ? FlexFit.loose : FlexFit.tight,
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
+                    padding: EdgeInsets.all(compactMenu ? 8 : 16),
                     child: UtenAppBarActionPresentation(
-                      child: Wrap(
-                        spacing: UtenSpacing.s4,
-                        runSpacing: 12,
-                        children: [
-                          for (final action in presentation.actions)
-                            present(
-                              action,
-                              panelContext,
-                              presentation.revision,
-                            ),
-                        ],
+                      child: UtenMenuActionPresentation(
+                        enabled: compactMenu,
+                        child: compactMenu
+                            ? Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: controls,
+                              )
+                            : Wrap(
+                                spacing: UtenSpacing.s4,
+                                runSpacing: 12,
+                                children: controls,
+                              ),
                       ),
                     ),
                   ),
                 ),
               ],
             ),
-          ),
-        );
-      },
-    ).whenComplete(() {
+          );
+        },
+      );
+    }
+
+    final anchorContext = _moreAnchorKey.currentContext;
+    final opened = compactMenu && anchorContext != null
+        ? showUtenAnchoredMenu<void>(
+            context: context,
+            anchorContext: anchorContext,
+            builder: content,
+          )
+        : showUtenAdaptivePanel<void>(
+            context: context,
+            compactHeightFactor: 0.5,
+            widthFraction: UtenPanelWidth.none,
+            builder: content,
+          );
+    return opened.whenComplete(() {
       if (identical(_actionPanel, panel)) _actionPanel = null;
       panel.presentation.dispose();
     });

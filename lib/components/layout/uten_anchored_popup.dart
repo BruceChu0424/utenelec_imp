@@ -6,6 +6,62 @@ import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/capsule_nav_metrics.dart';
 import '../feedback/uten_overlay_lifecycle.dart';
 import '../inputs/uten_dropdown_scroll_scope.dart';
+import '../feedback/uten_motion.dart';
+
+/// A modal action menu retains the caller's existing route/claim lifecycle.
+/// Its shell shares the compact popup's intrinsic sizing and edge placement.
+Future<T?> showUtenAnchoredMenu<T>({
+  required BuildContext context,
+  required BuildContext anchorContext,
+  required WidgetBuilder builder,
+}) {
+  final overlay = Overlay.of(context, rootOverlay: true);
+  final anchorBox = anchorContext.findRenderObject()! as RenderBox;
+  final overlayBox = overlay.context.findRenderObject()! as RenderBox;
+  final anchor = MatrixUtils.transformRect(
+    anchorBox.getTransformTo(overlayBox),
+    Offset.zero & anchorBox.size,
+  );
+  return showGeneralDialog<T>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: Colors.transparent,
+    transitionDuration: utenMotionDurationOf(
+      context,
+      const Duration(milliseconds: 120),
+    ),
+    pageBuilder: (context, _, _) {
+      final media = MediaQuery.of(context);
+      final bounds = Rect.fromLTRB(
+        12 + media.padding.left,
+        12 + media.padding.top,
+        media.size.width - 12 - media.padding.right,
+        media.size.height -
+            12 -
+            math.max(media.viewInsets.bottom, media.padding.bottom),
+      );
+      return CustomSingleChildLayout(
+        delegate: _PopupLayout(anchor, bounds, null, 540),
+        child: IntrinsicWidth(
+          child: Material(
+            key: const ValueKey('uten-anchored-popup'),
+            color: Theme.of(context).colorScheme.surface,
+            elevation: 8,
+            shape: RoundedRectangleBorder(
+              borderRadius: UtenRadius.controlAll,
+              side: BorderSide(
+                color: Theme.of(context).colorScheme.outlineVariant,
+              ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: builder(context),
+          ),
+        ),
+      );
+    },
+  );
+}
 
 class UtenPopupController {
   _UtenAnchoredPopupState? _owner;
@@ -25,14 +81,16 @@ class UtenAnchoredPopup extends StatefulWidget {
     required this.child,
     required this.popupBuilder,
     this.onChanged,
-    this.width = 280,
+    this.width,
     this.maxHeight = 420,
   });
   final UtenPopupController controller;
   final Widget child;
   final WidgetBuilder popupBuilder;
   final ValueChanged<bool>? onChanged;
-  final double width;
+
+  /// Null sizes action menus to their content. Search can request a field width.
+  final double? width;
   final double maxHeight;
   @override
   State<UtenAnchoredPopup> createState() => _UtenAnchoredPopupState();
@@ -143,32 +201,36 @@ class _UtenAnchoredPopupState extends State<UtenAnchoredPopup> {
                     widget.width,
                     widget.maxHeight,
                   ),
-                  child: FocusScope(
-                    autofocus: true,
-                    child: Focus(
-                      onKeyEvent: (_, event) {
-                        if (event is KeyDownEvent &&
-                            event.logicalKey == LogicalKeyboardKey.escape) {
-                          widget.controller.close();
-                          return KeyEventResult.handled;
-                        }
-                        return KeyEventResult.ignored;
-                      },
-                      child: Material(
-                        key: const ValueKey('uten-anchored-popup'),
-                        color: Theme.of(context).colorScheme.surface,
-                        elevation: 8,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: UtenRadius.controlAll,
-                          side: BorderSide(
-                            color: Theme.of(context).colorScheme.outlineVariant,
+                  child: IntrinsicWidth(
+                    child: FocusScope(
+                      autofocus: true,
+                      child: Focus(
+                        onKeyEvent: (_, event) {
+                          if (event is KeyDownEvent &&
+                              event.logicalKey == LogicalKeyboardKey.escape) {
+                            widget.controller.close();
+                            return KeyEventResult.handled;
+                          }
+                          return KeyEventResult.ignored;
+                        },
+                        child: Material(
+                          key: const ValueKey('uten-anchored-popup'),
+                          color: Theme.of(context).colorScheme.surface,
+                          elevation: 8,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: UtenRadius.controlAll,
+                            side: BorderSide(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.outlineVariant,
+                            ),
                           ),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: UtenDropdownScrollScope(
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: widget.popupBuilder(context),
+                          clipBehavior: Clip.antiAlias,
+                          child: UtenDropdownScrollScope(
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: widget.popupBuilder(context),
+                            ),
                           ),
                         ),
                       ),
@@ -186,7 +248,7 @@ class _PopupLayout extends SingleChildLayoutDelegate {
   _PopupLayout(this.anchor, this.bounds, this.width, this.maxHeight);
   final Rect anchor;
   final Rect bounds;
-  final double width;
+  final double? width;
   final double maxHeight;
   @override
   BoxConstraints getConstraintsForChild(BoxConstraints constraints) {
@@ -194,9 +256,9 @@ class _PopupLayout extends SingleChildLayoutDelegate {
       bounds.bottom - anchor.bottom - 6,
       anchor.top - bounds.top - 6,
     );
-    final w = math.min(width, math.max(0.0, bounds.width));
+    final w = math.min(width ?? 320, math.max(0.0, bounds.width));
     return BoxConstraints(
-      minWidth: w,
+      minWidth: width == null ? math.min(144, w) : w,
       maxWidth: w,
       maxHeight: math.min(maxHeight, math.max(0.0, available)),
     );

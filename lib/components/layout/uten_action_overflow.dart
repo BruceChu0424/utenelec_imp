@@ -79,10 +79,13 @@ class UtenResponsiveActionWrap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actions = children.where(UtenActionOverflow.isAction).toList();
-    final collapse = UtenCompactPresentation.of(context) && actions.length > 2;
-    return Wrap(
-      spacing: spacing,
-      runSpacing: runSpacing,
+    final compact = UtenCompactPresentation.of(context);
+    final collapse = compact && actions.length > 2;
+    final row = Wrap(
+      spacing: compact && spacing > UtenSpacing.s4 ? UtenSpacing.s4 : spacing,
+      runSpacing: compact && runSpacing > UtenSpacing.s4
+          ? UtenSpacing.s4
+          : runSpacing,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: collapse
           ? [
@@ -95,21 +98,28 @@ class UtenResponsiveActionWrap extends StatelessWidget {
             ]
           : children,
     );
+    return compact
+        ? Align(alignment: AlignmentDirectional.centerStart, child: row)
+        : row;
   }
 }
 
 class _UtenActionOverflowState extends State<UtenActionOverflow> {
   final _controller = UtenPopupController();
   final _actionsKey = GlobalKey();
+  final _actionKeys = <GlobalKey>[];
   bool _open = false;
   bool _claimed = false;
+  int _revision = 0;
+  List<Widget>? _pendingActions;
 
   @override
   void didUpdateWidget(UtenActionOverflow oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _revision++;
     // A rebuild can revoke permissions or change the selected rows. Never keep
     // an old, already-open list of actions alive across that source revision.
-    if (_open) {
+    if (_open && !_claimed) {
       _claimed = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _controller.close();
@@ -117,32 +127,63 @@ class _UtenActionOverflowState extends State<UtenActionOverflow> {
     }
   }
 
-  Widget _actions({required bool menu}) => KeyedSubtree(
-    key: _actionsKey,
-    child: UtenMenuActionPresentation(
-      enabled: menu,
-      child: UtenAppBarActionScope(
-        actionContext: context,
-        claimAction: () {
-          if (!menu) return true;
-          if (_claimed) return false;
-          _claimed = true;
-          return true;
-        },
-        dismiss: menu ? _controller.close : () {},
-        // Keep stateful import/export controls mounted until their await finishes.
-        child: Wrap(
-          spacing: UtenSpacing.s8,
-          runSpacing: UtenSpacing.s8,
-          alignment: menu ? WrapAlignment.start : WrapAlignment.end,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            for (final action in widget.children) _present(action, menu),
-          ],
+  Widget _actions({required bool menu}) {
+    final sources = _pendingActions ?? widget.children;
+    final revision = _revision;
+    while (_actionKeys.length < sources.length) {
+      _actionKeys.add(GlobalKey());
+    }
+    final actions = [
+      for (var i = 0; i < sources.length; i++)
+        KeyedSubtree(key: _actionKeys[i], child: _present(sources[i], menu)),
+    ];
+    return KeyedSubtree(
+      key: _actionsKey,
+      child: UtenMenuActionPresentation(
+        enabled: menu,
+        child: UtenAppBarActionScope(
+          actionContext: context,
+          claimAction: () {
+            if (revision != _revision) return false;
+            if (!menu) return true;
+            if (!_open || _claimed) return false;
+            _claimed = true;
+            _pendingActions = sources;
+            return true;
+          },
+          dismiss: menu
+              ? () {
+                  if (!mounted) return;
+                  setState(() {
+                    _pendingActions = null;
+                    _claimed = false;
+                  });
+                  _controller.close();
+                }
+              : () {},
+          // Keep stateful import/export controls mounted until their await finishes.
+          child: menu
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (var i = 0; i < actions.length; i++) ...[
+                      if (i > 0) const SizedBox(height: UtenSpacing.s4),
+                      actions[i],
+                    ],
+                  ],
+                )
+              : Wrap(
+                  spacing: UtenSpacing.s8,
+                  runSpacing: UtenSpacing.s8,
+                  alignment: WrapAlignment.end,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: actions,
+                ),
         ),
       ),
-    ),
-  );
+    );
+  }
 
   Widget _present(Widget source, bool menu) {
     if (!menu) return source;
@@ -165,10 +206,11 @@ class _UtenActionOverflowState extends State<UtenActionOverflow> {
       );
     }
     if (source is ButtonStyleButton) {
+      final revision = _revision;
       VoidCallback? before(VoidCallback? action) => action == null
           ? null
           : () {
-              if (_claimed) return;
+              if (!_open || _claimed || revision != _revision) return;
               _claimed = true;
               _controller.close();
               action();
@@ -184,11 +226,13 @@ class _UtenActionOverflowState extends State<UtenActionOverflow> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.children.isEmpty) return const SizedBox.shrink();
+    if (widget.children.isEmpty && _pendingActions == null) {
+      return const SizedBox.shrink();
+    }
     return UtenAnchoredPopup(
       controller: _controller,
       onChanged: (open) => setState(() {
-        _claimed = false;
+        if (_pendingActions == null) _claimed = false;
         _open = open;
       }),
       popupBuilder: (_) =>

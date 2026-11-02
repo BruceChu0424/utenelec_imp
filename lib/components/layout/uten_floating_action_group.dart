@@ -17,6 +17,7 @@ class UtenFloatingActionGroup extends StatefulWidget {
     this.maxWidth = 1080,
     this.maxHeight,
     this.onMinimumContentHeightChanged,
+    this.compactPrimaryActionKey,
   });
 
   final List<Widget> children;
@@ -31,6 +32,10 @@ class UtenFloatingActionGroup extends StatefulWidget {
   /// Excludes capsule padding and wrap spacing. A bounded host can use it to
   /// keep one complete, naturally wrapping action visible while scrolling.
   final ValueChanged<double>? onMinimumContentHeightChanged;
+
+  /// Promotes the next required action on narrow windows without changing
+  /// desktop order or the action's business callback (for example save first).
+  final Key? compactPrimaryActionKey;
 
   /// 悬浮组内控件的统一高度。
   ///
@@ -103,7 +108,15 @@ class _UtenFloatingActionGroupState extends State<UtenFloatingActionGroup> {
     final theme = Theme.of(context);
     final media = MediaQuery.of(context);
     final compact = UtenCompactPresentation.of(context);
-    final secondary = widget.children.take(widget.children.length - 1).toList();
+    final primary = compact && widget.compactPrimaryActionKey != null
+        ? widget.children
+                  .where((child) => child.key == widget.compactPrimaryActionKey)
+                  .firstOrNull ??
+              widget.children.last
+        : widget.children.last;
+    final secondary = widget.children
+        .where((child) => !identical(child, primary))
+        .toList();
     final menuActions = secondary.where(UtenActionOverflow.isAction).toList();
     final children = compact && menuActions.length > 1
         ? <Widget>[
@@ -113,8 +126,10 @@ class _UtenFloatingActionGroupState extends State<UtenFloatingActionGroup> {
               forceCompact: media.size.width < 600,
               children: menuActions,
             ),
-            widget.children.last,
+            primary,
           ]
+        : compact
+        ? [...secondary, primary]
         : widget.children;
     final availableWidth = (media.size.width - UtenSpacing.s32)
         .clamp(0.0, widget.maxWidth)

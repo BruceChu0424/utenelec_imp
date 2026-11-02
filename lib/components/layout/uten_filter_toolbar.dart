@@ -314,6 +314,31 @@ class _UtenFilterToolbarState<T> extends State<UtenFilterToolbar<T>> {
         : null;
     return LayoutBuilder(
       builder: (context, constraints) {
+        if (widget.searchCompactIcon &&
+            UtenCompactPresentation.iconSearchOf(context)) {
+          final reserved = search == null
+              ? 0.0
+              : UtenControlMetrics.minimumHitExtent(context) + UtenSpacing.s4;
+          return Wrap(
+            spacing: UtenSpacing.s4,
+            runSpacing: UtenSpacing.s4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (button != null)
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: (constraints.maxWidth - reserved).clamp(
+                      0,
+                      constraints.maxWidth,
+                    ),
+                  ),
+                  child: button,
+                ),
+              ?search,
+              ?widget.trailing,
+            ],
+          );
+        }
         if (constraints.maxWidth < widget.compactBreakpoint) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/layout/uten_action_overflow.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
@@ -32,6 +33,154 @@ Widget _app(Widget child) => ProviderScope(
 );
 
 void main() {
+  testWidgets(
+    'compact selected summary shrinks its paint and retains clear target',
+    (tester) async {
+      _window(tester, const Size(390, 850));
+      var clears = 0;
+      await tester.pumpWidget(
+        _app(
+          Center(
+            child: UtenSelectionSummaryPill(count: 3, onClear: () => clears++),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final pill = find.byType(UtenSelectionSummaryPill);
+      final material = find
+          .descendant(of: pill, matching: find.byType(Material))
+          .first;
+      expect(tester.getRect(material).height, 36);
+      expect(tester.getSize(pill).width, lessThan(120));
+      expect(tester.getSize(pill).height, greaterThanOrEqualTo(48));
+      await tester.tapAt(tester.getRect(pill).topLeft + const Offset(1, 1));
+      expect(clears, 1);
+      tester.view.physicalSize = const Size(1280, 850);
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(of: pill, matching: find.byType(UtenButton)),
+        findsNothing,
+      );
+      expect(tester.getSize(pill).height, greaterThanOrEqualTo(40));
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'dirty compact review promotes save while desktop keeps its order',
+    (tester) async {
+      _window(tester, const Size(390, 850));
+      await tester.pumpWidget(
+        _app(
+          Align(
+            alignment: Alignment.bottomRight,
+            child: UtenFloatingActionGroup(
+              compactPrimaryActionKey: const Key('save-changes'),
+              children: [
+                UtenButton(
+                  key: const Key('save-changes'),
+                  onPressed: () {},
+                  child: const Text('保存修改'),
+                ),
+                UtenButton(onPressed: () {}, child: const Text('确认报价')),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester.getCenter(find.text('保存修改')).dx,
+        greaterThan(tester.getCenter(find.text('确认报价')).dx),
+      );
+      tester.view.physicalSize = const Size(1280, 850);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getCenter(find.text('保存修改')).dx,
+        lessThan(tester.getCenter(find.text('确认报价')).dx),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets('compact menu fits its labels and grows only when required', (
+    tester,
+  ) async {
+    _window(tester, const Size(390, 850));
+    final widths = <double>[];
+    for (final label in ['下载', '下载当前筛选后的完整货品明细']) {
+      await tester.pumpWidget(
+        _app(
+          Align(
+            alignment: Alignment.topRight,
+            child: UtenActionOverflow(
+              forceCompact: true,
+              children: [UtenButton(onPressed: () {}, child: Text(label))],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('更多操作'));
+      await tester.pumpAndSettle();
+      final rect = tester.getRect(
+        find.byKey(const ValueKey('uten-anchored-popup')),
+      );
+      widths.add(rect.width);
+      expect(rect.left, greaterThanOrEqualTo(12));
+      expect(rect.right, lessThanOrEqualTo(378));
+      expect(rect.height, lessThan(120));
+      expect(
+        tester.getRect(find.text(label)).left,
+        inInclusiveRange(rect.left + 12, rect.left + 32),
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+    }
+    expect(widths.first, lessThan(widths.last));
+    expect(widths.first, lessThan(200));
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('claimed menu action remains mounted across a parent revision', (
+    tester,
+  ) async {
+    _window(tester, const Size(390, 850));
+    final present = ValueNotifier(true);
+    final pending = Completer<void>();
+    var completed = false;
+    await tester.pumpWidget(
+      _app(
+        ValueListenableBuilder<bool>(
+          valueListenable: present,
+          builder: (_, visible, _) => Align(
+            alignment: Alignment.topRight,
+            child: UtenActionOverflow(
+              forceCompact: true,
+              children: [
+                if (visible)
+                  _DeferredMenuAction(
+                    pending: pending,
+                    completed: () => completed = true,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('更多操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('异步导出'));
+    await tester.pump();
+    present.value = false;
+    await tester.pumpAndSettle();
+    expect(find.text('异步导出'), findsOneWidget);
+    pending.complete();
+    await tester.pumpAndSettle();
+    expect(completed, isTrue);
+    expect(find.text('异步导出'), findsNothing);
+    expect(tester.takeException(), isNull);
+    present.dispose();
+  });
   testWidgets('auxiliary icon presentation keeps names and desktop wording', (
     tester,
   ) async {
@@ -251,6 +400,19 @@ void main() {
       await tester.pumpWidget(table(false));
       await tester.pumpAndSettle();
       final state = search.currentState;
+      final settings = tester.getRect(find.byTooltip('表头设置 1/1'));
+      final fullscreen = tester.getRect(
+        find.byKey(const ValueKey('master-table-fullscreen-toggle')),
+      );
+      expect(
+        fullscreen.left - settings.right,
+        closeTo(4, .01),
+        reason: 'compact toolbar actions form one left-aligned cluster',
+      );
+      expect(
+        tester.getRect(find.byTooltip('搜索货品')).left - fullscreen.right,
+        closeTo(4, .01),
+      );
       await tester.tap(find.byTooltip('搜索货品'));
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextField), '搜索原文');
@@ -351,5 +513,25 @@ void main() {
       );
       expect(tester.takeException(), isNull);
     },
+  );
+}
+
+class _DeferredMenuAction extends StatefulWidget {
+  const _DeferredMenuAction({required this.pending, required this.completed});
+  final Completer<void> pending;
+  final VoidCallback completed;
+  @override
+  State<_DeferredMenuAction> createState() => _DeferredMenuActionState();
+}
+
+class _DeferredMenuActionState extends State<_DeferredMenuAction> {
+  @override
+  Widget build(BuildContext context) => UtenButton(
+    onPressed: () async {
+      await widget.pending.future;
+      if (!mounted) throw StateError('pending menu action was disposed');
+      widget.completed();
+    },
+    child: const Text('异步导出'),
   );
 }

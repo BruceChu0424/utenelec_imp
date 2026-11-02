@@ -186,6 +186,7 @@ class UtenAppBarNativeActionButton extends ButtonStyleButton {
     return source
         .defaultStyleOf(context)
         .copyWith(
+          alignment: header.alignment,
           backgroundColor: header.backgroundColor,
           foregroundColor: header.foregroundColor,
           elevation: header.elevation,

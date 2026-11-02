@@ -311,7 +311,6 @@ class UtenButton extends StatelessWidget {
                         child: inMenu
                             ? Align(
                                 alignment: AlignmentDirectional.centerStart,
-                                widthFactor: 1,
                                 heightFactor: 1,
                                 child: label,
                               )
@@ -325,7 +324,7 @@ class UtenButton extends StatelessWidget {
           ),
         ),
       );
-      if (isExpanded || inMenu) {
+      if (isExpanded && !inMenu) {
         compactButton = SizedBox(width: double.infinity, child: compactButton);
       }
       if ((iconOnly || abbreviated) && description != null) {
@@ -423,7 +422,7 @@ class UtenButton extends StatelessWidget {
       ),
     );
 
-    if (isExpanded || inMenu) {
+    if (isExpanded && !inMenu) {
       button = SizedBox(width: double.infinity, child: button);
     }
     return button;

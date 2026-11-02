@@ -99,13 +99,33 @@ class CompanyUpgradePreservationTest(unittest.TestCase):
 
     def test_windows_storage_identity_is_stable_across_company_branding(self):
         resource = source("windows/runner/Runner.rc")
-        values = dict(re.findall(r'VALUE\s+"(CompanyName|ProductName)"\s*,\s*"([^"]+)"', resource))
         # The installed path_provider and secure_storage plugins both derive
         # their directory from these VERSIONINFO values. They are technical
-        # storage identity, not the company's runtime display name.
-        self.assertEqual(values, {"CompanyName": "Uten", "ProductName": "优腾综合管理平台"})
+        # storage identity, not the company's runtime display name. ProductName
+        # now comes from the build-owned generated profile, not an RC literal.
+        self.assertEqual(re.findall(r'VALUE\s+"CompanyName"\s*,\s*"([^"]+)"', resource), ["Uten"])
+        self.assertEqual(re.findall(r'VALUE\s+"ProductName"\s*,\s*([^\r\n]+)', resource),
+                         ['UTEN_NATIVE_PRODUCT_NAME "\\0"'])
+        default = source("windows/runner/client_runtime_profile.default.g.h")
+        macros = dict(re.findall(r'^#define\s+(UTEN_\w+)\s+"([^"\r\n]+)"$', default, re.MULTILINE))
+        self.assertEqual(macros["UTEN_NATIVE_PRODUCT_NAME"], "优腾综合管理平台")
+        self.assertEqual(macros["UTEN_BUILD_PROFILE"], "formal")
+        self.assertIn("#define UTEN_LOCAL_TEST_BUILD 0", default)
+        # LocalTest's English table must not change the historical formal
+        # language/codepage and therefore the existing directory fallback.
+        self.assertRegex(resource, r'#if UTEN_LOCAL_TEST_BUILD\s*(?://[^\n]*\n\s*)*'
+                                  r'BLOCK "040904b0"\s*#else\s*BLOCK "080404b0"\s*#endif')
+        self.assertRegex(resource, r'#if UTEN_LOCAL_TEST_BUILD\s*VALUE "Translation", 0x409, 1200\s*'
+                                  r'#else\s*VALUE "Translation", 0x804, 1200\s*#endif')
+        native_identity = source("windows/runner/client_runtime_identity.h")
+        self.assertIn('#include "client_runtime_profile.g.h"', native_identity)
+        self.assertIn('#include "client_runtime_profile.default.g.h"', native_identity)
+        runner = source("windows/runner/CMakeLists.txt")
+        self.assertIn('"${CMAKE_SOURCE_DIR}/../tool/generate_native_runtime_profile.dart"', runner)
+        self.assertIn('"UTEN_GENERATED_RUNTIME_PROFILE=1"', runner)
         self.assertIn('set(BINARY_NAME "uten_imp")', source("windows/CMakeLists.txt"))
-        for relative in ("windows/runner/Runner.rc", "windows/CMakeLists.txt"):
+        for relative in ("windows/runner/Runner.rc", "windows/CMakeLists.txt",
+                         "lib/core/runtime/client_runtime_profile.dart", "tool/generate_native_runtime_profile.dart"):
             self.assertNotIn("platform_branding", source(relative))
             self.assertNotIn("companyAliases", source(relative))
 

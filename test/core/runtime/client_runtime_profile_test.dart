@@ -13,6 +13,16 @@ void main() {
   const formal = ClientRuntimeProfile.current;
   const channel = MethodChannel('runtime-profile-test');
 
+  test('standalone native formal identity matches the canonical generator', () {
+    final checkedHeader = File(
+      'windows/runner/client_runtime_profile.default.g.h',
+    ).readAsStringSync().replaceAll('\r\n', '\n');
+    expect(
+      checkedHeader,
+      const ClientRuntimeProfile(localTest: false).toNativeHeader(),
+    );
+  });
+
   test('LocalTest requires one explicit loopback API and no control plane', () {
     const api = 'http://127.0.0.1:18081/api';
     local.validateConfiguration(local: api, cloud: api, controlPlane: '');

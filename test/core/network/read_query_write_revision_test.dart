@@ -94,6 +94,8 @@ void main() {
           '$prefix/sales/orders/shippable-lines/selection',
           '$prefix/master/clients/search-context',
           '$prefix/master/suppliers/search-context',
+          '$prefix/business-references/clients/search-context',
+          '$prefix/business-references/suppliers/search-context',
           for (final module in ['purchase', 'subcontract']) ...[
             '$prefix/$module/orders/print-authorization',
             '$prefix/operations/workbench/$module/export',
@@ -133,6 +135,9 @@ void main() {
         '/operations/workbench/warehouse/export',
         '/operations/workbench/subcontract/export/confirm',
         '/subcontract/orders/approve',
+        '/business-references/accounts/search-context',
+        '/business-references/clients/search-context/save',
+        '/other/business-references/suppliers/search-context',
       ]) {
         expect(
           isBusinessWrite(RequestOptions(method: 'POST', path: route)),

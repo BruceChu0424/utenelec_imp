@@ -1,3 +1,5 @@
+import '../../../shared/models/employee_reference.dart';
+import '../../../shared/widgets/business_employee_picker.dart';
 // 委外领料批量出库页(ADR-143 §4.3): 一次核对并审核多张委外领料单。
 //
 // 打开只读不写; 明确所选明细的任务入口一次原子出仓，未选行与预留留在原草稿。
@@ -46,8 +48,6 @@ import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
-import '../../../shared/repositories/department_repository.dart';
-import '../../employee/repositories/employee_repository.dart';
 import '../../subcontract/models/subcontract_doc.dart';
 import '../../subcontract/repositories/subcontract_repository.dart';
 import '../models/subcontract_outbound.dart';
@@ -59,7 +59,6 @@ import '../repositories/subcontract_outbound_detail_loader.dart';
 import '../navigation/warehouse_subcontract_outbound_navigation.dart';
 import '../widgets/subcontract_outbound_detail_table.dart';
 import '../models/warehouse_form_draft_codec.dart';
-import '../../employee/repositories/employee_picker_candidates.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class WarehouseSubcontractOutboundBatchPage extends ConsumerStatefulWidget {
@@ -688,9 +687,6 @@ class _WarehouseSubcontractOutboundBatchPageState
           ..clear()
           ..addAll(loaded);
       });
-      unawaited(
-        _preloadEmployees(loaded.map((draft) => draft.workerId), generation),
-      );
       await initializeFormDraft();
       if (formDraftRestorationBlocked || !formDraftIdentityIsCurrent) return;
       _applyAtomicReadbacks(atomicReadbacks);
@@ -784,43 +780,6 @@ class _WarehouseSubcontractOutboundBatchPageState
       draft.dispose();
     }
     _drafts.clear();
-  }
-
-  Future<void> _preloadEmployees(
-    Iterable<String?> workerIds,
-    int generation,
-  ) async {
-    final ids = workerIds
-        .whereType<String>()
-        .where((id) => id.isNotEmpty && !_employees.containsKey(id))
-        .toSet()
-        .toList();
-    final repo = ref.read(employeeRepositoryProvider);
-    await readOutboundInBatches(ids, (id) async {
-      try {
-        final employee = await repo.getById(id);
-        if (!mounted ||
-            generation != _loadGeneration ||
-            !formDraftIdentityIsCurrent) {
-          return;
-        }
-        setState(
-          () => _employees[id] = UtenEmployeePickerItem(
-            id: employee.id,
-            name: employee.fullName ?? '',
-            employeeCode: employee.code,
-            accountStatus: employee.accountDeleted
-                ? 'notProvisioned'
-                : employee.accountStatus ?? 'notProvisioned',
-            employmentStatus: employee.status,
-            departmentId: employee.departmentId,
-            departmentName: employee.departmentName,
-          ),
-        );
-      } catch (_) {
-        // Display lookup cannot block task review or discard the original UUID.
-      }
-    });
   }
 
   Future<void> _finishCompletedSubmission() async {
@@ -1710,11 +1669,16 @@ class _WarehouseSubcontractOutboundBatchPageState
               ),
               AbsorbPointer(
                 absorbing: !editable,
-                child: UtenEmployeePicker(
+                child: BusinessEmployeePicker(
+                  enabled: editable,
                   key: ValueKey('${draft.document.id}:${draft.workerId}'),
                   label: l10n.warehouseSubcontractOutboundWorker,
                   initial: _employees[draft.workerId],
-                  loader: _loadEmployees,
+                  purpose:
+                      EmployeeReferencePurpose.warehouseSubcontractOperator,
+                  selectedId: draft.workerId,
+                  departmentCode: 'SUB_WH',
+                  onResolved: (item) => _employees[item.id] = item,
                   onChanged: (value) => setState(() {
                     draft.workerId = value?.id;
                     if (value != null) _employees[value.id] = value;
@@ -1756,31 +1720,5 @@ class _WarehouseSubcontractOutboundBatchPageState
         ],
       ),
     );
-  }
-
-  Future<List<UtenEmployeePickerItem>> _loadEmployees(String? keyword) async {
-    final departmentId = keyword == null || keyword.isEmpty
-        ? (ref.read(departmentCodeIdMapProvider).value ?? const {})['SUB_WH']
-        : null;
-    final result = await ref
-        .read(employeeRepositoryProvider)
-        .listPickerCandidates(
-          size: 30,
-          search: keyword,
-          departmentId: departmentId,
-          includeSubtree: true,
-        );
-    return [
-      for (final employee in result)
-        UtenEmployeePickerItem(
-          id: employee.id,
-          name: employee.fullName,
-          employeeCode: employee.code,
-          accountStatus: employee.accountStatus,
-          employmentStatus: employee.status,
-          departmentId: employee.departmentId,
-          departmentName: employee.departmentName,
-        ),
-    ];
   }
 }

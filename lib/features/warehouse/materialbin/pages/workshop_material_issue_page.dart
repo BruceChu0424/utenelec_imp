@@ -1,3 +1,5 @@
+import '../../../../shared/models/employee_reference.dart';
+import '../../../../shared/widgets/business_employee_picker.dart';
 import '../../../../core/performance/json_value_snapshot.dart';
 // 仓库发料到车间内料仓 (/workshop-material/issue, ADR-131 §5.2 / §5.3)。
 //
@@ -48,7 +50,6 @@ import '../../../../shared/drafts/form_draft_mixin.dart';
 import '../../../../shared/providers/master_name_provider.dart';
 import '../../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../../shared/widgets/warehouse_selection.dart';
-import '../../../employee/repositories/employee_repository.dart';
 import '../../providers/warehouse_count_refresh.dart';
 import '../../widgets/warehouse_task_session_guard.dart';
 import '../models/workshop_material_models.dart';
@@ -56,7 +57,6 @@ import '../repositories/workshop_material_repository.dart';
 import '../widgets/workshop_material_labels.dart';
 import '../widgets/workshop_material_line_grid.dart';
 import '../widgets/workshop_material_first_use_card.dart';
-import '../../../employee/repositories/employee_picker_candidates.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class WorkshopMaterialIssuePage extends ConsumerStatefulWidget {
@@ -704,35 +704,6 @@ class _WorkshopMaterialIssuePageState
     }
   }
 
-  Future<List<UtenEmployeePickerItem>> _loadEmployees(String? keyword) async {
-    final scope = await captureWarehouseTaskScope();
-    final kw = keyword?.trim() ?? '';
-    final result = await scope.run(
-      () => ref
-          .read(employeeRepositoryProvider)
-          .listPickerCandidates(
-            size: 30,
-            search: kw.isEmpty ? null : kw,
-            // 没输入搜索词时只列本车间 (含下级) 的人; 输入后全公司搜。
-            departmentId: kw.isEmpty ? _workshopId : null,
-            includeSubtree: kw.isEmpty,
-          ),
-    );
-    scope.checkCurrent();
-    return [
-      for (final e in result)
-        UtenEmployeePickerItem(
-          id: e.id,
-          name: e.fullName,
-          employeeCode: e.code,
-          accountStatus: e.accountStatus,
-          employmentStatus: e.status,
-          departmentId: e.departmentId,
-          departmentName: e.departmentName,
-        ),
-    ];
-  }
-
   List<WmIssueLineRow> get _filledRows =>
       _grid.rows.where((r) => !r.isBlank).toList(growable: false);
 
@@ -1166,8 +1137,7 @@ class _WorkshopMaterialIssuePageState
             ),
             SizedBox(
               width: 280,
-              child: UtenEmployeePicker(
-                candidateScopeKey: ('workshop-receiver', _workshopId),
+              child: BusinessEmployeePicker(
                 key: ValueKey(
                   'wm-issue-receiver-$_workshopId-${_receiver?.id}',
                 ),
@@ -1175,9 +1145,11 @@ class _WorkshopMaterialIssuePageState
                 required: true,
                 enabled: _editable && !_saving && _workshopId != null,
                 initial: _receiver,
-                sheetTitle: '选择${l10n.wmReceiver}',
                 departmentName: _setting?.workshopName,
-                loader: _loadEmployees,
+                purpose: EmployeeReferencePurpose.workshopMaterialIssuer,
+                selectedId: _receiver?.id,
+                departmentId: _workshopId,
+                onResolved: (item) => _receiver = item,
                 onChanged: (item) => setState(() => _receiver = item),
               ),
             ),

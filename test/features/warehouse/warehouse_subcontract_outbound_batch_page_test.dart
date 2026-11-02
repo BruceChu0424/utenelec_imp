@@ -386,7 +386,7 @@ void main() {
     final employee = Completer<Map<String, dynamic>>();
     addTearDown(() {
       if (!employee.isCompleted) {
-        employee.complete({'id': 'worker-delayed', 'fullName': '延迟经办人'});
+        employee.complete(_delayedWorkerReference);
       }
     });
     final api = SubcontractOutboundFakeApi()..employeeResult = employee.future;
@@ -398,7 +398,7 @@ void main() {
     expect(employee.isCompleted, isFalse);
     expect(find.byType(SubcontractOutboundDetailTable), findsOneWidget);
     expect(api.employeeLookups, 1);
-    employee.complete({'id': 'worker-delayed', 'fullName': '延迟经办人'});
+    employee.complete(_delayedWorkerReference);
     await tester.pumpAndSettle();
     await _confirm(tester);
     expect(
@@ -963,3 +963,14 @@ Widget _app(
     ),
   );
 }
+
+const _delayedWorkerReference = <String, dynamic>{
+  'id': 'worker-delayed',
+  'fullName': '延迟经办人',
+  'code': '000044',
+  'departmentId': 'wh-dept',
+  'departmentName': '仓储部',
+  'positionName': '仓管员',
+  'status': 'active',
+  'accountStatus': 'disabled',
+};

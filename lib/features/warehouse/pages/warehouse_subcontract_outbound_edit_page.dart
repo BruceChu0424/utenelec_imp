@@ -1,3 +1,5 @@
+import '../../../shared/models/employee_reference.dart';
+import '../../../shared/widgets/business_employee_picker.dart';
 // 委外领料拣货出仓页(/warehouse/subcontract-outbound/:issueId, ADR-143 §4.3)。
 //
 // 一页 = 委外人员在委外任务中心提交、仓库还没发出的一张委外领料单(出仓单草稿):
@@ -59,8 +61,6 @@ import '../../../shared/providers/master_name_provider.dart' as mn;
 import '../../../shared/widgets/warehouse_hierarchy_dropdown.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
 import '../../../shared/providers/session_provider.dart';
-import '../../../shared/repositories/department_repository.dart';
-import '../../employee/repositories/employee_repository.dart';
 import '../../subcontract/models/subcontract_doc.dart';
 import '../../subcontract/repositories/subcontract_repository.dart';
 import '../models/subcontract_outbound.dart';
@@ -71,7 +71,6 @@ import '../repositories/warehouse_subcontract_outbound_repository.dart';
 import '../repositories/subcontract_outbound_detail_loader.dart';
 import '../navigation/warehouse_subcontract_outbound_navigation.dart';
 import '../providers/warehouse_count_refresh.dart';
-import '../../employee/repositories/employee_picker_candidates.dart';
 
 /// 批量校验提示：把同一类违规的**全部**行汇总成一句话。
 ///
@@ -424,7 +423,6 @@ class _WarehouseSubcontractOutboundEditPageState
         _loading = false;
         _requiresReload = _requestUncertain;
       });
-      unawaited(_preloadEmployees([workerId], generation));
       await initializeFormDraft();
     } on ApiException catch (error) {
       if (!mounted || !formDraftIdentityIsCurrent) return;
@@ -448,38 +446,6 @@ class _WarehouseSubcontractOutboundEditPageState
 
   static String _date(DateTime value) =>
       '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
-
-  Future<void> _preloadEmployees(Iterable<String?> ids, int generation) async {
-    final uniq = ids
-        .whereType<String>()
-        .where((id) => id.isNotEmpty && !_empCache.containsKey(id))
-        .toSet();
-    if (uniq.isEmpty) return;
-    final repo = ref.read(employeeRepositoryProvider);
-    await Future.wait(
-      uniq.map((id) async {
-        try {
-          final p = await repo.getById(id);
-          if (!mounted || generation != _loadGeneration) return;
-          setState(
-            () => _empCache[id] = UtenEmployeePickerItem(
-              id: p.id,
-              name: p.fullName ?? '',
-              employeeCode: p.code,
-              accountStatus: p.accountDeleted
-                  ? 'notProvisioned'
-                  : p.accountStatus ?? 'notProvisioned',
-              employmentStatus: p.status,
-              departmentId: p.departmentId,
-              departmentName: p.departmentName,
-            ),
-          );
-        } catch (_) {
-          // 静默：picker 的 initial 为 null 时不显示名字，不阻塞流程。
-        }
-      }),
-    );
-  }
 
   /// 保存拣货修改(只改数量/重量/备注与表头)；返回是否已写入。
   /// 数量校验：0 ≤ 数量 ≤ 委外提交的领料数量；填 0 的行不回传(服务端删行退库存)，
@@ -1169,38 +1135,15 @@ class _WarehouseSubcontractOutboundEditPageState
                 }
               },
             ),
-            UtenEmployeePicker(
+            BusinessEmployeePicker(
+              enabled: !_saving && formDraftIdentityIsCurrent,
               key: ValueKey('worker_$_workerId'),
+              purpose: EmployeeReferencePurpose.warehouseSubcontractOperator,
+              selectedId: _workerId,
               label: '经办人',
-              hint: '请选择经办人',
-              sheetTitle: '选择经办人',
               initial: _workerId == null ? null : _empCache[_workerId],
-              loader: (kw) async {
-                final deptId = (kw == null || kw.isEmpty)
-                    ? (ref.read(departmentCodeIdMapProvider).value ??
-                          const {})['SUB_WH']
-                    : null;
-                final res = await ref
-                    .read(employeeRepositoryProvider)
-                    .listPickerCandidates(
-                      size: 30,
-                      search: kw,
-                      departmentId: deptId,
-                      includeSubtree: true,
-                    );
-                return [
-                  for (final e in res)
-                    UtenEmployeePickerItem(
-                      id: e.id,
-                      name: e.fullName,
-                      employeeCode: e.code,
-                      accountStatus: e.accountStatus,
-                      employmentStatus: e.status,
-                      departmentId: e.departmentId,
-                      departmentName: e.departmentName,
-                    ),
-                ];
-              },
+              departmentCode: 'SUB_WH',
+              onResolved: (item) => _empCache[item.id] = item,
               onChanged: (item) {
                 if (item != null) _empCache[item.id] = item;
                 setState(() => _workerId = item?.id);

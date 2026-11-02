@@ -1,3 +1,5 @@
+import '../../../shared/models/employee_reference.dart';
+import '../../../shared/widgets/business_employee_picker.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../shared/measurement/exact_measurement_totals.dart';
@@ -66,8 +68,6 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import '../../../shared/models/department_node.dart';
-import '../../../shared/repositories/department_repository.dart';
-import '../../employee/repositories/employee_repository.dart';
 import '../../purchase/config/purchase_doc_config.dart';
 import '../../purchase/models/purchase_doc.dart';
 import '../../subcontract/config/subcontract_doc_config.dart';
@@ -93,7 +93,6 @@ import '../widgets/warehouse_inbound_allocation_view.dart';
 import '../widgets/warehouse_autofill_text_field.dart';
 import '../widgets/warehouse_arrival_source_field.dart';
 import '../repositories/procurement_inbound_repository.dart';
-import '../../employee/repositories/employee_picker_candidates.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class InboundArrivalRegistrationPage extends ConsumerStatefulWidget {
@@ -525,7 +524,6 @@ class _InboundArrivalRegistrationPageState
     final meId = ref.read(sessionProvider).user?.employeeId;
     if (meId != null && meId.isNotEmpty) {
       _receiverId = meId;
-      await _preloadEmployees([meId]);
     }
     _lineGrid.replaceAll([
       for (final prefill in prefills)
@@ -558,30 +556,6 @@ class _InboundArrivalRegistrationPageState
     // 按行上的仓带出库位(该仓记住的库位 → 货品资料通用库位；手填/草稿值不覆盖)。
     await _suggestions.reload(_lines);
     if (mounted) await initializeFormDraft();
-  }
-
-  Future<void> _preloadEmployees(Iterable<String?> ids) async {
-    final uniq = ids.whereType<String>().where((id) => id.isNotEmpty).toSet();
-    if (uniq.isEmpty) return;
-    final repo = ref.read(employeeRepositoryProvider);
-    await Future.wait(
-      uniq.map((id) async {
-        try {
-          final p = await repo.getById(id);
-          _empCache[id] = UtenEmployeePickerItem(
-            id: p.id,
-            name: p.fullName ?? '',
-            employeeCode: p.code,
-            accountStatus: p.accountDeleted
-                ? 'notProvisioned'
-                : p.accountStatus ?? 'notProvisioned',
-            employmentStatus: p.status,
-            departmentId: p.departmentId,
-            departmentName: p.departmentName,
-          );
-        } catch (_) {}
-      }),
-    );
   }
 
   void _onLineChanged() {
@@ -1341,6 +1315,10 @@ class _InboundArrivalRegistrationPageState
                           ),
                           _employeePicker(
                             label: '收货人',
+                            enabled:
+                                canRegister &&
+                                !_saving &&
+                                !_preparingSubmission,
                             currentId: _receiverId,
                             onChanged: (id) => setState(() => _receiverId = id),
                           ),
@@ -1758,42 +1736,20 @@ class _InboundArrivalRegistrationPageState
   /// 人员选择器：关键字为空时收敛到仓储部子树、否则全公司搜。
   Widget _employeePicker({
     required String label,
+    required bool enabled,
     required String? currentId,
     required ValueChanged<String?> onChanged,
   }) {
-    return UtenEmployeePicker(
+    return BusinessEmployeePicker(
       key: ValueKey('${label}_$currentId'),
+      purpose: EmployeeReferencePurpose.warehouseArrivalReceiver,
+      selectedId: currentId,
       label: label,
-      hint: '请选择$label',
-      sheetTitle: '选择$label',
       required: true,
+      enabled: enabled,
       initial: currentId == null ? null : _empCache[currentId],
-      loader: (kw) async {
-        final deptId = (kw == null || kw.isEmpty)
-            ? (ref.read(departmentCodeIdMapProvider).value ??
-                  const {})[kDeptCodeWarehouse]
-            : null;
-        final res = await ref
-            .read(employeeRepositoryProvider)
-            .listPickerCandidates(
-              size: 30,
-              search: kw,
-              departmentId: deptId,
-              includeSubtree: true,
-            );
-        return [
-          for (final e in res)
-            UtenEmployeePickerItem(
-              id: e.id,
-              name: e.fullName,
-              employeeCode: e.code,
-              accountStatus: e.accountStatus,
-              employmentStatus: e.status,
-              departmentId: e.departmentId,
-              departmentName: e.departmentName,
-            ),
-        ];
-      },
+      departmentCode: kDeptCodeWarehouse,
+      onResolved: (item) => _empCache[item.id] = item,
       onChanged: (item) {
         if (item != null) _empCache[item.id] = item;
         onChanged(item?.id);

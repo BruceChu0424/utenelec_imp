@@ -5,16 +5,16 @@
   "fullErpEquivalent": false,
   "scope": "Native C# WPF .NET Framework 4.8 client; no embedded browser",
   "sourceFingerprints": {
-    "lib/core/router/route_names.dart": "34bc6c25c8e884001b0cb654091666e4dc991180c2bb6091cffefc5055f9eee0",
-    "lib/core/router/app_router.dart": "ca8357bc707fbc1c921ee8d0cb60d9b2ba6a95d9c760a2f002e061d5532eeb9c"
+    "lib/core/router/route_names.dart": "a937d00327f4eb55e746c1d0245944b8f8a0f396f96ee5a6e729d47955ee34db",
+    "lib/core/router/app_router.dart": "28b6d405829f8d9a556cce789619e4282a84553384cadfe443ce21d5aac7f6c2"
   },
   "summary": {
-    "declaredRouteConstants": 199,
-    "routerPathExpressions": 236,
+    "declaredRouteConstants": 206,
+    "routerPathExpressions": 240,
     "pageEntrypoints": 220,
     "fullyMigratedBusinessWorkflows": 0,
     "partialReadOnlyRoutes": 2,
-    "unmigratedRouteExpressions": 234
+    "unmigratedRouteExpressions": 238
   },
   "implementedReadContract": {
     "categories": {
@@ -104,1493 +104,1563 @@
       "referencedByRouter": true
     },
     {
+      "constant": "clientUpdate",
+      "path": "/settings/software-update",
+      "line": 73,
+      "referencedByRouter": false
+    },
+    {
+      "constant": "clientUpdateOffer",
+      "path": "/settings/software-update-offer",
+      "line": 74,
+      "referencedByRouter": false
+    },
+    {
+      "constant": "clientUpdateCountdown",
+      "path": "/settings/software-update-countdown",
+      "line": 75,
+      "referencedByRouter": false
+    },
+    {
       "constant": "disasterRecovery",
       "path": "/operations/recovery",
-      "line": 73,
+      "line": 77,
       "referencedByRouter": true
     },
     {
       "constant": "deviceAuditReceipts",
       "path": "/settings/device-receipts",
-      "line": 74,
+      "line": 78,
       "referencedByRouter": true
     },
     {
       "constant": "changePassword",
       "path": "/change-password",
-      "line": 75,
+      "line": 79,
       "referencedByRouter": true
     },
     {
       "constant": "department",
       "path": "/department",
-      "line": 76,
+      "line": 80,
       "referencedByRouter": false
     },
     {
       "constant": "basicinfo",
       "path": "/basicinfo",
-      "line": 82,
+      "line": 86,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoHistory",
       "path": "/basicinfo/history",
-      "line": 83,
+      "line": 87,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoHistoryRevision",
       "path": "/basicinfo/history/:entityType/:id",
-      "line": 84,
+      "line": 88,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoGoods",
       "path": "/basicinfo/goods",
-      "line": 86,
+      "line": 90,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoGoodsNew",
       "path": "/basicinfo/goods/new",
-      "line": 88,
+      "line": 92,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoGoodsDetail",
       "path": "/basicinfo/goods/:id",
-      "line": 89,
+      "line": 93,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoGoodsPriceAnalysis",
       "path": "/basicinfo/goods/:id/price-analysis",
-      "line": 90,
+      "line": 94,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoMould",
       "path": "/basicinfo/mould",
-      "line": 92,
+      "line": 96,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoClient",
       "path": "/basicinfo/client",
-      "line": 93,
+      "line": 97,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoClientDetail",
       "path": "/basicinfo/client/:id",
-      "line": 94,
+      "line": 98,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoSupplier",
       "path": "/basicinfo/supplier",
-      "line": 95,
+      "line": 99,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoSupplierDetail",
       "path": "/basicinfo/supplier/:id",
-      "line": 96,
+      "line": 100,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoColor",
       "path": "/basicinfo/color",
-      "line": 97,
+      "line": 101,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoUnit",
       "path": "/basicinfo/unit",
-      "line": 98,
+      "line": 102,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoCurrency",
       "path": "/basicinfo/currency",
-      "line": 99,
+      "line": 103,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoWarehouse",
       "path": "/basicinfo/warehouse",
-      "line": 100,
+      "line": 104,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoAccount",
       "path": "/basicinfo/account",
-      "line": 101,
+      "line": 105,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoAccountDetail",
       "path": "/basicinfo/account/:id",
-      "line": 102,
+      "line": 106,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoPaymentStyle",
       "path": "/basicinfo/payment-style",
-      "line": 103,
+      "line": 107,
       "referencedByRouter": true
     },
     {
       "constant": "basicinfoSettlementMethod",
       "path": "/basicinfo/settlement-methods",
-      "line": 104,
+      "line": 108,
       "referencedByRouter": true
     },
     {
       "constant": "companyFiles",
       "path": "/company-files",
-      "line": 108,
+      "line": 112,
+      "referencedByRouter": true
+    },
+    {
+      "constant": "companyFilesHistory",
+      "path": "/company-files/history",
+      "line": 113,
+      "referencedByRouter": true
+    },
+    {
+      "constant": "companyFilesHistoryRevision",
+      "path": "/company-files/history/:entityType/:id",
+      "line": 114,
       "referencedByRouter": true
     },
     {
       "constant": "payrollSlipList",
       "path": "/payroll/slip",
-      "line": 111,
+      "line": 118,
       "referencedByRouter": false
     },
     {
       "constant": "payrollSlipDetail",
       "path": "/payroll/slip/:id",
-      "line": 112,
+      "line": 119,
       "referencedByRouter": false
     },
     {
       "constant": "expense",
       "path": "/expense",
-      "line": 115,
+      "line": 122,
       "referencedByRouter": false
     },
     {
       "constant": "expenseNew",
       "path": "/expense/new",
-      "line": 116,
+      "line": 123,
       "referencedByRouter": false
     },
     {
       "constant": "expenseEdit",
       "path": "/expense/:id/edit",
-      "line": 117,
+      "line": 124,
       "referencedByRouter": false
     },
     {
       "constant": "expenseDetail",
       "path": "/expense/:id",
-      "line": 118,
+      "line": 125,
       "referencedByRouter": false
     },
     {
       "constant": "notice",
       "path": "/notice",
-      "line": 121,
+      "line": 128,
       "referencedByRouter": false
     },
     {
       "constant": "noticePublish",
       "path": "/notice/publish",
-      "line": 122,
+      "line": 129,
       "referencedByRouter": true
     },
     {
       "constant": "noticeDetail",
       "path": "/notice/:id",
-      "line": 123,
+      "line": 130,
       "referencedByRouter": false
     },
     {
       "constant": "suggestion",
       "path": "/suggestion",
-      "line": 126,
+      "line": 133,
       "referencedByRouter": false
     },
     {
       "constant": "suggestionNew",
       "path": "/suggestion/new",
-      "line": 127,
+      "line": 134,
       "referencedByRouter": false
     },
     {
       "constant": "suggestionDetail",
       "path": "/suggestion/:id",
-      "line": 128,
+      "line": 135,
       "referencedByRouter": false
     },
     {
       "constant": "websiteInquiry",
       "path": "/webinquiry",
-      "line": 131,
+      "line": 138,
       "referencedByRouter": false
     },
     {
       "constant": "websiteManagement",
       "path": "/website-management",
-      "line": 132,
+      "line": 139,
       "referencedByRouter": true
     },
     {
       "constant": "websiteInquiryDetail",
       "path": "/webinquiry/:id",
-      "line": 133,
+      "line": 140,
       "referencedByRouter": false
     },
     {
       "constant": "formDrafts",
       "path": "/form-drafts/:categoryId",
-      "line": 137,
+      "line": 144,
       "referencedByRouter": true
     },
     {
       "constant": "employee",
       "path": "/employee",
-      "line": 142,
+      "line": 149,
       "referencedByRouter": false
     },
     {
       "constant": "employeeDetail",
       "path": "/employee/:id",
-      "line": 143,
+      "line": 150,
       "referencedByRouter": false
     },
     {
       "constant": "profileEdit",
       "path": "/profile/edit",
-      "line": 146,
+      "line": 153,
       "referencedByRouter": true
     },
     {
       "constant": "profileMyChanges",
       "path": "/profile/me/changes",
-      "line": 147,
+      "line": 154,
       "referencedByRouter": true
     },
     {
       "constant": "profileMyDepartment",
       "path": "/profile/me/department",
-      "line": 148,
+      "line": 155,
       "referencedByRouter": true
     },
     {
       "constant": "hrProfileChanges",
       "path": "/hr/profile-changes",
-      "line": 153,
+      "line": 160,
       "referencedByRouter": true
     },
     {
       "constant": "hrProfileChangeDetail",
       "path": "/hr/profile-changes/:id",
-      "line": 154,
+      "line": 161,
       "referencedByRouter": true
     },
     {
       "constant": "hrTaskCenter",
       "path": "/hr/tasks",
-      "line": 157,
+      "line": 164,
       "referencedByRouter": true
     },
     {
       "constant": "hrReconcile",
       "path": "/hr/tasks/reconcile",
-      "line": 161,
+      "line": 168,
       "referencedByRouter": true
     },
     {
       "constant": "entry",
       "path": "/entry",
-      "line": 164,
+      "line": 171,
       "referencedByRouter": true
     },
     {
       "constant": "visitorLogin",
       "path": "/visitor/login",
-      "line": 169,
+      "line": 176,
       "referencedByRouter": true
     },
     {
       "constant": "visitorHome",
       "path": "/visitor/home",
-      "line": 170,
+      "line": 177,
       "referencedByRouter": true
     },
     {
       "constant": "visitorSettings",
       "path": "/visitor/settings",
-      "line": 171,
+      "line": 178,
       "referencedByRouter": true
     },
     {
       "constant": "visitorApply",
       "path": "/visitor/apply",
-      "line": 172,
+      "line": 179,
       "referencedByRouter": true
     },
     {
       "constant": "visitorApplyDetail",
       "path": "/visitor/apply/:id",
-      "line": 173,
+      "line": 180,
       "referencedByRouter": true
     },
     {
       "constant": "visitorApproval",
       "path": "/visitor-approval",
-      "line": 176,
+      "line": 183,
       "referencedByRouter": true
     },
     {
       "constant": "visitorApprovalDetail",
       "path": "/visitor-approval/:id",
-      "line": 177,
+      "line": 184,
       "referencedByRouter": true
     },
     {
       "constant": "myVisitors",
       "path": "/my-visitors",
-      "line": 178,
+      "line": 185,
       "referencedByRouter": true
     },
     {
       "constant": "securityScan",
       "path": "/security/scan",
-      "line": 179,
+      "line": 186,
       "referencedByRouter": true
     },
     {
       "constant": "securityBlacklist",
       "path": "/security/blacklist",
-      "line": 180,
+      "line": 187,
       "referencedByRouter": true
     },
     {
       "constant": "adminPermissions",
       "path": "/admin/permissions",
-      "line": 183,
+      "line": 190,
+      "referencedByRouter": true
+    },
+    {
+      "constant": "adminPermissionsHistory",
+      "path": "/admin/permissions/history",
+      "line": 191,
+      "referencedByRouter": true
+    },
+    {
+      "constant": "adminPermissionsHistoryRevision",
+      "path": "/admin/permissions/history/:entityType/:id",
+      "line": 192,
       "referencedByRouter": true
     },
     {
       "constant": "adminAuditLogs",
       "path": "/admin/audit-logs",
-      "line": 185,
+      "line": 195,
       "referencedByRouter": true
     },
     {
       "constant": "adminAuditSession",
       "path": "/admin/audit-logs/sessions/:sessionId",
-      "line": 186,
+      "line": 196,
       "referencedByRouter": true
     },
     {
       "constant": "adminSystemSettings",
       "path": "/admin/system-settings",
-      "line": 189,
+      "line": 199,
       "referencedByRouter": true
     },
     {
       "constant": "adminSmsSettings",
       "path": "/admin/sms-settings",
-      "line": 190,
+      "line": 200,
       "referencedByRouter": true
     },
     {
       "constant": "adminPlatformSettings",
       "path": "/admin/platform-settings",
-      "line": 192,
+      "line": 202,
       "referencedByRouter": true
     },
     {
       "constant": "adminServerStatus",
       "path": "/admin/server-status",
-      "line": 193,
+      "line": 203,
       "referencedByRouter": true
     },
     {
       "constant": "adminServerOperations",
       "path": "/admin/server-operations",
-      "line": 194,
+      "line": 204,
       "referencedByRouter": true
     },
     {
       "constant": "adminServerStorage",
       "path": "/admin/server-storage",
-      "line": 195,
+      "line": 205,
       "referencedByRouter": true
     },
     {
       "constant": "adminAiSettings",
       "path": "/admin/ai-settings",
-      "line": 197,
+      "line": 207,
       "referencedByRouter": true
     },
     {
       "constant": "adminAiUsage",
       "path": "/admin/ai-usage",
-      "line": 199,
+      "line": 209,
       "referencedByRouter": true
     },
     {
       "constant": "adminAiUsagePersonRoute",
       "path": "/admin/ai-usage/:userId",
-      "line": 200,
+      "line": 210,
       "referencedByRouter": true
     },
     {
       "constant": "adminAiUsageRecords",
       "path": "/admin/ai-usage-records",
-      "line": 205,
+      "line": 215,
       "referencedByRouter": true
     },
     {
       "constant": "financeCustomers",
       "path": "/finance/customers",
-      "line": 208,
+      "line": 218,
       "referencedByRouter": true
     },
     {
       "constant": "financeSuppliers",
       "path": "/finance/suppliers",
-      "line": 209,
+      "line": 219,
       "referencedByRouter": true
     },
     {
       "constant": "financeAccounts",
       "path": "/finance/accounts",
-      "line": 210,
+      "line": 220,
       "referencedByRouter": true
     },
     {
       "constant": "operationsWarehouseWorkbench",
       "path": "/operations/workbench/warehouse",
-      "line": 213,
+      "line": 223,
       "referencedByRouter": true
     },
     {
       "constant": "operationsPurchaseWorkbench",
       "path": "/operations/workbench/purchase",
-      "line": 215,
+      "line": 225,
       "referencedByRouter": true
     },
     {
       "constant": "operationsSubcontractWorkbench",
       "path": "/operations/workbench/subcontract",
-      "line": 217,
+      "line": 227,
       "referencedByRouter": true
     },
     {
       "constant": "operationsSubcontractDrawRequest",
       "path": "/operations/workbench/subcontract/draw-request",
-      "line": 221,
+      "line": 231,
       "referencedByRouter": true
     },
     {
       "constant": "rdTaskCenter",
       "path": "/rd/tasks",
-      "line": 260,
+      "line": 270,
       "referencedByRouter": true
     },
     {
       "constant": "purchase",
       "path": "/purchase",
-      "line": 264,
+      "line": 274,
       "referencedByRouter": true
     },
     {
       "constant": "purchaseRequestList",
       "path": "/purchase/requests",
-      "line": 265,
+      "line": 275,
       "referencedByRouter": true
     },
     {
       "constant": "purchaseOrderList",
       "path": "/purchase/orders",
-      "line": 266,
+      "line": 276,
       "referencedByRouter": true
     },
     {
       "constant": "purchaseReceiptList",
       "path": "/purchase/receipts",
-      "line": 267,
+      "line": 277,
       "referencedByRouter": true
     },
     {
       "constant": "purchaseReturnList",
       "path": "/purchase/returns",
-      "line": 268,
+      "line": 278,
       "referencedByRouter": true
     },
     {
       "constant": "purchaseReport",
       "path": "/purchase/report",
-      "line": 269,
+      "line": 279,
       "referencedByRouter": false
     },
     {
       "constant": "stockBalance",
       "path": "/stock/balance",
-      "line": 272,
+      "line": 282,
       "referencedByRouter": true
     },
     {
       "constant": "stockMovement",
       "path": "/stock/movement",
-      "line": 273,
+      "line": 283,
       "referencedByRouter": true
     },
     {
       "constant": "stockInstantInventory",
       "path": "/stock/instant-inventory",
-      "line": 274,
+      "line": 284,
       "referencedByRouter": true
     },
     {
       "constant": "stockInstantInventoryOverview",
       "path": "/stock/instant-inventory/overview",
-      "line": 275,
+      "line": 285,
       "referencedByRouter": true
     },
     {
       "constant": "stockItemBase",
       "path": "/stock/item",
-      "line": 281,
+      "line": 291,
       "referencedByRouter": true
     },
     {
       "constant": "warehouse",
       "path": "/warehouse",
-      "line": 302,
+      "line": 312,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseReport",
       "path": "/warehouse/report",
-      "line": 303,
+      "line": 313,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseReportDetail",
       "path": "/warehouse/report/detail",
-      "line": 304,
+      "line": 314,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseReportSummary",
       "path": "/warehouse/report/summary",
-      "line": 305,
+      "line": 315,
       "referencedByRouter": false
     },
     {
       "constant": "warehouseInboundExpectations",
       "path": "/warehouse/inbound/expectations",
-      "line": 306,
+      "line": 316,
       "referencedByRouter": true
     },
     {
       "constant": "warehousePurchaseReceiptHistory",
       "path": "/warehouse/history/purchase-receipts",
-      "line": 309,
+      "line": 319,
       "referencedByRouter": false
     },
     {
       "constant": "warehouseSubcontractReceiptHistory",
       "path": "/warehouse/history/subcontract-receipts",
-      "line": 311,
+      "line": 321,
       "referencedByRouter": false
     },
     {
       "constant": "warehouseSubcontractOutboundHistory",
       "path": "/warehouse/history/subcontract-material-issues",
-      "line": 313,
+      "line": 323,
       "referencedByRouter": false
     },
     {
       "constant": "warehouseSubcontractFinishedReturnHistory",
       "path": "/warehouse/history/subcontract-returns",
-      "line": 315,
+      "line": 325,
       "referencedByRouter": false
     },
     {
       "constant": "warehouseSubcontractMaterialReturnHistory",
       "path": "/warehouse/history/subcontract-material-returns",
-      "line": 317,
+      "line": 327,
       "referencedByRouter": false
     },
     {
       "constant": "warehouseSubcontractWasteHistory",
       "path": "/warehouse/history/subcontract-wastes",
-      "line": 319,
+      "line": 329,
       "referencedByRouter": false
     },
     {
       "constant": "warehouseIqcReturns",
       "path": "/warehouse/iqc-returns",
-      "line": 321,
+      "line": 331,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseIqcStockIns",
       "path": "/warehouse/iqc-stock-ins",
-      "line": 322,
+      "line": 332,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseQualityResults",
       "path": "/warehouse/quality-results",
-      "line": 325,
+      "line": 335,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseQualityBatchStockIn",
       "path": "/warehouse/quality-results/batch-stock-in",
-      "line": 329,
+      "line": 339,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseQualityPreStockInBase",
       "path": "/warehouse/quality-results/pre-stock-in",
-      "line": 334,
+      "line": 344,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseArrivalRegistration",
       "path": "/warehouse/inbound/arrivals/register",
-      "line": 354,
+      "line": 364,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseInspections",
       "path": "/warehouse/inspections",
-      "line": 358,
+      "line": 368,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseInspectionBatchApproval",
       "path": "/warehouse/inspections/batch-approval",
-      "line": 361,
+      "line": 371,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseArrivalExceptions",
       "path": "/warehouse/inbound/arrival-exceptions",
-      "line": 369,
+      "line": 379,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseProductionFinishedInboundTasks",
       "path": "/warehouse/production-finished-in/tasks",
-      "line": 373,
+      "line": 383,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseProductionFinishedBatchStockIn",
       "path": "/warehouse/production-finished-in/batch-stock-in",
-      "line": 377,
+      "line": 387,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseProductionFinishedArrivalRegistrationBase",
       "path": "/warehouse/production-finished-in/arrival-registrations",
-      "line": 382,
+      "line": 392,
       "referencedByRouter": false
     },
     {
       "constant": "warehouseProductionFinishedArrivalRegistration",
       "path": null,
-      "line": 384,
+      "line": 394,
       "referencedByRouter": true
     },
     {
       "constant": "qualityTaskCenter",
       "path": "/quality/task-center",
-      "line": 388,
+      "line": 398,
       "referencedByRouter": true
     },
     {
       "constant": "qualityInspectionRecords",
       "path": "/quality/inspection-records",
-      "line": 389,
+      "line": 399,
       "referencedByRouter": true
     },
     {
       "constant": "productionFqcInspections",
       "path": "/quality/production-inspections",
-      "line": 390,
+      "line": 400,
       "referencedByRouter": true
     },
     {
       "constant": "productionFqcSheetHandlingBase",
       "path": "/warehouse/inspections/fqc/sheets",
-      "line": 395,
+      "line": 405,
       "referencedByRouter": true
     },
     {
       "constant": "productionFqcInspectionHandlingBase",
       "path": "/warehouse/inspections/fqc/inspections",
-      "line": 399,
+      "line": 409,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseShelfLabels",
       "path": "/warehouse/shelf-labels",
-      "line": 406,
+      "line": 416,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseInsights",
       "path": "/warehouse/insights",
-      "line": 410,
+      "line": 420,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseWeighCount",
       "path": "/warehouse/weigh-count",
-      "line": 414,
+      "line": 424,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseSubcontractOutbound",
       "path": "/warehouse/subcontract-outbound",
-      "line": 418,
+      "line": 428,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseSalesOutbound",
       "path": "/warehouse/sales-outbound",
-      "line": 426,
+      "line": 436,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseTasks",
       "path": "/warehouse/tasks",
-      "line": 431,
+      "line": 441,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseOutboundTasks",
       "path": "/warehouse/tasks/outbound",
-      "line": 435,
+      "line": 445,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseInboundTasks",
       "path": "/warehouse/tasks/inbound",
-      "line": 439,
+      "line": 449,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseProductionDrawBatchIssue",
       "path": "/warehouse/DRAW/batch-issue",
-      "line": 443,
+      "line": 453,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseDrawTasks",
       "path": "/warehouse/tasks/draw",
-      "line": 446,
+      "line": 456,
       "referencedByRouter": true
     },
     {
       "constant": "workshopMaterialSetup",
       "path": "/warehouse/workshop-material/setup",
-      "line": 450,
+      "line": 460,
       "referencedByRouter": true
     },
     {
       "constant": "workshopMaterialBin",
       "path": "/workshop-material/bin",
-      "line": 454,
+      "line": 464,
       "referencedByRouter": true
     },
     {
       "constant": "workshopMaterialIssue",
       "path": "/workshop-material/issue",
-      "line": 457,
+      "line": 467,
       "referencedByRouter": true
     },
     {
       "constant": "workshopMaterialCount",
       "path": "/workshop-material/count",
-      "line": 460,
+      "line": 470,
       "referencedByRouter": true
     },
     {
       "constant": "workshopMaterialReports",
       "path": "/reports/workshop-material",
-      "line": 463,
+      "line": 473,
       "referencedByRouter": true
     },
     {
       "constant": "stockCountSession",
       "path": "/stock/count-session",
-      "line": 467,
+      "line": 477,
       "referencedByRouter": true
     },
     {
       "constant": "stockCountRequests",
       "path": "/stock/count-requests",
-      "line": 468,
+      "line": 478,
       "referencedByRouter": true
     },
     {
       "constant": "financeStockCountReview",
       "path": "/finance/stock-count-review",
-      "line": 469,
+      "line": 479,
       "referencedByRouter": true
     },
     {
       "constant": "warehouseStockCountReview",
       "path": "/warehouse/stock-count-review",
-      "line": 470,
+      "line": 480,
       "referencedByRouter": true
     },
     {
       "constant": "procurementArrivalExceptions",
       "path": "/procurement/arrival-exceptions",
-      "line": 473,
+      "line": 483,
       "referencedByRouter": true
     },
     {
       "constant": "procurementIqcRejections",
       "path": "/procurement/iqc-rejections",
-      "line": 475,
+      "line": 485,
       "referencedByRouter": true
     },
     {
       "constant": "financeArrivalExceptions",
       "path": "/finance/procurement-arrival-exceptions",
-      "line": 476,
+      "line": 486,
       "referencedByRouter": true
     },
     {
       "constant": "sales",
       "path": "/sales",
-      "line": 483,
+      "line": 493,
       "referencedByRouter": true
     },
     {
       "constant": "salesScarcity",
       "path": "/sales/scarcity",
-      "line": 484,
+      "line": 494,
       "referencedByRouter": true
     },
     {
       "constant": "salesOrderProgress",
       "path": "/sales/progress",
-      "line": 485,
+      "line": 495,
       "referencedByRouter": true
     },
     {
       "constant": "salesTasks",
       "path": "/sales/tasks",
-      "line": 489,
+      "line": 499,
       "referencedByRouter": true
     },
     {
       "constant": "salesReport",
       "path": "/sales/report",
-      "line": 490,
+      "line": 500,
       "referencedByRouter": true
     },
     {
       "constant": "salesReportDetail",
       "path": "/sales/report/detail",
-      "line": 491,
+      "line": 501,
       "referencedByRouter": true
     },
     {
       "constant": "salesReportSummary",
       "path": "/sales/report/summary",
-      "line": 492,
+      "line": 502,
       "referencedByRouter": false
     },
     {
       "constant": "subcontract",
       "path": "/subcontract",
-      "line": 496,
+      "line": 506,
       "referencedByRouter": true
     },
     {
       "constant": "subcontractReport",
       "path": "/subcontract/report",
-      "line": 497,
+      "line": 507,
       "referencedByRouter": true
     },
     {
       "constant": "subcontractShortDeliveries",
       "path": "/subcontract/short-deliveries",
-      "line": 500,
+      "line": 510,
       "referencedByRouter": true
     },
     {
       "constant": "production",
       "path": "/production",
-      "line": 522,
+      "line": 532,
       "referencedByRouter": false
     },
     {
       "constant": "productionSchedule",
       "path": "/production/schedule",
-      "line": 523,
+      "line": 533,
       "referencedByRouter": false
     },
     {
       "constant": "productionProgress",
       "path": "/production/progress",
-      "line": 526,
+      "line": 536,
       "referencedByRouter": false
     },
     {
       "constant": "productionWorkshopTasks",
       "path": "/production/workshop-tasks",
-      "line": 527,
+      "line": 537,
       "referencedByRouter": false
     },
     {
       "constant": "productionOverproductionRateRequests",
       "path": "/production/overproduction-rate-requests",
-      "line": 528,
+      "line": 538,
       "referencedByRouter": false
     },
     {
       "constant": "productionOverLimitDispositions",
       "path": "/production/over-limit-dispositions",
-      "line": 530,
+      "line": 540,
       "referencedByRouter": false
     },
     {
       "constant": "productionMaterialIncrementRequests",
       "path": "/production/material-increment-requests",
-      "line": 532,
+      "line": 542,
       "referencedByRouter": false
     },
     {
       "constant": "productionDrawRequest",
       "path": "/production/workshop-tasks/draw-request",
-      "line": 534,
+      "line": 544,
       "referencedByRouter": false
     },
     {
       "constant": "productionBatchDraw",
       "path": "/production/workshop-tasks/batch-draw",
-      "line": 536,
+      "line": 546,
       "referencedByRouter": false
     },
     {
       "constant": "productionMaterialAnalysis",
       "path": "/production/material-analysis",
-      "line": 538,
+      "line": 548,
       "referencedByRouter": false
     },
     {
       "constant": "productionMaterialAnalysisHistory",
       "path": "/production/material-analyses",
-      "line": 540,
+      "line": 550,
       "referencedByRouter": false
     },
     {
       "constant": "productionPlanList",
       "path": "/production/plans",
-      "line": 542,
+      "line": 552,
       "referencedByRouter": false
     },
     {
       "constant": "productionDailyReportList",
       "path": "/production/daily-reports",
-      "line": 543,
+      "line": 553,
       "referencedByRouter": false
     },
     {
       "constant": "productionWhereUsed",
       "path": "/production/where-used",
-      "line": 544,
+      "line": 554,
       "referencedByRouter": false
     },
     {
       "constant": "productionChainHealth",
       "path": "/production/chain-health",
-      "line": 545,
+      "line": 555,
       "referencedByRouter": false
     },
     {
       "constant": "finance",
       "path": "/finance",
-      "line": 550,
+      "line": 560,
       "referencedByRouter": true
     },
     {
       "constant": "financeAudits",
       "path": "/finance/audits",
-      "line": 554,
+      "line": 564,
       "referencedByRouter": true
     },
     {
       "constant": "financeSalesShipmentAudit",
       "path": "/finance/sales-shipment-audits",
-      "line": 557,
+      "line": 567,
       "referencedByRouter": true
     },
     {
       "constant": "financeSalesShipmentAuditReview",
       "path": "/finance/sales-shipment-audits/:id",
-      "line": 561,
+      "line": 571,
       "referencedByRouter": true
     },
     {
       "constant": "financeQuoteReview",
       "path": "/finance/quote-review",
-      "line": 565,
+      "line": 575,
       "referencedByRouter": true
     },
     {
       "constant": "financeQuoteReviewDetail",
       "path": "/finance/quote-review/:id",
-      "line": 568,
+      "line": 578,
       "referencedByRouter": true
     },
     {
       "constant": "financeArAp",
       "path": "/finance/ar-ap",
-      "line": 569,
+      "line": 579,
       "referencedByRouter": true
     },
     {
       "constant": "financePayables",
       "path": "/finance/payables",
-      "line": 570,
+      "line": 580,
       "referencedByRouter": true
     },
     {
       "constant": "financeReconciliations",
       "path": "/finance/reconciliations",
-      "line": 571,
+      "line": 581,
       "referencedByRouter": true
     },
     {
       "constant": "financeChecks",
       "path": "/finance/checks",
-      "line": 572,
+      "line": 582,
       "referencedByRouter": true
     },
     {
       "constant": "financeReport",
       "path": "/finance/report",
-      "line": 573,
+      "line": 583,
       "referencedByRouter": true
     },
     {
       "constant": "financeReportDetail",
       "path": "/finance/report/detail",
-      "line": 575,
+      "line": 585,
       "referencedByRouter": true
     },
     {
       "constant": "financeReportSummary",
       "path": "/finance/report/summary",
-      "line": 576,
+      "line": 586,
       "referencedByRouter": true
     },
     {
       "constant": "financeReportOverview",
       "path": "/finance/report/overview",
-      "line": 577,
+      "line": 587,
       "referencedByRouter": true
     },
     {
       "constant": "financeReportStatement",
       "path": "/finance/report/statement",
-      "line": 578,
+      "line": 588,
       "referencedByRouter": true
     },
     {
       "constant": "financeReportAccountFlow",
       "path": "/finance/report/account-flow",
-      "line": 579,
+      "line": 589,
       "referencedByRouter": true
     },
     {
       "constant": "financeReportCustomerPrepayment",
       "path": "/finance/report/customer-prepayment",
-      "line": 580,
+      "line": 590,
       "referencedByRouter": true
     },
     {
       "constant": "financeReportRecon",
       "path": "/finance/report/recon",
-      "line": 583,
+      "line": 593,
       "referencedByRouter": true
     },
     {
       "constant": "financeReportCost",
       "path": "/finance/report/cost",
-      "line": 585,
+      "line": 595,
       "referencedByRouter": true
     },
     {
       "constant": "financeReportGl",
       "path": "/finance/report/gl",
-      "line": 587,
+      "line": 597,
       "referencedByRouter": true
     },
     {
       "constant": "financeAssets",
       "path": "/finance/assets",
-      "line": 589,
+      "line": 599,
       "referencedByRouter": true
     }
   ],
   "routerPaths": [
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 347,
+      "line": 351,
       "expression": "null",
       "path": null,
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 498,
+      "line": 502,
       "expression": "RouteName.disasterRecovery",
       "path": "/operations/recovery",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 502,
+      "line": 506,
       "expression": "RouteName.login",
       "path": "/login",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 509,
+      "line": 513,
       "expression": "RouteName.changePassword",
       "path": "/change-password",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 517,
+      "line": 521,
       "expression": "RouteName.accessDenied",
       "path": "/access-denied",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 522,
+      "line": 526,
       "expression": "RouteName.notFound",
       "path": "/not-found",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 533,
+      "line": 537,
       "expression": "RouteName.visitorLogin",
       "path": "/visitor/login",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 540,
+      "line": 544,
       "expression": "RouteName.visitorHome",
       "path": "/visitor/home",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 545,
+      "line": 549,
       "expression": "RouteName.visitorSettings",
       "path": "/visitor/settings",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 550,
+      "line": 554,
       "expression": "RouteName.visitorApply",
       "path": "/visitor/apply",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 555,
+      "line": 559,
       "expression": "RouteName.visitorApplyDetail",
       "path": "/visitor/apply/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 579,
+      "line": 583,
       "expression": "RouteName.home",
       "path": "/",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 585,
+      "line": 589,
       "expression": "RouteName.dashboard",
       "path": "/dashboard",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 590,
+      "line": 594,
       "expression": "RouteName.softwareDownloads",
       "path": "/software-downloads",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 595,
+      "line": 599,
       "expression": "RouteName.clientReleasePublish",
       "path": "/settings/software-publish",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 610,
+      "line": 614,
       "expression": "RouteName.profile",
       "path": "/profile",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 615,
+      "line": 619,
       "expression": "RouteName.settings",
       "path": "/settings",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 620,
+      "line": 624,
       "expression": "RouteName.deviceAuditReceipts",
       "path": "/settings/device-receipts",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 629,
+      "line": 633,
       "expression": "RouteName.companyFiles",
       "path": "/company-files",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 634,
+      "line": 638,
       "expression": "'/payroll/slip'",
       "path": "/payroll/slip",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 639,
+      "line": 643,
       "expression": "'/payroll/slip/:id'",
       "path": "/payroll/slip/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 645,
+      "line": 649,
       "expression": "'/payroll/generate'",
       "path": "/payroll/generate",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 650,
+      "line": 654,
       "expression": "'/payroll/review'",
       "path": "/payroll/review",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 658,
+      "line": 662,
       "expression": "RouteName.financeCustomers",
       "path": "/finance/customers",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 663,
+      "line": 667,
       "expression": "RouteName.financeSuppliers",
       "path": "/finance/suppliers",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 668,
+      "line": 672,
       "expression": "RouteName.financeAccounts",
       "path": "/finance/accounts",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 675,
+      "line": 679,
       "expression": "'/expense'",
       "path": "/expense",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 680,
+      "line": 684,
       "expression": "'/expense/new'",
       "path": "/expense/new",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 689,
+      "line": 693,
       "expression": "'/expense/settings'",
       "path": "/expense/settings",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 694,
+      "line": 698,
       "expression": "'/expense/:id/edit'",
       "path": "/expense/:id/edit",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 700,
+      "line": 704,
       "expression": "'/expense/approval'",
       "path": "/expense/approval",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 709,
+      "line": 713,
       "expression": "'/expense/approval/:id'",
       "path": "/expense/approval/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 715,
+      "line": 719,
       "expression": "'/expense/:id'",
       "path": "/expense/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 723,
+      "line": 727,
       "expression": "'/notice'",
       "path": "/notice",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 735,
+      "line": 739,
       "expression": "RouteName.noticePublish",
       "path": "/notice/publish",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 755,
+      "line": 759,
       "expression": "'/notice/:id'",
       "path": "/notice/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 763,
+      "line": 767,
       "expression": "'/suggestion'",
       "path": "/suggestion",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 768,
+      "line": 772,
       "expression": "'/suggestion/new'",
       "path": "/suggestion/new",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 773,
+      "line": 777,
       "expression": "'/suggestion/:id'",
       "path": "/suggestion/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 781,
+      "line": 785,
       "expression": "RouteName.websiteManagement",
       "path": "/website-management",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 786,
+      "line": 790,
       "expression": "'/webinquiry'",
       "path": "/webinquiry",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 791,
+      "line": 795,
       "expression": "'/webinquiry/:id'",
       "path": "/webinquiry/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 799,
+      "line": 803,
       "expression": "'/employee'",
       "path": "/employee",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 804,
+      "line": 808,
       "expression": "'/employee/onboarding'",
       "path": "/employee/onboarding",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 811,
+      "line": 815,
       "expression": "'/employee/:id/edit'",
       "path": "/employee/:id/edit",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 817,
+      "line": 821,
       "expression": "'/employee/:id/offboarding'",
       "path": "/employee/:id/offboarding",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 824,
+      "line": 828,
       "expression": "'/employee/:id'",
       "path": "/employee/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 832,
+      "line": 836,
       "expression": "'/department'",
       "path": "/department",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 839,
+      "line": 842,
+      "expression": "RouteName.companyFilesHistory",
+      "path": "/company-files/history",
+      "status": "not-migrated"
+    },
+    {
+      "source": "lib/core/router/app_router.dart",
+      "line": 850,
+      "expression": "RouteName.companyFilesHistoryRevision",
+      "path": "/company-files/history/:entityType/:id",
+      "status": "not-migrated"
+    },
+    {
+      "source": "lib/core/router/app_router.dart",
+      "line": 858,
+      "expression": "RouteName.adminPermissionsHistory",
+      "path": "/admin/permissions/history",
+      "status": "not-migrated"
+    },
+    {
+      "source": "lib/core/router/app_router.dart",
+      "line": 866,
+      "expression": "RouteName.adminPermissionsHistoryRevision",
+      "path": "/admin/permissions/history/:entityType/:id",
+      "status": "not-migrated"
+    },
+    {
+      "source": "lib/core/router/app_router.dart",
+      "line": 876,
       "expression": "RouteName.basicinfo",
       "path": "/basicinfo",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 844,
+      "line": 881,
       "expression": "RouteName.basicinfoGoods",
       "path": "/basicinfo/goods",
       "status": "partial-native-readonly",
@@ -1600,35 +1670,35 @@
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 849,
+      "line": 886,
       "expression": "RouteName.basicinfoHistory",
       "path": "/basicinfo/history",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 861,
+      "line": 898,
       "expression": "RouteName.basicinfoHistoryRevision",
       "path": "/basicinfo/history/:entityType/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 873,
+      "line": 910,
       "expression": "RouteName.basicinfoGoodsNew",
       "path": "/basicinfo/goods/new",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 880,
+      "line": 917,
       "expression": "RouteName.basicinfoGoodsPriceAnalysis",
       "path": "/basicinfo/goods/:id/price-analysis",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 887,
+      "line": 924,
       "expression": "RouteName.basicinfoGoodsDetail",
       "path": "/basicinfo/goods/:id",
       "status": "partial-native-readonly",
@@ -1638,1267 +1708,1267 @@
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 896,
+      "line": 933,
       "expression": "RouteName.basicinfoMould",
       "path": "/basicinfo/mould",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 901,
+      "line": 938,
       "expression": "RouteName.basicinfoClient",
       "path": "/basicinfo/client",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 907,
+      "line": 944,
       "expression": "RouteName.basicinfoClientDetail",
       "path": "/basicinfo/client/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 915,
+      "line": 952,
       "expression": "RouteName.basicinfoSupplier",
       "path": "/basicinfo/supplier",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 920,
+      "line": 957,
       "expression": "RouteName.basicinfoSupplierDetail",
       "path": "/basicinfo/supplier/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 928,
+      "line": 965,
       "expression": "RouteName.basicinfoColor",
       "path": "/basicinfo/color",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 933,
+      "line": 970,
       "expression": "RouteName.basicinfoUnit",
       "path": "/basicinfo/unit",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 938,
+      "line": 975,
       "expression": "RouteName.basicinfoCurrency",
       "path": "/basicinfo/currency",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 943,
+      "line": 980,
       "expression": "RouteName.basicinfoWarehouse",
       "path": "/basicinfo/warehouse",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 948,
+      "line": 985,
       "expression": "RouteName.basicinfoAccount",
       "path": "/basicinfo/account",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 953,
+      "line": 990,
       "expression": "RouteName.basicinfoAccountDetail",
       "path": "/basicinfo/account/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 962,
+      "line": 999,
       "expression": "RouteName.basicinfoPaymentStyle",
       "path": "/basicinfo/payment-style",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 967,
+      "line": 1004,
       "expression": "RouteName.basicinfoSettlementMethod",
       "path": "/basicinfo/settlement-methods",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 974,
+      "line": 1011,
       "expression": "RouteName.operationsWarehouseWorkbench",
       "path": "/operations/workbench/warehouse",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 981,
+      "line": 1018,
       "expression": "RouteName.operationsPurchaseWorkbench",
       "path": "/operations/workbench/purchase",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1000,
+      "line": 1037,
       "expression": "RouteName.operationsSubcontractWorkbench",
       "path": "/operations/workbench/subcontract",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1012,
+      "line": 1049,
       "expression": "RouteName.operationsSubcontractDrawRequest",
       "path": "/operations/workbench/subcontract/draw-request",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1026,
+      "line": 1063,
       "expression": "RouteName.rdTaskCenter",
       "path": "/rd/tasks",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1031,
+      "line": 1068,
       "expression": "RouteName.procurementArrivalExceptions",
       "path": "/procurement/arrival-exceptions",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1040,
+      "line": 1077,
       "expression": "'${RouteName.procurementArrivalExceptions}/:id'",
       "path": "/procurement/arrival-exceptions/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1047,
+      "line": 1084,
       "expression": "RouteName.procurementIqcRejections",
       "path": "/procurement/iqc-rejections",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1054,
+      "line": 1091,
       "expression": "'${RouteName.procurementIqcRejections}/:id'",
       "path": "/procurement/iqc-rejections/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1064,
+      "line": 1101,
       "expression": "RouteName.purchase",
       "path": "/purchase",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1069,
+      "line": 1106,
       "expression": "RouteName.purchaseRequestList",
       "path": "/purchase/requests",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1075,
+      "line": 1112,
       "expression": "RouteName.purchaseOrderList",
       "path": "/purchase/orders",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1084,
+      "line": 1121,
       "expression": "RouteName.purchaseReceiptList",
       "path": "/purchase/receipts",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1092,
+      "line": 1129,
       "expression": "RouteName.purchaseReturnList",
       "path": "/purchase/returns",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1101,
+      "line": 1138,
       "expression": "'/purchase/report/:kind'",
       "path": "/purchase/report/:kind",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1109,
+      "line": 1146,
       "expression": "'/purchase/orders/new'",
       "path": "/purchase/orders/new",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1123,
+      "line": 1160,
       "expression": "'/purchase/orders/:id/edit'",
       "path": "/purchase/orders/:id/edit",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1131,
+      "line": 1168,
       "expression": "'/purchase/:doc/new'",
       "path": "/purchase/:doc/new",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1140,
+      "line": 1177,
       "expression": "'/purchase/:doc/:id/edit'",
       "path": "/purchase/:doc/:id/edit",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1150,
+      "line": 1187,
       "expression": "'/purchase/:doc/:id'",
       "path": "/purchase/:doc/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1159,
+      "line": 1196,
       "expression": "'/purchase/report'",
       "path": "/purchase/report",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1167,
+      "line": 1204,
       "expression": "RouteName.stockBalance",
       "path": "/stock/balance",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1174,
+      "line": 1211,
       "expression": "RouteName.stockMovement",
       "path": "/stock/movement",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1185,
+      "line": 1222,
       "expression": "RouteName.stockInstantInventoryOverview",
       "path": "/stock/instant-inventory/overview",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1193,
+      "line": 1230,
       "expression": "RouteName.stockInstantInventory",
       "path": "/stock/instant-inventory",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1206,
+      "line": 1243,
       "expression": "'${RouteName.stockItemBase}/:goodsId'",
       "path": "/stock/item/:goodsId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1221,
+      "line": 1258,
       "expression": "RouteName.warehouse",
       "path": "/warehouse",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1226,
+      "line": 1263,
       "expression": "RouteName.warehouseInspections",
       "path": "/warehouse/inspections",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1232,
+      "line": 1269,
       "expression": "'/warehouse/material-discovery/:requestId'",
       "path": "/warehouse/material-discovery/:requestId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1238,
+      "line": 1275,
       "expression": "RouteName.warehouseInspectionBatchApproval",
       "path": "/warehouse/inspections/batch-approval",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1250,
+      "line": 1287,
       "expression": "'${RouteName.productionFqcSheetHandlingBase}/:sheetId'",
       "path": "/warehouse/inspections/fqc/sheets/:sheetId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1256,
+      "line": 1293,
       "expression": "'${RouteName.productionFqcInspectionHandlingBase}/:inspectionId'",
       "path": "/warehouse/inspections/fqc/inspections/:inspectionId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1263,
+      "line": 1300,
       "expression": "'${RouteName.warehouseInspections}/:receiptType/:receiptId'",
       "path": "/warehouse/inspections/:receiptType/:receiptId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1273,
+      "line": 1310,
       "expression": "'${RouteName.warehouseIqcStockIns}/:receiptType/:receiptId'",
       "path": "/warehouse/iqc-stock-ins/:receiptType/:receiptId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1282,
+      "line": 1319,
       "expression": "RouteName.warehouseIqcStockIns",
       "path": "/warehouse/iqc-stock-ins",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1287,
+      "line": 1324,
       "expression": "RouteName.warehouseQualityResults",
       "path": "/warehouse/quality-results",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1297,
+      "line": 1334,
       "expression": "RouteName.warehouseQualityBatchStockIn",
       "path": "/warehouse/quality-results/batch-stock-in",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1323,
+      "line": 1360,
       "expression": "'${RouteName.warehouseQualityPreStockInBase}/:receiptType/:receiptId'",
       "path": "/warehouse/quality-results/pre-stock-in/:receiptType/:receiptId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1339,
+      "line": 1376,
       "expression": "'${RouteName.warehouseQualityResults}/:receiptType/:receiptId'",
       "path": "/warehouse/quality-results/:receiptType/:receiptId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1355,
+      "line": 1392,
       "expression": "RouteName.qualityTaskCenter",
       "path": "/quality/task-center",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1360,
+      "line": 1397,
       "expression": "RouteName.qualityInspectionRecords",
       "path": "/quality/inspection-records",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1372,
+      "line": 1409,
       "expression": "RouteName.productionFqcInspections",
       "path": "/quality/production-inspections",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1377,
+      "line": 1414,
       "expression": "RouteName.warehouseInboundExpectations",
       "path": "/warehouse/inbound/expectations",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1382,
+      "line": 1419,
       "expression": "RouteName.warehouseArrivalExceptions",
       "path": "/warehouse/inbound/arrival-exceptions",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1387,
+      "line": 1424,
       "expression": "RouteName.warehouseProductionFinishedInboundTasks",
       "path": "/warehouse/production-finished-in/tasks",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1392,
+      "line": 1429,
       "expression": "RouteName.warehouseProductionDrawBatchIssue",
       "path": "/warehouse/DRAW/batch-issue",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1398,
+      "line": 1435,
       "expression": "RouteName.warehouseProductionFinishedBatchStockIn",
       "path": "/warehouse/production-finished-in/batch-stock-in",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1411,
+      "line": 1448,
       "expression": "RouteName.warehouseProductionFinishedArrivalRegistration",
       "path": null,
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1433,
+      "line": 1470,
       "expression": "RouteName.warehouseArrivalRegistration",
       "path": "/warehouse/inbound/arrivals/register",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1454,
+      "line": 1491,
       "expression": "RouteName.warehouseReport",
       "path": "/warehouse/report",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1462,
+      "line": 1499,
       "expression": "'detail'",
       "path": null,
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1469,
+      "line": 1506,
       "expression": "'summary'",
       "path": null,
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1479,
+      "line": 1516,
       "expression": "RouteName.warehouseShelfLabels",
       "path": "/warehouse/shelf-labels",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1486,
+      "line": 1523,
       "expression": "RouteName.warehouseInsights",
       "path": "/warehouse/insights",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1493,
+      "line": 1530,
       "expression": "RouteName.warehouseWeighCount",
       "path": "/warehouse/weigh-count",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1499,
+      "line": 1536,
       "expression": "RouteName.warehouseSubcontractOutbound",
       "path": "/warehouse/subcontract-outbound",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1504,
+      "line": 1541,
       "expression": "'/warehouse/material-returns/batch-receive'",
       "path": "/warehouse/material-returns/batch-receive",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1515,
+      "line": 1552,
       "expression": "'/warehouse/sales-outbound/batch'",
       "path": "/warehouse/sales-outbound/batch",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1527,
+      "line": 1564,
       "expression": "'/warehouse/sales-outbound/:id'",
       "path": "/warehouse/sales-outbound/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1537,
+      "line": 1574,
       "expression": "'/warehouse/iqc-returns/:id'",
       "path": "/warehouse/iqc-returns/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1543,
+      "line": 1580,
       "expression": "RouteName.warehouseIqcReturns",
       "path": "/warehouse/iqc-returns",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1548,
+      "line": 1585,
       "expression": "RouteName.warehouseSalesOutbound",
       "path": "/warehouse/sales-outbound",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1554,
+      "line": 1591,
       "expression": "'/warehouse/subcontract-outbound/batch'",
       "path": "/warehouse/subcontract-outbound/batch",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1565,
+      "line": 1602,
       "expression": "'/warehouse/subcontract-outbound/:issueId'",
       "path": "/warehouse/subcontract-outbound/:issueId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1573,
+      "line": 1610,
       "expression": "'/warehouse/history/:type/:id'",
       "path": "/warehouse/history/:type/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1584,
+      "line": 1621,
       "expression": "'/warehouse/history/:type'",
       "path": "/warehouse/history/:type",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1597,
+      "line": 1634,
       "expression": "RouteName.warehouseTasks",
       "path": "/warehouse/tasks",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1606,
+      "line": 1643,
       "expression": "RouteName.warehouseOutboundTasks",
       "path": "/warehouse/tasks/outbound",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1615,
+      "line": 1652,
       "expression": "RouteName.warehouseInboundTasks",
       "path": "/warehouse/tasks/inbound",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1623,
+      "line": 1660,
       "expression": "RouteName.warehouseDrawTasks",
       "path": "/warehouse/tasks/draw",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1633,
+      "line": 1670,
       "expression": "RouteName.workshopMaterialSetup",
       "path": "/warehouse/workshop-material/setup",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1644,
+      "line": 1681,
       "expression": "'/warehouse/:code/new'",
       "path": "/warehouse/:code/new",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1659,
+      "line": 1696,
       "expression": "'/warehouse/:code/:id/edit'",
       "path": "/warehouse/:code/:id/edit",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1669,
+      "line": 1706,
       "expression": "RouteName.warehouseStockCountReview",
       "path": "/warehouse/stock-count-review",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1677,
+      "line": 1714,
       "expression": "'/warehouse/:code/:id'",
       "path": "/warehouse/:code/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1689,
+      "line": 1726,
       "expression": "'/warehouse/:code'",
       "path": "/warehouse/:code",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1700,
+      "line": 1737,
       "expression": "RouteName.stockCountSession",
       "path": "/stock/count-session",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1707,
+      "line": 1744,
       "expression": "RouteName.stockCountRequests",
       "path": "/stock/count-requests",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1714,
+      "line": 1751,
       "expression": "RouteName.financeStockCountReview",
       "path": "/finance/stock-count-review",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1723,
+      "line": 1760,
       "expression": "RouteName.workshopMaterialBin",
       "path": "/workshop-material/bin",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1731,
+      "line": 1768,
       "expression": "'${RouteName.workshopMaterialIssue}/batch'",
       "path": "/workshop-material/issue/batch",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1742,
+      "line": 1779,
       "expression": "RouteName.workshopMaterialIssue",
       "path": "/workshop-material/issue",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1761,
+      "line": 1798,
       "expression": "RouteName.workshopMaterialCount",
       "path": "/workshop-material/count",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1772,
+      "line": 1809,
       "expression": "RouteName.workshopMaterialReports",
       "path": "/reports/workshop-material",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1781,
+      "line": 1818,
       "expression": "RouteName.salesManagerReview",
       "path": null,
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1787,
+      "line": 1824,
       "expression": "'/sales/manager-review/quotes/:id'",
       "path": "/sales/manager-review/quotes/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1794,
+      "line": 1831,
       "expression": "'/sales/manager-review/orders/:id'",
       "path": "/sales/manager-review/orders/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1803,
+      "line": 1840,
       "expression": "RouteName.sales",
       "path": "/sales",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1808,
+      "line": 1845,
       "expression": "RouteName.salesReport",
       "path": "/sales/report",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1817,
+      "line": 1854,
       "expression": "'detail'",
       "path": null,
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1823,
+      "line": 1860,
       "expression": "'summary'",
       "path": null,
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1831,
+      "line": 1868,
       "expression": "RouteName.salesScarcity",
       "path": "/sales/scarcity",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1839,
+      "line": 1876,
       "expression": "RouteName.salesOrderProgress",
       "path": "/sales/progress",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1846,
+      "line": 1883,
       "expression": "RouteName.salesTasks",
       "path": "/sales/tasks",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1853,
+      "line": 1890,
       "expression": "'/sales/:seg/new'",
       "path": "/sales/:seg/new",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1876,
+      "line": 1913,
       "expression": "'/sales/:seg/:id/edit'",
       "path": "/sales/:seg/:id/edit",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1886,
+      "line": 1923,
       "expression": "'/sales/:seg/:id'",
       "path": "/sales/:seg/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1898,
+      "line": 1935,
       "expression": "'/sales/:seg'",
       "path": "/sales/:seg",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1910,
+      "line": 1947,
       "expression": "RouteName.subcontract",
       "path": "/subcontract",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1915,
+      "line": 1952,
       "expression": "RouteName.subcontractReport",
       "path": "/subcontract/report",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1921,
+      "line": 1958,
       "expression": "RouteName.subcontractShortDeliveries",
       "path": "/subcontract/short-deliveries",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1932,
+      "line": 1969,
       "expression": "'/subcontract/applications'",
       "path": "/subcontract/applications",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1939,
+      "line": 1976,
       "expression": "'/subcontract/receipts'",
       "path": "/subcontract/receipts",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1948,
+      "line": 1985,
       "expression": "'/subcontract/report/:kind'",
       "path": "/subcontract/report/:kind",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1957,
+      "line": 1994,
       "expression": "'/subcontract/:seg/new'",
       "path": "/subcontract/:seg/new",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1974,
+      "line": 2011,
       "expression": "'/subcontract/:seg/:id/edit'",
       "path": "/subcontract/:seg/:id/edit",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1986,
+      "line": 2023,
       "expression": "'/subcontract/:seg/:id'",
       "path": "/subcontract/:seg/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 1995,
+      "line": 2032,
       "expression": "'/subcontract/:seg'",
       "path": "/subcontract/:seg",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2012,
+      "line": 2049,
       "expression": "RouteName.finance",
       "path": "/finance",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2019,
+      "line": 2056,
       "expression": "RouteName.financeAudits",
       "path": "/finance/audits",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2028,
+      "line": 2065,
       "expression": "RouteName.financePayables",
       "path": "/finance/payables",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2033,
+      "line": 2070,
       "expression": "'/finance/procurement-approvals'",
       "path": "/finance/procurement-approvals",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2040,
+      "line": 2077,
       "expression": "'/finance/procurement-approvals/:caseId'",
       "path": "/finance/procurement-approvals/:caseId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2047,
+      "line": 2084,
       "expression": "'/finance/sales-order-confirmations'",
       "path": "/finance/sales-order-confirmations",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2054,
+      "line": 2091,
       "expression": "'/finance/sales-order-changes'",
       "path": "/finance/sales-order-changes",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2060,
+      "line": 2097,
       "expression": "'/finance/sales-order-confirmations/:id'",
       "path": "/finance/sales-order-confirmations/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2068,
+      "line": 2105,
       "expression": "RouteName.financeSalesShipmentAudit",
       "path": "/finance/sales-shipment-audits",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2073,
+      "line": 2110,
       "expression": "RouteName.financeSalesShipmentAuditReview",
       "path": "/finance/sales-shipment-audits/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2081,
+      "line": 2118,
       "expression": "RouteName.financeQuoteReview",
       "path": "/finance/quote-review",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2088,
+      "line": 2125,
       "expression": "RouteName.financeQuoteReviewDetail",
       "path": "/finance/quote-review/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2094,
+      "line": 2131,
       "expression": "RouteName.financeArrivalExceptions",
       "path": "/finance/procurement-arrival-exceptions",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2099,
+      "line": 2136,
       "expression": "'${RouteName.financeArrivalExceptions}/:id'",
       "path": "/finance/procurement-arrival-exceptions/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2106,
+      "line": 2143,
       "expression": "RouteName.financeReport",
       "path": "/finance/report",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2111,
+      "line": 2148,
       "expression": "RouteName.financeReportDetail",
       "path": "/finance/report/detail",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2116,
+      "line": 2153,
       "expression": "RouteName.financeReportSummary",
       "path": "/finance/report/summary",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2121,
+      "line": 2158,
       "expression": "RouteName.financeReportOverview",
       "path": "/finance/report/overview",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2126,
+      "line": 2163,
       "expression": "RouteName.financeReportStatement",
       "path": "/finance/report/statement",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2131,
+      "line": 2168,
       "expression": "RouteName.financeReportAccountFlow",
       "path": "/finance/report/account-flow",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2136,
+      "line": 2173,
       "expression": "RouteName.financeReportCustomerPrepayment",
       "path": "/finance/report/customer-prepayment",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2142,
+      "line": 2179,
       "expression": "RouteName.financeReportRecon",
       "path": "/finance/report/recon",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2147,
+      "line": 2184,
       "expression": "RouteName.financeReportCost",
       "path": "/finance/report/cost",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2152,
+      "line": 2189,
       "expression": "RouteName.financeReportGl",
       "path": "/finance/report/gl",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2157,
+      "line": 2194,
       "expression": "RouteName.financeArAp",
       "path": "/finance/ar-ap",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2162,
+      "line": 2199,
       "expression": "RouteName.financeReconciliations",
       "path": "/finance/reconciliations",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2167,
+      "line": 2204,
       "expression": "RouteName.financeChecks",
       "path": "/finance/checks",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2173,
+      "line": 2210,
       "expression": "RouteName.financeAssets",
       "path": "/finance/assets",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2178,
+      "line": 2215,
       "expression": "'/finance/assets/new'",
       "path": "/finance/assets/new",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2196,
+      "line": 2233,
       "expression": "'/finance/:seg/new'",
       "path": "/finance/:seg/new",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2206,
+      "line": 2243,
       "expression": "'/finance/:seg/:id/edit'",
       "path": "/finance/:seg/:id/edit",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2216,
+      "line": 2253,
       "expression": "'/finance/:seg/:id'",
       "path": "/finance/:seg/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2225,
+      "line": 2262,
       "expression": "'/finance/:seg'",
       "path": "/finance/:seg",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2237,
+      "line": 2274,
       "expression": "RouteName.visitorApproval",
       "path": "/visitor-approval",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2242,
+      "line": 2279,
       "expression": "RouteName.visitorApprovalDetail",
       "path": "/visitor-approval/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2249,
+      "line": 2286,
       "expression": "RouteName.myVisitors",
       "path": "/my-visitors",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2254,
+      "line": 2291,
       "expression": "RouteName.securityScan",
       "path": "/security/scan",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2259,
+      "line": 2296,
       "expression": "RouteName.securityBlacklist",
       "path": "/security/blacklist",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2266,
+      "line": 2303,
       "expression": "RouteName.profileEdit",
       "path": "/profile/edit",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2275,
+      "line": 2312,
       "expression": "RouteName.formDrafts",
       "path": "/form-drafts/:categoryId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2281,
+      "line": 2318,
       "expression": "RouteName.profileMyChanges",
       "path": "/profile/me/changes",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2286,
+      "line": 2323,
       "expression": "RouteName.profileMyDepartment",
       "path": "/profile/me/department",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2295,
+      "line": 2332,
       "expression": "RouteName.hrTaskCenter",
       "path": "/hr/tasks",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2306,
+      "line": 2343,
       "expression": "'reconcile'",
       "path": null,
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2311,
+      "line": 2348,
       "expression": "':type'",
       "path": null,
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2325,
+      "line": 2362,
       "expression": "RouteName.hrProfileChanges",
       "path": "/hr/profile-changes",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2330,
+      "line": 2367,
       "expression": "RouteName.hrProfileChangeDetail",
       "path": "/hr/profile-changes/:id",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2338,
+      "line": 2375,
       "expression": "RouteName.adminPermissions",
       "path": "/admin/permissions",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2346,
+      "line": 2383,
       "expression": "RouteName.adminAuditLogs",
       "path": "/admin/audit-logs",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2353,
+      "line": 2390,
       "expression": "RouteName.adminAuditSession",
       "path": "/admin/audit-logs/sessions/:sessionId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2366,
+      "line": 2403,
       "expression": "RouteName.adminSystemSettings",
       "path": "/admin/system-settings",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2371,
+      "line": 2408,
       "expression": "RouteName.adminSmsSettings",
       "path": "/admin/sms-settings",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2376,
+      "line": 2413,
       "expression": "RouteName.adminPlatformSettings",
       "path": "/admin/platform-settings",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2381,
+      "line": 2418,
       "expression": "RouteName.adminServerStatus",
       "path": "/admin/server-status",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2386,
+      "line": 2423,
       "expression": "RouteName.adminServerOperations",
       "path": "/admin/server-operations",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2391,
+      "line": 2428,
       "expression": "RouteName.adminServerStorage",
       "path": "/admin/server-storage",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2397,
+      "line": 2434,
       "expression": "RouteName.adminAiSettings",
       "path": "/admin/ai-settings",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2403,
+      "line": 2440,
       "expression": "RouteName.adminAiUsage",
       "path": "/admin/ai-usage",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2408,
+      "line": 2445,
       "expression": "RouteName.adminAiUsagePersonRoute",
       "path": "/admin/ai-usage/:userId",
       "status": "not-migrated"
     },
     {
       "source": "lib/core/router/app_router.dart",
-      "line": 2416,
+      "line": 2453,
       "expression": "RouteName.adminAiUsageRecords",
       "path": "/admin/ai-usage-records",
       "status": "not-migrated"

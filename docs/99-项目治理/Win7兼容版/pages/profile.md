@@ -40,17 +40,17 @@
 
 ## W7-BIZ-120 · lib/features/profile/pages/profile_page.dart
 
-模块 `profile`；1228 行；SHA256 `26deef2612461933f653fac4817b571610aa3cd8b5e70620f77b8eeb02b3440e`。
+模块 `profile`；1229 行；SHA256 `10b245b82a269a1301bdd1d263fd4000f91f98aa09771c81b48674b63229299b`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | ProfilePage @55 (page-class)<br>_ProfilePageState @62 (state-class)<br>_ProfileFieldRow @759 (supporting-class)<br>_EditFieldPencil @884 (supporting-class)<br>_PolicyBadge @913 (supporting-class)<br>_IdentityGroup @931 (supporting-class)<br>_HeroCard @943 (supporting-class)<br>_RoleChip @1074 (supporting-class)<br>_MyDepartmentShortcut @1122 (supporting-class)<br>_MyChangesShortcut @1174 (supporting-class) |
+| 页面/状态类 | ProfilePage @55 (page-class)<br>_ProfilePageState @62 (state-class)<br>_ProfileFieldRow @760 (supporting-class)<br>_EditFieldPencil @885 (supporting-class)<br>_PolicyBadge @914 (supporting-class)<br>_IdentityGroup @932 (supporting-class)<br>_HeroCard @944 (supporting-class)<br>_RoleChip @1075 (supporting-class)<br>_MyDepartmentShortcut @1123 (supporting-class)<br>_MyChangesShortcut @1175 (supporting-class) |
 | 真实路由绑定 | /profile；router @613；builder ['ProfilePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | copyWith @323 [action-like-invocation] 提示 ['copy']；labelStyle: theme.textTheme.titleSmall?.copyWith(<br>copyWith @782 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>copyWith @793 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>_EditFieldPencil @799 [action-like-invocation] 提示 ['edit']；: _EditFieldPencil(kind: policyKind, onTap: onEdit);<br>_EditFieldPencil @885 [action-like-invocation] 提示 ['edit']；const _EditFieldPencil({required this.kind, this.onTap});<br>copyWith @1001 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleLarge?.copyWith(<br>copyWith @1012 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @1109 [action-like-invocation] 提示 ['copy']；style: Theme.of(context).textTheme.labelSmall?.copyWith(<br>copyWith @1156 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyLarge?.copyWith(<br>copyWith @1207 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyLarge?.copyWith(<br>effectiveEdit @671 [callback-reference] 提示 ['edit']；onEdit<br>onEdit @799 [callback-reference] 提示 ['edit']；onTap |
+| 动作处理 | copyWith @324 [action-like-invocation] 提示 ['copy']；labelStyle: theme.textTheme.titleSmall?.copyWith(<br>copyWith @783 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>copyWith @794 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyMedium?.copyWith(<br>_EditFieldPencil @800 [action-like-invocation] 提示 ['edit']；: _EditFieldPencil(kind: policyKind, onTap: onEdit);<br>_EditFieldPencil @886 [action-like-invocation] 提示 ['edit']；const _EditFieldPencil({required this.kind, this.onTap});<br>copyWith @1002 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleLarge?.copyWith(<br>copyWith @1013 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @1110 [action-like-invocation] 提示 ['copy']；style: Theme.of(context).textTheme.labelSmall?.copyWith(<br>copyWith @1157 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyLarge?.copyWith(<br>copyWith @1208 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodyLarge?.copyWith(<br>effectiveEdit @672 [callback-reference] 提示 ['edit']；onEdit<br>onEdit @800 [callback-reference] 提示 ['edit']；onTap |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 

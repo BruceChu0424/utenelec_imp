@@ -164,5 +164,43 @@
     "test/features/basic_data/bom_live_edit_controller_test.dart": "79e709dbf0a1f8dd0bc3489ff0b5a175a526dde196b084fd9a4c635c77649afc",
     "test/features/basic_data/widgets/goods_bom_comparison_workspace_test.dart": "56d4b960f29a84ab6af57d1306c3a0b2565576d7d17fe6157bed19b8ae9bee87",
     "test/support/bom_comparison_fixture.dart": "626693efb0dd7caf11177454a19047c7d42943b62268dc4bbcfde48cdceefa3c"
+  },
+  "unifiedCloseFollowup": {
+    "publicComponent": "UtenCloseButton via UtenAlertDialog/UtenWindowControls",
+    "entrypoints": [
+      "comparison top-right return",
+      "window pair chooser",
+      "unsaved edits continue",
+      "replacement quantity cancel"
+    ],
+    "callbacks": "Preserve draft/unknown-receipt guards; route-current checks prevent popping an underlying page twice",
+    "tests": {
+      "layoutRecheck": 1,
+      "warnings": 0,
+      "passed": 55,
+      "layoutLog": ".test-close-layout.log",
+      "log": ".test-comparison-close.log"
+    },
+    "audit": {
+      "sourceFiles": 1754,
+      "parseErrors": 0,
+      "log": ".audit-bom-close.log",
+      "unclassified": 0,
+      "staleExceptions": 0
+    },
+    "analysis": {
+      "log": ".analyze-bom-close.log",
+      "issues": 0
+    },
+    "sourceSha256": {
+      "lib/core/router/business_window_host.dart": "6f70afe9ef091b9e327b48fdec40ae23026a1d751259b94d3fa31d74f814ad98",
+      "lib/features/basic_data/widgets/goods_bom_comparison_table.dart": "19c1fb657e1bc80b46fe71f290be665c89b4394a0a39afd3e571f8fbcd419de0",
+      "lib/features/basic_data/widgets/goods_bom_comparison_workspace.dart": "8eeeec35e1434db5dd6149cef5d7e5311f15f9a8d66dbf599a3a0c9bf359400e",
+      "test/features/basic_data/widgets/goods_bom_comparison_workspace_test.dart": "789713fe464bdd2a0bfe95e49ece7ba715ba76ed9f388032055f93e165d946ac"
+    },
+    "pdf": "D:/Projects/uten_imp/output/pdf/多窗口与BOM对比操作指南_补充修订版.pdf",
+    "pdfSha256": "5a95d7d88f250d33c3f934684ee68dc874d8b46f2ee989d14cf2a61be78a15da",
+    "deployed": false,
+    "productionWritten": false
   }
 }

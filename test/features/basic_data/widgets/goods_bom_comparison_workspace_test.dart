@@ -7,6 +7,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/business_window_host.dart';
 import 'package:uten_imp/components/feedback/uten_floating_window.dart';
+import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/bom_component_picker.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -235,6 +236,71 @@ Future<Finder> editText(
 
 void main() {
   testWidgets(
+    'comparison and its dialogs use the common close control without discarding edits',
+    (tester) async {
+      final env = await _mount(
+        tester,
+        replacement: const GoodsListItem(
+          id: 'kg-material',
+          code: 'K100',
+          name: '测试材料',
+          unitName: '千克',
+          status: '使用',
+          writable: true,
+        ),
+      );
+      await _open(tester);
+      final close = find.byKey(const Key('bom-compare-close'));
+      expect(
+        tester.widget<UtenCloseButton>(close).control,
+        UtenWindowControl.close,
+      );
+      expect(tester.getRect(close).right, closeTo(1588, 1));
+      await tester.tap(
+        find.byKey(
+          const ValueKey('bom-compare-activate-left-componentGoodsId-changed'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('填写新组件的使用数量'), findsOneWidget);
+      final dismiss = tester.widget<UtenCloseButton>(
+        find.ancestor(
+          of: find.byTooltip('取消更换组件'),
+          matching: find.byType(UtenCloseButton),
+        ),
+      );
+      await Future<void>.sync(dismiss.onPressed!);
+      await Future<void>.sync(dismiss.onPressed!);
+      await tester.pumpAndSettle();
+      expect(find.text('填写新组件的使用数量'), findsNothing);
+      expect(find.byType(GoodsBomComparisonWorkspace), findsOneWidget);
+      expect(find.byKey(const ValueKey('bom-compare-save-a')), findsNothing);
+      await tester.tap(close);
+      await tester.pumpAndSettle();
+      expect(find.byType(GoodsBomComparisonWorkspace), findsNothing);
+      expect(env.container.read(businessWindowsProvider).windows, hasLength(2));
+      env.container
+          .read(businessWindowsProvider)
+          .open('/basicinfo/goods/c?tab=bom', '资料对照');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('对比货品 BOM').last);
+      await tester.pumpAndSettle();
+      final pickerClose = tester.widget<UtenCloseButton>(
+        find.ancestor(
+          of: find.byTooltip('关闭窗口选择'),
+          matching: find.byType(UtenCloseButton),
+        ),
+      );
+      await Future<void>.sync(pickerClose.onPressed!);
+      await Future<void>.sync(pickerClose.onPressed!);
+      await tester.pumpAndSettle();
+      expect(find.text('选择另一个对比窗口'), findsNothing);
+      expect(env.container.read(businessWindowsProvider).windows, hasLength(3));
+      expect(env.bom.writes, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'an invalid opposite-side input does not block saving this side',
     (tester) async {
       final env = await _mount(tester);
@@ -259,7 +325,7 @@ void main() {
     final env = await _mount(tester);
     await _open(tester);
     await editText(tester, 'left', 'qty', 'changed', 'abc');
-    await tester.tap(find.text('返回资料窗口'));
+    await tester.tap(find.byKey(const Key('bom-compare-close')));
     await tester.pumpAndSettle();
     expect(find.text('还有未保存的 BOM 修改'), findsOneWidget);
     env.container.read(businessWindowsProvider).clear();
@@ -448,7 +514,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('还有未保存的 BOM 修改'), findsOneWidget);
-      await tester.tap(find.text('继续编辑'));
+      await tester.tap(find.byTooltip('关闭提示并继续编辑'));
       await tester.pumpAndSettle();
       expect(
         tester

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../components/feedback/uten_inline_notice.dart';
+import '../../../components/buttons/uten_close_button.dart';
 import 'goods_bom_comparison_table.dart';
 import 'goods_bom_comparison_editor.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -129,6 +130,13 @@ class _GoodsBomComparisonWorkspaceState
         builder: (ctx) {
           _leaveRoute = ModalRoute.of(ctx);
           return UtenAlertDialog(
+            showCloseButton: true,
+            closeTooltip: '关闭提示并继续编辑',
+            onClose: () {
+              if (ModalRoute.of(ctx)?.isCurrent == true) {
+                Navigator.pop(ctx, 'continue');
+              }
+            },
             title: const Text('还有未保存的 BOM 修改'),
             content: const Text('请先核对并保存，或明确放弃未保存修改。离开对比不会自动保存输入。'),
             actions: [
@@ -702,41 +710,52 @@ class _GoodsBomComparisonWorkspaceState
     final comparison = _comparison;
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s12),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('BOM 对比', style: Theme.of(context).textTheme.titleMedium),
-          if (comparison != null)
-            for (final kind in BomDifference.values)
-              Chip(
-                avatar: Icon(
-                  kind == BomDifference.same
-                      ? Icons.check_circle_outline_rounded
-                      : Icons.difference_outlined,
-                  color: _statusColor(kind),
-                  size: 18,
+          Expanded(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text('BOM 对比', style: Theme.of(context).textTheme.titleMedium),
+                if (comparison != null)
+                  for (final kind in BomDifference.values)
+                    Chip(
+                      avatar: Icon(
+                        kind == BomDifference.same
+                            ? Icons.check_circle_outline_rounded
+                            : Icons.difference_outlined,
+                        color: _statusColor(kind),
+                        size: 18,
+                      ),
+                      label: Text(
+                        '${_statusLabel(kind)} ${comparison.count(kind)}',
+                      ),
+                    ),
+                FilterChip(
+                  label: const Text('只看差异'),
+                  selected: _onlyDifferences,
+                  onSelected: (value) =>
+                      setState(() => _onlyDifferences = value),
                 ),
-                label: Text('${_statusLabel(kind)} ${comparison.count(kind)}'),
-              ),
-          FilterChip(
-            label: const Text('只看差异'),
-            selected: _onlyDifferences,
-            onSelected: (value) => setState(() => _onlyDifferences = value),
+                TextButton.icon(
+                  onPressed: _locked ? null : _reload,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('重新分析'),
+                ),
+              ],
+            ),
           ),
-          TextButton.icon(
-            onPressed: _locked ? null : _reload,
-            icon: const Icon(Icons.refresh_rounded),
-            label: const Text('重新分析'),
-          ),
-          TextButton.icon(
+          const SizedBox(width: UtenSpacing.s8),
+          UtenCloseButton(
+            key: const Key('bom-compare-close'),
+            tooltip: '返回资料窗口',
             onPressed:
                 _busy || _replacement?.draft.isCommitRecoveryPending == true
                 ? null
                 : _close,
-            icon: const Icon(Icons.close_rounded),
-            label: const Text('返回资料窗口'),
           ),
         ],
       ),

@@ -1055,6 +1055,11 @@ class _ComparisonQuantityDialogState extends State<_ComparisonQuantityDialog> {
 
   @override
   Widget build(BuildContext context) => UtenAlertDialog(
+    showCloseButton: true,
+    closeTooltip: '取消更换组件',
+    onClose: () {
+      if (ModalRoute.of(context)?.isCurrent == true) Navigator.pop(context);
+    },
     title: const Text('填写新组件的使用数量'),
     content: Column(
       mainAxisSize: MainAxisSize.min,

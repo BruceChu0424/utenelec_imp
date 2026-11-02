@@ -177,6 +177,28 @@ class WindowsPackageTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Known crashing"):
                 validate_package(self.output, build_number=2, architecture="x64")
 
+    def test_formal_2538_2543_release_digest_is_rejected_separately_from_crash_evidence(self):
+        digest = "011e87e890b7bfbac89f63c763341ffb8393d2b4a617dd836c471a0cdaa1346f"
+        self.assertNotIn(digest, package_module.KNOWN_CRASHING_ENGINE_DIGESTS)
+        with self.assertRaisesRegex(ValueError, "Known unrepaired"):
+            package_module.reject_known_unsafe_engine("FLUTTER_WINDOWS.DLL", digest.upper())
+        # The policy applies to the engine, not an unrelated file with that hash.
+        package_module.reject_known_unsafe_engine("data/app.so", digest)
+
+    def test_unrepaired_engine_blocks_creation_and_independent_archive_validation(self):
+        digest = hashlib.sha256((self.bundle / "flutter_windows.dll").read_bytes()).hexdigest()
+        package_release(self.bundle, self.output, build_number=2, architecture="x64")
+        previous = self.output.read_bytes()
+        with mock.patch.dict(package_module.KNOWN_UNREPAIRED_ENGINE_DIGESTS,
+                             {digest: "source-confirmed unrepaired lifecycle"}):
+            for kind in ("installer", "update"):
+                with self.subTest(kind=kind), self.assertRaisesRegex(ValueError, "Known unrepaired"):
+                    package_release(self.bundle, self.output, build_number=2,
+                                    architecture="x64", kind=kind)
+                self.assertEqual(previous, self.output.read_bytes())
+            with self.assertRaisesRegex(ValueError, "Known unrepaired"):
+                validate_package(self.output, build_number=2, architecture="x64")
+
     def test_every_package_kind_requires_all_architecture_core_runtimes(self):
         for kind in ("update", "installer"):
             for name in required_vc_runtime("x64"):

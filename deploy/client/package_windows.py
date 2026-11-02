@@ -35,6 +35,14 @@ KNOWN_CRASHING_ENGINE_DIGESTS = {
     "a5f0e1c7d685a022995ce49ed8529fb72523b0a3e9634ac10a8b0754af23df14":
         "Incomplete accessibility child guard: stale AXNodeData after tree reparent/update",
 }
+# The 2.5.38 and 2.5.43 formal x64 bundles contain this exact official Release
+# binary. Matching SDK/revision source still has unchecked ChildAtIndex and an
+# empty OnNodeReparented. This is source-confirmed exposure, not a claim that the
+# remote user's crash was symbolicated. Profile-only denylisting missed Release.
+KNOWN_UNREPAIRED_ENGINE_DIGESTS = {
+    "011e87e890b7bfbac89f63c763341ffb8393d2b4a617dd836c471a0cdaa1346f":
+        "Flutter 3.44.2 Windows x64 Release: unrepaired accessibility child/reparent lifecycle",
+}
 # These are Windows 10+ OS contracts, not libraries found on the build machine.
 # In particular, a development machine's System32 VC++ installation never makes
 # msvcp/vcruntime/concrt application dependencies available on employee devices.
@@ -59,12 +67,16 @@ DEBUG_RUNTIME = re.compile(
     r"^(?:(?:msvcp|msvcr|vcruntime|concrt|vcomp|mfc|mfcm)\d+(?:_\d+)?u?d(?:_[^.]+)?|ucrtbased)\.dll$", re.I)
 
 
-def reject_known_crashing_engine(relative: str, digest: str) -> None:
+def reject_known_unsafe_engine(relative: str, digest: str) -> None:
     if relative.casefold() == "flutter_windows.dll":
         reason = KNOWN_CRASHING_ENGINE_DIGESTS.get(digest.lower())
         if reason is not None:
             raise ValueError(f"Known crashing Flutter Windows engine cannot be packaged: {reason}; "
                              "use the reviewed runtime and complete native window/UIA regression")
+        reason = KNOWN_UNREPAIRED_ENGINE_DIGESTS.get(digest.lower())
+        if reason is not None:
+            raise ValueError(f"Known unrepaired Flutter Windows engine cannot be packaged: {reason}; "
+                             "rebuild with a repaired, matching runtime and complete native acceptance")
 
 
 class _PeReader:
@@ -516,7 +528,7 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
             raise ValueError("Expanded release exceeds 2 GiB")
         with source.open("rb") as stream:
             digest = hashlib.file_digest(stream, "sha256").hexdigest()
-        reject_known_crashing_engine(relative, digest)
+        reject_known_unsafe_engine(relative, digest)
         if proof is not None:
             frozen = {"data/app.so": proof["aotSha256"],
                       "data/flutter_assets/NativeAssetsManifest.json": proof["nativeAssetsSha256"]}
@@ -601,7 +613,7 @@ def validate_package(path: Path, *, build_number: int, architecture: str,
                 digest = hashlib.file_digest(stream, "sha256").hexdigest()
                 if digest != record["sha256"]:
                     raise ValueError("Runtime SHA-256 mismatch")
-            reject_known_crashing_engine(entry.filename, digest)
+            reject_known_unsafe_engine(entry.filename, digest)
         if len(seen) != len(expected) + 1:
             raise ValueError("Archive omits release files")
         modules = {}

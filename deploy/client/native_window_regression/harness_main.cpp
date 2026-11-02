@@ -79,6 +79,7 @@ struct Options {
   std::string receipt_directory = "receipts";
   std::string accessibility_mode = "default";
   bool extended = false;
+  bool hold_open = false;
 };
 
 bool NumberOption(const std::string& text, const std::string& prefix, UINT& value) {
@@ -206,7 +207,7 @@ class RegressionWindow : public FlutterWindow {
         std::string(options_.extended ? "true" : "false") + ",\"finalUiaReadWindowMs\":2000}";
     Result(receipt);
     Log(receipt);
-    CloseWindow();
+    if (!options_.hold_open || !success) CloseWindow();
   }
 
   void Tick() {
@@ -331,6 +332,10 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, wchar_t*, int) {
       options.extended = true;
       continue;
     }
+    if (argument == "--hold-open") {
+      options.hold_open = true;
+      continue;
+    }
     if (NumberOption(argument, "--start-delay-ms=", options.start_delay_ms) ||
         NumberOption(argument, "--step-ms=", options.step_ms)) continue;
     if (argument.rfind("--receipt-dir=", 0) == 0) options.receipt_directory = argument.substr(14);
@@ -349,6 +354,9 @@ int APIENTRY wWinMain(HINSTANCE, HINSTANCE, wchar_t*, int) {
   SetUnhandledExceptionFilter(CaptureException);
   CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
   flutter::DartProject project(L"data");
+  // Offline fixture entrypoints can record their event-loop/input evidence.
+  // Ordinary app entrypoints retain their existing argument handling.
+  project.set_dart_entrypoint_arguments(GetCommandLineArguments());
   if (options.accessibility_mode == "legacy") {
     project.set_accessibility_mode(flutter::AccessibilityMode::IAccessible);
   } else if (options.accessibility_mode == "native") {

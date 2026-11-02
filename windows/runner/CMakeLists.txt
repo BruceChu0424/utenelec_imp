@@ -9,6 +9,8 @@ project(runner LANGUAGES CXX)
 add_executable(${BINARY_NAME} WIN32
   "flutter_window.cpp"
   "client_update_channel.cpp"
+  "window_background_task.cpp"
+  "update_helper_process.cpp"
   "software_download_host.cpp"
   "main.cpp"
   "utils.cpp"

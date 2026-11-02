@@ -144,13 +144,13 @@ public class SupplierController {
 
     /** 全量字典（采购单据页选/解析供应商用；supplier:view 全员有）。 */
     @GetMapping("/dict")
-    @PreAuthorize("hasAuthority('supplier:view')")
+    @PreAuthorize("hasAuthority('supplier:view') or @businessMasterReferenceAccess.canRead('supplier')")
     public java.util.List<SupplierDictItem> dict() {
         return service.dict();
     }
 
     @GetMapping("/lookup")
-    @PreAuthorize("hasAuthority('supplier:view')")
+    @PreAuthorize("hasAuthority('supplier:view') or @businessMasterReferenceAccess.canRead('supplier')")
     public java.util.List<SupplierDictItem> lookup(@RequestParam Set<UUID> ids) {
         return service.lookup(ids);
     }

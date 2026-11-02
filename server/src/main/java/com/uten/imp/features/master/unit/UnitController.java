@@ -104,9 +104,9 @@ public class UnitController {
         return service.facets();
     }
 
-    /** 全量字典（货品编辑表单选单位用；unit:view 全员有）。 */
+    /** Reference units retain their measurement contract without granting the unit master page. */
     @GetMapping("/dict")
-    @PreAuthorize("hasAuthority('unit:view')")
+    @PreAuthorize("hasAuthority('unit:view') or @businessMasterReferenceAccess.canRead('unit')")
     public java.util.List<UnitListItem> dict() {
         return service.dict();
     }

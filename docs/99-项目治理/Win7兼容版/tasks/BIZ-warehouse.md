@@ -94,9 +94,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`；`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 必要读范围合同增量仍未迁移：新的车间/仓库浏览投影不替代原内料command车间资格；本页原SETUP/OPEN/ENABLE/REVOKE、请领/履行及盘点等实际适用动作须沿owning入口分别核对，不能因VIEW全读开放操作。原状态/DoD/证据保留。。
+接续/限制：2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。。
 
 ## W7-BIZ-177
 
@@ -143,9 +143,9 @@
 9. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 10. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`；`clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 新登记未迁移伴随源：财务到货异常列表/详情两个真实app_router构造。财务定案权限/原source和金额、动作状态/版本独立；supplier_return_task:view:all不授予财务办理身份。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 新登记未迁移伴随源：财务到货异常列表/详情两个真实app_router构造。财务定案权限/原source和金额、动作状态/版本独立；supplier_return_task:view:all不授予财务办理身份。；2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。。
 
 ## W7-BIZ-178
 
@@ -167,9 +167,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`。
 
-接续/限制：尚未迁移；2026-10-31修复权限/读取范围更新后名称服务重建造成空仓库快照；原生须按当前身份加载真实仓库标记，区分错误/空结果并支持重试；见2026-10-31仓库选仓与车间任务导出记录。。
+接续/限制：2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。。
 
 ## W7-BIZ-223
 
@@ -524,9 +524,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 仓库入口卡片改用公共红黄徽章；真实负责人可跟踪本人仓库等待检验的黄色在办事实，办理权限保持独立。WPF 本页仍未迁移。。
 
 ## W7-BIZ-193
 
@@ -881,9 +881,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。。
 
 ## W7-BIZ-208
 
@@ -905,9 +905,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。。
 
 ## W7-BIZ-209
 
@@ -952,9 +952,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 仓库多工单弹窗先关闭根弹窗再跳详情；无指定材料的申请显示待仓库填写材料，不生成虚构货品数量。WPF 本页仍未迁移。。
 
 ## W7-BIZ-211
 

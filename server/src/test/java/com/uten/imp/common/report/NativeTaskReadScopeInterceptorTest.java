@@ -6,6 +6,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class NativeTaskReadScopeInterceptorTest {
     private static final String ID="12345678-1234-1234-1234-123456789abc";
+    @Test void businessReferencesKeepTheOriginalResourceRevocationDomains() {
+        for (String path : List.of("/api/business-references/clients", "/api/business-references/clients/search-context"))
+            assertThat(NativeTaskReadScopeInterceptor.profile(path)).isEqualTo("client");
+        for (String path : List.of("/api/business-references/goods", "/api/business-references/goods/search-category-ids",
+                "/api/business-references/goods/facet-values"))
+            assertThat(NativeTaskReadScopeInterceptor.profile(path)).isEqualTo("master_goods");
+        assertThat(NativeTaskReadScopeInterceptor.profile("/api/business-references/suppliers")).isEqualTo("supplier");
+        assertThat(NativeTaskReadScopeInterceptor.profile("/api/business-references/accounts")).isEqualTo("master_account");
+        assertThat(NativeTaskReadScopeInterceptor.profile("/api/business-references/warehouses")).isEqualTo("master_warehouse");
+        // Existing helpers continue through MasterReadScopeInterceptor, not a feature-wide override.
+        for (String path : List.of("/api/master/clients/lookup", "/api/master/clients/dict",
+                "/api/master/goods/lookup", "/api/master/suppliers/lookup"))
+            assertThat(NativeTaskReadScopeInterceptor.profile(path)).isNull();
+        assertThat(NativeTaskReadScopeInterceptor.profile("/api/business-references/suppliers/delete")).isNull();
+    }
     @Test void physicalReadsHaveFixedProfilesWithoutMatchingCommandsOrUnrelatedWarehouseApis() {
         for(String path:List.of("/api/master/warehouses/my-scope","/api/warehouse/task-center/inbound",
                 "/api/warehouse/task-center/outbound/SALES:SALES_SHIPMENT:"+ID+":"+ID+"/detail",

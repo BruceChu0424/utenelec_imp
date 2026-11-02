@@ -88,6 +88,8 @@ public class ImpersonationWriteGuardFilter extends OncePerRequestFilter {
     /** Exact read contracts only; exports, saves and other selection routes remain blocked. */
     static boolean readOnlyB1Query(String method, String path) {
         return "POST".equals(method) && (Set.of("/api/master/clients/search-context",
+                "/api/business-references/clients/search-context", "/api/business-references/suppliers/search-context",
+                "/api/business-references/clients/search", "/api/business-references/suppliers/search",
                 "/api/master/suppliers/search-context", "/api/sales/orders/shippable-lines/selection",
                 "/api/quality/pending-disposals/query").contains(path)
                 || com.uten.imp.common.report.ProcurementReadRoutes.printAuthorization(path));

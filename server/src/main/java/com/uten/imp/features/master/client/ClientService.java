@@ -149,7 +149,42 @@ public class ClientService {
                 p);
     }
 
-    /** 全量字典（单据名称解析用；client:view 全员有）。无此端点时 /dict 会落到 /{id} 报 Invalid UUID。 */
+    /** A document can select a minimal party without receiving contacts, bank or credit master fields. */
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public PageResponse<com.uten.imp.features.master.reference.PartyReference> referencePage(
+            UUID categoryId, String keyword, boolean selectableOnly, boolean excludeLegacyFinanceStub, int page, int size) {
+        var filter = referenceFilter(categoryId, keyword, selectableOnly, excludeLegacyFinanceStub);
+        validateReadFilter(filter);
+        var plan = keywordPlan(keyword);
+        Sort sort = Sort.by("code").and(Sort.by("id"));
+        var spec = clientSpec(filter, categoryId == null ? null : resolveSubtreeIds(categoryId),
+                clientAccessPolicy.evaluate(), plan, sort, true);
+        var result = repo.findAll(spec, Pageables.of(page, size, plan.active() ? Sort.unsorted() : sort));
+        return new PageResponse<>(result.getContent().stream().map(c ->
+                new com.uten.imp.features.master.reference.PartyReference(c.getId(), c.getCode(),
+                        c.getName() == null || c.getName().isBlank() ? c.getFullName() : c.getName(),
+                        c.getCategory() == null ? null : c.getCategory().getId(), c.getStatus(),
+                        c.getDefaultSettlementMethodId(), "使用".equals(c.getStatus()))).toList(), result);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public com.uten.imp.common.web.MasterSearchContext referenceSearchContext(
+            UUID categoryId, String keyword, boolean selectableOnly, boolean excludeLegacyFinanceStub, int page, int size) {
+        var filter = referenceFilter(categoryId, keyword, selectableOnly, excludeLegacyFinanceStub);
+        validateReadFilter(filter);
+        var spec = clientSpec(filter, categoryId == null ? null : resolveSubtreeIds(categoryId),
+                clientAccessPolicy.evaluate(), keywordPlan(keyword), Sort.unsorted(), true);
+        return com.uten.imp.common.web.CategorySearchContext.read(em, Client.class, spec, "category", page, size);
+    }
+
+    private static ClientQueryFilter referenceFilter(UUID categoryId, String keyword,
+            boolean selectableOnly, boolean excludeLegacyFinanceStub) {
+        return new ClientQueryFilter(categoryId, keyword, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, excludeLegacyFinanceStub, selectableOnly);
+    }
+
+    /** Minimal, scope-filtered identity references. Business use does not imply access to client master records. */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public List<ClientDictItem> dict() {
         return dict(true);
@@ -206,6 +241,12 @@ public class ClientService {
 
     private Specification<Client> clientSpec(ClientQueryFilter f, List<UUID> subtreeIds,
             ClientAccessPolicy.ClientScope accessScope, CategoryKeywordSearch.Plan keyword, Sort requestedSort) {
+        return clientSpec(f, subtreeIds, accessScope, keyword, requestedSort, false);
+    }
+
+    private Specification<Client> clientSpec(ClientQueryFilter f, List<UUID> subtreeIds,
+            ClientAccessPolicy.ClientScope accessScope, CategoryKeywordSearch.Plan keyword, Sort requestedSort,
+            boolean referenceOnly) {
         return (Root<Client> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                       CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -225,7 +266,9 @@ public class ClientService {
                 ps.add(root.get("category").get("id").in(subtreeIds));
             }
             if (!KeywordSearch.terms(f.keyword()).isEmpty()) {
-                List<jakarta.persistence.criteria.Expression<String>> visible = List.of(root.get("name"), root.get("code"), root.get("fullName"), root.get("nameEn"), root.get("email"), root.get("linkman"), root.get("mobile"));
+                List<jakarta.persistence.criteria.Expression<String>> visible = referenceOnly
+                        ? List.of(root.get("name"), root.get("code"), root.get("fullName"), root.get("nameEn"))
+                        : List.of(root.get("name"), root.get("code"), root.get("fullName"), root.get("nameEn"), root.get("email"), root.get("linkman"), root.get("mobile"));
                 ps.add(keyword.predicate(cb, root.get("category").get("id"), visible,
                         List.of()));
                 if (q != null && q.getResultType() != Long.class) {

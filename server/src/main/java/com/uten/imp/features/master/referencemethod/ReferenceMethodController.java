@@ -45,7 +45,7 @@ public class ReferenceMethodController {
     private final ExportLimitPort exportLimits;
 
     @GetMapping("/settlement")
-    @PreAuthorize(SalesClientTermsAccess.SETTLEMENT_OPTIONS)
+    @PreAuthorize(SalesClientTermsAccess.SETTLEMENT_OPTIONS + " or @businessMasterReferenceAccess.canRead('terms')")
     public List<ReferenceMethodOption> settlement() {
         return service.settlementOptions();
     }
@@ -136,7 +136,7 @@ public class ReferenceMethodController {
     }
 
     @GetMapping("/finance")
-    @PreAuthorize("hasAuthority('payment_style:view')")
+    @PreAuthorize("hasAuthority('payment_style:view') or @businessMasterReferenceAccess.canRead('account')")
     public List<ReferenceMethodOption> finance(
             @RequestParam(defaultValue = "ANY") String direction) {
         return service.financeOptions(direction);

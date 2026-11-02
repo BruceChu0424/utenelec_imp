@@ -43,9 +43,11 @@ public class PaymentStyleController {
     private final AuditDetailViewRecorder detailViewAudit;
 
     @GetMapping("/tree")
-    @PreAuthorize("hasAuthority('payment_style:view')")
+    @PreAuthorize("hasAuthority('payment_style:view') or @businessMasterReferenceAccess.canRead('account')")
     public List<PaymentStyleNode> tree(@RequestParam(required = false) String category) {
-        return service.treeByCategory(category);
+        var rows = service.treeByCategory(category);
+        return com.uten.imp.security.CurrentAuthorityGuard.hasAll("payment_style:view") ? rows
+                : com.uten.imp.features.master.reference.PaymentStyleReferenceProjection.of(rows);
     }
 
     @GetMapping("/{id}/subtree")

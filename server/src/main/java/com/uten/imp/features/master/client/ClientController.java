@@ -157,14 +157,14 @@ public class ClientController {
 
     /** 全量字典（单据客户名解析用；client:view 全员有）。 */
     @GetMapping("/dict")
-    @PreAuthorize("hasAuthority('client:view')")
+    @PreAuthorize("hasAuthority('client:view') or @businessMasterReferenceAccess.canRead('client')")
     public java.util.List<ClientDictItem> dict(
             @RequestParam(defaultValue = "true") boolean excludeLegacyFinanceStub) {
         return service.dict(excludeLegacyFinanceStub);
     }
 
     @GetMapping("/lookup")
-    @PreAuthorize("hasAuthority('client:view')")
+    @PreAuthorize("hasAuthority('client:view') or @businessMasterReferenceAccess.canRead('client')")
     public java.util.List<ClientDictItem> lookup(@RequestParam Set<UUID> ids,
             @RequestParam(defaultValue = "true") boolean excludeLegacyFinanceStub) {
         return service.lookup(ids, excludeLegacyFinanceStub);

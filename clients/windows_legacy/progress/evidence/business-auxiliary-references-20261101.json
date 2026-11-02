@@ -1,0 +1,37 @@
+{
+  "id": "E-BUSINESS-AUXILIARY-REFERENCES-20261101",
+  "scope": "Operation-authorized minimal auxiliary references for current Flutter Web and desktop",
+  "baseCommit": "bd7e8525be1ef52db2a6cfb10268fdbd8310844c",
+  "reviewedComponentCommits": {
+    "employeeBackend": "c7fa12f89f763cf7e14b1e6652c359a2db1f4398",
+    "flutterReferences": "9e224fc4f6b76cf07c4215c244698a0804c90942",
+    "otherBusinessCallers": "dd72c29e78631010e90d193f8fde090e9ad93e9d"
+  },
+  "contract": {
+    "employeeReferences": "/api/org/employee-references",
+    "masterReferences": "/api/business-references",
+    "newUserPermissionCodes": 0,
+    "operationPermissionIsTheReferenceAuthority": true,
+    "employeeVisibleFields": ["employee code", "name", "department", "position"],
+    "fullHrAndMasterDataPermissionsRemainIndependent": true,
+    "existingPhysicalPersonEligibilityAndWarehouseCommandScopeRetained": true,
+    "originalCommandIdsQuantitiesReceiptsAndUnknownSubmissionRulesRetained": true
+  },
+  "validation": {
+    "flutterSharedAndWarehouseAndMasterUniquePassed": 292,
+    "otherBusinessCallerFocusedPassed": 50,
+    "employeeBackendFocusedPassed": 59,
+    "masterBackendFocusedPassed": 15,
+    "supplierIdentityFallbackFollowupPassed": 1,
+    "groupCountsAreNotAnAdditiveUniqueRepositoryTotal": true,
+    "masterBackendSourceEvidence": "Exact source hashes and actual per-round results are retained in output/warehouse-receiver-picker-20261101/MASTER_REFERENCE_TEST_HANDOFF.json",
+    "productionBusinessOrPermissionWrites": 0
+  },
+  "windowsLegacy": {
+    "nativeBusinessMigrationImplementedByThisChange": false,
+    "targetMachineUatPerformed": false,
+    "formalWindowsLegacyReleasePerformed": false,
+    "workItemStatusesChanged": false,
+    "requirement": "Unmigrated native business selectors must adopt the same minimal references and operation authority; existing unchanged lightweight dictionary contracts remain compatible. This does not mark any native workflow complete."
+  }
+}

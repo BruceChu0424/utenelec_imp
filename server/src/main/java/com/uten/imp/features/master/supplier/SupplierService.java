@@ -132,12 +132,52 @@ public class SupplierService {
         return new PageResponse<>(items, p);
     }
 
+    /** Document references reuse status, category and keyword ordering without returning master records. */
+    @Transactional(readOnly = true)
+    public PageResponse<com.uten.imp.features.master.reference.PartyReference> referencePage(
+            UUID categoryId, String keyword, boolean selectableOnly, int page, int size) {
+        var filter = referenceFilter(categoryId, keyword, selectableOnly);
+        validateReadFilter(filter);
+        var plan = keywordPlan(keyword);
+        Sort sort = Sort.by("code").and(Sort.by("id"));
+        var spec = supplierSpec(filter, categoryId == null ? null : resolveSubtreeIds(categoryId), plan, sort, null, true);
+        // Internal workshops are organizational units, never external supplier references.
+        spec = spec.and((root, query, cb) -> cb.isFalse(root.get("internalWorkshop")));
+        var result = repo.findAll(spec, Pageables.of(page, size, plan.active() ? Sort.unsorted() : sort));
+        return new PageResponse<>(result.getContent().stream().map(s ->
+                new com.uten.imp.features.master.reference.PartyReference(s.getId(), s.getCode(),
+                        s.getName() == null || s.getName().isBlank() ? s.getDescription() : s.getName(),
+                        s.getCategory() == null ? null : s.getCategory().getId(), s.getStatus(),
+                        s.getDefaultSettlementMethodId(), s.getStatus() == null || "使用".equals(s.getStatus()))).toList(), result);
+    }
+
+    @Transactional(readOnly = true)
+    public com.uten.imp.common.web.MasterSearchContext referenceSearchContext(
+            UUID categoryId, String keyword, boolean selectableOnly, int page, int size) {
+        var filter = referenceFilter(categoryId, keyword, selectableOnly);
+        validateReadFilter(filter);
+        var spec = supplierSpec(filter, categoryId == null ? null : resolveSubtreeIds(categoryId),
+                keywordPlan(keyword), Sort.unsorted(), null, true)
+                .and((root, query, cb) -> cb.isFalse(root.get("internalWorkshop")));
+        return com.uten.imp.common.web.CategorySearchContext.read(em, Supplier.class, spec, "category", page, size);
+    }
+
+    private static SupplierQueryFilter referenceFilter(UUID categoryId, String keyword, boolean selectableOnly) {
+        return new SupplierQueryFilter(categoryId, keyword, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null, selectableOnly);
+    }
+
     private Specification<Supplier> supplierSpec(SupplierQueryFilter f, List<UUID> subtreeIds,
             CategoryKeywordSearch.Plan keyword, Sort requestedSort) {
         return supplierSpec(f,subtreeIds,keyword,requestedSort,null);
     }
     private Specification<Supplier> supplierSpec(SupplierQueryFilter f, List<UUID> subtreeIds,
             CategoryKeywordSearch.Plan keyword, Sort requestedSort, Boolean lossAscending) {
+        return supplierSpec(f, subtreeIds, keyword, requestedSort, lossAscending, false);
+    }
+
+    private Specification<Supplier> supplierSpec(SupplierQueryFilter f, List<UUID> subtreeIds,
+            CategoryKeywordSearch.Plan keyword, Sort requestedSort, Boolean lossAscending, boolean referenceOnly) {
         return (Root<Supplier> root, jakarta.persistence.criteria.CriteriaQuery<?> q,
                                         CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -155,7 +195,9 @@ public class SupplierService {
                 ps.add(root.get("category").get("id").in(subtreeIds));
             }
             if (!KeywordSearch.terms(f.keyword()).isEmpty()) {
-                List<jakarta.persistence.criteria.Expression<String>> visible = List.of(root.get("code"), root.get("name"), root.get("linkman"), root.get("legalPerson"), root.get("place"), root.get("mobile"));
+                List<jakarta.persistence.criteria.Expression<String>> visible = referenceOnly
+                        ? List.of(root.get("code"), root.get("name"))
+                        : List.of(root.get("code"), root.get("name"), root.get("linkman"), root.get("legalPerson"), root.get("place"), root.get("mobile"));
                 ps.add(keyword.predicate(cb, root.get("category").get("id"), visible,
                         List.of(root.get("description"))));
                 if (q != null && q.getResultType() != Long.class) {

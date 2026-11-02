@@ -19,6 +19,13 @@ public record NativeTaskReadScopeInterceptor(ReadScopeVersionAuthority authority
     private record Route(Pattern path,String profile) { }
     private static final String ID="[0-9a-fA-F-]{36}";
     private static final List<Route> ROUTES=List.of(
+            route("/api/business-references/clients(?:/(?:search|search-context))?","client"),
+            route("/api/business-references/goods(?:/(?:categories|search-category-ids|facet-values|facets))?","master_goods"),
+            route("/api/business-references/suppliers(?:/(?:search|search-context))?","supplier"),
+            route("/api/business-references/accounts","master_account"),
+            route("/api/business-references/warehouses","master_warehouse"),
+            route("/api/business-references/(?:supplier-categories|client-categories|departments)","native_feature"),
+            route("/api/master/(?:payment-styles/tree|reference-methods/(?:settlement|finance))","native_feature"),
             route("/api/org/employee-references(?:/(?:by-ids|departments))?","native_feature"),
             route("/api/production/workshop-tasks(?:/(?:facets|count|"+ID+"/materials))?","native_workshop_tasks"),
             route("/api/workshop-material/segments/"+ID+"/stock-readiness","native_workshop_tasks"),
@@ -45,8 +52,11 @@ public record NativeTaskReadScopeInterceptor(ReadScopeVersionAuthority authority
                 .map(Route::profile).findFirst().orElse(null);
     }
     @Override public boolean preHandle(HttpServletRequest request,HttpServletResponse response,Object handler) {
-        if(!"GET".equals(request.getMethod()))return true;
         String path=SecurityRequestPath.withinApplication(request);
+        boolean referenceSearch="POST".equals(request.getMethod()) && java.util.Set.of(
+                "/api/business-references/suppliers/search-context", "/api/business-references/clients/search-context",
+                "/api/business-references/suppliers/search", "/api/business-references/clients/search").contains(path);
+        if(!"GET".equals(request.getMethod()) && !referenceSearch)return true;
         // The original authenticated metadata endpoint remains available to
         // password-change/visitor flows. Only the new explicit browse mode
         // participates in the staff task publication protocol.

@@ -150,9 +150,9 @@ public class GoodsController {
                 com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request)), field, search, page, size);
     }
 
-    /** 按 id 批量解析货品名（采购单据明细展示用；goods:view 全员有）。 */
+    /** Minimal physical identity for a permitted business document, independent of master-data access. */
     @GetMapping("/lookup")
-    @PreAuthorize("hasAuthority('goods:view')")
+    @PreAuthorize("hasAuthority('goods:view') or @businessMasterReferenceAccess.canRead('goods')")
     public java.util.List<GoodsDictItem> lookup(@RequestParam("ids") Set<UUID> ids) {
         if (ids == null || ids.isEmpty() || ids.size() > RequestLimits.LOOKUP_IDS) {
             throw new ApiException(

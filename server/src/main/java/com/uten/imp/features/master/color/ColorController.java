@@ -106,7 +106,7 @@ public class ColorController {
 
     /** 全量字典（货品编辑表单选颜色用；color:view 全员有）。 */
     @GetMapping("/dict")
-    @PreAuthorize("hasAuthority('color:view')")
+    @PreAuthorize("hasAuthority('color:view') or @businessMasterReferenceAccess.canRead('goods')")
     public java.util.List<ColorListItem> dict() {
         return service.dict();
     }

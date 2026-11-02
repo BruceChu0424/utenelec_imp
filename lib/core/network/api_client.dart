@@ -19,6 +19,7 @@ import 'api_exception.dart';
 import 'api_mutation_reload_safety.dart';
 import 'authenticated_request_scope.dart';
 import 'native_facet_routes.dart';
+import 'request_reload_semantics.dart';
 import 'interceptors/auth_interceptor.dart';
 import 'interceptors/automatic_request_interceptor.dart';
 import 'interceptors/device_audit_interceptor.dart';
@@ -49,9 +50,13 @@ class ApiClient {
   final ApiMutationReloadSafety _reloadSafety;
 
   Future<T> _trackPost<T>(String path, Future<T> Function() action) =>
-      isNativeFacetPath(path)
+      isReadOnlyPost(path)
       ? _reloadSafety.trackRead(action)
-      : _reloadSafety.track(action);
+      : _reloadSafety.track(
+          action,
+          retainUncertainty:
+              !isNoticePresentationReceipt(path) && !isEphemeralSignIn(path),
+        );
 
   /// Read one already-authorized export artifact, without accumulating its body.
   Stream<Uint8List> downloadExportStream(

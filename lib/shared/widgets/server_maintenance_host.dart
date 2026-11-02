@@ -11,6 +11,7 @@ import '../../core/maintenance/server_maintenance.dart';
 import '../../core/performance/performance_tier.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/utils/display_datetime.dart';
+import '../../core/web_update/web_update_bridge.dart';
 import '../providers/app_visibility_provider.dart';
 import '../providers/performance_provider.dart';
 
@@ -86,6 +87,17 @@ class _ServerMaintenanceViewState extends State<ServerMaintenanceView> {
 
   void _changed() {
     if (!mounted) return;
+    final snapshot = widget.controller.snapshot;
+    if (!widget.controller.checking &&
+        !widget.controller.lastCheckFailed &&
+        snapshot != null) {
+      publishWebServerMaintenance(switch (snapshot.phase) {
+        ServerMaintenancePhase.available => 'available',
+        ServerMaintenancePhase.scheduled => 'scheduled',
+        ServerMaintenancePhase.updating => 'updating',
+        ServerMaintenancePhase.recoveryRequired => 'recovery_required',
+      }, snapshot.noticeKey);
+    }
     _ticker?.cancel();
     if (widget.visible &&
         widget.controller.snapshot?.phase == ServerMaintenancePhase.scheduled) {

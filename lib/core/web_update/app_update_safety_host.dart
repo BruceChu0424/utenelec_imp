@@ -33,6 +33,9 @@ class _AppUpdateSafetyHostState extends State<AppUpdateSafetyHost> {
     blocked: !canAutomaticallyUpdateRoute(
       widget.router.routeInformationProvider.value.uri.path,
     ),
+    // Server-directed replacement also covers login and newly added routes.
+    // Mounted editors and requests keep their independent data safety fences.
+    serverReloadOverride: true,
   );
 
   @override

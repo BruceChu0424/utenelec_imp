@@ -122,7 +122,7 @@ class ScopedRecordHistoryPostgresTest {
         var page=run(()->history.search(Area.COMPANY_FILES,filters(null,prefix,1,null)));
         assertThat(page.entries()).singleElement().satisfies(e->assertThat(e.recordId()).isEqualTo(second));
         assertThat(page.nextCursor()).isEqualTo(page.entries().getFirst().id());
-        var last=run(()->history.search(Area.COMPANY_FILES,filters(null,prefix,1,Long.valueOf(page.nextCursor()))));
+        var last=run(()->history.search(Area.COMPANY_FILES,filters(null,prefix,1,com.uten.imp.testsupport.FixtureNumbers.longInteger(page.nextCursor()))));
         assertThat(last.entries()).singleElement().satisfies(e->assertThat(e.recordId()).isEqualTo(first));
         assertThat(last.nextCursor()).isNull();
     }
@@ -136,7 +136,7 @@ class ScopedRecordHistoryPostgresTest {
                 actor,actor.toString(),"{\"added\":[\"grant:goods:view\"],\"removed\":[\"revoke:client:view\"]}");
         var page=run(()->history.search(Area.PERMISSIONS,filters(actor,null,50,null)));
         assertThat(page.entries()).hasSize(1);
-        var detail=run(()->history.detail(Area.PERMISSIONS,Long.parseLong(page.entries().getFirst().id())));
+        var detail=run(()->history.detail(Area.PERMISSIONS,com.uten.imp.testsupport.FixtureNumbers.longInteger(page.entries().getFirst().id())));
         assertThat(detail.changes()).hasSize(2).anyMatch(c->c.label().contains("授予")&&c.afterValue().equals("已配置"))
                 .anyMatch(c->c.label().contains("禁止")&&c.afterValue().equals("未配置"));
         assertThat(detail.canRestoreBefore()).isFalse();
@@ -145,12 +145,12 @@ class ScopedRecordHistoryPostgresTest {
                 actor,actor.toString(),"{\"added\":[\"confirm_grant:goods:view\"],\"removed\":[]}");
         var batch=run(()->history.search(Area.PERMISSIONS,filters(actor,null,50,null)));
         assertThat(batch.entries()).hasSize(2);
-        var confirmed=run(()->history.detail(Area.PERMISSIONS,Long.parseLong(batch.entries().getFirst().id())));
+        var confirmed=run(()->history.detail(Area.PERMISSIONS,com.uten.imp.testsupport.FixtureNumbers.longInteger(batch.entries().getFirst().id())));
         assertThat(confirmed.changes()).singleElement().satisfies(c->assertThat(c.label()).contains("重新确认","goods:view"));
         update("INSERT INTO audit_log(actor_id,action,target_type,target_id,after,event_source,result,risk_level,event_category) VALUES(?,'permission_configuration_import','permissions','configuration',?::jsonb,'business','success','high','authorization')",
                 actor,"{\"added\":[\""+actor+"\"],\"removed\":[],\"userCount\":1}");
         var imports=run(()->history.search(Area.PERMISSIONS,new Filters("configuration",null,null,null,null,null,null,null,null,null,50)));
-        var imported=run(()->history.detail(Area.PERMISSIONS,Long.parseLong(imports.entries().getFirst().id())));
+        var imported=run(()->history.detail(Area.PERMISSIONS,com.uten.imp.testsupport.FixtureNumbers.longInteger(imports.entries().getFirst().id())));
         assertThat(imported.changes()).anyMatch(c->c.label().startsWith("导入配置 · ")&&!c.label().contains(actor.toString()));
     }
     @Test void historyRollsBackWithBusinessMutationAndRemainsAppendOnly() {

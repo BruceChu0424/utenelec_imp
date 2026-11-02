@@ -273,7 +273,13 @@ public class ScopedRecordHistoryService {
     }
     private static boolean present(String value) { return value != null && !value.isBlank(); }
     private static UUID uuid(String value) { try { return value == null ? null : UUID.fromString(value); } catch (IllegalArgumentException ex) { return null; } }
-    private static List<String> values(JsonNode array) { List<String> result = new ArrayList<>(); if (array.isArray()) array.forEach(v -> result.add(v.asText())); return result; }
+    private static List<String> values(JsonNode array) {
+        List<String> result = new ArrayList<>();
+        if (array.isArray()) {
+            array.forEach(v -> result.add(v.asText()));
+        }
+        return result;
+    }
     private static ApiException missing() { return new ApiException(ErrorCode.NOT_FOUND,"记录不存在，或当前账号无权查看"); }
     private static String actionName(String action) {
         return switch(action) {

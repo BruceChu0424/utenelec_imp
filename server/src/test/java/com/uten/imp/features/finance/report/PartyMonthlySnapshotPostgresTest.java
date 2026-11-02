@@ -52,7 +52,12 @@ class PartyMonthlySnapshotPostgresTest {
         var configuration=new Configuration().setProperty("hibernate.hbm2ddl.auto","none");
         configuration.getProperties().put("hibernate.connection.datasource",source);sessions=configuration.buildSessionFactory();
     }
-    @AfterAll static void stop(){if(sessions!=null)sessions.close();PG.stop();}
+    @AfterAll static void stop(){
+        if(sessions!=null) {
+            sessions.close();
+        }
+        PG.stop();
+    }
     @BeforeEach void seedParty() {
         party=UUID.randomUUID();currency=UUID.randomUUID();
         db.update("INSERT INTO clients(id,code,name,code_sequence) VALUES(?,'SN-CL-'||?::text,'快照客户',('x'||substr(?::text,1,7))::bit(28)::int)",party,party,party);
@@ -163,9 +168,18 @@ class PartyMonthlySnapshotPostgresTest {
         EntityManager wrapped=mock(EntityManager.class);AtomicBoolean ran=new AtomicBoolean();
         EntityManager delegate=session;
         when(wrapped.createNativeQuery(anyString())).thenAnswer(call->{String sql=call.getArgument(0);Query query=delegate.createNativeQuery(sql);
-            if(!sql.contains(", recompute AS ("))return query;
+            if(!sql.contains(", recompute AS (")) {
+                return query;
+            }
             Query intercepted=mock(Query.class,org.mockito.AdditionalAnswers.delegatesTo(query));
-            doAnswer(ignored->{var rows=query.getResultList();if(ran.compareAndSet(false,true))hook.run();return rows;}).when(intercepted).getResultList();return intercepted;
+            doAnswer(ignored->{
+                var rows=query.getResultList();
+                if(ran.compareAndSet(false,true)) {
+                    hook.run();
+                }
+                return rows;
+            }).when(intercepted).getResultList();
+            return intercepted;
         });return wrapped;
     }
     private FinanceReportService reportsWithoutHealing(Session session) {
@@ -191,7 +205,14 @@ class PartyMonthlySnapshotPostgresTest {
                     var result=reports(reader).partyStatementDetail(party,"AR",LocalDate.of(2026,2,1),LocalDate.of(2026,2,28),1,50);tx.rollback();return result;}});
                 ReportTableResponse report;
                 try {report=future.get(2,TimeUnit.SECONDS);}
-                catch(TimeoutException failure) {Thread.getAllStackTraces().forEach((thread,stack)->{if(thread.getName().equals("party-busy-report-test"))System.err.println("PARTY_BUSY_TIMEOUT "+Arrays.toString(stack));});throw failure;}
+                catch(TimeoutException failure) {
+                    Thread.getAllStackTraces().forEach((thread,stack)->{
+                        if(thread.getName().equals("party-busy-report-test")) {
+                            System.err.println("PARTY_BUSY_TIMEOUT "+Arrays.toString(stack));
+                        }
+                    });
+                    throw failure;
+                }
                 assertThat(report.rows()).singleElement().satisfies(row->money(row,"balanceLocal","125"));
                 System.out.println("PARTY_BUSY_REBUILDER_REPORT elapsedMs="+Duration.ofNanos(System.nanoTime()-started).toMillis());
             } finally {holding.rollback();}

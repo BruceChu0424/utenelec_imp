@@ -115,7 +115,10 @@ class FinancialStatementSqlPostgresTest {
             if(call.getMethod().getName().equals("setParameter")){parameters.put(call.getArgument(0),call.getArgument(1));return call.getMock();}
             if(call.getMethod().getName().equals("getResultList"))return named.query(sql,parameters,(rs,index)->{
                 Object[] row=new Object[rs.getMetaData().getColumnCount()];
-                for(int i=0;i<row.length;i++)row[i]=rs.getObject(i+1);return row;
+                for(int i=0;i<row.length;i++) {
+                    row[i]=rs.getObject(i+1);
+                }
+                return row;
             });
             return org.mockito.Answers.RETURNS_DEFAULTS.answer(call);
         });

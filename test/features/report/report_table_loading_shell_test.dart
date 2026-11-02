@@ -101,6 +101,15 @@ class _AccountPrefs extends FinanceAccountFlowReportPrefsNotifier {
   );
 }
 
+class _BankPrefs extends FinanceAccountFlowReportPrefsNotifier {
+  @override
+  ReportFilterPrefs build() => const ReportFilterPrefs(
+    docType: 'bankDetail',
+    sortKey: 'amount',
+    extra: {'accountId': 'account-1'},
+  );
+}
+
 class _Names extends FinanceNameService {
   _Names(ApiClient api, {this.hold = false})
     : super(api, DioPaymentStyleRepository(api));
@@ -120,7 +129,12 @@ class _Names extends FinanceNameService {
   };
 }
 
-Future<void> _mount(WidgetTester tester, Widget page, _Api api) async {
+Future<void> _mount(
+  WidgetTester tester,
+  Widget page,
+  _Api api, {
+  bool bankPrefs = false,
+}) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   final names = _Names(api, hold: page is FinanceAccountFlowPage);
@@ -137,7 +151,9 @@ Future<void> _mount(WidgetTester tester, Widget page, _Api api) async {
         currentPermissionsProvider.overrideWithValue(const {}),
         isSuperAdminProvider.overrideWithValue(false),
         financeStatementReportPrefsProvider.overrideWith(_StatementPrefs.new),
-        financeAccountFlowReportPrefsProvider.overrideWith(_AccountPrefs.new),
+        financeAccountFlowReportPrefsProvider.overrideWith(
+          bankPrefs ? _BankPrefs.new : _AccountPrefs.new,
+        ),
         financeNameServiceProvider.overrideWith((ref) => names),
         fixedBadgeSummaryOverride(badgeSummaryFixture()),
       ],
@@ -154,6 +170,21 @@ Future<void> _mount(WidgetTester tester, Widget page, _Api api) async {
 }
 
 void main() {
+  testWidgets('恢复银行原币金额排序时不带已丢失币种的排序条件', (tester) async {
+    final api = _Api();
+    await _mount(tester, const FinanceAccountFlowPage(), api, bankPrefs: true);
+    expect(api.queries.single.containsKey('sort'), isFalse);
+    api.pending.single.complete(_report('银行字段'));
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<UtenExportButton>(find.byType(UtenExportButton))
+          .queryParams
+          .containsKey('sort'),
+      isFalse,
+    );
+    expect(tester.takeException(), isNull);
+  });
   Map<String, dynamic> accountReport(String label, int amount) => {
     ..._report('单据号'),
     'columns': [

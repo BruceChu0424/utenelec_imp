@@ -166,7 +166,11 @@ class _FinanceAccountFlowPageState
       _accountId = p.extra['accountId']?.toString();
       // 日期范围不回灌：进页始终用默认日期范围（上月今日..今日），避免历史持久化
       // 的过时日期范围把新数据滤空（销售报表已踩此坑，见 sales_report_page.dart）。
-      _sortKey = p.sortKey;
+      // Currency filters are temporary. A restored original-currency ordering
+      // cannot be applied without its former exact currency selection.
+      _sortKey = _view == _FlowView.statement || p.sortKey == 'amount'
+          ? null
+          : p.sortKey;
       _sortAsc = p.sortAsc;
     });
   }
@@ -174,7 +178,7 @@ class _FinanceAccountFlowPageState
   /// 当前筛选口径快照（不含关键字/分页）。
   ReportFilterPrefs _snapshot() => ReportFilterPrefs(
     docType: _view.name,
-    sortKey: _sortKey,
+    sortKey: _sortKey == 'amount' ? null : _sortKey,
     sortAsc: _sortAsc,
     extra: {if (_accountId != null) 'accountId': _accountId},
   );

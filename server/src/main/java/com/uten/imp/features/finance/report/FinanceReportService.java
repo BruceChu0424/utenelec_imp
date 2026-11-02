@@ -1660,8 +1660,8 @@ public class FinanceReportService {
     }
 
     /**
-     * 三段式期初依赖 party_monthly_summaries（V950 投影）：读取前同步重算该单位的
-     * 脏键（通常 0～少数单元），保证对账单/年表永远读精确值，不存在过期汇总。
+     * 尝试预热 V950 月投影；后台占用时不阻塞。查询在自身快照重放仍可见的脏月，
+     * 避免外层 RR 已有快照时读不到 REQUIRES_NEW 刚提交的投影。
      */
     private void healPartySummaries(boolean isAR, UUID partyId) {
         partySummaries.reconcileNow(isAR ? "AR" : "AP", partyId);
@@ -1680,7 +1680,15 @@ public class FinanceReportService {
                 .setParameter("pid",partyId).setParameter("direction",isAR ? "AR" : "AP")
                 .setParameter("from",from).setParameter("to",to);
         if (((Number)query.getSingleResult()).longValue()>0) {
-            throw new ApiException(ErrorCode.CONFLICT,"期间跨越了历史数据截止日或缺少核验过的期初；迁入前的逐月收付款无法还原，请选择截止日之后的期间");
+            Object value=em.createNativeQuery("SELECT MAX(((ledger.legacy_source_resolution->>'snapshotAsOfUtc')::timestamptz AT TIME ZONE 'Asia/Shanghai')::date) "
+                    +"FROM ar_ap_ledger ledger WHERE ledger."+partyColumn+"=:pid AND ledger.direction=:direction "
+                    +"AND ledger.legacy_import_run_id IS NOT NULL "
+                    +"AND ((ledger.status=1 AND NOT ledger.is_deleted) OR (ledger.status=-1 AND ledger.is_deleted AND ledger.deleted_at IS NOT NULL))")
+                    .setParameter("pid",partyId).setParameter("direction",isAR?"AR":"AP").getSingleResult();
+            LocalDate cutoff=value instanceof java.sql.Date date?date.toLocalDate():value instanceof LocalDate date?date:null;
+            String guidance=cutoff==null?"": "；该往来历史数据截止日为"+cutoff+"，流水/明细开始日期最早为"+cutoff.plusDays(1)
+                    +"，年度报表需选择"+(cutoff.getYear()+1)+"年或之后的完整年度";
+            throw new ApiException(ErrorCode.CONFLICT,"期间跨越了历史数据截止日或缺少核验过的期初；迁入前的逐月收付款无法还原，请选择截止日之后的期间"+guidance);
         }
     }
 
@@ -1756,8 +1764,8 @@ public class FinanceReportService {
                         .totaled(isAR ? "合计发货金额" : "合计收货金额"),
                 ReportColumn.money("settled", isAR ? "回款金额" : "付款金额").withUnitLabel("元")
                         .totaled(isAR ? "合计回款金额" : "合计付款金额"),
-                // 退货金额当前恒投影为 0（退货已合并进 posted），合计只会显示一个误导性的 0，不声明。
-                ReportColumn.money("returned", "退货金额"),
+                // 退货已合并进 posted，当前未独立拆分；未知不能显示为真实零发生额。
+                ReportColumn.money("returned", "退货（已并入发生额）").withUnitLabel("元"),
                 ReportColumn.money("balance", "期末" + (isAR ? "应收" : "应付")).withUnitLabel("元"));
         PartyStatementHeaderQuery headers = new PartyStatementHeaderQuery(filters, true, false);
         String ordering = headers.orderBy(sort, order);

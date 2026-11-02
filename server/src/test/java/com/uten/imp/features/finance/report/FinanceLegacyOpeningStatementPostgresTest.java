@@ -126,10 +126,40 @@ class FinanceLegacyOpeningStatementPostgresTest {
     }
 
     @ParameterizedTest @ValueSource(strings={"AR","AP"})
+    void repeatableReadFallbackKeepsProvedLegacyLocalAndUnknownCurrencyPartitions(String side) {
+        opening(side,"-7","2025-01-31T15:59:59Z");
+        jdbc.update("UPDATE ar_ap_ledger SET currency_id=NULL,amount_original=NULL,amount_balance_original=NULL WHERE id=?",ledger);
+        jdbc.update("UPDATE legacy_finance_import_sources SET initial_state=initial_state||'{\"amount_balance_original\":null}'::jsonb");
+        committedHeal(side);
+        nativeLedger(side,UUID.randomUUID(),"20","2025-02-02");nativeLedger(side,UUID.randomUUID(),"5","2026-02-10");
+        UUID unknown=UUID.randomUUID();nativeLedger(side,unknown,"2","2026-02-11");
+        jdbc.update("UPDATE ar_ap_ledger SET currency_id=NULL,amount_original=NULL,amount_balance_original=NULL WHERE id=?",unknown);
+        jdbc.update("INSERT INTO party_month_dirty(side,party_id,month_start) VALUES (?,?,DATE '2025-02-01'),(?,?,DATE '2026-02-01')",side,party,side,party);
+        try(var session=sessions.openSession()) {
+            session.doWork(connection->connection.setTransactionIsolation(java.sql.Connection.TRANSACTION_REPEATABLE_READ));
+            var tx=session.beginTransaction();session.createNativeQuery("SELECT count(*) FROM party_month_dirty WHERE party_id=:pid",Long.class).setParameter("pid",party).getSingleResult();
+            committedHeal(side);
+            var access=mock(FinanceDocumentAccessPolicy.class);when(access.scope()).thenReturn(new OwnerScope(true,Set.of()));
+            var service=new FinanceReportService(session,access,null,null,null,null,null,mock(PartyMonthlySummaryService.class));
+            var flow=service.partyStatementFlow(party,side,LocalDate.of(2026,2,1),LocalDate.of(2026,2,28),1,50);
+            assertThat(flow.rows()).hasSize(2);assertMoney(flow.rows().getFirst(),"balanceLocal","18");assertMoney(flow.rows().getFirst(),"balanceOriginal","25");
+            assertMoney(flow.rows().getLast(),"balanceLocal","20");assertThat(flow.rows().getLast().get("balanceOriginal")).isNull();
+            assertThat(flow.rows().getLast().get("originalStatus")).isEqualTo("待核验");
+            var annual=service.partyAnnualStatement(party,side,2026,1,50);assertMoney(annual.rows().getFirst(),"prevBalance","13");
+            assertMoney(annual.rows().get(1),"balance","20");assertThat(annual.rows().get(1).get("returned")).isNull();tx.rollback();
+        }
+    }
+    private void committedHeal(String side) {
+        try(var session=sessions.openSession()) {var tx=session.beginTransaction();new PartyMonthlySummaryService(session).reconcileNow(side,party);tx.commit();}
+    }
+
+    @ParameterizedTest @ValueSource(strings={"AR","AP"})
     void cutoffUsesShanghaiAndDoesNotDependOnTheSessionTimezone(String side) {
         opening(side,"17","2025-01-31T16:00:00Z"); // Shanghai February 1.
-        assertThatThrownBy(()->flow(side,"2025-02-01",false,1,50)).isInstanceOf(ApiException.class).hasMessageContaining("截止日");
-        assertThatThrownBy(()->annual(side,2025)).isInstanceOf(ApiException.class).hasMessageContaining("截止日");
+        assertThatThrownBy(()->flow(side,"2025-02-01",false,1,50)).isInstanceOf(ApiException.class)
+                .hasMessageContaining("截止日为2025-02-01").hasMessageContaining("开始日期最早为2025-02-02");
+        assertThatThrownBy(()->annual(side,2025)).isInstanceOf(ApiException.class)
+                .hasMessageContaining("2026年或之后的完整年度");
         assertThat(flow(side,"2025-02-02",true,1,50).rows()).isEmpty();
         assertMoney(annual(side,2026).rows().getFirst(),"balance","17");
         jdbc.update("DELETE FROM legacy_finance_import_sources");

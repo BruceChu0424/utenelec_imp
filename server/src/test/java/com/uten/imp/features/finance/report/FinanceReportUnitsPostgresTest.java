@@ -58,7 +58,7 @@ class FinanceReportUnitsPostgresTest {
                 "fixed_assets","deferred_expenses","fa_depreciation_log","da_amortization_log","gl_vouchers","gl_entries",
                 "goods","material_categories","v_stock_actual_cogs_postings","units","colors",
                 "purchase_receipts","purchase_receipt_items","purchase_returns","purchase_return_items","sales_returns","sales_return_items",
-                "party_monthly_summaries","finance_payment_lines","supplier_open_item_offsets","legacy_finance_import_sources");
+                "party_monthly_summaries","party_month_dirty","finance_payment_lines","supplier_open_item_offsets","legacy_finance_import_sources");
         em=mock(EntityManager.class);when(em.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0)));
         access=mock(FinanceDocumentAccessPolicy.class);when(access.scope()).thenReturn(new OwnerScope(true,Set.of()));
         when(access.hasAuthority(anyString())).thenReturn(true);

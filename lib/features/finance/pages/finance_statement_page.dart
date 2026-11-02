@@ -610,7 +610,7 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
                       : (row['${c.key}Exact'] ?? row[c.key]).toString()
                 : null,
             info: c.key == 'returned'
-                ? '退货已计入立账发生额；此列为原模板占位，不单独比较或合计'
+                ? '退货已计入立账发生额，此列不单独取数；空白不表示没有退货'
                 : _originalAmounts.contains(c.key) && !_hasCurrency
                 ? '请先在币别列选择一个币种，再比较或排序原币金额'
                 : c.key.startsWith('balance')

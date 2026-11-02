@@ -1,3 +1,4 @@
+import 'price_analysis_access.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:collection';
@@ -231,11 +232,11 @@ class _PriceCheckScopeState<R extends EditableGridRow>
       widget.enabled &&
       ref.read(authenticatedScopeProvider) != null &&
       confirmedSessionSnapshot(ref.read(sessionSnapshotProvider)) != null &&
-      (ref.read(isSuperAdminProvider) ||
-          ref.read(currentPermissionsProvider).containsAll({
-            Perm.goodsView,
-            Perm.goodsPriceAnalysisView,
-          }));
+      canAnalyzePriceKind(
+        ref.read(currentPermissionsProvider),
+        ref.read(isSuperAdminProvider),
+        widget.kind,
+      );
 
   @override
   void initState() {
@@ -251,6 +252,7 @@ class _PriceCheckScopeState<R extends EditableGridRow>
           ),
     );
     widget.grid.draftListenable.addListener(_bind);
+    ref.listenManual(isSuperAdminProvider, (_, _) => _authorizationChanged());
     ref.listenManual(
       authenticatedScopeProvider,
       (_, _) => _authorizationChanged(),
@@ -584,14 +586,15 @@ class PriceCheckCell extends StatelessWidget {
 void notifySavedPriceAssessment(
   BuildContext context,
   WidgetRef ref,
-  Iterable<Map<String, dynamic>?> assessments,
-) {
+  Iterable<Map<String, dynamic>?> assessments, {
+  required String kind,
+}) {
   if (ref.read(authenticatedScopeProvider) == null ||
-      !(ref.read(isSuperAdminProvider) ||
-          ref.read(currentPermissionsProvider).containsAll({
-            Perm.goodsView,
-            Perm.goodsPriceAnalysisView,
-          }))) {
+      !canAnalyzePriceKind(
+        ref.read(currentPermissionsProvider),
+        ref.read(isSuperAdminProvider),
+        kind,
+      )) {
     return;
   }
   final rows = assessments

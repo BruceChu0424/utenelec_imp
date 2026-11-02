@@ -57,6 +57,38 @@ Widget _card({
 );
 
 void main() {
+  testWidgets(
+    'compact stacked count stays a small badge instead of a full-width bar',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: MediaQuery(
+            data: const MediaQueryData(size: Size(390, 844)),
+            child: Scaffold(
+              body: Center(
+                child: SizedBox(
+                  width: 160,
+                  child: UtenHubCard(
+                    icon: Icons.timeline_outlined,
+                    label: '销售任务中心',
+                    onTap: () {},
+                    badge: const Wrap(
+                      children: [UtenNotificationBadge(count: 2)],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(
+        tester.getSize(find.byType(UtenNotificationBadge)).width,
+        lessThan(80),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('badges sit on the icon row, flush right and centred with it', (
     tester,
   ) async {

@@ -18,5 +18,35 @@
       "sha256": "ebc410670e64e8bd02ced9301ab42d0aade03f424835aa4059e7ff96caeb8a74",
       "scope": "build tooling only"
     }
-  ]
+  ],
+  "windowsHitTestRepair": {
+    "patch": "flutter-3.44.2-windows-hit-test-lifecycle.patch",
+    "sha256": "e0dee46d8cee8f7273b550b691b51410c3b7198eecd28bf3a5e9119256288733",
+    "engineRevision": "77e2e94772b6eb43759e34ed1ad7da4674e19cab",
+    "baseCommonPatchUnchanged": true,
+    "fixture": "AccessibilityBridgeWindows.HitTestSync*",
+    "redBeforeRepair": "SEH 0xc0000005 with corrected mocked AOT fixture",
+    "windowsAccessibilityCases": 22,
+    "commonCases": 242,
+    "customerReleaseRva": "0xF5D3",
+    "customerReleasePdbGuid": "015D6F44-47AA-4576-B919-626F55044F87",
+    "customerReleasePdbAge": 1,
+    "reverseApplyCheckAgainstBuiltSource": true
+  },
+  "retainedTextValueRegression": {
+    "patch": "flutter-3.44.2-retained-text-value-regression.patch",
+    "sha256": "1d19ea39c06d4f2eab37470f2768193ade8e432dfd77fc40f34b885847864e8d",
+    "productionCodeChanged": false,
+    "applyAfter": "flutter-3.44.2-safe-accessibility-tree.patch",
+    "heapTextValueLength": 35,
+    "readsUtf16Value": true,
+    "fullCommonCases": 242,
+    "reparentCasesPerIteration": 2,
+    "repeatIterations": 1000,
+    "desktopRelease": "2.5.43+2543",
+    "liveReleaseFaultRva": "0xF8B44C",
+    "liveStack": "AXNodeData::GetStringAttribute / GetString16Attribute / AXPlatformNodeWin::get_accValue",
+    "incidentUtc": "2026-11-02T15:48:35.8010855Z",
+    "reverseBasePatchAfterReversingThisTestPatch": true
+  }
 }

@@ -146,6 +146,7 @@ class BasicDataHubPage extends ConsumerWidget {
               UtenResponsiveGrid(
                 itemCount: resources.length,
                 spacing: UtenSpacing.s12,
+                compactMinItemWidth: 132,
                 columns: const UtenResponsiveColumns(compact: 2, medium: 3),
                 itemBuilder: (context, i, _) => UtenHubCard(
                   icon: resources[i].icon,

@@ -56,7 +56,8 @@ class AiGoodsPriceToolTest {
         var realTool = new AiGoodsPriceTool(policy, current, goods, prices);
         var sourceAccess = new GoodsPriceAccess(current, mock(OwnerVisibility.class));
         actor(Set.of("ai:use", "goods:view", "goods:price_analysis:view", "purchase_order:view"));
-        assertThat(realTool.available()).isTrue();
+        assertThat(realTool.available()).isFalse();
+        assertThat(new AiChatToolRegistry(List.of(realTool), policy).available()).isEmpty();
         assertThat(sourceAccess.available(Kind.PURCHASE)).isFalse();
         assertThatThrownBy(() -> sourceAccess.require(Kind.PURCHASE)).isInstanceOf(ApiException.class);
         assertThat(current.get().orElseThrow().getPermissions())
@@ -74,8 +75,15 @@ class AiGoodsPriceToolTest {
     @Test void privatePriceFactsNeverLeaveTheApplication() {
         assertThat(tool.modelFacts(Map.of("reply", "供应商A价格12.80", "secret", "cost"))).isEmpty();
     }
+    @Test void hiddenKindsAreNotOfferedAndCannotBeQueriedThroughTheAiTool() {
+        actor(Set.of("goods:view","goods:price_analysis:view","purchase_order:view","purchase_order:price:view"));
+        Map<?,?> properties=(Map<?,?>)tool.parameters().get("properties");
+        assertThat(((Map<?,?>)properties.get("kind")).get("enum")).isEqualTo(List.of("PURCHASE"));
+        assertThatThrownBy(()->tool.execute(Map.of("goodsKeyword","A1","kind","SUBCONTRACT"))).isInstanceOf(ApiException.class);
+        verifyNoInteractions(goods,prices);
+    }
     @Test void invalidOrArbitraryArgumentsAreRejectedBeforeQueries() {
-        actor(Set.of("goods:view", "goods:price_analysis:view"));
+        actor(Set.of("goods:view", "goods:price_analysis:view", "purchase_order:view", "purchase_order:price:view"));
         for (var args : List.<Map<String,Object>>of(
                 Map.of("goodsKeyword", "A1", "kind", "PURCHASE", "sql", "select prices"),
                 Map.of("goodsKeyword", "A1", "kind", "PURCHASE", "days", 1.5),
@@ -86,7 +94,7 @@ class AiGoodsPriceToolTest {
         verifyNoInteractions(goods, prices);
     }
     @Test void ambiguousNameCannotChooseAnArbitraryGoodsPrice() {
-        actor(Set.of("goods:view", "goods:price_analysis:view"));
+        actor(Set.of("goods:view", "goods:price_analysis:view", "purchase_order:view", "purchase_order:price:view"));
         var a = mock(GoodsListItem.class); var b = mock(GoodsListItem.class);
         when(a.getId()).thenReturn(UUID.randomUUID()); when(b.getId()).thenReturn(UUID.randomUUID());
         when(a.getCode()).thenReturn("A1"); when(b.getCode()).thenReturn("A2");
@@ -97,7 +105,7 @@ class AiGoodsPriceToolTest {
         verifyNoInteractions(prices);
     }
     @Test void storedAnswerRechecksObjectScopeAndExactPriceEvidence() {
-        actor(Set.of("goods:view", "goods:price_analysis:view"));
+        actor(Set.of("goods:view", "goods:price_analysis:view", "purchase_order:view", "purchase_order:price:view"));
         UUID id = UUID.randomUUID();
         var evidence = Map.<String,Object>of("goodsIds", List.of(id.toString()), "goodsId", id.toString(),
                 "kind", "PURCHASE", "days", 180, "evidenceToken", "original-token");
@@ -106,13 +114,13 @@ class AiGoodsPriceToolTest {
         verify(prices).requireCurrentEvidence(argThat(query -> query.goodsId().equals(id) && query.kind() == Kind.PURCHASE), eq("original-token"));
     }
     @Test void storedAnswerWithAnotherGoodsIdIsRejected() {
-        actor(Set.of("goods:view", "goods:price_analysis:view"));
+        actor(Set.of("goods:view", "goods:price_analysis:view", "purchase_order:view", "purchase_order:price:view"));
         assertThatThrownBy(() -> tool.authorizeResultRead(Map.of("goodsIds", List.of(UUID.randomUUID().toString()),
                 "goodsId", UUID.randomUUID().toString(), "kind", "PURCHASE", "evidenceToken", "x"))).isInstanceOf(ApiException.class);
         verifyNoInteractions(prices);
     }
     @Test void aSingleOldRecordIsNeverPresentedAsATodaysRecommendation() {
-        actor(Set.of("goods:view", "goods:price_analysis:view"));
+        actor(Set.of("goods:view", "goods:price_analysis:view", "purchase_order:view", "purchase_order:price:view"));
         UUID id = UUID.randomUUID(); var item = mock(GoodsListItem.class);
         when(item.getId()).thenReturn(id); when(item.getCode()).thenReturn("A1"); when(item.getName()).thenReturn("材料");
         when(goods.list(any(), eq(1), eq(11), eq("code"), eq("asc")))

@@ -105,21 +105,22 @@ void main() {
     expect(find.text('合计(本币)'), findsOneWidget);
   });
 
-  testWidgets('finance-wide permission can render unmasked purchase amounts', (
-    tester,
-  ) async {
-    await _pumpDetail(
-      tester,
-      permissions: const {Perm.financeViewAll},
-      priceMasked: false,
-      docType: PurchaseDocType.order,
-    );
+  testWidgets(
+    'finance data scope does not reveal purchase prices even if a stale payload contains them',
+    (tester) async {
+      await _pumpDetail(
+        tester,
+        permissions: const {Perm.financeViewAll},
+        priceMasked: false,
+        docType: PurchaseDocType.order,
+      );
 
-    expect(
-      _detailColumnKeys(tester),
-      containsAll(<String>{'qty', 'price', 'amount'}),
-    );
-  });
+      expect(
+        _detailColumnKeys(tester),
+        isNot(contains(anyOf('price', 'amount'))),
+      );
+    },
+  );
 
   testWidgets('ADR-144 订货详情的允许超收列不随价格遮蔽，未设显示「未设」', (tester) async {
     await _pumpDetail(

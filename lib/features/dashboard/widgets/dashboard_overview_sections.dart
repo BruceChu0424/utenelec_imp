@@ -6,6 +6,8 @@ import '../../../components/feedback/uten_skeleton.dart';
 import '../../../components/layout/uten_lazy_mount.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/responsive/compact_presentation.dart';
+import '../../notice/providers/notice_providers.dart';
 import '../../notice/widgets/celebration_today_card.dart';
 import 'dashboard_console_sections.dart';
 import 'uten_console_panel.dart';
@@ -53,7 +55,15 @@ class _DashboardOverviewBody extends ConsumerWidget {
                   generatedAt: data.generatedAt,
                   // 今日庆典卡（当前用户本人生日/周年/新婚/新生儿；无则不渲染）插在
                   // 面板标题栏与指标区之间。数据来自 myCelebrationTodayProvider（PII 安全）。
-                  celebration: const CelebrationTodayCard(),
+                  celebration:
+                      UtenCompactPresentation.of(context) &&
+                          (ref
+                                  .watch(myCelebrationTodayProvider)
+                                  .value
+                                  ?.isEmpty ??
+                              true)
+                      ? null
+                      : const CelebrationTodayCard(),
                 ),
               ],
             ),

@@ -229,6 +229,7 @@ class WarehouseHubPage extends ConsumerWidget {
                 UtenResponsiveGrid(
                   itemCount: createEntries.length,
                   spacing: UtenSpacing.s12,
+                  compactMinItemWidth: 132,
                   columns: const UtenResponsiveColumns(compact: 2, medium: 4),
                   itemBuilder: (context, i, _) {
                     final e = createEntries[i];
@@ -246,6 +247,7 @@ class WarehouseHubPage extends ConsumerWidget {
               UtenResponsiveGrid(
                 itemCount: stockQueryEntries.length,
                 spacing: UtenSpacing.s12,
+                compactMinItemWidth: 132,
                 columns: const UtenResponsiveColumns(compact: 2, medium: 4),
                 itemBuilder: (context, i, _) {
                   final e = stockQueryEntries[i];
@@ -262,6 +264,7 @@ class WarehouseHubPage extends ConsumerWidget {
               UtenResponsiveGrid(
                 itemCount: reportKinds.length,
                 spacing: UtenSpacing.s12,
+                compactMinItemWidth: 132,
                 columns: const UtenResponsiveColumns(compact: 2, medium: 4),
                 itemBuilder: (context, i, _) {
                   final k = reportKinds[i];

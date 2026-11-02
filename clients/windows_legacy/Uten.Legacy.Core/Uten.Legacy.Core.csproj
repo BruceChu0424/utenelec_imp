@@ -31,6 +31,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ClientConfiguration.cs" />
+    <Compile Include="DiagnosticsLog.cs" />
     <Compile Include="Models.cs" />
     <Compile Include="CompanyCertificatePolicy.cs" />
     <Compile Include="SessionStore.cs" />
@@ -75,6 +76,8 @@
     <Compile Include="Tests\ReadScopeRevisionChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="ManagedCertificateValidator.cs" />
     <Compile Include="ManagedTlsHttpHandler.cs" />
+    <Compile Include="PageReadPriorityGate.cs" />
+    <Compile Include="Tests\PageReadPriorityChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="ManagedHttp11.cs" />
     <Compile Include="Tests\ManagedTlsChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="Tests\ManagedHttp11Checks.cs" Condition=" '$(Configuration)' == 'Debug' " />

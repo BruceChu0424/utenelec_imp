@@ -1,3 +1,4 @@
+import '../../../shared/pricing/price_analysis_access.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 
@@ -61,15 +62,11 @@ class _GoodsMaterialMarketPanelState
   DateTime get _now => ref.read(materialMarketClockProvider)();
 
   String get _identity => '${widget.goodsId}|${widget.contextIdentity}';
-  bool get _allowed {
-    if (ref.read(isSuperAdminProvider)) return true;
-    final grants = ref.read(currentPermissionsProvider);
-    return grants.containsAll({Perm.goodsView, Perm.goodsPriceAnalysisView}) &&
-        (grants.contains(Perm.purchaseOrderView) ||
-            grants.contains(Perm.financeOrderApprovalView)) &&
-        (grants.contains(Perm.purchaseOrderPriceView) ||
-            grants.contains(Perm.financeViewAll));
-  }
+  bool get _allowed => canAnalyzePriceKind(
+    ref.read(currentPermissionsProvider),
+    ref.read(isSuperAdminProvider),
+    'PURCHASE',
+  );
 
   bool get _canManage =>
       _allowed &&

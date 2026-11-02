@@ -477,7 +477,7 @@ void main() {
   });
 
   testWidgets(
-    'finance source and commercial alternatives retain authorized market access',
+    'finance source still requires explicit commercial price access',
     (tester) async {
       final repository = _Repository();
       final container = await pump(tester, repository);
@@ -485,7 +485,7 @@ void main() {
         Perm.goodsView,
         Perm.goodsPriceAnalysisView,
         Perm.financeOrderApprovalView,
-        Perm.financeViewAll,
+        Perm.purchaseOrderPriceView,
       };
       await settle(tester);
       expect(find.byKey(const Key('material-market-quote')), findsOneWidget);

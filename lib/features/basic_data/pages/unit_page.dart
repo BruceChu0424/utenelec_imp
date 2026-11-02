@@ -1,3 +1,4 @@
+import '../../../components/layout/uten_compact_toolbar.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // 基本单位资料管理页（基础资料 · 扁平主档，无分类树）。
 //
@@ -883,104 +884,109 @@ class _UnitPageState extends ConsumerState<UnitPage>
               child: UtenContentContainer(
                 child: Padding(
                   padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                  child: Column(
-                    children: [
-                      UtenPageEdgePadding(
-                        padding: const EdgeInsets.only(
-                          bottom: UtenSpacing.s8,
-                          left: UtenSpacing.s4,
-                          right: UtenSpacing.s4,
-                        ),
-                        child: UtenSearchBar(
-                          hint: '搜索单位(名称/编号)', // TODO(l10n): 补 arb
-                          initialValue: _keyword,
-                          onChanged: (value) =>
-                              inlineNavigate(() => _onKeywordChanged(value)),
-                        ),
-                      ),
-                      Expanded(
-                        child: MasterDataTableView<UnitListItem>(
-                          rowsController: _readViewportRows,
-                          expensiveRowMounts: inlineEdit.active,
-                          appendRowsSource: inlineAppendRowsSource,
-                          bottomContentPadding: (_canCreate || _canEdit)
-                              ? UtenFloatingActionGroup.scrollClearance
-                              : 0,
-                          columnEditingEnabled: _canEdit,
-                          tableKey:
-                              'features.basic_data.pages.unit_page.UnitPageState._buildDraftHost.1',
-                          columns: inlineColumns(_columns),
-                          requiredLeadingColumnKeys: const [
-                            'code',
-                            'name',
-                            'status',
-                          ],
-                          items: _page?.items ?? const [],
-                          selectable: true,
-                          idOf: (unit) => unit.id,
-                          selectedIds: _selectedUnitIds,
-                          onSelectedIdsChanged: (ids) {
-                            if (!_rowOpBusy) {
-                              setState(() => _selectedUnitIds = ids);
-                            }
-                          },
-                          batchActionsBuilder: _unitFloatingActions,
-                          rowMenuBuilder: inlineEdit.active
-                              ? null
-                              : _unitMenuItems,
-                          // 导出/打印（V717 unit:export）：打印预览用本页列渲染，
-                          // 导出列集服务端与表格对齐——「表格显示啥导出啥」。
-                          // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
-                          // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
-                          toolbarLeadingActions: [
-                            UtenPrintPreviewButton(
-                              title: '单位资料', // TODO(l10n): 补 arb
-                              subtitle: '当前筛选的完整结果', // TODO(l10n): 补 arb
-                              loader: _printLoader,
-                              exportEndpoint: '/master/units/export',
-                              exportPermission: Perm.unitExport,
-                              exportReport: '',
-                              exportQuery: _exportQuery,
-                              exportFilename: '单位资料', // TODO(l10n): 补 arb
-                              type: UtenButtonType.primary,
-                              size: UtenButtonSize.large,
-                              icon: null,
+                  child: UtenResponsiveTableSearch(
+                    search: UtenSearchBar(
+                      hint: '搜索单位(名称/编号)', // TODO(l10n): 补 arb
+                      initialValue: _keyword,
+                      onChanged: (value) =>
+                          inlineNavigate(() => _onKeywordChanged(value)),
+                    ),
+                    builder: (context, searchAbove, searchInToolbar) => Column(
+                      children: [
+                        if (searchAbove != null)
+                          UtenPageEdgePadding(
+                            padding: const EdgeInsets.only(
+                              bottom: UtenSpacing.s8,
+                              left: UtenSpacing.s4,
+                              right: UtenSpacing.s4,
                             ),
-                            UtenExportButton(
-                              endpoint: '/master/units/export',
-                              requiredPermission: Perm.unitExport,
-                              report: '',
-                              queryParams: _exportQuery,
-                              filename: '单位资料', // TODO(l10n): 补 arb
-                              label: '导出单位', // TODO(l10n): 补 arb
-                              type: UtenButtonType.primary,
-                              size: UtenButtonSize.large,
-                              icon: null,
-                            ),
-                          ],
-                          facets: _facets?.fields ?? const {},
-                          nullCounts: _facets?.nullCounts ?? const {},
-                          filters: _filters,
-                          onFilterChanged: (key, value) => inlineNavigate(
-                            () => _onFilterChanged(key, value),
+                            child: searchAbove,
                           ),
-                          onRowTap: inlineEdit.active
-                              ? null
-                              : (u) => _showDetail(u.id),
-                          isLoading: _loading && _page == null,
-                          loadingMore: _loading && _page != null,
-                          error: _error,
-                          onRetry: () => _loadUnits(_visibleReadPage),
-                          emptyMessage: '暂无单位', // TODO(l10n): 补 arb
-                          currentPage: _page?.page ?? 1,
-                          totalPages: _page?.totalPages ?? 1,
-                          paginationScope: _keyword,
-                          onPageChange: (p) => inlineNavigate(
-                            () => _loadUnits(p, useCache: true),
+                        Expanded(
+                          child: MasterDataTableView<UnitListItem>(
+                            rowsController: _readViewportRows,
+                            expensiveRowMounts: inlineEdit.active,
+                            appendRowsSource: inlineAppendRowsSource,
+                            bottomContentPadding: (_canCreate || _canEdit)
+                                ? UtenFloatingActionGroup.scrollClearance
+                                : 0,
+                            columnEditingEnabled: _canEdit,
+                            tableKey:
+                                'features.basic_data.pages.unit_page.UnitPageState._buildDraftHost.1',
+                            columns: inlineColumns(_columns),
+                            requiredLeadingColumnKeys: const [
+                              'code',
+                              'name',
+                              'status',
+                            ],
+                            items: _page?.items ?? const [],
+                            selectable: true,
+                            idOf: (unit) => unit.id,
+                            selectedIds: _selectedUnitIds,
+                            onSelectedIdsChanged: (ids) {
+                              if (!_rowOpBusy) {
+                                setState(() => _selectedUnitIds = ids);
+                              }
+                            },
+                            batchActionsBuilder: _unitFloatingActions,
+                            rowMenuBuilder: inlineEdit.active
+                                ? null
+                                : _unitMenuItems,
+                            // 导出/打印（V717 unit:export）：打印预览用本页列渲染，
+                            // 导出列集服务端与表格对齐——「表格显示啥导出啥」。
+                            // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
+                            // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
+                            toolbarLeadingActions: [
+                              UtenPrintPreviewButton(
+                                title: '单位资料', // TODO(l10n): 补 arb
+                                subtitle: '当前筛选的完整结果', // TODO(l10n): 补 arb
+                                loader: _printLoader,
+                                exportEndpoint: '/master/units/export',
+                                exportPermission: Perm.unitExport,
+                                exportReport: '',
+                                exportQuery: _exportQuery,
+                                exportFilename: '单位资料', // TODO(l10n): 补 arb
+                                type: UtenButtonType.primary,
+                                size: UtenButtonSize.large,
+                                icon: null,
+                              ),
+                              UtenExportButton(
+                                endpoint: '/master/units/export',
+                                requiredPermission: Perm.unitExport,
+                                report: '',
+                                queryParams: _exportQuery,
+                                filename: '单位资料', // TODO(l10n): 补 arb
+                                label: '导出单位', // TODO(l10n): 补 arb
+                                type: UtenButtonType.primary,
+                                size: UtenButtonSize.large,
+                                icon: null,
+                              ),
+                              ?searchInToolbar,
+                            ],
+                            facets: _facets?.fields ?? const {},
+                            nullCounts: _facets?.nullCounts ?? const {},
+                            filters: _filters,
+                            onFilterChanged: (key, value) => inlineNavigate(
+                              () => _onFilterChanged(key, value),
+                            ),
+                            onRowTap: inlineEdit.active
+                                ? null
+                                : (u) => _showDetail(u.id),
+                            isLoading: _loading && _page == null,
+                            loadingMore: _loading && _page != null,
+                            error: _error,
+                            onRetry: () => _loadUnits(_visibleReadPage),
+                            emptyMessage: '暂无单位', // TODO(l10n): 补 arb
+                            currentPage: _page?.page ?? 1,
+                            totalPages: _page?.totalPages ?? 1,
+                            paginationScope: _keyword,
+                            onPageChange: (p) => inlineNavigate(
+                              () => _loadUnits(p, useCache: true),
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

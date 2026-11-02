@@ -6171,7 +6171,16 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get salesQuoteStatusBannerDraft =>
-      '초안: 작성 후 \"재무 가격 검토 요청\"을 누르세요. 재무가 가격과 할인을 확정해야 주문으로 전환할 수 있습니다.';
+      '초안: 영업 책임자 검토 후 재무 가격 검토를 진행합니다. 가격 확정과 고객 확인 후 주문으로 전환할 수 있습니다.';
+
+  @override
+  String salesQuoteStatusBannerManagerRejected(String reason) {
+    return '영업 책임자 반려: $reason. 수정 후 책임자 검토를 다시 요청하세요.';
+  }
+
+  @override
+  String get salesQuoteStatusBannerManagerPending =>
+      '영업 책임자 검토 대기 중입니다. 승인 후 재무 가격 검토로 전달됩니다. 수정하려면 먼저 회수하세요.';
 
   @override
   String get salesQuoteStatusBannerPending =>
@@ -6179,7 +6188,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String salesQuoteStatusBannerReturned(String reason) {
-    return '재무 반려: $reason. 수정한 뒤 다시 가격 검토를 요청하세요.';
+    return '재무 반려: $reason. 수정 후 영업 책임자 검토를 다시 요청하세요.';
   }
 
   @override
@@ -6246,11 +6255,11 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get salesQuoteStatusWithdrawConfirmBody =>
-      '회수하면 초안으로 돌아가 계속 수정할 수 있으며, 수정 후 다시 가격 검토를 요청해야 합니다. 회수할까요?';
+      '회수하면 초안으로 돌아가 수정할 수 있습니다. 수정 후 영업 책임자 검토를 다시 요청해야 합니다. 회수할까요?';
 
   @override
   String get salesQuoteStatusReopenConfirmBody =>
-      '재무가 이미 가격을 확정했습니다. 다시 수정하면 초안으로 돌아가며, 다시 가격 검토를 받아야 주문으로 전환할 수 있습니다. 계속할까요?';
+      '재무 가격 검토가 완료되었습니다. 다시 수정하면 초안으로 돌아가며, 주문 전환 전에 영업 책임자 검토와 재무 가격 검토를 다시 받아야 합니다. 계속할까요?';
 
   @override
   String get salesQuoteStatusDeleteConfirmBody =>
@@ -6273,7 +6282,8 @@ class AppLocalizationsKo extends AppLocalizations {
   String get salesQuoteStatusWithdrawn => '회수했습니다. 계속 수정할 수 있습니다';
 
   @override
-  String get salesQuoteStatusReopened => '초안으로 돌아왔습니다. 수정 후 다시 가격 검토를 요청하세요';
+  String get salesQuoteStatusReopened =>
+      '초안으로 돌아갔습니다. 수정 후 영업 책임자 검토를 다시 요청하세요.';
 
   @override
   String get salesQuoteStatusDeleted => '삭제했습니다';

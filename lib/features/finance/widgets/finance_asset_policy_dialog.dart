@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter/material.dart';
 import '../../../components/layout/uten_segment_row.dart';
@@ -44,7 +45,7 @@ Future<bool> showFinanceAssetPolicyDialog(
     routerPageKey: dialogDraftPageKey(context),
   );
   if (compact) {
-    return await showModalBottomSheet<bool>(
+    return await showUtenModalBottomSheet<bool>(
           context: context,
           isScrollControlled: true,
           isDismissible: false,

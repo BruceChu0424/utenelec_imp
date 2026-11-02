@@ -656,7 +656,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     // 列表重拉时同步分段计数(写操作成功 / 返回本页 / 手动刷新都经过这里)。
     final statusScope = _statusScope;
     if (statusScope != null) {
-      ref.invalidate(documentStatusCountsProvider(statusScope));
+      refreshDocumentStatusCounts(ref, statusScope, force: page == null);
     }
     if (!_shouldLoad) {
       // Deselecting a query also supersedes pending data and errors.

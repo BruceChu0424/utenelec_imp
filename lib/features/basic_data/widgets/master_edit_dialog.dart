@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 // 主档通用编辑（货品/模具/客户/供应商 新建 + 编辑 共用）。
 //
 // 各主档字段集不同，但表单交互一致：调用方按 [MasterFieldDef] 列表提供字段，
@@ -833,7 +834,7 @@ Future<void> showMasterEditDialog({
     onAccepted: onAccepted,
   );
   if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<void>(
+    return showUtenModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       isDismissible: draftSpec == null,

@@ -1,6 +1,7 @@
 package com.uten.imp.features.companyfiles;
 
 import com.uten.imp.application.port.AttachmentAccessPort;
+import com.uten.imp.application.port.CompanyFileHistoryAccessPort;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
@@ -29,7 +30,7 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor(onConstructor_ = @org.springframework.beans.factory.annotation.Autowired)
 @Transactional(readOnly = true)
-public class CompanyFileService {
+public class CompanyFileService implements CompanyFileHistoryAccessPort {
     public static final String OWNER_TYPE = "COMPANY_FILE";
     /** V958 synthetic ACL subject marking an entry as visible to everyone. */
     public static final String EVERYONE_SUBJECT_TYPE = "ALL";
@@ -229,6 +230,26 @@ public class CompanyFileService {
         Node n = s.node(id);
         s.require(n, "view", n.deleted, false);
         return s.entry(n, n.deleted);
+    }
+
+    /** History uses exactly the current tree/ACL/password policy, including deleted entries.
+     * Callers must run inside a transaction; Scope holds the shared policy lock until it ends.
+     * Missing objects fail closed and must never be reconstructed from historical names.
+     */
+    @Override
+    public Set<UUID> readableHistoryNodes(Collection<UUID> ids, boolean accessSettings) {
+        if (ids.isEmpty()) return Set.of();
+        Scope scope = new Scope(user());
+        List<Node> nodes = jdbc.query("SELECT * FROM company_file_nodes WHERE id IN ("
+                + placeholders(ids.size()) + ")", NODE, ids.toArray());
+        scope.prime(nodes);
+        Set<UUID> result = new HashSet<>();
+        for (Node n : nodes) {
+            if (scope.can(n, "view", n.deleted, true)
+                    && (!accessSettings || scope.can(n, "manage_permissions", n.deleted, true)))
+                result.add(n.id);
+        }
+        return Set.copyOf(result);
     }
 
     @Transactional

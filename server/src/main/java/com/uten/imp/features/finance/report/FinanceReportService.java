@@ -1059,7 +1059,8 @@ public class FinanceReportService {
                        COALESCE(i.amount_local, t.amount_local) AS "amountLocal",
                        COALESCE(i.write_off_amount,0) AS "writeOffOriginal",
                        COALESCE(i.write_off_local,0) AS "writeOffLocal",
-                       COALESCE(i.applied_amount_local, t.amount_local) AS "appliedLocal",
+                       CASE WHEN t.receipt_kind='CUSTOMER_PREPAYMENT' THEN 0
+                            ELSE COALESCE(i.applied_amount_local, t.amount_local) END AS "appliedLocal",
                        COALESCE(i.exchange_diff,0) AS "exchangeDiff",
                        i.balance_after_original AS "balanceAfterOriginal",
                        CASE WHEN ROW_NUMBER() OVER (PARTITION BY t.id ORDER BY i.line_no NULLS FIRST, i.id) = 1
@@ -1145,7 +1146,8 @@ public class FinanceReportService {
                                 THEN COALESCE(lines.cash_local,0) ELSE t.amount_local END) AS "amountLocal",
                        SUM(CASE WHEN COALESCE(lines.line_count,0)>0
                                 THEN COALESCE(lines.write_off_local,0) ELSE 0 END) AS "writeOffLocal",
-                       SUM(CASE WHEN COALESCE(lines.line_count,0)>0
+                       SUM(CASE WHEN t.receipt_kind='CUSTOMER_PREPAYMENT' THEN 0
+                                WHEN COALESCE(lines.line_count,0)>0
                                 THEN COALESCE(lines.applied_local,0) ELSE t.amount_local END) AS "appliedLocal",
                        SUM(CASE WHEN COALESCE(lines.line_count,0)>0
                                 THEN COALESCE(lines.exchange_diff,0) ELSE 0 END) AS "exchangeDiff",
@@ -1433,9 +1435,10 @@ public class FinanceReportService {
         List<ReportColumn> cols = List.of(
                 ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "开单日期"),
                 ReportColumn.text("operatorName", "收款人", 100), ReportColumn.text("accountName", "收款帐户", 130),
-                // 收款总额是收入单<b>单头</b>金额，一张单有几条收入明细就在几行上重复出现，相加即重复计数；
-                // 本明细表没有投影行级金额列，所以整张表没有可加的列，不出合计条。
-                ReportColumn.money("amountTotal", "收款总额").withUnitKey("currencyCode"), ReportColumn.text("styleName", "收入项目名称", 130),
+                // 收款总额是单头金额；分类实际收入取本行本币事实，不重复累计单头。
+                ReportColumn.money("amountTotal", "收款总额").withUnitKey("currencyCode"),
+                ReportColumn.money("incomeAmount", "收入金额").withUnitLabel("元").totaled("合计收入金额"),
+                ReportColumn.text("styleName", "收入项目名称", 130),
                 ReportColumn.text("counterpartName", "对方", 120), ReportColumn.text("counterpartAccount", "对方账号", 140),
                 ReportColumn.text("summary", "摘要", 160), ReportColumn.text("remark", "备注", 160),
                 ReportColumn.text("__srcId", ""), ReportColumn.text("currencyCode", "币别",90),ReportColumn.text("__currencyId",""));  // 隐藏：行点击跳收入单编辑页
@@ -1443,7 +1446,7 @@ public class FinanceReportService {
                 SELECT t.bill_no AS "billNo", t.bill_date AS "billDate",
                        COALESCE(em_op.full_name, t.operator_name, '') ||
                          CASE WHEN COALESCE(em_op.legacy_category,'') <> '' THEN ' ('||em_op.legacy_category||')' ELSE '' END AS "operatorName",
-                       a.name AS "accountName", t.amount_original AS "amountTotal", ps.name AS "styleName",
+                       a.name AS "accountName", t.amount_original AS "amountTotal", i.amount_local AS "incomeAmount", ps.name AS "styleName",
                        COALESCE(i.counterpart_name,'') AS "counterpartName", ca.name AS "counterpartAccount",
                        i.summary AS "summary", t.remark AS "remark",
                        t.id AS "__srcId",
@@ -1657,8 +1660,8 @@ public class FinanceReportService {
     }
 
     /**
-     * 三段式期初依赖 party_monthly_summaries（V950 投影）：读取前同步重算该单位的
-     * 脏键（通常 0～少数单元），保证对账单/年表永远读精确值，不存在过期汇总。
+     * 尝试预热 V950 月投影；后台占用时不阻塞。查询在自身快照重放仍可见的脏月，
+     * 避免外层 RR 已有快照时读不到 REQUIRES_NEW 刚提交的投影。
      */
     private void healPartySummaries(boolean isAR, UUID partyId) {
         partySummaries.reconcileNow(isAR ? "AR" : "AP", partyId);
@@ -1677,7 +1680,15 @@ public class FinanceReportService {
                 .setParameter("pid",partyId).setParameter("direction",isAR ? "AR" : "AP")
                 .setParameter("from",from).setParameter("to",to);
         if (((Number)query.getSingleResult()).longValue()>0) {
-            throw new ApiException(ErrorCode.CONFLICT,"期间跨越了历史数据截止日或缺少核验过的期初；迁入前的逐月收付款无法还原，请选择截止日之后的期间");
+            Object value=em.createNativeQuery("SELECT MAX(((ledger.legacy_source_resolution->>'snapshotAsOfUtc')::timestamptz AT TIME ZONE 'Asia/Shanghai')::date) "
+                    +"FROM ar_ap_ledger ledger WHERE ledger."+partyColumn+"=:pid AND ledger.direction=:direction "
+                    +"AND ledger.legacy_import_run_id IS NOT NULL "
+                    +"AND ((ledger.status=1 AND NOT ledger.is_deleted) OR (ledger.status=-1 AND ledger.is_deleted AND ledger.deleted_at IS NOT NULL))")
+                    .setParameter("pid",partyId).setParameter("direction",isAR?"AR":"AP").getSingleResult();
+            LocalDate cutoff=value instanceof java.sql.Date date?date.toLocalDate():value instanceof LocalDate date?date:null;
+            String guidance=cutoff==null?"": "；该往来历史数据截止日为"+cutoff+"，流水/明细开始日期最早为"+cutoff.plusDays(1)
+                    +"，年度报表需选择"+(cutoff.getYear()+1)+"年或之后的完整年度";
+            throw new ApiException(ErrorCode.CONFLICT,"期间跨越了历史数据截止日或缺少核验过的期初；迁入前的逐月收付款无法还原，请选择截止日之后的期间"+guidance);
         }
     }
 
@@ -1753,8 +1764,8 @@ public class FinanceReportService {
                         .totaled(isAR ? "合计发货金额" : "合计收货金额"),
                 ReportColumn.money("settled", isAR ? "回款金额" : "付款金额").withUnitLabel("元")
                         .totaled(isAR ? "合计回款金额" : "合计付款金额"),
-                // 退货金额当前恒投影为 0（退货已合并进 posted），合计只会显示一个误导性的 0，不声明。
-                ReportColumn.money("returned", "退货金额"),
+                // 退货已合并进 posted，当前未独立拆分；未知不能显示为真实零发生额。
+                ReportColumn.money("returned", "退货（已并入发生额）").withUnitLabel("元"),
                 ReportColumn.money("balance", "期末" + (isAR ? "应收" : "应付")).withUnitLabel("元"));
         PartyStatementHeaderQuery headers = new PartyStatementHeaderQuery(filters, true, false);
         String ordering = headers.orderBy(sort, order);
@@ -2041,21 +2052,62 @@ public class FinanceReportService {
                 cols,items,new LinkedHashMap<>(),safePage,safeSize,total,totalPages,totals);
     }
 
-    /** Q 银行存取明细 / R 汇总（M_Bank 0 行，返回空结构）。 */
+    /** Q 银行存取明细 / R 汇总，读取已审核的原生银行存取款事实。 */
     @Transactional(readOnly = true)
     public ReportTableResponse bankReport(String view) {
-        // 当前为空结构；仍按公司级入口 fail-closed，避免后续接入银行事实时意外放开。
+        return bankReport(view,null,null,null,null,null,Map.of(),1,50,null,null);
+    }
+
+    @Transactional(readOnly = true)
+    public ReportTableResponse bankReport(String view,UUID accountId,LocalDate dateFrom,LocalDate dateTo,
+            String keyword,Short status,Map<String,String> filters,int page,int size,String sort,String order) {
         requireCompanyWideReportAccess();
-        if ("summary".equalsIgnoreCase(view)) {
-            return empty(List.of(ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "日期"),
-                    ReportColumn.text("outAccount", "取款账户", 140), ReportColumn.money("amount", "金额"),
-                    ReportColumn.text("currencyCode", "币别", 80), ReportColumn.number("rate", "汇率")));
+        requireAccountStatementAccess();
+        return bankReportAuthorized(view,accountId,dateFrom,dateTo,keyword,status,filters,page,size,sort,order);
+    }
+
+    private ReportTableResponse bankReportAuthorized(String view,UUID accountId,LocalDate dateFrom,LocalDate dateTo,
+            String keyword,Short status,Map<String,String> filters,int page,int size,String sort,String order) {
+        if (!java.util.Set.of("detail","summary").contains(view)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"银行存取款报表类型无效");
         }
-        return empty(List.of(ReportColumn.text("billNo", "单号", 140), ReportColumn.date("billDate", "日期"),
-                ReportColumn.text("outAccount", "取款账户", 140), ReportColumn.text("inAccount", "存款账户", 140),
-                ReportColumn.money("amount", "金额"), ReportColumn.text("currencyCode", "币别", 80),
-                ReportColumn.number("rate", "汇率"), ReportColumn.text("checkNo", "支票号", 120),
-                ReportColumn.text("summary", "摘要", 160)));
+        if(dateFrom!=null&&dateTo!=null&&dateFrom.isAfter(dateTo)) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"开始日期不能晚于结束日期");
+        }
+        boolean detail="detail".equals(view);
+        List<ReportColumn> columns=new ArrayList<>(List.of(
+                ReportColumn.text("billNo","单号",140),ReportColumn.date("billDate","日期"),
+                ReportColumn.text("outAccount","取款账户",140)));
+        if(detail)columns.add(ReportColumn.text("inAccount","存款账户",140));
+        columns.addAll(List.of(
+                ReportColumn.money("amount","金额").withUnitKey("currencyCode").totaled("合计金额","currencyCode","__currencyId"),
+                ReportColumn.money("amountLocal","本币金额").withUnitLabel("元").totaled("合计本币金额"),
+                ReportColumn.text("currencyCode","币别",80),ReportColumn.number("rate","汇率"),
+                ReportColumn.text("checkNo","支票号",120),ReportColumn.text("summary","摘要",160),
+                ReportColumn.text("status","审核状态",90),ReportColumn.text("__srcId",""),ReportColumn.text("__currencyId","")));
+        // 明细取各行金额；汇总只取单头一次，不把多转入账户展开后再加单头。
+        String projection="SELECT t.bill_no,t.bill_date,out_account.name"
+                +(detail?",in_account.name":"")
+                +(detail?",i.amount_original,i.amount_local":",t.amount_original,t.amount_local")
+                +","+com.uten.imp.common.finance.CurrencyDisplayLabel.sql("currency")
+                +",t.exchange_rate,t.invoice_no,"+(detail?"i.summary":"t.remark")
+                +",CASE t.status WHEN 1 THEN '已审核' WHEN -1 THEN '已红冲' ELSE '草稿' END,t.id,t.currency_id";
+        String from="FROM finance_bank_transfers t "
+                +(detail?"JOIN finance_bank_transfer_lines i ON i.transfer_id=t.id AND NOT COALESCE(i.is_deleted,false) LEFT JOIN accounts in_account ON in_account.id=i.in_account_id ":"")
+                +"LEFT JOIN accounts out_account ON out_account.id=t.out_account_id "
+                +"LEFT JOIN currencies currency ON currency.id=t.currency_id ";
+        FinanceWhereBuilder where=new FinanceWhereBuilder("WHERE NOT COALESCE(t.is_deleted,false)");
+        Map<String,String> effectiveFilters=new LinkedHashMap<>(filters==null?Map.of():filters);
+        if(status!=null)where.add("t.status=:bankStatus","bankStatus",status);
+        else if(effectiveFilters.get("status")==null||effectiveFilters.get("status").isBlank())effectiveFilters.put("status","已审核");
+        if(dateFrom!=null)where.add("t.bill_date>=:dateFrom","dateFrom",dateFrom);
+        if(dateTo!=null)where.add("t.bill_date<=:dateTo","dateTo",dateTo);
+        if(accountId!=null)where.add("(t.out_account_id=:accountId OR "+(detail?"i.in_account_id=:accountId)"
+                :"EXISTS(SELECT 1 FROM finance_bank_transfer_lines selected_line WHERE selected_line.transfer_id=t.id AND NOT COALESCE(selected_line.is_deleted,false) AND selected_line.in_account_id=:accountId))"),"accountId",accountId);
+        where.search(keyword,detail?new String[]{"t.bill_no","out_account.name","in_account.name","t.invoice_no","i.summary","t.remark"}
+                :new String[]{"t.bill_no","out_account.name","t.invoice_no","t.remark"});
+        return execute(columns,projection,from,where,"t.bill_date DESC,t.bill_no,t.id"+(detail?",i.line_no NULLS LAST,i.id":""),
+                List.of(facetBillNo(),new FacetSpec("status","","","","text")),effectiveFilters,page,size,sort,order);
     }
 
     /**
@@ -2480,15 +2532,14 @@ public class FinanceReportService {
      * ar-ap/overview / ar-ap/{detail,summary} / {receipt|payment|expense|income}/{detail,summary} /
      * fee-offset/detail / statement/{flow,detail,annual} / account/statement。
      *
-     * <p>Q/R 银行存取款（{@link #bankReport}）为空表结构（M_Bank 0 行），不纳入导出——
-     * 前端银行存取 chip 不显示导出按钮。
+     * <p>Q/R 银行存取款与页面共用已审核单据事实、账户/日期/列筛选及分币种金额口径。
      *
      * <p>滚动余额报表（statement/flow·detail、account/statement）每次分页都从全量重算余额后切片，
      * 跨页累积时每页的「余额」均基于全集正确计算，导出值与页内一致。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
-        if ("account/statement".equals(report)) {
+        if ("account/statement".equals(report) || "bank/detail".equals(report) || "bank/summary".equals(report)) {
             requireAccountStatementAccess();
         }
         boolean companyWide = requiresCompanyWideExportAccess(report);
@@ -2544,6 +2595,7 @@ public class FinanceReportService {
             case "statement/detail"  -> (pg, sz) -> partyStatement(partyId, side, dateFrom, dateTo, pg, sz, false, PartyStatementHeaderQuery.withKeyword(facets,keyword), sort, order);
             case "statement/annual"  -> (pg, sz) -> partyAnnualStatementAuthorized(partyId, side, year, pg, sz, facets, sort, order);
             case "account/statement" -> (pg, sz) -> accountStatementAuthorized(accountId, dateFrom, dateTo, keyword, pg, sz, billNo, p);
+            case "bank/detail", "bank/summary" -> (pg,sz) -> bankReportAuthorized(report.substring("bank/".length()),accountId,dateFrom,dateTo,keyword,status,facets,pg,sz,sort,order);
             case "customer-prepayment/events", "statement/customer-prepayments" -> (pg,sz) -> customerPrepaymentEvents(clientId,dateFrom,dateTo,pg,sz,keyword,FinanceReportColumnOptions.from(p,sort,order));
             // C2 对账单（FinanceStatementService；lossRate 仅 subcontract 用，默认 0.03）
             case "statements/subcontract" -> (pg, sz) -> statementService.subcontractStatement(

@@ -360,7 +360,7 @@ void main() {
         queryParams: {},
       ),
     );
-    await tester.tap(find.text('下载表格'));
+    await tester.tap(find.bySemanticsLabel('下载表格'));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('设置密码'));
     await tester.pumpAndSettle();

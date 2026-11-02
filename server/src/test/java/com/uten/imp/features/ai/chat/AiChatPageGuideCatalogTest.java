@@ -64,11 +64,13 @@ class AiChatPageGuideCatalogTest {
         actor("goods:view");
         assertThrows(ApiException.class, () -> guides.resolve(route, null));
         actor("goods:view", "goods:price_analysis:view");
+        assertThrows(ApiException.class, () -> guides.resolve(route,null));
+        actor("goods:view", "goods:price_analysis:view","purchase_order:view","purchase_order:price:view");
         var page = guides.resolve(route, null).orElseThrow();
         assertEquals("goods_price_analysis", page.key());
         assertTrue(guides.answer(page, "reference").contains("样本不足"));
         assertThrows(ApiException.class, () -> guides.resolve(route, "margin"));
-        actor("goods:view", "goods:price_analysis:view", "goods:cost:view");
+        actor("goods:view", "goods:price_analysis:view", "goods:cost:view","purchase_order:view","purchase_order:price:view");
         when(access.hasDomain("FINANCE")).thenReturn(true);
         assertTrue(guides.answer(guides.resolve(route, "margin").orElseThrow(), "margin").contains("100元"));
     }

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import '../providers/master_party_options.dart';
 // 订货单明细「统一设置商业条款」批量面板（采购/委外共用，2026-09 行级条款改造）。
 //
@@ -58,7 +59,7 @@ Future<CommercialTermsBatchResult?> showCommercialTermsBatchSheet(
 }) {
   return guardPartyPanelResult(
     context,
-    () => showModalBottomSheet<CommercialTermsBatchResult>(
+    () => showUtenModalBottomSheet<CommercialTermsBatchResult>(
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => _CommercialTermsBatchSheet(

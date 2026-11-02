@@ -292,8 +292,13 @@ namespace Uten.Legacy.Desktop
         {
             if (!busy && CanLeaveWorkspace()) new AboutWindow(this).ShowDialog();
         }
+        private void OnOpenLogs(object sender, RoutedEventArgs args)
+        {
+            DiagnosticsLog.Current?.OpenDirectory();
+        }
         private async void OnCheckUpdate(object sender, RoutedEventArgs e)
         {
+            DiagnosticsLog.Record("update.clicked");
             if (busy || !session.IsAuthenticated || session.CurrentUser.MustChangePassword) return;
             if (!CanLeaveWorkspace()) return;
             long owner = session.Generation;
@@ -315,6 +320,7 @@ namespace Uten.Legacy.Desktop
                     if (!CanLeaveWorkspace())
                     { ConnectionLabel.Text = "当前页面仍有未完成操作，已取消本次更新退出。"; return; }
                     prepared.AuthorizeShutdown();
+                    DiagnosticsLog.Record("update.handoff");
                     ConnectionLabel.Text = "更新预检已完成，软件正在正常退出…";
                     Application.Current.Shutdown(0);
                 }

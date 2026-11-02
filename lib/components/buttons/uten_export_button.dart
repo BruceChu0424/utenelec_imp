@@ -440,6 +440,7 @@ class _UtenExportButtonState extends ConsumerState<UtenExportButton> {
               ? UtenTableToolbar.controlHeight
               : null),
       icon: widget.icon,
+      compactIcon: Icons.download_rounded,
       isLoading: _loading,
       onPressed: widget.enabled && !_preparing ? _onTap : null,
       child: Text(widget.label),

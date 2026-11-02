@@ -19,6 +19,7 @@ import 'api_exception.dart';
 import 'api_mutation_reload_safety.dart';
 import 'authenticated_request_scope.dart';
 import 'native_facet_routes.dart';
+import 'request_reload_semantics.dart';
 import 'interceptors/auth_interceptor.dart';
 import 'interceptors/automatic_request_interceptor.dart';
 import 'interceptors/device_audit_interceptor.dart';
@@ -33,6 +34,8 @@ import 'streaming_download_adapter.dart';
 import 'streaming_download_contract.dart';
 import 'read_scope_revision.dart';
 import 'interceptors/read_scope_revision_interceptor.dart';
+import 'interceptors/page_read_priority_interceptor.dart';
+import '../diagnostics/diagnostic_request_interceptor.dart';
 
 const _clientPackageSendTimeout = Duration(minutes: 30);
 const _clientPackageReceiveTimeout = Duration(minutes: 5);
@@ -42,16 +45,24 @@ class ApiClient {
     this._dio, {
     this.streamingDownloads = false,
     ApiMutationReloadSafety? reloadSafety,
-  }) : _reloadSafety = reloadSafety ?? apiMutationReloadSafety;
+  }) : _reloadSafety = reloadSafety ?? apiMutationReloadSafety {
+    if (!_dio.interceptors.any((item) => item is DiagnosticRequestInterceptor)) {
+      _dio.interceptors.add(DiagnosticRequestInterceptor());
+    }
+  }
 
   final Dio _dio;
   final bool streamingDownloads;
   final ApiMutationReloadSafety _reloadSafety;
 
   Future<T> _trackPost<T>(String path, Future<T> Function() action) =>
-      isNativeFacetPath(path)
+      isReadOnlyPost(path)
       ? _reloadSafety.trackRead(action)
-      : _reloadSafety.track(action);
+      : _reloadSafety.track(
+          action,
+          retainUncertainty:
+              !isNoticePresentationReceipt(path) && !isEphemeralSignIn(path),
+        );
 
   /// Read one already-authorized export artifact, without accumulating its body.
   Stream<Uint8List> downloadExportStream(
@@ -720,11 +731,18 @@ final apiClientProvider = Provider<ApiClient>((ref) {
     installStreamingDownloadAdapter(client);
     client.transformer = ResponsiveJsonTransformer(jsonDecoder);
     client.interceptors.add(DeviceAuditInterceptor(deviceAuditStore));
+    client.interceptors.add(DiagnosticRequestInterceptor());
     client.interceptors.add(readScope);
     return client;
   }
 
   final dio = createCompanyDio(buildApiBaseOptions(baseUrl));
+  final pageReads = PageReadPriorityInterceptor(
+    isCurrent: (options) async =>
+        ref.mounted &&
+        await authInterceptor.requestBelongsToCurrentIdentity(options),
+  );
+  ref.onDispose(pageReads.close);
   installStreamingDownloadAdapter(dio);
   ref.onDispose(dio.close);
   // Large responses use a native isolate or a same-origin Web Worker. Web's
@@ -743,6 +761,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
     realmPolicy: realmPolicy,
   );
   dio.interceptors.add(authInterceptor);
+  dio.interceptors.add(pageReads);
   dio.interceptors.add(readScope);
   // 敏感操作被要求再认证 (403 REAUTH_REQUIRED) 时弹统一密码框、带凭证重发一次 (ADR-110)。
   dio.interceptors.add(

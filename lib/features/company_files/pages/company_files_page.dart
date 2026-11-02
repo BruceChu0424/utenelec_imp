@@ -1,3 +1,9 @@
+import '../../../core/router/page_navigation_session.dart';
+import '../../../features/basic_data/widgets/master_inline_edit.dart'
+    show masterEditText;
+import '../../../shared/history/record_history_action.dart';
+import '../../../shared/history/record_history_area.dart';
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'dart:async';
 import 'dart:typed_data';
@@ -180,8 +186,16 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     unawaited(_load());
   }
 
+  final _historyNavigation = PageNavigationSession();
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _historyNavigation.attach(context);
+  }
+
   @override
   void dispose() {
+    _historyNavigation.dispose();
     ++_epoch;
     ++_request;
     _stopQueue = true;
@@ -623,6 +637,20 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
   }
 
   List<UtenContextMenuEntry> _menuEntries(CompanyFile e) => [
+    if (e.allows('view') && !e.locked)
+      UtenMenuItem(
+        label: masterEditText(context, '修改历史', 'Change history', '변경 기록'),
+        icon: Icons.history,
+        enabled: !_blocked,
+        onTap: () => showMasterRecordHistory(
+          context,
+          navigation: _historyNavigation,
+          area: RecordHistoryArea.companyFiles,
+          entityType: e.isFolder ? 'folders' : 'files',
+          recordId: e.id,
+          onChanged: () => _load(),
+        ),
+      ),
     if ((!e.deleted || e.isFolder) && e.allows('view'))
       UtenMenuItem(
         label: l.companyFilesOpen,
@@ -970,7 +998,7 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
     // while the content area (sidebar + page padding removed) stays under it,
     // which used to leave both the side panel and the sheet unopened.
     if (_contentWidth < 1220) {
-      showModalBottomSheet<void>(
+      showUtenModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
@@ -1297,6 +1325,10 @@ class _CompanyFilesPageState extends ConsumerState<CompanyFilesPage>
         title: l.companyFilesTitle,
         showBackButton: true,
         actions: [
+          RecordHistoryAction(
+            area: RecordHistoryArea.companyFiles,
+            enabled: !_blocked,
+          ),
           UtenRefreshButton(
             key: const ValueKey('company-files-refresh'),
             busy: _loading,

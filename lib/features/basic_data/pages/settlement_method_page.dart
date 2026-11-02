@@ -1,3 +1,5 @@
+import '../../../components/layout/uten_compact_toolbar.dart';
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // 结算方式管理页（基础资料 · 扁平字典 + 账期策略维护，V453）。
 //
@@ -372,7 +374,7 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
       onHistoryChanged: _refresh,
     );
     if (context.breakpoint.isCompact) {
-      showModalBottomSheet<void>(
+      showUtenModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
         useSafeArea: true,
@@ -732,121 +734,126 @@ class _SettlementMethodPageState extends ConsumerState<SettlementMethodPage>
           child: UtenContentContainer(
             child: Padding(
               padding: const EdgeInsets.only(top: UtenSpacing.s8),
-              child: Column(
-                children: [
-                  UtenPageEdgePadding(
-                    padding: const EdgeInsets.only(
-                      bottom: UtenSpacing.s8,
-                      left: UtenSpacing.s4,
-                      right: UtenSpacing.s4,
-                    ),
-                    child: UtenSearchBar(
-                      hint: '搜索结算方式(名称/编号)',
-                      initialValue: _keyword,
-                      onInputChanged: (kw) {
-                        if (inlineEdit.active) return;
-                        _loadRequests.begin();
-                        setState(() {
-                          _keyword = kw;
-                          _pageNum = 1;
-                          _selectedMethodIds = {};
-                          _loading = true;
-                        });
-                      },
-                      onChanged: (kw) => inlineNavigate(() async {
-                        setState(() {
-                          _keyword = kw;
-                          _selectedMethodIds = {};
-                          _pageNum = 1;
-                        });
-                        await _load(1);
-                      }),
-                    ),
-                  ),
-                  Expanded(
-                    child: MasterDataTableView<SettlementMethodAdminItem>(
-                      rowsController: _readViewportRows,
-                      expensiveRowMounts: inlineEdit.active,
-                      appendRowsSource: inlineAppendRowsSource,
-                      bottomContentPadding: (_canCreate || _canEdit)
-                          ? UtenFloatingActionGroup.scrollClearance
-                          : 0,
-                      columnEditingEnabled: _canEdit,
-                      tableKey:
-                          'features.basic_data.pages.settlement_method_page.SettlementMethodPageState._buildDraftHost.1',
-                      columns: inlineColumns(_columns),
-                      requiredLeadingColumnKeys: const ['code', 'name'],
-                      items: items,
-                      selectable: true,
-                      idOf: (method) => method.id,
-                      selectedIds: _selectedMethodIds,
-                      onSelectedIdsChanged: (ids) =>
-                          setState(() => _selectedMethodIds = ids),
-                      batchActionsBuilder: _settlementActions,
-                      // 导出/打印（V717 settlement_method:export）：打印预览用本页列
-                      // 渲染，导出列集服务端与表格对齐——「表格显示啥导出啥」。
-                      // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
-                      // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
-                      toolbarLeadingActions: [
-                        UtenPrintPreviewButton(
-                          title: '结算方式', // TODO(l10n): 补 arb
-                          subtitle: '全部行', // TODO(l10n): 补 arb
-                          loader: _printLoader,
-                          exportEndpoint:
-                              '/master/reference-methods/settlement-admin/export',
-                          exportPermission: Perm.settlementMethodExport,
-                          exportReport: '',
-                          exportQuery: _exportQuery,
-                          exportFilename: '结算方式', // TODO(l10n): 补 arb
-                          type: UtenButtonType.primary,
-                          size: UtenButtonSize.large,
-                          icon: null,
+              child: UtenResponsiveTableSearch(
+                search: UtenSearchBar(
+                  hint: '搜索结算方式(名称/编号)',
+                  initialValue: _keyword,
+                  onInputChanged: (kw) {
+                    if (inlineEdit.active) return;
+                    _loadRequests.begin();
+                    setState(() {
+                      _keyword = kw;
+                      _pageNum = 1;
+                      _selectedMethodIds = {};
+                      _loading = true;
+                    });
+                  },
+                  onChanged: (kw) => inlineNavigate(() async {
+                    setState(() {
+                      _keyword = kw;
+                      _selectedMethodIds = {};
+                      _pageNum = 1;
+                    });
+                    await _load(1);
+                  }),
+                ),
+                builder: (context, searchAbove, searchInToolbar) => Column(
+                  children: [
+                    if (searchAbove != null)
+                      UtenPageEdgePadding(
+                        padding: const EdgeInsets.only(
+                          bottom: UtenSpacing.s8,
+                          left: UtenSpacing.s4,
+                          right: UtenSpacing.s4,
                         ),
-                        UtenExportButton(
-                          endpoint:
-                              '/master/reference-methods/settlement-admin/export',
-                          requiredPermission: Perm.settlementMethodExport,
-                          report: '',
-                          queryParams: _exportQuery,
-                          filename: '结算方式', // TODO(l10n): 补 arb
-                          label: '导出结算方式', // TODO(l10n): 补 arb
-                          type: UtenButtonType.primary,
-                          size: UtenButtonSize.large,
-                          icon: null,
-                        ),
-                      ],
-                      facets: _labeledFacets,
-                      nullCounts: _facets?.nullCounts ?? const {},
-                      filters: _filters,
-                      onFilterChanged: (key, value) =>
-                          inlineNavigate(() => _onFilterChanged(key, value)),
-                      // 行底色按状态（ADR-169 收编，同 color_page）：使用=蓝档
-                      // 淡底（裸色收编）/ 禁用=灰档淡底（停用归中性终态，
-                      // 原浅红把「停用」当异常——停用不是错误）。
-                      rowColor: (m) => switch (m.status) {
-                        '使用' => UtenColors.info.withValues(alpha: 0.13),
-                        '禁用' => UtenColors.statusNeutral.withValues(
-                          alpha: 0.10,
-                        ),
-                        _ => null,
-                      },
-                      // 点行 = 维护账期/查看口径（系统角色锁定时仅提示）。
-                      onRowTap: inlineEdit.active ? null : _showEditTerms,
-                      isLoading: _loading && _items == null,
-                      loadingMore: _loading && _items != null,
-                      error: _error,
-                      onRetry: _load,
-                      currentPage: _page?.page ?? 1,
-                      totalPages: _page?.totalPages ?? 1,
-                      paginationScope: _keyword,
-                      onPageChange: (page) =>
-                          inlineNavigate(() => _load(page, true)),
-                      emptyMessage: _keyword.trim().isEmpty
-                          ? '暂无结算方式'
-                          : '没有匹配的结算方式', // TODO(l10n): 补 arb
+                        child: searchAbove,
+                      ),
+                    Expanded(
+                      child: MasterDataTableView<SettlementMethodAdminItem>(
+                        rowsController: _readViewportRows,
+                        expensiveRowMounts: inlineEdit.active,
+                        appendRowsSource: inlineAppendRowsSource,
+                        bottomContentPadding: (_canCreate || _canEdit)
+                            ? UtenFloatingActionGroup.scrollClearance
+                            : 0,
+                        columnEditingEnabled: _canEdit,
+                        tableKey:
+                            'features.basic_data.pages.settlement_method_page.SettlementMethodPageState._buildDraftHost.1',
+                        columns: inlineColumns(_columns),
+                        requiredLeadingColumnKeys: const ['code', 'name'],
+                        items: items,
+                        selectable: true,
+                        idOf: (method) => method.id,
+                        selectedIds: _selectedMethodIds,
+                        onSelectedIdsChanged: (ids) =>
+                            setState(() => _selectedMethodIds = ids),
+                        batchActionsBuilder: _settlementActions,
+                        // 导出/打印（V717 settlement_method:export）：打印预览用本页列
+                        // 渲染，导出列集服务端与表格对齐——「表格显示啥导出啥」。
+                        // 导出/打印进左簇（2026-10-18 用户口径）：与「表头设置 / 全屏」同排靠左，
+                        // 工具条右侧留给分页；按钮纯文字无 icon（工具条无 icon 口径）。
+                        toolbarLeadingActions: [
+                          UtenPrintPreviewButton(
+                            title: '结算方式', // TODO(l10n): 补 arb
+                            subtitle: '全部行', // TODO(l10n): 补 arb
+                            loader: _printLoader,
+                            exportEndpoint:
+                                '/master/reference-methods/settlement-admin/export',
+                            exportPermission: Perm.settlementMethodExport,
+                            exportReport: '',
+                            exportQuery: _exportQuery,
+                            exportFilename: '结算方式', // TODO(l10n): 补 arb
+                            type: UtenButtonType.primary,
+                            size: UtenButtonSize.large,
+                            icon: null,
+                          ),
+                          UtenExportButton(
+                            endpoint:
+                                '/master/reference-methods/settlement-admin/export',
+                            requiredPermission: Perm.settlementMethodExport,
+                            report: '',
+                            queryParams: _exportQuery,
+                            filename: '结算方式', // TODO(l10n): 补 arb
+                            label: '导出结算方式', // TODO(l10n): 补 arb
+                            type: UtenButtonType.primary,
+                            size: UtenButtonSize.large,
+                            icon: null,
+                          ),
+                          ?searchInToolbar,
+                        ],
+                        facets: _labeledFacets,
+                        nullCounts: _facets?.nullCounts ?? const {},
+                        filters: _filters,
+                        onFilterChanged: (key, value) =>
+                            inlineNavigate(() => _onFilterChanged(key, value)),
+                        // 行底色按状态（ADR-169 收编，同 color_page）：使用=蓝档
+                        // 淡底（裸色收编）/ 禁用=灰档淡底（停用归中性终态，
+                        // 原浅红把「停用」当异常——停用不是错误）。
+                        rowColor: (m) => switch (m.status) {
+                          '使用' => UtenColors.info.withValues(alpha: 0.13),
+                          '禁用' => UtenColors.statusNeutral.withValues(
+                            alpha: 0.10,
+                          ),
+                          _ => null,
+                        },
+                        // 点行 = 维护账期/查看口径（系统角色锁定时仅提示）。
+                        onRowTap: inlineEdit.active ? null : _showEditTerms,
+                        isLoading: _loading && _items == null,
+                        loadingMore: _loading && _items != null,
+                        error: _error,
+                        onRetry: _load,
+                        currentPage: _page?.page ?? 1,
+                        totalPages: _page?.totalPages ?? 1,
+                        paginationScope: _keyword,
+                        onPageChange: (page) =>
+                            inlineNavigate(() => _load(page, true)),
+                        emptyMessage: _keyword.trim().isEmpty
+                            ? '暂无结算方式'
+                            : '没有匹配的结算方式', // TODO(l10n): 补 arb
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

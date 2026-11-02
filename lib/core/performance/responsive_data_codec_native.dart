@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show compute;
 import 'ui_work_budget.dart';
+import 'data_work_queue.dart';
 
 Future<Object?> executeDataCodec(
   String operation,
@@ -11,7 +12,10 @@ Future<Object?> executeDataCodec(
   if (isCurrent?.call() == false) throw const UiWorkCancelled();
   final request = (operation, value);
   final result = _large(value)
-      ? await compute(_execute, request, debugLabel: 'uten-data-codec')
+      ? await dataWorkQueue.run(
+          () => compute(_execute, request, debugLabel: 'uten-data-codec'),
+          isCurrent: isCurrent,
+        )
       : _execute(request);
   if (isCurrent?.call() == false) throw const UiWorkCancelled();
   return result;

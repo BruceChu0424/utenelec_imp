@@ -21,6 +21,8 @@ import '../../../components/buttons/click_guard.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_user_avatar.dart';
 import '../../../components/layout/uten_content_container.dart';
+import '../../../components/layout/uten_action_overflow.dart';
+import '../../../core/responsive/compact_presentation.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
@@ -122,28 +124,43 @@ class DashboardPage extends ConsumerWidget {
         ),
       ],
     );
+    final actionButtons = <Widget>[
+      UtenButton(
+        key: const ValueKey('dashboard-software-downloads'),
+        type: UtenButtonType.secondary,
+        size: UtenButtonSize.small,
+        icon: Icons.download_rounded,
+        onPressed: () => pushPage(context, RouteName.softwareDownloads),
+        child: const Text('软件下载'),
+      ),
+      if (isSuperAdmin)
+        UtenActionButton(
+          type: UtenActionButtonType.secondary,
+          size: UtenActionButtonSize.small,
+          icon: Icons.swap_horiz_rounded,
+          label: Text(AppLocalizations.of(context).impersonationSwitchPerson),
+          onAction: () => openSwitchPerson(context, ref),
+        ),
+    ];
+    if (UtenCompactPresentation.of(context)) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(child: identity),
+          const SizedBox(width: 8),
+          UtenActionOverflow(
+            key: const ValueKey('dashboard-compact-actions'),
+            forceCompact: true,
+            children: actionButtons,
+          ),
+        ],
+      );
+    }
     final actions = Wrap(
       spacing: UtenSpacing.s8,
       runSpacing: UtenSpacing.s8,
       alignment: WrapAlignment.end,
-      children: [
-        UtenButton(
-          key: const ValueKey('dashboard-software-downloads'),
-          type: UtenButtonType.secondary,
-          size: UtenButtonSize.small,
-          icon: Icons.download_rounded,
-          onPressed: () => pushPage(context, RouteName.softwareDownloads),
-          child: const Text('软件下载'),
-        ),
-        if (isSuperAdmin)
-          UtenActionButton(
-            type: UtenActionButtonType.secondary,
-            size: UtenActionButtonSize.small,
-            icon: Icons.swap_horiz_rounded,
-            label: Text(AppLocalizations.of(context).impersonationSwitchPerson),
-            onAction: () => openSwitchPerson(context, ref),
-          ),
-      ],
+      children: actionButtons,
     );
     return LayoutBuilder(
       builder: (context, bounds) {

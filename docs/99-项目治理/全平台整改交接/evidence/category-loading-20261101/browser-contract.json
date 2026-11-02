@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "checks": [
+    "auxiliary capacity",
+    "exact warehouse query",
+    "foreground priority",
+    "queue cancellation",
+    "identity retirement"
+  ],
+  "businessRequests": 0,
+  "runtime": "Actual headless Chrome, dart2js and Dio; no Flutter platform-test bootstrap",
+  "fullFlutterWebPageUat": false
+}

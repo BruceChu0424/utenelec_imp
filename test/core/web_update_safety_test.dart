@@ -1,8 +1,66 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/web_update/web_update_safety.dart';
 import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
 
 void main() {
+  test(
+    'server reload awaits durable checkpoints and still honors commands',
+    () async {
+      final safety = WebUpdateSafetyRegistry()..setReady(true);
+      addTearDown(safety.dispose);
+      final stored = Completer<void>();
+      final owner = Object();
+      var saved = false;
+      safety.register(
+        owner,
+        () => WebUpdateSafetyState(dirty: true, serverReloadOverride: saved),
+      );
+      safety.registerServerReloadCheckpoint(owner, () async {
+        await stored.future;
+        saved = true;
+      });
+      var completed = false;
+      final prepare = safety.prepareServerReload().then((value) {
+        completed = true;
+        return value;
+      });
+      await Future<void>.delayed(Duration.zero);
+      expect(completed, isFalse);
+      stored.complete();
+      expect(await prepare, isTrue);
+      expect(safety.snapshot.safeToReload, isFalse);
+      final command = Object();
+      safety.register(command, () => const WebUpdateSafetyState(blocked: true));
+      expect(await safety.prepareServerReload(), isFalse);
+      safety.unregister(command);
+      safety.register(
+        owner,
+        () =>
+            const WebUpdateSafetyState(busy: true, serverReloadOverride: true),
+      );
+      expect(await safety.prepareServerReload(), isFalse);
+    },
+  );
+
+  test(
+    'failed storage commits prevent server reload; disposed editors are removed',
+    () async {
+      final safety = WebUpdateSafetyRegistry()..setReady(true);
+      addTearDown(safety.dispose);
+      final owner = Object();
+      safety.register(owner, () => const WebUpdateSafetyState());
+      safety.registerServerReloadCheckpoint(
+        owner,
+        () async => throw StateError('storage full'),
+      );
+      expect(await safety.prepareServerReload(), isFalse);
+      safety.unregister(owner);
+      expect(await safety.prepareServerReload(), isTrue);
+    },
+  );
+
   test(
     'build-time notifications are deferred and repeated equal reports do not loop',
     () async {
@@ -88,6 +146,7 @@ void main() {
         'dirty': false,
         'busy': false,
         'blocked': true,
+        'serverReloadSafe': false,
         'updatedAt': 42,
       });
     },

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -97,9 +98,8 @@ Future<ProductionMaterialAnalysisView?> showMaterialReallocationDialog({
     onOpenSourceDocument: onOpenSourceDocument,
   );
   if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<ProductionMaterialAnalysisView>(
+    return showUtenModalBottomSheet<ProductionMaterialAnalysisView>(
       context: context,
-      useRootNavigator: true,
       useSafeArea: true,
       isScrollControlled: true,
       isDismissible: false,

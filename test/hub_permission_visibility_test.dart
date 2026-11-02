@@ -116,7 +116,7 @@ void main() {
     expect(find.text('普通仓盘点审核'), findsOneWidget);
   });
 
-  testWidgets('仓库任务中心只有统一待办徽章，进行中不重复相加', (tester) async {
+  testWidgets('仓库任务中心分别展示待办与进行中，两个数字不相加', (tester) async {
     await tester.pumpWidget(
       _app(
         const WarehouseHubPage(),
@@ -140,10 +140,12 @@ void main() {
     );
     expect(badge, findsOneWidget);
     expect(tester.widget<UtenNotificationBadge>(badge).count, 1);
-    expect(
-      find.descendant(of: card, matching: find.byType(UtenInProgressBadge)),
-      findsNothing,
+    final progress = find.descendant(
+      of: card,
+      matching: find.byType(UtenInProgressBadge),
     );
+    expect(progress, findsOneWidget);
+    expect(tester.widget<UtenInProgressBadge>(progress).count, 1);
     expect(find.text('车间内料仓盘点审核'), findsNothing);
   });
 

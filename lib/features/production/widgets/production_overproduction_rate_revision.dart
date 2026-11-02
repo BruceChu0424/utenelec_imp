@@ -45,8 +45,10 @@ class ProductionOverproductionRateRevision extends StatelessWidget {
   const ProductionOverproductionRateRevision({
     super.key,
     required this.request,
+    this.bottomContentPadding = 0,
   });
   final ProductionOverproductionRateRequest request;
+  final double bottomContentPadding;
   @override
   Widget build(BuildContext context) {
     final rows = productionRateRevisionRows(request);
@@ -56,6 +58,7 @@ class ProductionOverproductionRateRevision extends StatelessWidget {
           'features.production.widgets.production_overproduction_rate_revision.ProductionOverproductionRateRevision.build.1',
       key: const ValueKey('production-rate-revision-table'),
       rows: rows,
+      bottomContentPadding: bottomContentPadding,
       columns: [
         for (final field in const [
           ('goodsName', '货品名称', 220.0),

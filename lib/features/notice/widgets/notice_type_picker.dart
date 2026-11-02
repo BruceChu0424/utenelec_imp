@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 // 通知类型选择器（分组：公告广播 / 庆典祝福）
 // 替代原发布页的 DropdownButtonFormField——按类型分组、瓦片化、带图标色与一句描述。
 
@@ -86,7 +87,7 @@ class NoticeTypePicker extends StatelessWidget {
   }
 
   Future<void> _open(BuildContext context) async {
-    final chosen = await showModalBottomSheet<NoticeType>(
+    final chosen = await showUtenModalBottomSheet<NoticeType>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,

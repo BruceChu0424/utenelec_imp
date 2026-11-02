@@ -10,6 +10,7 @@ import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
+import com.uten.imp.security.PriceAnalysisAccessPolicy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
@@ -17,7 +18,7 @@ import static com.uten.imp.features.master.goods.pricing.MaterialForecastContrac
 
 @Service
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('goods:view') and hasAuthority('goods:price_analysis:view') and (hasAuthority('purchase_order:view') or hasAuthority('finance_order_approval:view')) and (hasAuthority('purchase_order:price:view') or hasAuthority('finance:view:all'))")
+@PreAuthorize(PriceAnalysisAccessPolicy.PURCHASE_READ)
 public class GoodsMarketReferenceService {
     private final GoodsPriceAccess access;
     private final MasterReferenceValidationPort references;
@@ -42,7 +43,7 @@ public class GoodsMarketReferenceService {
         return benchmarks.all();
     }
     @Transactional
-    @PreAuthorize("hasAuthority('goods:edit') and hasAuthority('goods:view') and hasAuthority('goods:price_analysis:view') and (hasAuthority('purchase_order:view') or hasAuthority('finance_order_approval:view')) and (hasAuthority('purchase_order:price:view') or hasAuthority('finance:view:all'))")
+    @PreAuthorize(PriceAnalysisAccessPolicy.PURCHASE_WRITE)
     public Envelope put(UUID goodsId,BindingRequest request) {
         requireRead(goodsId);
         CurrentAuthorityGuard.requireAll("goods:edit");

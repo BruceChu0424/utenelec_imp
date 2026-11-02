@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -16,6 +17,7 @@ namespace Uten.Legacy.Desktop
         private SessionCoordinator session;
         private Mutex instance;
         private bool ownsInstance;
+        private Shared.DiagnosticWatchdog diagnostics;
 
         private void OnStartup(object sender, StartupEventArgs e)
         {
@@ -32,6 +34,14 @@ namespace Uten.Legacy.Desktop
                 MessageBox.Show("此电脑请继续使用现有 UTEN 客户端。Win7 兼容验证版不会替换现有版本。", "UTEN", MessageBoxButton.OK, MessageBoxImage.Information);
                 Shutdown(2);
                 return;
+            }
+            if (!render)
+            {
+                DiagnosticsLog.Start(FileVersionInfo.GetVersionInfo(Assembly.GetExecutingAssembly().Location).ProductVersion);
+                diagnostics = new Shared.DiagnosticWatchdog(Dispatcher);
+                DispatcherUnhandledException += (source, error) => DiagnosticsLog.Current?.Fatal("managed.dispatcher_unhandled", error.Exception);
+                AppDomain.CurrentDomain.UnhandledException += (source, error) => DiagnosticsLog.Current?.Fatal("managed.domain_unhandled", error.ExceptionObject as Exception);
+                System.Threading.Tasks.TaskScheduler.UnobservedTaskException += (source, error) => DiagnosticsLog.Record("managed.unobserved_task", error.Exception.GetType().Name);
             }
             try
             {
@@ -75,6 +85,7 @@ namespace Uten.Legacy.Desktop
             }
             catch (Exception error)
             {
+                DiagnosticsLog.Current?.Fatal("app.start_failed", error);
                 // Never display configuration contents, request bodies or tokens.
                 if (render) Console.Error.WriteLine("WPF_RENDER_FAILED " + error);
                 else MessageBox.Show("客户端启动失败。请联系管理员核对本兼容版本及服务器配置。", "UTEN", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -84,9 +95,11 @@ namespace Uten.Legacy.Desktop
 
         protected override void OnExit(ExitEventArgs e)
         {
+            diagnostics?.Dispose();
             (session as IDisposable)?.Dispose();
             if (ownsInstance) instance.ReleaseMutex();
             instance?.Dispose();
+            DiagnosticsLog.Current?.Dispose();
             base.OnExit(e);
         }
     }

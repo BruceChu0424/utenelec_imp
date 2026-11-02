@@ -841,18 +841,23 @@ class _RequestState
           ),
           floatingActionButtonAnimator:
               FloatingActionButtonAnimator.noAnimation,
-          floatingActionButton: UtenButton(
-            key: const Key('discovery-request-submit'),
-            type: UtenButtonType.danger,
-            isLoading: _saving,
-            onPressed:
-                _canWrite &&
-                    _tasks.isNotEmpty &&
-                    !_loadingSources &&
-                    !_sourceChanged
-                ? _submit
-                : null,
-            child: Text(_uncertain ? '重试提交申请' : l10n.materialDiscoverySend),
+          floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+          floatingActionButton: UtenFloatingActionGroup(
+            children: [
+              UtenButton(
+                key: const Key('discovery-request-submit'),
+                type: UtenButtonType.danger,
+                isLoading: _saving,
+                onPressed:
+                    _canWrite &&
+                        _tasks.isNotEmpty &&
+                        !_loadingSources &&
+                        !_sourceChanged
+                    ? _submit
+                    : null,
+                child: Text(_uncertain ? '重试提交申请' : l10n.materialDiscoverySend),
+              ),
+            ],
           ),
         ),
       ),

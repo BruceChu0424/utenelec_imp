@@ -5,6 +5,24 @@ import 'package:flutter/material.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/router/page_navigation_session.dart';
 
+/// Flat full-width rows inside the project-owned action dropdown.
+class UtenMenuActionPresentation extends InheritedWidget {
+  const UtenMenuActionPresentation({
+    super.key,
+    required this.enabled,
+    required super.child,
+  });
+  final bool enabled;
+  static bool contains(BuildContext context) =>
+      context
+          .dependOnInheritedWidgetOfExactType<UtenMenuActionPresentation>()
+          ?.enabled ??
+      false;
+  @override
+  bool updateShouldNotify(UtenMenuActionPresentation oldWidget) =>
+      enabled != oldWidget.enabled;
+}
+
 /// Page-header actions keep their labels visible and use a single button role.
 /// This also reaches action widgets that build their UtenButton internally.
 class UtenAppBarActionPresentation extends InheritedWidget {
@@ -144,13 +162,15 @@ class UtenAppBarNativeActionButton extends ButtonStyleButton {
   @override
   ButtonStyle defaultStyleOf(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final inMenu = UtenMenuActionPresentation.contains(context);
     final height = UtenFilterRow.heightOf(context);
     // Override the header role explicitly. merge only fills null fields, while
     // a styleFrom mouse-cursor property may itself resolve to null; retain the
     // native interaction defaults instead of replacing that state property.
     final header = FilledButton.styleFrom(
-      backgroundColor: colors.primary,
-      foregroundColor: colors.onPrimary,
+      alignment: inMenu ? AlignmentDirectional.centerStart : null,
+      backgroundColor: inMenu ? colors.surface : colors.primary,
+      foregroundColor: inMenu ? colors.onSurface : colors.onPrimary,
       disabledBackgroundColor: colors.surfaceContainerHigh,
       disabledForegroundColor: colors.onSurfaceVariant,
       elevation: 0,
@@ -166,6 +186,7 @@ class UtenAppBarNativeActionButton extends ButtonStyleButton {
     return source
         .defaultStyleOf(context)
         .copyWith(
+          alignment: header.alignment,
           backgroundColor: header.backgroundColor,
           foregroundColor: header.foregroundColor,
           elevation: header.elevation,

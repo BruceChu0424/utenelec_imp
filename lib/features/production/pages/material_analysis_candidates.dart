@@ -1071,7 +1071,7 @@ abstract class _MaterialAnalysisCandidatesState
   Future<void> _showCompactSelectedSourceEditor() async {
     final entries = _sourceQtyControllers.entries.toList(growable: false);
     if (entries.isEmpty) return;
-    await showModalBottomSheet<void>(
+    await showUtenModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
       isScrollControlled: true,

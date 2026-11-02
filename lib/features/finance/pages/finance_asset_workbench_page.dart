@@ -21,6 +21,8 @@ import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../models/finance_asset_models.dart';
 import '../repositories/finance_asset_overview_repository.dart';
 import '../widgets/finance_asset_ledger_panel.dart';
@@ -48,13 +50,39 @@ class _FinanceAssetWorkbenchPageState
   FinanceAssetWorkbenchOverview? _overview;
   bool _overviewLoading = true;
   String? _overviewError;
-  int _refreshToken = 0;
+  final _sectionRefreshTokens = [0, 0, 0];
+  final _dirtySections = <int>{};
   Map<int, Completer<void>> _refreshCompletions = {};
 
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, _readerChanged);
     _loadOverview();
+  }
+
+  void _readerChanged() {
+    _overviewGuard.begin();
+    for (final completion in _refreshCompletions.values) {
+      if (!completion.isCompleted) completion.complete();
+    }
+    setState(() {
+      _overview = null;
+      _overviewError = null;
+      _overviewLoading = true;
+      _refreshCompletions = {};
+      _dirtySections.addAll(_visitedTabs.where((tab) => tab < 3));
+      if (_tabIndex < 3) {
+        _sectionRefreshTokens[_tabIndex]++;
+        _dirtySections.remove(_tabIndex);
+      }
+    });
+    final current = captureReadOwner(ref);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (current() && ref.read(authenticatedScopeProvider) != null) {
+        _loadOverview();
+      }
+    });
   }
 
   @override
@@ -66,9 +94,17 @@ class _FinanceAssetWorkbenchPageState
   }
 
   void _selectSection(int index) {
+    if (index == _tabIndex) return;
+    // A departed ledger may finish its own read, but cannot hold the current
+    // header's refresh wait. Its dirty token is consumed only on activation.
+    for (final completion in _refreshCompletions.values) {
+      if (!completion.isCompleted) completion.complete();
+    }
     setState(() {
+      _refreshCompletions = {};
       _tabIndex = index;
       _visitedTabs.add(index);
+      if (_dirtySections.remove(index)) _sectionRefreshTokens[index]++;
     });
   }
 
@@ -90,6 +126,7 @@ class _FinanceAssetWorkbenchPageState
   }
 
   Future<void> _loadOverview() async {
+    final current = captureReadOwner(ref);
     final generation = _overviewGuard.begin();
     setState(() {
       _overviewLoading = true;
@@ -99,13 +136,13 @@ class _FinanceAssetWorkbenchPageState
       final result = await ref
           .read(financeAssetOverviewRepositoryProvider)
           .load();
-      if (!mounted || !_overviewGuard.isCurrent(generation)) return;
+      if (!current() || !_overviewGuard.isCurrent(generation)) return;
       setState(() {
         _overview = result;
         _overviewLoading = false;
       });
     } catch (_) {
-      if (!mounted || !_overviewGuard.isCurrent(generation)) return;
+      if (!current() || !_overviewGuard.isCurrent(generation)) return;
       setState(() {
         _overviewLoading = false;
         _overviewError = '资产总览加载失败，请检查网络后重试';
@@ -114,13 +151,13 @@ class _FinanceAssetWorkbenchPageState
   }
 
   Future<void> _refreshAll() async {
-    final completions = {
-      for (final tab in _visitedTabs)
-        if (tab < 3) tab: Completer<void>(),
-    };
+    final completions = {if (_tabIndex < 3) _tabIndex: Completer<void>()};
     setState(() {
       _refreshCompletions = completions;
-      _refreshToken++;
+      _dirtySections.addAll(
+        _visitedTabs.where((tab) => tab < 3 && tab != _tabIndex),
+      );
+      if (_tabIndex < 3) _sectionRefreshTokens[_tabIndex]++;
     });
     await Future.wait([
       _loadOverview(),
@@ -210,6 +247,7 @@ class _FinanceAssetWorkbenchPageState
     // Overview and restrictions scroll away to leave room for the ledger.
     // Compact/short viewports use the shared whole-page scrolling fallback.
     return Scaffold(
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
       floatingActionButton:
           capabilities.canEdit && _tabIndex < 2 && !_ledgerFullscreen
@@ -263,7 +301,7 @@ class _FinanceAssetWorkbenchPageState
                   ledger: FinanceAssetLedger.fixedAsset,
                   capabilities: capabilities,
                   policyReady: policyReady,
-                  refreshToken: _refreshToken,
+                  refreshToken: _sectionRefreshTokens[0],
                   creationToken: _creationTokens[0],
                   onFullscreenChanged: _onLedgerFullscreenChanged,
                   refreshCompletion: _refreshCompletions[0],
@@ -274,7 +312,7 @@ class _FinanceAssetWorkbenchPageState
                     ledger: FinanceAssetLedger.deferredExpense,
                     capabilities: capabilities,
                     policyReady: policyReady,
-                    refreshToken: _refreshToken,
+                    refreshToken: _sectionRefreshTokens[1],
                     creationToken: _creationTokens[1],
                     onFullscreenChanged: _onLedgerFullscreenChanged,
                     refreshCompletion: _refreshCompletions[1],
@@ -283,7 +321,8 @@ class _FinanceAssetWorkbenchPageState
                   const SizedBox.shrink(),
                 if (_visitedTabs.contains(2))
                   FinanceAssetPostingPanel(
-                    key: ValueKey('asset-posting-$_refreshToken'),
+                    key: const ValueKey('asset-posting'),
+                    refreshToken: _sectionRefreshTokens[2],
                     capabilities: capabilities,
                     refreshCompletion: _refreshCompletions[2],
                   )

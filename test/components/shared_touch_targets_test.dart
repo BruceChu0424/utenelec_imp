@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_field_message.dart';
@@ -264,7 +265,9 @@ void main() {
         expect(row.weight.kg, 12.3456);
         final add = find.ancestor(
           of: find.text('添加行'),
-          matching: find.byType(FilledButton),
+          matching: find.byWidgetPredicate(
+            (widget) => widget is FilledButton || widget is UtenButton,
+          ),
         );
         final addRect = await _touchTarget(tester, add);
         await tester.tapAt(addRect.bottomRight - const Offset(2, 2));

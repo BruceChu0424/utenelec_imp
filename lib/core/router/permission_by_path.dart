@@ -87,6 +87,14 @@ List<String>? requiredAnyPermFor(String rawLocation) {
   if (location == RouteName.clientReleasePublish) {
     return const [Perm.clientReleasePublish];
   }
+  if (routePath == RouteName.companyFilesHistory ||
+      routePath.startsWith('${RouteName.companyFilesHistory}/')) {
+    return const [Perm.companyFileView];
+  }
+  if (routePath == RouteName.adminPermissionsHistory ||
+      routePath.startsWith('${RouteName.adminPermissionsHistory}/')) {
+    return const [Perm.authorizationManage];
+  }
   if (location == RouteName.companyFiles) {
     return const [Perm.companyFileView];
   }

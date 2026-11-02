@@ -65,6 +65,9 @@ class _LoginPageState extends ConsumerState<LoginPage>
   WebUpdateSafetyState _updateSafety() => WebUpdateSafetyState(
     dirty: _passwordController.text.isNotEmpty,
     busy: _isLoading,
+    // A server release replaces the login page too. Never persist passwords;
+    // an already submitted authentication request must finish first.
+    serverReloadOverride: !_isLoading,
   );
 
   @override

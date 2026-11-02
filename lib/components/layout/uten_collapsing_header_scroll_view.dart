@@ -68,6 +68,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/responsive/breakpoint.dart';
+import '../../core/responsive/compact_presentation.dart';
 import '../../core/ui/capsule_nav_metrics.dart';
 import 'uten_scroll_signal_scope.dart';
 import 'uten_compact_linked_rail_delegate.dart';
@@ -225,7 +226,7 @@ class _UtenCollapsingHeaderScrollViewState
   // controller changes. A retained body must not hand a plain position to a
   // NestedScrollView controller during a responsive layout transition.
   final _bodyController = _BodyScrollController();
-  final _compactInner = ScrollController();
+  late final _compactInner = _CompactTouchScrollController(() => _outer);
   final _headerSurfaceKey = GlobalKey();
   final _bodySurfaceKey = GlobalKey();
 
@@ -649,6 +650,133 @@ class _UtenCollapsingHeaderScrollViewState
   }
 }
 
+/// Retains the compact layout's generous body height while giving touch drags
+/// the same outer-first order as the nested desktop viewport. Only the primary
+/// body borrows this controller; horizontal tables, editors and local panels
+/// keep their native recognizers and positions.
+class _CompactTouchScrollController extends ScrollController {
+  _CompactTouchScrollController(this.outer);
+  final ScrollController Function() outer;
+
+  @override
+  ScrollPosition createScrollPosition(
+    ScrollPhysics physics,
+    ScrollContext context,
+    ScrollPosition? oldPosition,
+  ) => _CompactTouchScrollPosition(
+    physics: AlwaysScrollableScrollPhysics(parent: physics),
+    context: context,
+    oldPosition: oldPosition,
+    outer: outer,
+  );
+}
+
+class _CompactTouchScrollPosition extends ScrollPositionWithSingleContext {
+  _CompactTouchScrollPosition({
+    required super.physics,
+    required super.context,
+    super.oldPosition,
+    required this.outer,
+  });
+  final ScrollController Function() outer;
+
+  @override
+  void goBallistic(double velocity) {
+    final controller = outer();
+    if (velocity == 0 ||
+        !controller.hasClients ||
+        !controller.position.hasContentDimensions ||
+        !hasContentDimensions) {
+      super.goBallistic(velocity);
+      return;
+    }
+    final page = controller.position;
+    final metrics = FixedScrollMetrics(
+      minScrollExtent: page.minScrollExtent + minScrollExtent,
+      maxScrollExtent: page.maxScrollExtent + maxScrollExtent,
+      pixels: page.pixels + pixels,
+      viewportDimension: page.viewportDimension,
+      axisDirection: axisDirection,
+      devicePixelRatio: devicePixelRatio,
+    );
+    final simulation = physics.createBallisticSimulation(metrics, velocity);
+    if (simulation == null) {
+      goIdle();
+    } else {
+      beginActivity(
+        _CompactTouchBallisticActivity(this, simulation, context.vsync),
+      );
+    }
+  }
+
+  bool _moveCombined(double value) {
+    final controller = outer();
+    if (!controller.hasClients) return false;
+    final page = controller.position;
+    final min = page.minScrollExtent + minScrollExtent;
+    final max = page.maxScrollExtent + maxScrollExtent;
+    final target = value.clamp(min, max);
+    final pageRange = page.maxScrollExtent - page.minScrollExtent;
+    final offset = target - min;
+    final pageTarget = page.minScrollExtent + offset.clamp(0.0, pageRange);
+    final innerTarget =
+        minScrollExtent +
+        (offset - pageRange).clamp(0.0, maxScrollExtent - minScrollExtent);
+    if (target < page.pixels + pixels) {
+      if (innerTarget != pixels) setPixels(innerTarget);
+      if (pageTarget != page.pixels) page.jumpTo(pageTarget);
+    } else {
+      if (pageTarget != page.pixels) page.jumpTo(pageTarget);
+      if (innerTarget != pixels) setPixels(innerTarget);
+    }
+    return (value - target).abs() < .01;
+  }
+
+  @override
+  void applyUserOffset(double delta) {
+    final controller = outer();
+    if (!controller.hasClients || !controller.position.hasContentDimensions) {
+      super.applyUserOffset(delta);
+      return;
+    }
+    final page = controller.position;
+    // Finger up: collapse the page before advancing any rows. Finger down:
+    // return the table to its first row before expanding the page header.
+    var remaining = delta;
+    if (delta < 0) {
+      final take = math.min(
+        -delta,
+        math.max(0.0, page.maxScrollExtent - page.pixels),
+      );
+      if (take > 0) page.jumpTo(page.pixels + take);
+      remaining += take;
+    } else {
+      final take = math.min(delta, math.max(0.0, pixels - minScrollExtent));
+      if (take > 0) super.applyUserOffset(take);
+      remaining -= take;
+      final pageTake = math.min(
+        remaining,
+        math.max(0.0, page.pixels - page.minScrollExtent),
+      );
+      if (pageTake > 0) page.jumpTo(page.pixels - pageTake);
+      remaining -= pageTake;
+    }
+    if (remaining != 0) super.applyUserOffset(remaining);
+  }
+}
+
+class _CompactTouchBallisticActivity extends BallisticScrollActivity {
+  _CompactTouchBallisticActivity(
+    _CompactTouchScrollPosition position,
+    Simulation simulation,
+    TickerProvider vsync,
+  ) : super(position, simulation, vsync, true);
+
+  @override
+  bool applyMoveTo(double value) =>
+      (delegate as _CompactTouchScrollPosition)._moveCombined(value);
+}
+
 /// Retains the content's Element/IME state when it moves between viewports.
 /// Its semantics geometry belongs to the receiving viewport, not the old
 /// Scrollable. Reset only after the render root has actually been orphaned.
@@ -798,9 +926,12 @@ class _CompactPageScrollState extends State<_CompactPageScroll> {
   @override
   Widget build(BuildContext context) {
     // 顶部滚走后 body 几乎占满视口；预留 48 给页面自身的边距/底栏呼吸空间。
+    final compactPresentation = UtenCompactPresentation.of(context);
     final bodyHeight = math.max(
       widget.bodyMinHeight,
-      widget.viewportHeight - (widget.pinnedHeaderExtent ?? 0) - 48,
+      widget.viewportHeight -
+          (widget.pinnedHeaderExtent ?? 0) -
+          (compactPresentation ? 0 : 48),
     );
     // compact 悬浮胶囊避让：整页滚到最底时，body 盒（含表格分页条）要能越过
     // 屏底的悬浮胶囊。非外壳内（弹窗等）查不到 scope 取 0，无多余留白。
@@ -833,7 +964,7 @@ class _CompactPageScrollState extends State<_CompactPageScroll> {
             ),
           ),
         ),
-        if (capsuleOcclusion > 0)
+        if (!compactPresentation && capsuleOcclusion > 0)
           SliverPadding(padding: EdgeInsets.only(bottom: capsuleOcclusion)),
       ],
     );

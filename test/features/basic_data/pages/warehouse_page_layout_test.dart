@@ -412,6 +412,14 @@ void main() {
         final editor = tester.widget<MasterInlineRecordEditor<WarehouseDetail>>(
           find.byType(MasterInlineRecordEditor<WarehouseDetail>),
         );
+        final recordScroll = tester.state<ScrollableState>(
+          find
+              .ancestor(
+                of: find.byType(MasterInlineRecordEditor<WarehouseDetail>),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        );
         expect(
           editor.columns.map((field) => field.key),
           viewFields.map((field) => field.key),
@@ -435,6 +443,10 @@ void main() {
           inventory.columns.every((column) => !column.supportsKeywordSearch),
           isTrue,
         );
+        // Compact full-height tables can move the lazy record fields outside
+        // the mounted window. Return to the actual record before editing it.
+        recordScroll.position.jumpTo(recordScroll.position.minScrollExtent);
+        await tester.pumpAndSettle();
         expect(
           find.byKey(const ValueKey('inline-activate-hardware-name')),
           findsOneWidget,

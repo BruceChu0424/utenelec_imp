@@ -1,0 +1,159 @@
+{
+  "fixture": "Actual Flutter list pages, synthetic nonempty DTOs, immediate isolated API; wall-clock build/layout timings, no company-server latency claim",
+  "pages": [
+    {
+      "page": "purchase/request",
+      "firstRowsMs": 1854.987,
+      "frames": 1,
+      "categoryHttpReads": 0,
+      "rows": 1
+    },
+    {
+      "page": "purchase/order",
+      "firstRowsMs": 420.962,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "purchase/receipt",
+      "firstRowsMs": 371.513,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "purchase/returnDoc",
+      "firstRowsMs": 283.055,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "sales/quote",
+      "firstRowsMs": 317.186,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "sales/order",
+      "firstRowsMs": 305.417,
+      "frames": 1,
+      "categoryHttpReads": 0,
+      "rows": 1
+    },
+    {
+      "page": "sales/shipment",
+      "firstRowsMs": 320.811,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "sales/customerShipment",
+      "firstRowsMs": 285.442,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "sales/returnDoc",
+      "firstRowsMs": 254.924,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "finance/receipt",
+      "firstRowsMs": 300.088,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "finance/payment",
+      "firstRowsMs": 236.377,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "finance/expense",
+      "firstRowsMs": 236.017,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "finance/otherIncome",
+      "firstRowsMs": 232.179,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "finance/bankTransfer",
+      "firstRowsMs": 223.526,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "stock/transfer",
+      "firstRowsMs": 209.958,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "stock/otherIn",
+      "firstRowsMs": 177.295,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "stock/otherOut",
+      "firstRowsMs": 187.84,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "stock/draw",
+      "firstRowsMs": 189.268,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "stock/wdraw",
+      "firstRowsMs": 174.432,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "stock/finishedIn",
+      "firstRowsMs": 170.277,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "stock/finishedOut",
+      "firstRowsMs": 179.37,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    },
+    {
+      "page": "stock/check",
+      "firstRowsMs": 192.541,
+      "frames": 1,
+      "categoryHttpReads": 2,
+      "rows": 1
+    }
+  ]
+}

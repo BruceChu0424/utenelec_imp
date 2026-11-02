@@ -9,6 +9,7 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/authenticated_request_scope.dart';
 import '../models/goods_bom_item.dart';
+import '../models/goods_bom_copy.dart';
 import 'goods_bom_repository.dart';
 
 class BomEditAffectedParent {
@@ -86,6 +87,8 @@ class GoodsBomEditDraft implements GoodsBomRepository {
   final _goodsSnapshots = <String, Map<String, dynamic>>{};
   final _knownMasterIds = <String>{};
   final _operations = <Map<String, dynamic>>[];
+  final _copyOrigins = <String, ({String component, String? origin})>{};
+  final _borrowedParents = <String>{};
   bool _closed = false;
   bool _busy = false;
   String? _previewToken;
@@ -101,6 +104,126 @@ class GoodsBomEditDraft implements GoodsBomRepository {
   // The last write may already have committed; dropping the local draft does
   // not undo it. The exit dialog must describe a refresh instead of no save.
   bool get isCommitRecoveryPending => _recoverCommit;
+
+  /// A replacement is reviewed on an isolated branch of the current draft.
+  /// Cancelling its dialog cannot discard or partially alter earlier edits.
+  Future<GoodsBomEditDraft> fork() async {
+    if (_busy || _recoverCommit) {
+      throw ApiException('BOM_EDIT_BUSY', '请先核对当前操作或上次保存结果');
+    }
+    await Future.wait(List.of(_loading.values));
+    final scope = await _scope();
+    final next = GoodsBomEditDraft(
+      base: base,
+      api: api,
+      rootGoodsId: rootGoodsId,
+      isCurrent: _isCurrent,
+    );
+    try {
+      final nextScope = await next._scope();
+      if (scope.identity != nextScope.identity) {
+        throw AuthenticatedRequestScope.changed();
+      }
+      final snapshot = JsonValueSnapshot.capture({
+        'rows': _rows,
+        'components': _components,
+        'goods': _goodsSnapshots,
+        'operations': _operations,
+      }).data;
+      for (final entry in (snapshot['rows'] as Map).entries) {
+        next._rows[entry.key as String] = [
+          for (final row in entry.value as List)
+            Map<String, dynamic>.from(row as Map),
+        ];
+      }
+      for (final entry in (snapshot['components'] as Map).entries) {
+        next._components[entry.key as String] = Map<String, dynamic>.from(
+          entry.value as Map,
+        );
+      }
+      for (final entry in (snapshot['goods'] as Map).entries) {
+        next._goodsSnapshots[entry.key as String] = Map<String, dynamic>.from(
+          entry.value as Map,
+        );
+      }
+      next._operations.addAll(
+        (snapshot['operations'] as List).map((raw) {
+          final op = Map<String, dynamic>.from(raw as Map);
+          return {
+            ...op,
+            if (op['body'] is Map)
+              'body': Map<String, dynamic>.from(op['body'] as Map),
+            if (op['goodsChanges'] is Map)
+              'goodsChanges': Map<String, dynamic>.from(
+                op['goodsChanges'] as Map,
+              ),
+          };
+        }),
+      );
+      next._fingerprints.addAll(_fingerprints);
+      next._knownMasterIds.addAll(_knownMasterIds);
+      next._copyOrigins.addAll(_copyOrigins);
+      next._borrowedParents.addAll(_borrowedParents);
+      _check();
+      return next;
+    } catch (_) {
+      next.close();
+      rethrow;
+    }
+  }
+
+  /// Source values may include unsaved edits, but their reference evidence
+  /// remains tied to the same authenticated snapshot. No source commands are
+  /// imported into this root's transaction.
+  Future<void> bindCopySource(GoodsBomEditDraft source) async {
+    final ownScope = await _scope(), sourceScope = await source._scope();
+    if (ownScope.identity != sourceScope.identity) {
+      throw AuthenticatedRequestScope.changed();
+    }
+    await source._ensure(source.rootGoodsId);
+    final id = source.rootGoodsId;
+    final existing = _fingerprints[id];
+    if (existing != null && existing != source._fingerprints[id]) {
+      throw ApiException('BOM_COMPARE_STALE', '来源快照已变化，请先保存或重新分析');
+    }
+    if (existing == null || _borrowedParents.contains(id)) {
+      _fingerprints[id] = source._fingerprints[id]!;
+      _rows[id] = [
+        for (final row in source._rows[id]!) Map<String, dynamic>.of(row),
+      ];
+      _borrowedParents.add(id);
+    }
+  }
+
+  Map<String, dynamic> copyBodyFor(GoodsBomItem item) {
+    _check();
+    final body = bomComponentCopyBody(item);
+    final origin = _copyOrigins[item.id];
+    if (origin == null ||
+        origin.component != item.componentGoodsId ||
+        origin.origin == null) {
+      body.remove('copiedFromBomItemId');
+    } else {
+      body['copiedFromBomItemId'] = origin.origin;
+    }
+    return body;
+  }
+
+  /// A source may be saved independently after copying. Refresh only borrowed
+  /// read evidence; target baselines and versioned edits must never be rebased.
+  Future<void> refreshCopySources() async {
+    for (final id in List.of(_borrowedParents)) {
+      _check();
+      final previous = _rows.remove(id), fingerprint = _fingerprints.remove(id);
+      try {
+        await _ensure(id);
+      } catch (_) {
+        if (previous != null) _rows[id] = previous;
+        if (fingerprint != null) _fingerprints[id] = fingerprint;
+        rethrow;
+      }
+    }
+  }
 
   String _path(String goodsId) => '${ApiEndpoints.goodsBom(goodsId)}/edit';
 
@@ -165,6 +288,13 @@ class GoodsBomEditDraft implements GoodsBomRepository {
       }
       _rows[goodsId] = rows;
       for (final row in rows) {
+        _copyOrigins.putIfAbsent(
+          row['id'] as String,
+          () => (
+            component: row['componentGoodsId'] as String,
+            origin: row['id'] as String,
+          ),
+        );
         _components[row['componentGoodsId'] as String] = _presentation(row);
       }
     }();
@@ -230,6 +360,7 @@ class GoodsBomEditDraft implements GoodsBomRepository {
         entry.key: Map<String, dynamic>.of(entry.value),
     };
     final beforeFingerprints = Map<String, String>.of(_fingerprints);
+    final beforeOrigins = Map.of(_copyOrigins);
     try {
       final value = await action();
       _check();
@@ -250,6 +381,17 @@ class GoodsBomEditDraft implements GoodsBomRepository {
       _previewToken = null;
       _lastPreview = null;
       _reviewedRequest = null;
+      _borrowedParents.removeWhere(
+        (id) =>
+            id == rootGoodsId ||
+            _operations.any(
+              (op) =>
+                  op['goodsId'] == id ||
+                  (op['moves'] as List? ?? const []).any(
+                    (move) => (move as Map)['targetParentGoodsId'] == id,
+                  ),
+            ),
+      );
       return value;
     } catch (_) {
       _rows
@@ -258,6 +400,9 @@ class GoodsBomEditDraft implements GoodsBomRepository {
       _fingerprints
         ..clear()
         ..addAll(beforeFingerprints);
+      _copyOrigins
+        ..clear()
+        ..addAll(beforeOrigins);
       _operations
         ..clear()
         ..addAll(beforeOperations);
@@ -653,6 +798,10 @@ class GoodsBomEditDraft implements GoodsBomRepository {
           'hasChildren': (await list(componentId)).isNotEmpty,
         };
         _applyBody(row, body);
+        _copyOrigins[id] = (
+          component: componentId,
+          origin: body['copiedFromBomItemId'] as String?,
+        );
         rows.add(row);
         _operations.add({
           'type': 'CREATE',
@@ -799,6 +948,8 @@ class GoodsBomEditDraft implements GoodsBomRepository {
     _components.clear();
     _goodsSnapshots.clear();
     _knownMasterIds.clear();
+    _copyOrigins.clear();
+    _borrowedParents.clear();
   }
 
   @override

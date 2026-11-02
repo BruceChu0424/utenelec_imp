@@ -160,7 +160,7 @@ class _DetailApi extends ApiClient {
         {'id': 'client-1', 'name': '甲客户'},
       ];
     }
-    if (path == '/master/accounts/dict') {
+    if (path == '/master/accounts/dict' || path == '/business-references/accounts') {
       return [
         {
           'id': 'account-1',

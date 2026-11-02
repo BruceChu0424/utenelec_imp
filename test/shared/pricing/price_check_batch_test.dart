@@ -298,7 +298,12 @@ void main() {
       );
       expect(
         locationAllowedFor(
-          {Perm.goodsView, Perm.goodsPriceAnalysisView},
+          {
+            Perm.goodsView,
+            Perm.goodsPriceAnalysisView,
+            Perm.purchaseOrderView,
+            Perm.purchaseOrderPriceView,
+          },
           false,
           '$path?kind=SALES',
         ),

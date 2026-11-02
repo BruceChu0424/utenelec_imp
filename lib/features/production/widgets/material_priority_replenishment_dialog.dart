@@ -1,5 +1,6 @@
 import '../../../shared/repositories/employee_reference_repository.dart';
 import '../../../shared/models/employee_reference.dart';
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -51,9 +52,8 @@ showMaterialPriorityReplenishmentDialog({
     commandIsCurrent: commandIsCurrent,
   );
   if (context.breakpoint.isCompact) {
-    return showModalBottomSheet<ProductionMaterialAnalysisView>(
+    return showUtenModalBottomSheet<ProductionMaterialAnalysisView>(
       context: context,
-      useRootNavigator: true,
       useSafeArea: true,
       isScrollControlled: true,
       isDismissible: false,

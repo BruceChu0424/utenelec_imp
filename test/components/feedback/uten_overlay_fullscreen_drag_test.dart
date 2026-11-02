@@ -51,9 +51,9 @@ Future<void> _table(
     ),
   );
   await tester.pumpAndSettle();
-  await tester.tap(find.text('全屏'));
+  await tester.tap(find.bySemanticsLabel('全屏'));
   await tester.pumpAndSettle();
-  expect(find.text('退出全屏'), findsOneWidget);
+  expect(find.bySemanticsLabel('退出全屏'), findsOneWidget);
 }
 
 void main() {

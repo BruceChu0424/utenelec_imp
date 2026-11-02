@@ -7,6 +7,18 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 class CompanyFileAuditTest {
     @Test
+    void scopedHistoryReadsHaveBusinessLabels() {
+        for (var entry : Map.of("view_company_file_history_detail", "查看公司资料修改历史",
+                "view_permission_history_detail", "查看权限修改历史").entrySet()) {
+            var log = new AuditLog();
+            log.setAction(entry.getKey());
+            log.setTargetType(entry.getKey().contains("company_file") ? "company_file_nodes" : "permissions");
+            log.setEventSource("business");
+            log.setResult("success");
+            assertEquals(entry.getValue(), new AuditEventInterpreter().interpret(log).actionLabel());
+        }
+    }
+    @Test
     void successfulMetadataViewsHaveSpecificChineseLabelsWithoutDocumentFields() {
         var interpreter = new AuditEventInterpreter();
         var log = new AuditLog();

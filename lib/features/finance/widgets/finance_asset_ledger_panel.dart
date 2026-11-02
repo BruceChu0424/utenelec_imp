@@ -16,6 +16,7 @@ import '../../../core/network/latest_request_guard.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/widgets/uten_department_picker.dart';
@@ -59,6 +60,7 @@ class _FinanceAssetLedgerPanelState
     with ScopedPagedReadViewMixin<FinanceAssetLedgerPanel> {
   final _requestGuard = LatestRequestGuard();
   final _categoryGuard = LatestRequestGuard();
+  final _draftGuard = LatestRequestGuard();
   FinanceAssetQuery _query = const FinanceAssetQuery();
   PagedResult<FinanceAssetSummary>? _result;
   int? _draftTotal;
@@ -78,6 +80,18 @@ class _FinanceAssetLedgerPanelState
   @override
   void didUpdateWidget(covariant FinanceAssetLedgerPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.ledger != widget.ledger) {
+      _requestGuard.begin();
+      _categoryGuard.begin();
+      _draftGuard.begin();
+      _query = const FinanceAssetQuery();
+      _result = null;
+      _draftTotal = null;
+      _categories = const [];
+      _department = null;
+      unawaited(_refresh());
+      return;
+    }
     if (oldWidget.creationToken != widget.creationToken) {
       _query = _query.copyWith(page: 1);
     }
@@ -91,12 +105,12 @@ class _FinanceAssetLedgerPanelState
   Future<void> _refresh({int? page}) async {
     final completion = widget.refreshCompletion;
     try {
-      await Future.wait([
-        _load(page: page),
-        // Keep category names available for local draft rows. The header menu
-        // owns visible loading failures and retries when candidates are opened.
+      // Optional labels and the independently read draft count must not keep
+      // the authoritative ledger rows or the visible refresh wait pending.
+      unawaited(
         _loadCategories().catchError((Object _) => <FinanceAssetCategory>[]),
-      ]);
+      );
+      await _load(page: page);
     } finally {
       if (completion != null && !completion.isCompleted) {
         completion.complete();
@@ -117,6 +131,7 @@ class _FinanceAssetLedgerPanelState
   void scopedPagedReadOwnerChanged() {
     _requestGuard.begin();
     _categoryGuard.begin();
+    _draftGuard.begin();
     if (!mounted) return;
     setState(() {
       _result = null;
@@ -146,6 +161,12 @@ class _FinanceAssetLedgerPanelState
       _error = null;
       if (!useCache) _draftTotal = null;
     });
+    if (!useCache) {
+      final draftGeneration = _draftGuard.begin();
+      if (query.status != 'DRAFT') {
+        unawaited(_loadDraftTotal(draftGeneration, query));
+      }
+    }
     try {
       var result = await readScopedPage<FinanceAssetSummary>(
         query.page,
@@ -174,9 +195,6 @@ class _FinanceAssetLedgerPanelState
         _loading = false;
         if (_query.status == 'DRAFT') _draftTotal = result.total;
       });
-      if (_query.status != 'DRAFT' && _draftTotal == null) {
-        await _loadDraftTotal(generation, _query);
-      }
     } catch (_) {
       if (!mounted || !_requestGuard.isCurrent(generation)) return;
       setState(() {
@@ -187,6 +205,7 @@ class _FinanceAssetLedgerPanelState
   }
 
   Future<void> _loadDraftTotal(int generation, FinanceAssetQuery query) async {
+    final current = captureReadOwner(ref);
     if (!widget.capabilities.canView) return;
     try {
       final result = await ref
@@ -195,22 +214,23 @@ class _FinanceAssetLedgerPanelState
             widget.ledger,
             query: query.copyWith(page: 1, size: 1, status: 'DRAFT'),
           );
-      if (mounted && _requestGuard.isCurrent(generation)) {
+      if (current() && _draftGuard.isCurrent(generation)) {
         setState(() => _draftTotal = result.total);
       }
     } catch (_) {
-      if (mounted && _requestGuard.isCurrent(generation)) {
+      if (current() && _draftGuard.isCurrent(generation)) {
         setState(() => _draftTotal = null);
       }
     }
   }
 
   Future<List<FinanceAssetCategory>> _loadCategories() async {
+    final current = captureReadOwner(ref);
     final generation = _categoryGuard.begin();
     final categories = await ref
         .read(financeAssetCategoryRepositoryProvider)
         .list(widget.ledger);
-    if (mounted && _categoryGuard.isCurrent(generation)) {
+    if (current() && _categoryGuard.isCurrent(generation)) {
       setState(() => _categories = categories);
     }
     return categories;
@@ -241,32 +261,38 @@ class _FinanceAssetLedgerPanelState
   }
 
   Future<void> _edit(FinanceAssetSummary item) async {
+    final current = captureReadOwner(ref);
+    final ledger = widget.ledger;
     try {
       final detail = await ref
           .read(financeAssetWorkbenchRepositoryProvider)
-          .detail(widget.ledger, item.id);
-      if (!mounted) return;
+          .detail(ledger, item.id);
+      if (!mounted || !current() || ledger != widget.ledger) return;
       final saved = await showFinanceAssetForm(
         context,
-        ledger: widget.ledger,
+        ledger: ledger,
         existing: detail.summary,
       );
-      if (mounted && saved) await _load();
+      if (current() && ledger == widget.ledger && saved) await _load();
     } catch (error) {
-      if (mounted) {
+      if (mounted && current() && ledger == widget.ledger) {
         context.appApiError(error, fallback: '加载完整草稿失败，请刷新后重试');
       }
     }
   }
 
   Future<void> _create() async {
+    final current = captureReadOwner(ref);
+    final ledger = widget.ledger;
     final saved = await showFinanceAssetForm(context, ledger: widget.ledger);
-    if (!mounted || !saved) return;
+    if (!current() || ledger != widget.ledger || !saved) return;
     _query = _query.copyWith(page: 1);
     await _load(page: 1);
   }
 
   Future<void> _delete(FinanceAssetSummary item) async {
+    final current = captureReadOwner(ref);
+    final ledger = widget.ledger;
     bool canDeleteNow() =>
         ref.read(isSuperAdminProvider) ||
         ref.read(currentPermissionsProvider).contains(Perm.financeAssetDelete);
@@ -283,24 +309,29 @@ class _FinanceAssetLedgerPanelState
       confirmLabel: '删除草稿',
       danger: true,
     );
-    if (confirmed != true || !mounted || !canDeleteNow()) return;
+    if (confirmed != true ||
+        !current() ||
+        ledger != widget.ledger ||
+        !canDeleteNow()) {
+      return;
+    }
     try {
       await ref
           .read(financeAssetWorkbenchRepositoryProvider)
-          .deleteDraft(
-            widget.ledger,
-            item.id,
-            expectedVersion: expectedVersion,
-          );
-      if (!mounted) return;
+          .deleteDraft(ledger, item.id, expectedVersion: expectedVersion);
+      if (!mounted || !current() || ledger != widget.ledger) return;
       context.appSuccess('草稿已删除');
       await _load();
     } catch (error) {
-      if (mounted) context.appApiError(error, fallback: '删除失败，请刷新后重试');
+      if (mounted && current() && ledger == widget.ledger) {
+        context.appApiError(error, fallback: '删除失败，请刷新后重试');
+      }
     }
   }
 
   Future<void> _openDetail(FinanceAssetSummary item) async {
+    final current = captureReadOwner(ref);
+    final ledger = widget.ledger;
     final changed = await showFinanceAssetDetail(
       context,
       ledger: widget.ledger,
@@ -320,7 +351,7 @@ class _FinanceAssetLedgerPanelState
           ? () => _delete(item)
           : null,
     );
-    if (mounted && changed) await _load();
+    if (current() && ledger == widget.ledger && changed) await _load();
   }
 
   FormDraftCategoryScope get _formDraftScope => FormDraftCategoryScope(
@@ -480,16 +511,17 @@ class _FinanceAssetLedgerPanelState
   }
 
   Future<void> _headerDepartmentFilter() async {
+    final current = captureReadOwner(ref);
     try {
       final tree = await ref.read(departmentPickerTreeProvider.future);
-      if (!mounted) return;
+      if (!mounted || !current()) return;
       final selection = await showUtenDepartmentPickerPanel(
         context,
         tree: tree,
         initialSelection: _department == null ? const [] : [_department!],
         allowClear: true,
       );
-      if (!mounted || selection == null) return;
+      if (!current() || selection == null) return;
       _department = selection.firstOrNull;
       _changeQuery(
         _query.copyWith(
@@ -499,7 +531,9 @@ class _FinanceAssetLedgerPanelState
         ),
       );
     } catch (error) {
-      if (mounted) context.appApiError(error, fallback: '部门筛选加载失败，请重试');
+      if (mounted && current()) {
+        context.appApiError(error, fallback: '部门筛选加载失败，请重试');
+      }
     }
   }
 

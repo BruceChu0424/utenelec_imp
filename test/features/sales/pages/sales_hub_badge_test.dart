@@ -103,6 +103,11 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('待办 3'), findsOneWidget);
+    // The same external scope intentionally retains the departed task-page
+    // counts. Dispose it before Flutter checks the test's pending timers.
+    await tester.pumpWidget(const SizedBox.shrink());
+    container.dispose();
+    await tester.pump();
   });
 
   testWidgets('任务中心累计全部销售待办一次，红黄分开且新建卡不挂数', (tester) async {

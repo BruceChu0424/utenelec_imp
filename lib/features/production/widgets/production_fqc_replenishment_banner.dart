@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../core/router/page_navigation_session.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
@@ -402,7 +403,7 @@ class _ProductionFqcReplenishmentBannerState
 
   Future<void> _showTasks() {
     final sheetOwner = captureReadOwner(ref);
-    return showModalBottomSheet<void>(
+    return showUtenModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,

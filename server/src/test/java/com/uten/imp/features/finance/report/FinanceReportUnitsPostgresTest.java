@@ -58,7 +58,7 @@ class FinanceReportUnitsPostgresTest {
                 "fixed_assets","deferred_expenses","fa_depreciation_log","da_amortization_log","gl_vouchers","gl_entries",
                 "goods","material_categories","v_stock_actual_cogs_postings","units","colors",
                 "purchase_receipts","purchase_receipt_items","purchase_returns","purchase_return_items","sales_returns","sales_return_items",
-                "party_monthly_summaries","finance_payment_lines","supplier_open_item_offsets","legacy_finance_import_sources");
+                "party_monthly_summaries","party_month_dirty","finance_payment_lines","supplier_open_item_offsets","legacy_finance_import_sources");
         em=mock(EntityManager.class);when(em.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0)));
         access=mock(FinanceDocumentAccessPolicy.class);when(access.scope()).thenReturn(new OwnerScope(true,Set.of()));
         when(access.hasAuthority(anyString())).thenReturn(true);
@@ -263,6 +263,46 @@ class FinanceReportUnitsPostgresTest {
         var result=reports.customerPrepaymentEvents(CLIENT,DATE,DATE,1,50);assertThat(result.rows()).hasSize(1);
         valueUnit(result,"prepaymentCashOriginal","7","美金");valueUnit(result,"prepaymentCashLocal","49","元");
         assertThat(result.totals()).anyMatch(t->t.key().equals("prepaymentCashLocal")&&"元".equals(t.unitLabel()));
+    }
+    @Test void advanceArrivalIsCashWithoutPretendingToReduceAnyReceivableInReceiptReportsAndExports() {
+        create("RECEIPT");db.update("UPDATE finance_receipts SET receipt_kind='CUSTOMER_PREPAYMENT'");
+        var detail=reports.receiptDetail(null,CLIENT,null,null,DATE,DATE,null,Map.of(),1,50,null,null);
+        var summary=reports.receiptSummary(null,CLIENT,null,DATE,DATE,null,1,50);
+        for(var result:List.of(detail,summary)) {
+            valueUnit(result,"amountLocal","49","元");valueUnit(result,"appliedLocal","0","元");
+            assertThat(result.totals()).anySatisfy(total->{
+                assertThat(total.key()).isEqualTo("appliedLocal");
+                assertThat(total.groups().getFirst().value()).isZero();
+            });
+        }
+        for(String report:List.of("receipt/detail","receipt/summary")) {
+            var payload=reports.export(report,Map.of("clientId",CLIENT.toString(),"dateFrom",DATE.toString(),"dateTo",DATE.toString()),null,null);
+            assertThat(payload.rows()).singleElement().satisfies(row->{
+                assertThat((BigDecimal)row.get("amountLocal")).isEqualByComparingTo("49");
+                assertThat((BigDecimal)row.get("appliedLocal")).isZero();
+            });
+        }
+    }
+    @Test void incomeClassificationAmountsRemainThirtyAndSeventyWhileTheDocumentIsOneHundred() throws Exception {
+        UUID id=create("INCOME");
+        db.update("UPDATE finance_other_incomes SET amount_original=100,amount_local=100 WHERE id=?",id);
+        db.update("UPDATE finance_other_income_items SET amount_local=30,summary='分类甲' WHERE income_id=?",id);
+        db.update("INSERT INTO finance_other_income_items(id,income_id,bill_date,line_no,amount_local,summary) VALUES (gen_random_uuid(),?,?,2,70,'分类乙')",id,DATE);
+        var detail=reports.incomeDetail(null,null,null,null,DATE,DATE,null,Map.of(),1,50,null,null);
+        assertThat(detail.rows()).extracting(row->(BigDecimal)row.get("amountTotal")).allSatisfy(amount->assertThat(amount).isEqualByComparingTo("100"));
+        assertThat(detail.rows()).extracting(row->(BigDecimal)row.get("incomeAmount")).usingElementComparator(BigDecimal::compareTo).containsExactly(new BigDecimal("30"),new BigDecimal("70"));
+        assertThat(detail.totals()).singleElement().satisfies(total->{assertThat(total.key()).isEqualTo("incomeAmount");assertThat(total.groups().getFirst().value()).isEqualByComparingTo("100");});
+        var exported=reports.export("income/detail",Map.of("dateFrom",DATE.toString(),"dateTo",DATE.toString()),null,null);
+        assertThat(exported.rows()).containsExactlyElementsOf(detail.rows());
+        byte[] bytes=new com.uten.imp.common.export.XlsxExportService().build(exported.columns(),exported.rows());
+        try(var workbook=new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(bytes))) {
+            int column=java.util.stream.IntStream.range(0,exported.columns().size()).filter(i->exported.columns().get(i).key().equals("incomeAmount")).findFirst().orElseThrow();
+            assertThat(workbook.getSheetAt(0).getLastRowNum()).isEqualTo(2);
+            assertThat(workbook.getSheetAt(0).getRow(1).getCell(column).getNumericCellValue()).isEqualTo(30);
+            assertThat(workbook.getSheetAt(0).getRow(2).getCell(column).getNumericCellValue()).isEqualTo(70);
+        }
+        var filtered=reports.incomeDetail(null,null,null,null,DATE,DATE,null,Map.of("search.incomeAmount",">=70"),1,50,null,null);
+        assertThat(filtered.rows()).singleElement().satisfies(row->assertThat((BigDecimal)row.get("incomeAmount")).isEqualByComparingTo("70"));
     }
     @Test void accountStatementUsesAccountCurrencyRatherThanAssumingYuan(){
         db.update("INSERT INTO finance_reconciliations(id,account_id,bill_date,bill_no,posting_seq,in_amount,out_amount) VALUES (gen_random_uuid(),?,?,'REPORT-FLOW',1,7,0)",ACCOUNT,DATE);

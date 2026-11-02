@@ -57,18 +57,22 @@ class CommercialPriceVisibilityTest {
 
         when(authUser.getPermissions()).thenReturn(Set.of(
                 CommercialPriceVisibility.FINANCE_PERMISSION));
-        assertTrue(visibility.canViewSubcontractInquiry());
-        assertTrue(visibility.canViewSubcontractOrder());
-        assertTrue(visibility.canViewSubcontractReceipt());
-        assertTrue(visibility.canViewSubcontractReturn());
-        assertTrue(visibility.canViewSubcontractWasteSuggestion());
-        assertTrue(visibility.canViewSubcontractReport());
-        assertTrue(visibility.canViewSubcontractMaterialCost());
-        assertTrue(visibility.canViewPurchaseOrder());
-        assertTrue(visibility.canViewPurchaseReceipt());
-        assertTrue(visibility.canViewPurchaseReturn());
-        assertTrue(visibility.canViewPurchaseReport());
+        assertFalse(visibility.canViewSubcontractInquiry());
+        assertFalse(visibility.canViewSubcontractOrder());
+        assertFalse(visibility.canViewSubcontractReceipt());
+        assertFalse(visibility.canViewSubcontractReturn());
+        assertFalse(visibility.canViewSubcontractWasteSuggestion());
+        assertFalse(visibility.canViewSubcontractReport());
+        assertFalse(visibility.canViewSubcontractMaterialCost());
+        assertFalse(visibility.canViewPurchaseOrder());
+        assertFalse(visibility.canViewPurchaseReceipt());
+        assertFalse(visibility.canViewPurchaseReturn());
+        assertFalse(visibility.canViewPurchaseReport());
 
+        assertTrue(visibility.canViewFinance());
+        when(authUser.getPermissions()).thenReturn(Set.of(CommercialPriceVisibility.FINANCE_PERMISSION,"goods:cost:view"));
+        assertTrue(visibility.canViewSubcontractMaterialCost());
+        assertFalse(visibility.canViewPurchaseOrder());
         when(currentUser.get()).thenReturn(Optional.empty());
         assertFalse(visibility.canViewPurchaseReceipt());
         assertFalse(visibility.canViewPurchaseOrder());

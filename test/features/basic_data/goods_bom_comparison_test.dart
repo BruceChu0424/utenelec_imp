@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_comparison.dart';
 import 'package:uten_imp/features/basic_data/models/goods_bom_item.dart';
+import 'package:uten_imp/features/basic_data/repositories/goods_bom_edit_repository.dart';
+import 'package:uten_imp/features/basic_data/repositories/goods_bom_repository.dart';
 import '../../support/bom_comparison_fixture.dart';
 
 GoodsBomItem _item(
@@ -32,6 +34,65 @@ Future<GoodsBomComparison> _compare(ComparisonFixtureBom bom) async =>
     );
 
 void main() {
+  test(
+    'copying a locally replaced or new component never sends a client ID as persisted provenance',
+    () async {
+      final bom = ComparisonFixtureBom({
+        'left': [],
+        'right': [_item('persisted-edge', 'old')],
+      });
+      final api = ComparisonFixtureApi(bom);
+      GoodsBomEditDraft draft(String root) =>
+          GoodsBomEditDraft(base: bom, api: api, rootGoodsId: root);
+      final target = draft('left'), source = draft('right');
+      await target.list('left');
+      await source.update('right', 'persisted-edge', {
+        'componentGoodsId': 'new',
+      });
+      await source.paste(
+        mode: BomPasteMode.append,
+        targets: [const BomPasteTarget('right')],
+        items: [
+          {'componentGoodsId': 'added', 'qty': '1.23456'},
+        ],
+      );
+      final comparison = await GoodsBomComparison.build(
+        leftId: 'left',
+        rightId: 'right',
+        left: await target.list('left'),
+        right: await source.list('right'),
+        isCurrent: () => true,
+      );
+      final replacement = await comparison.prepare(
+        toLeft: true,
+        selected: null,
+        repository: bom,
+        api: api,
+        isCurrent: () => true,
+        targetDraft: target,
+        sourceDraft: source,
+      );
+      await replacement.draft.preview();
+      final commands = (api.requests.last['operations'] as List)
+          .cast<Map<String, dynamic>>();
+      expect(
+        commands
+            .where((op) => op['type'] == 'CREATE')
+            .every(
+              (op) => !(op['body'] as Map).containsKey('copiedFromBomItemId'),
+            ),
+        true,
+      );
+      expect(
+        (await replacement.draft.list('left')).last.qtyExactText,
+        '1.23456',
+      );
+      expect(bom.writes, 0);
+      replacement.draft.close();
+      source.close();
+      target.close();
+    },
+  );
   test(
     'unresolved source legacy reference cannot silently clear target association',
     () async {

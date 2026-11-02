@@ -402,6 +402,7 @@ class UtenPrintPreviewButton extends StatelessWidget {
           ? UtenTableToolbar.controlHeight
           : null,
       icon: icon,
+      compactIcon: Icons.print_outlined,
       onPressed: !enabled
           ? null
           : () => showUtenPrintPreview(

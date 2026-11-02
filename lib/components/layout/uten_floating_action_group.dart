@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../../core/ui/capsule_nav_metrics.dart';
+import '../../core/responsive/compact_presentation.dart';
+import 'uten_action_overflow.dart';
 
 /// 右下角悬浮操作组。
 ///
@@ -15,6 +17,7 @@ class UtenFloatingActionGroup extends StatefulWidget {
     this.maxWidth = 1080,
     this.maxHeight,
     this.onMinimumContentHeightChanged,
+    this.compactPrimaryActionKey,
   });
 
   final List<Widget> children;
@@ -30,6 +33,10 @@ class UtenFloatingActionGroup extends StatefulWidget {
   /// keep one complete, naturally wrapping action visible while scrolling.
   final ValueChanged<double>? onMinimumContentHeightChanged;
 
+  /// Promotes the next required action on narrow windows without changing
+  /// desktop order or the action's business callback (for example save first).
+  final Key? compactPrimaryActionKey;
+
   /// 悬浮组内控件的统一高度。
   ///
   /// 取值 = [UtenButtonSize.large] 的最小高度：组里的业务动作一律用 large，
@@ -39,7 +46,8 @@ class UtenFloatingActionGroup extends StatefulWidget {
 
   /// 正文末尾的可滚动留白，可把末行完整滚到悬浮操作组上方。
   /// 也是默认的总高度上限；有本地预算的宿主可传 [maxHeight]，超长组内滚动。
-  static const double scrollClearance = 200;
+  static const double scrollClearance =
+      UtenFloatingOverlayMetrics.actionScrollClearance;
 
   @override
   State<UtenFloatingActionGroup> createState() =>
@@ -99,6 +107,30 @@ class _UtenFloatingActionGroupState extends State<UtenFloatingActionGroup> {
     if (widget.children.isEmpty) return const SizedBox.shrink();
     final theme = Theme.of(context);
     final media = MediaQuery.of(context);
+    final compact = UtenCompactPresentation.of(context);
+    final primary = compact && widget.compactPrimaryActionKey != null
+        ? widget.children
+                  .where((child) => child.key == widget.compactPrimaryActionKey)
+                  .firstOrNull ??
+              widget.children.last
+        : widget.children.last;
+    final secondary = widget.children
+        .where((child) => !identical(child, primary))
+        .toList();
+    final menuActions = secondary.where(UtenActionOverflow.isAction).toList();
+    final children = compact && menuActions.length > 1
+        ? <Widget>[
+            ...secondary.where((child) => !UtenActionOverflow.isAction(child)),
+            UtenActionOverflow(
+              label: '其他操作',
+              forceCompact: media.size.width < 600,
+              children: menuActions,
+            ),
+            primary,
+          ]
+        : compact
+        ? [...secondary, primary]
+        : widget.children;
     final availableWidth = (media.size.width - UtenSpacing.s32)
         .clamp(0.0, widget.maxWidth)
         .toDouble();
@@ -122,11 +154,11 @@ class _UtenFloatingActionGroupState extends State<UtenFloatingActionGroup> {
         .toDouble();
 
     if (widget.onMinimumContentHeightChanged != null) {
-      while (_controlKeys.length < widget.children.length) {
+      while (_controlKeys.length < children.length) {
         _controlKeys.add(GlobalKey());
       }
-      if (_controlKeys.length > widget.children.length) {
-        _controlKeys.removeRange(widget.children.length, _controlKeys.length);
+      if (_controlKeys.length > children.length) {
+        _controlKeys.removeRange(children.length, _controlKeys.length);
       }
     }
 
@@ -155,7 +187,7 @@ class _UtenFloatingActionGroupState extends State<UtenFloatingActionGroup> {
                     spacing: UtenSpacing.s8,
                     runSpacing: UtenSpacing.s8,
                     children: [
-                      for (var i = 0; i < widget.children.length; i++)
+                      for (var i = 0; i < children.length; i++)
                         KeyedSubtree(
                           key: widget.onMinimumContentHeightChanged != null
                               ? _controlKeys[i]
@@ -174,7 +206,7 @@ class _UtenFloatingActionGroupState extends State<UtenFloatingActionGroup> {
                                 minHeight:
                                     UtenFloatingActionGroup.controlHeight,
                               ),
-                              child: widget.children[i],
+                              child: children[i],
                             ),
                           ),
                         ),

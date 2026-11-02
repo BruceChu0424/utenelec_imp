@@ -1692,7 +1692,8 @@ class _ChatSessionState extends ConsumerState<_ChatSession> {
         final inset = math.max(media.viewInsets.bottom, media.padding.bottom);
         final minimumBottom =
             (compact
-                ? UtenCapsuleNavScope.computeOcclusion(context)
+                ? UtenCapsuleNavScope.computeOcclusion(context) +
+                      UtenFloatingOverlayMetrics.actionScrollClearance
                 : media.padding.bottom) +
             UtenSpacing.s16;
         final maximumBottom = math.max(

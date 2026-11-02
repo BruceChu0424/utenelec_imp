@@ -335,6 +335,8 @@ void main() {
       expect(webUpdateSafety.snapshot.dirty, isTrue);
       await editor.saveFormDraftNow();
       expect(storage.records, isNotEmpty);
+      expect(await webUpdateSafety.prepareServerReload(), isTrue);
+      expect(webUpdateSafety.snapshot.serverReloadSafe, isTrue);
       expect(
         webUpdateSafety.snapshot.dirty,
         isTrue,
@@ -342,6 +344,7 @@ void main() {
       );
       editor.busy = true;
       expect(webUpdateSafety.snapshot.busy, isTrue);
+      expect(await webUpdateSafety.prepareServerReload(), isFalse);
       editor.busy = false;
       await tester.enterText(find.byKey(const Key('input')), '');
       await editor.saveFormDraftNow();
@@ -367,6 +370,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(webUpdateSafety.snapshot.blocked, isTrue);
+      expect(await webUpdateSafety.prepareServerReload(), isFalse);
       await editor.completeFormDraft();
       expect(webUpdateSafety.snapshot.safeToReload, isTrue);
       await tester.pumpWidget(const SizedBox.shrink());

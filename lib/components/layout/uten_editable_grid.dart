@@ -1,5 +1,8 @@
 import '../data_display/uten_table_surface.dart';
 import 'uten_panel_opening_scope.dart';
+import 'uten_action_overflow.dart';
+import '../buttons/uten_button.dart';
+import '../../core/responsive/compact_presentation.dart';
 import 'uten_ancestor_row_window.dart';
 import '../data_display/uten_table_text_selection.dart';
 import '../data_display/uten_selection_lifecycle.dart';
@@ -3731,12 +3734,11 @@ class _UtenEditableGridState<T extends EditableGridRow>
           final all = targets.isNotEmpty && targets.every(_rowIsSelected);
           return Padding(
             padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-            child: Wrap(
+            child: UtenResponsiveActionWrap(
               spacing: UtenSpacing.s4,
               runSpacing: UtenSpacing.s4,
               // 条内控件高度不一（48 的表头设置 / 36 的文字动作）时居中对齐，
               // 默认的 start 会让矮按钮顶在上沿，看起来像没对齐。
-              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 if (widget.showColumnSettings)
                   UtenColumnChooserButton(
@@ -4737,8 +4739,7 @@ class _AddRowBar extends StatelessWidget {
       horizontal: UtenSpacing.s12,
       vertical: UtenSpacing.s4,
     ),
-    minimumSize: Size(
-      UtenControlMetrics.minimumHitExtent(context, desktop: 36),
+    minimumSize: Size.square(
       UtenControlMetrics.minimumHitExtent(context, desktop: 36),
     ),
     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -4750,22 +4751,26 @@ class _AddRowBar extends StatelessWidget {
     // 纵向留白交给宿主表尾容器统一给（与合计条并排时两者才对得齐）。
     // 不要包 Align/Container+alignment：并排分支里本控件拿到的是**无界宽约束**，
     // 那类组件会试图撑满上限直接布局崩（见 MEMORY「Container alignment 撑满宽度」）。
+    Widget action(IconData icon, String label, VoidCallback onPressed) =>
+        UtenCompactPresentation.of(context)
+        ? UtenButton(
+            size: UtenButtonSize.small,
+            icon: icon,
+            onPressed: onPressed,
+            child: Text(label),
+          )
+        : FilledButton.icon(
+            onPressed: onPressed,
+            icon: Icon(icon, size: 18),
+            label: Text(label),
+            style: _buttonStyle(context),
+          );
     return Wrap(
       spacing: UtenSpacing.s8,
       runSpacing: UtenSpacing.s4,
       children: [
-        FilledButton.icon(
-          onPressed: onAddOne,
-          icon: const Icon(Icons.add_circle_outline, size: 18),
-          label: Text(addRowLabel),
-          style: _buttonStyle(context),
-        ),
-        FilledButton.icon(
-          onPressed: onAddMany,
-          icon: const Icon(Icons.playlist_add, size: 18),
-          label: Text(addRowsLabel),
-          style: _buttonStyle(context),
-        ),
+        action(Icons.add_circle_outline, addRowLabel, onAddOne),
+        action(Icons.playlist_add, addRowsLabel, onAddMany),
       ],
     );
   }

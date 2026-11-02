@@ -3626,6 +3626,43 @@
       ],
       "notes": "新布局尚未迁移到WPF；共享行为增量归CORE-023。独立下一版，不纳入2.5.39，不授权正式打包或发布。\n2026-11-01：本轮已授权纳入2.5.42适用功能；原2.5.39排除仅属历史范围。原生布局及目标机验收边界不变。",
       "lastUpdated": "2026-11-01"
+    },
+    {
+      "id": "W7-CORE-024",
+      "title": "内置可复制运行日志与加载中断压力回归",
+      "group": "CORE",
+      "groupLabel": "公共客户端与业务安全",
+      "phase": "B",
+      "status": "implemented",
+      "impactArea": "frontend+shared-contract",
+      "owner": "windows_stability",
+      "sources": [
+        "lib/core/diagnostics/diagnostic_log.dart",
+        "lib/core/performance/data_work_queue.dart",
+        "windows/runner/native_diagnostics.cpp",
+        "test/fixtures/client_diagnostics_v1.json"
+      ],
+      "nativeTargets": [
+        "clients/windows_legacy/Uten.Legacy.Core/DiagnosticsLog.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/Shared/DiagnosticWatchdog.cs",
+        "clients/windows_legacy/Uten.Legacy.Desktop/App.xaml.cs",
+        "clients/windows_legacy/Uten.Legacy.Updater/Program.cs"
+      ],
+      "dependencies": [
+        "W7-ENV-001",
+        "W7-CORE-003",
+        "W7-UPD-006"
+      ],
+      "definitionOfDone": [
+        "Flutter与WPF原生入口默认持久化版本/异常/无响应/更新日志，用户可直接复制.log；按运行时、架构、配置隔离，日志不含凭据或业务正文，限量且不碰业务/恢复资料。",
+        "共用日志schema/路径脱敏样例；覆盖x86/x64本机编译、异常落盘、日志风暴、加载中断/旧结果隔离及实际入口交互；不弱化未知提交或原始输入保全。",
+        "Win7目标机适用启动、异常/卡顿和更新日志验收；未验收前不标done，不以源码存在或现代Windows本机runner替代目标机验收。"
+      ],
+      "evidence": [
+        "docs/99-项目治理/2026-11-01-极端负载中断与内置日志.md"
+      ],
+      "notes": "独立阶段实施中；Win7/8.1完整ERP与目标机验收仍未完成，不改变既有业务迁移状态。",
+      "lastUpdated": "2026-11-02T06:00:05.933173+00:00"
     }
   ]
 }

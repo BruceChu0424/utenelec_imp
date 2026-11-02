@@ -83,6 +83,7 @@ class _FixtureState extends State<_Fixture> {
               unlocked = true;
             }),
             searchKey: _searchKey,
+            searchCompactIcon: false,
             searchHint: '搜索单号',
             searchController: search,
             onSearchChanged: searches.add,

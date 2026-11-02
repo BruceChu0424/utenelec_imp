@@ -1,3 +1,4 @@
+import '../../../shared/pricing/price_analysis_access.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'master_data_table_view.dart';
 import 'package:flutter/material.dart';
@@ -55,12 +56,11 @@ class _GoodsPriceObservationDetailState
   bool _reloadRequired = false;
   final _chromeKey = GlobalKey();
   final _bodyKey = GlobalKey();
-  bool get _allowed =>
-      ref.read(isSuperAdminProvider) ||
-      ref.read(currentPermissionsProvider).containsAll({
-        Perm.goodsView,
-        Perm.goodsPriceAnalysisView,
-      });
+  bool get _allowed => canReadPriceHistoryKind(
+    ref.read(currentPermissionsProvider),
+    ref.read(isSuperAdminProvider),
+    widget.kind,
+  );
   String get _identity =>
       '${widget.goodsId}|${widget.kind}|${widget.row.identity}|${widget.row.text('sourceRevision')}';
   @override
@@ -68,6 +68,10 @@ class _GoodsPriceObservationDetailState
     super.initState();
     initializeNativeReadScope();
     ref.listenManual(currentPermissionsProvider, (_, _) {
+      invalidateNativeReadAccess();
+      _clear();
+    });
+    ref.listenManual(isSuperAdminProvider, (_, _) {
       invalidateNativeReadAccess();
       _clear();
     });

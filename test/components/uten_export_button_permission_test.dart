@@ -81,7 +81,7 @@ void main() {
             ),
           ),
         );
-        await tester.tap(find.text('下载表格'));
+        await tester.tap(find.bySemanticsLabel('下载表格'));
         await tester.pumpAndSettle();
         await captureDialogFixture(
           tester,
@@ -122,7 +122,7 @@ void main() {
                 ),
               ),
             );
-            await tester.tap(find.text('下载表格'));
+            await tester.tap(find.bySemanticsLabel('下载表格'));
             await tester.pumpAndSettle();
             final cancel = find.ancestor(
               of: find.text('取消'),
@@ -187,7 +187,7 @@ void main() {
             ),
           ),
         );
-        await tester.tap(find.text('下载表格'));
+        await tester.tap(find.bySemanticsLabel('下载表格'));
         await tester.pumpAndSettle();
         expect(find.text('.xlsx'), findsOneWidget);
         await tester.ensureVisible(find.text('设置密码'));
@@ -230,7 +230,7 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('下载表格'));
+    await tester.tap(find.bySemanticsLabel('下载表格'));
     await tester.pumpAndSettle();
     expect(find.text('导出 PDF'), findsOneWidget);
     expect(find.text('导出 Excel'), findsNothing);
@@ -266,7 +266,7 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('下载表格'));
+      await tester.tap(find.bySemanticsLabel('下载表格'));
       await tester.pumpAndSettle();
       storage.lineage = 'next-session';
       await tester.tap(find.text('直接下载'));
@@ -308,7 +308,7 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('下载表格'));
+      await tester.tap(find.bySemanticsLabel('下载表格'));
       await tester.pumpAndSettle();
       container.read(server.notifier).state = 'https://b.invalid';
       await tester.pump();
@@ -353,14 +353,14 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('下载表格'));
+      await tester.tap(find.bySemanticsLabel('下载表格'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('直接下载'));
       await tester.pump();
       expect(api.results, hasLength(1));
       container.read(server.notifier).state = 'https://b.invalid';
       await tester.pumpAndSettle();
-      await tester.tap(find.text('下载表格'));
+      await tester.tap(find.bySemanticsLabel('下载表格'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('直接下载'));
       await tester.pump();
@@ -408,7 +408,7 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('下载表格'));
+      await tester.tap(find.bySemanticsLabel('下载表格'));
       await tester.pumpAndSettle();
       current = false;
       await tester.tap(find.text('直接下载'));
@@ -463,7 +463,7 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('下载表格'));
+      await tester.tap(find.bySemanticsLabel('下载表格'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('直接下载'));
       await tester.pump();
@@ -511,14 +511,14 @@ void main() {
           ),
         ),
       );
-      await tester.tap(find.text('下载表格'));
+      await tester.tap(find.bySemanticsLabel('下载表格'));
       await tester.pumpAndSettle();
       container.read(grants.notifier).state = {};
       await tester.pump();
       await tester.tap(find.text('直接下载'));
       await tester.pumpAndSettle();
       expect(api.downloads, 0);
-      expect(find.text('下载表格'), findsNothing);
+      expect(find.bySemanticsLabel('下载表格'), findsNothing);
     },
   );
   testWidgets('export button is hidden without its required permission', (
@@ -536,7 +536,7 @@ void main() {
       ),
     );
 
-    expect(find.text('下载表格'), findsNothing);
+    expect(find.bySemanticsLabel('下载表格'), findsNothing);
   });
 
   testWidgets('export button is visible with its required permission', (
@@ -554,7 +554,7 @@ void main() {
       ),
     );
 
-    expect(find.text('下载表格'), findsOneWidget);
+    expect(find.bySemanticsLabel('下载表格'), findsOneWidget);
   });
 
   testWidgets(
@@ -572,7 +572,7 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('下载表格'));
+      await tester.tap(find.bySemanticsLabel('下载表格'));
       await tester.pumpAndSettle();
 
       // 2026-10-28 起弹窗先收文件名（必填）与保存位置，密码区在其后。
@@ -633,7 +633,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.text('下载表格'));
+    await tester.tap(find.bySemanticsLabel('下载表格'));
     await tester.pumpAndSettle();
 
     // 2026-10-28 起弹窗先收文件名（必填，预填默认名）；清空后不能直接下载。
@@ -668,7 +668,7 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('预览打印'));
+    await tester.tap(find.bySemanticsLabel('预览打印'));
     await tester.pumpAndSettle();
 
     expect(find.text('下载Excel'), findsNothing);
@@ -760,7 +760,7 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('下载表格'));
+    await tester.tap(find.bySemanticsLabel('下载表格'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('直接下载'));
     await tester.pump();
@@ -826,7 +826,7 @@ Future<Map<String, dynamic>> _runExportWithProjection(
     ),
   );
   await tester.pump();
-  await tester.tap(find.text('下载表格'));
+  await tester.tap(find.bySemanticsLabel('下载表格'));
   await tester.pumpAndSettle();
   await tester.tap(find.text('直接下载'));
   await tester.pumpAndSettle();

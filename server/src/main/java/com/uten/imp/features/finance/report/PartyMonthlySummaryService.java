@@ -23,8 +23,8 @@ import java.util.List;
  *
  * <p>两条消费路径：
  * <ul>
- *   <li><b>读自愈</b>：对账单/年表读取前先 {@link #reconcileNow} 同步重算该单位的
- *       脏键——读取永远精确，不存在读过期汇总的问题；</li>
+ *   <li><b>读取预热</b>：对账单/年表读取前尝试 {@link #reconcileNow}，忙时直接返回；
+ *       查询自身在同一快照回放仍脏的月份，不依赖另一个事务提交的新投影可见；</li>
  *   <li><b>后台排水</b>：{@code PartyMonthlySummaryScheduler} 每隔数秒按
  *       (side, party, month) 全序批量排水，预热其余单位并收敛积压。</li>
  * </ul>
@@ -40,12 +40,13 @@ public class PartyMonthlySummaryService {
 
     private final EntityManager em;
 
-    /** 读路径自愈：同步重算该单位的全部脏键（通常为 0～少数几个单元）。 */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    /** 读路径预热：忙时跳过；报表的同快照脏月回放仍保证精确，不能排队等待后台整批重建。 */
+    @Transactional(propagation = Propagation.REQUIRES_NEW,isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void reconcileNow(String side, java.util.UUID partyId) {
         if (side == null || partyId == null) {
             return;
         }
+        if(!tryLockParty(side,partyId))return;
         List<?> months = em.createNativeQuery(
                         "SELECT month_start FROM party_month_dirty WHERE side=:side AND party_id=:pid "
                                 + "ORDER BY month_start")
@@ -62,7 +63,7 @@ public class PartyMonthlySummaryService {
     }
 
     /** 后台排水：按 (side, party, month) 全序处理最旧的至多 limit 个脏键，返回处理数。 */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.REQUIRES_NEW,isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public int drain(int limit) {
         int safeLimit = Math.max(1, Math.min(limit, 200));
         @SuppressWarnings("unchecked")
@@ -129,6 +130,15 @@ public class PartyMonthlySummaryService {
     }
 
     private void process(String events, String side, java.util.UUID partyId, LocalDate month) {
+        lockParty(side,partyId);
+        // xmin identifies the exact committed marker version being consumed. A
+        // producer that commits during aggregation must leave its newer marker
+        // behind; touched_at cannot serve as a version (transaction-time ties).
+        List<?> versions=em.createNativeQuery("SELECT xmin::text FROM party_month_dirty "
+                        +"WHERE side=:side AND party_id=:pid AND month_start=:month")
+                .setParameter("side",side).setParameter("pid",partyId).setParameter("month",month).getResultList();
+        if(versions.isEmpty())return;
+        String dirtyVersion=versions.getFirst().toString();
         boolean wholeParty = FULL_REBUILD_SENTINEL.toLocalDate().equals(month);
         if (wholeParty) {
             em.createNativeQuery(
@@ -147,42 +157,10 @@ public class PartyMonthlySummaryService {
         // events() 是 WITH 前缀而非完整语句——按 running()/annual() 的续写形态追加
         // recompute CTE 取回聚合行，再用普通参数化 INSERT 落格（避免把事件流包进
         // 嵌套子查询；INSERT...SELECT 形态在 Hibernate executeUpdate 下不可依赖）。
-        String aggregation = (wholeParty ? """
-                        %s
-                        , recompute AS (
-                            SELECT event.currency_id,
-                                   date_trunc('month',event.event_date)::DATE AS month_start,
-                                   SUM(event.posted_original-event.settled_original) AS net_original,
-                                   SUM(event.posted_local) AS posted_local_sum,
-                                   SUM(event.settled_local) AS settled_local_sum,
-                                   SUM(event.posted_local-event.settled_local) AS net_local,
-                                   COUNT(*) AS event_count,
-                                   COUNT(*) FILTER(WHERE event.posted_original IS NULL
-                                       OR event.settled_original IS NULL
-                                       OR event.currency_id IS NULL) AS null_original_count
-                            FROM party_events event
-                            GROUP BY event.currency_id,date_trunc('month',event.event_date)::DATE
-                        )
-                        SELECT * FROM recompute ORDER BY month_start,currency_id NULLS LAST
-                        """
-                : """
-                        %s
-                        , recompute AS (
-                            SELECT event.currency_id,
-                                   SUM(event.posted_original-event.settled_original) AS net_original,
-                                   SUM(event.posted_local) AS posted_local_sum,
-                                   SUM(event.settled_local) AS settled_local_sum,
-                                   SUM(event.posted_local-event.settled_local) AS net_local,
-                                   COUNT(*) AS event_count,
-                                   COUNT(*) FILTER(WHERE event.posted_original IS NULL
-                                       OR event.settled_original IS NULL
-                                       OR event.currency_id IS NULL) AS null_original_count
-                            FROM party_events event
-                            WHERE event.event_date>=CAST(:month AS date) AND event.event_date<CAST(:nextMonth AS date)
-                            GROUP BY event.currency_id
-                        )
-                        SELECT * FROM recompute ORDER BY currency_id NULLS LAST
-                        """).formatted(events);
+        String aggregation=events+", recompute AS ("+FinancePartyStatementSql.monthlyAggregation(
+                wholeParty?"date_trunc('month',event.event_date)::date":"CAST(:month AS date)",
+                "party_events event"+(wholeParty?"":" WHERE event.event_date>=CAST(:month AS date) AND event.event_date<CAST(:nextMonth AS date)"))
+                +") SELECT * FROM recompute ORDER BY month_start,currency_id NULLS LAST";
         var aggregationQuery = em.createNativeQuery(aggregation);
         if (!wholeParty) {
             aggregationQuery.setParameter("month", month.toString())
@@ -206,22 +184,35 @@ public class PartyMonthlySummaryService {
                             """)
                     .setParameter("side", side).setParameter("pid", partyId)
                     .setParameter("currency", asUuid(row[0]))
-                    .setParameter("cellMonth", java.sql.Date.valueOf(wholeParty ? asLocalDate(row[1]) : month))
-                    .setParameter("netOriginal", asDecimal(row, wholeParty ? 2 : 1))
-                    .setParameter("postedLocal", asDecimal(row, wholeParty ? 3 : 2))
-                    .setParameter("settledLocal", asDecimal(row, wholeParty ? 4 : 3))
-                    .setParameter("netLocal", asDecimal(row, wholeParty ? 5 : 4))
-                    .setParameter("eventCount", ((Number) row[wholeParty ? 6 : 5]).longValue())
-                    .setParameter("nullOriginalCount", ((Number) row[wholeParty ? 7 : 6]).longValue())
+                    .setParameter("cellMonth", java.sql.Date.valueOf(asLocalDate(row[1])))
+                    .setParameter("netOriginal", asDecimal(row,2))
+                    .setParameter("postedLocal", asDecimal(row,3))
+                    .setParameter("settledLocal", asDecimal(row,4))
+                    .setParameter("netLocal", asDecimal(row,5))
+                    .setParameter("eventCount", ((Number) row[6]).longValue())
+                    .setParameter("nullOriginalCount", ((Number) row[7]).longValue())
                     .executeUpdate();
         }
         em.createNativeQuery("""
                         DELETE FROM party_month_dirty
                         WHERE side=:side AND party_id=:pid AND month_start=:month
+                          AND xmin::text=:dirtyVersion
                         """)
                 .setParameter("side", side).setParameter("pid", partyId)
                 .setParameter("month", month)
+                .setParameter("dirtyVersion",dirtyVersion)
                 .executeUpdate();
+    }
+
+    /** Serialise rebuilders, including full sentinels, without holding source marker rows while aggregating. */
+    private void lockParty(String side,java.util.UUID partyId) {
+        em.createNativeQuery("SELECT pg_advisory_xact_lock(hashtextextended(:partySummaryLock,0))::text")
+                .setParameter("partySummaryLock","party-month-summary/"+side+"/"+partyId).getSingleResult();
+    }
+
+    private boolean tryLockParty(String side,java.util.UUID partyId) {
+        return Boolean.TRUE.equals(em.createNativeQuery("SELECT pg_try_advisory_xact_lock(hashtextextended(:partySummaryLock,0))")
+                .setParameter("partySummaryLock","party-month-summary/"+side+"/"+partyId).getSingleResult());
     }
 
     private static java.util.UUID asUuid(Object value) {

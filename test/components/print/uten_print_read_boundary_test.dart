@@ -151,7 +151,7 @@ Future<ProviderContainer> _open(
     ),
   );
   await tester.pumpAndSettle();
-  await tester.tap(find.text('预览打印'));
+  await tester.tap(find.bySemanticsLabel('预览打印'));
   await tester.pump();
   return container;
 }
@@ -362,7 +362,7 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('预览打印'));
+    await tester.tap(find.bySemanticsLabel('预览打印'));
     await tester.pumpAndSettle();
     expect(find.text('旧账号库存'), findsOneWidget);
     expect(_printButton(tester).onPressed, isNotNull);

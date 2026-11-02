@@ -33,6 +33,8 @@
 // 委外任务 / 订货单定位；?segment=pending(&keyword=申请号) 直落「待处理」并按
 // 申请号搜索(可下单通知)。
 import 'dart:convert';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show mapEquals, setEquals;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -724,6 +726,25 @@ class _SubcontractDecompositionPageState
     });
     try {
       final repository = _repository;
+      if (listing &&
+          _categoryCounts == null &&
+          exception == null &&
+          repository is OperationsWorkbenchOverviewGateway) {
+        unawaited(
+          readWorkbenchCategoryOverview(
+            ref,
+            repository: repository as OperationsWorkbenchOverviewGateway,
+            department: OperationsWorkbenchDepartment.subcontract,
+            keyword: keyword,
+            isCurrent: () => current() && _categoryCounts == null,
+            accept: (counts) => setState(() {
+              _categoryCounts = counts;
+              _acceptedCategoryScope = categoryScope;
+            }),
+            rejected: scopedPagedReadOwnerChanged,
+          ),
+        );
+      }
       Future<OperationsWorkbenchData> fetch(int target) {
         if (!listing && repository is OperationsWorkbenchOverviewGateway) {
           return (repository as OperationsWorkbenchOverviewGateway)

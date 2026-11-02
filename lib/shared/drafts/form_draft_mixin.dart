@@ -234,6 +234,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   bool _draftSubmissionBlocked = false;
   bool _draftSkipResume = false;
   bool _draftReloadDirty = false;
+  bool _draftServerReloadReady = false;
   bool _draftReloadUnknown = false;
   String _draftId = const Uuid().v4();
   String? _draftRevision;
@@ -261,6 +262,17 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     dirty:
         !_draftFinished && (_draftReloadDirty || _draftCaptureDebounce != null),
     busy: formDraftBusy || _draftRestoring || _draftWriting != null,
+    serverReloadOverride:
+        _draftFinished ||
+        (_draftServerReloadReady &&
+            _draftReady &&
+            _draftError == null &&
+            !_draftRestoreBlocked &&
+            !_draftSubmissionBlocked &&
+            !_draftSubmissionPending &&
+            !_draftReloadUnknown &&
+            !_draftIdentityChanged &&
+            _draftCaptureDebounce == null),
     blocked:
         !_draftFinished &&
         (!_draftReady ||
@@ -491,6 +503,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   }
 
   void markFormDraftChanged() {
+    _draftServerReloadReady = false;
     webUpdateSafety.changed();
     if (!_draftReady ||
         _draftRestoring ||
@@ -987,6 +1000,13 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       goRouterPageStateOrNull(context)?.uri.path ?? formDraftSpec.route,
       _reloadSafety,
     );
+    webUpdateSafety.registerServerReloadCheckpoint(this, () async {
+      _draftServerReloadReady = false;
+      _draftCaptureDebounce?.cancel();
+      _draftCaptureDebounce = null;
+      await saveFormDraftNow();
+      _draftServerReloadReady = true;
+    });
     webUpdateSafety.changed();
     if (_draftIdentityChanged) {
       return const Material(

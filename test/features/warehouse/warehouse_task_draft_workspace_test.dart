@@ -349,6 +349,11 @@ void main() {
       );
       expect(scope.read(formDraftsPageCountProvider('warehouse')), 1);
       expect(tester.takeException(), isNull);
+      // This external container owns the retained, now-idle selected-warehouse
+      // snapshot. Retire it before the widget binding checks pending timers.
+      await tester.pumpWidget(const SizedBox.shrink());
+      scope.dispose();
+      await tester.pump();
     },
   );
 

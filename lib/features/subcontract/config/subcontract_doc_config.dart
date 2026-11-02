@@ -1,3 +1,4 @@
+import '../../../shared/auth/commercial_price_visibility.dart';
 // 委外单据配置（8 个显式业务页共享的底层字段、模型与动作能力声明）。
 //
 // 各业务页有独立信息架构与责任头；配置只共享字段组件、仓储模型和精确权限，不把不同
@@ -97,12 +98,8 @@ class SubcontractDocConfig {
   /// document has no current commercial field to expose.
   final String? commercialViewPerm;
 
-  bool canViewCommercial(Iterable<String> granted) {
-    final pagePermission = commercialViewPerm;
-    return pagePermission != null &&
-        (granted.contains(pagePermission) ||
-            granted.contains(Perm.financeViewAll));
-  }
+  bool canViewCommercial(Iterable<String> granted) =>
+      canViewCommercialPrice(granted, commercialViewPerm);
 
   /// 该单据的列表路径（「草稿(N)」按钮的落点）。
   String get listLocation => '/subcontract/${type.pathSegment}';

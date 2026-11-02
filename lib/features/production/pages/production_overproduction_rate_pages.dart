@@ -1,3 +1,5 @@
+import '../../../core/responsive/compact_presentation.dart';
+import '../../../components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:flutter/material.dart';
@@ -415,7 +417,32 @@ class _RateDetailState
   @override
   Widget build(BuildContext context) {
     final detail = _detail;
+    final compact = UtenCompactPresentation.of(context);
+    final decisionActions = <Widget>[
+      if (detail != null) ...[
+        if (detail.canReturn)
+          OutlinedButton(
+            onPressed: _busy || productionRateRevisionRows(detail) == null
+                ? null
+                : () => _decide(false),
+            child: const Text('退回'),
+          ),
+        const SizedBox(width: 12),
+        if (detail.canApprove)
+          FilledButton(
+            onPressed: _busy || productionRateRevisionRows(detail) == null
+                ? null
+                : () => _decide(true),
+            child: const Text('审批通过'),
+          ),
+      ],
+    ];
     return Scaffold(
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      floatingActionButtonAnimator: FloatingActionButtonAnimator.noAnimation,
+      floatingActionButton: compact && decisionActions.isNotEmpty
+          ? UtenFloatingActionGroup(children: decisionActions)
+          : null,
       appBar: UtenAppBar(
         title: '允许超产比例审批',
         info: '红色删除线为申请前内容，绿色新增行为申请内容。',
@@ -488,35 +515,19 @@ class _RateDetailState
                     Expanded(
                       child: ProductionOverproductionRateRevision(
                         request: detail,
+                        bottomContentPadding: compact
+                            ? UtenFloatingActionGroup.scrollClearance
+                            : 0,
                       ),
                     ),
-                    UtenPageEdgePadding(
-                      padding: const EdgeInsets.all(16),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          if (detail.canReturn)
-                            OutlinedButton(
-                              onPressed:
-                                  _busy ||
-                                      productionRateRevisionRows(detail) == null
-                                  ? null
-                                  : () => _decide(false),
-                              child: const Text('退回'),
-                            ),
-                          const SizedBox(width: 12),
-                          if (detail.canApprove)
-                            FilledButton(
-                              onPressed:
-                                  _busy ||
-                                      productionRateRevisionRows(detail) == null
-                                  ? null
-                                  : () => _decide(true),
-                              child: const Text('审批通过'),
-                            ),
-                        ],
+                    if (!compact)
+                      UtenPageEdgePadding(
+                        padding: const EdgeInsets.all(16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [...decisionActions],
+                        ),
                       ),
-                    ),
                   ],
                 ),
         ),

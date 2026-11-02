@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:uten_imp/core/theme/uten_tokens.dart';
+import '../../core/responsive/compact_presentation.dart';
+import '../buttons/uten_button.dart';
 
 /// 「已选 N 项 + ✕ 清除」选择摘要胶囊——全站表格批量动作区的统一口径
 /// （原 MasterDataTableView._buildBatchBar 私有实现升位为公共组件）。
@@ -47,6 +49,36 @@ class UtenSelectionSummaryPill extends StatelessWidget {
     final barBorder = hasSelection
         ? theme.colorScheme.primary
         : theme.colorScheme.outline;
+
+    if (UtenCompactPresentation.of(context)) {
+      return Tooltip(
+        message: '清除选择',
+        child: UtenButton(
+          key: clearKey,
+          type: hasSelection ? UtenButtonType.tonal : UtenButtonType.secondary,
+          size: UtenButtonSize.small,
+          height: 36,
+          onPressed: onClear,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: Text(
+                  '已选 $count 项',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: accent,
+                  ),
+                ),
+              ),
+              const SizedBox(width: UtenSpacing.s4),
+              Icon(Icons.close_rounded, size: 14, color: accent),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s12),

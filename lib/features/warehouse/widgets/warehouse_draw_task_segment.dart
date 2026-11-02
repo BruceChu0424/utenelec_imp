@@ -21,6 +21,7 @@ import 'package:uten_imp/components/layout/uten_refresh_scope.dart';
 // 2026-09-25 单号列统一：领料单号列另加表头值筛选（桶=f.docNo 服务端分组，
 // 值筛选走 f.docNo 精确匹配，与列表同一响应带回）。
 import 'package:flutter/material.dart';
+import '../../../shared/auth/read_owner_fence.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -114,6 +115,7 @@ class _WarehouseDrawTaskSegmentState
   bool _loading = false;
   String? _error;
   int _requestVersion = 0;
+  int _statusCountVersion = 0;
   String _status = _kOpenAnyStatus;
 
   /// 跨页选择集合：翻页保留（表格从不自行清空），切换分段/关键字时重置。
@@ -327,17 +329,30 @@ class _WarehouseDrawTaskSegmentState
   }
 
   Future<void> _loadStatusCounts() async {
+    final current = captureReadOwner(ref);
+    final version = ++_statusCountVersion;
+    final scope = WarehouseListScope.of(context);
     try {
       final counts = await ref
           .read(productionDrawTaskRepositoryProvider)
-          .statusBreakdown(scope: WarehouseListScope.of(context));
-      if (!mounted) return;
+          .statusBreakdown(scope: scope);
+      if (!mounted ||
+          !current() ||
+          version != _statusCountVersion ||
+          scope != WarehouseListScope.of(context)) {
+        return;
+      }
       setState(() => _statusCounts = counts);
     } catch (error) {
       // 计数失败不阻塞列表，但不能静默留旧值：清空徽章并留日志，下次刷新重试
       //（此前 catch(_) 吞掉一切，端点 404 看起来像「没有徽章」）。
       debugPrint('待领任务子分类计数加载失败：$error');
-      if (mounted) setState(() => _statusCounts = const {});
+      if (mounted &&
+          current() &&
+          version == _statusCountVersion &&
+          scope == WarehouseListScope.of(context)) {
+        setState(() => _statusCounts = const {});
+      }
     }
   }
 

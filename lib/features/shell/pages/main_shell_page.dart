@@ -38,6 +38,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/responsive/display_zoom.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/compact_navigation_policy.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../dashboard/pages/dashboard_page.dart';
 import '../../dashboard/providers/dashboard_overview_provider.dart';
@@ -270,6 +271,9 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
     final railExtended = canExtend && !_railCollapsedFor(location);
     final shell = compact
         ? _buildCompactShell(
+            showNavigation: UtenCompactNavigationPolicy.showsNavigation(
+              location,
+            ),
             tabIndex: tabIndex,
             labels: labels,
             unread: unread,
@@ -304,6 +308,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
 
   /// compact 外壳：底部悬浮胶囊 overlay（与 v3 完全一致）
   Widget _buildCompactShell({
+    required bool showNavigation,
     required int? tabIndex,
     required List<String> labels,
     required int unread,
@@ -318,7 +323,9 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
       // 页面滚动件末尾留白 / 右下悬浮组抬升 / 底部固定条让位都查它，
       // 滚到最底时最后一行能越过胶囊；弹窗/抽屉在 shell 外查不到 scope 取 0。
       body: UtenCapsuleNavScope(
-        occlusion: UtenCapsuleNavScope.computeOcclusion(context),
+        occlusion: showNavigation
+            ? UtenCapsuleNavScope.computeOcclusion(context)
+            : 0,
         child: Stack(
           children: [
             Positioned.fill(
@@ -349,20 +356,21 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
                 ),
               ),
             ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 6,
-              child: SafeArea(
-                top: false,
-                child: FloatingCapsuleNavBar(
-                  position: _position,
-                  onTap: _onTabTap,
-                  labels: labels,
-                  badgeCounts: [workbenchTodos, unread, 0, 0],
+            if (showNavigation)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: UtenCapsuleNavScope.bottomOffset,
+                child: SafeArea(
+                  top: false,
+                  child: FloatingCapsuleNavBar(
+                    position: _position,
+                    onTap: _onTabTap,
+                    labels: labels,
+                    badgeCounts: [workbenchTodos, unread, 0, 0],
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),

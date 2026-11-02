@@ -9,6 +9,7 @@ import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
 import '../../core/theme/uten_tokens.dart';
 import 'uten_table_cell_spec.dart';
+import 'uten_caret_scroll_clearance.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
 
 /// Uten 输入框
@@ -259,54 +260,56 @@ class _UtenInputState extends State<UtenInput> {
         ? aiPageL10n(context).fieldAiFilledReview
         : widget.warningMessage;
 
-    return TextFormField(
-      controller: _controller,
-      obscureText: widget.isPassword ? _isObscured : widget.obscureText,
-      keyboardType: widget.keyboardType,
-      validator: widget.validator,
-      errorBuilder: utenTextFieldErrorBuilder,
-      onChanged: widget.onChanged,
-      onFieldSubmitted: widget.onFieldSubmitted,
-      ignorePointers: false,
-      enabled: widget.enabled,
-      maxLines: widget.obscureText ? 1 : widget.maxLines,
-      textInputAction: widget.textInputAction,
-      focusNode: widget.focusNode,
-      autofillHints: widget.autofillHints,
-      inputFormatters: widget.inputFormatters,
-      textCapitalization: widget.textCapitalization,
-      style: theme.textTheme.bodyLarge,
-      decoration: applyRequiredEmpty(
-        applyAutofillHint(
-          UtenInputDecoration(
-            InputDecoration(
-              label: widget.label == null
-                  ? null
-                  : fieldLabel(
-                      widget.label!,
-                      theme,
-                      required: widget.required,
-                      base: theme.inputDecorationTheme.labelStyle,
-                    ),
-              hintText: widget.hint,
-              error: widget.errorMessage == null
-                  ? null
-                  : UtenFieldMessage.error(widget.errorMessage!),
-              prefixIcon: widget.prefixIcon != null
-                  ? Icon(widget.prefixIcon, size: 20)
-                  : null,
-              suffixIcon: _buildSuffix(),
-              helper: autofilled && autofillMessage != null
-                  ? UtenFieldMessage.autofill(autofillMessage)
-                  : null,
+    return UtenCaretScrollClearance(
+      child: TextFormField(
+        controller: _controller,
+        obscureText: widget.isPassword ? _isObscured : widget.obscureText,
+        keyboardType: widget.keyboardType,
+        validator: widget.validator,
+        errorBuilder: utenTextFieldErrorBuilder,
+        onChanged: widget.onChanged,
+        onFieldSubmitted: widget.onFieldSubmitted,
+        ignorePointers: false,
+        enabled: widget.enabled,
+        maxLines: widget.obscureText ? 1 : widget.maxLines,
+        textInputAction: widget.textInputAction,
+        focusNode: widget.focusNode,
+        autofillHints: widget.autofillHints,
+        inputFormatters: widget.inputFormatters,
+        textCapitalization: widget.textCapitalization,
+        style: theme.textTheme.bodyLarge,
+        decoration: applyRequiredEmpty(
+          applyAutofillHint(
+            UtenInputDecoration(
+              InputDecoration(
+                label: widget.label == null
+                    ? null
+                    : fieldLabel(
+                        widget.label!,
+                        theme,
+                        required: widget.required,
+                        base: theme.inputDecorationTheme.labelStyle,
+                      ),
+                hintText: widget.hint,
+                error: widget.errorMessage == null
+                    ? null
+                    : UtenFieldMessage.error(widget.errorMessage!),
+                prefixIcon: widget.prefixIcon != null
+                    ? Icon(widget.prefixIcon, size: 20)
+                    : null,
+                suffixIcon: _buildSuffix(),
+                helper: autofilled && autofillMessage != null
+                    ? UtenFieldMessage.autofill(autofillMessage)
+                    : null,
+              ),
+              info: widget.info,
             ),
-            info: widget.info,
+            theme,
+            autofilled: autofilled,
           ),
           theme,
-          autofilled: autofilled,
+          requiredEmpty: requiredEmpty,
         ),
-        theme,
-        requiredEmpty: requiredEmpty,
       ),
     );
   }

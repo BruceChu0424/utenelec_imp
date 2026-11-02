@@ -323,26 +323,39 @@ Future<void> _add(WidgetTester tester, {bool single = false}) async {
 }
 
 Future<void> _reveal(WidgetTester tester, Finder target) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+  await tester.pumpAndSettle();
   if (target.hitTestable().evaluate().isNotEmpty) return;
-  final element = tester.element(target);
-  final render = element.findRenderObject()!;
-  final vertical = <ScrollableState>[];
-  element.visitAncestorElements((ancestor) {
-    if (ancestor is StatefulElement && ancestor.state is ScrollableState) {
-      final state = ancestor.state as ScrollableState;
-      if (axisDirectionToAxis(state.axisDirection) == Axis.vertical) {
-        vertical.add(state);
+  final scrolls = <ScrollableState>[];
+  tester.element(target).visitAncestorElements((element) {
+    if (element is StatefulElement && element.state is ScrollableState) {
+      final scroll = element.state as ScrollableState;
+      if (axisDirectionToAxis(scroll.axisDirection) == Axis.vertical) {
+        scrolls.add(scroll);
       }
     }
     return true;
   });
-  for (final state in vertical) {
-    await state.position.ensureVisible(
-      render,
-      alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+  for (final scroll in scrolls) {
+    final viewport = scroll.context.findRenderObject()! as RenderBox;
+    final top = viewport.localToGlobal(Offset.zero).dy;
+    final desired =
+        scroll.position.pixels +
+        tester.getCenter(target).dy -
+        (top + viewport.size.height / 2);
+    scroll.position.jumpTo(
+      desired.clamp(
+        scroll.position.minScrollExtent,
+        scroll.position.maxScrollExtent,
+      ),
     );
+    await tester.pumpAndSettle();
   }
-  await tester.pumpAndSettle();
+  expect(
+    target.hitTestable(),
+    findsOneWidget,
+    reason: 'The actual action must be visible before tapping.',
+  );
 }
 
 Future<void> _run(WidgetTester tester) async {
@@ -910,6 +923,28 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+  testWidgets('resizing preserves the release tab and the complete queue', (
+    tester,
+  ) async {
+    final api = _Api();
+    await _pump(tester, api, _Session(_identity()));
+    await _fill(tester);
+    await _add(tester);
+    await tester.tap(find.text('发布记录'));
+    await tester.pumpAndSettle();
+    tester.view.physicalSize = const Size(844, 1100);
+    await tester.pumpAndSettle();
+    expect(
+      DefaultTabController.of(tester.element(find.byType(TabBar))).index,
+      1,
+    );
+    await _reveal(tester, find.text('发布队列'));
+    await tester.tap(find.text('发布队列'));
+    await tester.pumpAndSettle();
+    expect(find.text('文件队列 · 2'), findsOneWidget);
+    expect(api.creates, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
   for (final width in [375.0, 844.0, 1440.0]) {
     for (final brightness in Brightness.values) {
       for (final scale in [1.0, 2.0]) {
@@ -928,10 +963,13 @@ void main() {
           );
           await _fill(tester);
           await _add(tester);
+          expect(find.text('uten-setup.exe'), findsOneWidget);
+          expect(find.text('文件队列 · 2'), findsOneWidget);
           expect(find.textContaining('文件队列'), findsOneWidget);
           expect(tester.takeException(), isNull);
           await _capture(tester, key, name);
-          await tester.ensureVisible(
+          await _reveal(
+            tester,
             find.byKey(const ValueKey('client-release-publish-batch')),
           );
           await tester.pumpAndSettle();

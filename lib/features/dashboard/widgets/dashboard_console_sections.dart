@@ -16,6 +16,7 @@ import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/responsive/compact_presentation.dart';
 import '../models/dashboard_overview.dart';
 import 'dashboard_overview_sections.dart' show dashboardToneColor;
 import 'uten_console_panel.dart';
@@ -82,9 +83,9 @@ class _PanelHeaderBand extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: theme.colorScheme.surfaceContainerLow,
-      padding: const EdgeInsets.symmetric(
+      padding: EdgeInsets.symmetric(
         horizontal: UtenSpacing.s16,
-        vertical: UtenSpacing.s12,
+        vertical: UtenCompactPresentation.of(context) ? 4 : UtenSpacing.s12,
       ),
       child: Row(
         children: [
@@ -209,13 +210,19 @@ class _MetricStrip extends StatelessWidget {
             ),
           )
         : Padding(
-            padding: const EdgeInsets.symmetric(
+            padding: EdgeInsets.symmetric(
               horizontal: UtenSpacing.s16,
-              vertical: UtenSpacing.s12,
+              vertical: UtenCompactPresentation.of(context)
+                  ? 8
+                  : UtenSpacing.s12,
             ),
             child: Wrap(
-              spacing: UtenSpacing.s24,
-              runSpacing: UtenSpacing.s12,
+              spacing: UtenCompactPresentation.of(context)
+                  ? 16
+                  : UtenSpacing.s24,
+              runSpacing: UtenCompactPresentation.of(context)
+                  ? 8
+                  : UtenSpacing.s12,
               children: [
                 for (final metric in metrics)
                   ConstrainedBox(
@@ -249,7 +256,7 @@ class _StripMetric extends StatelessWidget {
     };
     final numeric = double.tryParse(metric.value.replaceAll(',', ''));
     final valueStyle = theme.textTheme.headlineMedium?.copyWith(
-      fontSize: 24,
+      fontSize: UtenCompactPresentation.of(context) ? 22 : 24,
       fontWeight: FontWeight.w700,
       fontFeatures: const [FontFeature.tabularFigures()],
     );
@@ -269,7 +276,9 @@ class _StripMetric extends StatelessWidget {
               // 仅设下限，放大字体时仍可随内容增高。
               ConstrainedBox(
                 constraints: BoxConstraints(
-                  minHeight: UtenEditableGridCellSpec.heightOf(context),
+                  minHeight: UtenCompactPresentation.of(context)
+                      ? 24
+                      : UtenEditableGridCellSpec.heightOf(context),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -284,7 +293,8 @@ class _StripMetric extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (guidance != null)
+                    if (guidance != null &&
+                        !UtenCompactPresentation.of(context))
                       UtenFieldHintIcon(info: guidance, dense: true),
                     if (metric.sensitive) ...[
                       const SizedBox(width: 6),

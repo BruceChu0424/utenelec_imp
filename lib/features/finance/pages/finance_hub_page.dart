@@ -353,6 +353,7 @@ class _FinanceHubPageState extends ConsumerState<FinanceHubPage> {
           UtenResponsiveGrid(
             itemCount: entries.length,
             spacing: UtenSpacing.s12,
+            compactMinItemWidth: 132,
             columns: const UtenResponsiveColumns(compact: 2, medium: 3),
             minItemWidth:
                 entries.any(

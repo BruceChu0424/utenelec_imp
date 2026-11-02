@@ -1,0 +1,14 @@
+{
+  "id": "E-CATEGORY-LOADING-CLOSEOUT-20261101",
+  "baselineCommit": "a667078df",
+  "status": "flutter-read-lifecycle-closeout-native-business-unported",
+  "nativeSourceModified": false,
+  "nativeOwnershipSource": "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs:ProfileFenceChanged",
+  "targetPcAcceptance": false,
+  "fullErpAcceptance": false,
+  "formalPackagesCreated": false,
+  "productionRequestsExecuted": false,
+  "unported": ["Asset workbench/ledgers/month-end business UI", "Full BOM comparison/replacement UI"],
+  "details": "docs/99-项目治理/全平台整改交接/B0-2026-11-01-同类加载问题收尾.md",
+  "validation": "docs/99-项目治理/全平台整改交接/evidence/category-loading-closeout-20261101/validation-summary.json"
+}

@@ -28,6 +28,38 @@ void main() {
 
   tearDown(() => registry.dispose());
 
+  for (final path in ['/auth/login', '/api/auth/login']) {
+    test(
+      'failed sign-in $path permits server replacement after the request ends',
+      () async {
+        final request = api.post(path, body: {'loginAccount': 'fixture'});
+        final rejected = expectLater(request, throwsA(isA<ApiException>()));
+        expect(registry.snapshot.serverReloadSafe, isFalse);
+        await adapter.ready(1);
+        adapter.respond(0, '{}', status: 503);
+        await rejected;
+        expect(safety.pendingCount, 0);
+        expect(registry.snapshot.serverReloadSafe, isTrue);
+      },
+    );
+  }
+
+  for (final path in [
+    '/auth/change-password',
+    '/auth/refresh',
+    '/auth/logout',
+    '/auth/login/extra',
+  ]) {
+    test('$path retains its uncertainty protection', () async {
+      final request = api.post(path);
+      final rejected = expectLater(request, throwsA(isA<ApiException>()));
+      await adapter.ready(1);
+      adapter.respond(0, '{}', status: 503);
+      await rejected;
+      expect(registry.snapshot.serverReloadSafe, isFalse);
+    });
+  }
+
   test(
     'overlapping reads and commands remain busy until both finish',
     () async {
@@ -172,6 +204,81 @@ void main() {
       adapter.fail(0, DioExceptionType.receiveTimeout);
       await rejected;
       expect(registry.snapshot.isSafe, isTrue);
+    },
+  );
+
+  for (final path in [
+    '/platform-columns/goods/values:batch',
+    '/api/platform-columns/expense_claim_item/values:batch',
+    '/notices/read-all',
+    '/notices/read-by-route',
+    '/notices/read-by-source',
+    '/notices/11111111-1111-4111-8111-111111111111/read',
+    '/notices/11111111-1111-4111-8111-111111111111/popup-ack',
+  ]) {
+    test(
+      'server restart during $path does not leave a permanent update lock',
+      () async {
+        final request = path.contains('values:batch')
+            ? api.postList(path, body: {'recordIds': <String>[]})
+            : api.post(path);
+        final rejected = expectLater(request, throwsA(isA<ApiException>()));
+        expect(registry.snapshot.busy, isTrue);
+        await adapter.ready(1);
+        adapter.respond(0, 'backend restarting', status: 502);
+        await rejected;
+        expect(registry.snapshot.busy, isFalse);
+        expect(registry.snapshot.blocked, isFalse);
+
+        final recovered = api.get('/auth/me');
+        await adapter.ready(2);
+        adapter.respond(1, '{}');
+        await recovered;
+        expect(registry.snapshot.safeToReload, isTrue);
+      },
+    );
+  }
+
+  for (final path in [
+    '/notices/11111111-1111-4111-8111-111111111111/complete',
+    '/notices/11111111-1111-4111-8111-111111111111/acknowledge',
+    '/notices/batch-delete',
+    '/notices/read-by-route/other',
+    '/platform-columns/goods/definitions',
+    '/platform-columns/goods/definitions/11111111-1111-4111-8111-111111111111/use',
+    '/platform-columns/goods/values:batch/other',
+  ]) {
+    test(
+      'a failed business or unknown POST $path retains commit protection',
+      () async {
+        final request = api.post(path);
+        final rejected = expectLater(request, throwsA(isA<ApiException>()));
+        await adapter.ready(1);
+        adapter.respond(0, 'backend restarting', status: 502);
+        await rejected;
+        expect(registry.snapshot.busy, isFalse);
+        expect(registry.snapshot.blocked, isTrue);
+      },
+    );
+  }
+
+  test(
+    'a failed read receipt cannot clear an earlier uncertain business write',
+    () async {
+      final write = api.put('/save');
+      final writeRejected = expectLater(write, throwsA(isA<ApiException>()));
+      await adapter.ready(1);
+      adapter.respond(0, 'backend restarting', status: 502);
+      await writeRejected;
+      final receipt = api.post('/notices/read-by-route');
+      final receiptRejected = expectLater(
+        receipt,
+        throwsA(isA<ApiException>()),
+      );
+      await adapter.ready(2);
+      adapter.respond(1, 'backend restarting', status: 502);
+      await receiptRejected;
+      expect(registry.snapshot.blocked, isTrue);
     },
   );
 

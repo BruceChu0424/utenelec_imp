@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 // 客户收货地址簿弹窗（V300）：出货开单时选择/新增/删除该客户的收货地址。
 //
 // 交互（简而易懂）：
@@ -34,7 +35,7 @@ Future<ClientShipAddress?> showClientShipAddressSheet(
   required String clientId,
   required String clientName,
 }) {
-  return showModalBottomSheet<ClientShipAddress?>(
+  return showUtenModalBottomSheet<ClientShipAddress?>(
     context: context,
     isScrollControlled: true,
     isDismissible: false,

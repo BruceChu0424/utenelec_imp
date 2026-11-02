@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
 import '../../core/l10n/gen/app_localizations.dart';
+import '../../core/router/route_names.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/web_update/web_update_safety.dart';
 import 'client_update_controller.dart';
@@ -23,7 +24,7 @@ Future<bool?> showClientUpdateDialog(
   }
 
   route = DialogRoute<bool>(
-    settings: const RouteSettings(name: '/settings/software-update-offer'),
+    settings: const RouteSettings(name: RouteName.clientUpdateOffer),
     context: context,
     barrierDismissible: false,
     builder: (_) => ClientUpdateDialog(controller: controller),
@@ -50,9 +51,7 @@ Future<void> showClientUpdateCountdownDialog(
   final navigator = Navigator.of(context, rootNavigator: true);
   return navigator.push(
     DialogRoute<void>(
-      settings: const RouteSettings(
-        name: '/settings/software-update-countdown',
-      ),
+      settings: const RouteSettings(name: RouteName.clientUpdateCountdown),
       context: context,
       barrierDismissible: false,
       builder: (_) => ClientUpdateCountdownDialog(
@@ -108,15 +107,20 @@ class _ClientUpdateCountdownDialogState
     if (webUpdateSafety.safeToReload) {
       _install(automatic: true);
     } else if (!_waitingForSafety) {
-      setState(() => _waitingForSafety = true);
+      setState(() {
+        _remaining = 0;
+        _waitingForSafety = true;
+      });
     }
   }
 
   void _safetyChanged() {
-    if (_finished || !_waitingForSafety || !webUpdateSafety.safeToReload) {
-      return;
+    if (_finished || !mounted) return;
+    if (_waitingForSafety && webUpdateSafety.safeToReload) {
+      _install(automatic: true);
+    } else {
+      setState(() {});
     }
-    _install(automatic: true);
   }
 
   Future<void> _install({required bool automatic}) async {

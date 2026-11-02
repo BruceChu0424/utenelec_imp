@@ -208,6 +208,44 @@ Future<void> _tapAndConfirm(WidgetTester tester, String buttonKey) async {
 }
 
 void main() {
+  testWidgets('manager review stage never falls back to draft guidance', (
+    tester,
+  ) async {
+    await _pump(
+      tester,
+      _quote(
+        status: 2,
+        actions: const ['withdraw'],
+        extra: const {
+          'statusBucket': 'PENDING_MANAGER',
+          'managerReview': {'state': 'PENDING'},
+        },
+      ),
+    );
+    expect(find.textContaining('等待销售负责人审核，通过后转交财务核价'), findsOneWidget);
+    expect(find.textContaining('草稿：先提交'), findsNothing);
+    expect(find.byKey(const ValueKey('sales-quote-submit')), findsNothing);
+    expect(find.byKey(const ValueKey('sales-quote-withdraw')), findsOneWidget);
+  });
+  testWidgets(
+    'manager rejection displays the actual reason and resubmission step',
+    (tester) async {
+      await _pump(
+        tester,
+        _quote(
+          status: 0,
+          actions: const ['edit', 'submit'],
+          extra: const {
+            'statusBucket': 'MANAGER_REJECTED',
+            'managerReview': {'state': 'REJECTED', 'rejectReason': '请核对起订量'},
+          },
+        ),
+      );
+      expect(find.textContaining('负责人已驳回：请核对起订量'), findsOneWidget);
+      expect(find.byKey(const ValueKey('sales-quote-submit')), findsOneWidget);
+      expect(find.textContaining('财务退回:'), findsNothing);
+    },
+  );
   testWidgets(
     'deleted first requotation opens through history endpoint and rejects every write capability',
     (tester) async {
@@ -424,38 +462,42 @@ void main() {
     expect(find.textContaining('历史记录保留：客户未接受报价'), findsOneWidget);
   });
 
-  testWidgets('draft quote: submit for finance pricing, no self-approval', (
-    tester,
-  ) async {
-    final api = await _pump(
-      tester,
-      _quote(status: 0, actions: const ['edit', 'delete', 'submit']),
-      // 本地持有旧的报价审核能力也不再出现「审核」按钮。
-      permissions: const {
-        Perm.salesQuoteView,
-        Perm.salesQuoteEdit,
-        Perm.salesQuoteDelete,
-      },
-    );
-    expect(find.byKey(const Key('sales-quote-status-strip')), findsOneWidget);
-    expect(find.textContaining('提交财务核价'), findsWidgets);
-    expect(find.byKey(const ValueKey('sales-quote-submit')), findsOneWidget);
-    expect(find.byKey(const ValueKey('sales-doc-edit')), findsOneWidget);
-    expect(find.byKey(const ValueKey('sales-quote-delete')), findsOneWidget);
-    expect(find.text('审核'), findsNothing);
-    expect(find.byKey(const ValueKey('sales-quote-convert')), findsNothing);
+  testWidgets(
+    'draft quote: submit for manager review before finance, no self-approval',
+    (tester) async {
+      final api = await _pump(
+        tester,
+        _quote(status: 0, actions: const ['edit', 'delete', 'submit']),
+        // 本地持有旧的报价审核能力也不再出现「审核」按钮。
+        permissions: const {
+          Perm.salesQuoteView,
+          Perm.salesQuoteEdit,
+          Perm.salesQuoteDelete,
+        },
+      );
+      expect(find.byKey(const Key('sales-quote-status-strip')), findsOneWidget);
+      expect(find.textContaining('提交负责人审核'), findsWidgets);
+      expect(find.byKey(const ValueKey('sales-quote-submit')), findsOneWidget);
+      expect(find.byKey(const ValueKey('sales-doc-edit')), findsOneWidget);
+      expect(find.byKey(const ValueKey('sales-quote-delete')), findsOneWidget);
+      expect(find.text('审核'), findsNothing);
+      expect(find.byKey(const ValueKey('sales-quote-convert')), findsNothing);
 
-    api.afterPost = _quote(status: 2, actions: const ['withdraw']);
-    await _tapAndConfirm(tester, 'sales-quote-submit');
-    expect(api.postPaths, contains('/sales/quotes/quote-1/submit'));
-    expect(api.postBodies['/sales/quotes/quote-1/submit'], {
-      'expectedRevision': 4,
-    });
-    // 重读后进入待财务核价：只剩撤回。
-    expect(find.byKey(const ValueKey('sales-quote-withdraw')), findsOneWidget);
-    expect(find.byKey(const ValueKey('sales-quote-submit')), findsNothing);
-    expect(find.textContaining('正在等财务定价格'), findsOneWidget);
-  });
+      api.afterPost = _quote(status: 2, actions: const ['withdraw']);
+      await _tapAndConfirm(tester, 'sales-quote-submit');
+      expect(api.postPaths, contains('/sales/quotes/quote-1/submit'));
+      expect(api.postBodies['/sales/quotes/quote-1/submit'], {
+        'expectedRevision': 4,
+      });
+      // 重读后进入待财务核价：只剩撤回。
+      expect(
+        find.byKey(const ValueKey('sales-quote-withdraw')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const ValueKey('sales-quote-submit')), findsNothing);
+      expect(find.textContaining('正在等财务定价格'), findsOneWidget);
+    },
+  );
 
   testWidgets('pending quote can only be withdrawn', (tester) async {
     final api = await _pump(

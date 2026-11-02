@@ -232,7 +232,7 @@ void main() {
           (tester) async {
             await _mount(tester, width, scale, brightness);
             expect(tester.takeException(), isNull);
-            expect(find.text('更多操作'), findsOneWidget);
+            expect(find.byTooltip('更多操作'), findsOneWidget);
             final actionBounds = tester.getRect(
               find.byKey(const Key('uten-app-bar-more-actions')),
             );
@@ -252,7 +252,7 @@ void main() {
               reason:
                   'preferred category height must contain its painted outline',
             );
-            await tester.tap(find.text('更多操作'));
+            await tester.tap(find.byTooltip('更多操作'));
             await tester.pumpAndSettle();
             expect(find.text('权限设置'), findsOneWidget);
             final container = ProviderScope.containerOf(
@@ -313,9 +313,9 @@ void main() {
           }
           expect(tester.takeException(), isNull);
         }
-        await tester.tap(find.text('全屏'));
+        await tester.tap(find.bySemanticsLabel('全屏'));
         await tester.pumpAndSettle();
-        expect(find.text('退出全屏'), findsOneWidget);
+        expect(find.bySemanticsLabel('退出全屏'), findsOneWidget);
         for (final phase in [
           _Phase.empty,
           _Phase.loading,
@@ -325,7 +325,7 @@ void main() {
           state.show(phase);
           await tester.pump(const Duration(milliseconds: 200));
           if (phase != _Phase.loading) await tester.pumpAndSettle();
-          expect(find.text('退出全屏'), findsOneWidget);
+          expect(find.bySemanticsLabel('退出全屏'), findsOneWidget);
           if (phase == _Phase.short) {
             expect(find.text('0 个'), findsOneWidget);
             expect(find.text('数量未留存 个'), findsOneWidget);
@@ -355,9 +355,9 @@ void main() {
         final totalBounds = tester.getRect(find.text('数量未留存 个'));
         expect(totalBounds.left, greaterThanOrEqualTo(0));
         expect(totalBounds.right, lessThanOrEqualTo(width));
-        await tester.tap(find.text('退出全屏'));
+        await tester.tap(find.bySemanticsLabel('退出全屏'));
         await tester.pumpAndSettle();
-        expect(find.text('全屏'), findsOneWidget);
+        expect(find.bySemanticsLabel('全屏'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );

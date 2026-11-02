@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | HrProfileChangeDetailPage @37 (page-class)<br>_HrProfileChangeDetailPageState @46 (state-class) |
-| 真实路由绑定 | /hr/profile-changes/:id；router @2329；builder ['HrProfileChangeDetailPage']；redirect None |
+| 真实路由绑定 | /hr/profile-changes/:id；router @2366；builder ['HrProfileChangeDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | profile:review @162；定义 lib/shared/auth/permissions.dart:79 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | HrProfileChangesListPage @61 (page-class)<br>_HrProfileChangesListPageState @69 (state-class) |
-| 真实路由绑定 | /hr/profile-changes；router @2324；builder ['HrProfileChangesListPage']；redirect None |
+| 真实路由绑定 | /hr/profile-changes；router @2361；builder ['HrProfileChangesListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | profile:review @453；定义 lib/shared/auth/permissions.dart:79<br>profile:review @459；定义 lib/shared/auth/permissions.dart:79 |
 | 接口常量 | 未静态确认；不能当作不存在 |

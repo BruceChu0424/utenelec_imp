@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | MyVisitorsPage @47 (page-class)<br>_MyVisitorsPageState @54 (state-class) |
-| 真实路由绑定 | /my-visitors；router @2248；builder ['MyVisitorsPage']；redirect None |
+| 真实路由绑定 | /my-visitors；router @2285；builder ['MyVisitorsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | visitor:host_confirm @345；定义 lib/shared/auth/permissions.dart:72<br>visitor:host_confirm @354；定义 lib/shared/auth/permissions.dart:72<br>visitor:host_confirm @363；定义 lib/shared/auth/permissions.dart:72 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | VisitorApprovalDetailPage @30 (page-class)<br>_VisitorApprovalDetailPageState @39 (state-class) |
-| 真实路由绑定 | /visitor-approval/:id；router @2241；builder ['VisitorApprovalDetailPage']；redirect None |
+| 真实路由绑定 | /visitor-approval/:id；router @2278；builder ['VisitorApprovalDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | visitor:approve @51；定义 lib/shared/auth/permissions.dart:71<br>visitor:approve @294；定义 lib/shared/auth/permissions.dart:71 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | VisitorApprovalListPage @53 (page-class)<br>_VisitorApprovalListPageState @61 (state-class) |
-| 真实路由绑定 | /visitor-approval；router @2236；builder ['VisitorApprovalListPage']；redirect None |
+| 真实路由绑定 | /visitor-approval；router @2273；builder ['VisitorApprovalListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | visitor:approve @496；定义 lib/shared/auth/permissions.dart:71<br>visitor:approve @505；定义 lib/shared/auth/permissions.dart:71 |
 | 接口常量 | 未静态确认；不能当作不存在 |

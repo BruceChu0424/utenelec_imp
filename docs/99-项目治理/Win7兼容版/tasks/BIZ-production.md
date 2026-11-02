@@ -625,9 +625,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`。
+证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`；`docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史.md`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-10-31 Flutter where-used opens the shared goods BOM editor directly and keeps relation history in row context menu. Native where-used, editable BOM navigation and comparison windows remain unported. Preserve permissions, history/current-BOM distinction and shared transaction contract. See E-MOULD-BOM-WINDOWS-20261031.。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-10-31 Flutter where-used opens the shared goods BOM editor directly and keeps relation history in row context menu. Native where-used, editable BOM navigation and comparison windows remain unported. Preserve permissions, history/current-BOM distinction and shared transaction contract. See E-MOULD-BOM-WINDOWS-20261031.；2026-11-01追加：货品历史按当前价格/成本/折扣及扩展字段查看权，在服务端分页前隐藏无可读差异的记录；详情直读及恢复同样限制。物料反查使用共用货品主档/BOM入口，成功实际变更由同一数据库触发器纳入货品历史。原生全局历史/物料反查仍未迁移；见docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史.md。。
 
 ## W7-BIZ-117
 

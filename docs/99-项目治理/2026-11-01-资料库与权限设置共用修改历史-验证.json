@@ -1,0 +1,411 @@
+{
+  "schemaVersion": 1,
+  "clientDate": "2026-11-01",
+  "branch": "uimp/history-company-permissions-20261101",
+  "baseCommit": "bd7e8525be1ef52db2a6cfb10268fdbd8310844c",
+  "classification": [
+    "frontend",
+    "backend",
+    "shared-contract"
+  ],
+  "sharedUi": "lib/shared/history",
+  "sharedDto": "server/src/main/java/com/uten/imp/common/history/RecordHistory.java",
+  "companyVisibilityPort": "server/src/main/java/com/uten/imp/application/port/CompanyFileHistoryAccessPort.java",
+  "historyStore": "master_record_versions",
+  "migration": "V988__company_and_permission_record_history.sql",
+  "masterCompatibilityEntries": [
+    "lib/features/basic_data/pages/master_record_history_page.dart",
+    "lib/features/basic_data/pages/master_record_revision_page.dart",
+    "lib/features/basic_data/widgets/master_record_history_panel.dart",
+    "lib/features/basic_data/widgets/master_record_revision_body.dart",
+    "lib/features/basic_data/repositories/master_record_history_repository.dart"
+  ],
+  "callerSourceReferences": [
+    "lib/core/router/app_router.dart",
+    "lib/features/admin/pages/admin_permissions_page.dart",
+    "lib/features/basic_data/pages/master_record_history_page.dart",
+    "lib/features/basic_data/pages/master_record_revision_page.dart",
+    "lib/features/basic_data/pages/payment_style_page.dart",
+    "lib/features/basic_data/pages/product_category_page.dart",
+    "lib/features/basic_data/pages/settlement_method_page.dart",
+    "lib/features/basic_data/widgets/goods_detail_body.dart",
+    "lib/features/basic_data/widgets/master_detail_sheet.dart",
+    "lib/features/basic_data/widgets/master_edit_dialog.dart",
+    "lib/features/basic_data/widgets/master_operation_history_panel.dart",
+    "lib/features/company_files/pages/company_files_page.dart",
+    "lib/shared/history/record_history_action.dart",
+    "lib/shared/history/record_history_page.dart",
+    "lib/shared/history/record_history_repository.dart",
+    "lib/shared/history/record_revision_body.dart",
+    "lib/shared/history/record_revision_page.dart"
+  ],
+  "securityCases": [
+    "current node and ancestor ACL",
+    "local deny and inheritance cuts",
+    "password session and rotation",
+    "pending ownership",
+    "ACL/password history additionally requires manage_permissions",
+    "old and new folder references",
+    "authorization:manage plus superAdmin",
+    "late response and privilege loss",
+    "fresh scoped paging and return",
+    "price-only hidden before pagination",
+    "explicit price view required independently of edit",
+    "mixed fields and visible source/action/count only",
+    "cost/discount/protected extension and calculated fields",
+    "known-ID detail/restore denial",
+    "generic restore restriction for unreadable fields",
+    "transaction rollback and immutable retention"
+  ],
+  "whereUsedChain": [
+    "WhereUsedReportPage._openProductDetail",
+    "RoutePath.basicinfoGoodsDetail(id,tab:bom)",
+    "GoodsDetailPage/GoodsDetailBody",
+    "GoodsRepository.update -> PUT /master/goods/{id}",
+    "GoodsController/GoodsService.update -> goods",
+    "GoodsBomRepository -> goods_bom_items",
+    "V898/V899 always-on capture -> master_record_versions"
+  ],
+  "verification": {
+    "backendDistinct": 109,
+    "backendReports": [
+      {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "class": "com.uten.imp.audit.CompanyFileAuditTest",
+        "reportSha256": "4933f75ad75703f660ec43c96a85993ce49900b41fb57bd419b57c9665cb70a9",
+        "cases": [
+          "changingFolderVisibilityAndPasswordIsHighRiskAuthorization",
+          "successfulMetadataViewsHaveSpecificChineseLabelsWithoutDocumentFields",
+          "companyLibraryActionsHaveBusinessNamesWithoutAccountLockWording",
+          "scopedHistoryReadsHaveBusinessLabels"
+        ]
+      },
+      {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "class": "com.uten.imp.features.companyfiles.CompanyFileCapabilitiesTest",
+        "reportSha256": "9a26def12dcb5087ec0c3066a24d54c2c69b5439c7faba8424d2cf15768eaa3e",
+        "cases": [
+          "unboundBootstrapAccountCanManageMetadataButNeverAdvertisesOrStartsAnAttachmentUpload"
+        ]
+      },
+      {
+        "tests": 33,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "class": "com.uten.imp.features.companyfiles.CompanyFileLibraryPostgresTest",
+        "reportSha256": "cd3ef9b7128ccadeee02ee386993503351da2225a7e5862a0a19ae3b98e99627",
+        "cases": [
+          "actualCatalogContainsIndependentActionsAndOneSynchronizedSurface",
+          "cleanTextOriginalCannotPublishThroughAPendingExecutableAlias",
+          "moduleActionsNeverInventMissingGenericAttachmentPermissions",
+          "maximumHierarchyDepthIsEnforcedAtTheDatabaseBoundary",
+          "lockedFolderMetadataIsAuditedButItsDescendantsRequireTheCurrentSessionUnlock",
+          "attachmentReadCannotBorrowUploadPermissionAndPublishedOriginalCannotBeReplaced",
+          "savingTheSameAclIsANoOpWithoutInventingAnotherVersion",
+          "isolatedFolderGrantsOnlyItsAclActionsAndGlobalAdministrationCodesStillApply",
+          "deletedPasswordFolderCanBeUnlockedAndRestoredFromANewSession",
+          "activeNamesAreCaseInsensitiveAndRestoreCannotSilentlyReplaceAnotherFile",
+          "passwordHashIsExcludedFromRealTriggerAudit",
+          "authorizationSnapshotHoldsSharedLockAcrossNodeAndAclReadsSoTwoDeniedStatesCannotMixIntoAnAllow",
+          "completeReorderUsesEveryExpectedVersionAndRejectsStaleFullDragState",
+          "passwordCapabilityDoesNotSurviveAclRevocationOrPasswordRotation",
+          "databaseRejectsCyclesAndMovingIntoFileEvenOutsideTheController",
+          "deniedAncestorCannotBeBypassedByChildAllowOrKnownIdentifiers",
+          "ordinaryAuthorizedLibraryManagerCanRecycleAnInactiveCreatorsPendingReservationWithoutBypassingAclOrPassword",
+          "lostCreateResponseCanReuseOneRequestIdWithoutDuplicatingIdentity",
+          "metadataHeadersFilterAllAuthorizedChildrenBeforePagingAndNeverTreatUnknownSizeAsZero",
+          "costlyPasswordHashDoesNotHoldTheGlobalTreeWriteLock",
+          "staleVersionAndPartialReorderNeverOverwriteConcurrentWork",
+          "deletingSubtreeIsAtomicWhenAnyDescendantDeniesDeletion",
+          "restorationOnlyRestoresTheCurrentDeletionBatchAndKeepsOriginalReference",
+          "passwordUnlockIsBoundToSessionAndKnownDescendantCannotLeakProtectedMetadata",
+          "fileRenameKeepsTheOriginalFinalExtensionAndCannotCreateAnExecutableDownloadAlias",
+          "movingADeepSubtreeCannotBypassTheDatabaseDepthLimit",
+          "detailAuditDoesNotRecordAuthenticationPermissionOrMissingObjectRejections",
+          "detailMetadataNeedsOnlyViewAndAuditsTheViewerRatherThanTheCreator",
+          "aclActionsAndNodeIdentityCannotBeRewrittenIntoAnInvalidShape",
+          "restorePermissionDoesNotBorrowUploadOrCreatePermissionForRetainedBytes",
+          "trashRootsAcrossManyPastDirectoriesRemainPagedAndRespectCurrentAcl",
+          "moveChecksBothDestinationPermissionAndCycleWithoutPartialWrites",
+          "deniedAncestorStopsDetailBeforeAnySuccessfulAuditCanBeRecorded"
+        ]
+      },
+      {
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "class": "com.uten.imp.features.companyfiles.ScopedRecordHistoryPostgresTest",
+        "reportSha256": "003976268e7468634ecfc5595cdb5e4c16979883a1f4ab33ec60cf402f7c5b68",
+        "cases": [
+          "permissionHistoryRequiresBothAdministratorAndAuthorizationPermission",
+          "historyRollsBackWithBusinessMutationAndRemainsAppendOnly",
+          "currentAclHidesCreationRecordsAndDirectDetailsForFoldersAndFiles",
+          "paginationSkipsMoreThanOneBatchOfHiddenFactsWithoutLeakingCountsOrCursors",
+          "localDenyAndNonInheritingCutsAreIdenticalToExplorerVisibility",
+          "aclDetailsAndPasswordFactsRequireLocalManagementRightsAndNeverExposeHashes",
+          "passwordLockCoversFolderHistoryAndDescendantsAndSessionExpiry",
+          "movedRecordDoesNotDiscloseItsNowHiddenPreviousFolder"
+        ]
+      },
+      {
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "class": "com.uten.imp.features.history.ScopedRecordHistoryControllerSecurityTest",
+        "reportSha256": "b98c17e790ddc9b39ca226a93d441840001ced32271beeef19c667169c1d1449",
+        "cases": [
+          "fileDetailCannotUseAccountSupportOrUnrelatedViewPermission",
+          "inheritedPermissionListRequiresBothPrivilegesBeforeServiceInvocation"
+        ]
+      },
+      {
+        "tests": 2,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "class": "com.uten.imp.features.master.history.MasterRecordHistoryControllerTest",
+        "reportSha256": "0fc8b85dd2a6e4fec95654919a18fe14b1cd3b5521378550fc54c23b1dd4abd6",
+        "cases": [
+          "deniedOrMissingHistoryNeverRecordsASuccessfulDetailView",
+          "resolvedHistoryRecordsOneSpecificDetailViewForItsBusinessObjectAndRevision"
+        ]
+      },
+      {
+        "tests": 40,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "class": "com.uten.imp.features.master.history.MasterRecordHistoryPostgresTest",
+        "reportSha256": "60487443ed776bfff38b5e81fbd054eeea2a757f921476cd6920169f2fa2ab3f",
+        "cases": [
+          "mixedPublicAndPrivateHistoryShowsOnlyPublicFieldsAndCannotRestoreHiddenValues",
+          "accountHistoryUsesItsOwnCurrencyAndSubjectLabelsWithoutExposingTheirDirectories",
+          "salePriceVisibilityNeverRevealsLearnedPurchaseOrSubcontractCosts",
+          "aLowerAllocatedFactCommittedLateInvalidatesTheWholeObjectToken",
+          "anotherActorCanReadTheExactDiffAndRestoreAnOlderVersionAsANewFact",
+          "restoringOnlyEnglishProvenanceStillRechecksTheSalesOrDedicatedAuthority",
+          "historyCategoryTreeIncludesDeletedNodesAndRequiresItsOwnViewPermission",
+          "salePriceVisibilityNeverGrantsDiscountHistoryOrDiscountRestoration",
+          "relatedRowsFromOneCommandAreRestoredAtomicallyAndLaterPrimaryChoicesArePreserved",
+          "warehouseHistoryUsesNativeNameNormalizationAndLineSideReadOnlyPolicy",
+          "aFailedBomEventAppendRollsBackTheRestoredGraphAndItsNewVersion",
+          "bomVersionRestoreKeepsReadEditAndDeleteAuthoritiesSeparate",
+          "returningToBeforeCreationSoftDeletesTheNewIdentityAndRequiresCurrentDeletePermission",
+          "goodsHistoryMasksEveryPriceAndCostFamilyAndDoesNotInventABomViewPermission",
+          "extensionValuesUseTheExistingGuardedWriterAndProtectedValuesNeverCrossTheHistoryApi",
+          "categoryDeletionRestoresTheOriginalSubtreeAndItsRecordsAtomically",
+          "bomCostHistoryUsesTheCostGrantAndMixedVersionsDoNotRevealHiddenCostChanges",
+          "costOnlyAndDiscountOnlyHistoryRequireTheirRespectiveViewPermissions",
+          "accountReceiptAndPaymentTotalsRequireTheBalanceViewPermission",
+          "restoringSeveralBomEdgesPublishesOneDurableUpdateForTheParent",
+          "anEmptyExtensionCellDoesNotBecomeAnUnchangedCreationDifference",
+          "anInFlightReferenceWriterIsRejectedBeforeAnyRestoreWrites",
+          "legacyActorIdsResolveToPublicEmployeeAndAccountLabels",
+          "unifiedFiltersUseAuthorisedPublicMetadataAndNeverSearchProtectedRawValues",
+          "subcontractLossPolicyRestorationRequiresItsNativeCostPermission",
+          "customerFinancialVersionRestoreRequiresCurrentFinancePermission",
+          "indexedCategoryCandidatesRetainDescendantsMovedOutFactsAndExactCursorPagesWithoutDuplicates",
+          "softDeletionCanBeRecoveredAndEvidenceCannotBeRewrittenOrTruncated",
+          "creationDifferencesSkipEmptyAndTechnicalValuesAndUseBusinessFieldLabels",
+          "currentObjectScopeAndWhitelistedDomainAreEnforced",
+          "aCustomerOwnerUsesTheExistingPublicEmployeeNameProjection",
+          "periodicBomEdgesRemainVisibleAndRespectTheNativeRestoreGuard",
+          "restoringABomRejectsDisabledComponentsAndAChangedGraphWithoutPartialWrites",
+          "deletingANewGoodsVersionDoesNotInventAMissingToNullPriceOrCostChange",
+          "forwardPreviousCategoryIndexIsReadyAndMatchesTheTypedCandidateExpression",
+          "priceOnlyHistoryIsHiddenInListsDetailsAndRestoreWithoutExplicitPriceView",
+          "systemChangesWithoutAnHttpRequestAreCapturedAndPageCursorsStayBounded",
+          "viewPermissionDoesNotPermitRestoreAndAStaleHeadNeverOverwritesNewChanges",
+          "fieldVisibilityRunsBeforePaginationAndUsesTheFinalCommandDifference",
+          "restoringAnOldSchemaSnapshotPreservesFieldsAddedLater"
+        ]
+      },
+      {
+        "tests": 19,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "class": "com.uten.imp.features.master.history.MasterRecordHistoryReferenceBatchTest",
+        "reportSha256": "2c34fcbfb78f30f92b66fb1760a811759c94eb699295e2d08a244eaa3e5fa0ea",
+        "cases": [
+          "revokedReferencePermissionsAndAccountCurrencyExceptionsAreOperationLocal",
+          "threeHundredDistinctChangedReferencesUseTwoQueriesAndNeverLoadUnchangedOnes",
+          "unresolvedPeopleAndDepartmentsAreBatchedOnceAndKeepDistinctUnavailableMessages",
+          "clientAndGoodsObjectAuthorizationStillFiltersEachResolvedLabel",
+          "everySupportedReferenceKeepsItsLabelAndDeletedMarkerWithoutLoadingPayloads(String, String, String)[1]",
+          "everySupportedReferenceKeepsItsLabelAndDeletedMarkerWithoutLoadingPayloads(String, String, String)[2]",
+          "everySupportedReferenceKeepsItsLabelAndDeletedMarkerWithoutLoadingPayloads(String, String, String)[3]",
+          "everySupportedReferenceKeepsItsLabelAndDeletedMarkerWithoutLoadingPayloads(String, String, String)[4]",
+          "everySupportedReferenceKeepsItsLabelAndDeletedMarkerWithoutLoadingPayloads(String, String, String)[5]",
+          "everySupportedReferenceKeepsItsLabelAndDeletedMarkerWithoutLoadingPayloads(String, String, String)[6]",
+          "everySupportedReferenceKeepsItsLabelAndDeletedMarkerWithoutLoadingPayloads(String, String, String)[7]",
+          "everySupportedReferenceKeepsItsLabelAndDeletedMarkerWithoutLoadingPayloads(String, String, String)[8]",
+          "everySupportedReferenceKeepsItsLabelAndDeletedMarkerWithoutLoadingPayloads(String, String, String)[9]",
+          "everySupportedReferenceKeepsItsLabelAndDeletedMarkerWithoutLoadingPayloads(String, String, String)[10]",
+          "everySupportedReferenceKeepsItsLabelAndDeletedMarkerWithoutLoadingPayloads(String, String, String)[11]",
+          "everySupportedReferenceKeepsItsLabelAndDeletedMarkerWithoutLoadingPayloads(String, String, String)[12]",
+          "everySupportedReferenceKeepsItsLabelAndDeletedMarkerWithoutLoadingPayloads(String, String, String)[13]",
+          "everySupportedReferenceKeepsItsLabelAndDeletedMarkerWithoutLoadingPayloads(String, String, String)[14]",
+          "everySupportedReferenceKeepsItsLabelAndDeletedMarkerWithoutLoadingPayloads(String, String, String)[15]"
+        ]
+      }
+    ],
+    "backendSourceDigests": {
+      "server/src/main/java/com/uten/imp/application/port/CompanyFileHistoryAccessPort.java": "56095d0ca30abc328c59824be7e0fc975e2c1b2353eabfa0e1c3de5622ca537b",
+      "server/src/main/java/com/uten/imp/audit/AuditEventInterpreter.java": "4c99b439039d13e6122c2199429265061e345558483b9ecaafc5ccedd2d60d49",
+      "server/src/main/java/com/uten/imp/common/history/RecordHistory.java": "7ce04c90a32be6a642c4fa2a461f0013ec77dc17bec9c05251612db02225c93b",
+      "server/src/main/java/com/uten/imp/features/companyfiles/CompanyFileService.java": "b76b76ee70adaab34acf3c19e986b3691b97c44ad51ab90cb8d0679bd7dd00d1",
+      "server/src/main/java/com/uten/imp/features/history/CompanyFileHistoryController.java": "97de7901e7c62e58335b8a59d8a45463bbc07082021e7baba90fdafbd3e50136",
+      "server/src/main/java/com/uten/imp/features/history/PermissionHistoryController.java": "674b78fe9f9a396a23160b098496634d237f6ecba2b6bcc6129f6cbdfa0b4779",
+      "server/src/main/java/com/uten/imp/features/history/ScopedRecordHistoryController.java": "dace3e7758236c66355aa88b0d9bd2d46443b4d1b5a9ddde168907fd04367bef",
+      "server/src/main/java/com/uten/imp/features/history/ScopedRecordHistoryService.java": "7a31f076def171c6d2decad7324560b514732d432f4c1ce4eb6821b78439c97b",
+      "server/src/main/java/com/uten/imp/features/master/history/MasterRecordHistoryController.java": "db1c3bbbf72a7edc9b082ace4c67787fcbc952c703f645398b18c2364bfe3dd1",
+      "server/src/main/java/com/uten/imp/features/master/history/MasterRecordHistoryService.java": "d73120f344db1f85ef86ad7da38bec6d30d134a5c1f60f9feb7d26f3a7f90702",
+      "server/src/main/resources/db/migration/V988__company_and_permission_record_history.sql": "ee4a4644f2d32d367d38a0a00d4d9a36656efc1e621313426fa87f1e5dacad59",
+      "server/src/test/java/com/uten/imp/audit/CompanyFileAuditTest.java": "bdffc5027b77ee30ed42aba7c7e3c826d4d76073479bce1e96e257c6f3e8ce2f",
+      "server/src/test/java/com/uten/imp/features/companyfiles/ScopedRecordHistoryPostgresTest.java": "22814d95b0abb7f621ece22300e6c660719da3ca9ed57acc9fb9757d237774f8",
+      "server/src/test/java/com/uten/imp/features/history/ScopedRecordHistoryControllerSecurityTest.java": "4a99199bad5099a9e80fc5bba6df7466ccbd2ebb7eabc508a4c8f43803f9a47d",
+      "server/src/test/java/com/uten/imp/features/master/history/MasterRecordHistoryControllerTest.java": "9b44ee5a2e078403dd9eec090695cd6f464e58c980210fc5bd296b27f58af3ab",
+      "server/src/test/java/com/uten/imp/features/master/history/MasterRecordHistoryPostgresTest.java": "2ab825cb3841761d04ea9516301106b0e8905a08879f8f2ec2e1b1a90b0a963f",
+      "server/src/test/java/com/uten/imp/features/master/history/MasterRecordHistoryReferenceBatchTest.java": "35b91d99fdab34e09bb33957104a238e5ab369f3f2b0da86c7f4415e294f7b89"
+    },
+    "backendFinalLogs": [
+      "server/history-verified-source.log",
+      "server/history-fields-final.log"
+    ],
+    "flutterDistinctPassed": 214,
+    "flutterSkipped": 3,
+    "flutterSuites": [
+      {
+        "log": "history-flutter-accepted.log",
+        "passed": 158,
+        "skipped": 0,
+        "additive": true,
+        "sha256": "71d4086d44e5c572c008456cd7a8dc45217177eebc4243e40f455398cf29f70a"
+      },
+      {
+        "log": "where-used-history-verification.log",
+        "passed": 56,
+        "skipped": 3,
+        "additive": true,
+        "sha256": "2eb50edb1534aa23f603f22043c90527724b1343c17d983ddd6627b6831b5d6f"
+      },
+      {
+        "log": "scoped-history-final.log",
+        "passed": 13,
+        "skipped": 0,
+        "additive": false,
+        "sha256": "427ba66d2ad1df5527726ced2bb9ab48929203bb1269c07f7062296467c135d9"
+      }
+    ],
+    "dartAnalysis": "No issues found",
+    "governanceToolUnitTests": {
+      "passed": 20,
+      "failed": 0
+    },
+    "diffCheck": "passed",
+    "fixtureDataOnly": true,
+    "companyBusinessRequests": false
+  },
+  "previews": [
+    {
+      "file": "build/history-previews/company-wide-detail.png",
+      "sha256": "57d26aada95c306ab9927a326a1bc8042a355181392e57549693f46812bc2f80"
+    },
+    {
+      "file": "build/history-previews/company-wide-list.png",
+      "sha256": "2959149ef929387524ed3176d3649db678fc0a1a1b33a34fdb8e3e813a2cff5a"
+    },
+    {
+      "file": "build/history-previews/companyFiles-narrow-detail.png",
+      "sha256": "1e8b07d070e9296f2ce21d6f428edfeaab022f545d0a363a1030d7f89589a83d"
+    },
+    {
+      "file": "build/history-previews/companyFiles-narrow-list.png",
+      "sha256": "257ef519ecc55e6ab3ab5f950373daf8d20ca326475f4e933d5ecaf909a66d5f"
+    },
+    {
+      "file": "build/history-previews/permissions-narrow-detail.png",
+      "sha256": "a6df18dbfa7468b6b03e3f3f966d9c120dc8646cbb2ac662dd2f4ff795c3ad83"
+    },
+    {
+      "file": "build/history-previews/permissions-narrow-list.png",
+      "sha256": "0ef04be1ac2139a9efffbcb57b835a4fe009795a3d5476aa62064bb2fd0b01eb"
+    },
+    {
+      "file": "build/history-previews/permissions-wide-list.png",
+      "sha256": "77afe146b008eb252ca4fbdef44c77c8ac19e9ec51fb50f61a19e279d2e060a1"
+    }
+  ],
+  "wpf": {
+    "affectedTaskIds": [
+      "W7-BIZ-007",
+      "W7-BIZ-029",
+      "W7-BIZ-030",
+      "W7-BIZ-041",
+      "W7-BIZ-116"
+    ],
+    "newHistoryEntrances": "unported",
+    "existingUnitHistoryWireContract": "unchanged",
+    "stableTaskCount": 361,
+    "statesOwnersDependenciesAndDodPreserved": true,
+    "targetMachineAccepted": false
+  },
+  "delivery": {
+    "mergedMain": false,
+    "pushed": false,
+    "deployed": false,
+    "packaged": false,
+    "formalCiRun": false
+  },
+  "sourceSha256": {
+    "clients/windows_legacy/progress/work-items.json": "d78a80eb578d4ad10b788a1138ac9ac6905f20efc3c56e2db2af2fca711954cd",
+    "docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史.md": "c6ffa949630ea120f5a136bb01d9b6819c27b3a2b42c6106d99f3e401640c5a2",
+    "lib/core/router/app_router.dart": "e5a3d9b9be29e475ae2a94ded81280a5af40151d716e5f24b4a4f57a79e37693",
+    "lib/core/router/permission_by_path.dart": "bfb86bf4c8ebe5d73093b0c99b4634adf79e31c27c9d771cb7b0e1e0326025bf",
+    "lib/core/router/route_names.dart": "49945f3c37f367a793075057ed103ae1a0457141fa658f2efaeb308b9260b647",
+    "lib/features/admin/pages/admin_permissions_page.dart": "e80446533de2388efb8e7f9c543247fab7f29396c627bc301d79c96801af4177",
+    "lib/features/basic_data/pages/master_record_history_page.dart": "e2fb37d459b5efab3d0602f1785b0a174cb2be89086a2be599a4403942f2334e",
+    "lib/features/basic_data/pages/master_record_revision_page.dart": "a2417dac9da0cd78ec10e94bb6c05aa8a357dc14c464db6db2a8aaee1720047c",
+    "lib/features/basic_data/repositories/master_record_history_repository.dart": "f0fcd9cba16fb7f16b4676c9f54839713dafb86627ad7e6c697db08120540605",
+    "lib/features/basic_data/widgets/master_record_history_labels.dart": "b6c0b796e4c7b2d70efe239d332c299ce49174b6fecac11ccd86a3392615ac36",
+    "lib/features/basic_data/widgets/master_record_history_panel.dart": "3863bcd3fdfcfffc6ff8c2852258c27646184e023d5bbf0be88b173f14ce4101",
+    "lib/features/basic_data/widgets/master_record_revision_body.dart": "f3867067d1e5e881695e3cad3b6bde36e76249c6f64cd66ec95653ea4ea93370",
+    "lib/features/company_files/pages/company_files_page.dart": "dd621236947697e991afc5a88a8e87353ff1efb91fb946c047db6a6661041776",
+    "lib/shared/history/record_history_action.dart": "4c4b33cb372e607b097536e6ade0d7fa7f8e3db636eb8a8d50795c9a7eda88cd",
+    "lib/shared/history/record_history_area.dart": "deed803d0c4329cc86831a29f62c9f67a33e27ac2975ff408e01cb731b2e6d78",
+    "lib/shared/history/record_history_labels.dart": "ab1d5c3d3e856c92380cc55942028257fb06558b2ecd3ea3738a326bc2de665a",
+    "lib/shared/history/record_history_page.dart": "2dce2a174f48ff066864c4b2b37012b41a19225a343004798d9151f565b78af2",
+    "lib/shared/history/record_history_repository.dart": "7644b40140e6f0809589ca7c3b871f9e93d8a5ad2c05cedf2f20f328e13e2396",
+    "lib/shared/history/record_revision_body.dart": "991fbe78abb99c53fbe257314e1c4c79fa48cc5449064c6e443c534332bf7cdf",
+    "lib/shared/history/record_revision_page.dart": "9e7f10766604114009c84b824f73a848152f8c81df5f404953f1e702dd7906a8",
+    "server/src/main/java/com/uten/imp/application/port/CompanyFileHistoryAccessPort.java": "56095d0ca30abc328c59824be7e0fc975e2c1b2353eabfa0e1c3de5622ca537b",
+    "server/src/main/java/com/uten/imp/audit/AuditEventInterpreter.java": "4c99b439039d13e6122c2199429265061e345558483b9ecaafc5ccedd2d60d49",
+    "server/src/main/java/com/uten/imp/common/history/RecordHistory.java": "7ce04c90a32be6a642c4fa2a461f0013ec77dc17bec9c05251612db02225c93b",
+    "server/src/main/java/com/uten/imp/features/companyfiles/CompanyFileService.java": "b76b76ee70adaab34acf3c19e986b3691b97c44ad51ab90cb8d0679bd7dd00d1",
+    "server/src/main/java/com/uten/imp/features/history/CompanyFileHistoryController.java": "97de7901e7c62e58335b8a59d8a45463bbc07082021e7baba90fdafbd3e50136",
+    "server/src/main/java/com/uten/imp/features/history/PermissionHistoryController.java": "674b78fe9f9a396a23160b098496634d237f6ecba2b6bcc6129f6cbdfa0b4779",
+    "server/src/main/java/com/uten/imp/features/history/ScopedRecordHistoryController.java": "dace3e7758236c66355aa88b0d9bd2d46443b4d1b5a9ddde168907fd04367bef",
+    "server/src/main/java/com/uten/imp/features/history/ScopedRecordHistoryService.java": "7a31f076def171c6d2decad7324560b514732d432f4c1ce4eb6821b78439c97b",
+    "server/src/main/java/com/uten/imp/features/master/history/MasterRecordHistoryController.java": "db1c3bbbf72a7edc9b082ace4c67787fcbc952c703f645398b18c2364bfe3dd1",
+    "server/src/main/java/com/uten/imp/features/master/history/MasterRecordHistoryService.java": "d73120f344db1f85ef86ad7da38bec6d30d134a5c1f60f9feb7d26f3a7f90702",
+    "server/src/main/resources/db/migration/V988__company_and_permission_record_history.sql": "ee4a4644f2d32d367d38a0a00d4d9a36656efc1e621313426fa87f1e5dacad59",
+    "server/src/test/java/com/uten/imp/audit/CompanyFileAuditTest.java": "bdffc5027b77ee30ed42aba7c7e3c826d4d76073479bce1e96e257c6f3e8ce2f",
+    "server/src/test/java/com/uten/imp/features/companyfiles/ScopedRecordHistoryPostgresTest.java": "22814d95b0abb7f621ece22300e6c660719da3ca9ed57acc9fb9757d237774f8",
+    "server/src/test/java/com/uten/imp/features/history/ScopedRecordHistoryControllerSecurityTest.java": "4a99199bad5099a9e80fc5bba6df7466ccbd2ebb7eabc508a4c8f43803f9a47d",
+    "server/src/test/java/com/uten/imp/features/master/history/MasterRecordHistoryControllerTest.java": "9b44ee5a2e078403dd9eec090695cd6f464e58c980210fc5bd296b27f58af3ab",
+    "server/src/test/java/com/uten/imp/features/master/history/MasterRecordHistoryPostgresTest.java": "2ab825cb3841761d04ea9516301106b0e8905a08879f8f2ec2e1b1a90b0a963f",
+    "server/src/test/java/com/uten/imp/features/master/history/MasterRecordHistoryReferenceBatchTest.java": "35b91d99fdab34e09bb33957104a238e5ab369f3f2b0da86c7f4415e294f7b89",
+    "test/features/company_files/company_files_page_test.dart": "0b94a34c7ac447e5cee9384facb224b0d0e3766221c4b6aa11dc3b94076372fa",
+    "test/shared/history/scoped_record_history_test.dart": "60d1c5ffa127c635e3a0589b607e3c6235e46b7a209fe7474fe33f51acb36c59"
+  }
+}

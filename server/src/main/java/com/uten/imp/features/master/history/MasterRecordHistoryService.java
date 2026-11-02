@@ -1,5 +1,7 @@
 package com.uten.imp.features.master.history;
 
+import static com.uten.imp.common.history.RecordHistory.*;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -44,38 +46,6 @@ public class MasterRecordHistoryService {
 
   @Value("${uten.features.goods-owner-scope-enabled:false}")
   private boolean goodsOwnerScopeEnabled;
-
-  public record Change(
-      String table,
-      UUID rowId,
-      String field,
-      String label,
-      String beforeValue,
-      String afterValue) {}
-
-  public record Entry(
-      String id,
-      UUID recordId,
-      String recordLabel,
-      String action,
-      String actorName,
-      OffsetDateTime recordedAt,
-      String expectedHead,
-      int affectedCount,
-      List<Change> changes,
-      boolean canRestoreBefore,
-      boolean canRestoreAfter,
-      String blockedReason,
-      String entityType,
-      String sourceType,
-      String recordCode,
-      UUID categoryId,
-      String categoryName,
-      String summary,
-      UUID actorId,
-      String recordName) {}
-
-  public record Page(List<Entry> entries, String nextCursor) {}
 
   public record Category(
       UUID id,
@@ -505,24 +475,28 @@ public class MasterRecordHistoryService {
         categoryId == null
             ? ""
             : categoryHistoryPrefix(domain(entity));
+    boolean scopedGoods = allowed.contains("goods");
+    String displaySource = scopedGoods ? "COALESCE(visible_source.source_table,h.source_table)" : "h.source_table";
+    String displayAction = scopedGoods ? "COALESCE(visible_source.action,h.action)" : "h.action";
     StringBuilder where =
         new StringBuilder(
             " WHERE h.entity_type IN (:entities) AND h.id<:cursor AND NOT EXISTS(SELECT 1 FROM"
                 + " master_record_versions newer WHERE newer.transaction_id=h.transaction_id AND"
                 + " newer.record_id=h.record_id AND newer.entity_type=h.entity_type AND"
                 + " newer.id>h.id)");
+    if (scopedGoods) where.append(" AND (h.entity_type<>'goods' OR visible_source.source_table IS NOT NULL)");
     if (recordId != null) where.append(" AND h.record_id=:record");
     if (categoryId != null)
       where.append(
           " AND (h.record_id IN(SELECT id FROM selected_categories) OR h.category_id IN(SELECT id"
               + " FROM selected_categories) OR NULLIF(h.before_row->>'category_id','')::uuid"
               + " IN(SELECT id FROM selected_categories))");
-    if (filters.action() != null) where.append(" AND h.action=:action");
+    if (filters.action() != null) where.append(" AND "+displayAction+"=:action");
     if (present(filters.sourceType())) where.append(" AND CASE WHEN r.is_category THEN 'CATEGORY' "
-        + "WHEN h.source_table='goods_bom_items' THEN 'BOM' WHEN h.source_table='platform_record_fields' THEN 'EXTENSION' "
+        + "WHEN "+displaySource+"='goods_bom_items' THEN 'BOM' WHEN "+displaySource+"='platform_record_fields' THEN 'EXTENSION' "
         + "ELSE 'RECORD' END=:sourceType");
     if (present(filters.summaryKeyword()))
-      where.append(" AND " + summarySql() + " ILIKE :summaryKeyword ESCAPE E'\\\\'");
+      where.append(" AND " + summarySql().replace("h.source_table",displaySource).replace("h.action",displayAction) + " ILIKE :summaryKeyword ESCAPE E'\\\\'");
     if (filters.actorId() != null) where.append(" AND h.actor_id=:actor");
     if (present(filters.actorKeyword()))
       where.append(" AND " + actorLabelSql() + " ILIKE :actorKeyword ESCAPE E'\\\\'");
@@ -532,7 +506,7 @@ public class MasterRecordHistoryService {
               + " h.before_row->>'code' ILIKE :keyword ESCAPE E'\\\\' OR h.after_row->>'code' ILIKE"
               + " :keyword ESCAPE E'\\\\' OR h.before_row->>'name' ILIKE :keyword ESCAPE E'\\\\' OR"
               + " h.after_row->>'name' ILIKE :keyword ESCAPE E'\\\\' OR "
-              + summarySql()
+              + summarySql().replace("h.source_table",displaySource).replace("h.action",displayAction)
               + " ILIKE :keyword ESCAPE E'\\\\')");
     OffsetDateTime from = boundary(filters.dateFrom(), false),
         to = boundary(filters.dateTo(), true);
@@ -571,7 +545,7 @@ public class MasterRecordHistoryService {
     String sql =
         prefix
             + "SELECT "
-            + columns(false)
+            + columns(false).replace("h.source_table",displaySource).replace("h.action",displayAction)
             + ",r.code,r.name,r.category_id,r.category_name FROM "
             + (categoryId == null
                 ? "master_record_versions h"
@@ -580,6 +554,7 @@ public class MasterRecordHistoryService {
             + " LATERAL ("
             + rootLookupSql(allowed)
             + ") r ON true"
+            + (scopedGoods ? " LEFT JOIN LATERAL ("+visibleGoodsSourceSql(user)+") visible_source ON h.entity_type='goods'" : "")
             + where
             + " ORDER BY h.id DESC LIMIT :limit";
     var query =
@@ -781,6 +756,11 @@ public class MasterRecordHistoryService {
     List<Fact> group = command(fact);
     if (!readable(user, domain, fact, group))
       throw new ApiException(ErrorCode.FORBIDDEN, "当前没有此资料历史的查看权限");
+    List<Change> visibleChanges = changes(user, group);
+    if (entity.equals("goods") && !user.isSuperAdmin() && visibleChanges.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND,"记录不存在，或当前账号无权查看");
+    Fact presentation = !entity.equals("goods") || user.isSuperAdmin() ? fact : group.stream()
+        .filter(candidate -> visibleChanges.stream().anyMatch(change -> change.table().equals(candidate.table()) && change.rowId().equals(candidate.rowId())))
+        .max(Comparator.comparingLong(Fact::id)).orElse(fact);
     String beforeDenied = previewRestore(user, domain, group, true),
         afterDenied = previewRestore(user, domain, group, false);
     String denied =
@@ -800,21 +780,23 @@ public class MasterRecordHistoryService {
         Long.toString(fact.id()),
         fact.recordId(),
         root == null ? label(fact) : root.path("name").asText(),
-        fact.action(),
+        presentation.action(),
         fact.actor(),
         fact.time(),
         commandHead(entity, group),
-        group.size(),
-        changes(user, group),
+        entity.equals("goods") && !user.isSuperAdmin()
+            ? (int) visibleChanges.stream().map(change -> change.table()+":"+change.rowId()).distinct().count()
+            : group.size(),
+        visibleChanges,
         beforeDenied == null,
         afterDenied == null,
         denied,
         fact.entity(),
-        sourceType(fact),
+        sourceType(presentation),
         root == null ? "" : root.path("code").asText(""),
         category,
         categoryRow == null ? "" : categoryRow.path("name").asText(""),
-        summary(fact),
+        summary(presentation),
         fact.actorId(),
         root == null ? "" : root.path("name").asText(""));
   }
@@ -937,6 +919,7 @@ public class MasterRecordHistoryService {
     try {
       identifiers.ifPresent(service -> service.lockForRestore(entity));
       List<Fact> facts = command(selected);
+      if (entity.equals("goods") && !user.isSuperAdmin() && changes(user,facts).isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND,"记录不存在，或当前账号无权查看");
       Set<String> lockTables = new TreeSet<>();
       facts.forEach(f -> lockTables.add(f.table()));
       if (entity.equals("goods"))
@@ -1321,6 +1304,10 @@ public class MasterRecordHistoryService {
         && changed.stream().anyMatch(ClientFinancialPolicy.FINANCIAL_COLUMNS::contains))
       return "恢复客户财务字段需要当前的客户财务维护权限";
     if (row.table().equals("goods")) {
+      if ((!has(user,"goods:price:view") && changed.stream().anyMatch(MasterRecordHistoryService::goodsPriceField))
+          || (!has(user,"goods:cost:view") && changed.stream().anyMatch(MasterRecordHistoryService::goodsCostField))
+          || (!has(user,"goods:discount:view") && changed.contains("zk")))
+        return "此版本包含当前不可查看或维护的字段，请通过当前维护流程调整";
       if (!has(user, "goods:price:edit") && changed.stream().anyMatch(GOODS_PRICES::contains))
         return "此版本包含无权修改的价格字段";
       if (!has(user, "goods:discount:view") && changed.contains("zk")) return "此版本包含无权查看或修改的折扣字段";
@@ -1331,7 +1318,7 @@ public class MasterRecordHistoryService {
     }
     if (row.table().equals("goods_bom_items")
         && !has(user, "goods:cost:view")
-        && (changed.contains("price") || changed.contains("total"))) return "此版本包含无权查看或修改的组件成本";
+        && (changed.contains("price") || changed.contains("total"))) return "此版本包含当前不可查看或维护的字段，请通过当前维护流程调整";
     if (row.table().equals("accounts")
         && changed.contains("balance_floor")
         && (!has(user, "account:balance:view") || !has(user, "account:warning:manage")))
@@ -1502,7 +1489,7 @@ public class MasterRecordHistoryService {
             .getResultList();
     boolean price =
         fact.entity().equals("goods")
-            ? has(user, "goods:price:view") || has(user, "goods:price:edit")
+            ? has(user, "goods:price:view")
             : fact.entity().equals("accounts") ? has(user, "account:balance:view") : true;
     List<Change> result = new ArrayList<>();
     for (Object[] definition : definitions) {
@@ -1665,27 +1652,87 @@ public class MasterRecordHistoryService {
 
   /** One visibility policy drives both label prefetch and the final difference projection. */
   private static Set<String> changedKeys(AuthUser user, Fact fact) {
+    List<HiddenKeyRule> hidden = hiddenKeyRules(user);
     Set<String> keys = new TreeSet<>();
     if (fact.before() != null) fact.before().fieldNames().forEachRemaining(keys::add);
     if (fact.after() != null) fact.after().fieldNames().forEachRemaining(keys::add);
     keys.removeIf(key -> {
-      if (META.contains(key) || DISPLAY_INTERNAL.contains(key)) return true;
-      if (key.equals("legacy_id") || key.endsWith("_legacy_id") || key.equals("code_managed")
-          || key.equals("code_sequence") || key.equals("code_prefix_category_id")) return true;
-      if (fact.table().equals("goods")) {
-        if (key.equals("zk") && !has(user, "goods:discount:view")) return true;
-        if (goodsCostField(key) && !has(user, "goods:cost:view")) return true;
-        if (goodsPriceField(key) && !has(user, "goods:price:view") && !has(user, "goods:price:edit")) return true;
-      }
-      if (fact.table().equals("goods_bom_items") && Set.of("price", "total").contains(key)
-          && !has(user, "goods:cost:view")) return true;
-      if (fact.table().equals("accounts")
-          && (ACCOUNT_MONEY.contains(key) || key.contains("balance") || key.contains("amount"))
-          && !has(user, "account:balance:view")) return true;
+      if (hidden.stream().anyMatch(rule -> rule.matches(fact.table(),key))) return true;
       return sameDisplayValue(fact.before() == null ? null : fact.before().get(key),
           fact.after() == null ? null : fact.after().get(key));
     });
     return keys;
+  }
+
+  private enum KeyMatch { EXACT, PREFIX, SUFFIX, CONTAINS }
+
+  /** One policy builds both Java differences and SQL visibility before pagination. */
+  private record HiddenKeyRule(String table, KeyMatch match, Set<String> terms, Set<String> exceptPrefixes) {
+    boolean matches(String source, String key) {
+      if (!table.isEmpty() && !table.equals(source) || exceptPrefixes.stream().anyMatch(key::startsWith)) return false;
+      return terms.stream().anyMatch(term -> switch(match) {
+        case EXACT -> key.equals(term); case PREFIX -> key.startsWith(term);
+        case SUFFIX -> key.endsWith(term); case CONTAINS -> key.contains(term);
+      });
+    }
+    String sql(String tableExpr, String keyExpr) {
+      String termsSql = String.join(" OR ", terms.stream().sorted().map(term -> {
+        String literal=sqlLiteral(term);
+        return switch(match) {
+          case EXACT -> keyExpr+"="+literal;
+          case PREFIX -> "left("+keyExpr+","+term.length()+")="+literal;
+          case SUFFIX -> "right("+keyExpr+","+term.length()+")="+literal;
+          case CONTAINS -> "position("+literal+" in "+keyExpr+")>0";
+        };
+      }).toList());
+      String except=String.join("",exceptPrefixes.stream().sorted()
+          .map(prefix -> " AND left("+keyExpr+","+prefix.length()+")<>"+sqlLiteral(prefix)).toList());
+      return "("+(table.isEmpty()?"":tableExpr+"="+sqlLiteral(table)+" AND ")+"("+termsSql+")"+except+")";
+    }
+  }
+  private static String sqlLiteral(String value) { return "'"+value.replace("'","''")+"'"; }
+  private static HiddenKeyRule hidden(String table, KeyMatch kind, Set<String> terms) {
+    return new HiddenKeyRule(table,kind,terms,Set.of());
+  }
+  private static List<HiddenKeyRule> hiddenKeyRules(AuthUser user) {
+    Set<String> internal=new HashSet<>(META); internal.addAll(DISPLAY_INTERNAL);
+    internal.addAll(Set.of("legacy_id","code_managed","code_sequence","code_prefix_category_id"));
+    List<HiddenKeyRule> rules=new ArrayList<>(List.of(hidden("",KeyMatch.EXACT,internal),hidden("",KeyMatch.SUFFIX,Set.of("_legacy_id"))));
+    if (!has(user,"goods:discount:view")) rules.add(hidden("goods",KeyMatch.EXACT,Set.of("zk")));
+    if (!has(user,"goods:cost:view")) {
+      rules.add(hidden("goods",KeyMatch.EXACT,GOODS_COSTS));
+      rules.add(hidden("goods",KeyMatch.PREFIX,Set.of("default_purchase_price","default_subcontract_price")));
+      rules.add(hidden("goods",KeyMatch.SUFFIX,Set.of("_e","_rate","_total")));
+      rules.add(hidden("goods_bom_items",KeyMatch.EXACT,Set.of("price","total")));
+    }
+    if (!has(user,"goods:price:view")) {
+      rules.add(hidden("goods",KeyMatch.EXACT,GOODS_PRICES));
+      rules.add(new HiddenKeyRule("goods",KeyMatch.CONTAINS,Set.of("price"),Set.of("default_purchase_price","default_subcontract_price")));
+    }
+    if (!has(user,"account:balance:view")) {
+      rules.add(hidden("accounts",KeyMatch.EXACT,ACCOUNT_MONEY));
+      rules.add(hidden("accounts",KeyMatch.CONTAINS,Set.of("balance","amount")));
+    }
+    return rules;
+  }
+
+  private static String jsonDifferenceSql(String before, String after) {
+    // Missing/null/blank values have the same public meaning as sameDisplayValue.
+    java.util.function.Function<String,String> normalized = expression ->
+        "CASE WHEN "+expression+" IS NULL OR "+expression+"='null'::jsonb OR (jsonb_typeof("+expression+")='string' AND btrim("+expression+"#>>'{}')='') THEN 'null'::jsonb ELSE "+expression+" END";
+    return "("+normalized.apply(before)+") IS DISTINCT FROM ("+normalized.apply(after)+")";
+  }
+
+  private static String visibleGoodsSourceSql(AuthUser user) {
+    if (user.isSuperAdmin()) return "SELECT h.source_table,h.action";
+    String before="visible.before_row", after="visible.after_row";
+    String hidden=String.join(" OR ",hiddenKeyRules(user).stream().map(rule -> rule.sql("visible.source_table","field.key")).toList());
+    String ordinary="EXISTS(SELECT 1 FROM jsonb_object_keys(COALESCE("+before+",'{}'::jsonb)||COALESCE("+after+",'{}'::jsonb)) field(key) WHERE NOT ("+hidden+") AND "+jsonDifferenceSql(before+"->field.key",after+"->field.key")+")";
+    String images="visible.source_table='goods' AND EXISTS(SELECT 1 FROM jsonb_object_keys(COALESCE("+before+"->'__binary','{}'::jsonb)||COALESCE("+after+"->'__binary','{}'::jsonb)) image(key) WHERE "+(has(user,"goods:cost:view")?"true":"image.key<>'budget_graph'")+" AND "+jsonDifferenceSql(before+"->'__binary'->image.key",after+"->'__binary'->image.key")+")";
+    String oldCell="(SELECT c->'value' FROM jsonb_array_elements(COALESCE("+before+"->'cells','[]'::jsonb)) c WHERE c->>'columnId'=cell->>'columnId')";
+    String newCell="(SELECT c->'value' FROM jsonb_array_elements(COALESCE("+after+"->'cells','[]'::jsonb)) c WHERE c->>'columnId'=cell->>'columnId')";
+    String fields="EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE("+before+"->'cells','[]'::jsonb)||COALESCE("+after+"->'cells','[]'::jsonb)) cell JOIN platform_column_definitions definition ON definition.id=(cell->>'columnId')::uuid AND definition.scope=visible.source_key WHERE definition.owner_user_id IN ('00000000-0000-0000-0000-000000000000'::uuid,"+sqlLiteral(user.getId().toString())+"::uuid) AND "+(has(user,"goods:price:view")?"true":"NOT definition.price_protected AND definition.value_type<>'CALCULATED'")+" AND "+jsonDifferenceSql(oldCell,newCell)+")";
+    return "SELECT visible.source_table,visible.action FROM (SELECT v.source_table,v.source_key,max(v.id) last_id,(array_agg(v.action ORDER BY v.id DESC))[1] action,(array_agg(v.before_row ORDER BY v.id))[1] before_row,(array_agg(v.after_row ORDER BY v.id DESC))[1] after_row FROM master_record_versions v WHERE v.entity_type=h.entity_type AND v.transaction_id=h.transaction_id AND v.record_id=h.record_id GROUP BY v.source_table,v.row_id,v.source_key) visible WHERE CASE WHEN visible.source_table='platform_record_fields' THEN "+fields+" ELSE ("+ordinary+" OR ("+images+")) END ORDER BY visible.last_id DESC LIMIT 1";
   }
 
   private record ReferenceRequest(String table, UUID id, boolean ownAccount) {

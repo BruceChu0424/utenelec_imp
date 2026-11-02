@@ -4,7 +4,7 @@ import com.uten.imp.application.port.AttachmentAccessPort;
 import com.uten.imp.audit.AuditDetailViewRecorder;
 import com.uten.imp.common.web.GlobalExceptionHandler;
 import com.uten.imp.features.admin.UserAccountAdminService;
-import com.uten.imp.features.org.department.dto.DepartmentPickerNode;
+import com.uten.imp.application.port.DepartmentPickerNode;
 import com.uten.imp.features.org.employee.EmployeeCommandService;
 import com.uten.imp.features.org.employee.EmployeeController;
 import com.uten.imp.features.org.employee.EmployeeOnboardingService;

@@ -1,4 +1,4 @@
-package com.uten.imp.features.org.department.dto;
+package com.uten.imp.application.port;
 
 import java.util.List;
 import java.util.UUID;

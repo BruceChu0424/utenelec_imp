@@ -1,8 +1,10 @@
 package com.uten.imp.features.org;
 
 import com.uten.imp.application.port.OrganizationReferencePort;
+import com.uten.imp.application.port.DepartmentPickerNode;
 import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.department.DepartmentRepository;
+import com.uten.imp.features.org.department.DepartmentService;
 import com.uten.imp.features.org.employee.EmployeeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -22,6 +24,13 @@ public class OrganizationReferenceAdapter implements OrganizationReferencePort {
 
     private final EmployeeRepository employees;
     private final DepartmentRepository departments;
+    private final DepartmentService departmentService;
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DepartmentPickerNode> departmentPickerTree() {
+        return departmentService.employeePickerTree();
+    }
 
     @Override
     @Transactional(readOnly = true)

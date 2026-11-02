@@ -9,8 +9,8 @@ import com.uten.imp.features.master.goods.GoodsService;
 import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
 import com.uten.imp.features.master.account.AccountService;
 import com.uten.imp.features.master.warehouse.WarehouseService;
-import com.uten.imp.features.org.department.DepartmentService;
-import com.uten.imp.features.org.department.dto.DepartmentPickerNode;
+import com.uten.imp.application.port.OrganizationReferencePort;
+import com.uten.imp.application.port.DepartmentPickerNode;
 import com.uten.imp.features.master.materialcategory.MaterialCategoryService;
 import com.uten.imp.features.master.materialcategory.dto.MaterialCategoryNode;
 import com.uten.imp.features.master.supplier.SupplierService;
@@ -40,12 +40,12 @@ public class BusinessMasterReferenceController {
     private final MaterialCategoryService goodsCategories;
     private final WarehouseService warehouses;
     private final AccountService accounts;
-    private final DepartmentService departments;
+    private final OrganizationReferencePort departments;
 
     @GetMapping("/departments")
     public List<DepartmentPickerNode> departments() {
         access.require("department");
-        return departments.employeePickerTree();
+        return departments.departmentPickerTree();
     }
 
     public record WarehouseReference(UUID id, String code, String name, String status, Integer legacyId,

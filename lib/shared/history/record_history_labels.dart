@@ -1,7 +1,6 @@
 import '../../core/l10n/localized_text.dart';
 import 'package:flutter/material.dart';
 
-
 const masterHistoryViewPermissions = <String, String>{
   'goods': 'goods:view',
   'clients': 'client:view',

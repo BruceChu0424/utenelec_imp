@@ -3,7 +3,6 @@ import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 
-
 /// Present the exact archive marker written by the legacy master importer.
 /// Raw notes remain the edit/filter/export source; unknown text stays intact.
 String? masterLegacyRemarkText(BuildContext context, String? raw) {

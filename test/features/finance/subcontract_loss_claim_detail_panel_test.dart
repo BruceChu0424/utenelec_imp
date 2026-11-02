@@ -11,10 +11,59 @@ import 'package:uten_imp/features/finance/payables/repositories/subcontract_loss
 import 'package:uten_imp/features/finance/payables/widgets/subcontract_loss_claim_detail_panel.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/components/data_display/uten_detail_summary_card.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 
 import '../../attachments/attachment_test_actions.dart';
 
 void main() {
+  testWidgets(
+    'cash fulfillment uses minimum account references without account master permission',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final api = _DetailApi(_awaitingDetail);
+      await _pump(
+        tester,
+        detail: _awaitingDetail,
+        api: api,
+        permissions: {
+          Perm.subcontractLossClaimView,
+          Perm.subcontractLossClaimFulfill,
+        },
+      );
+      await tester.tap(find.text('登记履约').first);
+      await tester.pumpAndSettle();
+      expect(api.accountReads, ['/business-references/accounts']);
+      final accounts = tester.widget<UtenDropdownField>(
+        find.byType(UtenDropdownField),
+      );
+      expect(accounts.items.map((item) => item.value), ['cash', 'bank']);
+      expect(find.textContaining('银行账号'), findsNothing);
+      await tester.tap(find.byType(UtenDropdownField));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('1001 · 现金账户').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is TextField && widget.decoration?.labelText == '履约证据(必填)',
+        ),
+        '实际到账凭证',
+      );
+      await tester.tap(find.text('确认履约'));
+      await tester.pumpAndSettle();
+      expect(api.fulfillments, hasLength(1));
+      expect(api.fulfillments.single['accountId'], 'cash');
+      expect(api.fulfillments.single['fulfilledQuantity'], '3.0000');
+      expect(
+        api.fulfillments.single['expectedCaseVersion'],
+        _summaryBase['version'],
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final scenario in [
     (
       status: 'OPEN',
@@ -217,22 +266,25 @@ Future<void> _pump(
   WidgetTester tester, {
   required Map<String, dynamic> detail,
   required Set<String> permissions,
+  _DetailApi? api,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
+  final client = api ?? _DetailApi(detail);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        apiClientProvider.overrideWithValue(_DetailApi(detail)),
+        apiClientProvider.overrideWithValue(client),
         sharedPreferencesProvider.overrideWithValue(preferences),
         businessAttachmentsProvider((
           type: 'SUBCONTRACT_LOSS_CASE',
           id: 'case-1',
         )).overrideWith((ref) async => []),
         subcontractLossClaimRepositoryProvider.overrideWithValue(
-          SubcontractLossClaimRepository(_DetailApi(detail)),
+          SubcontractLossClaimRepository(client),
         ),
         currentPermissionsProvider.overrideWithValue(permissions),
+        isSuperAdminProvider.overrideWithValue(false),
       ],
       child: const MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -351,6 +403,64 @@ class _DetailApi extends ApiClient {
   _DetailApi(this.detail) : super(Dio());
 
   final Map<String, dynamic> detail;
+  final accountReads = <String>[];
+  final fulfillments = <Map<String, dynamic>>[];
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    if (path == '/platform-columns/scopes') return const [];
+    accountReads.add(path);
+    if (path != '/business-references/accounts') {
+      throw StateError('Unexpected full account source $path');
+    }
+    return [
+      {
+        'id': 'cash',
+        'code': '1001',
+        'name': '现金账户',
+        'accountType': 'CASH',
+        'status': '使用',
+      },
+      {
+        'id': 'bank',
+        'code': '1002',
+        'name': '银行账户',
+        'accountType': 'BANK',
+        'status': '使用',
+      },
+      {
+        'id': 'ordinary',
+        'code': 'other',
+        'name': '普通往来户',
+        'accountType': 'GENERAL',
+        'status': '使用',
+      },
+      {
+        'id': 'disabled',
+        'code': 'old',
+        'name': '停用户',
+        'accountType': 'CASH',
+        'status': '禁用',
+      },
+    ];
+  }
+
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
+    if (!path.endsWith('/fulfill')) {
+      throw StateError('Unexpected command $path');
+    }
+    fulfillments.add(Map<String, dynamic>.from(body! as Map));
+    return detail;
+  }
 
   @override
   Future<Map<String, dynamic>> get(

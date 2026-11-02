@@ -1,3 +1,4 @@
+import 'package:uten_imp/features/basic_data/repositories/business_reference_repository.dart';
 import 'dart:async';
 
 import 'package:flutter/gestures.dart';
@@ -574,10 +575,12 @@ Future<void> _pumpPicker(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        productCategoryRepositoryProvider.overrideWithValue(
+        businessGoodsCategoryRepositoryProvider.overrideWithValue(
           _FakeCategoryRepository(),
         ),
-        goodsRepositoryProvider.overrideWithValue(goodsRepository),
+        businessGoodsReferenceRepositoryProvider.overrideWithValue(
+          goodsRepository,
+        ),
       ],
       child: MaterialApp(
         home: _PickerHarness(
@@ -603,10 +606,12 @@ Future<void> _pumpMultiPicker(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        productCategoryRepositoryProvider.overrideWithValue(
+        businessGoodsCategoryRepositoryProvider.overrideWithValue(
           _FakeCategoryRepository(),
         ),
-        goodsRepositoryProvider.overrideWithValue(goodsRepository),
+        businessGoodsReferenceRepositoryProvider.overrideWithValue(
+          goodsRepository,
+        ),
       ],
       child: MaterialApp(home: _MultiPickerHarness(results: results)),
     ),

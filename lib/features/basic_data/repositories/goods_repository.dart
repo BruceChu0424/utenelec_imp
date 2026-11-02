@@ -194,8 +194,11 @@ abstract interface class GoodsColumnSearchGateway {
 }
 
 class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
-  DioGoodsRepository(this.api);
+  DioGoodsRepository(this.api, {this.queryBasePath = ApiEndpoints.goods});
   final ApiClient api;
+
+  /// Query configuration only. Detail and all CRUD keep their master endpoints.
+  final String queryBasePath;
 
   @override
   Future<PagedResult<GoodsListItem>> list(
@@ -229,7 +232,7 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
     };
     query.addAll(goodsFilterQueryParams(filters));
 
-    final json = await api.get(ApiEndpoints.goods, query: query);
+    final json = await api.get(queryBasePath, query: query);
     return PagedResult.fromJsonResponsive(json, GoodsListItem.fromJson);
   }
 
@@ -277,7 +280,7 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
     Set<String> categoryRootIds = const {},
   }) async {
     final json = await api.get(
-      ApiEndpoints.goodsFacets,
+      '$queryBasePath/facets',
       query: {
         'categoryId': ?categoryId,
         if (categoryRootIds.isNotEmpty)
@@ -379,7 +382,7 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
   }) async {
     // categoryRootIds 为空时不传，保留调用方明确使用的全库搜索语义。
     final json = await api.get(
-      ApiEndpoints.goods,
+      queryBasePath,
       query: {
         ...goodsFilterQueryParams(filters),
         'page': page,
@@ -521,7 +524,7 @@ class DioGoodsRepository implements GoodsRepository, GoodsColumnSearchGateway {
     final merged = <String>{};
     for (final roots in rootBatches) {
       final ids = await api.getStringList(
-        ApiEndpoints.goodsSearchCategoryIds,
+        '$queryBasePath/search-category-ids',
         query: {
           ...goodsFilterQueryParams(filters),
           'categoryRootIds': roots,

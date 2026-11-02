@@ -16,6 +16,7 @@ import 'master_facet.dart';
 class SupplierListItem {
   const SupplierListItem({
     required this.id,
+    this.code,
     this.legacyId,
     this.name,
     this.description,
@@ -52,6 +53,7 @@ class SupplierListItem {
   final String? status;
 
   final String id;
+  final String? code;
   final int? legacyId;
 
   // 用户指定的 21 列（19 个有数据列）
@@ -87,6 +89,7 @@ class SupplierListItem {
       SupplierListItem(
         lossRate: (json['lossRate'] as num?)?.toDouble(),
         id: json['id'] as String,
+        code: json['code'] as String?,
         legacyId: (json['legacyId'] as num?)?.toInt(),
         name: json['name'] as String?,
         description: json['description'] as String?,

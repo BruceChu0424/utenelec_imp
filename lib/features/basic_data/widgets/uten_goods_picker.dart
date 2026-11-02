@@ -8,14 +8,14 @@ import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // 与货品资料页同款；默认宽度 = 左侧最长一行内容的实测宽度，可拖可双击复位）。
 // 左树用无缩进层级色模式（flatLevelColors）：一级深绿白字、二级浅灰、三级更浅，
 // 整库只有「货品资料」一个根分类时自动提升，直接列原材料/半成品/成品等子类。
-// 分类树来自 productCategoryRepositoryProvider.tree()，货品来自
-// goodsRepositoryProvider.list(分类子树)/search(全库)。
+// 分类树来自 businessGoodsCategoryRepositoryProvider.tree()，货品来自
+// businessGoodsReferenceRepositoryProvider.list(分类子树)/search(全库)。
 //
 // 多选（showUtenGoodsPickerMulti）：底部「已选 N 项」胶囊可点，点开从底部滑出
 // 已选清单滑层，可逐项取消；「确定(N)」返回所选列表。
 //
 // 与旧 sales_goods_picker / goods_picker_dialog（居中搜索框）的区别：带分类树浏览、
-// 返回完整 GoodsListItem（含 colorId/unitId 及展示名称；legacy 字段仅供历史只读显示），供调用方
+// 默认返回业务所需 GoodsListItem 引用（含 colorId/unitId 及展示名称，不含价格/库存量等私有字段；legacy 仅供历史显示），供调用方
 // 自动回填颜色/单位。
 import 'dart:async';
 
@@ -40,9 +40,8 @@ import '../../../shared/models/paged_result.dart';
 import '../models/goods_node.dart';
 import '../models/master_facet.dart';
 import '../models/product_category_node.dart';
-import '../repositories/goods_facet_repository.dart';
 import '../repositories/goods_repository.dart';
-import '../repositories/product_category_repository.dart';
+import '../repositories/business_reference_repository.dart';
 import 'category_tree_search.dart';
 import 'goods_related_search_control.dart';
 import 'uten_category_tree_view.dart';
@@ -137,7 +136,7 @@ bool _isExcludedCategory(ProductCategoryNode n) {
 }
 
 /// 递归过滤分类树：命中排除规则的节点整子树丢弃；其余保留并对 children 递归过滤。
-/// 返回新森林副本，不影响调用方原树（如货品资料页直接用 productCategoryRepositoryProvider.tree()）。
+/// 返回新森林副本，不影响调用方原树（如货品资料页直接用 businessGoodsCategoryRepositoryProvider.tree()）。
 List<ProductCategoryNode> _filterExcludedTree(List<ProductCategoryNode> nodes) {
   final out = <ProductCategoryNode>[];
   for (final n in nodes) {
@@ -274,7 +273,7 @@ Future<List<GoodsListItem>> loadUtenGoodsPickerSuggestions(
   if (query.trim().isEmpty) return const [];
   final boundary = ref.read(sensitiveReadBoundaryProvider);
   final tree = _treeForScope(
-    await ref.read(productCategoryRepositoryProvider).tree(),
+    await ref.read(businessGoodsCategoryRepositoryProvider).tree(),
     scope,
   );
   if (tree.isEmpty) return const [];
@@ -289,7 +288,7 @@ Future<List<GoodsListItem>> loadUtenGoodsPickerSuggestions(
 
   tree.forEach(collect);
   final result = await ref
-      .read(goodsRepositoryProvider)
+      .read(businessGoodsReferenceRepositoryProvider)
       .search(
         query,
         size: 8,
@@ -308,7 +307,7 @@ Future<List<GoodsListItem>> loadUtenGoodsPickerSuggestions(
   return result.items;
 }
 
-/// 弹出货品选择器，返回所选货品（完整 GoodsListItem）；取消返回 null。
+/// 弹出货品选择器，返回所选货品（默认最小业务引用，兼容 GoodsListItem）；取消返回 null。
 ///
 /// 全站选择滑窗统一二次操作：点行只高亮勾选，底部「确定」后才返回。
 Future<GoodsListItem?> showUtenGoodsPicker(
@@ -441,7 +440,7 @@ Future<T?> _presentSheet<T>(
     try {
       final raw =
           await (dataSource?.tree() ??
-              ref.read(productCategoryRepositoryProvider).tree());
+              ref.read(businessGoodsCategoryRepositoryProvider).tree());
       if (allowScopeExpansion &&
           dataSource == null &&
           scope == UtenGoodsPickerScope.component) {
@@ -813,7 +812,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
 
   Object _pagingQuery() => [
     widget.dataSource,
-    ref.read(goodsRepositoryProvider),
+    ref.read(businessGoodsReferenceRepositoryProvider),
     widget.scope,
     _selectedCategoryId,
     _searchCategoryId,
@@ -833,7 +832,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
     String? keyword,
   }) {
     final source = widget.dataSource;
-    final repository = ref.read(goodsRepositoryProvider);
+    final repository = ref.read(businessGoodsReferenceRepositoryProvider);
     final filters = Map<String, String?>.unmodifiable(_columnFilters);
     const sort = _goodsPickerSort, order = _goodsPickerOrder;
     return (page) =>
@@ -852,7 +851,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
 
   Future<PagedResult<GoodsListItem>> Function(int) _searchReader(String query) {
     final source = widget.dataSource;
-    final repository = ref.read(goodsRepositoryProvider);
+    final repository = ref.read(businessGoodsReferenceRepositoryProvider);
     final filters = Map<String, String?>.unmodifiable(_columnFilters);
     const sort = _goodsPickerSort, order = _goodsPickerOrder;
     final category = _searchCategoryId;
@@ -935,7 +934,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
         includeRelated: _includeRelated,
       );
     }
-    final repository = ref.read(goodsRepositoryProvider);
+    final repository = ref.read(businessGoodsReferenceRepositoryProvider);
     if (_columnFilters.isNotEmpty) {
       if (repository is! GoodsColumnSearchGateway) {
         throw StateError('货品数据源尚未支持列搜索，请刷新后重试');
@@ -1138,7 +1137,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
   Future<void> _reloadFacets(int requestVersion) async {
     if (!_supportsColumnSearch || !_canRead) return;
     try {
-      final repository = ref.read(goodsRepositoryProvider);
+      final repository = ref.read(businessGoodsReferenceRepositoryProvider);
       final GoodsFacets result;
       if (_query.isEmpty) {
         final categoryId = _selectedCategoryId;
@@ -1549,7 +1548,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
   /// 同一查询上下文——分类浏览态带所选分类，搜索态带搜索词与业务范围根。
   MasterFacetPageLoader? get _facetPageLoader {
     if (!_supportsColumnSearch) return null;
-    final facetRepository = ref.read(goodsFacetRepositoryProvider);
+    final facetRepository = ref.read(businessGoodsFacetRepositoryProvider);
     if (facetRepository == null) return null;
     return (column, search, page) => facetRepository.values(
       field: column,

@@ -1,3 +1,4 @@
+import 'package:uten_imp/features/basic_data/repositories/business_reference_repository.dart';
 import 'dart:async';
 
 import 'package:flutter/gestures.dart';
@@ -136,8 +137,12 @@ Future<void> _open(
     ProviderScope(
       overrides: [
         currentPermissionsProvider.overrideWithValue(const {}),
-        supplierCategoryRepositoryProvider.overrideWithValue(_Categories()),
-        supplierRepositoryProvider.overrideWithValue(suppliers),
+        businessSupplierCategoryRepositoryProvider.overrideWithValue(
+          _Categories(),
+        ),
+        businessSupplierReferenceRepositoryProvider.overrideWithValue(
+          suppliers,
+        ),
       ],
       child: const MaterialApp(home: _Harness()),
     ),
@@ -193,17 +198,12 @@ Future<void> _wheel(WidgetTester tester, double dy) async {
 }
 
 void main() {
-  testWidgets('供应商表格只展示重点字段并保留固定电话回退', (tester) async {
+  testWidgets('供应商业务表格只显示编号名称状态，不显示联系方式', (tester) async {
     await _open(tester, _Suppliers());
     final table = tester.widget<MasterDataTableView<SupplierListItem>>(_picker);
-    expect(table.columns.map((column) => column.label), [
-      '供应商名称',
-      '联系人',
-      '联系电话',
-      '地区',
-    ]);
+    expect(table.columns.map((column) => column.label), ['编号', '供应商名称', '状态']);
     expect(table.tableKey, isNull);
-    expect(find.text('0755-80000'), findsOneWidget);
+    expect(find.text('0755-80000'), findsNothing);
     expect(find.text('不应显示的银行账号'), findsNothing);
     expect(find.byType(ListTile), findsNothing);
     expect(tester.takeException(), isNull);

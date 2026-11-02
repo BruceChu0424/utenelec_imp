@@ -1,3 +1,4 @@
+import 'package:uten_imp/features/basic_data/repositories/business_reference_repository.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -233,7 +234,7 @@ void main() {
     });
   }
 
-  testWidgets('客户以四列重点信息展示且不混入地址和财务资料', (tester) async {
+  testWidgets('客户业务引用只显示身份状态，不混入联系人地址和财务资料', (tester) async {
     await _pumpPicker(
       tester,
       size: const Size(1200, 900),
@@ -244,12 +245,7 @@ void main() {
     final table = tester.widget<MasterDataTableView<ClientListItem>>(
       find.byType(MasterDataTableView<ClientListItem>),
     );
-    expect(table.columns.map((column) => column.label), [
-      '客户名称',
-      '编号',
-      '联系人',
-      '联系电话',
-    ]);
+    expect(table.columns.map((column) => column.label), ['编号', '客户名称', '状态']);
     expect(table.listItemBuilder, isNull);
     expect(table.tableKey, isNull, reason: '不能继承客户主档的扩展列和列布局');
     expect(
@@ -259,8 +255,8 @@ void main() {
     expect(table.showColumnChooser, isFalse);
     expect(find.text('本地客户'), findsOneWidget);
     expect(find.text('C-001'), findsOneWidget);
-    expect(find.text('陈小姐'), findsOneWidget);
-    expect(find.text('13800138000'), findsOneWidget);
+    expect(find.text('陈小姐'), findsNothing);
+    expect(find.text('13800138000'), findsNothing);
     expect(find.text('0755-80000000'), findsNothing);
     expect(find.text('不应展示的详细地址'), findsNothing);
     expect(find.text('财务专用银行账号'), findsNothing);
@@ -269,7 +265,7 @@ void main() {
     expect(find.byType(TextField), findsOneWidget);
   });
 
-  testWidgets('空白简称和手机回退到客户全称与固定电话', (tester) async {
+  testWidgets('空白简称保留公司全称身份，业务选择不显示电话', (tester) async {
     await _pumpPicker(
       tester,
       size: const Size(1200, 900),
@@ -291,7 +287,7 @@ void main() {
     await _openPicker(tester);
 
     expect(find.text('回退客户有限公司'), findsOneWidget);
-    expect(find.text('0755-81234567'), findsOneWidget);
+    expect(find.text('0755-81234567'), findsNothing);
     await tester.tap(find.text('回退客户有限公司'));
     await tester.pumpAndSettle();
     expect(find.text('已选择：回退客户有限公司(C-003)'), findsOneWidget);
@@ -768,10 +764,12 @@ Future<void> _pumpPicker(
         currentPermissionsProvider.overrideWith(
           (ref) => ref.watch(_livePermissions),
         ),
-        clientCategoryRepositoryProvider.overrideWithValue(
+        businessClientCategoryRepositoryProvider.overrideWithValue(
           _FakeClientCategoryRepository(categoryTree),
         ),
-        clientRepositoryProvider.overrideWithValue(clientRepository),
+        businessClientReferenceRepositoryProvider.overrideWithValue(
+          clientRepository,
+        ),
       ],
       child: RepaintBoundary(
         key: _captureBoundary,

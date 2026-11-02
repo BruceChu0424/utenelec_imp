@@ -1,3 +1,4 @@
+import 'package:uten_imp/features/basic_data/repositories/business_reference_repository.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -74,7 +75,9 @@ void main() {
         ProviderScope(
           overrides: [
             apiClientProvider.overrideWithValue(api),
-            productCategoryRepositoryProvider.overrideWithValue(_Categories()),
+            businessGoodsCategoryRepositoryProvider.overrideWithValue(
+              _Categories(),
+            ),
             sharedPreferencesProvider.overrideWithValue(
               await SharedPreferences.getInstance(),
             ),
@@ -164,7 +167,9 @@ void main() {
         ProviderScope(
           overrides: [
             apiClientProvider.overrideWithValue(api),
-            productCategoryRepositoryProvider.overrideWithValue(_Categories()),
+            businessGoodsCategoryRepositoryProvider.overrideWithValue(
+              _Categories(),
+            ),
           ],
           child: MaterialApp(
             home: Consumer(

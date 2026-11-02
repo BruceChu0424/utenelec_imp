@@ -13,7 +13,7 @@ import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../shared/formatters/money_display.dart';
 import '../../../basic_data/models/account_node.dart';
-import '../../../basic_data/repositories/account_repository.dart';
+import '../../../basic_data/repositories/business_reference_repository.dart';
 import '../models/finance_payable.dart';
 import '../models/subcontract_loss_claim.dart';
 import '../repositories/finance_payables_repository.dart';
@@ -768,7 +768,9 @@ class _LossFulfillmentEditorState
         'THIRD_PARTY',
         'OFFSHORE',
       };
-      final accounts = await ref.read(accountRepositoryProvider).dict();
+      final accounts = await ref
+          .read(businessAccountReferenceRepositoryProvider)
+          .dict();
       if (!mounted) return;
       setState(() {
         _cashAccounts = accounts
@@ -780,11 +782,11 @@ class _LossFulfillmentEditorState
             .toList(growable: false);
         _accountsLoading = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
       setState(() {
         _accountsLoading = false;
-        _accountsError = '加载启用资金账户失败';
+        _accountsError = error is ApiException ? error.message : '加载启用资金账户失败';
       });
     }
   }

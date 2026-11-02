@@ -10,6 +10,7 @@ Future<bool> resolveProductionPersonReferenceFixture(
   RequestOptions request,
   RequestInterceptorHandler handler, {
   Future<List<DepartmentNode>> Function()? departments,
+  List<Map<String, dynamic>> departmentRows = const [],
   EmployeeReferencePurpose purpose =
       EmployeeReferencePurpose.productionMaterialOwner,
 }) async {
@@ -21,7 +22,9 @@ Future<bool> resolveProductionPersonReferenceFixture(
   if (request.path != '/business-references/departments') {
     expect(request.queryParameters['purpose'], purpose.apiValue);
   }
-  final tree = await (departments?.call() ?? Future.value(<DepartmentNode>[]));
+  final tree = departments == null
+      ? departmentRows.map(DepartmentNode.fromJson).toList()
+      : await departments();
   Map<String, Object?> project(DepartmentNode node) => {
     'id': node.id,
     'code': node.code,

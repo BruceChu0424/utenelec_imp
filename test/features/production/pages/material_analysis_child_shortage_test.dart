@@ -1152,7 +1152,6 @@ Future<void> _pump(
     return data;
   }
 
-  final fixtureDepartmentRepository = DioDepartmentRepository(api);
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
@@ -1160,7 +1159,7 @@ Future<void> _pump(
         if (await resolveProductionPersonReferenceFixture(
           request,
           handler,
-          departments: fixtureDepartmentRepository.tree,
+          departmentRows: const [],
         ))
           return;
         requests.add((
@@ -1303,7 +1302,7 @@ Future<void> _pump(
       // 负责人默认值那批附带读取永远挂着，提交前「必填车间」校验过不去)。
       // 假后端对未知路径回空列表，与迁移前「取树失败 → 空树」的落点一致。
       departmentRepositoryProvider.overrideWithValue(
-        fixtureDepartmentRepository,
+        DioDepartmentRepository(api),
       ),
     ],
     child: MaterialApp(

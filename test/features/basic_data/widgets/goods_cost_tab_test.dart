@@ -16,6 +16,8 @@ import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../../support/uten_test_actions.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -1342,8 +1344,14 @@ Future<void> _pump(
   // Calculation/editor tests explicitly open their fixture; the product itself
   // starts collapsed. Default-state regressions opt out below.
   if (expandTree &&
-      find.byKey(const Key('cost-tree-expansion')).evaluate().isNotEmpty) {
-    await tester.tap(find.byKey(const Key('cost-tree-expansion')));
+      await showOptionalUtenTestAction(
+        tester,
+        find.byKey(const Key('cost-tree-expansion')),
+      )) {
+    await tapUtenTestAction(
+      tester,
+      find.byKey(const Key('cost-tree-expansion')),
+    );
     await tester.pumpAndSettle();
   }
 }
@@ -1883,7 +1891,10 @@ void main() {
     final settledWidth = tester.getSize(root).width;
     final previews = repo.previewCalls;
     for (var cycle = 0; cycle < 4; cycle++) {
-      await tester.tap(find.byKey(const Key('cost-tree-expansion')));
+      await tapUtenTestAction(
+        tester,
+        find.byKey(const Key('cost-tree-expansion')),
+      );
       for (var frame = 0; frame < 24; frame++) {
         await tester.pump(const Duration(milliseconds: 16));
         expect(
@@ -2283,9 +2294,23 @@ void main() {
           find.byKey(const ValueKey('goods-cost-tree-cell-deep-10')),
           findsNothing,
         );
-        await tester.tap(find.byKey(const Key('cost-tree-expansion')));
+        await showUtenTestAction(
+          tester,
+          find.byKey(const Key('cost-tree-expansion')),
+        );
+        await tapUtenTestAction(
+          tester,
+          find.byKey(const Key('cost-tree-expansion')),
+        );
         await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('cost-tree-expansion')));
+        await showUtenTestAction(
+          tester,
+          find.byKey(const Key('cost-tree-expansion')),
+        );
+        await tapUtenTestAction(
+          tester,
+          find.byKey(const Key('cost-tree-expansion')),
+        );
         await tester.pumpAndSettle();
         shrinkIdentity();
         await tester.pumpAndSettle();
@@ -2297,7 +2322,10 @@ void main() {
           tester.getSize(root).width,
           inInclusiveRange(rootMinimum - 24 - borderTolerance, rootMinimum),
         );
-        await tester.tap(find.byKey(const Key('cost-tree-expansion')));
+        await tapUtenTestAction(
+          tester,
+          find.byKey(const Key('cost-tree-expansion')),
+        );
         await tester.pumpAndSettle();
         expect(
           find.byKey(const ValueKey('goods-cost-tree-cell-deep-10')),
@@ -2385,7 +2413,10 @@ void main() {
       await tester.pumpAndSettle();
       final projections = debugGoodsCostTreeProjectionBuilds;
       final previewCalls = repo.previewCalls;
-      await tester.tap(find.byKey(const Key('cost-tree-expansion')));
+      await tapUtenTestAction(
+        tester,
+        find.byKey(const Key('cost-tree-expansion')),
+      );
       await tester.pumpAndSettle();
       await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
       try {

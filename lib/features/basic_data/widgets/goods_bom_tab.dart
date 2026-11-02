@@ -4092,6 +4092,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                     if (_canEnterEdit || _editMode)
                       UtenButton(
                         key: const Key('goods-bom-edit-mode'),
+                        closeBeforeAction: true,
                         type: _editMode
                             ? UtenButtonType.danger
                             : UtenButtonType.primary,
@@ -4107,6 +4108,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
                     if (_canAudit)
                       UtenButton(
                         key: const Key('goods-bom-audit-mode'),
+                        closeBeforeAction: true,
                         type: _auditMode
                             ? UtenButtonType.danger
                             : UtenButtonType.primary,

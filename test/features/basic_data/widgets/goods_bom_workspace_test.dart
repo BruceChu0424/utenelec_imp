@@ -4,6 +4,9 @@ import 'package:uten_imp/shared/auth/session_snapshot_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
+
+import '../../../support/uten_test_actions.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -97,10 +100,11 @@ void main() {
     testWidgets(
       'real shared router opens BOM comparison at ${scenario.width} dark=${scenario.dark}',
       (tester) async {
-        await tester.binding.setSurfaceSize(
+        await setUtenTestSurfaceSize(
+          tester,
           Size(scenario.width, scenario.height),
         );
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         SharedPreferences.setMockInitialValues({});
         if (_capture) await loadAuditScreenshotFonts(tester);
         final bom = _Bom();
@@ -165,6 +169,14 @@ void main() {
         );
         expect(find.text('产品编号：80N001R'), findsOneWidget);
         expect(find.text('80N开关按钮'), findsWidgets);
+        final nextAction = find.byKey(const Key('goods-next-bom'));
+        final nextWasVisible = nextAction.hitTestable().evaluate().isNotEmpty;
+        await showUtenTestAction(
+          tester,
+          nextAction,
+          menuLabel: '其他操作',
+          menuScope: find.byKey(windows.windows.first.windowKey),
+        );
         expect(
           find.ancestor(
             of: find.byKey(const Key('goods-next-bom')),
@@ -172,6 +184,10 @@ void main() {
           ),
           findsOneWidget,
         );
+        if (!nextWasVisible) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+          await tester.pumpAndSettle();
+        }
         if (scenario.width >= 1000) {
           windows.open(
             '/basicinfo/goods/b?tab=bom',
@@ -210,14 +226,21 @@ void main() {
           await tester.pumpAndSettle();
           expect(find.text('退出全屏'), findsOneWidget);
         }
-        await tester.tap(
-          scenario.width == 1600
-              ? find.byKey(const Key('goods-next-bom')).last
-              : find.descendant(
-                  of: find.byKey(windows.windows.first.windowKey),
-                  matching: find.byKey(const Key('goods-next-bom')),
-                ),
+        final nextBom = scenario.width == 1600
+            ? find.byKey(const Key('goods-next-bom')).last
+            : find.descendant(
+                of: find.byKey(windows.windows.first.windowKey),
+                matching: find.byKey(const Key('goods-next-bom')),
+              );
+        await showUtenTestAction(
+          tester,
+          nextBom,
+          menuLabel: '其他操作',
+          menuScope: scenario.width == 1600
+              ? null
+              : find.byKey(windows.windows.first.windowKey),
         );
+        await tester.tap(nextBom);
         await tester.pumpAndSettle();
         expect(find.text('退出全屏'), findsNothing);
         expect(find.text('产品编号：80N001R'), findsNothing);

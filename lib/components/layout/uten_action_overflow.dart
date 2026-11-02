@@ -111,6 +111,7 @@ class _UtenActionOverflowState extends State<UtenActionOverflow> {
   bool _open = false;
   bool _claimed = false;
   int _revision = 0;
+  int _claimGeneration = 0;
   List<Widget>? _pendingActions;
 
   @override
@@ -130,6 +131,7 @@ class _UtenActionOverflowState extends State<UtenActionOverflow> {
   Widget _actions({required bool menu}) {
     final sources = _pendingActions ?? widget.children;
     final revision = _revision;
+    int? claimGeneration;
     while (_actionKeys.length < sources.length) {
       _actionKeys.add(GlobalKey());
     }
@@ -143,11 +145,17 @@ class _UtenActionOverflowState extends State<UtenActionOverflow> {
         enabled: menu,
         child: UtenAppBarActionScope(
           actionContext: context,
+          transient: menu,
+          isCurrent: () =>
+              mounted &&
+              revision == _revision &&
+              claimGeneration == _claimGeneration,
           claimAction: () {
             if (revision != _revision) return false;
             if (!menu) return true;
             if (!_open || _claimed) return false;
             _claimed = true;
+            claimGeneration = ++_claimGeneration;
             _pendingActions = sources;
             return true;
           },
@@ -232,6 +240,7 @@ class _UtenActionOverflowState extends State<UtenActionOverflow> {
     return UtenAnchoredPopup(
       controller: _controller,
       onChanged: (open) => setState(() {
+        if (open) _claimGeneration++;
         if (_pendingActions == null) _claimed = false;
         _open = open;
       }),

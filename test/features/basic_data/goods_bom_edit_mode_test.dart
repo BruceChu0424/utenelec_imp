@@ -9,6 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/uten_test_actions.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_picker_icon_button.dart';
@@ -236,8 +238,8 @@ Future<_Fixture> _pump(
     ColorListItem(id: 'color-red', name: '红色'),
   ],
 }) async {
-  await tester.binding.setSurfaceSize(size);
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, size);
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   final api = _Api();
   configure?.call(api);
   final container = ProviderContainer(
@@ -328,6 +330,11 @@ Future<_Fixture> _pump(
 }
 
 Future<void> _edit(WidgetTester tester) async {
+  await showUtenTestAction(
+    tester,
+    find.byKey(const Key('goods-bom-edit-mode')),
+    menuLabel: '其他操作',
+  );
   await tester.tap(find.byKey(const Key('goods-bom-edit-mode')));
   await tester.pumpAndSettle();
 }
@@ -1572,10 +1579,16 @@ void main() {
       );
       await _edit(tester);
       final picker = find.byKey(const ValueKey('goods-bom-choose-new-0'));
-      await tester.ensureVisible(picker);
-      await tester.pumpAndSettle();
+      expect(
+        tester
+            .state<GoodsBomTabState>(find.byType(GoodsBomTab))
+            .hasEditingSession,
+        isTrue,
+      );
+      await scrollUtenTestTableItemIntoView(tester, picker);
       expect(picker.hitTestable(), findsOneWidget);
       final exit = find.byKey(const Key('goods-bom-edit-mode'));
+      await showUtenTestAction(tester, exit, menuLabel: '其他操作');
       await tester.ensureVisible(exit);
       await tester.pumpAndSettle();
       final exitRect = tester.getRect(exit);
@@ -1591,6 +1604,7 @@ void main() {
             .hasEditingSession,
         isFalse,
       );
+      await showUtenTestAction(tester, exit, menuLabel: '其他操作');
       await tester.ensureVisible(exit);
       await _edit(tester);
       if (const bool.fromEnvironment('UTEN_CAPTURE_BOM_TABLE')) {
@@ -1743,7 +1757,7 @@ void main() {
       await loadAuditScreenshotFonts(tester);
       await _pump(tester, textScale: 2);
       await _stageFrameDeletion(tester);
-      await tester.binding.setSurfaceSize(const Size(390, 844));
+      await setUtenTestSurfaceSize(tester, const Size(390, 844));
       await tester.pumpAndSettle();
       final state = tester.state<GoodsBomTabState>(find.byType(GoodsBomTab));
       final finishing = state.finishEditing();
@@ -2555,6 +2569,11 @@ void main() {
           'bom-readonly-${size.width.toInt()}-${brightness.name}-2x',
         );
         await _edit(tester);
+        await showUtenTestAction(
+          tester,
+          find.byKey(const Key('goods-bom-edit-mode')),
+          menuLabel: '其他操作',
+        );
         expect(find.text('退出编辑模式'), findsOneWidget);
         expect(
           find.byKey(const Key('goods-bom-add-component')),

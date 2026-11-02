@@ -323,6 +323,14 @@ void main() {
     await _edge(tester, top: false, settle: false);
     await _wheel(tester, 150);
     expect(suppliers.requests, [('A', 1), ('A', 2)]);
+    // The compact directory header scrolls away with the picker. Bring it
+    // back while the old page is still pending, as an actual user would.
+    await _edge(tester, top: true, settle: false);
+    await _wheel(tester, -300);
+    expect(
+      find.byIcon(Icons.account_tree_rounded).hitTestable(),
+      findsOneWidget,
+    );
     await tester.tap(find.byIcon(Icons.account_tree_rounded));
     await tester.pump();
     await tester.tap(find.text('乙类'));

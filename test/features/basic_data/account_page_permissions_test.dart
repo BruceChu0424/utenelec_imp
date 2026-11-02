@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/uten_test_actions.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
@@ -30,8 +32,8 @@ void main() {
   testWidgets(
     'exact balance headers and private bank terms reach the full read and export scope',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1700, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1700, 1000));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final repository = _AccountRepositoryFake();
       await _pumpPage(tester, repository, {
         Perm.accountView,
@@ -89,8 +91,8 @@ void main() {
     testWidgets('$navigation return releases account detail navigation', (
       tester,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(1280, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final repository = _AccountRepositoryFake();
       final router = await _pumpRoutedPage(tester, repository);
       for (var visit = 0; visit < 2; visit++) {
@@ -122,8 +124,8 @@ void main() {
   testWidgets(
     'without balance permission does not request summary or build money column',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1280, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final repository = _AccountRepositoryFake();
       final currencies = _CurrencyRepositoryFake();
       final styles = _PaymentStyleRepositoryFake();
@@ -180,8 +182,8 @@ void main() {
   testWidgets(
     'removes status overview tiles and expands disabled accounts on demand',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1280, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final repository = _AccountRepositoryFake();
       final disabledCompleter = Completer<PagedResult<AccountListItem>>();
       repository.disabledCompleter = disabledCompleter;
@@ -273,8 +275,8 @@ void main() {
   testWidgets('disabled group exposes inline error and retries in place', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final repository = _AccountRepositoryFake()..disabledFailuresRemaining = 1;
 
     await _pumpPage(tester, repository, {Perm.accountView});
@@ -299,8 +301,8 @@ void main() {
   testWidgets('create loads currency and account styles only when requested', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final repository = _AccountRepositoryFake();
     final currencies = _CurrencyRepositoryFake();
     final styles = _PaymentStyleRepositoryFake();
@@ -335,8 +337,8 @@ void main() {
   testWidgets('editing detail then back pops and refreshes the account row', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final repository = _AccountRepositoryFake();
 
     await _pumpRoutedPage(tester, repository);
@@ -378,8 +380,8 @@ void main() {
   testWidgets(
     'balance permissions load per-currency summary and expose reconciliation',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1280, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final repository = _AccountRepositoryFake();
 
       await _pumpPage(tester, repository, {
@@ -426,8 +428,8 @@ void main() {
   testWidgets(
     'compact workspace reaches fullscreen reconciliation without overflow',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(390, 844));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(390, 844));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final repository = _AccountRepositoryFake();
 
       await _pumpPage(tester, repository, {
@@ -487,8 +489,8 @@ void main() {
   testWidgets(
     'compact grouped open icon enables after one selection and keeps account route',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(390, 844));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(390, 844));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final repository = _AccountRepositoryFake();
       final router = await _pumpRoutedPage(tester, repository);
       final open = find.byWidgetPredicate(

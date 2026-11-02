@@ -467,3 +467,11 @@ d1e83824a4e765b8859be5cbf509d4434d06ef21:clients/windows_legacy/tools/test_desig
 # Restrict each exception to the original commit, path, rule and line.
 996fa53b880c90519df272e2f83a6ce0ec33d800:clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json:generic-api-key:95
 996fa53b880c90519df272e2f83a6ce0ec33d800:test/features/basic_data/widgets/goods_bom_comparison_workspace_test.dart:generic-api-key:307
+
+# 2026-11-02 original task histories: four SHA-256 source fingerprints.
+# Each value independently matches its referenced Git blob (LF); no credential.
+# Exact commit/path/rule/line only; original scan and blob proofs retained.
+c4f0329954af5cb64984fb072053b7be48d232df:clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json:generic-api-key:275
+392dd7b12919097efe4587fa8a958ee9119cd7ab:docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史-验证.json:generic-api-key:263
+392dd7b12919097efe4587fa8a958ee9119cd7ab:docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史-验证.json:generic-api-key:391
+a667078dfe9639b730d54e7283ad9b9e66e535b2:docs/99-项目治理/全平台整改交接/evidence/category-loading-20261101/validation-summary.json:generic-api-key:275

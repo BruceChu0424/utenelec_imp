@@ -160,7 +160,7 @@ bool FlutterWindow::OnCreate() {
           result->Error("INVALID_TITLE", "Title must not be blank.");
           return;
         }
-        if (UTEN_LOCAL_TEST_BUILD) {
+        if constexpr (UTEN_LOCAL_TEST_BUILD != 0) {
           const std::wstring prefix = std::wstring(UTEN_DISPLAY_NAME_W) + L" · ";
           if (title.rfind(UTEN_DISPLAY_NAME_W, 0) != 0) title = prefix + title;
           if (title.size() > 80) {

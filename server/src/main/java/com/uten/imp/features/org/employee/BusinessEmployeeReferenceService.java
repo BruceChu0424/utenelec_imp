@@ -69,7 +69,7 @@ public class BusinessEmployeeReferenceService {
 
     /** Exact bounded echo, never an unrestricted search or a source of new selectable candidates. */
     public List<BusinessEmployeeReference> byIds(String purpose,List<UUID> rawIds) {
-        access.require(purpose);
+        access.requireEcho(purpose);
         if(rawIds==null||rawIds.isEmpty()||rawIds.size()>100||rawIds.stream().anyMatch(Objects::isNull)) throw invalid("人员回显须提供1至100个标识");
         List<UUID> ids=new ArrayList<>(new LinkedHashSet<>(rawIds));
         var found=jdbc.query(SELECT+FROM+" WHERE NOT e.is_deleted AND e.id IN ("+placeholders(ids.size())+")",BusinessEmployeeReferenceService::map,ids.toArray());

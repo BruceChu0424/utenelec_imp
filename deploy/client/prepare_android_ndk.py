@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
 import urllib.request
 import zipfile
 
@@ -135,6 +136,11 @@ def main() -> int:
     except (OSError, ValueError, zipfile.BadZipFile, subprocess.SubprocessError) as failure:
         receipt["failureType"] = type(failure).__name__
         receipt["failure"] = str(failure)[:600]
+        if isinstance(failure, urllib.error.HTTPError):
+            receipt.update(httpStatus=failure.code, contentType=failure.headers.get("Content-Type"),
+                           contentLength=failure.headers.get("Content-Length"),
+                           responsePrefixHex=failure.read(32).hex())
+            failure.close()
         print("::error::The fixed Android NDK was not prepared; inspect the retained HTTP/hash/ZIP receipt.")
         return 1
     finally:

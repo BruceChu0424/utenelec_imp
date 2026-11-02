@@ -241,7 +241,9 @@ class _ExpenseApprovalDetailPageState
       );
       if (completed && current()) succeeded();
     } catch (error) {
-      if (mounted && current()) context.appApiError(error);
+      if (mounted && current()) {
+        context.appApiError(error);
+      }
     } finally {
       if (mounted && operation == _operationGeneration) {
         setState(() => _acting = false);
@@ -341,6 +343,7 @@ class _ExpenseApprovalDetailPageState
       body: detail.when(
         loading: () => const UtenSkeletonList(itemCount: 4),
         error: (e, _) => UtenEmpty.error(
+          error: e,
           message: '加载失败，请重试',
           onAction: () => ref.invalidate(expenseDetailProvider(widget.claimId)),
         ),
@@ -631,6 +634,7 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
           error: (error, _) => SizedBox(
             height: 300,
             child: UtenEmpty.error(
+              error: error,
               message: '付款账户和费用类别没有加载出来',
               description: '请重试或联系财务维护付款账户和费用类别。',
               actionLabel: '重试',

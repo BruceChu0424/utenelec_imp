@@ -500,10 +500,10 @@ class _ReviewPendingDialogState extends ConsumerState<ReviewPendingDialog> {
         _ackedIds.remove(notice.id);
       });
       _closeIfEmpty();
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted) return;
       setState(() => _busyIds.remove(notice.id));
-      context.appError('打卡失败，请稍后重试或在通知中心打卡');
+      context.appApiError(caughtError, fallback: '打卡失败，请稍后重试或在通知中心打卡');
     }
   }
 

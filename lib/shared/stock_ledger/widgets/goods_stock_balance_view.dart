@@ -30,6 +30,7 @@ import '../../models/paged_result.dart';
 import '../../providers/master_name_provider.dart';
 import '../../../features/stock/models/instant_inventory_scope.dart';
 import '../../search/table_column_query.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 class GoodsStockBalanceView extends ConsumerStatefulWidget {
   const GoodsStockBalanceView({
@@ -181,10 +182,10 @@ class _GoodsStockBalanceViewState extends ConsumerState<GoodsStockBalanceView>
         _balances = result;
         _loading = false;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted || version != _version) return;
       setState(() {
-        _error = '库存余额加载失败，请检查网络后重试';
+        _error = humanErrorMessage(caughtError) ?? '库存余额加载失败，请检查网络后重试';
         _loading = false;
       });
     }

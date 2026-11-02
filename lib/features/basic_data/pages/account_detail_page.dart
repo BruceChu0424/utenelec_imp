@@ -56,6 +56,7 @@ import '../widgets/master_edit_dialog.dart';
 import '../widgets/master_status_confirmation.dart';
 import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_read_only_fields.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 class AccountDetailPage extends ConsumerStatefulWidget {
   const AccountDetailPage({
@@ -294,10 +295,10 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
             : null;
       });
       return _styleLoadError == null;
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted || !current()) return false;
       setState(() {
-        _styleLoadError = '币种或会计科目加载失败，请重试';
+        _styleLoadError = humanErrorMessage(caughtError) ?? '币种或会计科目加载失败，请重试';
       });
       return false;
     } finally {
@@ -590,7 +591,9 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
     try {
       requestScope = await client.captureRequestScope(isCurrent: current);
     } catch (error) {
-      if (mounted) context.appApiError(error);
+      if (mounted) {
+        context.appApiError(error);
+      }
       return;
     }
     if (!mounted) return;

@@ -90,7 +90,9 @@ Future<void> deleteFormDrafts(
       await store.delete(draft.id, expectedRevision: draft.revision);
     }
   } catch (error) {
-    if (context.mounted) context.appError('草稿删除失败：$error');
+    if (context.mounted) {
+      context.appApiError(error, fallback: '草稿未能删除，请稍后重试');
+    }
   }
 }
 

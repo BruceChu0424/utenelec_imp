@@ -15,7 +15,6 @@ import '../../core/theme/uten_tokens.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../components/feedback/uten_toast.dart';
 import '../../components/inputs/uten_field_message.dart';
 import '../../components/inputs/uten_input_decoration.dart';
 import '../../components/inputs/uten_table_cell_spec.dart';
@@ -25,6 +24,7 @@ import '../../components/layout/uten_picker_confirm_bar.dart';
 import '../models/department_node.dart';
 import '../repositories/department_repository.dart';
 import 'uten_department_tree_view.dart';
+import 'package:uten_imp/core/ui/app_notification.dart';
 
 /// 选择模式。
 enum UtenDepartmentPickerMode { single, multi }
@@ -321,8 +321,10 @@ class _UtenDepartmentPickerState extends ConsumerState<UtenDepartmentPicker> {
     } else {
       try {
         tree = await ref.read(departmentPickerTreeProvider.future);
-      } catch (_) {
-        if (mounted) UtenToast.error(context, '部门树加载失败，请稍后重试');
+      } catch (caughtError) {
+        if (mounted) {
+          context.appApiError(caughtError, fallback: '部门树加载失败，请稍后重试');
+        }
         return;
       }
     }

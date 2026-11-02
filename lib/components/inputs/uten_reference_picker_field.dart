@@ -247,8 +247,10 @@ class _UtenReferencePickerFieldState<T>
     if (mounted) setState(() {});
     try {
       await widget.onOpenPicker(query);
-    } catch (_) {
-      if (mounted) context.appError('打开选择窗口失败，请重试');
+    } catch (caughtError) {
+      if (mounted) {
+        context.appApiError(caughtError, fallback: '打开选择窗口失败，请重试');
+      }
     } finally {
       if (mounted) {
         _pickerOpen = false;

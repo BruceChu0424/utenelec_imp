@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 // HR 个人修改审批队列（/hr/profile-changes）
 //
 // 2026-09-09 表格化改版：卡片网格 → MasterDataTableView（表头 autofilter 筛选 +
@@ -414,7 +415,9 @@ class _HrProfileChangesListPageState
       paginationScope: _paginationScope,
       isLoading: async.isLoading && !async.hasValue,
       loadingMore: async.isLoading && async.hasValue,
-      error: async.hasError ? '${async.error}' : null,
+      error: async.hasError
+          ? humanErrorMessage(async.error!) ?? '员工资料变更列表读取失败，请稍后重试'
+          : null,
       onRetry: () {
         readLease.invalidate();
         ref.invalidate(hrProfileChangeQueueProvider(_query));

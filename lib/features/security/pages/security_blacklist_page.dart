@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 // 访客黑名单管理页（visitor:blacklist）：blocked 账号分页列表 + 行菜单解除拉黑。
 //
 // 2026-09-18 黑名单 UI 首发：拉黑入口在保安核验结果页（红结果定位到访客时），
@@ -111,7 +112,9 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
         context.appApiError(e, fallback: l10n.commonError);
       }
     } catch (_) {
-      if (mounted) context.appError(l10n.commonError);
+      if (mounted) {
+        context.appError(l10n.commonError);
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -165,7 +168,9 @@ class _SecurityBlacklistPageState extends ConsumerState<SecurityBlacklistPage> {
               paginationScope: paginationScope,
               isLoading: list.isLoading && !list.hasValue,
               loadingMore: list.isLoading && list.hasValue,
-              error: list.hasError ? '${list.error}' : null,
+              error: list.hasError
+                  ? humanErrorMessage(list.error!) ?? '黑名单读取失败，请稍后重试'
+                  : null,
               onRetry: () {
                 readLease.invalidate();
                 ref.invalidate(visitorBlacklistProvider(_page));

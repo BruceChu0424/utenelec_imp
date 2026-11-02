@@ -23,6 +23,7 @@ import '../repositories/admin_repository.dart';
 import 'admin_data_handover_panel.dart';
 import 'permission_draft_session.dart';
 import 'admin_permission_editor_surface.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 /// 宿主持有的分区句柄： ValueKey 重建分区时新 State 自动重新挂接，
 /// 宿主不必用 GlobalKey（与「按 (user, revision) 重建」的既有口径共存）。
@@ -195,11 +196,11 @@ class AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
             )
             .map(_loadScope),
       );
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted || !_active(userId, generation)) return;
       setState(() {
         _catalogLoading = false;
-        _catalogError = '可查看数据目录加载失败，请重试';
+        _catalogError = humanErrorMessage(caughtError) ?? '可查看数据目录加载失败，请重试';
       });
     }
   }
@@ -235,13 +236,13 @@ class AdminDataScopeSectionState extends ConsumerState<AdminDataScopeSection> {
           _drafts.remove(scope);
         }
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted || !_active(userId, generation)) return;
       setState(() {
         // 加载失败的范围不显示选择器：拿不到服务器基线就不能安全改草稿。
         _grants.remove(scope);
         _drafts.remove(scope);
-        _errors[scope] = '加载失败，请重试';
+        _errors[scope] = humanErrorMessage(caughtError) ?? '加载失败，请重试';
       });
     } finally {
       if (mounted && widget.user.id == userId && generation == _generation) {

@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -40,7 +41,7 @@ String permissionTransferError(Object error) => switch (error) {
   final ApiException e when isSessionBoundaryError(e) =>
     '登录状态已变化或暂时无法核对，请关闭窗口后重新打开。',
   final ApiException e => e.message,
-  final FormatException e => e.message,
+  final FormatException e => humanErrorMessage(e) ?? '权限配置文件格式不正确，请检查后重新导入',
   _ => '权限设置处理失败，请重试',
 };
 

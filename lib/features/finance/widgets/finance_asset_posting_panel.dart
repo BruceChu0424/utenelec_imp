@@ -23,6 +23,7 @@ import '../models/finance_asset_models.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import '../repositories/finance_asset_workbench_repository.dart';
 import 'finance_asset_ui.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 class FinanceAssetPostingPanel extends ConsumerStatefulWidget {
   const FinanceAssetPostingPanel({
@@ -154,11 +155,11 @@ class _FinanceAssetPostingPanelState
         _runs = result.items;
         _runsLoading = false;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!current() || !_runsGuard.isCurrent(generation)) return;
       setState(() {
         _runsLoading = false;
-        _runsError = '过账批次加载失败';
+        _runsError = humanErrorMessage(caughtError) ?? '过账批次加载失败';
       });
     }
   }
@@ -179,11 +180,11 @@ class _FinanceAssetPostingPanelState
         _periods = result;
         _periodsLoading = false;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!current() || !_periodsGuard.isCurrent(generation)) return;
       setState(() {
         _periodsLoading = false;
-        _periodsError = '资产期间加载失败';
+        _periodsError = humanErrorMessage(caughtError) ?? '资产期间加载失败';
       });
     }
   }

@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 // 访客来访预约表单：姓名/身份证/单位/事由/开车+车牌/接待部门+接待人/到访时间。
 //
 // 响应式：访客流程不经主外壳，全断点自套 UtenContentContainer.narrow
@@ -126,9 +127,9 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
     late final List<VisitorApplication> myApps;
     try {
       myApps = await ref.read(visitorRepositoryProvider).activeApplications();
-    } catch (_) {
+    } catch (error) {
       if (mounted) {
-        setState(() => _error = l10n.commonError);
+        setState(() => _error = humanErrorMessage(error) ?? l10n.commonError);
       }
       return;
     }

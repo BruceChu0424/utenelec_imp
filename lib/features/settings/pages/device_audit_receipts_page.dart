@@ -22,6 +22,7 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 class DeviceAuditReceiptsPage extends ConsumerStatefulWidget {
   const DeviceAuditReceiptsPage({
@@ -164,10 +165,10 @@ class _DeviceAuditReceiptsPageState
         _receipt = value;
         _searched = true;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted) return;
       setState(() {
-        _error = '本机回执读取失败，请稍后重试';
+        _error = humanErrorMessage(caughtError) ?? '本机回执读取失败，请稍后重试';
         _receipt = null;
         _searched = false;
       });

@@ -132,7 +132,9 @@ Future<T?> guardPartyPanelResult<T>(
           container,
           ProviderScope.containerOf(context, listen: false),
         )) {
-      if (result != null) context.appError('登录身份或读取范围已变化，请重新打开面板');
+      if (result != null) {
+        context.appError('登录身份或读取范围已变化，请重新打开面板');
+      }
       return null;
     }
     return result;
@@ -182,9 +184,9 @@ Future<T?> resolvePickedParty<T>(
   if (selected == null || !current()) return null;
   try {
     await loadNames([idOf(selected)]);
-  } catch (_) {
+  } catch (error) {
     if (context.mounted && current()) {
-      context.appError('暂时无法读取往来方信息，请重试');
+      context.appApiError(error, fallback: '暂时无法读取往来方信息，请重试');
     }
     return null;
   }

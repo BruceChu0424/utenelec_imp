@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 import '../../../components/feedback/uten_task_progress_dialog.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/hierarchy/category_sibling_names.dart';
@@ -199,12 +200,12 @@ class _CategoryEditDialogState extends ConsumerState<CategoryEditDialog>
         _prefixError = result.available ? null : '编号前缀“$prefix”已被占用，请更换后再保存。';
       });
       return result.available;
-    } catch (_) {
+    } catch (error) {
       if (!mounted || revision != _prefixRevision) return false;
       setState(() {
         _prefixChecking = false;
         _prefixCheckFailed = true;
-        _prefixError = '暂时无法检查编号前缀，请重新检查后保存。';
+        _prefixError = humanErrorMessage(error) ?? '暂时无法检查编号前缀，请重新检查后保存。';
       });
       return false;
     }

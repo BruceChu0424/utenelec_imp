@@ -34,6 +34,7 @@ import '../../../shared/auth/read_owner_fence.dart';
 import '../models/production_material_analysis.dart';
 import '../repositories/production_repository.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 class ProductionPlanSummarySheetPage extends ConsumerStatefulWidget {
   const ProductionPlanSummarySheetPage({
@@ -817,9 +818,12 @@ class _ProductionPlanSummarySheetPageState
       final ok = await printPdfBytes(bytes, filename);
       if (!mounted || !current()) return;
       if (!ok) context.appWarning('打印流程未完成');
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted || !current()) return;
-      context.appError('生成 PDF 失败，请重新打印；连续失败时可重启打印服务后再试', force: true);
+      context.appError(
+        humanErrorMessage(caughtError) ?? '生成 PDF 失败，请重新打印；连续失败时可重启打印服务后再试',
+        force: true,
+      );
     } finally {
       if (mounted && generation == _printGeneration) {
         setState(() => _printing = false);

@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 // 品质「批量审批」汇总页（2026-09-05）——待检处置列表多选后进入。
 //
 // 用户口径：多选的内容都汇总到一个页面，可多选/单选，填合格/不合格数量后
@@ -356,11 +357,7 @@ class _QualityBatchApprovalPageState
     } catch (error) {
       if (mounted) {
         setState(() {
-          _draftLoadError = switch (error) {
-            final ApiException e => e.message,
-            final StateError e => e.message,
-            _ => '$error',
-          };
+          _draftLoadError = humanErrorMessage(error) ?? '草稿信息读取失败，请重新打开';
           _loading = false;
         });
       }

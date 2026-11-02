@@ -32,6 +32,7 @@ import '../repositories/notice_repository.dart';
 import 'notice_unread_index_provider.dart';
 import '../widgets/notice_detail_dialog.dart';
 import '../widgets/review_pending_dialog.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 typedef NoticeArrivalLoader =
     Future<NoticeArrivalPage> Function(NoticeArrivalCursor? after);
@@ -930,10 +931,13 @@ Future<void> acknowledgeNoticeInline(
     await container.read(noticeRepositoryProvider).acknowledge(noticeId);
     container.invalidate(noticeListProvider);
     container.invalidate(noticeDetailProvider(noticeId));
-  } catch (_) {
+  } catch (caughtError) {
     container
         .read(appNotificationProvider.notifier)
-        .showError('打卡失败，请稍后在通知中心或登录提醒中重试', force: true);
+        .showError(
+          humanErrorMessage(caughtError) ?? '打卡失败，请稍后在通知中心或登录提醒中重试',
+          force: true,
+        );
   }
 }
 

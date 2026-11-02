@@ -263,7 +263,7 @@ class _FinanceArApOverviewPageState
       }
       setState(() {
         _treeLoading = false;
-        _treeError = '分类加载失败，请重试：$e';
+        _treeError = humanErrorMessage(e) ?? '分类加载失败，请稍后重试';
       });
     }
   }
@@ -562,7 +562,7 @@ class _FinanceArApOverviewPageState
           _lastColumnSearchKeys = const {};
           _acceptedReadQuery = null;
         }
-        _reportError = '加载应收应付失败，请重试';
+        _reportError = humanErrorMessage(e) ?? '加载应收应付失败，请重试';
         _loading = false;
       });
     }

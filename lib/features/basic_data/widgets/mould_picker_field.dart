@@ -24,6 +24,7 @@ import 'master_data_table_view.dart';
 import 'uten_category_tree_view.dart';
 import '../models/mould_node.dart';
 import '../repositories/mould_repository.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 class MouldPickerField extends ConsumerStatefulWidget {
   const MouldPickerField({
@@ -496,10 +497,10 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet>
         _totalPages = result.totalPages < 1 ? 1 : result.totalPages;
         _loading = false;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!_canRead || requestVersion != _requestVersion) return;
       setState(() {
-        _error = '模具搜索失败，请重试';
+        _error = humanErrorMessage(caughtError) ?? '模具搜索失败，请重试';
         _loading = false;
       });
     }
@@ -519,10 +520,10 @@ class _MouldSearchSheetState extends ConsumerState<_MouldSearchSheet>
           _treeLoading = false;
         });
       }
-    } catch (_) {
+    } catch (caughtError) {
       if (_canRead) {
         setState(() {
-          _treeError = '分类加载失败';
+          _treeError = humanErrorMessage(caughtError) ?? '分类加载失败';
           _treeLoading = false;
         });
       }

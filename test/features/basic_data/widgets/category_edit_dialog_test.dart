@@ -360,7 +360,7 @@ void main() {
     await tester.enterText(_prefixField(), 'UG');
     await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();
-    expect(find.text('暂时无法检查编号前缀，请重新检查后保存。'), findsOneWidget);
+    expect(find.text('前缀检查结果与当前输入不一致'), findsOneWidget);
     expect(_submitButton(tester, '创建').onPressed, isNull);
     expect(find.byTooltip('重新检查编号前缀'), findsOneWidget);
   });

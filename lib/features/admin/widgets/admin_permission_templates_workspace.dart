@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -445,9 +446,9 @@ class _TemplatesState extends ConsumerState<AdminPermissionTemplatesView> {
     }
   }
 
-  String _errorText(Object error) => error is ApiException
-      ? error.message
-      : AppLocalizations.of(context).permissionTemplateLoadFailed;
+  String _errorText(Object error) =>
+      humanErrorMessage(error) ??
+      AppLocalizations.of(context).permissionTemplateLoadFailed;
 
   @override
   Widget build(BuildContext context) {

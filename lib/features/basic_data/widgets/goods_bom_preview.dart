@@ -29,6 +29,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../shared/auth/permissions.dart';
 import '../models/goods_bom_item.dart';
 import '../repositories/goods_bom_repository.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 /// 清单行：BOM 行 + 树深度（0=一级组件）+ 级联序号（1 / 3.1 / 3.1.1）。
 class _PreviewRow {
@@ -151,9 +152,11 @@ class _GoodsBomPreviewDialogState
       await walk(widget.goodsId, 0, {widget.goodsId}, '');
       if (!mounted) return;
       setState(() => _rows = rows);
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted) return;
-      setState(() => _error = '加载组装信息失败'); // TODO(l10n): 补 arb
+      setState(
+        () => _error = humanErrorMessage(caughtError) ?? '加载组装信息失败',
+      ); // TODO(l10n): 补 arb
     }
   }
 
@@ -289,9 +292,12 @@ class _GoodsBomPreviewDialogState
         await doc.save(),
         '${_title}_${widget.productCode ?? widget.productName ?? 'goods'}.pdf',
       );
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted) return;
-      context.appError('生成打印件失败，请稍后重试'); // TODO(l10n): 补 arb
+      context.appApiError(
+        caughtError,
+        fallback: '生成打印件失败，请稍后重试',
+      ); // TODO(l10n): 补 arb
     }
   }
 

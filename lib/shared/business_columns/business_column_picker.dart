@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -147,11 +148,11 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
         _arithmetic = data[1] == true && !widget.priceMasked;
         _loading = false;
       });
-    } catch (_) {
+    } catch (error) {
       if (!mounted || generation != _generation) return;
       setState(() {
         _loading = false;
-        _loadError = _text.businessColumnLoadFailed;
+        _loadError = humanErrorMessage(error) ?? _text.businessColumnLoadFailed;
       });
     }
   }
@@ -219,11 +220,12 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
         return;
       }
       _completeChoice(BusinessColumnChoice(column: column));
-    } catch (_) {
+    } catch (error) {
       if (mounted && identical(repository, _repo)) {
         setState(() {
           _saving = false;
-          _saveError = _text.businessColumnSaveFailed;
+          _saveError =
+              humanErrorMessage(error) ?? _text.businessColumnSaveFailed;
         });
       }
     }

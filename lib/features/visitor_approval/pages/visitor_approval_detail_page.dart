@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 // 访客审批详情（HR）：查看 + 批准/拒绝/转接待人确认。
 //
 // 页面水平边距由共享入口持有；滚动上下留白保持在内容中。
@@ -209,7 +210,7 @@ class _VisitorApprovalDetailPageState
           detail.when(
             loading: () => const UtenSkeletonList(itemCount: 4),
             error: (e, _) => UtenEmpty.error(
-              message: '$e',
+              message: humanErrorMessage(e) ?? '审批详情读取失败，请稍后重试',
               actionLabel: l10n.commonRetry,
               onAction: () => ref.invalidate(
                 visitorApprovalDetailProvider(widget.applicationId),

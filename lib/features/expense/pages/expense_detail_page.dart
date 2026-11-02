@@ -94,7 +94,9 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
     try {
       await action();
     } catch (error) {
-      if (mounted) context.appApiError(error);
+      if (mounted) {
+        context.appApiError(error);
+      }
     } finally {
       if (mounted) setState(() => _acting = false);
     }
@@ -152,6 +154,7 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
         loading: () =>
             const Center(child: CircularProgressIndicator.adaptive()),
         error: (e, _) => UtenEmpty.error(
+          error: e,
           message: '加载失败，请重试',
           onAction: () => ref.invalidate(expenseDetailProvider(widget.claimId)),
         ),

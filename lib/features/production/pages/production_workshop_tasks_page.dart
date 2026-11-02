@@ -103,6 +103,7 @@ import '../widgets/workshop_task_material_dialog.dart';
 import '../widgets/workshop_task_detail_dialog.dart';
 import '../widgets/workshop_task_material_bin_panel.dart';
 import '../../../shared/badges/badge_registry.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 /// 一块跑批遮罩的画面: 测试锚点 key + 标题 + 说明。标题在同一次动作里可换
 /// (提交段 -> 刷新段), UtenBusyOverlay 支持帧后热更文案。
@@ -1312,9 +1313,11 @@ class _ProductionWorkshopTasksPageState
       });
       // 报工草稿保留原任务行与计数，只扣减已经承接的可报额度。
       unawaited(_loadDraftReportState(generation));
-    } catch (_) {
+    } catch (caughtError) {
       if (mounted && generation == _loadGeneration) {
-        setState(() => _error = '车间任务加载失败，请重试');
+        setState(
+          () => _error = humanErrorMessage(caughtError) ?? '车间任务加载失败，请重试',
+        );
       }
     } finally {
       if (mounted && generation == _loadGeneration) {
@@ -1745,7 +1748,9 @@ class _ProductionWorkshopTasksPageState
       if (!mounted) return;
       await _reloadAfterChange();
     } catch (e) {
-      if (mounted) context.appApiError(e);
+      if (mounted) {
+        context.appApiError(e);
+      }
     } finally {
       if (mounted) setState(() => _navigating = false);
     }
@@ -1994,7 +1999,9 @@ class _ProductionWorkshopTasksPageState
         context.appInfo(l10n.productionMaterialRecheckWaiting);
       }
     } catch (error) {
-      if (mounted) context.appApiError(error);
+      if (mounted) {
+        context.appApiError(error);
+      }
     }
   }
 
@@ -2647,7 +2654,9 @@ class _ProductionWorkshopTasksPageState
       );
       if (mounted) await _reloadAfterChange();
     } catch (error) {
-      if (mounted) context.appApiError(error);
+      if (mounted) {
+        context.appApiError(error);
+      }
     } finally {
       if (mounted) setState(() => _navigating = false);
     }

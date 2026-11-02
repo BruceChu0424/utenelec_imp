@@ -1462,7 +1462,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
       expect(find.byKey(const ValueKey('ai-settings-error')), findsOneWidget);
-      expect(find.text(_en.aiChatSettingsSaveFailed), findsOneWidget);
+      expect(find.text('无法连接服务器，请检查网络或服务器状态'), findsOneWidget);
       // The page is still read: the next question carries the snapshot route.
       await tester.tap(find.byKey(const ValueKey('ai-settings-back')));
       await tester.pumpAndSettle();
@@ -1985,7 +1985,7 @@ void main() {
       expect(repository.settingChanges.single, {'operationMemory': false});
       expect(tester.widget<SwitchListTile>(toggle).value, isTrue);
       expect(find.byKey(const ValueKey('ai-settings-error')), findsOneWidget);
-      expect(find.text(_en.aiChatSettingsSaveFailed), findsOneWidget);
+      expect(find.text('无法连接服务器，请检查网络或服务器状态'), findsOneWidget);
     });
   });
 

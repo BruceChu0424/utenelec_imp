@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -164,7 +165,9 @@ class _BatchDialogState extends ConsumerState<_BatchDialog> {
     } catch (error) {
       if (mounted && _current) {
         setState(
-          () => _error = AppLocalizations.of(context).orderClosureLoadFailed,
+          () => _error =
+              humanErrorMessage(error) ??
+              AppLocalizations.of(context).orderClosureLoadFailed,
         );
         context.appApiError(error);
       }

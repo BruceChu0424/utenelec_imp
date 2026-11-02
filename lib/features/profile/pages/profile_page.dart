@@ -106,8 +106,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
           ],
         ),
       ),
-      error: (_, _) => _stateScaffold(
+      error: (caughtError, _) => _stateScaffold(
         UtenEmpty.error(
+          error: caughtError,
           message: l10n.profileLoadFailed,
           actionLabel: l10n.commonRetry,
           onAction: () => ref.invalidate(myEmployeeProfileProvider),

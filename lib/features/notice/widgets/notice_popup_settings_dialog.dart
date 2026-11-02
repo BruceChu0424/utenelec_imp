@@ -83,10 +83,10 @@ class _NoticePopupSettingsDialogState
             )
             .toList();
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted) return;
       // 失败回滚（本地未变更），提示重试；开关保持原值。
-      context.appError('保存失败，请稍后重试');
+      context.appApiError(caughtError, fallback: '保存失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _saving.remove(pref.sourceEvent));
     }

@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 import '../../../shared/models/employee_reference.dart';
 import '../../../shared/widgets/business_employee_picker.dart';
 // 委外领料批量出库页(ADR-143 §4.3): 一次核对并审核多张委外领料单。
@@ -812,11 +813,8 @@ class _WarehouseSubcontractOutboundBatchPageState
     }
   }
 
-  String _message(Object error) => switch (error) {
-    ApiException() => error.message,
-    FormatException() => error.message,
-    _ => l10n.warehouseSubcontractOutboundLoadFailed,
-  };
+  String _message(Object error) =>
+      humanErrorMessage(error) ?? l10n.warehouseSubcontractOutboundLoadFailed;
 
   String _date(DateTime date) =>
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
@@ -1293,7 +1291,9 @@ class _WarehouseSubcontractOutboundBatchPageState
             });
           }
         } catch (error) {
-          if (mounted) context.appError(_message(error));
+          if (mounted) {
+            context.appError(_message(error));
+          }
         }
       }
       invalidateWarehouseTaskCounts(ref);

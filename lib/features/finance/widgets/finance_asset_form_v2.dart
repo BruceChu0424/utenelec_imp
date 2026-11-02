@@ -37,6 +37,7 @@ import '../repositories/finance_asset_category_repository.dart';
 import '../repositories/finance_asset_workbench_repository.dart';
 import 'finance_asset_entry_l10n.dart';
 import 'finance_asset_ui.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 Future<bool> showFinanceAssetForm(
   BuildContext context, {
@@ -386,11 +387,11 @@ class _FinanceAssetFormSurfaceState
         _categories = categories;
         _categoriesLoading = false;
       });
-    } catch (_) {
+    } catch (caughtError) {
       if (!mounted || !_categoryGuard.isCurrent(generation)) return;
       setState(() {
         _categoriesLoading = false;
-        _categoriesError = '资产分类加载失败';
+        _categoriesError = humanErrorMessage(caughtError) ?? '资产分类加载失败';
       });
     }
   }
@@ -1126,8 +1127,10 @@ class _FinanceAssetFormSurfaceState
       setState(() => _openingVoucherId = rows.single['id']?.toString());
       _markDirty();
       context.appSuccess('已找到期初凭证；启用时将核对科目与金额');
-    } catch (_) {
-      if (mounted && ownerCurrent()) context.appError('期初凭证查询失败，请重试');
+    } catch (caughtError) {
+      if (mounted && ownerCurrent()) {
+        context.appApiError(caughtError, fallback: '期初凭证查询失败，请重试');
+      }
     } finally {
       if (mounted) setState(() => _checkingVoucher = false);
     }

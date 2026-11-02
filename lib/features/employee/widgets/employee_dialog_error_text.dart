@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/ui/human_error_message.dart';
 // 弹窗里显示的失败原因：优先服务端原话，让人知道具体哪里不对。
 import '../../../core/network/api_error.dart';
 import '../../../core/network/api_exception.dart';
@@ -8,7 +9,7 @@ import '../../../core/network/api_exception.dart';
 /// (只取原因，不带字段名)；只有服务端没给任何说明、或根本不是服务端报错时，
 /// 才用 [fallback] 这种笼统说法。
 String employeeDialogErrorText(Object error, String fallback) {
-  if (error is! ApiException) return fallback;
+  if (error is! ApiException) return humanErrorMessage(error) ?? fallback;
   final parts = <String>[];
   final message = error.message.trim();
   if (message.isNotEmpty) parts.add(message);

@@ -34,6 +34,7 @@ import '../repositories/sales_repository.dart';
 import '../config/sales_doc_config.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
 import '../../../shared/badges/badge_registry.dart';
+import 'package:uten_imp/core/ui/human_error_message.dart';
 
 /// 弹出批量发货面板；返回生成的出货单张数（null 表示取消）。
 Future<int?> showSalesBatchShipPanel(BuildContext context, WidgetRef ref) {
@@ -225,9 +226,11 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
       }
       setState(() {
         _loading = false;
-        _error = '可发订单行加载失败，请重试';
+        _error = humanErrorMessage(error) ?? '可发订单行加载失败，请重试';
       });
-      if (mounted) context.appApiError(error, fallback: '可发订单行加载失败，请稍后重试');
+      if (mounted) {
+        context.appApiError(error, fallback: '可发订单行加载失败，请稍后重试');
+      }
     }
   }
 

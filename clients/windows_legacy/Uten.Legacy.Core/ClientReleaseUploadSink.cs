@@ -27,6 +27,7 @@ namespace Uten.Legacy.Core
         internal string ReleaseId { get; private set; }
         internal long Length { get; private set; }
         internal long Written { get; private set; }
+        internal bool Started { get; private set; }
         internal bool Completed { get; private set; }
 
         internal ClientReleaseUploadSink(string releaseId, string sourcePath, long length, string expectedSha256,
@@ -76,6 +77,8 @@ namespace Uten.Legacy.Core
                     cancellationToken.ThrowIfCancellationRequested();
                     if (checkScope != null) checkScope();
                     if (Written + read > Length) throw new IOException("原文件内容超过发布信息的大小。");
+                    // A stream write can partially reach the server before throwing.
+                    Started = true;
                     target.Write(buffer, 0, read);
                     hash.TransformBlock(buffer, 0, read, null, 0);
                     Written += read;

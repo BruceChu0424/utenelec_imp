@@ -45726,7 +45726,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "3e89f129f2aec8bf7d970f32659639d4529b275aa659da27391a8dbe0396bdb4"
+          "targetSha256": "6593eb009b12dfcfc2283a81ebe75e8ba2c9add18b3270cf0339f80a35fefd1a"
         },
         {
           "directive": "import",
@@ -252714,8 +252714,8 @@
     },
     {
       "source": "lib/features/client_update/client_release_publish_queue.dart",
-      "sha256": "3e89f129f2aec8bf7d970f32659639d4529b275aa659da27391a8dbe0396bdb4",
-      "lineCount": 1194
+      "sha256": "6593eb009b12dfcfc2283a81ebe75e8ba2c9add18b3270cf0339f80a35fefd1a",
+      "lineCount": 1198
     },
     {
       "source": "lib/features/client_update/client_release_publish_widgets.dart",

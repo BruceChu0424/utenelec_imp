@@ -14,6 +14,7 @@ import subprocess
 import tempfile
 import uuid
 import package_wpf as package
+import windows_authenticode
 
 ROOT = package.ROOT
 INSTALLER = ROOT / "clients/windows_legacy/installer/windows_wpf_installer.iss"
@@ -69,7 +70,8 @@ def inspect_inputs(payloads: dict[str, Path], helpers: dict[str, Path], configur
             receipt = package._read_json(receipts[architecture])
             expected = {**state, "runtimeFamily": "wpf_legacy", "platform": "windows", "architecture": architecture,
                         "configuration": "Release", "distributionProfile": "Company", "files": files}
-            if not package._same(receipt, expected):
+            package.verify_receipt_signing(receipt, files)
+            if not package._same({key: value for key, value in receipt.items() if key != "windowsSigning"}, expected):
                 raise ValueError("Setup payload receipt differs from this reviewed Company source")
         bootstrap = package.inspect_bootstrap(helpers[architecture], architecture=architecture, version=version, build_number=build_number, company=not fixture)
         if state is not None:
@@ -77,7 +79,9 @@ def inspect_inputs(payloads: dict[str, Path], helpers: dict[str, Path], configur
                 raise ValueError("Company Setup requires both same-source bootstrap receipts")
             expected = {**state, "artifactKind": "bootstrap", "runtimeFamily": "wpf_legacy", "platform": "windows",
                 "architecture": architecture, "configuration": "Release", "distributionProfile": "Company", "files": bootstrap["files"]}
-            if not package._same(package._read_json(bootstrap_receipts[architecture]), expected):
+            receipt = package._read_json(bootstrap_receipts[architecture])
+            package.verify_receipt_signing(receipt, bootstrap["files"])
+            if not package._same({key: value for key, value in receipt.items() if key != "windowsSigning"}, expected):
                 raise ValueError("Setup bootstrap receipt differs from this reviewed Company source")
         result["architectures"][architecture] = {"files": files, "bootstrap": bootstrap["files"], "bootstrapFileVersion": bootstrap["fileVersion"]}
     return result
@@ -112,6 +116,11 @@ def build_installer(payloads: dict[str, Path], helpers: dict[str, Path], configu
         "policySha256": package._digest(POLICY), "build": build, "setupExecuted": False, "win7Accepted": False})
     if not build:
         return plan
+    if not fixture:
+        windows_authenticode.check_configuration()
+        for architecture in ("x86", "x64"):
+            windows_authenticode.verify_files(windows_authenticode.runtime_files(payloads[architecture]))
+            windows_authenticode.verify_files([(helpers[architecture].name, helpers[architecture])])
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".uten-wpf-setup-", dir=output.parent) as temporary:
         stage = Path(temporary).resolve()
@@ -142,6 +151,8 @@ def build_installer(payloads: dict[str, Path], helpers: dict[str, Path], configu
             "/DAppIcon=" + str(stage / "uten-wpf.ico"), "/DAppConfiguration=" + str(stage / "uten.client.json")]
         if fixture:
             arguments.append("/DValidationFixture")
+        else:
+            arguments.append(windows_authenticode.inno_signing_argument())
         arguments.append(str(stage / INSTALLER.name))
         process = subprocess.run(arguments, capture_output=True)
         log = process.stdout + process.stderr
@@ -150,6 +161,8 @@ def build_installer(payloads: dict[str, Path], helpers: dict[str, Path], configu
             raise ValueError("ISCC rejected candidate; see isolated .iscc.log")
         verify_frozen(stage, plan)
         candidate = compiled / output.name
+        if not fixture:
+            windows_authenticode.verify_files([("Setup.exe", candidate)], company_files={"Setup.exe"})
         info = package.inspect_executable_info(candidate)
         output.with_suffix(".identity.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
         expected_version = tuple(map(int, version.split("."))) + (build_number,)

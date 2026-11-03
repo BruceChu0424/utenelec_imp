@@ -75,6 +75,37 @@ class InstallerStagingContractTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "bootstrap receipt differs"):
             self.plan(fixture=False)
 
+    def test_private_bootstrap_signing_keeps_the_compiled_helper_and_configuration(self):
+        compiled = self.helpers["x64"]
+        original = compiled.read_bytes()
+        configuration = compiled.with_suffix(".exe.config").read_bytes()
+        private = self.fixture.root / "private signed bootstrap"
+        receipt_path = self.fixture.root / "private-bootstrap-receipt.json"
+        def signer(files, **options):
+            for _, path in files:
+                self.assertNotEqual(path, compiled)
+                fixtures.add_synthetic_certificate(path)
+            return {"syntheticSignatureBoundary": True}
+        with mock.patch.object(package.windows_authenticode, "sign_files", side_effect=signer):
+            result = package.prepare_company_bootstrap(compiled, private, receipt_path, architecture="x64",
+                source_root=self.fixture.source, source_state=self.fixture.state)
+        self.assertEqual(compiled.read_bytes(), original)
+        self.assertEqual(compiled.with_suffix(".exe.config").read_bytes(), configuration)
+        self.assertEqual((private / compiled.with_suffix(".exe.config").name).read_bytes(), configuration)
+        self.assertNotEqual((private / compiled.name).read_bytes(), original)
+        self.assertEqual(result["helper"], str(private / compiled.name))
+        self.helpers["x64"] = private / compiled.name
+        self.bootstrap_receipts["x64"] = receipt_path
+        # The exact-source Setup consumer accepts the real post-sign file list
+        # and its optional transformation provenance, rather than rejecting the
+        # producer's new receipt fields as an unrelated source mismatch.
+        self.plan(fixture=False)
+        changed = json.loads(receipt_path.read_text(encoding="utf-8"))
+        changed["windowsSigning"]["postSignFiles"][0]["sha256"] = "0" * 64
+        receipt_path.write_text(json.dumps(changed), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "signing receipt"):
+            self.plan(fixture=False)
+
     def test_mismatched_bootstrap_architecture_and_company_marker_are_rejected(self):
         correct = self.helpers["x86"]
         self.helpers["x86"] = self.helpers["x64"]

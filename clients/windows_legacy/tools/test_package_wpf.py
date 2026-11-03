@@ -14,7 +14,7 @@ import zipfile
 import package_wpf as package
 
 sys.path.insert(0, str(package.ROOT / "deploy/client"))
-from test_package_windows import fixture_executable
+from test_package_windows import fixture_executable, synthetic_signature_boundary
 
 
 def managed_fixture(architecture="x64", *, dll=False, anycpu=False, marker=package.MARKER,
@@ -42,8 +42,22 @@ def managed_fixture(architecture="x64", *, dll=False, anycpu=False, marker=packa
     return bytes(data)
 
 
+def add_synthetic_certificate(path):
+    """Untrusted PE certificate table for producer byte/order tests only."""
+    data = bytearray(path.read_bytes())
+    pe = struct.unpack_from("<I", data, 60)[0]
+    optional = pe + 24
+    directory = 96 if struct.unpack_from("<H", data, optional)[0] == 0x10b else 112
+    data.extend(b"\0" * (-len(data) % 8))
+    offset = len(data)
+    data.extend(struct.pack("<IHH", 24, 0x200, 2) + b"NOT TRUSTED TEST")
+    struct.pack_into("<II", data, optional + directory + 32, offset, 24)
+    path.write_bytes(data)
+
+
 class WpfCandidatePackageTest(unittest.TestCase):
     def setUp(self):
+        synthetic_signature_boundary(self)
         self.temporary = tempfile.TemporaryDirectory(prefix="uten WPF candidate fixture ")
         self.root = Path(self.temporary.name).resolve()
         self.source = self.root / "clean source"
@@ -85,6 +99,50 @@ class WpfCandidatePackageTest(unittest.TestCase):
                  "-c", "commit.gpgsign=false", "-c", "core.hooksPath=disabled-hooks", "commit", "-qm", "synthetic reviewed source")
         self.state = package.capture_source_state(self.source)
         self.issue_receipt()
+
+    def test_company_producer_seals_a_private_copy_and_keeps_exact_vendor_lock(self):
+        original = {path.name: path.read_bytes() for path in self.bundle.iterdir()}
+        private = self.root / "private signed payload"
+        receipt_path = self.root / "signed-source-receipt.json"
+        calls = []
+        def signer(files, **options):
+            calls.append([name for name, _ in files])
+            for _, path in files:
+                self.assertNotEqual(path.parent, self.bundle)
+                add_synthetic_certificate(path)
+            return {"syntheticSignatureBoundary": True}
+        with mock.patch.object(package.windows_authenticode, "sign_files", side_effect=signer):
+            result = package.prepare_company_payload(self.bundle, private, receipt_path, architecture="x64",
+                source_root=self.source, source_state=self.state)
+        self.assertEqual(calls, [[package.CORE], [package.EXECUTABLE]])
+        self.assertEqual({path.name: path.read_bytes() for path in self.bundle.iterdir()}, original)
+        self.assertEqual((private / package.BC).read_bytes(), original[package.BC])
+        receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        self.assertFalse(receipt["windowsSigning"]["sourceBundleModified"])
+        self.assertNotEqual(receipt["windowsSigning"]["preSignMainSha256"], receipt["windowsSigning"]["signedMainSha256"])
+        with (private / package.EXECUTABLE).open("rb") as source:
+            inventory = package.windows_payload_binding.read(source, (private / package.EXECUTABLE).stat().st_size)
+        actual = {item["path"]: item for item in receipt["files"] if item["path"] != package.EXECUTABLE}
+        self.assertEqual({item["path"]: item for item in inventory["files"]}, actual)
+        self.assertEqual(result["privatePayloadDirectory"], str(private.resolve()))
+        update = self.root / "signed-structure-candidate.zip"
+        package.package_update(private, update, architecture="x64", source_root=self.source,
+                               receipt_path=receipt_path, build=True)
+        self.assertTrue(update.is_file())
+
+    def test_company_producer_rejects_vendor_trust_before_signing_or_emitting_a_receipt(self):
+        output = self.root / "private failed payload"
+        receipt = self.root / "failed-signing-receipt.json"
+        original = {path.name: path.read_bytes() for path in self.bundle.iterdir()}
+        with mock.patch.object(package.windows_authenticode, "verify_files", side_effect=ValueError("revoked vendor")), \
+             mock.patch.object(package.windows_authenticode, "sign_files") as signer, \
+             self.assertRaisesRegex(ValueError, "revoked vendor"):
+            package.prepare_company_payload(self.bundle, output, receipt, architecture="x64",
+                source_root=self.source, source_state=self.state)
+        signer.assert_not_called()
+        self.assertFalse(output.exists())
+        self.assertFalse(receipt.exists())
+        self.assertEqual({path.name: path.read_bytes() for path in self.bundle.iterdir()}, original)
 
     def tearDown(self):
         self.temporary.cleanup()

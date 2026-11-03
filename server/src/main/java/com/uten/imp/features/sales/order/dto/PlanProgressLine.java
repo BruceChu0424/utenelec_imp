@@ -30,7 +30,21 @@ public record PlanProgressLine(
         /** 剩余未排量（V545：未交付 − 预留 − 未完工计划量，服务端派生；>0 即该行仍待排产）。 */
         BigDecimal unplannedQty,
         List<MaterialAnalysisProgress> materialAnalyses,
-        List<PlanLink> links) {
+        List<PlanLink> links,
+        PreparationProgress preparation) {
+
+    /** Order-unit physical fulfillment. Stock and net shipments are disjoint; production is not added again. */
+    public record PreparationProgress(
+            BigDecimal targetQty,
+            BigDecimal preparedQty,
+            BigDecimal stockQty,
+            BigDecimal netShippedQty,
+            List<SupplySource> sources) {
+    }
+
+    /** Qualified root-product handoffs, net of reversals; no commercial or supplier details. */
+    public record SupplySource(String kind, BigDecimal qty) {
+    }
 
     /**
      * Sales-safe pre-plan snapshot. A sales line can appear in more than one
@@ -47,7 +61,8 @@ public record PlanProgressLine(
             BigDecimal readyNowQty,
             BigDecimal readyByDateQty,
             LocalDate expectedReadyDate,
-            List<SupplyActionProgress> supplyActions) {
+            List<SupplyActionProgress> supplyActions,
+            BigDecimal rootFulfilledQty) {
     }
 
     /**

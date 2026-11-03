@@ -119,7 +119,7 @@ public class FinanceBatchEntryService {
     static JsonNode canonical(JsonNode node) {
         if (node.isObject()) {
             var sorted = new TreeMap<String, JsonNode>();
-            node.fields().forEachRemaining(e -> sorted.put(e.getKey(), canonical(e.getValue())));
+            node.properties().forEach(e -> sorted.put(e.getKey(), canonical(e.getValue())));
             ObjectNode result = com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
             sorted.forEach(result::set);
             return result;

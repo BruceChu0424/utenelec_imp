@@ -51,7 +51,8 @@ class SalesOrderPlanProgressQuery {
                                  AND material.expected_ready_date IS NOT NULL
                            )
                            ELSE NULL
-                       END AS expected_ready_date
+                       END AS expected_ready_date,
+                       ai.root_fulfilled_qty
                 FROM production_material_analysis_items ai
                 JOIN production_material_analyses analysis
                   ON analysis.id = ai.analysis_id
@@ -76,7 +77,7 @@ class SalesOrderPlanProgressQuery {
                      (String) row[3], offsetDateTime(row[4]),
                      decimal(row[5]), decimal(row[6]), decimal(row[7]),
                      localDate(row[8]),
-                     decimal(row[10]), decimal(row[11]), localDate(row[12]));
+                     decimal(row[10]), decimal(row[11]), localDate(row[12]), decimal(row[13]));
             sourcesByAnalysis.computeIfAbsent(source.analysisId(), ignored -> new ArrayList<>())
                     .add(source);
         }
@@ -108,6 +109,37 @@ class SalesOrderPlanProgressQuery {
         return build(orderItemIds, sourcesByAnalysis, actionsByAnalysisItem);
     }
 
+    /** One bounded query for all visible order lines; component receipts never become product supply. */
+    @SuppressWarnings("unchecked")
+    Map<UUID, List<com.uten.imp.features.sales.order.dto.PlanProgressLine.SupplySource>> loadSupplySources(
+            List<UUID> orderItemIds) {
+        if (orderItemIds.isEmpty()) return Map.of();
+        List<Object[]> rows = em.createNativeQuery("""
+                SELECT event.sales_order_item_id,
+                       CASE event.source_receipt_type
+                         WHEN 'PURCHASE' THEN 'PURCHASE'
+                         WHEN 'SUBCONTRACT' THEN 'SUBCONTRACT'
+                         ELSE CASE WHEN event.source_receipt_type IS NULL THEN 'STOCK' ELSE 'OTHER' END
+                       END AS kind,
+                       ROUND(SUM(CASE WHEN event.event_kind='FULFILL' THEN event.qty_base
+                                      ELSE -event.qty_base END) / COALESCE(NULLIF(item.unit_rate,0),1),4)
+                FROM preplan_root_output_events event
+                JOIN sales_order_items item ON item.id=event.sales_order_item_id
+                WHERE event.sales_order_item_id IN (:orderItemIds)
+                GROUP BY event.sales_order_item_id, kind, item.unit_rate
+                HAVING SUM(CASE WHEN event.event_kind='FULFILL' THEN event.qty_base
+                                ELSE -event.qty_base END)>0
+                ORDER BY event.sales_order_item_id, kind
+                """).setParameter("orderItemIds", orderItemIds).getResultList();
+        Map<UUID, List<com.uten.imp.features.sales.order.dto.PlanProgressLine.SupplySource>> result = new HashMap<>();
+        for (Object[] row : rows) {
+            result.computeIfAbsent((UUID) row[0], ignored -> new ArrayList<>()).add(
+                    new com.uten.imp.features.sales.order.dto.PlanProgressLine.SupplySource(
+                            (String) row[1], decimal(row[2])));
+        }
+        return result;
+    }
+
     private static Map<UUID, List<MaterialAnalysisProgress>> build(
             List<UUID> orderItemIds,
             Map<UUID, List<SourceSnapshot>> sourcesByAnalysis,
@@ -119,6 +151,7 @@ class SalesOrderPlanProgressQuery {
                 BigDecimal remainingQty = source.requestedQty()
                         .subtract(source.submittedQty())
                         .subtract(source.approvedQty())
+                        .subtract(source.rootFulfilledQty())
                         .max(BigDecimal.ZERO);
                 BigDecimal readyNowQty = source.readyNowQty().min(remainingQty);
                 BigDecimal readyByDateQty = source.readyByDateQty().min(remainingQty);
@@ -135,7 +168,7 @@ class SalesOrderPlanProgressQuery {
                                  remainingQty, readyNowQty, readyByDateQty,
                                  source.expectedReadyDate(),
                                 List.copyOf(actionsByAnalysisItem.getOrDefault(
-                                        source.analysisItemId(), List.of()))));
+                                        source.analysisItemId(), List.of())), source.rootFulfilledQty()));
             }
         }
         result.replaceAll((ignored, analyses) -> analyses.stream()
@@ -184,6 +217,7 @@ class SalesOrderPlanProgressQuery {
             LocalDate deliveryDate,
             BigDecimal readyNowQty,
             BigDecimal readyByDateQty,
-            LocalDate expectedReadyDate) {
+            LocalDate expectedReadyDate,
+            BigDecimal rootFulfilledQty) {
     }
 }

@@ -34,6 +34,9 @@ class PageNavigationSession {
   bool _departedWithVisit = false;
   bool _returnedVisit = false;
 
+  /// Retained pages must not hand a deferred action to a newer page visit.
+  bool get isActive => !_disposed && _lifecycle.isActive;
+
   /// Lets an existing page-resume refresh yield once to the visit's own refresh.
   ///
   /// Use only when the caller refreshes after awaiting [push]. A later return

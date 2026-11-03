@@ -294,13 +294,16 @@ void main() {
         find.byKey(Key(history ? 'stock-count-history' : 'stock-count-mode')),
       );
       await tester.pumpAndSettle();
+      final destination = find.text(history ? '盘点历史目标' : '盘点模式目标');
+      expect(destination, findsOneWidget);
+      final destinationUri = GoRouterState.of(tester.element(destination)).uri;
       expect(
-        router.state.uri.path,
+        destinationUri.path,
         history ? RouteName.stockCountRequests : RouteName.stockCountSession,
       );
       if (!history) {
         expect(
-          router.state.uri.queryParameters['warehouseId'],
+          destinationUri.queryParameters['warehouseId'],
           'warehouse-snapshot',
         );
       }

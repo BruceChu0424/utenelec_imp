@@ -233,7 +233,8 @@ class SalesOrderPlanProgressQueryTest {
                 analysisId, analysisItemId, salesItemId, "ACTIVE", analyzedAt,
                 new BigDecimal(requested), new BigDecimal(submitted),
                 new BigDecimal(approved), deliveryDate, priority,
-                new BigDecimal(readyNow), new BigDecimal(readyByDate), expectedReadyDate
+                new BigDecimal(readyNow), new BigDecimal(readyByDate), expectedReadyDate,
+                BigDecimal.ZERO
         };
     }
 

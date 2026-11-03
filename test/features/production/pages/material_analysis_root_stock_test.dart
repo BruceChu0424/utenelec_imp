@@ -14,7 +14,6 @@ import 'package:uten_imp/features/production/repositories/production_repository.
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
-import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 
 const _viewNotify = {
   Perm.productionMaterialAnalysisView,
@@ -265,7 +264,7 @@ void main() {
     );
   }
 
-  testWidgets('a reversed root output does not keep route editing locked', (
+  testWidgets('a reversed root output preserves the read-only master source', (
     tester,
   ) async {
     final harness = await _pump(
@@ -278,21 +277,21 @@ void main() {
       permissions: _all,
     );
     final route = find.byKey(
-      const ValueKey('material-route-dropdown-root-line'),
+      const ValueKey('material-route-readonly-root-line'),
     );
     expect(route, findsOneWidget);
-    expect(tester.widget<UtenDropdownField>(route).enabled, isTrue);
-    // 2026-09-25 确认路线退役：选好即写，不再有「确认并换桶」中间确认。
+    expect(tester.widget<Text>(route).data, '采购');
+    expect(
+      find.byKey(const ValueKey('material-route-dropdown-root-line')),
+      findsNothing,
+    );
     await tester.tap(route);
     await tester.pumpAndSettle();
-    await tester.tap(find.text('自制').last);
-    await tester.pumpAndSettle();
-    final request = harness.requests.singleWhere(
-      (request) => request.method == 'PUT',
+    expect(find.text('自制'), findsNothing);
+    expect(
+      harness.requests.where((request) => request.method == 'PUT'),
+      isEmpty,
     );
-    expect((request.data as Map<String, dynamic>)['decisions'], [
-      {'actionGroupKey': 'root-action', 'route': 'MAKE'},
-    ]);
     expect(harness.notifications, isEmpty);
     expect(harness.revocations, isEmpty);
   });

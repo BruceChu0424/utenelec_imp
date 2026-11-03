@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "semantics": "Order units. Prepared = min(max(qty-flagged,0), max(shipped-returned,0)+physicalStock). Physical stock includes pending shipment holds. Root handoff sources are net of reversals and are not added to stock or production again.",
+  "cases": [
+    {"name":"subcontract_qualified_20", "qty":"20", "flagged":"0", "shipped":"0", "returned":"0", "stock":"20", "target":"20", "prepared":"20", "sources":[{"kind":"SUBCONTRACT","qty":20}]},
+    {"name":"purchase_qualified_20", "qty":"20", "flagged":"0", "shipped":"0", "returned":"0", "stock":"20", "target":"20", "prepared":"20", "sources":[{"kind":"PURCHASE","qty":20}]},
+    {"name":"existing_stock_20", "qty":"20", "flagged":"0", "shipped":"0", "returned":"0", "stock":"20", "target":"20", "prepared":"20", "sources":[{"kind":"STOCK","qty":20}]},
+    {"name":"production_stock_not_added_twice", "qty":"20", "flagged":"0", "shipped":"0", "returned":"0", "stock":"20", "target":"20", "prepared":"20", "sources":[]},
+    {"name":"unqualified_or_future_supply", "qty":"20", "flagged":"0", "shipped":"0", "returned":"0", "stock":"0", "target":"20", "prepared":"0", "sources":[]},
+    {"name":"partial_shipment_preserves_progress", "qty":"20", "flagged":"0", "shipped":"8", "returned":"0", "stock":"12", "target":"20", "prepared":"20", "sources":[]},
+    {"name":"returned_to_public_stock_requires_replacement", "qty":"20", "flagged":"0", "shipped":"8", "returned":"3", "stock":"12", "target":"20", "prepared":"17", "sources":[]},
+    {"name":"partial_root_reversal", "qty":"20", "flagged":"0", "shipped":"0", "returned":"0", "stock":"7", "target":"20", "prepared":"7", "sources":[{"kind":"SUBCONTRACT","qty":7}]},
+    {"name":"cancelled_remainder_is_not_supply", "qty":"20", "flagged":"5", "shipped":"5", "returned":"0", "stock":"10", "target":"15", "prepared":"15", "sources":[]},
+    {"name":"all_written_off_has_no_prepared_goods", "qty":"20", "flagged":"20", "shipped":"0", "returned":"0", "stock":"0", "target":"0", "prepared":"0", "sources":[]},
+    {"name":"order_unit_conversion_already_applied", "qty":"2.5", "flagged":"0", "shipped":"0.5", "returned":"0.125", "stock":"1.875", "target":"2.5", "prepared":"2.25", "sources":[]}
+  ]
+}

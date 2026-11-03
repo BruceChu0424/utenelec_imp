@@ -1443,6 +1443,8 @@ class OrderPlanProgressLine {
     this.submittedPlanQty,
     this.approvedPlannedQty,
     this.materialAnalyzedAt,
+    this.preparation,
+    this.materialAnalyses = const [],
     this.links = const [],
   });
   final String orderItemId;
@@ -1476,6 +1478,8 @@ class OrderPlanProgressLine {
   final double? submittedPlanQty;
   final double? approvedPlannedQty;
   final String? materialAnalyzedAt;
+  final OrderPreparationProgress? preparation;
+  final List<OrderMaterialAnalysisProgress> materialAnalyses;
   final List<OrderPlanLink> links;
 
   factory OrderPlanProgressLine.fromJson(Map<String, dynamic> j) {
@@ -1533,12 +1537,109 @@ class OrderPlanProgressLine {
       ]),
       materialAnalyzedAt:
           (fact('materialAnalyzedAt') ?? fact('analyzedAt')) as String?,
+      preparation: j['preparation'] is Map
+          ? OrderPreparationProgress.fromJson(
+              (j['preparation'] as Map).cast<String, dynamic>(),
+            )
+          : null,
+      materialAnalyses: [
+        for (final value in (j['materialAnalyses'] as List? ?? const []))
+          OrderMaterialAnalysisProgress.fromJson(
+            (value as Map).cast<String, dynamic>(),
+          ),
+      ],
       links: [
         for (final l in (j['links'] as List? ?? const []))
           OrderPlanLink.fromJson(l as Map<String, dynamic>),
       ],
     );
   }
+}
+
+/// Server-owned order-unit facts. Manufacturing and reserved stock must never be added together.
+class OrderPreparationProgress {
+  const OrderPreparationProgress({
+    required this.targetQty,
+    required this.preparedQty,
+    required this.stockQty,
+    required this.netShippedQty,
+    this.sources = const [],
+  });
+  final double targetQty;
+  final double preparedQty;
+  final double stockQty;
+  final double netShippedQty;
+  final List<OrderSupplySource> sources;
+  bool get complete => targetQty > 0 && preparedQty >= targetQty;
+
+  factory OrderPreparationProgress.fromJson(Map<String, dynamic> j) =>
+      OrderPreparationProgress(
+        targetQty: (j['targetQty'] as num).toDouble(),
+        preparedQty: (j['preparedQty'] as num).toDouble(),
+        stockQty: (j['stockQty'] as num).toDouble(),
+        netShippedQty: (j['netShippedQty'] as num).toDouble(),
+        sources: [
+          for (final value in (j['sources'] as List? ?? const []))
+            OrderSupplySource.fromJson((value as Map).cast<String, dynamic>()),
+        ],
+      );
+}
+
+class OrderSupplySource {
+  const OrderSupplySource({required this.kind, required this.qty});
+  final String kind;
+  final double qty;
+  String get label => switch (kind) {
+    'PURCHASE' => '采购入库',
+    'SUBCONTRACT' => '委外入库',
+    'STOCK' => '现货承接',
+    _ => '其他合格供给',
+  };
+  factory OrderSupplySource.fromJson(Map<String, dynamic> j) =>
+      OrderSupplySource(
+        kind: j['kind'] as String,
+        qty: (j['qty'] as num).toDouble(),
+      );
+}
+
+/// Each analysis keeps its own lifecycle; completed and cancelled batches are not merged.
+class OrderMaterialAnalysisProgress {
+  const OrderMaterialAnalysisProgress({
+    required this.analysisId,
+    required this.status,
+    this.analyzedAt,
+    this.requestedQty,
+    this.submittedQty,
+    this.approvedQty,
+    this.remainingQty,
+    this.readyNowQty,
+    this.readyByDateQty,
+    this.rootFulfilledQty,
+  });
+  final String analysisId;
+  final String status;
+  final String? analyzedAt;
+  final double? requestedQty;
+  final double? submittedQty;
+  final double? approvedQty;
+  final double? remainingQty;
+  final double? readyNowQty;
+  final double? readyByDateQty;
+  final double? rootFulfilledQty;
+
+  factory OrderMaterialAnalysisProgress.fromJson(Map<String, dynamic> j) =>
+      OrderMaterialAnalysisProgress(
+        analysisId: j['analysisId'] as String,
+        status: j['status'] as String,
+        analyzedAt: j['analyzedAt'] as String?,
+        requestedQty: (j['requestedQty'] as num?)?.toDouble(),
+        submittedQty: (j['submittedQty'] as num?)?.toDouble(),
+        approvedQty: (j['approvedQty'] as num?)?.toDouble(),
+        remainingQty: (j['remainingQty'] as num?)?.toDouble(),
+        readyNowQty: (j['readyNowQty'] as num?)?.toDouble(),
+        readyByDateQty: (j['readyByDateQty'] as num?)?.toDouble(),
+        rootFulfilledQty: (j['rootFulfilledQty'] as num?)?.toDouble(),
+      );
 }
 
 /// 关联生产计划（plan_order_item_links 溯源）。

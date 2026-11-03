@@ -22,9 +22,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json`；`clients/windows_legacy/progress/evidence/local-main-integration-20261103.json`。
 
-接续/限制：2026-10-31 销售单据详情新增负责人待审/驳回/批准、人员及原因，销售修订后先重走负责人审核。WPF 详情尚未迁移，不把后端同步当成本端完成；见 sales-manager-review/v1.json 合同。；2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。。
+接续/限制：2026-10-31 销售单据详情新增负责人待审/驳回/批准、人员及原因，销售修订后先重走负责人审核。WPF 详情尚未迁移，不把后端同步当成本端完成；见 sales-manager-review/v1.json 合同。；2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。；2026-11-03 本地整合：销售备货进度已保存稳定快照，服务端权威区分库存/自产/委外并共用 contracts/sales-preparation-progress/v1.json 样例；Dart详情面板、选单和发货预填消费同一 plan-progress 契约。WPF这些销售入口仍未迁移，不开放候选写入口、不改变本项完成状态，后续须同步数量、生命周期和未知提交语义。。
 
 ## W7-BIZ-136
 
@@ -46,9 +46,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/staff-feedback-20261103.json`。
+证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/staff-feedback-20261103.json`；`clients/windows_legacy/progress/evidence/shared-picker-field-regression-20261102.json`；`clients/windows_legacy/progress/evidence/local-main-integration-20261103.json`。
 
-接续/限制：2026-11-03：订单新建无需填写发运策略，缺省 ALLOW_PARTIAL；客户切换/未落单草稿同口径，已有订单省略字段保留原策略及修订保护。WPF 尚未迁移，保持 todo。。
+接续/限制：2026-11-03：订单新建无需填写发运策略，缺省 ALLOW_PARTIAL；客户切换/未落单草稿同口径，已有订单省略字段保留原策略及修订保护。WPF 尚未迁移，保持 todo。；尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-02 公共选货回填修复：价格/折扣保留原独立字段权限，BOM库存预览仅goods:view；同一单调读代次覆盖分类、建议、确认和回写。共享合同 contracts/business-master-references/v1.json；当前原生业务选择/BOM编辑尚未迁移，不以Web、Flutter或服务端测试替代原生验收，状态不变。；2026-11-03 本地整合：销售备货进度已保存稳定快照，服务端权威区分库存/自产/委外并共用 contracts/sales-preparation-progress/v1.json 样例；Dart详情面板、选单和发货预填消费同一 plan-progress 契约。WPF这些销售入口仍未迁移，不开放候选写入口、不改变本项完成状态，后续须同步数量、生命周期和未知提交语义。。
 
 ## W7-BIZ-137
 

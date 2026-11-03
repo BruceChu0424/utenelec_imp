@@ -191,6 +191,130 @@ void main() {
     },
   );
 
+  for (final kind in ['native', 'uten', 'header']) {
+    testWidgets(
+      'claimed $kind navigation survives its source rebuilding as the menu closes',
+      (tester) async {
+        _size(tester);
+        var builds = 0, opened = 0;
+        await tester.pumpWidget(
+          _app(
+            Builder(
+              builder: (pageContext) {
+                // Real pagers subscribe to route visibility before prefetching.
+                ModalRoute.isCurrentOf(pageContext);
+                builds++;
+                void open() {
+                  opened++;
+                  unawaited(
+                    Navigator.of(pageContext).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) => const Scaffold(body: Text('真实导航目标')),
+                      ),
+                    ),
+                  );
+                }
+
+                final action = switch (kind) {
+                  'native' => TextButton(
+                    onPressed: open,
+                    child: const Text('打开业务'),
+                  ),
+                  'uten' => UtenButton(
+                    onPressed: open,
+                    child: const Text('打开业务'),
+                  ),
+                  _ => UtenAppBarActionButton(label: '打开业务', onPressed: open),
+                };
+                return Scaffold(
+                  appBar: UtenAppBar(
+                    title: '有路由依赖的业务页',
+                    showPagePermissionAction: false,
+                    actions: _withFillers(action),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+        final initialBuilds = builds;
+        await _openActions(tester);
+        expect(builds, greaterThan(initialBuilds));
+        final menuBuilds = builds;
+        await tester.tap(find.text('打开业务'));
+        await tester.pumpAndSettle();
+        expect(builds, greaterThan(menuBuilds));
+        expect(find.text('真实导航目标'), findsOneWidget);
+        expect(opened, 1);
+        expect(find.byTooltip('关闭操作面板'), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final change in ['owner epoch', 'covered page', 'query change']) {
+    testWidgets('claimed navigation retires after $change before handoff', (
+      tester,
+    ) async {
+      _size(tester);
+      final epoch = ValueNotifier(0);
+      addTearDown(epoch.dispose);
+      var called = 0;
+      final router = GoRouter(
+        initialLocation: '/source',
+        routes: [
+          GoRoute(
+            path: '/source',
+            builder: (_, _) => Scaffold(
+              appBar: UtenAppBar(
+                title: '原业务页',
+                showPagePermissionAction: false,
+                actions: _withFillers(
+                  UtenButton(
+                    key: const Key('claimed-navigation-action'),
+                    onPressed: () => called++,
+                    child: const Text('待交接动作'),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          GoRoute(
+            path: '/other',
+            builder: (_, _) => const Scaffold(body: Text('另一业务页')),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp.router(
+            routerConfig: router,
+            builder: (_, child) => ValueListenableBuilder<int>(
+              valueListenable: epoch,
+              child: child,
+              builder: (_, value, child) =>
+                  UtenActionOwnerScope(identity: value, child: child!),
+            ),
+          ),
+        ),
+      );
+      await _openActions(tester);
+      await tester.tap(find.byKey(const Key('claimed-navigation-action')));
+      switch (change) {
+        case 'owner epoch':
+          epoch.value++;
+        case 'covered page':
+          unawaited(router.push<void>('/other'));
+        case 'query change':
+          router.go('/source?scope=changed');
+      }
+      await tester.pumpAndSettle();
+      expect(called, 0);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets(
     'a claimed async Consumer survives parent action changes until it completes',
     (tester) async {

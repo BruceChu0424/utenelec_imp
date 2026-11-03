@@ -14,6 +14,7 @@ import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/responsive/compact_presentation.dart';
 import '../../core/router/page_navigation_session.dart';
+import '../../core/router/nav_helpers.dart';
 import '../../shared/auth/page_permission_action.dart';
 import '../buttons/uten_back_button.dart';
 import '../buttons/uten_close_button.dart';
@@ -108,15 +109,8 @@ class _UtenAppBarState extends State<UtenAppBar> {
   final _moreAnchorKey = GlobalKey();
   final _navigation = PageNavigationSession();
   int _actionRevision = 0;
-  int _sourceRevision = 0;
   int _menuGeneration = 0;
   _AppBarActionPanel? _actionPanel;
-
-  @override
-  void didUpdateWidget(UtenAppBar oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _sourceRevision++;
-  }
 
   String? get title => widget.title;
   String? get subtitle => widget.subtitle;
@@ -528,11 +522,19 @@ class _UtenAppBarState extends State<UtenAppBar> {
     void dismiss() => panel.dismiss();
 
     bool Function() sourceGuard() {
-      final sourceRevision = _sourceRevision;
-      return () =>
-          mounted &&
-          sourceRevision == _sourceRevision &&
-          menuGeneration == _menuGeneration;
+      final sourceRoute = ModalRoute.of(this.context);
+      final sourceUri = goRouterPageStateOrNull(this.context)?.uri;
+      return () {
+        // Closing our menu can rebuild a route-dependent page. The action was
+        // accepted against the latest revision at claim time; keep that intent
+        // while its page/URI and authenticated owner still match.
+        return mounted &&
+            menuGeneration == _menuGeneration &&
+            _navigation.isActive &&
+            identical(sourceRoute, ModalRoute.of(this.context)) &&
+            (sourceRoute?.isCurrent ?? true) &&
+            sourceUri == goRouterPageStateOrNull(this.context)?.uri;
+      };
     }
 
     VoidCallback? before(VoidCallback? callback, int revision) =>

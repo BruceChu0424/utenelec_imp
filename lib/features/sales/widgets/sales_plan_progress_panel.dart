@@ -360,6 +360,18 @@ String _fmt(double? v) => v == null
 String _qtyWithUnit(double? v, String? unit) =>
     v == null ? '—' : formatQtyWithUnit(v, unit);
 
+String _supplySources(OrderPlanProgressLine line) {
+  final sources = line.preparation?.sources ?? const <OrderSupplySource>[];
+  return sources.isEmpty
+      ? '—'
+      : sources
+            .map(
+              (source) =>
+                  '${source.label} ${_qtyWithUnit(source.qty, line.unitName)}',
+            )
+            .join('；');
+}
+
 class _ProgressList extends ConsumerWidget {
   const _ProgressList({
     required this.lines,
@@ -418,25 +430,27 @@ class _ProgressList extends ConsumerWidget {
     key: const Key('sales-product-progress-table'),
     embedded: true,
     columns: [
-      // 2026-10-08 用户口径「状态或进度列默认放最前」：生产入库进度（条 +
-      // 「已产 / 订货」）是本表的进度列（推翻 2026-10-06 批次「纯数值进度列
-      // 不动」的判定），前置。
+      // 备货按服务端的合格实物与净发货事实显示，不能把自产量当作全部供给。
       MasterColumnDef(
         key: 'progress',
-        label: '生产入库进度',
+        label: '备货进度',
+        info: '已备货包含订单的合格库存和已发净量；采购、委外、现货与自产均可备货。核销量不计入备货目标。',
         width: 160,
         // 此格是「已入库 / 订货」文本，不把分子当成百分比排序或汇总。
         filterFromRows: true,
         facetSearchEnabled: true,
-        value: (line) => '${_fmt(line.producedQty)} / ${_fmt(line.qty)}',
+        value: (line) =>
+            '${_fmt(line.preparation?.preparedQty)} / ${_fmt(line.preparation?.targetQty ?? line.qty)}',
         cellBuilder: (context, line) => Row(
           children: [
             Expanded(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(UtenRadius.xs),
                 child: LinearProgressIndicator(
-                  value: (line.qty ?? 0) > 0
-                      ? ((line.producedQty ?? 0) / line.qty!).clamp(0, 1)
+                  value: (line.preparation?.targetQty ?? 0) > 0
+                      ? (line.preparation!.preparedQty /
+                                line.preparation!.targetQty)
+                            .clamp(0, 1)
                       : 0,
                   // 2026-09-27 用户口径：进度条形态全站统一（主色+8 高+同轨道）。
                   minHeight: 8,
@@ -448,7 +462,7 @@ class _ProgressList extends ConsumerWidget {
             // 2026-10-06 全站表格行高统一：进度格改单层 Row（条 + 数量同排），
             // 不再上下两层撑高读行。
             Text(
-              '${_fmt(line.producedQty)} / ${_fmt(line.qty)}',
+              '${_fmt(line.preparation?.preparedQty)} / ${_fmt(line.preparation?.targetQty ?? line.qty)}',
               style: theme.textTheme.bodySmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -514,6 +528,13 @@ class _ProgressList extends ConsumerWidget {
         exactValueOf: (line) => line.producedQty?.toString(),
         info: '只统计已实际合格入库的产品，待品质判定和待仓库点收不算入库。',
         value: (line) => _qtyWithUnit(line.producedQty, line.unitName),
+      ),
+      MasterColumnDef(
+        key: 'otherSupply',
+        label: '其他供给',
+        width: 180,
+        info: '产品的采购、委外或现货承接量，扣除已撤销的交接；物料入库不计入。',
+        value: (line) => _supplySources(line),
       ),
       MasterColumnDef(
         key: 'shipped',
@@ -665,6 +686,7 @@ class _ProgressList extends ConsumerWidget {
               runSpacing: UtenSpacing.s8,
               children: [
                 _num(theme, '订货', l.qty),
+                _num(theme, '已备货', l.preparation?.preparedQty),
                 _num(theme, '本次可发', l.shippableQty, highlight: true),
                 _num(theme, '办理中', l.pendingShipmentQty),
                 _num(theme, '已排', l.plannedQty, highlight: true),
@@ -685,18 +707,39 @@ class _ProgressList extends ConsumerWidget {
               ),
             ],
             const SizedBox(height: UtenSpacing.s8),
-            _progress(theme, '生产入库', l.producedQty ?? 0, l.qty ?? 0),
+            _progress(
+              theme,
+              '备货进度',
+              l.preparation?.preparedQty,
+              l.preparation?.targetQty ?? l.qty ?? 0,
+            ),
+            if (l.preparation?.sources.isNotEmpty ?? false) ...[
+              const SizedBox(height: UtenSpacing.s4),
+              Text(_supplySources(l), style: theme.textTheme.bodySmall),
+            ],
             const SizedBox(height: UtenSpacing.s4),
             _progress(theme, '已发客户', l.shippedQty ?? 0, l.qty ?? 0),
             const SizedBox(height: UtenSpacing.s8),
-            _materialAnalysisProgress(theme, l),
+            if (l.materialAnalyses.isEmpty)
+              _materialAnalysisProgress(theme, l)
+            else
+              for (final analysis in l.materialAnalyses) ...[
+                _materialAnalysisProgress(theme, l, analysis: analysis),
+                const SizedBox(height: UtenSpacing.s4),
+              ],
             if (l.links.isNotEmpty) ...[
               const Divider(height: UtenSpacing.s16),
               for (final p in l.links) _planRow(context, theme, p, canViewPlan),
             ] else ...[
               const Divider(height: UtenSpacing.s16),
               Text(
-                (l.submittedPlanQty ?? 0) > (l.approvedPlannedQty ?? 0)
+                l.preparation?.complete == true
+                    ? '已备齐，当前无需新增生产计划'
+                    : (l.preparation?.stockQty ?? 0) > 0
+                    ? '已有合格库存，剩余需求按物料分析及供给任务跟进'
+                    : l.materialAnalyses.isNotEmpty
+                    ? '按各分析批次的计划与供给任务跟进'
+                    : (l.submittedPlanQty ?? 0) > (l.approvedPlannedQty ?? 0)
                     ? '生产计划已提交待批准，批准后在此显示下达计划'
                     : l.materialAnalysisId != null ||
                           l.materialAnalysisStatus != null
@@ -716,14 +759,14 @@ class _ProgressList extends ConsumerWidget {
   Widget _progress(
     ThemeData theme,
     String label,
-    double quantity,
+    double? quantity,
     double total,
   ) => Row(
     children: [
       SizedBox(width: 76, child: Text(label, style: theme.textTheme.bodySmall)),
       Expanded(
         child: LinearProgressIndicator(
-          value: total > 0 ? (quantity / total).clamp(0, 1) : 0,
+          value: total > 0 ? ((quantity ?? 0) / total).clamp(0, 1) : 0,
           // 2026-09-27 用户口径：进度条形态全站统一（主色+8 高+同轨道）。
           minHeight: 8,
           backgroundColor: theme.colorScheme.surfaceContainerHighest,
@@ -739,11 +782,19 @@ class _ProgressList extends ConsumerWidget {
 
   Widget _materialAnalysisProgress(
     ThemeData theme,
-    OrderPlanProgressLine line,
-  ) {
-    final submitted = line.submittedPlanQty ?? 0;
-    final approved = line.approvedPlannedQty ?? line.plannedQty ?? 0;
+    OrderPlanProgressLine line, {
+    OrderMaterialAnalysisProgress? analysis,
+  }) {
+    final submitted = analysis?.submittedQty ?? line.submittedPlanQty ?? 0;
+    final approved =
+        analysis?.approvedQty ??
+        line.approvedPlannedQty ??
+        line.plannedQty ??
+        0;
+    final status = analysis?.status ?? line.materialAnalysisStatus;
+    final analyzedAt = analysis?.analyzedAt ?? line.materialAnalyzedAt;
     final hasAnalysis =
+        analysis != null ||
         line.materialAnalysisId != null ||
         line.materialAnalysisStatus != null ||
         line.analyzedQty != null ||
@@ -752,7 +803,13 @@ class _ProgressList extends ConsumerWidget {
         line.readinessRatio != null ||
         line.submittedPlanQty != null ||
         line.materialAnalyzedAt != null;
-    final (label, icon, color) = submitted > approved
+    final (label, icon, color) = status == 'COMPLETED'
+        ? ('物料分析已完成', Icons.verified_outlined, theme.colorScheme.primary)
+        : status == 'CANCELLED'
+        ? ('物料分析已取消', Icons.cancel_outlined, theme.colorScheme.onSurfaceVariant)
+        : !hasAnalysis && line.preparation?.complete == true
+        ? ('已备齐', Icons.inventory_2_outlined, theme.colorScheme.primary)
+        : submitted > approved
         ? ('已提交待批准', Icons.approval_outlined, theme.colorScheme.tertiary)
         : approved > 0
         ? ('已批准下达', Icons.verified_outlined, theme.colorScheme.primary)
@@ -762,7 +819,7 @@ class _ProgressList extends ConsumerWidget {
             Icons.pending_actions_outlined,
             theme.colorScheme.onSurfaceVariant,
           )
-        : switch (line.materialAnalysisStatus?.toUpperCase()) {
+        : switch (status?.toUpperCase()) {
             'READY' || 'CONFIRMED' => (
               '已齐套，待生成计划',
               Icons.inventory_2_outlined,
@@ -807,17 +864,23 @@ class _ProgressList extends ConsumerWidget {
           ),
           if (hasAnalysis)
             Text(
-              '分析 ${_fmt(line.analyzedQty)} · '
-              '当前可生产 ${_fmt(line.readyNowQty)} · '
-              '预计可生产 ${_fmt(line.readyByDateQty)} · '
-              '齐套 ${_ratio(line.readinessRatio)} · '
-              '已提交 ${_fmt(line.submittedPlanQty)} · '
-              '已批准 ${_fmt(line.approvedPlannedQty ?? line.plannedQty)}',
+              analysis != null
+                  ? '分析 ${_fmt(analysis.requestedQty)} · '
+                        '已承接 ${_fmt(analysis.rootFulfilledQty)} · '
+                        '已提交 ${_fmt(analysis.submittedQty)} · '
+                        '已批准 ${_fmt(analysis.approvedQty)} · '
+                        '待下达 ${_fmt(analysis.remainingQty)}'
+                  : '分析 ${_fmt(line.analyzedQty)} · '
+                        '当前可生产 ${_fmt(line.readyNowQty)} · '
+                        '预计可生产 ${_fmt(line.readyByDateQty)} · '
+                        '齐套 ${_ratio(line.readinessRatio)} · '
+                        '已提交 ${_fmt(line.submittedPlanQty)} · '
+                        '已批准 ${_fmt(line.approvedPlannedQty ?? line.plannedQty)}',
               style: theme.textTheme.bodySmall,
             ),
-          if (line.materialAnalyzedAt != null)
+          if (analyzedAt != null)
             Text(
-              '最后分析 ${_dateTime(line.materialAnalyzedAt!)}',
+              '最后分析 ${_dateTime(analyzedAt)}',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),

@@ -42,6 +42,10 @@ class PageSearchLifecycle {
   bool _disposed = false;
   int _revision = 0;
 
+  /// Whether the captured page still owns the active GoRouter visit.
+  /// Standalone Navigator presentations have no GoRouter identity to retire.
+  bool get isActive => !_disposed && (_router == null || _isActive());
+
   void attach(BuildContext context, {bool fallbackToActivePage = false}) {
     if (_disposed) return;
     final router = GoRouter.maybeOf(context);

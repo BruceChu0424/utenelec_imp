@@ -1,0 +1,211 @@
+{
+  "id": "E-LOCAL-MAIN-INTEGRATION-20261103",
+  "base": "c75d6e1e3480057f4bec1a930475b402129f5a90",
+  "scope": "Local main source integration only; no push, deployment, formal package or production database changes.",
+  "sourceBranches": {
+    "cost-read-scope-fix-20261102": "4f3be15f131f3559c4b2270f9d977a02c0552a2b",
+    "finance-multiline-entry-20261102": "a137d625c1e02fb6b107e7b8b675eab8dcb26b91",
+    "warehouse-transfer-fix-20261102": "404f93ab3c594c90d02a48755fe5bfcd2c749cdb",
+    "instant-stock-period-20261102": "4ee0d43888b7c4a5df9a07a8322b2a20677bbad0",
+    "staff-feedback-20261103": "df16f037ebea73f6f343b8ed09b4f187e90d9530",
+    "bom-comparison-compact-20261102": "122f86f560243aa32d560da7fde6d846f4f4f200",
+    "goods-save-exit-20261102": "76d80f1e1daabcd2fe6a3c223d553c670583d5c1",
+    "shared-picker-field-regression-20261102": "2023707486680b9282abdef4ad1067b531d34239",
+    "windows-update-page-20261102": "722d0567fcf9d50cdfa85fc39407c234736e6b35",
+    "windows-signing-crash-20261103": "8082983ddb8aabd055e13702159cf4ded8fca157"
+  },
+  "excluded": {
+    "uimp/finance-requirements-research-20261102": "User explicitly excluded the entire unfinished task, committed and uncommitted changes."
+  },
+  "snapshots": {
+    "salesSupplyProgress": {
+      "originalWorktreePreserved": true,
+      "lockFileExcluded": true,
+      "patchSha256": "09e6b7a0657b5e3f9dab7185077f4ee4c4ad21f2975c07b2ee86d5fe4df97795"
+    },
+    "mainMaintenance": {
+      "files": [
+        "lib/shared/widgets/server_maintenance_host.dart",
+        "web/maintenance.css",
+        "web/maintenance.html"
+      ],
+      "patchSha256": "28839fc29c33ecf88f7505b6f89f141a9e79c0968f8e533d4d909dd6f0f69187",
+      "lockFileExcluded": true
+    }
+  },
+  "migrationMapping": {
+    "finance_batch_entry_commands": "V991",
+    "finance_bank_reference_optional": "V992",
+    "storage_transfer_preserves_inventory_claims": "V993 (original branch V991)",
+    "instant_inventory_cost_permission_surface": "V994 (original branch V991)"
+  },
+  "platforms": {
+    "web+flutter": "Shared Dart implementation; targeted local component tests, not full manual UAT.",
+    "wpf_legacy": {
+      "salesProgressStatus": "not-migrated",
+      "tasks": [
+        "W7-BIZ-135",
+        "W7-BIZ-136",
+        "W7-FLOW-001"
+      ],
+      "targetPcAcceptance": false,
+      "fullErpEquivalent": false
+    }
+  },
+  "sourceSha256": {
+    "lib/features/sales/models/sales_doc.dart": "4394b5112c69b87c88159f5e1ad96fad2c111ef75e46be4b5c967b8f78e782b9",
+    "lib/features/sales/widgets/sales_plan_progress_panel.dart": "ffb74987b014172cf99301219ce110f0083c475df2b0545934b975864335ebd9",
+    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderPlanProgressQuery.java": "c02ef90b91fe2432e50ca0f72b4ebaf92c3ccd0ffe0438cc83efb9a880e92d71",
+    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderService.java": "7695d1e7efdf3bee74af01a99012266e0f05cb7ae1b7ceab837a6554c33caa7d",
+    "server/src/main/java/com/uten/imp/features/sales/order/dto/PlanProgressLine.java": "e53e66f0e22c3603714fa25f692b1ca9421eb63cd021d0b99b522e17e68a4e48",
+    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderPreparationProgress.java": "86d3c9ee32e62aa7023107a0b7278c4db2c088fd049c51f9526a5710291a3bb0",
+    "lib/components/layout/uten_app_bar.dart": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057",
+    "lib/core/router/page_navigation_session.dart": "65fda64ef1ebb5e5989687b98bfedd20b539b5a734e9b27249431c2549ea3064",
+    "lib/core/router/page_search_lifecycle.dart": "2e2024f65f4a3aafa26f87746f81d697b09c7e4f537fbac8960cad70a969f883",
+    "contracts/sales-preparation-progress/v1.json": "659ccda42f49f9d1b46b485334693911d87426360f5ea6f0b035ecd585588403",
+    "lib/shared/widgets/server_maintenance_host.dart": "51e7d928d0facb7c03649385febf56adcdc95ad38926bd979463b860ba216d84",
+    "server/src/main/java/com/uten/imp/config/PlatformDisplayColumnsConfiguration.java": "33773e85274b7e702f4c99cc9ba0e853e7e746b027679583deeb87bf3485d936",
+    "server/src/main/java/com/uten/imp/features/finance/FinanceBatchEntryService.java": "fa15e249afd4c6958602b3c9e383cfaa1778c2f08019cf8e92651134e4689b0c",
+    "server/src/main/resources/db/migration/V993__storage_transfer_preserves_inventory_claims.sql": "048e369d416ec1bc4c6bb28aaa0a616dcced9057e7ce430876d7cffcb0d059ce",
+    "server/src/main/resources/db/migration/V994__instant_inventory_cost_permission_surface.sql": "7ae0cc8407470933318012c6a2406e51e081e2dd6e9ee8d6906a2cf5a74c6a20",
+    "server/src/test/java/com/uten/imp/features/finance/FinanceBatchEntryPostgresTest.java": "266c5205b268c94589272c3539384da28e372a07433fadef5002bd859c89827b",
+    "server/src/test/java/com/uten/imp/features/sales/order/SalesOrderPlanProgressQueryTest.java": "707ef6c2261ebab9f71a41d83822405ac97f62482ab48851b66ecb6ff4ccdf64",
+    "server/src/test/java/com/uten/imp/features/sales/order/SalesOrderPlanProgressServiceTest.java": "eaa598260b98891bbf2a87604d26ea89319a977b444bb11e1b8478b9d569a48f",
+    "server/src/test/java/com/uten/imp/features/sales/order/SalesOrderPreparationProgressTest.java": "047f24855ed6a2e0cc7a6a8fc8859b18bb2e8c07be471c3946787b15da5c1bf1",
+    "test/components/uten_app_bar_action_lifecycle_test.dart": "62180823086c8ce65c519bd31dee506f06cadb0fa2fc86281b93c95715914a7d",
+    "test/features/production/pages/material_analysis_root_stock_test.dart": "c991c011a76a90a917e73b95966b14b52e03b2742ac8b59151d753389771418b",
+    "test/features/sales/widgets/sales_preparation_progress_test.dart": "ddfb83f79ef2d40058853b1b81b219a06422995ef35c50f48b65c748cccaa551",
+    "test/features/stock/contextual_candidate_search_test.dart": "9dfd45bf7d156448e4d93018f673ad4f636ec285b3515806575c84d62f8eb7a2",
+    "web/maintenance.css": "04587730eb62de62dcaf5dfe8ca828096e03a1504c543468c9d46ef7c3533982",
+    "web/maintenance.html": "75b5390f93b52101fd5ac4ccaba8a8e2860327487747df14aff72138b8cf6cb9"
+  },
+  "validation": {
+    "salesProgressDart": {
+      "passed": 27,
+      "failed": 0,
+      "log": "build/sales-progress-integration.log",
+      "finalTypedFixtureRetest": {
+        "passed": 5,
+        "failed": 0,
+        "analysisIssues": 0,
+        "log": "build/sales-preparation-final.log"
+      }
+    },
+    "webMaintenanceAndUpdate": {
+      "passed": 34,
+      "failed": 0,
+      "log": "build/local-main-integration/web-maintenance-update.log"
+    },
+    "windowsPythonTools": {
+      "run": 162,
+      "skipped": 12,
+      "failed": 0,
+      "log": "build/local-main-integration/windows-tools.log"
+    },
+    "wpfPythonTools": {
+      "passed": 75,
+      "failed": 0,
+      "log": "build/local-main-integration/wpf-tools.log"
+    },
+    "wpfNative": {
+      "Succeeded": true,
+      "Architectures": [
+        "x86",
+        "x64"
+      ],
+      "TargetPcAcceptance": false,
+      "FormalPackageCreated": false,
+      "ProductionRequestsExecuted": false,
+      "receipt": "build/windows-wpf/verification/957cba9a-bc6d-489a-b4f4-ba933c1598d3/verification.json",
+      "receiptSha256": "4493d9d9ad43887fa4a3ab989e080d1c8b554615c69fd944f5fcc11d8d62ec38",
+      "testedSourceInputsStillMatch": true
+    },
+    "progressRegistry": {
+      "checkPassed": true,
+      "done": 10,
+      "total": 362,
+      "sourceBranchEvidenceAndNotesPreservedForChangedTasks": 48
+    },
+    "flutterIntegratedBatch": {
+      "files": 54,
+      "passed": 788,
+      "skipped": 3,
+      "failed": 3,
+      "log": "build/local-main-integration/flutter-tests.jsonl",
+      "failures": "Two real compact menu navigation failures and one obsolete editable-role expectation; all resolved and covered by repair batch."
+    },
+    "flutterRepairBatch": {
+      "files": 10,
+      "passed": 139,
+      "skipped": 1,
+      "failed": 0,
+      "log": "build/local-main-integration/flutter-tests-repair-final.jsonl"
+    },
+    "dartAnalysis": {
+      "fullRunInitialIssues": 2,
+      "initialLog": "build/local-main-integration/flutter-analyze.log",
+      "initialIssues": "Two avoid_dynamic_calls in the newly added sales fixture, fixed with typed map casts.",
+      "finalUiFiles": 6,
+      "finalUiIssues": 0,
+      "finalSalesTestIssues": 0,
+      "uiLog": "build/local-main-integration/dart-analyze-ui-repair.log",
+      "salesLog": "build/sales-preparation-final.log"
+    },
+    "backend": {
+      "uniqueSuites": 37,
+      "uniquePassed": 362,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "initialRun": {
+        "suites": 36,
+        "tests": 354,
+        "errors": 42,
+        "failures": 0,
+        "log": "build/local-main-backend/backend-targeted.log"
+      },
+      "finalRun": {
+        "suites": 11,
+        "tests": 113,
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "log": "build/local-main-backend-final/backend-final.log",
+        "mavenCompileWarnings": 0,
+        "mavenErrors": 0
+      },
+      "oldStartupErrorsSuccessfullyReplaced": 42,
+      "freshFlyway": {
+        "migrationsApplied": 920,
+        "currentVersion": "994"
+      },
+      "combinedReceipt": "build/local-main-backend-final/combined-results.json",
+      "combinedReceiptSha256": "031ca5ab50edc1b64e0e256df1b666350f710419cc1057ce829a431db6112be9"
+    }
+  },
+  "productionDeployment": false,
+  "formalPackageCreated": false,
+  "win7Accepted": false,
+  "fullErpEquivalent": false,
+  "publicMenuRepair": {
+    "acceptedActionIdentity": "Current source route/URI + menu generation + existing authenticated owner scope + PageNavigationSession active page; latest action revision checked before claim.",
+    "platforms": [
+      "web",
+      "flutter desktop"
+    ],
+    "wpf": "Separate native navigation implementation; no Dart call chain."
+  },
+  "integrationFixes": [
+    "Unique platform fact periodInQty: preserve existing global fact description and domain-specific inventory/export column labels.",
+    "Canonical finance JsonNode object iteration uses properties() without changing canonical request/idem semantics.",
+    "Menu handoff survives its own closing rebuild but keeps authenticated owner, menu, source page and URI guards.",
+    "Migration versions unique V991-V994; no pending migrations in fresh-chain test.",
+    "Maintenance target version chip remains hidden when absent."
+  ],
+  "documentationFollowup": {
+    "branch": "uimp/windows-signing-crash-20261103",
+    "commit": "8082983ddb8aabd055e13702159cf4ded8fca157",
+    "scope": "Documentation-only certificate selection follow-up created during this integration; source behavior and verified native inputs unchanged."
+  },
+  "completionScope": "Validated local source integration; no push, deployment, formal package or complete manual ERP/target-PC acceptance."
+}

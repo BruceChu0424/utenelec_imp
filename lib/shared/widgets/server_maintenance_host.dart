@@ -6,9 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_dialog.dart';
+import '../../core/constants/assets.dart';
 import '../../core/l10n/maintenance_text.dart';
 import '../../core/maintenance/server_maintenance.dart';
 import '../../core/performance/performance_tier.dart';
+import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../../core/utils/display_datetime.dart';
 import '../../core/web_update/web_update_bridge.dart';
@@ -574,6 +576,11 @@ class _ScheduledContent extends StatelessWidget {
 }
 
 /// The same recovery surface is used before login and inside native apps.
+///
+/// Layout mirrors the web maintenance page: a teal brand rail with the white
+/// wordmark and a server-rack motif, and a status panel with chips and a
+/// three-step timeline. Brand texts stay in Chinese on every locale, matching
+/// the static web page.
 class ServerMaintenancePage extends StatelessWidget {
   const ServerMaintenancePage({
     super.key,
@@ -588,140 +595,548 @@ class ServerMaintenancePage extends StatelessWidget {
   final bool statusUnavailable;
   final VoidCallback onCheck;
 
+  static const _railBreakpoint = 880.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      key: const ValueKey('server-maintenance-page'),
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final wide = constraints.maxWidth >= _railBreakpoint;
+            if (wide) {
+              // The rail fills the height and the panel scrolls on its own,
+              // so Spacer-based vertical distribution stays bounded.
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _MaintenanceRail(
+                    width: (constraints.maxWidth * 0.4).clamp(340.0, 460.0),
+                    recovery: _recovery,
+                  ),
+                  Expanded(child: _buildPanel(context, wide: wide)),
+                ],
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _MaintenanceRail.compact(recovery: _recovery),
+                Expanded(child: _buildPanel(context, wide: wide)),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  bool get _recovery =>
+      snapshot.phase == ServerMaintenancePhase.recoveryRequired;
+
+  Widget _buildPanel(BuildContext context, {required bool wide}) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
+    final steps = [
+      _MaintenanceStep(
+        label: maintenanceText(context, '更新预告已发布'),
+        state: _MaintenanceStepState.done,
+      ),
+      _MaintenanceStep(
+        label: maintenanceText(
+          context,
+          _recovery
+              ? '等待恢复服务'
+              : snapshot.phase == ServerMaintenancePhase.scheduled
+              ? '等待更新开始'
+              : '服务更新中',
+        ),
+        state: _MaintenanceStepState.current,
+      ),
+      _MaintenanceStep(
+        label: maintenanceText(context, '恢复后返回工作'),
+        state: _MaintenanceStepState.pending,
+      ),
+    ];
+    final scheduled = snapshot.phase == ServerMaintenancePhase.scheduled;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final content = _buildPanelContent(
+          context,
+          theme: theme,
+          scheme: scheme,
+          dark: dark,
+          steps: steps,
+          scheduled: scheduled,
+        );
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 560),
+                padding: EdgeInsets.fromLTRB(24, wide ? 56 : 30, 24, 44),
+                child: content,
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPanelContent(
+    BuildContext context, {
+    required ThemeData theme,
+    required ColorScheme scheme,
+    required bool dark,
+    required List<_MaintenanceStep> steps,
+    required bool scheduled,
+  }) {
+    final title = maintenanceText(
+      context,
+      _recovery ? '服务恢复需要管理员确认' : '服务器正在更新中',
+    );
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: theme.textTheme.headlineMedium?.copyWith(
+              color: _recovery ? scheme.error : null,
+              fontWeight: FontWeight.w700,
+              height: 1.3,
+              letterSpacing: -0.3,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s12),
+          Text(
+            maintenanceText(
+              context,
+              _recovery
+                  ? '更新尚未完成。请保留当前窗口并联系管理员，服务通过检查后会自动返回。'
+                  : '正在更新服务并检查运行状态。请保留当前窗口，恢复后会自动返回。',
+            ),
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: scheme.onSurfaceVariant,
+              height: 1.75,
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s24),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(24, 22, 24, 24),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              border: Border.all(color: scheme.outlineVariant),
+              borderRadius: UtenRadius.cardAll,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (snapshot.targetVersion != null)
+                      _MaintenanceChip(
+                        label:
+                            '${maintenanceText(context, '目标版本')} ${snapshot.targetVersion}',
+                        accent: true,
+                        dark: dark,
+                      ),
+                    if (scheduled && snapshot.startsAt != null)
+                      _MaintenanceChip(
+                        label:
+                            '${maintenanceText(context, '开始时间（北京时间）')} '
+                            '${DisplayDateTime.beijing(snapshot.startsAt!.toIso8601String())}',
+                        dark: dark,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: UtenSpacing.s16),
+                _MaintenanceSteps(steps: steps, recovery: _recovery),
+              ],
+            ),
+          ),
+          const SizedBox(height: UtenSpacing.s16),
+          Text(
+            maintenanceText(
+              context,
+              '当前页面和已输入内容保留在此窗口中。恢复连接不会自动重复提交；结果不确定时，请先核对单据。',
+            ),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              height: 1.7,
+            ),
+          ),
+          if (statusUnavailable) ...[
+            const SizedBox(height: UtenSpacing.s12),
+            Text(
+              maintenanceText(context, '暂时无法读取更新状态，正在继续检查。'),
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+          const SizedBox(height: UtenSpacing.s24),
+          UtenButton(
+            onPressed: onCheck,
+            isLoading: checking,
+            icon: Icons.refresh_rounded,
+            child: Text(maintenanceText(context, checking ? '正在检查' : '检查恢复状态')),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MaintenanceStep {
+  const _MaintenanceStep({required this.label, required this.state});
+
+  final String label;
+  final _MaintenanceStepState state;
+}
+
+enum _MaintenanceStepState { done, current, pending }
+
+/// Brand rail with the white wordmark, platform name, a server-rack motif and
+/// the copyright line. Collapses to a compact horizontal strip when narrow.
+class _MaintenanceRail extends StatelessWidget {
+  const _MaintenanceRail({required this.recovery, this.width})
+    : compact = false;
+
+  const _MaintenanceRail.compact({required this.recovery})
+    : width = null,
+      compact = true;
+
+  final bool recovery;
+  final double? width;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final ledColor = recovery
+        ? UtenColors.errorOnDark
+        : (dark ? UtenColors.teal200 : UtenColors.teal100);
+    final rail = Container(
+      width: compact ? null : width,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: const Alignment(-0.4, -1),
+          end: const Alignment(0.6, 1),
+          colors: dark
+              ? const [UtenColors.teal950, Color(0xFF0A4741)]
+              : const [Color(0xFF0C4A45), UtenColors.teal700],
+        ),
+      ),
+      padding: compact
+          ? const EdgeInsets.symmetric(horizontal: 22, vertical: 18)
+          : const EdgeInsets.fromLTRB(44, 48, 44, 36),
+      child: compact
+          ? const Row(
+              children: [
+                _Wordmark(width: 132),
+                SizedBox(width: UtenSpacing.s16),
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: DefaultTextStyle(
+                      style: TextStyle(
+                        color: Color(0xE6FFFFFF),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 3,
+                      ),
+                      child: Text('优腾综合管理平台'),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const _Wordmark(width: 200),
+                const SizedBox(height: UtenSpacing.s16),
+                const Text(
+                  '优腾综合管理平台',
+                  style: TextStyle(
+                    color: Color(0xE6FFFFFF),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    letterSpacing: 4,
+                  ),
+                ),
+                // Scrolls only when the window is shorter than the motif
+                // stack; otherwise the rack sits just above the copyright.
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: UtenSpacing.s40),
+                        _RackMotif(ledColor: ledColor),
+                        const SizedBox(height: 64),
+                        const Text(
+                          '© 中山市优腾电器有限公司',
+                          style: TextStyle(
+                            color: Color(0x9EFFFFFF),
+                            fontSize: 12.5,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+    );
+    // The wordmark is decorative; the rail name text carries semantics.
+    return Semantics(
+      label: '优腾综合管理平台',
+      child: ExcludeSemantics(child: rail),
+    );
+  }
+}
+
+/// White variant of the default wordmark: the teal artwork is recolored
+/// through a srcIn mask so it reads on the teal rail. The maintenance surface
+/// always shows the default brand, matching the static web page, so it does
+/// not watch the branding providers.
+class _Wordmark extends StatelessWidget {
+  const _Wordmark({required this.width});
+
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      height: width / (2210 / 334),
+      child: const ColorFiltered(
+        colorFilter: ColorFilter.mode(Colors.white, BlendMode.srcIn),
+        child: Image(
+          image: AssetImage(UtenAssets.logoName),
+          fit: BoxFit.contain,
+        ),
+      ),
+    );
+  }
+}
+
+class _RackMotif extends StatelessWidget {
+  const _RackMotif({required this.ledColor});
+
+  final Color ledColor;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget unit() {
+      return Container(
+        height: 46,
+        padding: const EdgeInsets.only(left: 15, right: 12),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.09),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: ledColor,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: ledColor.withValues(alpha: 0.55),
+                    blurRadius: 10,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 17),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [0.9, 1.0, 0.82]
+                    .map(
+                      (w) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: FractionallySizedBox(
+                          widthFactor: w,
+                          alignment: Alignment.centerLeft,
+                          child: Container(
+                            height: 2,
+                            decoration: const BoxDecoration(
+                              color: Color(0x38FFFFFF),
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return SizedBox(
+      width: 204,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < 3; i++)
+            Padding(
+              padding: EdgeInsets.only(bottom: i < 2 ? 10 : 0),
+              child: unit(),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MaintenanceChip extends StatelessWidget {
+  const _MaintenanceChip({
+    required this.label,
+    required this.dark,
+    this.accent = false,
+  });
+
+  final String label;
+  final bool dark;
+  final bool accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final (background, foreground) = accent
+        ? dark
+              ? (UtenColors.teal700.withValues(alpha: 0.35), UtenColors.teal200)
+              : (UtenColors.teal50, UtenColors.teal800)
+        : dark
+        ? (UtenColors.darkSurfaceHigh, scheme.onSurfaceVariant)
+        : (UtenColors.surfaceMid, scheme.onSurfaceVariant);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: foreground,
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
+      ),
+    );
+  }
+}
+
+class _MaintenanceSteps extends StatelessWidget {
+  const _MaintenanceSteps({required this.steps, required this.recovery});
+
+  final List<_MaintenanceStep> steps;
+  final bool recovery;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final recovery = snapshot.phase == ServerMaintenancePhase.recoveryRequired;
-    final title = maintenanceText(
-      context,
-      recovery ? '服务恢复需要管理员确认' : '服务器正在更新中',
-    );
-    return Material(
-      key: const ValueKey('server-maintenance-page'),
-      color: theme.scaffoldBackgroundColor,
-      child: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(UtenSpacing.s24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 600),
-              child: Semantics(
-                container: true,
-                liveRegion: true,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(
-                      recovery
-                          ? Icons.support_agent_rounded
-                          : Icons.dns_rounded,
-                      size: 48,
-                      color: recovery ? scheme.error : scheme.primary,
-                    ),
-                    const SizedBox(height: UtenSpacing.s24),
-                    Text(
-                      title,
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        height: 1.25,
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s16),
-                    Text(
-                      maintenanceText(
-                        context,
-                        recovery
-                            ? '更新尚未完成。请保留当前窗口并联系管理员，服务通过检查后会自动返回。'
-                            : '正在更新服务并检查运行状态。请保留当前窗口，恢复后会自动返回。',
-                      ),
-                      style: theme.textTheme.bodyLarge?.copyWith(height: 1.6),
-                    ),
-                    const SizedBox(height: UtenSpacing.s32),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(UtenSpacing.s20),
-                      decoration: BoxDecoration(
-                        color: scheme.surface,
-                        border: Border.all(color: scheme.outlineVariant),
-                        borderRadius: UtenRadius.cardAll,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (snapshot.targetVersion != null) ...[
-                            Text(
-                              '${maintenanceText(context, '目标版本')} ${snapshot.targetVersion}',
-                              style: theme.textTheme.titleSmall,
-                            ),
-                            const SizedBox(height: UtenSpacing.s16),
-                          ],
-                          for (final (index, label) in [
-                            '更新预告已发布',
-                            recovery ? '等待恢复服务' : '服务更新中',
-                            '恢复后返回工作',
-                          ].indexed) ...[
-                            if (index > 0)
-                              const SizedBox(height: UtenSpacing.s12),
-                            Row(
-                              children: [
-                                Icon(
-                                  index == 0
-                                      ? Icons.check_circle_rounded
-                                      : index == 1
-                                      ? Icons.build_circle_outlined
-                                      : Icons.radio_button_unchecked_rounded,
-                                  size: 20,
-                                  color: index < 2
-                                      ? scheme.primary
-                                      : scheme.onSurfaceVariant,
-                                ),
-                                const SizedBox(width: UtenSpacing.s12),
-                                Expanded(
-                                  child: Text(maintenanceText(context, label)),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: UtenSpacing.s20),
-                    Text(
-                      maintenanceText(
-                        context,
-                        '当前页面和已输入内容保留在此窗口中。恢复连接不会自动重复提交；结果不确定时，请先核对单据。',
-                      ),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                        height: 1.6,
-                      ),
-                    ),
-                    if (statusUnavailable) ...[
-                      const SizedBox(height: UtenSpacing.s12),
-                      Text(
-                        maintenanceText(context, '暂时无法读取更新状态，正在继续检查。'),
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
-                    const SizedBox(height: UtenSpacing.s24),
-                    UtenButton(
-                      onPressed: onCheck,
-                      isLoading: checking,
-                      icon: Icons.refresh_rounded,
-                      type: UtenButtonType.secondary,
-                      child: Text(
-                        maintenanceText(context, checking ? '正在检查' : '检查恢复状态'),
-                      ),
-                    ),
-                  ],
-                ),
+    final highlight = recovery ? scheme.error : scheme.primary;
+    final children = <Widget>[];
+    for (final (index, step) in steps.indexed) {
+      if (index > 0) {
+        final connector = step.state == _MaintenanceStepState.current
+            ? highlight.withValues(alpha: 0.45)
+            : scheme.outlineVariant;
+        children.add(
+          Padding(
+            padding: const EdgeInsets.only(left: 10),
+            child: Container(width: 2, height: 16, color: connector),
+          ),
+        );
+      }
+      final marker = switch (step.state) {
+        _MaintenanceStepState.done => Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(color: highlight, shape: BoxShape.circle),
+          child: const Icon(Icons.check, size: 14, color: Colors.white),
+        ),
+        _MaintenanceStepState.current => Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            shape: BoxShape.circle,
+            border: Border.all(color: highlight, width: 2),
+          ),
+          child: Center(
+            child: Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: highlight,
+                shape: BoxShape.circle,
               ),
             ),
           ),
         ),
-      ),
+        _MaintenanceStepState.pending => Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            shape: BoxShape.circle,
+            border: Border.all(color: scheme.outline, width: 2),
+          ),
+        ),
+      };
+      children.add(
+        Row(
+          children: [
+            marker,
+            const SizedBox(width: UtenSpacing.s12),
+            Expanded(
+              child: Text(
+                step.label,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: step.state == _MaintenanceStepState.current
+                      ? scheme.onSurface
+                      : scheme.onSurfaceVariant,
+                  fontWeight: step.state == _MaintenanceStepState.current
+                      ? FontWeight.w600
+                      : FontWeight.w400,
+                  height: 1.55,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
     );
   }
 }

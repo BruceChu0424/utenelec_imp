@@ -1030,7 +1030,8 @@ public class SalesOrderService {
                            WHERE shipment_item.order_item_id=i.id AND NOT shipment_item.is_deleted
                              AND NOT shipment.is_deleted AND shipment.status=0
                              AND NOT COALESCE(shipment.rejected,FALSE)),0) pending_shipment_qty,
-                       %s AS physical_reserved_qty
+                       %s AS physical_reserved_qty,
+                       COALESCE(i.returned_qty,0), COALESCE(i.flag_qty,0)
                 FROM sales_order_items i
                 JOIN goods g ON g.id = i.goods_id
                 LEFT JOIN colors col ON col.id = i.color_id
@@ -1042,6 +1043,7 @@ public class SalesOrderService {
         List<UUID> itemIds = rows.stream().map(r -> (UUID) r[0]).toList();
         Map<UUID, List<com.uten.imp.features.sales.order.dto.PlanProgressLine.MaterialAnalysisProgress>>
                 analysesByItem = planProgressQuery.load(itemIds);
+        var supplySourcesByItem = planProgressQuery.loadSupplySources(itemIds);
         Map<UUID, List<com.uten.imp.features.sales.order.dto.PlanProgressLine.ExecutionSegmentProgress>>
                 segmentsByLink = new HashMap<>();
         Map<UUID, List<com.uten.imp.features.sales.order.dto.PlanProgressLine.PlanLink>> byItem =
@@ -1209,7 +1211,10 @@ public class SalesOrderService {
                     r[12] == null ? null : ((Number) r[12]).shortValue(),
                     nz((BigDecimal) r[13]),
                     analysesByItem.getOrDefault((UUID) r[0], List.of()),
-                    byItem.getOrDefault((UUID) r[0], List.of())));
+                    byItem.getOrDefault((UUID) r[0], List.of()),
+                    SalesOrderPreparationProgress.of((BigDecimal) r[7], (BigDecimal) r[17],
+                            (BigDecimal) r[11], (BigDecimal) r[16], (BigDecimal) r[15],
+                            supplySourcesByItem.getOrDefault((UUID) r[0], List.of()))));
         }
         return out;
     }

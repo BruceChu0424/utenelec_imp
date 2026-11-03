@@ -59,7 +59,6 @@ public class PlatformDisplayColumnsConfiguration {
         new FactDefinition("costAmount","库存台账金额",true),
         new FactDefinition("costPrice","成本价",true),
         new FactDefinition("periodCostAmount","成本金额",true),
-        new FactDefinition("periodInQty","进仓数量",false),
         new FactDefinition("periodOutQty","发货数量",false),
         new FactDefinition("moreQty","多排数量",false),
         new FactDefinition("circumference","围数",false),

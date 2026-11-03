@@ -119,6 +119,10 @@ class FinanceBatchEntryPostgresTest {
                 .dataSource(url, POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").load();
         flyway.migrate();
-        assertThat(flyway.info().current().getVersion().toString()).isEqualTo("992");
+        assertThat(flyway.info().applied())
+                .extracting(info -> info.getScript())
+                .contains("V991__finance_batch_entry_commands.sql",
+                        "V992__finance_bank_reference_optional.sql");
+        assertThat(flyway.info().pending()).isEmpty();
     }
 }

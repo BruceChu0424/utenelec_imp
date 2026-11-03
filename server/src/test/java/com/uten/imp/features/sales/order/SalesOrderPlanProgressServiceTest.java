@@ -51,7 +51,8 @@ class SalesOrderPlanProgressServiceTest {
                 new BigDecimal("7.0000"), new BigDecimal("2.0000"), BigDecimal.ZERO,
                 (short) 4,
                 // V545 剩余未排量列：20 − 0 − max(7−2,0) = 15
-                new BigDecimal("15.0000"), BigDecimal.ZERO, BigDecimal.ZERO
+                new BigDecimal("15.0000"), BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO
         }));
         Query executionSegments = queryReturning(List.of());
         Query formalPlans = queryReturning(List.of(
@@ -100,7 +101,7 @@ class SalesOrderPlanProgressServiceTest {
                         new BigDecimal("10.0000"), new BigDecimal("2.0000"),
                         new BigDecimal("3.0000"), new BigDecimal("5.0000"),
                         new BigDecimal("4.0000"), new BigDecimal("5.0000"),
-                        LocalDate.of(2026, 8, 12), List.of());
+                        LocalDate.of(2026, 8, 12), List.of(), BigDecimal.ZERO);
         SalesOrderPlanProgressQuery projection = mock(SalesOrderPlanProgressQuery.class);
         when(projection.load(List.of(orderItemId)))
                 .thenReturn(Map.of(orderItemId, List.of(analysis)));
@@ -133,6 +134,7 @@ class SalesOrderPlanProgressServiceTest {
 
         assertThat(line.plannedQty()).isEqualByComparingTo("7");
         assertThat(line.unplannedQty()).isEqualByComparingTo("15");
+        assertThat(line.preparation().preparedQty()).isZero();
         assertThat(line.materialAnalyses()).containsExactly(analysis);
         assertThat(line.materialAnalyses().getFirst().submittedQty())
                 .isEqualByComparingTo("2");

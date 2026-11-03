@@ -15,9 +15,9 @@
 1. 真实UUID/字段保留、作用范围/权限、历史、批量/导出打印，至少一完整可写模块先闭合。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：`docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md`；`clients/windows_legacy/progress/evidence/biz037-flow001-upd009-20261030.json`。
+证据：`docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md`；`clients/windows_legacy/progress/evidence/biz037-flow001-upd009-20261030.json`；`clients/windows_legacy/progress/evidence/local-main-integration-20261103.json`。
 
-接续/限制：单位→货品真实引用已接：货品保留unitId/unitLegacyId权威UUID关系键+历史快照回落事实区分，详情按UUID导航到单位主档窗口(自带编辑/状态/删除引用保护)；删除保护仍走服务端逐项原因(既有检查钉住)，未自造端点或客户端推导。goods 24→27双架构绿；完整可写模块闭环与目标机验收仍待。。
+接续/限制：单位→货品真实引用已接：货品保留unitId/unitLegacyId权威UUID关系键+历史快照回落事实区分，详情按UUID导航到单位主档窗口(自带编辑/状态/删除引用保护)；删除保护仍走服务端逐项原因(既有检查钉住)，未自造端点或客户端推导。goods 24→27双架构绿；完整可写模块闭环与目标机验收仍待。；2026-11-03 本地整合：销售备货进度已保存稳定快照，服务端权威区分库存/自产/委外并共用 contracts/sales-preparation-progress/v1.json 样例；Dart详情面板、选单和发货预填消费同一 plan-progress 契约。WPF这些销售入口仍未迁移，不开放候选写入口、不改变本项完成状态，后续须同步数量、生命周期和未知提交语义。。
 
 ## W7-FLOW-002
 

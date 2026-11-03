@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +11,9 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/authenticated_request_scope.dart';
+import 'package:uten_imp/core/network/interceptors/read_scope_revision_interceptor.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/shared/drafts/form_draft_storage.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
@@ -19,6 +25,7 @@ import 'package:uten_imp/features/basic_data/repositories/currency_repository.da
 import 'package:uten_imp/features/basic_data/repositories/goods_cost_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/goods_cost_tab.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/platform_tables/platform_table_repository.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -150,9 +157,77 @@ class _RejectedResetStorage extends MemoryFormDraftStorage
   }
 }
 
+class _ScopeCostsAdapter implements HttpClientAdapter {
+  bool failFirstList = false;
+  int lists = 0, bootstraps = 0;
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? body,
+    Future<void>? cancel,
+  ) async {
+    const base = DioGoodsCostRepository.base;
+    Object data = <String, dynamic>{};
+    String? proof;
+    var status = 200;
+    if (options.path == '/platform-columns/scopes') {
+      data = [
+        {
+          'scope': 'view_goods_cost',
+          'priceVisible': true,
+          'supportsValues': false,
+        },
+      ];
+    } else if (options.path ==
+        '/platform-columns/view_goods_cost/definitions') {
+      data = <Object>[];
+    } else if (options.path == base) {
+      lists++;
+      proof = 'cost-proof';
+      data = <Object>[];
+      if (failFirstList && lists == 1) {
+        status = 503;
+        data = {'code': 'UNAVAILABLE', 'message': '成本暂时无法读取'};
+      }
+    } else if (options.path == '$base/bootstrap') {
+      bootstraps++;
+      data = {
+        ..._StartupCosts().result.json,
+        'resolvedInput': {
+          'goodsId': 'goods',
+          'name': '服务端默认预算',
+          'batchQty': '23',
+          'usageStrategy': 'DESIGN',
+          'priceStrategy': 'MANUAL',
+        },
+      };
+    } else if (options.path == '$base/preview') {
+      data = _StartupCosts().result.json;
+    } else if (options.path == '$base/production-output') {
+      data = {'state': 'NONE', 'goodsId': 'goods'};
+    } else if (options.path == '$base/actual' ||
+        options.path == '/master/goods/goods') {
+      proof = 'goods-proof';
+    } else {
+      throw StateError('Unexpected fixture route: ${options.path}');
+    }
+    return ResponseBody.fromString(
+      jsonEncode(data),
+      status,
+      headers: {
+        Headers.contentTypeHeader: ['application/json'],
+        if (proof != null) 'X-Uten-Read-Scope-Version': [proof],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 Future<void> _pump(
   WidgetTester tester,
-  _StartupCosts costs, {
+  GoodsCostRepository costs, {
   FormDraftStorage? storage,
   AuthenticatedScope? scope,
   String? resumeId,
@@ -161,6 +236,8 @@ Future<void> _pump(
   addTearDown(() => setUtenTestSurfaceSize(tester, null));
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
+  final platformDio = Dio()..httpClientAdapter = _ScopeCostsAdapter();
+  addTearDown(() => platformDio.close(force: true));
   const home = Scaffold(
     body: GoodsCostTab(
       detail: GoodsDetail(id: 'goods', name: '货品'),
@@ -180,6 +257,9 @@ Future<void> _pump(
     ProviderScope(
       overrides: [
         goodsCostRepositoryProvider.overrideWithValue(costs),
+        platformTableRepositoryProvider.overrideWithValue(
+          PlatformTableRepository(ApiClient(platformDio)),
+        ),
         currencyRepositoryProvider.overrideWithValue(_StartupCurrencies()),
         sharedPreferencesProvider.overrideWithValue(prefs),
         authenticatedScopeProvider.overrideWithValue(scope),
@@ -210,7 +290,84 @@ Future<void> _pump(
   await tester.pumpAndSettle();
 }
 
+Finder _startupRetry() => find.descendant(
+  of: find
+      .ancestor(of: find.text('成本暂时无法读取'), matching: find.byType(Row))
+      .first,
+  matching: find.text('重试'),
+);
+
 void main() {
+  for (final failFirstList in [false, true]) {
+    testWidgets(
+      'real request scope opens cost after goods and preserves input across repeated reads; retry=$failFirstList',
+      (tester) async {
+        var revision = 0;
+        final adapter = _ScopeCostsAdapter()..failFirstList = failFirstList;
+        final dio = Dio(BaseOptions(baseUrl: 'https://cost-startup/api'))
+          ..httpClientAdapter = adapter;
+        const identity = AuthenticatedRequestIdentity(
+          baseUrl: 'https://cost-startup/api',
+          lineage: 'cost-reader',
+          intent: 1,
+          impersonationLineage: null,
+        );
+        dio.interceptors.add(
+          ReadScopeRevisionInterceptor(
+            currentRevision: () => revision,
+            retire: () => revision++,
+            isCurrent: (_) async => true,
+            identity: (_) => identity,
+          ),
+        );
+        addTearDown(() => dio.close(force: true));
+        final api = ApiClient(dio);
+        final costs = DioGoodsCostRepository(api);
+        await tester.runAsync(() => api.get('/master/goods/goods'));
+        await _pump(tester, costs);
+        if (failFirstList) {
+          expect(find.text('成本暂时无法读取'), findsOneWidget);
+          await tester.tap(_startupRetry());
+          await tester.pumpAndSettle();
+        }
+        expect(adapter.bootstraps, 1);
+        expect(find.textContaining('数据访问范围已变化'), findsNothing);
+        await tester.tap(find.byKey(const Key('cost-settings-toggle')));
+        await tester.pumpAndSettle();
+        final quantity = find.byKey(const ValueKey('cost-header-batchQty'));
+        await tester.enterText(quantity, '37.125');
+        for (var round = 0; round < 20; round++) {
+          await tester.runAsync(
+            () => Future.wait([
+              api.get('/master/goods/goods'),
+              costs.list('goods'),
+              costs.actual('goods', {}),
+            ]),
+          );
+        }
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<TextFormField>(quantity).controller!.text,
+          '37.125',
+        );
+        expect(revision, 0);
+        expect(find.textContaining('数据访问范围已变化'), findsNothing);
+        expect(tester.takeException(), isNull);
+        // Re-enter the actual cost widget repeatedly with the same live client.
+        for (var round = 0; round < 5; round++) {
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+          await tester.runAsync(() => api.get('/master/goods/goods'));
+          await _pump(tester, costs);
+          expect(find.textContaining('数据访问范围已变化'), findsNothing);
+          expect(tester.takeException(), isNull);
+        }
+        expect(adapter.bootstraps, 6);
+        expect(revision, 0);
+      },
+    );
+  }
+
   testWidgets(
     'an explicitly resumed draft stays blocked by the real reset fence',
     (tester) async {
@@ -266,7 +423,7 @@ void main() {
     await _pump(tester, costs);
     expect(find.text('成本暂时无法读取'), findsOneWidget);
     expect(costs.bootstraps, 0);
-    await tester.tap(find.text('重试'));
+    await tester.tap(_startupRetry());
     await tester.pumpAndSettle();
     expect(costs.lists, 2);
     expect(costs.bootstraps, 1);

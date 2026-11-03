@@ -54,6 +54,13 @@ class ReadScopeRevisionInterceptor extends Interceptor {
     ).firstMatch(options.path)?.group(1);
     final domain =
         nativeDomain ??
+        // Cost sheets include frozen-customer visibility in their proof. Actual
+        // costs keep the goods authority; never compare these distinct proofs.
+        (RegExp(
+              r'^/(?:api/)?master/goods/cost-sheets(?:/versions|/[0-9a-fA-F-]{36}(?:/snapshots)?|/snapshots/[0-9a-fA-F-]{36}|/templates|/export)?$',
+            ).hasMatch(options.path)
+            ? 'master_goods_cost'
+            : null) ??
         (RegExp(
               r'^/(?:api/)?master/reference-methods/settlement-admin(?:/page)?$',
             ).hasMatch(options.path)

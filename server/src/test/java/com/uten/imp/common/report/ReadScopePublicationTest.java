@@ -16,6 +16,27 @@ class ReadScopePublicationTest {
     final SecurityContextCurrentUser users=mock(SecurityContextCurrentUser.class);
     ReportReadPlanInterceptor interceptor;
     @BeforeEach void setup() {when(users.get()).thenReturn(Optional.of(subject));interceptor=new ReportReadPlanInterceptor(authority,users);}
+    @Test void sharedGoodsCostRoutesKeepTheirOwningAuthority() throws Exception {
+        var path=java.nio.file.Path.of("../contracts/read-scope-domains/goods-cost-v1.json");
+        if(!java.nio.file.Files.exists(path))path=java.nio.file.Path.of("contracts/read-scope-domains/goods-cost-v1.json");
+        var fixture=new com.fasterxml.jackson.databind.ObjectMapper().readTree(java.nio.file.Files.readString(path));
+        assertEquals(1,fixture.get("schemaVersion").asInt());
+        for(var entry:fixture.get("cases")) {
+            reset(authority);
+            String domain=entry.get("domain").asText();
+            when(authority.scopeFor(domain,subject)).thenReturn(domain);
+            var request=new MockHttpServletRequest(entry.get("method").asText(),"/api"+entry.get("path").asText());
+            var response=new MockHttpServletResponse();
+            new MasterReadScopeInterceptor(authority,users).preHandle(request,response,null);
+            new LegacyExportReadScopeInterceptor(authority,users).preHandle(request,response,null);
+            var proof=(ReadScopePublication.Proof)request.getAttribute(ReadScopePublication.ATTRIBUTE);
+            assertNotNull(proof,entry.toString());assertEquals(domain,proof.domain(),entry.toString());
+            new ReportReadScopeAdvice(authority).beforeBodyWrite(Map.of("items",List.of()),null,MediaType.APPLICATION_JSON,null,
+                    new ServletServerHttpRequest(request),new ServletServerHttpResponse(response));
+            assertEquals(domain,response.getHeader(ReadScopePublication.HEADER),entry.toString());
+            verify(authority,times(2)).scopeFor(domain,subject);
+        }
+    }
     @Test void typedWhereUsedKeepsTheFirstNativeProfileAndRechecksItBeforePublishing() {
         when(authority.scopeFor("native_warehouse_tasks",subject,false)).thenReturn("a".repeat(64),"b".repeat(64));
         var request=new MockHttpServletRequest("GET","/api/production/reports/where-used/trace");

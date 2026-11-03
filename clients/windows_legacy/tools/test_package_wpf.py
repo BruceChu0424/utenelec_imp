@@ -16,6 +16,11 @@ import package_wpf as package
 sys.path.insert(0, str(package.ROOT / "deploy/client"))
 from test_package_windows import fixture_executable, synthetic_signature_boundary
 
+_REAL_SIGNATURE_CHECK = package.windows_authenticode.check_configuration
+_REAL_SIGNATURE_SIGN = package.windows_authenticode.sign_files
+_REAL_SIGNATURE_VERIFY = package.windows_authenticode.verify_files
+_REAL_BINDING_VERIFY = package.windows_payload_binding.verify_sources
+
 
 def managed_fixture(architecture="x64", *, dll=False, anycpu=False, marker=package.MARKER,
                     build=45, version=(1, 2, 3), metadata_version=b"v4.0.30319\0", flags=None):
@@ -143,6 +148,33 @@ class WpfCandidatePackageTest(unittest.TestCase):
         self.assertFalse(output.exists())
         self.assertFalse(receipt.exists())
         self.assertEqual({path.name: path.read_bytes() for path in self.bundle.iterdir()}, original)
+
+    def test_default_unsigned_company_candidate_keeps_binding_and_source_bytes(self):
+        original = {path.name: path.read_bytes() for path in self.bundle.iterdir()}
+        private = self.root / "private unsigned payload"
+        receipt_path = self.root / "unsigned-source-receipt.json"
+        with mock.patch.object(package.windows_authenticode, "signing_enabled", return_value=False), \
+             mock.patch.object(package.windows_authenticode, "check_configuration", side_effect=_REAL_SIGNATURE_CHECK), \
+             mock.patch.object(package.windows_authenticode, "sign_files", side_effect=_REAL_SIGNATURE_SIGN), \
+             mock.patch.object(package.windows_authenticode, "verify_files", side_effect=_REAL_SIGNATURE_VERIFY), \
+             mock.patch.object(package.windows_payload_binding, "verify_sources", side_effect=_REAL_BINDING_VERIFY):
+            result = package.prepare_company_payload(self.bundle, private, receipt_path, architecture="x64",
+                source_root=self.source, source_state=self.state)
+            self.assertFalse(result["windowsSigning"]["signatureVerified"])
+            self.assertEqual("authenticode-optional-v1", result["windowsSigning"]["policy"])
+            self.assertEqual({path.name: path.read_bytes() for path in self.bundle.iterdir()}, original)
+            self.assertEqual((private / package.BC).read_bytes(), original[package.BC])
+            package.package_update(private, self.root / "unsigned-candidate.zip", architecture="x64",
+                source_root=self.source, receipt_path=receipt_path, build=True)
+            with (private / package.EXECUTABLE).open("rb") as stream:
+                package.windows_payload_binding.read(stream, (private / package.EXECUTABLE).stat().st_size,
+                                                     require_signed=False)
+            with (private / package.EXECUTABLE).open("rb") as stream, self.assertRaises(ValueError):
+                package.windows_payload_binding.read(stream, (private / package.EXECUTABLE).stat().st_size)
+            (private / "uten.client.json").write_text("{}", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                package.package_update(private, self.root / "changed-candidate.zip", architecture="x64",
+                    source_root=self.source, receipt_path=receipt_path, build=True)
 
     def tearDown(self):
         self.temporary.cleanup()

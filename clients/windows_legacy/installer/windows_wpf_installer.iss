@@ -60,8 +60,10 @@ ArchitecturesInstallIn64BitMode=
 MinVersion=6.1sp1
 UseSetupLdr=yes
 #ifndef ValidationFixture
+#ifdef UtenSign
 SignTool=uten
 SignedUninstaller=yes
+#endif
 #endif
 OutputDir={#OutputDir}
 OutputBaseFilename=UtenWin7WpfSetup-{#Version}-{#BuildNumber}

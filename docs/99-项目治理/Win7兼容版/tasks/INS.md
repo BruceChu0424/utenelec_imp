@@ -100,9 +100,9 @@
 1. 验证Inno源码和实际向导、首次安装/覆盖/卸载、权限和路径，不是只测策略函数。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：`docs/99-项目治理/2026-11-03-Windows可信签名与现场闪退修复.md`。
+证据：`docs/99-项目治理/2026-11-03-Windows可信签名与现场闪退修复.md`；`clients/windows_legacy/progress/evidence/release2545-integration.json`。
 
-接续/限制：2026-11-03：Flutter/WPF共用Windows Authenticode签名与正式包验签门，安装器接入SignTool和SignedUninstaller，未签或缺可信公司发布者配置拒绝。WPF生产路径与独立更新ZIP复验同步，候选固定依赖仍按原锁核验。公司尚未申请代码签名证书，真实签名、目标Win7/8.1安装/卸载/更新及完整ERP验收均未完成，不宣称本项DoD完成。。
+接续/限制：2026-11-03：Flutter/WPF共用Windows Authenticode签名与正式包验签门，安装器接入SignTool和SignedUninstaller，未签或缺可信公司发布者配置拒绝。WPF生产路径与独立更新ZIP复验同步，候选固定依赖仍按原锁核验。公司尚未申请代码签名证书，真实签名、目标Win7/8.1安装/卸载/更新及完整ERP验收均未完成，不宣称本项DoD完成。；2026-11-03 本次发布按用户明确要求恢复默认可选Authenticode；显式require/已配置信任仍严格，载荷绑定、版本/运行时/架构、固定依赖和安全引擎不放宽。WPF仍候选，本项完成状态与Win7/完整ERP验收不变。。
 
 ## W7-INS-007
 

@@ -113,7 +113,8 @@ def compiler_command(compiler: Path | None, payload: Path, output_directory: Pat
         "AllowedArchitectures": allowed, "Install64Architectures": install64, "AppIcon": str(ICON),
     }
     return [str(compiler or "ISCC.exe"), "/Qp", *(f"/D{key}={value}" for key, value in values.items()),
-            *(["/DLocalTest"] if local_test else [inno_signing_argument()]), str(SCRIPT)]
+            *(["/DLocalTest"] if local_test else
+              ["/DUtenSign=1", inno_signing_argument()] if windows_authenticode.signing_enabled() else []), str(SCRIPT)]
 
 
 def inno_signing_argument() -> str:
@@ -284,7 +285,9 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
             main_signatures = windows_authenticode.sign_files([("uten_imp.exe", main)])
             with main.open("rb") as source:
                 final_main_sha256 = hashlib.file_digest(source, "sha256").hexdigest()
-            signing_receipt = {"policy": "authenticode-company-pinned-v1",
+            signing_receipt = {"policy": main_signatures.get("policy", "authenticode-company-pinned-v1"),
+                "signatureRequired": windows_authenticode.signature_required(),
+                "signatureVerified": main_signatures.get("verified") is True,
                 "payloadBinding": "uten-windows-payload-binding-v1", "preSignMainSha256": pre_sign_main_sha256,
                 "signedMainSha256": final_main_sha256, "sourceBundleModified": False,
                 "mainSignatureEvidence": main_signatures}

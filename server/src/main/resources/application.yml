@@ -233,6 +233,7 @@ uten:
     poll-interval-seconds: ${UTEN_CLIENT_UPDATE_POLL_SECONDS:300}
     max-releases: ${UTEN_CLIENT_UPDATE_MAX_RELEASES:200}
     min-free-bytes: ${UTEN_CLIENT_UPDATE_MIN_FREE_BYTES:1073741824}
+    windows-signature-require: ${UTEN_WINDOWS_SIGNATURE_REQUIRE:false}
     windows-publisher-sha256: ${UTEN_WINDOWS_PUBLISHER_SHA256:}
     windows-signature-verifier: ${UTEN_WINDOWS_SIGNATURE_VERIFIER:/usr/bin/osslsigncode}
     windows-signature-ca-file: ${UTEN_WINDOWS_SIGNATURE_CA_FILE:}

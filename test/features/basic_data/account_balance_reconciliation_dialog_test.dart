@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/features/basic_data/models/account_node.dart';
@@ -501,11 +502,41 @@ void main() {
         '12.3456',
       );
       repository.refreshedBalance = '10.0000';
+      final failedRefresh = Completer<AccountDetail>();
+      repository.pendingDetail = failedRefresh;
       await tester.ensureVisible(find.text('刷新当前余额'));
       await tester.pump();
       await tester.tap(find.text('刷新当前余额'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      expect(find.text('正在加载账户余额'), findsOneWidget);
+      expect(repository.attempts, hasLength(1));
+      failedRefresh.completeError(ApiException('READ_FAILED', '余额读取暂时失败'));
       await tester.pumpAndSettle();
-      expect(repository.detailCalls, 2);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(find.text('余额读取暂时失败'), findsOneWidget);
+
+      final refreshedDetail = Completer<AccountDetail>();
+      repository.pendingDetail = refreshedDetail;
+      await tester.tap(find.text('重试'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      expect(find.text('正在加载账户余额'), findsOneWidget);
+      refreshedDetail.complete(
+        const AccountDetail(
+          id: 'account-1',
+          name: '人民币基本户',
+          baseCurrency: true,
+          balanceCurrentText: '10.0000',
+          status: '使用',
+        ),
+      );
+      repository.pendingDetail = null;
+      await tester.pumpAndSettle();
+      expect(repository.detailCalls, 3);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
       expect(
         tester.widget<TextField>(_targetFields()).controller!.text,
         '12.3456',

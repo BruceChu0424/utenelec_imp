@@ -1,0 +1,59 @@
+{
+  "id": "E-RELEASE2545-INTEGRATION",
+  "version": "2.5.45",
+  "buildNumber": 2545,
+  "base": "dfe3f3b67a4904976fe1db7436a8ceefccd8a664",
+  "sourceBranches": {
+    "uimp/account-page-balance-20261103": "63cc2883358c992fc72661be34d0f3836ef8db2a",
+    "uimp/bom-delivery-demo-20261103": "cd88beea8973da6695fca14e7c3a574ccab45b0b",
+    "uimp/category-prefetch-sweep-20261103": "d7a1304150c5b3296168e4711046c39db45b2781",
+    "uimp/goods-currency-selection-20261103": "64ba238fad40f421a840e50cd25e13e71ed232e2",
+    "uimp/legacy-goods-db-priority-20261103": "ad0fcb4d60f4c98a3a73cb946453869129278146",
+    "uimp/master-data-hide-delete-20261103": "df32e3ddc706c8f810b2eb5f9031c2b9f05cdfc6",
+    "uimp/sales-task-prefetch-20261103": "54475dc638ec94ad4ff38ebad0e860c70bca07d9"
+  },
+  "excludedTask": "uimp/finance-requirements-research-20261102 (committed and uncommitted content excluded)",
+  "migrationVersions": {
+    "goodsSellingCurrency": "V995",
+    "partyHiddenLifecycle": "V996 (original branch V995; historical evidence preserved)"
+  },
+  "windowsDistribution": [
+    {
+      "platform": "windows",
+      "runtimeFamily": "flutter",
+      "architecture": "x64",
+      "artifacts": [
+        "Setup.exe",
+        "update ZIP"
+      ],
+      "profile": "company",
+      "api": "https://192.168.1.13/api",
+      "cloudApi": "https://justplayit.cn/api"
+    }
+  ],
+  "windowsSignaturePolicy": "User explicitly requested restoring previous unsigned dual-package behavior. Default optional; explicit require/configured signing stays strict. No OS protection changes; hashes, full payload inventory, safe engine, package/version/runtime/architecture/endpoint checks remain required.",
+  "ciPolicy": "User requested source upload first so complete same-commit CI and local verification/build can run in parallel. No activation until required final-commit CI is green with no error/warning annotations.",
+  "capturedLocalResults": {
+    "dartAnalysisChangedEntrypoints": 156,
+    "dartAnalysisIssues": 0,
+    "windowsTools": 126,
+    "windowsSignatureTestsWithRealUnsignedPair": 24,
+    "wpfProducerTests": 32,
+    "backendSignatureSuite": 116,
+    "finalSharedPayloadBindingTests": 4,
+    "legacyFullRun": {
+      "tests": 681,
+      "initialFailures": 4,
+      "skipped": 21,
+      "initialFailureCause": "Blank isolated coordinator fixture lacked the real V743 mass-unit helper; product source unchanged.",
+      "stockFixtureRerunPassed": 15,
+      "goodsPrecisionSqlPassed": 8
+    },
+    "uiAndBackendFurtherRegression": "still running at source-upload checkpoint; raw logs preserved in private build directories"
+  },
+  "fullErpEquivalent": false,
+  "win7Accepted": false,
+  "formalWpfDistribution": false,
+  "oldPriceDataCorrectionExecuted": false,
+  "productionUpdatedAtCapture": false
+}

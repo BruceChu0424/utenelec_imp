@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.LinkedHashMap;
+import java.util.Arrays;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -30,9 +31,45 @@ class WindowsPublisherSignaturesTest {
 
     @Test void missingCompanyIdentityFailsClosedBeforeExecutingUploadedCode() throws Exception {
         var file = Files.write(directory.resolve("setup.exe"), new byte[] {'M', 'Z'});
-        var verifier = new WindowsPublisherSignatures(new ClientUpdateProperties(), (command, timeout) -> { throw new AssertionError("Must not run"); });
+        var properties = new ClientUpdateProperties();
+        properties.setWindowsSignatureRequire(true);
+        var verifier = new WindowsPublisherSignatures(properties, (command, timeout) -> { throw new AssertionError("Must not run"); });
         assertThatThrownBy(() -> verifier.inspect(file, release("installer", "flutter")))
                 .isInstanceOf(ApiException.class).hasMessageContaining("UTEN_WINDOWS_PUBLISHER_SHA256");
+    }
+
+    @Test void defaultPolicyAcceptsStructurallyValidUnsignedInstallerWithoutTrustConfiguration() throws Exception {
+        var properties = new ClientUpdateProperties();
+        assertThat(properties.isWindowsSignatureRequire()).isFalse();
+        var verifier = new WindowsPublisherSignatures(properties, (command, timeout) -> { throw new AssertionError("Must not run"); });
+        var file = Files.write(directory.resolve("setup.exe"), WindowsSetupFixture.bytes(2545, "x64", "2.5.45"));
+        new ClientPackageInspector(new ObjectMapper(), verifier).inspectForPublication(file, release("installer", "flutter"));
+    }
+
+    @Test void defaultUnsignedArchiveStillChecksCompletePayloadAndRejectsReplacement() throws Exception {
+        var files = new LinkedHashMap<String, byte[]>();
+        files.put("data/app.so", new byte[] {1,2,3});
+        files.put("Uten.Legacy.Desktop.exe", withoutCertificate(boundMain(files)));
+        var verifier = new WindowsPublisherSignatures(new ClientUpdateProperties(),
+                (command, timeout) -> { throw new AssertionError("No trust tool is configured"); });
+        verifier.inspect(Files.write(directory.resolve("unsigned.zip"), ClientReleaseFixtures.zip(files)), release("update", "wpf_legacy"));
+        files.put("data/app.so", new byte[] {7,8,9});
+        var replaced = Files.write(directory.resolve("replaced-unsigned.zip"), ClientReleaseFixtures.zip(files));
+        assertThatThrownBy(() -> verifier.inspect(replaced, release("update", "wpf_legacy")))
+                .isInstanceOf(ApiException.class).hasMessageContaining("完整运行文件");
+    }
+
+    @Test void defaultUnsignedPolicyNeverBypassesReviewedReleaseEngineAdmission() throws Exception {
+        var vectors = new ObjectMapper().readTree(Path.of("../contracts/windows-engine-safety/vectors-v1.json").toFile());
+        byte[] unknown = Base64.getDecoder().decode(vectors.path("vectors").get(0).path("peBase64").asText());
+        var files = new LinkedHashMap<String, byte[]>();
+        files.put("flutter_windows.dll", unknown);
+        files.put("uten_imp.exe", unknown);
+        var archive = Files.write(directory.resolve("unknown-engine.zip"), ClientReleaseFixtures.zip(files));
+        var verifier = new WindowsPublisherSignatures(new ClientUpdateProperties(),
+                (command, timeout) -> { throw new AssertionError("No trust tool is configured"); });
+        assertThatThrownBy(() -> verifier.inspect(archive, release("update", "flutter")))
+                .isInstanceOf(ApiException.class).hasMessageContaining("尚未通过");
     }
 
     @Test void companyVerificationPinsActualFileAndKeepsChainTimestampAndRevocationChecks() throws Exception {
@@ -168,6 +205,15 @@ class WindowsPublisherSignaturesTest {
         result.setWindowsSignatureCaFile(trust.toString()); result.setWindowsSignatureTsaCaFile(trust.toString());
         result.setWindowsSignatureCrlFile(trust.toString()); result.setWindowsSignatureTsaCrlFile(trust.toString());
         return result;
+    }
+
+    private byte[] withoutCertificate(byte[] signed) {
+        var header = ByteBuffer.wrap(signed).order(ByteOrder.LITTLE_ENDIAN);
+        int optional = header.getInt(60) + 24;
+        int directories = Short.toUnsignedInt(header.getShort(optional)) == 0x10b ? 96 : 112;
+        int certificate = header.getInt(optional + directories + 32);
+        header.putInt(optional + directories + 32, 0).putInt(optional + directories + 36, 0);
+        return Arrays.copyOf(signed, certificate);
     }
 
     private WindowsPublisherSignatures verifier(ClientUpdateProperties properties, WindowsPublisherSignatures.VerificationProcess process) {

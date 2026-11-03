@@ -25,7 +25,7 @@ class AuthenticodePolicyTest(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.file = self.root / "uten_imp.exe"
         self.file.write_bytes(b"non-executable synthetic policy fixture")
-        self.environment = mock.patch.dict(os.environ, {signatures.PIN_ENV: "a" * 64})
+        self.environment = mock.patch.dict(os.environ, {signatures.PIN_ENV: "a" * 64, signatures.REQUIRE_ENV: "true"})
         self.environment.start()
         self.addCleanup(self.environment.stop)
 
@@ -189,6 +189,107 @@ class AuthenticodePolicyTest(unittest.TestCase):
              self.assertRaisesRegex(ValueError, "archived signature required"):
             package_windows.validate_package(output, build_number=2544, architecture="x64", version="2.5.44",
                                              kind="installer", allow_local_test=True)
+
+
+class OptionalAuthenticodePolicyTest(unittest.TestCase):
+    def setUp(self):
+        environment = mock.patch.dict(os.environ, {key: "" for key in
+            (signatures.PIN_ENV, signatures.KEY_ENV, signatures.TIMESTAMP_ENV,
+             signatures.TOOL_ENV, signatures.REQUIRE_ENV)})
+        environment.start()
+        self.addCleanup(environment.stop)
+        temporary = tempfile.TemporaryDirectory(prefix="uten-optional-signature-")
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+
+    def test_unconfigured_default_reports_unverified_without_touching_keys_or_bytes(self):
+        file = self.root / "application.exe"
+        file.write_bytes(b"synthetic unchanged unsigned input")
+        before = file.read_bytes()
+        with mock.patch.object(signatures, "_provider") as native, mock.patch.object(signatures, "_signtool") as tool:
+            readiness = signatures.check_configuration()
+            evidence = signatures.sign_files([("application.exe", file)])
+            verified = signatures.verify_files([("application.exe", file)])
+        self.assertFalse(readiness["ready"])
+        self.assertFalse(readiness["signingEnabled"])
+        self.assertFalse(evidence["verified"])
+        self.assertEqual("not-verified-not-required", verified["status"])
+        self.assertEqual(before, file.read_bytes())
+        native.assert_not_called()
+        tool.assert_not_called()
+
+    def test_explicit_require_and_partial_signing_configuration_still_fail_closed(self):
+        file = self.root / "application.exe"
+        file.write_bytes(b"synthetic")
+        with mock.patch.dict(os.environ, {signatures.REQUIRE_ENV: "true"}):
+            with self.assertRaises(ValueError):
+                signatures.check_configuration()
+            with self.assertRaisesRegex(ValueError, "publisher is not configured"):
+                signatures.verify_files([("application.exe", file)])
+        with mock.patch.dict(os.environ, {signatures.PIN_ENV: "invalid"}):
+            self.assertTrue(signatures.signing_enabled())
+            with self.assertRaisesRegex(ValueError, "publisher is not configured"):
+                signatures.verify_files([("application.exe", file)])
+        with mock.patch.dict(os.environ, {signatures.REQUIRE_ENV: "invalid"}):
+            with self.assertRaisesRegex(ValueError, "boolean"):
+                signatures.signature_required()
+
+    def test_unsigned_formal_archive_still_requires_exact_payload_binding_and_approved_engine(self):
+        from test_verify_windows_release import formal_bundle, IDENTITY
+        from test_package_windows import generated_runtime_profile, fixture_executable
+        import package_windows
+        import windows_payload_binding as binding
+        profile = generated_runtime_profile("formal")
+        bundle = formal_bundle(self.root / "runtime", version=(2, 5, 45), build=2545,
+            exe_identity={**IDENTITY, "UtenBuildProfile": "formal", "UtenApplicationId": profile["applicationId"]})
+        (bundle / "data/uten-runtime-profile.json").write_text(json.dumps(profile), encoding="utf-8")
+        sources, _, _ = package_windows.collect_runtime_sources(bundle, architecture="x64", kind="update")
+        metadata = {"runtimeFamily": "flutter", "version": "2.5.45", "buildNumber": 2545,
+                    "architecture": "x64", "executable": "uten_imp.exe"}
+        binding.write(bundle / "uten_imp.exe", binding.inventory(metadata, binding.file_records(sources)))
+        output = self.root / "unsigned-update.zip"
+        package_windows.package_release(bundle, output, build_number=2545, architecture="x64",
+            version="2.5.45", installer_sha256="a" * 64)
+        package_windows.validate_package(output, build_number=2545, architecture="x64", version="2.5.45")
+        (bundle / "data/app.so").write_bytes((bundle / "data/app.so").read_bytes() + b"changed")
+        with self.assertRaisesRegex(ValueError, "payload binding differs"):
+            package_windows.package_release(bundle, self.root / "tampered.zip", build_number=2545,
+                architecture="x64", version="2.5.45", installer_sha256="a" * 64)
+        (bundle / "flutter_windows.dll").write_bytes(fixture_executable(2545, strings={"unknownEngine": "true"}))
+        with self.assertRaisesRegex(ValueError, "Unreviewed"):
+            package_windows.package_release(bundle, self.root / "unknown-engine.zip", build_number=2545,
+                architecture="x64", version="2.5.45", installer_sha256="a" * 64)
+
+    def test_inno_signing_is_enabled_only_for_configured_or_required_company_signing(self):
+        import build_windows_installer as setup
+        options = dict(version="2.5.45", build_number=2545, architecture="x64")
+        unsigned = setup.compiler_command(None, self.root, self.root, "Setup", **options)
+        self.assertNotIn("/DUtenSign=1", unsigned)
+        self.assertFalse(any(argument.startswith("/Suten=") for argument in unsigned))
+        with mock.patch.dict(os.environ, {signatures.PIN_ENV: "a" * 64}):
+            signed = setup.compiler_command(None, self.root, self.root, "Setup", **options)
+        self.assertIn("/DUtenSign=1", signed)
+        self.assertTrue(any(argument.startswith("/Suten=") for argument in signed))
+
+    @unittest.skipUnless(os.environ.get("UTEN_TEST_ISCC"), "Explicit approved Inno compiler is required")
+    def test_real_inno_builds_an_unsigned_pair_without_signing_or_relabelling_the_runtime(self):
+        from test_verify_windows_release import formal_bundle, IDENTITY, ENDPOINTS
+        from test_package_windows import generated_runtime_profile
+        import build_windows_installer as setup
+        from verify_windows_release import verify_pair
+        profile = generated_runtime_profile("formal")
+        bundle = formal_bundle(self.root / "runtime", version=(2, 5, 45), build=2545,
+            exe_identity={**IDENTITY, "UtenBuildProfile": "formal", "UtenApplicationId": profile["applicationId"]})
+        (bundle / "data/uten-runtime-profile.json").write_text(json.dumps(profile), encoding="utf-8")
+        original = (bundle / "uten_imp.exe").read_bytes()
+        installer, update = self.root / "Setup.exe", self.root / "update.zip"
+        result = setup.build_windows_setup(bundle, installer, version="2.5.45", build_number=2545,
+            architecture="x64", compiler=Path(os.environ["UTEN_TEST_ISCC"]), compile=True, update_output=update)
+        self.assertFalse(result["windowsSigning"]["signatureVerified"])
+        self.assertEqual(original, (bundle / "uten_imp.exe").read_bytes())
+        self.assertEqual("NotSigned", signatures._metadata([installer.resolve()])[0]["status"])
+        self.assertTrue(verify_pair(installer, update, version="2.5.45", build_number=2545,
+            architecture="x64", required_endpoints=ENDPOINTS)["ok"])
 
 
 @unittest.skipUnless(os.name == "nt", "Windows native trust integration")

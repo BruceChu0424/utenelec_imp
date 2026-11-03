@@ -131,7 +131,7 @@ if (-not (Test-Path -LiteralPath $PythonPath -PathType Leaf)) {
 }
 if ($DistributionProfile -eq 'Company') {
     & $PythonPath (Join-Path $workspaceRoot 'deploy/client/windows_authenticode.py') --check-config
-    if ($LASTEXITCODE -ne 0) { throw 'Company signing identity is not ready; no unsigned Company compilation is prepared.' }
+    if ($LASTEXITCODE -ne 0) { throw 'Configured or required Company signing identity is not ready.' }
 }
 
 & $PythonPath $dependencyTool --check

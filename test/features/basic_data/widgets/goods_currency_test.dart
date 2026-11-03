@@ -37,6 +37,7 @@ const _detail = GoodsDetail(
   status: '使用',
   writable: true,
   price: 12.34,
+  priceDisplayText: '12.34000000001',
   currencyId: 'cny',
   currencyName: '人民币',
   currencyCode: '001',
@@ -203,7 +204,7 @@ void main() {
       final body = form.buildBody();
       expect(body, isNotNull, reason: form.controller.error);
       expect(body!['currencyId'], 'usd');
-      expect(form.buildBody()!['price'], 12.34);
+      expect(form.buildBody()!['price'], '12.34000000001');
       final selectedText = tester.widget<Text>(
         find.descendant(of: field, matching: find.text('美元')).first,
       );
@@ -215,7 +216,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(form.buildBody()!.containsKey('currencyId'), isTrue);
       expect(form.buildBody()!['currencyId'], isNull);
-      expect(form.buildBody()!['price'], 12.34);
+      expect(form.buildBody()!['price'], '12.34000000001');
       expect(tester.takeException(), isNull);
     },
   );

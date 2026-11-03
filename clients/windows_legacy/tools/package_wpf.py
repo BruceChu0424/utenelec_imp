@@ -443,7 +443,9 @@ def prepare_company_payload(compiled: Path, output: Path, receipt_path: Path, *,
         if output.exists():
             raise ValueError("Private signed payload output appeared concurrently")
         frozen.rename(output)
-    provenance = {"policy": "authenticode-company-pinned-v1", "payloadBinding": "uten-windows-payload-binding-v1",
+    provenance = {"policy": main_signatures.get("policy", "authenticode-company-pinned-v1"),
+        "signatureRequired": windows_authenticode.signature_required(), "signatureVerified": main_signatures.get("verified") is True,
+        "payloadBinding": "uten-windows-payload-binding-v1",
         "sourceBundleModified": False, "vendorSignaturePreserved": True, "preSignFiles": before, "postSignFiles": after,
         "preSignMainSha256": next(record["sha256"] for record in before if record["path"] == EXECUTABLE),
         "signedMainSha256": next(record["sha256"] for record in after if record["path"] == EXECUTABLE),
@@ -476,7 +478,9 @@ def prepare_company_bootstrap(compiled_helper: Path, output: Path, receipt_path:
             raise ValueError("Private signed bootstrap output appeared concurrently")
         frozen.rename(output)
     helper = output / compiled_helper.name
-    provenance = {"policy": "authenticode-company-pinned-v1", "sourceBundleModified": False,
+    provenance = {"policy": evidence.get("policy", "authenticode-company-pinned-v1"),
+        "signatureRequired": windows_authenticode.signature_required(), "signatureVerified": evidence.get("verified") is True,
+        "sourceBundleModified": False,
         "preSignFiles": before["files"], "postSignFiles": after["files"], "signatureEvidence": evidence}
     receipt = write_bootstrap_receipt(helper, receipt_path, architecture=architecture, source_root=source_root,
         source_state=source_state, signing_provenance=provenance)

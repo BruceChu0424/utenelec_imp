@@ -822,12 +822,11 @@ class _AccountBalanceReconciliationDialogState
       child: SafeArea(
         child: Column(
           children: [
-            // 提交余额核对网络段的全屏加载遮罩（root Overlay 传送门，不占布局）。
-            if (_submitting)
-              const UtenBusyOverlay(
+            // Read retries and balance writes share one network-stage overlay.
+            if (_current && (_loading || _submitting))
+              UtenBusyOverlay(
                 showDoNotLeaveHint: false,
-                title: '正在提交余额核对',
-                description: '正在保存账户余额调整记录，请勿重复提交或关闭窗口。',
+                title: _submitting ? '正在提交余额核对' : '正在加载账户余额',
               ),
             _buildHeader(),
             const Divider(height: 1),

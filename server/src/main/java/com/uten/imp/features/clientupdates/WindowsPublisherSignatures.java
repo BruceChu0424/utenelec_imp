@@ -47,13 +47,15 @@ public class WindowsPublisherSignatures {
 
     void inspect(Path file, ClientReleaseDto.Release release) throws IOException {
         if (!"windows".equals(release.platform()) || "store".equals(release.installMode())) return;
-        Settings settings = settings();
+        // Unsigned publication is the default. Opting into trusted signatures is
+        // explicit and never relaxes the independent runtime/inventory checks.
+        Settings settings = signatureVerificationEnabled() ? settings() : null;
         if (!slots.tryAcquire()) throw new ApiException(ErrorCode.CONFLICT, "Windows 软件签名正在校验，请稍后重试");
         long deadline = System.nanoTime() + PACKAGE_NANOS;
         try {
-            verifyVersion(settings);
+            if (settings != null) verifyVersion(settings);
             if ("installer".equals(release.packageKind())) {
-                verify(file, true, settings, deadline);
+                if (settings != null) verify(file, true, settings, deadline);
                 return;
             }
             inspectArchive(file, release, settings, deadline);
@@ -109,16 +111,16 @@ public class WindowsPublisherSignatures {
                     if (proofs.putIfAbsent(entry.getName(), new WindowsPayloadBinding.FileProof(total, HexFormat.of().formatHex(digest.digest()))) != null)
                         throw invalid("Windows 运行文件路径重复");
                     if (target != null) {
-                        verify(target, COMPANY_FILES.contains(leaf), settings, deadline);
+                        if (settings != null) verify(target, COMPANY_FILES.contains(leaf), settings, deadline);
                         if ("flutter".equals(release.runtimeFamily()) && "flutter_windows.dll".equals(name))
                             WindowsEngineSafety.requireApproved(target, release.architecture());
                         if (executable.equals(entry.getName())) main = target;
                     }
                 }
             }
-            if (inspected == 0) throw invalid("Windows 软件包缺少可验证的签名程序");
-            if (main == null) throw invalid("Windows 软件包缺少签名主程序");
-            WindowsPayloadBinding.inspect(main, proofs, release);
+            if (inspected == 0) throw invalid("Windows 软件包缺少可验证的运行程序");
+            if (main == null) throw invalid("Windows 软件包缺少主程序");
+            WindowsPayloadBinding.inspect(main, proofs, release, settings != null);
             requireDeadline(deadline);
         } finally {
             for (Path target : extracted) Files.deleteIfExists(target);
@@ -182,6 +184,17 @@ public class WindowsPublisherSignatures {
         return new Settings(pins, executable, configuredFile(properties.getWindowsSignatureCaFile()),
                 configuredFile(properties.getWindowsSignatureTsaCaFile()), configuredFile(properties.getWindowsSignatureCrlFile()),
                 configuredFile(properties.getWindowsSignatureTsaCrlFile()));
+    }
+
+    private boolean signatureVerificationEnabled() {
+        // Once any public trust identity is configured, a broken or partial
+        // configuration remains an error instead of silently skipping trust.
+        return properties.isWindowsSignatureRequire()
+                || !properties.getWindowsPublisherSha256().isBlank()
+                || !properties.getWindowsSignatureCaFile().isBlank()
+                || !properties.getWindowsSignatureTsaCaFile().isBlank()
+                || !properties.getWindowsSignatureCrlFile().isBlank()
+                || !properties.getWindowsSignatureTsaCrlFile().isBlank();
     }
 
     private static Path configuredFile(String value) {

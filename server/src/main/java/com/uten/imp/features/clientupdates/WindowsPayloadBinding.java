@@ -17,35 +17,48 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-/** The already-authenticated main PE binds every AOT/asset/DLL/configuration byte in an update. */
+/** The main PE binds every AOT/asset/DLL/configuration byte; Authenticode trust is a separate policy. */
 final class WindowsPayloadBinding {
     private WindowsPayloadBinding() { }
     record FileProof(long size, String sha256) { }
 
     static void inspect(Path signedMain, Map<String, FileProof> actual, ClientReleaseDto.Release release) throws IOException {
-        JsonNode inventory = read(signedMain);
+        inspect(signedMain, actual, release, true);
+    }
+
+    static void inspect(Path signedMain, Map<String, FileProof> actual, ClientReleaseDto.Release release,
+                        boolean requireSigned) throws IOException {
+        JsonNode inventory = read(signedMain, requireSigned);
         String executable = "wpf_legacy".equals(release.runtimeFamily()) ? "Uten.Legacy.Desktop.exe" : "uten_imp.exe";
         if (!release.runtimeFamily().equals(inventory.path("runtimeFamily").asText())
                 || !release.version().equals(inventory.path("version").asText())
                 || release.buildNumber() != inventory.path("buildNumber").asLong(-1)
                 || !release.architecture().equals(inventory.path("architecture").asText())
-                || !executable.equals(inventory.path("executable").asText())) throw invalid("签名主程序绑定的软件版本、架构或运行时与发布信息不一致");
+                || !executable.equals(inventory.path("executable").asText())) throw invalid("主程序绑定的软件版本、架构或运行时与发布信息不一致");
         Map<String, FileProof> signed = new HashMap<>();
         for (var file : inventory.path("files")) signed.put(file.path("path").asText(),
                 new FileProof(file.path("size").asLong(), file.path("sha256").asText()));
         Map<String, FileProof> expected = new HashMap<>(actual);
         expected.keySet().removeIf(name -> name.equals(executable) || name.equals("uten-client-manifest.json") || name.startsWith("client_updater/"));
-        if (!signed.equals(expected)) throw invalid("更新包的完整运行文件与签名主程序绑定内容不一致，请重新生成同源正式包");
+        if (!signed.equals(expected)) throw invalid("更新包的完整运行文件与主程序绑定内容不一致，请重新生成同源正式包");
     }
 
     static JsonNode read(Path signedMain) throws IOException {
+        return read(signedMain, true);
+    }
+
+    static JsonNode read(Path signedMain, boolean requireSigned) throws IOException {
         Contract contract = contract();
         try (var channel = FileChannel.open(signedMain, StandardOpenOption.READ)) {
             var layout = WindowsEngineSafety.layout(channel);
             long certificate = layout.certificate(), size = channel.size();
-            if (certificate == 0 || certificate % 8 != 0 || layout.certificateSize() < 8 || layout.certificateSize() > contract.maximumCertificateBytes()
-                    || certificate + layout.certificateSize() != size) throw invalid("主程序缺少位于文件末尾的完整签名证书表");
-            long position = certificate;
+            if (certificate == 0 && requireSigned) throw invalid("主程序缺少位于文件末尾的完整签名证书表");
+            if (certificate != 0 && (certificate % 8 != 0 || layout.certificateSize() < 8 || layout.certificateSize() > contract.maximumCertificateBytes()
+                    || certificate + layout.certificateSize() != size)) throw invalid("主程序缺少位于文件末尾的完整签名证书表");
+            // Unsigned policy still requires the exact bounded inventory at EOF.
+            // A present certificate table can never be reinterpreted as unsigned overlay.
+            long envelopeEnd = certificate == 0 ? size : certificate;
+            long position = certificate == 0 ? size : certificate;
             int certificateRecords = 0;
             while (position < size) {
                 if (++certificateRecords > contract.maximumCertificateRecords()) throw invalid("主程序签名证书记录数量超出上限");
@@ -60,10 +73,11 @@ final class WindowsPayloadBinding {
                 position = following;
             }
             int footerBytes = 4 + contract.magic().length;
-            if (certificate < layout.mappedEnd() + footerBytes) throw invalid("主程序缺少签名覆盖的完整运行文件绑定");
-            var footer = WindowsEngineSafety.read(channel, certificate - footerBytes, footerBytes);
-            if (!Arrays.equals(Arrays.copyOfRange(footer.array(), 4, footerBytes), contract.magic())) throw invalid("主程序缺少签名覆盖的完整运行文件绑定");
-            long length = Integer.toUnsignedLong(footer.getInt(0)), start = certificate - footerBytes - length;
+            if (envelopeEnd % 8 != 0 || envelopeEnd < layout.mappedEnd() + footerBytes)
+                throw invalid("主程序完整运行文件绑定的位置或对齐无效");
+            var footer = WindowsEngineSafety.read(channel, envelopeEnd - footerBytes, footerBytes);
+            if (!Arrays.equals(Arrays.copyOfRange(footer.array(), 4, footerBytes), contract.magic())) throw invalid("主程序缺少完整运行文件绑定");
+            long length = Integer.toUnsignedLong(footer.getInt(0)), start = envelopeEnd - footerBytes - length;
             if (length < 1 || length > contract.maximumJsonBytes() || start < layout.mappedEnd() || start > layout.mappedEnd() + 7)
                 throw invalid("主程序完整运行文件绑定的大小或位置无效");
             for (byte value : WindowsEngineSafety.read(channel, layout.mappedEnd(), (int)(start - layout.mappedEnd())).array())

@@ -121,6 +121,9 @@ def synthetic_signature_boundary(test):
     Test the independent Windows trust boundary in test_windows_authenticode;
     these suites isolate the package/resource/atomic-publication algorithms.
     """
+    patch = mock.patch.object(windows_authenticode, "signing_enabled", return_value=True)
+    patch.start()
+    test.addCleanup(patch.stop)
     for method in ("verify_files", "verify_archive", "sign_files", "check_configuration"):
         patch = mock.patch.object(windows_authenticode, method, return_value={"syntheticSignatureBoundary": True})
         patch.start()

@@ -84,6 +84,8 @@ python clients/windows_legacy/tools/restore_dependencies.py --check
 
 Company 候选构建须显式 `Release + DistributionProfile=Company`，PE Comments 标记和构建前后源码/产物 receipt 同时验证；不能仅靠文件夹名判断 Release。产物仍是待验收候选，完整 ERP 迁移和 Win7 验收未完成前不得宣布正式交付。
 
+Windows Authenticode 与现有 Flutter 生产者共用 `deploy/client/windows_authenticode.py`：默认未配置发布者时不强制签名，回执明确记录 `signatureVerified=false`；显式 `UTEN_WINDOWS_SIGNATURE_REQUIRE=true` 或开始配置公司签名后仍执行原严格签名门。无论是否签名，Company 六文件 allowlist、固定依赖原始摘要、精确源 receipt、完整载荷绑定、架构与连接配置均保持强制，不修改原编译目录、现用客户端或 Windows 系统防护。默认未签策略不改变 WPF 尚未验收的候选状态。
+
 ## 分发、下载和更新合同
 
 Windows 按 `runtimeFamily` 区分：现有 Win10/11 为 `flutter`，Win7 WPF 为 `wpf_legacy`；旧请求和旧元数据缺字段时继续按 `flutter` 解释。WPF 的安装与 ZIP 模式分别为 `windows_wpf_setup`、`windows_wpf_archive`，不能套用 Flutter 文件集。

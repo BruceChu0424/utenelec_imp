@@ -47,6 +47,7 @@ class WindowsSignaturePublicationTest {
     }
 
     @Test void productionUploadRejectsUnsignedPackageAndKeepsDraftUnpublished() throws Exception {
+        properties.setWindowsSignatureRequire(true);
         var service = service(new WindowsPublisherSignatures(properties));
         byte[] bytes = ClientReleaseFixtures.windows(mapper, 2545, "x64", "2.5.45");
         var release = draft(service, bytes);

@@ -1,7 +1,8 @@
-"""Authenticated whole-runtime inventory carried inside the signed main PE.
+"""Whole-runtime inventory carried inside the main PE's bounded overlay.
 
 This module parses/binds bytes; windows_authenticode separately establishes
-publisher identity and authenticates the executable containing this inventory.
+publisher identity when signing is configured/required. An unsigned inventory
+proves byte consistency, not publisher authenticity.
 No JSON/manifest declaration can substitute for the actual file hashes.
 """
 from __future__ import annotations
@@ -120,10 +121,10 @@ def _certificates(stream, offset: int, length: int, size: int):
 
 def read(stream, size: int, *, require_signed: bool = True) -> dict:
     mapped_end, certificate, certificate_size = _layout(stream, size)
-    if require_signed:
+    if certificate or certificate_size:
         _certificates(stream, certificate, certificate_size, size)
-    elif bool(certificate) != bool(certificate_size):
-        raise ValueError("Payload binding PE certificate directory is inconsistent")
+    elif require_signed:
+        raise ValueError("Payload binding requires a terminal aligned PE certificate table")
     boundary = certificate if certificate else size
     if boundary < mapped_end + FOOTER_BYTES:
         raise ValueError("Signed main executable is missing its payload binding")
@@ -202,14 +203,23 @@ def file_records(files: list[tuple[str, Path]], *, deadline: float | None = None
     return result
 
 
-def verify_sources(files: list[tuple[str, Path]], *, metadata: dict, deadline: float | None = None) -> dict:
+def verify_sources(files: list[tuple[str, Path]], *, metadata: dict, deadline: float | None = None,
+                   require_signed: bool | None = None) -> dict:
+    if require_signed is None:
+        from windows_authenticode import signing_enabled
+        require_signed = signing_enabled()
     deadline = deadline if deadline is not None else time.monotonic() + 120
     main = dict(files)[metadata["executable"]]
     with main.open("rb") as stream:
-        return verify(stream, main.stat().st_size, metadata=metadata, records=file_records(files, deadline=deadline))
+        return verify(stream, main.stat().st_size, metadata=metadata, records=file_records(files, deadline=deadline),
+                      require_signed=require_signed)
 
 
-def verify_archive(archive, *, metadata: dict, deadline: float | None = None) -> dict:
+def verify_archive(archive, *, metadata: dict, deadline: float | None = None,
+                   require_signed: bool | None = None) -> dict:
+    if require_signed is None:
+        from windows_authenticode import signing_enabled
+        require_signed = signing_enabled()
     deadline = deadline if deadline is not None else time.monotonic() + 120
     records = []
     main = None
@@ -222,4 +232,4 @@ def verify_archive(archive, *, metadata: dict, deadline: float | None = None) ->
     if main is None:
         raise ValueError("Payload binding main executable is missing")
     with archive.open(main) as stream:
-        return verify(stream, main.file_size, metadata=metadata, records=records)
+        return verify(stream, main.file_size, metadata=metadata, records=records, require_signed=require_signed)

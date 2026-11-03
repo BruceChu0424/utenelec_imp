@@ -11,9 +11,9 @@
   "recordFields": ["path", "size", "sha256"],
   "recordSort": "unsigned UTF-8 path byte lexicographic order",
   "canonicalProducerJson": "UTF-8, sorted object keys, no insignificant whitespace, no ASCII escaping, no NaN, no duplicate keys",
-  "placement": "max(SizeOfHeaders, nonempty section raw-data ends), then 0..7 zero bytes, JSON and footer; footer end equals aligned PE certificate-table offset; certificate table ends at EOF",
+  "placement": "max(SizeOfHeaders, nonempty section raw-data ends), then 0..7 zero bytes, JSON and footer; footer end equals aligned PE certificate-table offset and certificate table ends at EOF; optional unsigned policy permits both certificate-directory fields zero and aligned footer end at EOF",
   "certificateTable": "WIN_CERTIFICATE records revision 0x0200/type 2, bounded lengths, alignment padding all zero; cryptographic trust is verified separately",
   "excludedRuntimePaths": ["the main executable", "uten-client-manifest.json", "client_updater/**"],
-  "bootstrap": "installer-only updater is separately company signed and protected by the signed complete Setup; the update ZIP excludes it",
+  "bootstrap": "installer-only updater follows the configured Authenticode policy and the complete Setup; the update ZIP excludes it; unsigned payload binding is byte consistency, not publisher authenticity",
   "metadata": "runtimeFamily/version/buildNumber/architecture/executable must equal the owning validated package metadata"
 }

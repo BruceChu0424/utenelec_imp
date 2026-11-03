@@ -423,6 +423,11 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
         await tester.tap(find.text('保存 1 行修改'));
         await tester.pump(const Duration(milliseconds: 100));
+        // Input exit precedes the two frames that paint saving feedback.
+        // Advance real frames while the server gate remains unresolved.
+        for (var frame = 0; frame < 12 && api.writes.isEmpty; frame++) {
+          await tester.pump();
+        }
         expect(api.writes, hasLength(1));
         expect(find.text('编辑模式'), findsNothing);
         api.patchGate!.complete();

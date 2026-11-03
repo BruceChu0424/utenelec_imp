@@ -1575,6 +1575,15 @@ void batchBusyOverlayTests() {
       expect(find.byType(ProductionWorkshopTasksPage), findsOneWidget);
       expect(find.byType(ProductionMaterialDiscoveryRequestPage), findsNothing);
       expect(find.byType(UtenBusyOverlay), findsNothing);
+      final returnedTable = tester
+          .widget<MasterDataTableView<ProductionExecutionWorkbenchSegment>>(
+            find.byType(
+              MasterDataTableView<ProductionExecutionWorkbenchSegment>,
+            ),
+          );
+      expect(returnedTable.selectedIds, isEmpty);
+      expect(find.text('批量领料(1)').hitTestable(), findsNothing);
+      await _selectRow(tester, '产品 A');
       expect(find.text('批量领料(1)').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
     },

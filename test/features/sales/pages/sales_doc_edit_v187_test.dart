@@ -373,10 +373,12 @@ void main() {
         tester.state(find.byType(SalesDocEditPage))
             as FormDraftMixin<SalesDocEditPage>;
     expect(form.captureFormDraft()['shipmentPolicy'], 'ALLOW_PARTIAL');
-    await form.restoreFormDraft({
-      ...form.captureFormDraft(),
-      'shipmentPolicy': 'REQUIRE_COMPLETE',
-    });
+    await tester.runAsync(
+      () => form.restoreFormDraft({
+        ...form.captureFormDraft(),
+        'shipmentPolicy': 'REQUIRE_COMPLETE',
+      }),
+    );
     await tester.pumpAndSettle();
     expect(form.captureFormDraft()['shipmentPolicy'], 'ALLOW_PARTIAL');
 

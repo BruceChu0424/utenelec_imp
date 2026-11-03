@@ -1,7 +1,7 @@
 """Windows release signing and independent Authenticode trust gate.
 
-No security settings or certificate stores are changed. Public publisher pins
-are mandatory for company code; signing keys remain in the Windows key store.
+No security settings or certificate stores are changed. Signing is optional
+until explicitly required/configured; signing keys remain in the Windows key store.
 Both producers and validators call this module on the actual finished bytes.
 """
 from __future__ import annotations
@@ -25,12 +25,37 @@ PIN_ENV = "UTEN_WINDOWS_PUBLISHER_SHA256"
 KEY_ENV = "UTEN_WINDOWS_SIGNING_THUMBPRINT"
 TIMESTAMP_ENV = "UTEN_WINDOWS_TIMESTAMP_URL"
 TOOL_ENV = "UTEN_WINDOWS_SIGNTOOL_PATH"
+REQUIRE_ENV = "UTEN_WINDOWS_SIGNATURE_REQUIRE"
 MAX_SIGNABLE_FILES = 128
 VERIFY_SECONDS = 120
 SIGN_SECONDS = 600
 COMPANY_NAMES = {"uten_imp.exe", "flutter_windows.dll", "client_updater.ps1",
                  "uten.legacy.desktop.exe", "uten.legacy.core.dll", "uten.legacy.updater.exe"}
 VENDOR_NAMES = {"bouncycastle.cryptography.dll", "ucrtbase.dll"}
+
+
+def signature_required() -> bool:
+    value = os.environ.get(REQUIRE_ENV, "false").strip().lower()
+    if value not in {"", "0", "false", "no", "1", "true", "yes"}:
+        raise ValueError(f"{REQUIRE_ENV} must be a boolean")
+    return value in {"1", "true", "yes"}
+
+
+def signing_enabled() -> bool:
+    # A tool path alone is not a configured publisher. Partial publisher/key/TSA
+    # configuration is intentional signing setup and must fail rather than downgrade.
+    return signature_required() or any(os.environ.get(key, "").strip()
+                                       for key in (PIN_ENV, KEY_ENV, TIMESTAMP_ENV))
+
+
+def _optional_evidence(files: list[tuple[str, Path]] | None = None, *, deadline: float | None = None) -> dict:
+    if files is not None and not 1 <= len(files) <= MAX_SIGNABLE_FILES:
+        raise ValueError("Windows signature evidence requires 1..128 files")
+    deadline = deadline if deadline is not None else time.monotonic() + VERIFY_SECONDS
+    return {"policy": "authenticode-optional-v1", "required": False,
+            "verified": False, "verificationSkipped": True,
+            "status": "not-verified-not-required", "reason": "publisher-not-configured",
+            "files": [{"path": relative, "sha256": _digest(path, deadline=deadline)} for relative, path in files or ()]}
 
 
 def publisher_pins() -> set[str]:
@@ -236,16 +261,22 @@ def check_configuration(*, deadline: float | None = None) -> dict:
     HasPrivateKey is not proof that hardware-token/PIN/ACL signing will succeed;
     only a subsequent real signature operation establishes key usability.
     """
+    if not signing_enabled():
+        return {**_optional_evidence(), "ready": False, "signingEnabled": False,
+                "privateKeyPresent": False, "privateKeyOperationValidated": False}
     tool = signing_tool()
     timestamp_url()
     result = _provider({"ready": True, "pins": sorted(publisher_pins())}, deadline=deadline)
     if not isinstance(result, dict) or result.get("ready") is not True:
         raise ValueError("Windows code-signing configuration is not ready")
-    return {**result, "signTool": str(tool), "timestampDigest": "SHA256", "fileDigest": "SHA256"}
+    return {**result, "signingEnabled": True, "required": signature_required(),
+            "signTool": str(tool), "timestampDigest": "SHA256", "fileDigest": "SHA256"}
 
 
 def verify_files(files: list[tuple[str, Path]], *, company_files: set[str] | None = None, deadline: float | None = None) -> dict:
     deadline = deadline if deadline is not None else time.monotonic() + VERIFY_SECONDS
+    if not signing_enabled():
+        return _optional_evidence(files, deadline=deadline)
     pins = publisher_pins()
     if not 1 <= len(files) <= MAX_SIGNABLE_FILES:
         raise ValueError("Windows signature verification requires 1..128 executable/script files")
@@ -270,7 +301,8 @@ def verify_files(files: list[tuple[str, Path]], *, company_files: set[str] | Non
         evidence.append({"path": relative, "sha256": before[index], "signerSha256": record["signerSha256"],
                          "companyPublisher": company, "timestamped": record["timestamped"]})
     _remaining(deadline)
-    return {"policy": "authenticode-company-pinned-v1", "verified": True, "files": evidence}
+    return {"policy": "authenticode-company-pinned-v1", "required": signature_required(),
+            "verified": True, "files": evidence}
 
 
 def is_signable(path: Path) -> bool:
@@ -294,6 +326,8 @@ def runtime_files(root: Path) -> list[tuple[str, Path]]:
 
 def sign_files(files: list[tuple[str, Path]], *, company_files: set[str] | None = None) -> dict:
     """Sign reviewed *staging* bytes, preserving valid third-party signatures."""
+    if not signing_enabled():
+        return _optional_evidence(files)
     pins = publisher_pins()
     deadline = time.monotonic() + SIGN_SECONDS
     if not 1 <= len(files) <= MAX_SIGNABLE_FILES:

@@ -153,9 +153,9 @@ def build_formal_release(repository: Path, output_dir: Path, *, api: str, cloud_
                          runner=subprocess.run, allow_dirty: bool = False, skip_build: bool = False,
                          flutter_build=None, package_pair=None) -> dict:
     api, cloud_api = formal_endpoints(api, cloud_api)
-    # Fail before expensive AOT work if no approved public signing identity is
-    # configured. No unsigned formal output is an acceptable fallback.
-    check_configuration()
+    # Explicitly configured/required signing is checked before AOT work. The
+    # default unsigned policy retains every other formal delivery check.
+    signature_configuration = check_configuration()
     version, build_number = read_release_version(repository)
     audit = audit_repository(repository, runner=runner)
     if not audit["treeClean"] and not allow_dirty:
@@ -217,6 +217,8 @@ def build_formal_release(repository: Path, output_dir: Path, *, api: str, cloud_
         "buildNumber": build_number,
         "architecture": architecture,
         "runtimeFamily": "flutter",
+        "signaturePolicy": signature_configuration.get("policy", "authenticode-company-pinned-v1"),
+        "signatureRequired": signature_configuration.get("required", False),
         "flutterBuild": build_step,
         "windowsSigning": packaging.get("windowsSigning") if isinstance(packaging, dict) else None,
         "dependencyLockEnforced": flutter_build is None and build_step == "executed",

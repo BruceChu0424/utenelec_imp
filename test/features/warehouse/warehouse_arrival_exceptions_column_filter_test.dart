@@ -48,6 +48,7 @@ void main() {
     final supplierCandidates = (await tester.runAsync(
       () => table.facetPageLoaders['supplierName']!('', 1),
     ))!;
+    expect(api.supplierSearchPath, ApiEndpoints.businessReferenceSuppliers);
     expect(supplierCandidates.items.single.value, 'supplier-1');
     expect(table.facets['warehouseName']?.single.value, 'warehouse-1');
     expect(
@@ -89,6 +90,7 @@ class _ArrivalExceptionApi extends ApiClient {
   _ArrivalExceptionApi() : super(Dio());
 
   Map<String, dynamic>? lastQuery;
+  String? supplierSearchPath;
   final dictionaryPaths = <String>[];
 
   @override
@@ -96,7 +98,8 @@ class _ArrivalExceptionApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/master/suppliers') {
+    if (path == ApiEndpoints.businessReferenceSuppliers) {
+      supplierSearchPath = path;
       return const {
         'items': [
           {'id': 'supplier-1', 'code': 'S1', 'name': '供应商甲', 'status': '使用'},

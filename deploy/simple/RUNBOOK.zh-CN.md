@@ -12,10 +12,11 @@
 > 日常发版 = 同一提交 CI 全绿后打 tag 推 GitHub，由有权用户在系统设置检查、立即更新或明确预约更新。
 > 已有 Windows 可分发版本后，每次完整发版还必须按平台/运行时/架构组合交付同源码、同版本/构建号的 Setup.exe 与更新 ZIP，
 > 完成公司服务器客户端发布及最新完整组核验；仅 Simple Release 成功不代表客户端已交付。见第四节。
-> Windows 新发布还须通过公司 Authenticode、可信时间戳、完整运行文件绑定和服务端独立验签。
+> Windows 默认按用户后续授权交付未签 Setup.exe 与更新 ZIP，签名状态如实记录；完整运行文件绑定、
+> 修复引擎、版本、架构及正式连接配置仍强制。显式要求或配置公司签名时执行 Authenticode、可信时间戳和服务端独立验签。
 > 签名机配置见[客户端手册](../client/README.zh-CN.md#内网-tls-与下载信誉)，服务端公开信任配置见
-> [windows-signature.env.example](windows-signature.env.example)；缺少公司证书时不得按未签包交付，员工保留系统防护。
-> 首次从旧未签安装迁移须用可信签名 Setup；签名与现场闪退的证据及未验项见
+> [windows-signature.env.example](windows-signature.env.example)；缺少公司证书不阻止默认未签双包交付，员工保留系统防护。
+> 若以后迁移到可信签名版本，首次从旧未签安装使用匹配 Setup；签名与现场闪退的证据及未验项见
 > [2026-11-03 核对](../../docs/99-项目治理/2026-11-03-Windows可信签名与现场闪退修复.md)。
 > 自动拉取与自动激活已退役，`uten-imp-updater.timer` 必须 disabled/inactive；以
 > [服务器运维操作](SERVER_OPERATIONS.zh-CN.md) 的独立 Operations 作业为准。

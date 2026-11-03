@@ -100,40 +100,44 @@ void main() {
     },
   );
 
-  testWidgets(
-    'a save waiting for input exit cannot save a replacement edit session',
-    (tester) async {
-      final controller = MasterInlineEditController<_Row>()..begin();
-      addTearDown(controller.dispose);
-      controller.setValue('one', _name, 'Old draft', originalValue: 'Before');
-      var writes = 0;
-      await tester.pumpWidget(
-        MaterialApp(
-          locale: const Locale('zh'),
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(
-            body: MasterInlineEditActions<_Row>(
-              controller: controller,
-              canEdit: true,
-              onSave: (_, _) async {
-                writes++;
-              },
+  for (final replaceBeforeActivation in [false, true]) {
+    testWidgets(
+      'a captured save cannot save a replacement edit session (before activation=$replaceBeforeActivation)',
+      (tester) async {
+        final controller = MasterInlineEditController<_Row>()..begin();
+        addTearDown(controller.dispose);
+        controller.setValue('one', _name, 'Old draft', originalValue: 'Before');
+        var writes = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: MasterInlineEditActions<_Row>(
+                controller: controller,
+                canEdit: true,
+                onSave: (_, _) async {
+                  writes++;
+                },
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
-      tester
-          .widget<UtenButton>(find.widgetWithText(UtenButton, '保存 1 行修改'))
-          .onPressed!();
-      controller.cancel();
-      controller.begin();
-      controller.setValue('one', _name, 'New draft', originalValue: 'Before');
-      await tester.pumpAndSettle();
-      expect(writes, 0);
-      expect(controller.patchFor('one'), {'name': 'New draft'});
-      expect(tester.takeException(), isNull);
-    },
-  );
+        );
+        await tester.pumpAndSettle();
+        final save = tester
+            .widget<UtenButton>(find.widgetWithText(UtenButton, '保存 1 行修改'))
+            .onPressed!;
+        if (!replaceBeforeActivation) save();
+        controller.cancel();
+        controller.begin();
+        controller.setValue('one', _name, 'New draft', originalValue: 'Before');
+        if (replaceBeforeActivation) save();
+        await tester.pumpAndSettle();
+        expect(writes, 0);
+        expect(controller.patchFor('one'), {'name': 'New draft'});
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }

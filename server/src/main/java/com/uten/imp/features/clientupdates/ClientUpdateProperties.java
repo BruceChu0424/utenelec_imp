@@ -17,6 +17,7 @@ public class ClientUpdateProperties {
     private int maxReleases = 200;
     private long minFreeBytes = 1073741824L;
     /** Public trust material only. Private signing keys never belong on the publication server. */
+    private boolean windowsSignatureRequire = false;
     private String windowsPublisherSha256 = "";
     private String windowsSignatureVerifier = "/usr/bin/osslsigncode";
     private String windowsSignatureCaFile = "";

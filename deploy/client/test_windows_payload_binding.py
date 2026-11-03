@@ -16,11 +16,13 @@ class WindowsPayloadBindingTest(unittest.TestCase):
             with self.subTest(vector=vector["name"]):
                 image = base64.b64decode(vector["mainBase64"])
                 if vector["accept"]:
-                    result = binding.verify(io.BytesIO(image), len(image), metadata=vector["metadata"], records=vector["records"])
+                    result = binding.verify(io.BytesIO(image), len(image), metadata=vector["metadata"], records=vector["records"],
+                                            require_signed=vector.get("requireSigned", True))
                     self.assertTrue(result["verified"])
                 else:
                     with self.assertRaises(ValueError):
-                        binding.verify(io.BytesIO(image), len(image), metadata=vector["metadata"], records=vector["records"])
+                        binding.verify(io.BytesIO(image), len(image), metadata=vector["metadata"], records=vector["records"],
+                                       require_signed=vector.get("requireSigned", True))
 
     def test_staging_reseal_is_deterministic_and_preserves_mapped_executable(self):
         from test_package_windows import fixture_executable

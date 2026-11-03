@@ -475,3 +475,11 @@ c4f0329954af5cb64984fb072053b7be48d232df:clients/windows_legacy/progress/evidenc
 392dd7b12919097efe4587fa8a958ee9119cd7ab:docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史-验证.json:generic-api-key:263
 392dd7b12919097efe4587fa8a958ee9119cd7ab:docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史-验证.json:generic-api-key:391
 a667078dfe9639b730d54e7283ad9b9e66e535b2:docs/99-项目治理/全平台整改交接/evidence/category-loading-20261101/validation-summary.json:generic-api-key:275
+
+# 2026-11-03 release: five source SHA-256 fingerprints verified against exact owning Git blobs.
+# No credential; exceptions are exact commit/path/rule/line only.
+64ba238fad40f421a840e50cd25e13e71ed232e2:clients/windows_legacy/progress/evidence/goods-currency-selection-20261103.json:generic-api-key:79
+64ba238fad40f421a840e50cd25e13e71ed232e2:clients/windows_legacy/progress/evidence/goods-currency-selection-20261103.json:generic-api-key:83
+64ba238fad40f421a840e50cd25e13e71ed232e2:clients/windows_legacy/progress/evidence/goods-currency-selection-20261103.json:generic-api-key:84
+64ba238fad40f421a840e50cd25e13e71ed232e2:clients/windows_legacy/progress/evidence/goods-currency-selection-20261103.json:generic-api-key:85
+2023707486680b9282abdef4ad1067b531d34239:clients/windows_legacy/progress/evidence/shared-picker-field-regression-20261102.json:generic-api-key:11

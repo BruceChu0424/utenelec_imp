@@ -151,8 +151,8 @@ def build_installer(payloads: dict[str, Path], helpers: dict[str, Path], configu
             "/DAppIcon=" + str(stage / "uten-wpf.ico"), "/DAppConfiguration=" + str(stage / "uten.client.json")]
         if fixture:
             arguments.append("/DValidationFixture")
-        else:
-            arguments.append(windows_authenticode.inno_signing_argument())
+        elif windows_authenticode.signing_enabled():
+            arguments.extend(["/DUtenSign=1", windows_authenticode.inno_signing_argument()])
         arguments.append(str(stage / INSTALLER.name))
         process = subprocess.run(arguments, capture_output=True)
         log = process.stdout + process.stderr

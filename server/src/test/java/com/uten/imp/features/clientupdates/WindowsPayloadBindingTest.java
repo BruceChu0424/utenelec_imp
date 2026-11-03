@@ -34,8 +34,9 @@ class WindowsPayloadBindingTest {
             for (var file : vector.path("records")) proofs.put(file.path("path").asText(),
                     new WindowsPayloadBinding.FileProof(file.path("size").asLong(), file.path("sha256").asText()));
             Path main = Files.write(directory.resolve("vector-" + count++ + ".exe"), Base64.getDecoder().decode(vector.path("mainBase64").asText()));
-            if (vector.path("accept").asBoolean()) WindowsPayloadBinding.inspect(main, proofs, release);
-            else assertThatThrownBy(() -> WindowsPayloadBinding.inspect(main, proofs, release))
+            boolean requireSigned = vector.path("requireSigned").asBoolean(true);
+            if (vector.path("accept").asBoolean()) WindowsPayloadBinding.inspect(main, proofs, release, requireSigned);
+            else assertThatThrownBy(() -> WindowsPayloadBinding.inspect(main, proofs, release, requireSigned))
                     .as(vector.path("name").asText()).isInstanceOfAny(ApiException.class, java.io.IOException.class);
         }
         assertThat(count).isGreaterThanOrEqualTo(15);
@@ -53,6 +54,39 @@ class WindowsPayloadBindingTest {
             channel.write(ByteBuffer.wrap(new byte[] {0}));
         }
         assertThatThrownBy(() -> WindowsPayloadBinding.read(file)).isInstanceOf(ApiException.class).hasMessageContaining("证书表");
+    }
+
+    @Test void unsignedPolicyUsesTheSameInventoryAndCannotHideAChangedOrTrailingEnvelope() throws Exception {
+        byte[] original = validMain();
+        ByteBuffer pe = ByteBuffer.wrap(original).order(ByteOrder.LITTLE_ENDIAN);
+        int optional = pe.getInt(60) + 24, directories = Short.toUnsignedInt(pe.getShort(optional)) == 0x10b ? 96 : 112;
+        int certificate = pe.getInt(optional + directories + 32);
+        pe.putInt(optional + directories + 32, 0).putInt(optional + directories + 36, 0);
+        byte[] unsigned = Arrays.copyOf(original, certificate);
+        Path file = Files.write(directory.resolve("unsigned-binding.exe"), unsigned);
+        assertThat(WindowsPayloadBinding.read(file, false).path("schemaVersion").asInt()).isEqualTo(1);
+        assertThatThrownBy(() -> WindowsPayloadBinding.read(file, true))
+                .isInstanceOf(ApiException.class).hasMessageContaining("证书表");
+        Path trailing = Files.write(directory.resolve("unsigned-trailing.exe"), Arrays.copyOf(unsigned, unsigned.length + 1));
+        assertThatThrownBy(() -> WindowsPayloadBinding.read(trailing, false)).isInstanceOf(ApiException.class);
+        // Keep the entire inventory/footer intact with an otherwise permitted
+        // 0..7 byte zero pad; the EOF boundary itself must still be aligned.
+        int footer = unsigned.length - 28;
+        int length = ByteBuffer.wrap(unsigned).order(ByteOrder.LITTLE_ENDIAN).getInt(footer);
+        int start = footer - length;
+        long mapped;
+        try (var channel = FileChannel.open(file, StandardOpenOption.READ)) { mapped = WindowsEngineSafety.layout(channel).mappedEnd(); }
+        int padding = start - (int)mapped;
+        var unaligned = new ByteArrayOutputStream();
+        unaligned.write(unsigned, 0, (int)mapped);
+        unaligned.write(new byte[padding == 7 ? padding - 1 : padding + 1]);
+        unaligned.write(unsigned, start, unsigned.length - start);
+        Path shifted = Files.write(directory.resolve("unsigned-unaligned-envelope.exe"), unaligned.toByteArray());
+        assertThatThrownBy(() -> WindowsPayloadBinding.read(shifted, false)).isInstanceOf(ApiException.class).hasMessageContaining("对齐");
+        // A present but malformed certificate table must not become an unsigned fallback.
+        pe.putInt(optional + directories + 32, certificate).putInt(optional + directories + 36, 7);
+        Path malformed = Files.write(directory.resolve("malformed-certificate.exe"), original);
+        assertThatThrownBy(() -> WindowsPayloadBinding.read(malformed, false)).isInstanceOf(ApiException.class);
     }
 
     @Test void encodingAndWrappedSchemaNumberCannotLoosenStrictUtf8JsonContract() throws Exception {

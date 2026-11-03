@@ -15,12 +15,33 @@ class MasterBatchItem {
 }
 
 /// 一条记录的处理结果。
+class MasterReference {
+  const MasterReference({
+    required this.kind,
+    required this.id,
+    required this.label,
+  });
+
+  final String kind;
+  final String id;
+  final String label;
+
+  factory MasterReference.fromJson(Map<String, dynamic> json) =>
+      MasterReference(
+        kind: json['kind'] as String,
+        id: json['id'] as String,
+        label: json['label'] as String,
+      );
+}
+
 class MasterBatchItemResult {
   const MasterBatchItemResult({
     required this.id,
     required this.ok,
     this.label,
     this.reason,
+    this.confirmationRequired = false,
+    this.references = const [],
   });
 
   final String id;
@@ -30,12 +51,22 @@ class MasterBatchItemResult {
   final bool ok;
   final String? reason;
 
+  /// Only the server may offer hiding a referenced customer/supplier.
+  /// Permission and stale-version failures never become confirmable.
+  final bool confirmationRequired;
+  final List<MasterReference> references;
+
   factory MasterBatchItemResult.fromJson(Map<String, dynamic> json) =>
       MasterBatchItemResult(
         id: json['id'] as String,
         label: json['label'] as String?,
         ok: json['ok'] == true,
         reason: json['reason'] as String?,
+        confirmationRequired: json['confirmationRequired'] == true,
+        references: [
+          for (final value in json['references'] as List? ?? const [])
+            MasterReference.fromJson(Map<String, dynamic>.from(value as Map)),
+        ],
       );
 }
 

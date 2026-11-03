@@ -117,6 +117,7 @@ public class FinanceReceiptService {
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
+    private final com.uten.imp.application.port.MasterReferenceValidationPort references;
     private final DocNumberService docNumberService;
     private final FinanceDocumentAccessPolicy access;
     private final GlPostingService glPosting;
@@ -1026,6 +1027,15 @@ public class FinanceReceiptService {
     }
 
     private void applyHeader(FinanceReceiptSaveRequest req, FinanceReceipt r) {
+        if (req.getClientId() != null && !java.util.Objects.equals(r.getClientId(), req.getClientId())
+                && req.getSalesOrderId() == null && (req.getItems() == null || req.getItems().isEmpty())) {
+            // Free-standing advances introduce a new party. AR/order-linked settlement retains its validated source.
+            references.requireSelectableClient(req.getClientId());
+        }
+        if (req.getSettlementAgentSupplierId() != null
+                && !java.util.Objects.equals(r.getSettlementAgentSupplierId(), req.getSettlementAgentSupplierId())) {
+            references.requireSelectableSupplier(req.getSettlementAgentSupplierId());
+        }
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (r.getBillNo() == null || r.getBillNo().isBlank()) {
             r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.FIN_RECEIPT));

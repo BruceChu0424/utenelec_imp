@@ -47,6 +47,7 @@ import '../widgets/master_inline_create_fields.dart';
 import '../repositories/currency_repository.dart';
 import '../repositories/master_inline_edit_repository.dart';
 import '../widgets/master_entity_detail_pane.dart';
+import '../widgets/master_owner_label.dart';
 
 class ClientCategoryPage extends ConsumerStatefulWidget {
   const ClientCategoryPage({super.key});
@@ -447,6 +448,7 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
       canCreate: canCreate,
       canEdit: perms.contains(Perm.clientEdit),
       canDelete: perms.contains(Perm.clientDelete),
+      supportsReferencedHide: true,
       canStatus: canChangeStatus,
       // 负责人列在服务端的 facet 字段是 empId(值=员工 UUID、label=人名)，
       // 筛选参数是 ownerEmployeeId；表格按列 key ownerEmployeeName 索引。
@@ -620,22 +622,20 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
   }
 
   Widget _clientOwnerCell(BuildContext cellContext, ClientListItem row) {
-    final labelStyle = Theme.of(cellContext).textTheme.bodyMedium;
     if (!row.accessManageable ||
         !ref.read(currentPermissionsProvider).contains(Perm.clientAssign)) {
-      return Text(
-        row.ownersLabel,
-        style: labelStyle,
-        maxLines: 1,
-        softWrap: false,
-        overflow: TextOverflow.ellipsis,
-      );
+      return MasterOwnerLabel(label: row.ownersLabel);
     }
     return Tooltip(
       message: '设置负责人和可见人',
       child: TextButton(
         key: ValueKey('client-owner-access-${row.id}'),
         style: TextButton.styleFrom(
+          foregroundColor: masterOwnerLabelColor(
+            cellContext,
+            row.ownersLabel,
+            assignedColor: Theme.of(cellContext).colorScheme.primary,
+          ),
           alignment: Alignment.centerLeft,
           padding: EdgeInsets.zero,
           minimumSize: Size.zero,
@@ -659,14 +659,9 @@ class _ClientCategoryPageState extends ConsumerState<ClientCategoryPage>
         child: Row(
           children: [
             Expanded(
-              child: Text(
-                row.ownersLabel,
-                style: labelStyle?.copyWith(
-                  color: Theme.of(cellContext).colorScheme.primary,
-                ),
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.ellipsis,
+              child: MasterOwnerLabel(
+                label: row.ownersLabel,
+                assignedColor: Theme.of(cellContext).colorScheme.primary,
               ),
             ),
             const SizedBox(width: 4),

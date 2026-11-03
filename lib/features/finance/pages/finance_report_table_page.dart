@@ -448,7 +448,8 @@ class _FinanceReportTablePageState
     }
   }
 
-  Future<ClientListItem?> _pickClient() => showUtenClientPicker(context, ref);
+  Future<ClientListItem?> _pickClient() =>
+      showUtenClientPicker(context, ref, selectableOnly: false);
 
   bool get _acceptedQueryCurrent =>
       const DeepCollectionEquality().equals(_acceptedReadQuery, [

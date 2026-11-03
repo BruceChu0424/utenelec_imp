@@ -32,6 +32,7 @@ import '../repositories/reference_method_repository.dart';
 import '../repositories/currency_repository.dart';
 import '../repositories/master_inline_edit_repository.dart';
 import '../widgets/master_entity_detail_pane.dart';
+import '../widgets/master_owner_label.dart';
 import '../widgets/master_edit_dialog.dart';
 import '../widgets/supplier_master_edit.dart';
 import '../widgets/supplier_quick_create_sheet.dart';
@@ -393,6 +394,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
       canCreate: canCreate,
       canEdit: perms.contains(Perm.supplierEdit),
       canDelete: perms.contains(Perm.supplierDelete),
+      supportsReferencedHide: true,
       canStatus: canChangeStatus,
       // 业务员列在服务端的 facet 字段是 empId(值=员工 UUID、label=人名)，
       // 筛选参数是 ownerEmployeeId；表格按列 key ownerEmployeeName 索引。
@@ -527,6 +529,7 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
       value: (s) => (s.ownerEmployeeName?.trim().isNotEmpty ?? false)
           ? s.ownerEmployeeName
           : '未分配',
+      cellBuilder: (context, s) => MasterOwnerLabel(label: s.ownerEmployeeName),
     ),
     MasterColumnDef(
       key: 'legalPerson',

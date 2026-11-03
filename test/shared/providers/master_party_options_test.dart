@@ -57,8 +57,7 @@ class _Api extends ApiClient {
         {
           'id': '${supplier ? 'supplier' : 'client'}-${page * 100}',
           if (!supplier) 'code': 'C0100',
-          'name': supplier ? '' : '历史客户',
-          'description': supplier ? '历史供应商全称' : null,
+          'name': supplier ? '历史供应商全称' : '历史客户',
           'status': '禁用',
         },
       ],
@@ -192,9 +191,9 @@ void main() {
       expect(suppliers.hasMore, isFalse);
       expect(legacy.items.single.value, 'client-100');
       expect(api.requests.map((r) => r.path), [
-        '/master/clients',
-        '/master/suppliers/search',
-        '/master/clients/search',
+        '/business-references/clients',
+        '/business-references/suppliers/search',
+        '/business-references/clients/search',
       ]);
       expect(api.requests.first.query, {
         'page': 4,
@@ -203,8 +202,11 @@ void main() {
         'selectableOnly': false,
       });
       expect(api.requests[1].query, {'page': 5, 'size': 100});
-      expect(api.requests[1].body, {'keyword': '历史'});
-      expect(api.requests[2].query['excludeLegacyFinanceStub'], isFalse);
+      expect(api.requests[1].body, {'keyword': '历史', 'selectableOnly': false});
+      expect(
+        (api.requests[2].body as Map)['excludeLegacyFinanceStub'],
+        isFalse,
+      );
     },
   );
 
@@ -220,7 +222,7 @@ void main() {
       () => combinedPartyFacetLoader(ref)('新', 3),
     );
     expect(result.items.single.value, 'supplier-300');
-    expect(api.requests.single.path, '/master/suppliers/search');
+    expect(api.requests.single.path, '/business-references/suppliers/search');
     container.read(_permissions.notifier).change({});
     await tester.pump();
     expect(

@@ -169,7 +169,7 @@ class MasterReferenceValidationAdapterTest {
     @Test
     void acceptsExternalSupplierWithLegacyNullStatusAndLocksTheReference() throws Exception {
         EntityManager em = mock(EntityManager.class);
-        tupleQuery(em, new Object[]{false, null, false});
+        tupleQuery(em, new Object[]{false, null, false, false});
         MasterReferenceValidationAdapter adapter = adapter(
                 em, mock(OwnerVisibility.class), false);
 
@@ -184,7 +184,7 @@ class MasterReferenceValidationAdapterTest {
     @Test
     void rejectsDisabledOrInternalWorkshopSupplier() throws Exception {
         EntityManager disabledEm = mock(EntityManager.class);
-        tupleQuery(disabledEm, new Object[]{false, "禁用", false});
+        tupleQuery(disabledEm, new Object[]{false, "禁用", false, false});
         MasterReferenceValidationAdapter disabled = adapter(
                 disabledEm, mock(OwnerVisibility.class), false);
 
@@ -194,7 +194,7 @@ class MasterReferenceValidationAdapterTest {
         assertEquals(ErrorCode.CONFLICT, disabledError.getCode());
 
         EntityManager workshopEm = mock(EntityManager.class);
-        tupleQuery(workshopEm, new Object[]{false, "使用", true});
+        tupleQuery(workshopEm, new Object[]{false, "使用", true, false});
         MasterReferenceValidationAdapter workshop = adapter(
                 workshopEm, mock(OwnerVisibility.class), false);
 
@@ -207,7 +207,7 @@ class MasterReferenceValidationAdapterTest {
     @Test
     void acceptsExplicitlyActiveSupplier() throws Exception {
         EntityManager em = mock(EntityManager.class);
-        tupleQuery(em, new Object[]{false, "使用", false});
+        tupleQuery(em, new Object[]{false, "使用", false, false});
         MasterReferenceValidationAdapter adapter = adapter(
                 em, mock(OwnerVisibility.class), false);
 
@@ -215,9 +215,34 @@ class MasterReferenceValidationAdapterTest {
     }
 
     @Test
+    void hiddenSupplierCanFinishOldBusinessButCannotReceiveANewReference() throws Exception {
+        EntityManager em=mock(EntityManager.class);
+        tupleQuery(em,new Object[]{false,"使用",false,true});
+        MasterReferenceValidationAdapter adapter=adapter(em,mock(OwnerVisibility.class),false);
+        UUID id=UUID.randomUUID();
+        adapter.requireExistingSupplier(id);
+        assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->adapter.requireSelectableSupplier(id)).getCode());
+    }
+
+    @Test
+    void hiddenClientRemainsValidForAnExistingDocumentButNewSelectionLocksAndRejectsIt() throws Exception {
+        EntityManager em=mock(EntityManager.class);
+        tupleQuery(em,new Object[]{false,null,"使用"});
+        Query hidden=mock(Query.class);
+        when(em.createNativeQuery(org.mockito.ArgumentMatchers.startsWith("SELECT is_hidden"))).thenReturn(hidden);
+        when(hidden.setParameter(anyString(),any())).thenReturn(hidden);
+        when(hidden.getResultList()).thenReturn(List.of(true));
+        MasterReferenceValidationAdapter adapter=adapter(em,mock(OwnerVisibility.class),false);
+        UUID id=UUID.randomUUID();
+        adapter.requireVisibleActiveClient(id);
+        assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->adapter.requireSelectableClient(id)).getCode());
+        verify(em).createNativeQuery("SELECT is_hidden FROM clients WHERE id=:id FOR SHARE");
+    }
+
+    @Test
     void rejectsDeletedOrUnknownSupplier() throws Exception {
         EntityManager deletedEm = mock(EntityManager.class);
-        tupleQuery(deletedEm, new Object[]{true, "使用", false});
+        tupleQuery(deletedEm, new Object[]{true, "使用", false, false});
         MasterReferenceValidationAdapter deleted = adapter(
                 deletedEm, mock(OwnerVisibility.class), false);
         ApiException deletedError = assertThrows(

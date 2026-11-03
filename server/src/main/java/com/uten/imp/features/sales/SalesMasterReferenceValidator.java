@@ -21,11 +21,15 @@ public class SalesMasterReferenceValidator {
 
     /** Customer defaults and saved documents share the same object scope and active-state contract. */
     public void validateClientForNewBusiness(java.util.UUID clientId) {
-        references.requireVisibleActiveClient(clientId);
+        references.requireSelectableClient(clientId);
     }
 
     public void validate(QuoteSaveRequest request) {
-        validateClientForNewBusiness(request.getClientId());
+        validate(request, null);
+    }
+
+    public void validate(QuoteSaveRequest request, java.util.UUID retainedClientId) {
+        validateClientReference(request.getClientId(), retainedClientId);
         List<QuoteItemLine> lines = request.getItems();
         if (lines == null) return;
         references.lockGoodsQuantityBasis(lines.stream().map(line -> line.getGoodsId()).toList());
@@ -41,7 +45,11 @@ public class SalesMasterReferenceValidator {
     }
 
     public void validate(OrderSaveRequest request) {
-        validateClientForNewBusiness(request.getClientId());
+        validate(request, null);
+    }
+
+    public void validate(OrderSaveRequest request, java.util.UUID retainedClientId) {
+        validateClientReference(request.getClientId(), retainedClientId);
         List<OrderItemLine> lines = request.getItems();
         if (lines == null) return;
         references.lockGoodsQuantityBasis(lines.stream().map(line -> line.getGoodsId()).toList());
@@ -58,7 +66,7 @@ public class SalesMasterReferenceValidator {
 
     /** 审核前重验已保存引用，防止草稿期间主档被停用、软删或收回归属授权。 */
     public void validateStoredQuote(java.util.UUID clientId, List<SalesQuoteItem> lines) {
-        validateClientForNewBusiness(clientId);
+        references.requireVisibleActiveClient(clientId);
         for (SalesQuoteItem line : lines) {
             normalizeStoredLine(line.getGoodsId(), line.getUnitId(), line.getUnitRate(),
                     line.getLineNo(), line::setUnitId, line::setUnitRate);
@@ -67,11 +75,16 @@ public class SalesMasterReferenceValidator {
 
     /** 审核前重验已保存引用，防止草稿期间主档被停用、软删或收回归属授权。 */
     public void validateStoredOrder(java.util.UUID clientId, List<SalesOrderItem> lines) {
-        validateClientForNewBusiness(clientId);
+        references.requireVisibleActiveClient(clientId);
         for (SalesOrderItem line : lines) {
             normalizeStoredLine(line.getGoodsId(), line.getUnitId(), line.getUnitRate(),
                     line.getLineNo(), line::setUnitId, line::setUnitRate);
         }
+    }
+
+    private void validateClientReference(java.util.UUID clientId, java.util.UUID retainedClientId) {
+        if (retainedClientId != null && retainedClientId.equals(clientId)) references.requireVisibleActiveClient(clientId);
+        else validateClientForNewBusiness(clientId);
     }
 
     private void normalizeStoredLine(

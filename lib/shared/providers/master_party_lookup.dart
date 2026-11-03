@@ -92,7 +92,8 @@ class MasterPartyLookup {
     final row = reference(kind, id);
     return switch (kind) {
       MasterPartyKind.client => row?['selectable'] == true,
-      MasterPartyKind.supplier => row?['status'] == '使用',
+      MasterPartyKind.supplier =>
+        row?['selectable'] as bool? ?? row?['status'] == '使用',
     };
   }
 

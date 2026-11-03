@@ -21,6 +21,7 @@ abstract interface class MasterBatchRepository {
   Future<MasterBatchResult> delete({
     required String entityPath,
     required List<MasterBatchItem> items,
+    bool confirmReferencedHide = false,
   });
 }
 
@@ -49,11 +50,13 @@ class DioMasterBatchRepository implements MasterBatchRepository {
   Future<MasterBatchResult> delete({
     required String entityPath,
     required List<MasterBatchItem> items,
+    bool confirmReferencedHide = false,
   }) async {
     final json = await api.post(
       '$entityPath/batch-delete',
       body: {
         'items': [for (final i in items) i.toJson()],
+        if (confirmReferencedHide) 'confirmReferencedHide': true,
       },
     );
     return MasterBatchResult.fromJson(json);

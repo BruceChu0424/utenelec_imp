@@ -106,11 +106,28 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
     }
 
     @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void requireSelectableClient(UUID clientId) {
+        requireVisibleActiveClient(clientId);
+        requireNotHidden("clients", clientId, "客户");
+    }
+
+    @Override
     @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
     public void requireSelectableSupplier(UUID supplierId) {
+        requireSupplier(supplierId, true);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
+    public void requireExistingSupplier(UUID supplierId) {
+        requireSupplier(supplierId, false);
+    }
+
+    private void requireSupplier(UUID supplierId, boolean newBusiness) {
         if (supplierId == null) throw validation("缺少供应商");
         List<Object[]> rows = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT is_deleted, status, is_internal_workshop
+                SELECT is_deleted, status, is_internal_workshop, is_hidden
                 FROM suppliers
                 WHERE id = :id
                 FOR SHARE
@@ -122,9 +139,18 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
         boolean deleted = Boolean.TRUE.equals(row[0]);
         boolean disabled = row[1] != null && !"使用".equals(row[1]);
         boolean internalWorkshop = Boolean.TRUE.equals(row[2]);
+        if (newBusiness && Boolean.TRUE.equals(row[3])) throw conflict("供应商已从资料中删除，不能用于新业务");
         if (deleted || disabled || internalWorkshop) {
             throw conflict("供应商已删除、停用或属于内部车间，不能用于新业务");
         }
+    }
+
+    private void requireNotHidden(String table, UUID id, String noun) {
+        // Table is an internal constant. SHARE serializes new selection against party hide's row UPDATE lock.
+        List<?> hidden = em.createNativeQuery("SELECT is_hidden FROM " + table + " WHERE id=:id FOR SHARE")
+                .setParameter("id", id).getResultList();
+        if (hidden.size() != 1) throw notFound(noun + "不存在");
+        if (Boolean.TRUE.equals(hidden.getFirst())) throw conflict(noun + "已从资料中删除，不能用于新业务");
     }
 
     @Override

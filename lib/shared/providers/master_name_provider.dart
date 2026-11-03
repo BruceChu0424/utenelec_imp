@@ -677,11 +677,12 @@ class MasterNameService extends MasterDictionaryService {
 
   Map<String, String> get supplierEntries => supplierReferenceNames;
 
-  /// 启用中的供应商（单据表单下拉用）：禁用项不进选项，避免对禁用商下新单。
+  /// 可新选的供应商：禁用及已从资料列表删除的资料不进入新单候选。
   /// 这里只含已解析引用；完整可选项使用服务端分页选择器。
   Map<String, String> get supplierActiveEntries => {
     for (final entry in supplierReferenceNames.entries)
-      if (supplierReferenceKnown(entry.key) && !isSupplierDisabled(entry.key))
+      if (supplierReferenceKnown(entry.key) &&
+          supplierReferenceSelectable(entry.key))
         entry.key: entry.value,
   };
 

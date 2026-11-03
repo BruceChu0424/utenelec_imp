@@ -38,6 +38,11 @@ public final class MasterBatchRequests {
 
     /** 批量删除(软删)：逐条做对象级授权、版本校验与引用保护。 */
     public record DeleteRequest(
-            @NotEmpty @Size(max = MAX_ITEMS) List<@Valid @NotNull Item> items) {
+            @NotEmpty @Size(max = MAX_ITEMS) List<@Valid @NotNull Item> items,
+            Boolean confirmReferencedHide) {
+        public DeleteRequest(List<Item> items) { this(items, Boolean.FALSE); }
+        public DeleteRequest(List<Item> items, boolean confirmReferencedHide) {
+            this(items, Boolean.valueOf(confirmReferencedHide));
+        }
     }
 }

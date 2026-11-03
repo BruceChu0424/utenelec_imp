@@ -6,6 +6,7 @@
 // 修复：页面重写 shellAfterCategorySaved 自增 _detailEpoch，以 ValueKey
 // 重挂右栏。本测试锁死该行为，防止其它分类页（模具/供应商/新增页）漏接钩子。
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,6 +16,10 @@ import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/features/basic_data/models/client_node.dart';
+import 'package:uten_imp/features/basic_data/models/master_batch.dart';
+import 'package:uten_imp/features/basic_data/repositories/master_batch_repository.dart';
+import 'package:uten_imp/components/feedback/uten_context_menu.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/basic_data/models/client_access_models.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/models/party_directory_models.dart';
@@ -33,6 +38,9 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
 
 import '../../../shared/drafts/memory_form_draft_storage.dart';
+import '../../../support/audit_screenshot_support.dart';
+
+const _capture = bool.fromEnvironment('UI_CAPTURE');
 
 class _Session extends SessionNotifier {
   @override
@@ -41,6 +49,52 @@ class _Session extends SessionNotifier {
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  for (final size in [const Size(1440, 900), const Size(390, 844)]) {
+    testWidgets('资料删除视觉回归 $size', (tester) async {
+      await loadAuditScreenshotFonts(tester);
+      final key = GlobalKey();
+      await _pumpPage(
+        tester,
+        _FakeClientCategoryRepository(),
+        _FakeClientRepository(includeLegacy: true, unassigned: true),
+        surfaceSize: size,
+        screenshotKey: key,
+        batch: _ReferencedDeleteBatch(),
+        extraPermissions: {Perm.clientDelete},
+      );
+      await _selectCategory(tester, '成品类');
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('未分配').first);
+      await tester.pumpAndSettle();
+      final owner = tester.widget<Text>(find.text('未分配').first);
+      final ownerContext = tester.element(find.text('未分配').first);
+      expect(owner.style?.color, Theme.of(ownerContext).colorScheme.error);
+      await saveAuditScreenshot(
+        tester,
+        key,
+        'master-owner-unassigned-${size.width.toInt()}',
+      );
+      final table = tester.widget<MasterDataTableView<ClientListItem>>(
+        find.byType(MasterDataTableView<ClientListItem>),
+      );
+      final deletion = table.rowMenuBuilder!(table.items.single)
+          .whereType<UtenMenuItem>()
+          .singleWhere((entry) => entry.label == '删除客户');
+      unawaited(Future<void>.sync(deletion.onTap));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(UtenButton, '删除'));
+      await tester.pumpAndSettle();
+      expect(find.text('去查看'), findsOneWidget);
+      expect(find.text('仍然删除'), findsOneWidget);
+      await saveAuditScreenshot(
+        tester,
+        key,
+        'master-referenced-delete-${size.width.toInt()}',
+      );
+      expect(tester.takeException(), isNull);
+    }, skip: !_capture);
+  }
 
   testWidgets('分类编辑保存后右栏详情与内容列表自动重拉(无需手动刷新)', (tester) async {
     final categories = _FakeClientCategoryRepository();
@@ -287,9 +341,12 @@ Future<void> _pumpPage(
   _FakeClientRepository clients, {
   Locale? locale,
   Set<String> extraPermissions = const {},
+  Size surfaceSize = const Size(1440, 900),
+  GlobalKey? screenshotKey,
+  MasterBatchRepository? batch,
 }) async {
   final preferences = await SharedPreferences.getInstance();
-  await tester.binding.setSurfaceSize(const Size(1440, 900));
+  await tester.binding.setSurfaceSize(surfaceSize);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   // 2026-09-14：客户双击改为路由跳转详情整页——测试须包 GoRouter
   //（/basicinfo/client/:id 指向 PartyDetailPage，假目录仓库返回空子表）。
@@ -326,11 +383,19 @@ Future<void> _pumpPage(
         }),
         clientCategoryRepositoryProvider.overrideWithValue(categories),
         clientRepositoryProvider.overrideWithValue(clients),
+        if (batch != null)
+          masterBatchRepositoryProvider.overrideWithValue(batch),
         clientDirectoryRepositoryProvider.overrideWithValue(
           _FakePartyDirectoryRepository(),
         ),
       ],
       child: MaterialApp.router(
+        theme: screenshotKey == null
+            ? null
+            : auditScreenshotTheme(buildLightTheme()),
+        builder: screenshotKey == null
+            ? null
+            : (_, child) => RepaintBoundary(key: screenshotKey, child: child),
         routerConfig: router,
         locale: locale,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -450,10 +515,12 @@ class _FakeClientRepository implements ClientRepository {
     this.facetPayload,
     this.accessManageable = false,
     this.rowWritable = true,
+    this.unassigned = false,
   });
 
   final bool accessManageable;
   final bool rowWritable;
+  final bool unassigned;
   int accessCalls = 0;
 
   final bool includeLegacy;
@@ -500,7 +567,9 @@ class _FakeClientRepository implements ClientRepository {
                 legacyId: 101,
                 writable: rowWritable,
                 accessManageable: accessManageable,
-                ownerEmployeeNames: const ['负责人甲', '负责人乙'],
+                ownerEmployeeNames: unassigned
+                    ? const []
+                    : const ['负责人甲', '负责人乙'],
               ),
             ]
           : const [],
@@ -620,6 +689,30 @@ class _FakePartyDirectoryRepository implements PartyDirectoryRepository {
 
   @override
   Future<int?> creditScore(String partyId) async => null;
+}
+
+class _ReferencedDeleteBatch implements MasterBatchRepository {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
+  @override
+  Future<MasterBatchResult> delete({
+    required String entityPath,
+    required List<MasterBatchItem> items,
+    bool confirmReferencedHide = false,
+  }) async => MasterBatchResult(
+    succeeded: 0,
+    failed: 1,
+    results: [
+      MasterBatchItemResult(
+        id: items.single.id,
+        label: '旧库客户',
+        ok: false,
+        confirmationRequired: true,
+        reason: '还有未结案的销售订单：XD20261027000001；还有没收完的应收款：XC20261027000001。',
+      ),
+    ],
+  );
 }
 
 class _ReferenceApi extends ApiClient {

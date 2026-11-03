@@ -39,6 +39,10 @@ import java.util.UUID;
 @Table(name = "clients")
 public class Client extends SoftDeletableEntity {
 
+    /** Removed from master lists/new selections; historical business identity remains active. */
+    @Column(name = "is_hidden", nullable = false)
+    private boolean hidden;
+
     /** 乐观锁版本（JPA @Version，每次写自增；编辑表单回传比对防丢失更新）。 */
     @Version
     private long version;

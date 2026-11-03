@@ -1866,12 +1866,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                           () => showUtenSupplierPicker(
                             context,
                             ref,
-                            selectableOnly: false,
                             allowQuickCreate: false,
                           ),
                           idOf: (party) => party.id,
                           loadNames: names.loadSupplierNames,
-                          isResolved: (id) => names.supplierReferenceKnown(id),
+                          isResolved: names.supplierReferenceSelectable,
                           isCurrent: () => formDraftIdentityIsCurrent,
                         ),
                         onChanged: (value) =>
@@ -2565,13 +2564,12 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                                   () => showUtenClientPicker(
                                                     context,
                                                     ref,
-                                                    selectableOnly: false,
                                                   ),
                                                   idOf: (party) => party.id,
                                                   loadNames:
                                                       names.loadClientNames,
-                                                  isResolved: (id) => names
-                                                      .clientReferenceKnown(id),
+                                                  isResolved: names
+                                                      .clientReferenceSelectable,
                                                   isCurrent: () =>
                                                       formDraftIdentityIsCurrent,
                                                 ),
@@ -2589,16 +2587,13 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                                   () => showUtenSupplierPicker(
                                                     context,
                                                     ref,
-                                                    selectableOnly: false,
                                                     allowQuickCreate: false,
                                                   ),
                                                   idOf: (party) => party.id,
                                                   loadNames:
                                                       names.loadSupplierNames,
-                                                  isResolved: (id) => names
-                                                      .supplierReferenceKnown(
-                                                        id,
-                                                      ),
+                                                  isResolved: names
+                                                      .supplierReferenceSelectable,
                                                   isCurrent: () =>
                                                       formDraftIdentityIsCurrent,
                                                 ),

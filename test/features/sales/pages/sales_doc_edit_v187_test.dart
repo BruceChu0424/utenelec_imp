@@ -23,6 +23,7 @@ import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_edit_page.dart';
 import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/features/sales/widgets/sales_grid_columns.dart';
+import 'package:uten_imp/features/basic_data/widgets/uten_client_picker.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 
@@ -33,6 +34,31 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+  for (final hidden in [false, true]) {
+    testWidgets(
+      'sales picker ${hidden ? 'rejects a newly hidden' : 'accepts a selectable'} client after fresh lookup',
+      (tester) async {
+        final api = await _pumpEditor(tester, type: SalesDocType.order);
+        api.offerClient = true;
+        final field = find.byType(ClientPickerField);
+        await tester.ensureVisible(field);
+        await tester.tap(field);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('新选客户'));
+        api.clientSelectable = !hidden;
+        await tester.pump();
+        await tester.tap(find.text('确定'));
+        await tester.pumpAndSettle();
+        expect(
+          tester.widget<ClientPickerField>(field).initialId,
+          hidden ? isNull : 'client-1',
+        );
+        expect(api.lastPutBody, isNull);
+        expect(api.batchBodies, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
   testWidgets(
     'selected order products prefill partial shipment and save without warehouse',
     (tester) async {
@@ -697,12 +723,30 @@ class _EditorApi extends ApiClient {
   final bool failBatchOnce;
   final int batchCount;
   final batchBodies = <Map<String, dynamic>>[];
+  bool offerClient = false;
+  bool clientSelectable = true;
 
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (offerClient && path.endsWith('/clients')) {
+      return {
+        'items': [
+          {
+            'id': 'client-1',
+            'name': '新选客户',
+            'code': 'C1',
+            'categoryId': 'client-category',
+          },
+        ],
+        'page': 1,
+        'size': 100,
+        'total': 1,
+        'totalPages': 1,
+      };
+    }
     if (detail != null && path.endsWith('/${detail!['id']}')) {
       return detail!;
     }
@@ -720,6 +764,27 @@ class _EditorApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (offerClient && path.contains('client-categories')) {
+      return [
+        {
+          'id': 'client-category',
+          'code': 'C',
+          'name': '客户分类',
+          'level': 0,
+          'children': <dynamic>[],
+        },
+      ];
+    }
+    if (offerClient && path == '/master/clients/lookup') {
+      return [
+        {
+          'id': 'client-1',
+          'name': '新选客户',
+          'code': 'C1',
+          'selectable': clientSelectable,
+        },
+      ];
+    }
     if (path.endsWith('/plan-progress') && detail?['id'] == 'source-order') {
       return [
         {

@@ -732,7 +732,7 @@ public class SalesShipmentService {
         }
         LinkedSource source;
         if (customerShipmentPolicy.direct(s)) {
-            directCommercial.normalize(req);
+            directCommercial.normalize(req, s.getClientId());
             source=new LinkedSource(false,null,null,null,null,Map.of());
         } else {
             requireOrderLinkedNewShipment(req);

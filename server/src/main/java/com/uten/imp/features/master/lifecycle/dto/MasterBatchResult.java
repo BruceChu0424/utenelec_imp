@@ -2,6 +2,7 @@ package com.uten.imp.features.master.lifecycle.dto;
 
 import java.util.List;
 import java.util.UUID;
+import com.uten.imp.features.master.lifecycle.MasterReferenceGuard;
 
 /**
  * 主档批量命令的逐条结果(ADR-111)。
@@ -12,7 +13,11 @@ import java.util.UUID;
  */
 public record MasterBatchResult(int succeeded, int failed, List<ItemResult> results) {
 
-    public record ItemResult(UUID id, String label, boolean ok, String reason) {
+    public record ItemResult(UUID id, String label, boolean ok, String reason, boolean confirmationRequired,
+                             List<MasterReferenceGuard.Reference> references) {
+        public ItemResult(UUID id, String label, boolean ok, String reason) {
+            this(id, label, ok, reason, false, List.of());
+        }
     }
 
     public static MasterBatchResult of(List<ItemResult> results) {

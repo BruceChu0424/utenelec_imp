@@ -69,6 +69,7 @@ class FinanceReceiptSettlementTest {
     private ArApLedgerService arApService;
     private SecurityContextCurrentUser currentUser;
     private EntityManager em;
+    private com.uten.imp.application.port.MasterReferenceValidationPort references;
     private Query postingCount;
     private Query accountLock;
     private AccountFlowLedgerService accountFlowLedger;
@@ -98,6 +99,7 @@ class FinanceReceiptSettlementTest {
         FinanceDocumentAccessPolicy access = mock(FinanceDocumentAccessPolicy.class);
         glPosting = mock(GlPostingService.class);
         em = mock(EntityManager.class);
+        references = mock(com.uten.imp.application.port.MasterReferenceValidationPort.class);
 
         when(receiptRepo.save(any(FinanceReceipt.class))).thenAnswer(invocation -> {
             FinanceReceipt receipt = invocation.getArgument(0);
@@ -254,7 +256,7 @@ class FinanceReceiptSettlementTest {
                 anyString(), any(UUID.class), any(OffsetDateTime.class), anyString());
         service = new FinanceReceiptService(
                 receiptRepo, lineRepo, ledgerRepo, arApService, tx,
-                currentUser, names, em, numbers, access, glPosting,
+                currentUser, names, em, references, numbers, access, glPosting,
                 sourceAllocation,
                 accountFlowLedger);
         new ImportedDocumentFixture()
@@ -281,6 +283,26 @@ class FinanceReceiptSettlementTest {
         assertMoney(detail.getBankFee(), "14.4000");
         assertMoney(detail.getAccountAmount(), "28.0000");
         assertMoney(detail.getAccountAmountLocal(), "201.6000");
+    }
+
+    @Test
+    void hiddenClientCannotStartAnUnboundAdvanceButItsExistingReceivableCanStillBeSettled() {
+        org.mockito.Mockito.doThrow(new ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"客户已从资料中删除"))
+                .when(references).requireSelectableClient(CLIENT_ID);
+        assertThatThrownBy(()->service.create(directRequest(CURRENCY_ID,"7.000000")))
+                .isInstanceOf(ApiException.class).hasMessageContaining("已从资料中删除");
+        ArApLedger ledger=receivable("100.0000","7.000000");
+        assertThat(service.create(request(ledger,"30.0000","7.200000","14.4000")).getId()).isNotNull();
+        verify(references,times(1)).requireSelectableClient(CLIENT_ID);
+    }
+
+    @Test
+    void hiddenSupplierCannotBeIntroducedAsANewTradeSettlementAgent() {
+        org.mockito.Mockito.doThrow(new ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"供应商已从资料中删除"))
+                .when(references).requireSelectableSupplier(AGENT_ID);
+        var request=request(receivable("100.0000","7.000000"),"30.0000","7.200000","14.4000");
+        request.setSettlementChannel("TRADE_AGENT_CONVERSION"); request.setSettlementAgentSupplierId(AGENT_ID);
+        assertThatThrownBy(()->service.create(request)).isInstanceOf(ApiException.class).hasMessageContaining("已从资料中删除");
     }
 
     @Test

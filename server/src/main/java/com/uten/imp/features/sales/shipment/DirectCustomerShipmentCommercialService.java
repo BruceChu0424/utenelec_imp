@@ -27,7 +27,13 @@ public class DirectCustomerShipmentCommercialService {
     private final MasterReferenceValidationPort references;
 
     public void normalize(ShipmentSaveRequest request) {
-        references.requireVisibleActiveClient(request.getClientId());
+        normalize(request, null);
+    }
+
+    public void normalize(ShipmentSaveRequest request, UUID retainedClientId) {
+        if (retainedClientId != null && retainedClientId.equals(request.getClientId()))
+            references.requireVisibleActiveClient(request.getClientId());
+        else references.requireSelectableClient(request.getClientId());
         String mode=request.getBillingMode()==null?"":request.getBillingMode().trim().toUpperCase(java.util.Locale.ROOT);
         String purpose=request.getDirectPurpose()==null?"":request.getDirectPurpose().trim().toUpperCase(java.util.Locale.ROOT);
         if(!Set.of(CustomerShipmentPolicy.CHARGED,CustomerShipmentPolicy.FREE).contains(mode))throw validation("请明确选择收费或不收费");

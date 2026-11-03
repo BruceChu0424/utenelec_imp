@@ -1,0 +1,223 @@
+{
+  "id": "E-PARTY-MASTER-HIDDEN-20261103",
+  "branch": "uimp/master-data-hide-delete-20261103",
+  "baseCommit": "dfe3f3b67",
+  "classification": [
+    "frontend",
+    "backend",
+    "shared-contract"
+  ],
+  "nativeStatus": "not-migrated",
+  "contract": "clients/windows_legacy/progress/contracts/party-master-hidden.json",
+  "nativeSourceAudit": {
+    "workspace": "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs",
+    "implementedFeatureDirectories": [
+      "Goods",
+      "Units",
+      "Columns",
+      "Downloads",
+      "Publish"
+    ],
+    "customerSupplierFeatureDirectoriesPresent": false,
+    "customerSupplierApiConsumers": "Only generic read-scope path recognition and its tests; no customer/supplier master UI or document-picker implementation.",
+    "customerMasterWorkItem": "W7-BIZ-022",
+    "supplierMasterWorkItem": "W7-BIZ-036",
+    "partyDetailWorkItem": "W7-BIZ-032",
+    "masterWorkItemsHaveNativeTargets": false
+  },
+  "consumerMigrationInventory": [
+    {
+      "workItem": "W7-BIZ-022",
+      "source": "lib/features/basic_data/pages/client_category_page.dart",
+      "native": "not-migrated",
+      "requirement": "Referenced delete warning, confirmed hide and unassigned owner in red"
+    },
+    {
+      "workItem": "W7-BIZ-036",
+      "source": "lib/features/basic_data/pages/supplier_category_page.dart",
+      "native": "not-migrated",
+      "requirement": "Referenced delete warning, confirmed hide and unassigned owner in red"
+    },
+    {
+      "workItem": "W7-BIZ-032",
+      "source": "lib/features/basic_data/pages/party_detail_page.dart",
+      "native": "not-migrated",
+      "requirement": "Keep historical identity and authorized related-document navigation; share the delete contract where applicable"
+    },
+    {
+      "workItem": "W7-BIZ-136",
+      "source": "lib/features/sales/pages/sales_doc_edit_page.dart",
+      "native": "not-migrated",
+      "requirement": "New customer choices exclude hidden; old document original UUID remains"
+    },
+    {
+      "workItem": "W7-BIZ-122",
+      "source": "lib/features/purchase/pages/purchase_doc_edit_page.dart",
+      "native": "not-migrated",
+      "requirement": "New supplier choices exclude hidden; inherited existing sources remain"
+    },
+    {
+      "workItem": "W7-BIZ-125",
+      "source": "lib/features/purchase/pages/purchase_order_edit_page.dart",
+      "native": "not-migrated",
+      "requirement": "New header/line supplier choices exclude hidden; original saved supplier remains"
+    },
+    {
+      "workItem": "W7-BIZ-156",
+      "source": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
+      "native": "not-migrated",
+      "requirement": "New subcontractor choices exclude hidden; inherited existing sources remain"
+    },
+    {
+      "workItem": "W7-BIZ-159",
+      "source": "lib/features/subcontract/pages/subcontract_order_edit_page.dart",
+      "native": "not-migrated",
+      "requirement": "New header/line subcontractor choices exclude hidden; original saved supplier remains"
+    },
+    {
+      "workItem": "W7-BIZ-064",
+      "source": "lib/features/finance/pages/finance_doc_edit_page.dart",
+      "native": "not-migrated",
+      "requirement": "New party choices exclude hidden; existing ledger settlement and saved references retain historical identities"
+    },
+    {
+      "workItem": "W7-BIZ-072",
+      "source": "lib/features/finance/pages/finance_report_table_page.dart",
+      "native": "not-migrated",
+      "requirement": "Historical reports and authorized party filters preserve hidden counterparty transactions"
+    },
+    {
+      "workItem": "W7-BIZ-077",
+      "source": "lib/features/finance/pages/finance_statement_page.dart",
+      "native": "not-migrated",
+      "requirement": "Historical client/supplier statement selection preserves hidden counterparties"
+    },
+    {
+      "workItem": "W7-BIZ-078",
+      "source": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "native": "not-migrated",
+      "requirement": "Existing supplier balances, claims and settlement sources remain reachable"
+    }
+  ],
+  "unchangedHardProtection": {
+    "goodsColorsUnits": "V683 BOM and active-goods guards remain; this contract does not authorize bypassing operational reference protection.",
+    "warehousesMoulds": "Existing inventory, hierarchy and lifecycle reference guards remain."
+  },
+  "validation": {
+    "method": "Source and stable work-item audit; no native business runtime exercised",
+    "nativeBusinessRequestsExecuted": false,
+    "nativeUiInteractionExecuted": false,
+    "x86x64BusinessAcceptance": false,
+    "targetPcAcceptance": false,
+    "workItemStatusesChanged": false,
+    "fullErpEquivalent": false,
+    "productionDeployment": false,
+    "canonicalInventory": {
+      "pageFiles": 220,
+      "featureGroups": 34,
+      "controllerFiles": 252,
+      "routeConstructorCandidates": 274,
+      "workPackages": 362,
+      "stableIdsPreserved": true,
+      "workItemStatusChanges": 0,
+      "done": 10,
+      "fullErpEquivalent": false,
+      "win7Accepted": false
+    },
+    "toolChecks": {
+      "progressTrackerUnitTests": 15,
+      "businessInventoryUnitTests": 5,
+      "businessInventoryWrite": "completed",
+      "progressTrackerSync": "completed",
+      "progressTrackerCheck": "passed; canonical source, registry, rendered documents and links verified"
+    },
+    "flutterCallerChecks": {
+      "procurementEditorIdentity": {
+        "passed": 20,
+        "log": "build-party-hidden-procurement-final.log"
+      },
+      "salesEditorActualPickerAndExistingRegression": {
+        "passed": 17,
+        "log": "build-party-hidden-sales-final.log"
+      },
+      "financeBatchAndSalesNameProvider": {
+        "passed": 16,
+        "log": "build-party-hidden-finance-final.log"
+      },
+      "staticAnalysis": {
+        "targets": 8,
+        "result": "No issues found",
+        "log": "build-party-hidden-business-analysis-final.log"
+      },
+      "isNativeBusinessAcceptance": false
+    },
+    "canonicalPasses": [
+      {
+        "phase": "initial implementation",
+        "businessInventoryWrite": "passed",
+        "progressTrackerSync": "passed",
+        "progressTrackerCheck": "passed"
+      },
+      {
+        "phase": "final finance picker review",
+        "changedProductionSources": [
+          "lib/features/finance/pages/finance_doc_edit_page.dart",
+          "lib/features/finance/pages/finance_report_table_page.dart"
+        ],
+        "businessInventoryWrite": "passed",
+        "progressTrackerSync": "passed",
+        "progressTrackerCheck": "passed",
+        "statusOwnerDoDChanges": 0
+      },
+      {
+        "phase": "final omitted-flag compatibility review",
+        "changedProductionSources": [
+          "server/src/main/java/com/uten/imp/features/master/lifecycle/dto/MasterBatchRequests.java",
+          "server/src/main/java/com/uten/imp/features/master/lifecycle/MasterLifecycleController.java"
+        ],
+        "businessInventoryWrite": "passed",
+        "progressTrackerSync": "passed",
+        "progressTrackerCheck": "passed",
+        "stableIds": 362,
+        "statusOwnerDoDChanges": 0,
+        "contract": "Optional Boolean omitted/null/false does not confirm hiding; only Boolean.TRUE confirms referenced customer/supplier hiding."
+      },
+      {
+        "phase": "final old personal history snapshot compatibility review",
+        "changedProductionSources": [
+          "server/src/main/resources/db/migration/V995__party_master_hidden_lifecycle.sql",
+          "server/src/main/java/com/uten/imp/features/master/history/MasterOperationHistoryService.java"
+        ],
+        "businessInventoryWrite": "passed",
+        "progressTrackerSync": "passed",
+        "progressTrackerCheck": "passed",
+        "stableIds": 362,
+        "statusOwnerDoDChanges": 0
+      }
+    ],
+    "finalFinancePickerReview": {
+      "passed": 4,
+      "log": ".dart_tool/master-delete-finance-review-tests.log",
+      "cases": [
+        "payment header new candidates exclude hidden, old UUID and name preserved",
+        "historical customer prepayment filter sends its original customer UUID",
+        "hidden supplier inherited from old AP remains importable",
+        "supplier hidden while picker is open is not assigned to a new row"
+      ],
+      "staticAnalysis": "4 related files: No issues found",
+      "earlierCallerChecksRetained": true,
+      "isNativeBusinessAcceptance": false
+    },
+    "historyCompatibilitySourceReview": {
+      "passed": true,
+      "sourceSha256": {
+        "server/src/main/resources/db/migration/V995__party_master_hidden_lifecycle.sql": "6d37806b77e050a1a59cc9ee30a3708592fd025113d21162925013ec23d08d96",
+        "server/src/main/java/com/uten/imp/features/master/history/MasterOperationHistoryService.java": "6719a1c169b4d856383b499a2bad7e1227a229e2c6c570fa3e54bd2e4890426b"
+      },
+      "contract": "Server-only read normalization supplies defaults solely for missing client/supplier object keys; original before/after evidence is unchanged; real subsequent changes still fail CAS. Existing object-version alignedTarget preserves current hidden-state values.",
+      "nativeSnapshotRulesAdded": false,
+      "nativeBusinessAcceptance": false,
+      "serverDatabaseValidation": "Owning backend stage report records real PostgreSQL history and lifecycle regression outcomes; this native migration evidence does not infer them."
+    }
+  }
+}

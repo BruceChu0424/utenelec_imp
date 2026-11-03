@@ -31,6 +31,7 @@ class _Api extends ApiClient {
   bool freezeResponseAtStart = false;
   final missing = <String>{};
   final disabled = <String>{};
+  final hidden = <String>{};
   final unknownStatus = <String>{};
   Completer<void>? gate;
   Completer<void>? selectiveGate;
@@ -76,7 +77,7 @@ class _Api extends ApiClient {
               'id': id,
               'name': 'name-$version-$id',
               'code': 'code-$id',
-              'selectable': !disabled.contains(id),
+              'selectable': !disabled.contains(id) && !hidden.contains(id),
               if (!unknownStatus.contains(id))
                 'status': disabled.contains(id) ? '禁用' : '使用',
               'defaultSettlementMethodId': 'settlement-$id',
@@ -89,6 +90,22 @@ class _Api extends ApiClient {
 }
 
 void main() {
+  test(
+    'hidden parties retain historical names but cannot be newly selected',
+    () async {
+      final api = _Api()..hidden.add('hidden');
+      final lookup = MasterPartyLookup(api);
+      addTearDown(lookup.dispose);
+      for (final kind in MasterPartyKind.values) {
+        await lookup.load(kind, ['hidden', 'enabled']);
+        expect(lookup.reference(kind, 'hidden')?['name'], 'name-0-hidden');
+        expect(lookup.positive(kind, 'hidden'), isTrue);
+        expect(lookup.selectable(kind, 'hidden'), isFalse);
+        expect(lookup.selectable(kind, 'enabled'), isTrue);
+      }
+    },
+  );
+
   test(
     'retired owners retain physical HTTP slots until transport completes',
     () async {

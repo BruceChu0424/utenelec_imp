@@ -568,6 +568,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
                 LEFT JOIN suppliers sup
                   ON sup.id = g.default_supplier_id
                  AND sup.is_deleted = false
+                 AND sup.is_hidden = false
                  AND sup.is_internal_workshop = false
                 LEFT JOIN currencies cur ON cur.id = sup.default_currency_id
                 WHERE g.id IN (:ids)
@@ -1120,7 +1121,7 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
         if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.CONFLICT, "订货单已不再是待生效草稿");
         }
-        references.requireSelectableSupplier(order.getSupplierId());
+        references.requireExistingSupplier(order.getSupplierId());
         List<SubcontractOrderItem> items =
                 itemRepo.findByOrderIdOrderByLineNoAsc(id);
         // ADR-143 §二.3：批准时再兜底检查一次(送审后 BOM 可能被改到没有可发外直属物料)；

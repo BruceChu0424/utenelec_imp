@@ -44,7 +44,13 @@ public class MasterReferenceGuard {
     private final MasterObjectAccess access;
 
     /** 一类引用：被谁引用、共几处、前几个是谁(只含调用人看得到的)。 */
-    public record Blocker(RefKind kind, List<String> samples, long total) {
+    public record Reference(String kind, UUID id, String label) {
+    }
+
+    public record Blocker(RefKind kind, List<String> samples, long total, List<Reference> references) {
+        public Blocker(RefKind kind, List<String> samples, long total) {
+            this(kind, samples, total, List.of());
+        }
     }
 
     /**
@@ -189,6 +195,22 @@ public class MasterReferenceGuard {
         return text.toString();
     }
 
+    /** A party hide keeps all referenced documents and balances, so repair instructions do not apply. */
+    public static String describeReferences(MasterEntityKind kind, String label, List<Blocker> blockers) {
+        return kind.noun() + "「" + (label == null || label.isBlank() ? "该记录" : label.strip())
+                + "」仍有关联业务：" + blockers.stream().map(MasterReferenceGuard::referenceSummary)
+                    .collect(Collectors.joining("；"))
+                + "。仍然删除后，仅从资料列表和新建单据选项中隐藏，已有单据、往来账和业务关联继续保留。";
+    }
+
+    private static String referenceSummary(Blocker blocker) {
+        if (blocker.samples().isEmpty()) {
+            return blocker.kind().lead() + "：共 " + blocker.total() + " 处（无权查看明细）";
+        }
+        return blocker.kind().lead() + "：" + String.join("、", blocker.samples())
+                + (blocker.total() > blocker.samples().size() ? " 等共 " + blocker.total() + " 处" : "");
+    }
+
     /** 单类引用的一句话原因(批量结果逐条展示用)；看不到的样例只算进总数。 */
     public static String reason(Blocker blocker) {
         String head;
@@ -254,6 +276,7 @@ public class MasterReferenceGuard {
                 .setParameter("excluded", joined(excludedGoods)));
         Map<String, Predicate<UUID>> readable = new HashMap<>();
         Map<UUID, Map<RefKind, List<String>>> samples = new LinkedHashMap<>();
+        Map<UUID, Map<RefKind, List<Reference>>> references = new LinkedHashMap<>();
         Map<UUID, Map<RefKind, Long>> totals = new LinkedHashMap<>();
         Map<UUID, Map<UUID, String>> internal = new LinkedHashMap<>();
         for (Object[] row : rows) {
@@ -274,6 +297,16 @@ public class MasterReferenceGuard {
             UUID owner = row[4] == null ? null : uuid(row[4]);
             if (readable.computeIfAbsent(scope, access::readableLabelOwner).test(owner)) {
                 list.add(label);
+                // Links obey the same object visibility as their labels. Some catalog entries use
+                // composite identities; those retain their summary without inventing a document ID.
+                try {
+                    UUID referenceId = uuid(row[2]);
+                    references.computeIfAbsent(target, ignored -> new EnumMap<>(RefKind.class))
+                            .computeIfAbsent(code, ignored -> new ArrayList<>())
+                            .add(new Reference(code.name(), referenceId, label));
+                } catch (IllegalArgumentException ignored) {
+                    // Non-UUID references are read-only summaries.
+                }
             }
         }
         Map<UUID, Map<RefKind, Blocker>> found = new LinkedHashMap<>();
@@ -282,7 +315,9 @@ public class MasterReferenceGuard {
             for (var kindEntry : entry.getValue().entrySet()) {
                 byKind.put(kindEntry.getKey(), new Blocker(kindEntry.getKey(),
                         List.copyOf(kindEntry.getValue()),
-                        totals.get(entry.getKey()).get(kindEntry.getKey())));
+                        totals.get(entry.getKey()).get(kindEntry.getKey()),
+                        List.copyOf(references.getOrDefault(entry.getKey(), Map.of())
+                                .getOrDefault(kindEntry.getKey(), List.of()))));
             }
             found.put(entry.getKey(), byKind);
         }

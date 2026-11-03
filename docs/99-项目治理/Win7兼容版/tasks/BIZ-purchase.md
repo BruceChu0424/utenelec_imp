@@ -46,9 +46,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md`。
+证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md`；`clients/windows_legacy/progress/evidence/party-master-hidden-20261103.json`；`clients/windows_legacy/progress/contracts/party-master-hidden.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-01价格权限收口：来源价格码、来源查看和分析权共同控制价格分析/历史入口；财务数据范围不替代商业字段码。采购/委外公共字段与草稿历史投影同源；AI登记及执行按种类重验。当前原生货品售价读取合同不变；价格分析与采购/委外原生完整入口仍未迁移，状态/DoD不变。见docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-01价格权限收口：来源价格码、来源查看和分析权共同控制价格分析/历史入口；财务数据范围不替代商业字段码。采购/委外公共字段与草稿历史投影同源；AI登记及执行按种类重验。当前原生货品售价读取合同不变；价格分析与采购/委外原生完整入口仍未迁移，状态/DoD不变。见docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md。；2026-11-03 客户/供应商资料删除确认仅设置 is_hidden，主档与新业务选择隐藏；is_deleted/status/UUID、旧单据及既有往来保留。引用提醒按 confirmationRequired 给“去查看/仍然删除”，重提只含确认子集并保留版本；权限/版本失败不得强制。负责人“未分配”用同源 Uten.Error 红色。原生页面及相关业务选择/历史筛选尚未迁移，保持 todo，不开放占位写入口；接入合同见 clients/windows_legacy/progress/contracts/party-master-hidden.json。。
 
 ## W7-BIZ-123
 
@@ -118,9 +118,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md`。
+证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md`；`clients/windows_legacy/progress/evidence/party-master-hidden-20261103.json`；`clients/windows_legacy/progress/contracts/party-master-hidden.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-01价格权限收口：来源价格码、来源查看和分析权共同控制价格分析/历史入口；财务数据范围不替代商业字段码。采购/委外公共字段与草稿历史投影同源；AI登记及执行按种类重验。当前原生货品售价读取合同不变；价格分析与采购/委外原生完整入口仍未迁移，状态/DoD不变。见docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-01价格权限收口：来源价格码、来源查看和分析权共同控制价格分析/历史入口；财务数据范围不替代商业字段码。采购/委外公共字段与草稿历史投影同源；AI登记及执行按种类重验。当前原生货品售价读取合同不变；价格分析与采购/委外原生完整入口仍未迁移，状态/DoD不变。见docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md。；2026-11-03 客户/供应商资料删除确认仅设置 is_hidden，主档与新业务选择隐藏；is_deleted/status/UUID、旧单据及既有往来保留。引用提醒按 confirmationRequired 给“去查看/仍然删除”，重提只含确认子集并保留版本；权限/版本失败不得强制。负责人“未分配”用同源 Uten.Error 红色。原生页面及相关业务选择/历史筛选尚未迁移，保持 todo，不开放占位写入口；接入合同见 clients/windows_legacy/progress/contracts/party-master-hidden.json。。
 
 ## W7-BIZ-126
 

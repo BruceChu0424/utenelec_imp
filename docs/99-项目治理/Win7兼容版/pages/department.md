@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | MyDepartmentPage @48 (page-class)<br>_MyDepartmentPageState @55 (state-class)<br>_MyDepartmentDetail @312 (supporting-class)<br>_ManagerPermissionPanel @571 (supporting-class)<br>_ContactCard @623 (supporting-class)<br>_ContactLine @733 (supporting-class) |
-| 真实路由绑定 | /profile/me/department；router @2322；builder ['MyDepartmentPage']；redirect None |
+| 真实路由绑定 | /profile/me/department；router @2326；builder ['MyDepartmentPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

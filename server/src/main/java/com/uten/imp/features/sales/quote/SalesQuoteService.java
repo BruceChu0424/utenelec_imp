@@ -348,7 +348,7 @@ public class SalesQuoteService {
         }
         requireRevision(q, req.getExpectedRevision());
         requireNotDeleted(q);
-        referenceValidator.validate(req);
+        referenceValidator.validate(req, q.getClientId());
         validateHeaderReferences(req);
         applyHeader(req, q);
         List<SalesQuoteItem> existing = itemRepo.findByQuoteIdOrderByLineNoAsc(id);

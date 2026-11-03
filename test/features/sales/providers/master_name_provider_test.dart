@@ -37,16 +37,31 @@ void main() {
       _StubApiClient([
         {'id': 'active', 'name': 'Active client', 'selectable': true},
         {'id': 'disabled', 'name': 'Historical client', 'selectable': false},
+        {
+          'id': 'hidden',
+          'name': 'Hidden historical client',
+          'selectable': false,
+        },
         {'id': 'old-active', 'code': 'C-OLD', 'name': 'Old server client'},
         {'id': 'stub', 'code': 'LEGACY-FIN-CL-7', 'name': '??????????'},
       ]),
     );
 
     await service.ensureLoaded();
-    await service.loadClientNames(['active', 'disabled', 'old-active', 'stub']);
+    await service.loadClientNames([
+      'active',
+      'disabled',
+      'hidden',
+      'old-active',
+      'stub',
+    ]);
 
-    expect(service.clientEntries, hasLength(4));
+    expect(service.clientEntries, hasLength(5));
     expect(service.client('disabled'), 'Historical client');
+    expect(service.client('hidden'), 'Hidden historical client');
+    expect(service.clientReferenceSelectable('hidden'), isFalse);
+    expect(service.clientReferenceSelectable('active'), isTrue);
+    expect(service.clientReferenceSelectable('missing'), isFalse);
     expect(service.client('stub'), '??????????');
     expect(service.selectableClientEntries, {
       'active': 'Active client',

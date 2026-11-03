@@ -59,6 +59,7 @@ class FinancePaymentSettlementTest {
     private ArApLedgerRepository ledgerRepo;
     private SecurityContextCurrentUser currentUser;
     private EntityManager em;
+    private com.uten.imp.application.port.MasterReferenceValidationPort references;
     private Query postingCount;
     private Query accountLock;
     private Query accountUpdate;
@@ -84,6 +85,7 @@ class FinancePaymentSettlementTest {
         FinanceDocumentAccessPolicy access = mock(FinanceDocumentAccessPolicy.class);
         glPostingService = mock(GlPostingService.class);
         em = mock(EntityManager.class);
+        references = mock(com.uten.imp.application.port.MasterReferenceValidationPort.class);
         // ADR-112: 付款过账走真实账本(同一个 mock EntityManager); 红冲的账本细节由账本自己的测试覆盖。
         accountFlowLedger = org.mockito.Mockito.spy(new AccountFlowLedgerService(em));
         org.mockito.Mockito.doReturn(1).when(accountFlowLedger).reverse(
@@ -187,7 +189,7 @@ class FinancePaymentSettlementTest {
         service = new FinancePaymentService(
                 mock(com.uten.imp.features.finance.payables.SupplierClosedPeriodGuard.class),
                 paymentRepo, lineRepo, ledgerRepo, tx,
-                currentUser, names, em, numbers, access, glPostingService,
+                currentUser, names, em, references, numbers, access, glPostingService,
                 accountFlowLedger,
                 mock(com.uten.imp.features.finance.payables.SupplierPayableHoldGuard.class));
         new ImportedDocumentFixture()
@@ -332,6 +334,17 @@ class FinancePaymentSettlementTest {
         assertThat(payments.get(draft.getId()).getStatus()).isZero();
         verify(accountUpdate, never()).executeUpdate();
         verify(reconciliationInsert, never()).executeUpdate();
+    }
+
+    @Test
+    void hiddenSupplierCannotStartAnUnboundAdvanceButItsExistingPayableCanStillBeSettled() {
+        org.mockito.Mockito.doThrow(new ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"供应商已从资料中删除"))
+                .when(references).requireSelectableSupplier(SUPPLIER_ID);
+        ArApLedger ledger=payable("100.0000","700.0000","7.000000");
+        var advance=request(ledger,CURRENCY_ID,"7.200000","30.0000"); advance.setItems(List.of());
+        assertThatThrownBy(()->service.create(advance)).isInstanceOf(ApiException.class).hasMessageContaining("已从资料中删除");
+        assertThat(service.create(request(ledger,CURRENCY_ID,"7.200000","30.0000")).getId()).isNotNull();
+        verify(references,org.mockito.Mockito.times(1)).requireSelectableSupplier(SUPPLIER_ID);
     }
 
     @Test

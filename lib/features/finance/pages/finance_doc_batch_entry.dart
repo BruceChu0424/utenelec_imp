@@ -35,6 +35,31 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
     row.entry.touch();
   }
 
+  Future<String?> _pickEntryPartyId(
+    BuildContext panelContext, {
+    required bool Function() isCurrent,
+  }) async {
+    final names = ref.read(financeNameServiceProvider);
+    if (_cfg.isClient) {
+      return (await resolvePickedParty(
+        ref,
+        () => showUtenClientPicker(panelContext, ref),
+        idOf: (party) => party.id,
+        loadNames: names.loadClientNames,
+        isResolved: names.clientReferenceSelectable,
+        isCurrent: isCurrent,
+      ))?.id;
+    }
+    return (await resolvePickedParty(
+      ref,
+      () => showUtenSupplierPicker(panelContext, ref),
+      idOf: (party) => party.id,
+      loadNames: names.loadSupplierNames,
+      isResolved: names.supplierReferenceSelectable,
+      isCurrent: isCurrent,
+    ))?.id;
+  }
+
   Future<void> _pickEntryParty(FinanceGridRow row) async {
     if (!_entryCurrent(row)) return;
     if (row.appliedLedgerId != null || row.entry.salesOrderId != null) {
@@ -42,20 +67,16 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
       return;
     }
     final checkpoint = JsonValueSnapshot.capture(row.entry.toJson());
-    final names = ref.read(financeNameServiceProvider);
-    final id = _cfg.isClient
-        ? (await showUtenClientPicker(context, ref))?.id
-        : (await showUtenSupplierPicker(context, ref))?.id;
+    final id = await _pickEntryPartyId(
+      context,
+      isCurrent: () =>
+          _entryCurrent(row) && checkpoint.matches(row.entry.toJson()),
+    );
     if (id == null ||
         !_entryCurrent(row) ||
         !checkpoint.matches(row.entry.toJson())) {
       return;
     }
-    await names.loadPartyNames(
-      clientIds: _cfg.isClient ? [id] : [],
-      supplierIds: _cfg.isSupplier ? [id] : [],
-    );
-    if (!_entryCurrent(row) || !checkpoint.matches(row.entry.toJson())) return;
     row.entry.partyId = id;
     row.entry.touch();
   }
@@ -247,24 +268,16 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                             UtenButton(
                               type: UtenButtonType.secondary,
                               onPressed: () async {
-                                final id = _cfg.isClient
-                                    ? (await showUtenClientPicker(
-                                        panelContext,
-                                        ref,
-                                      ))?.id
-                                    : (await showUtenSupplierPicker(
-                                        panelContext,
-                                        ref,
-                                      ))?.id;
+                                final id = await _pickEntryPartyId(
+                                  panelContext,
+                                  isCurrent: () =>
+                                      panelContext.mounted && current(),
+                                );
                                 if (id == null ||
                                     !panelContext.mounted ||
                                     !current()) {
                                   return;
                                 }
-                                await names.loadPartyNames(
-                                  clientIds: _cfg.isClient ? [id] : [],
-                                  supplierIds: _cfg.isSupplier ? [id] : [],
-                                );
                                 if (panelContext.mounted && current()) {
                                   update(() => values.partyId = id);
                                 }
@@ -489,16 +502,25 @@ extension _FinanceBatchEntry on _FinanceDocEditPageState {
                               UtenButton(
                                 type: UtenButtonType.secondary,
                                 onPressed: () async {
-                                  final supplier = await showUtenSupplierPicker(
-                                    panelContext,
+                                  final supplier = await resolvePickedParty(
                                     ref,
+                                    () => showUtenSupplierPicker(
+                                      panelContext,
+                                      ref,
+                                    ),
+                                    idOf: (party) => party.id,
+                                    loadNames: names.loadSupplierNames,
+                                    isResolved:
+                                        names.supplierReferenceSelectable,
+                                    isCurrent: () =>
+                                        panelContext.mounted &&
+                                        _entryCurrent(row),
                                   );
                                   if (supplier == null ||
                                       !panelContext.mounted ||
                                       !_entryCurrent(row)) {
                                     return;
                                   }
-                                  await names.loadSupplierNames([supplier.id]);
                                   if (panelContext.mounted &&
                                       _entryCurrent(row)) {
                                     update(() => values.agentId = supplier.id);

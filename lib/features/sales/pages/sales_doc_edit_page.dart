@@ -91,6 +91,7 @@ import '../../../shared/measurement/measurement_totals.dart';
 import '../../../shared/pricing/line_pricing_controller.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/list_refresh_provider.dart';
+import '../../../shared/providers/master_party_options.dart';
 import '../../../shared/providers/editable_grid_column_prefs.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
@@ -3865,11 +3866,20 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                   // 选客户后联动带出主档收货地址/联系电话。
                                                   onChanged: (v) =>
                                                       _onClientChanged(v),
-                                                  onPick: () =>
-                                                      showUtenClientPicker(
-                                                        context,
-                                                        ref,
-                                                      ),
+                                                  onPick: () => resolvePickedParty(
+                                                    ref,
+                                                    () => showUtenClientPicker(
+                                                      context,
+                                                      ref,
+                                                    ),
+                                                    idOf: (party) => party.id,
+                                                    loadNames:
+                                                        names.loadClientNames,
+                                                    isResolved: names
+                                                        .clientReferenceSelectable,
+                                                    isCurrent: () =>
+                                                        formDraftIdentityIsCurrent,
+                                                  ),
                                                 ),
                                               if (_isCustomerShipment) ...[
                                                 UtenDropdownField(

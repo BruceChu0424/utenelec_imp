@@ -5185,7 +5185,7 @@ class FullChainEndToEndTest {
                 """, UUID.class, orderId, requestItemId);
     }
 
-    private UUID receiveAndPassPurchase(
+    UUID receiveAndPassPurchase(
             World w, UUID orderItemId, UUID goodsId,
             BigDecimal qty, String idempotencySuffix) {
         return receiveAndPassPurchase(w,orderItemId,goodsId,qty,idempotencySuffix,List.of(qty));

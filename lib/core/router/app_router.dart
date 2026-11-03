@@ -2193,7 +2193,11 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
           DraftAwareGoRoute(
             path: RouteName.financeArAp,
             name: 'finance-ar-ap',
-            builder: (_, _) => const FinanceArApPage(),
+            builder: (_, s) => FinanceArApPage(
+              key: ValueKey(s.uri.toString()),
+              initialPartyId: s.uri.queryParameters['partyId'],
+              initialDirection: s.uri.queryParameters['direction'],
+            ),
           ),
           DraftAwareGoRoute(
             path: RouteName.financeReconciliations,

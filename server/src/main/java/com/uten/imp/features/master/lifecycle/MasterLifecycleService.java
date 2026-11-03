@@ -69,7 +69,7 @@ public class MasterLifecycleService {
     @Transactional
     public void delete(MasterEntityKind kind, UUID id) {
         CurrentAuthorityGuard.requireAll(kind.deletePermission());
-        MasterBatchResult result = deleteInternal(kind, List.of(new MasterBatchRequests.Item(id, null)));
+        MasterBatchResult result = deleteInternal(kind, List.of(new MasterBatchRequests.Item(id, null)), false);
         MasterBatchResult.ItemResult only = result.results().getFirst();
         if (only.ok()) return;
         if (only.label() == null) {
@@ -83,8 +83,15 @@ public class MasterLifecycleService {
     /** 批量删除：逐条授权 + 版本 + 引用保护，放行的一条 UPDATE 软删。 */
     @Transactional
     public MasterBatchResult batchDelete(MasterEntityKind kind, List<MasterBatchRequests.Item> items) {
+        return batchDelete(kind, items, false);
+    }
+
+    /** Referenced parties may be hidden after explicit confirmation; other master guards stay mandatory. */
+    @Transactional
+    public MasterBatchResult batchDelete(MasterEntityKind kind, List<MasterBatchRequests.Item> items,
+                                        boolean confirmReferencedHide) {
         CurrentAuthorityGuard.requireAll(kind.deletePermission());
-        return deleteInternal(kind, items);
+        return deleteInternal(kind, items, confirmReferencedHide);
     }
 
     /** 批量启用/停用：逐条授权 + 版本，放行的一条 UPDATE 改状态(原本就是目标状态的不动)。 */
@@ -180,7 +187,8 @@ public class MasterLifecycleService {
 
     // ---- 内部 ---------------------------------------------------------------------
 
-    private MasterBatchResult deleteInternal(MasterEntityKind kind, List<MasterBatchRequests.Item> items) {
+    private MasterBatchResult deleteInternal(MasterEntityKind kind, List<MasterBatchRequests.Item> items,
+                                             boolean confirmReferencedHide) {
         tx.bind();
         Map<UUID, Long> requested = dedupe(items);
         Map<UUID, MasterBatchResult.ItemResult> results = new LinkedHashMap<>();
@@ -195,10 +203,13 @@ public class MasterLifecycleService {
         for (Row row : allowed) {
             List<MasterReferenceGuard.Blocker> blockers = blocked.get(row.id());
             List<String> reasons = retirement.get(row.id());
-            if (blockers != null) {
+            if (blockers != null && !(hideOnly(kind) && confirmReferencedHide)) {
                 // 引用守卫逐条列出是哪些货品/单据在用它, 比停用前置条件的计数更具体, 优先给人看。
                 results.put(row.id(), new MasterBatchResult.ItemResult(row.id(), row.label(), false,
-                        MasterReferenceGuard.describe(kind, row.label(), blockers)));
+                        hideOnly(kind) ? MasterReferenceGuard.describeReferences(kind, row.label(), blockers)
+                                : MasterReferenceGuard.describe(kind, row.label(), blockers), hideOnly(kind),
+                        hideOnly(kind) ? blockers.stream().flatMap(blocker -> blocker.references().stream()).distinct().toList()
+                                : List.of()));
             } else if (reasons != null) {
                 // 引用守卫之外的仓库前置条件(如已开通的车间内料仓), 与数据库守卫同一定义。
                 results.put(row.id(), new MasterBatchResult.ItemResult(row.id(), row.label(), false,
@@ -251,6 +262,7 @@ public class MasterLifecycleService {
                         "SELECT id, " + version + ", " + owner + ", status, " + code
                                 + " FROM " + kind.table()
                                 + " WHERE id = ANY(" + ID_ARRAY + ") AND is_deleted = FALSE"
+                                + (hideOnly(kind) ? " AND is_hidden = FALSE" : "")
                                 + " ORDER BY id FOR UPDATE")
                 .setParameter("ids", joined(ids)));
         List<Row> rows = new ArrayList<>(raw.size());
@@ -263,6 +275,13 @@ public class MasterLifecycleService {
 
     private int softDelete(MasterEntityKind kind, List<UUID> ids) {
         if (ids.isEmpty()) return 0;
+        if (hideOnly(kind)) {
+            // Preserve the business identity, lifecycle state and every historical/ongoing reference.
+            return em.createNativeQuery("UPDATE " + kind.table() + " SET is_hidden = TRUE, hidden_at = now(), "
+                            + "updated_at = now(), updated_by = " + ACTOR + versionBump(kind)
+                            + " WHERE id = ANY(" + ID_ARRAY + ") AND NOT is_deleted AND NOT is_hidden")
+                    .setParameter("ids", joined(ids)).executeUpdate();
+        }
         if (kind == MasterEntityKind.GOODS) {
             // 父件删除，它自己的组装清单随之失效；先删 BOM 行，数据库守卫(V683)才不会把
             // 「同批一起删的父件」误当成还在用组件的有效父件。
@@ -281,6 +300,10 @@ public class MasterLifecycleService {
 
     private static String versionBump(MasterEntityKind kind) {
         return kind.versioned() ? ", version = version + 1" : "";
+    }
+
+    private static boolean hideOnly(MasterEntityKind kind) {
+        return kind == MasterEntityKind.CLIENT || kind == MasterEntityKind.SUPPLIER;
     }
 
     private static Map<UUID, Long> dedupe(List<MasterBatchRequests.Item> items) {

@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "contractId": "party-master-hidden-v1",
+  "auditDate": "2026-11-03",
+  "status": "native-not-migrated; server-and-flutter-owning-contract",
+  "workItemIds": [
+    "W7-BIZ-022",
+    "W7-BIZ-032",
+    "W7-BIZ-036"
+  ],
+  "owningSources": [
+    "server/src/main/java/com/uten/imp/features/master/lifecycle/MasterLifecycleController.java",
+    "server/src/main/java/com/uten/imp/features/master/lifecycle/MasterLifecycleService.java",
+    "server/src/main/java/com/uten/imp/features/master/lifecycle/dto/MasterBatchRequests.java",
+    "server/src/main/java/com/uten/imp/features/master/lifecycle/dto/MasterBatchResult.java",
+    "server/src/main/java/com/uten/imp/features/master/reference/MasterReferenceValidationAdapter.java"
+  ],
+  "scope": {
+    "entityKinds": [
+      "CLIENT",
+      "SUPPLIER"
+    ],
+    "businessIdentity": "UUID",
+    "hiddenStorage": "clients.is_hidden / suppliers.is_hidden",
+    "preserved": [
+      "is_deleted",
+      "status",
+      "UUID",
+      "code",
+      "owner",
+      "historical documents",
+      "open receivables and payables",
+      "existing source relationships"
+    ],
+    "excludedKindsKeepExistingReferenceProtection": [
+      "GOODS",
+      "COLOR",
+      "UNIT",
+      "WAREHOUSE",
+      "MOULD"
+    ]
+  },
+  "delete": {
+    "paths": [
+      "POST /api/master/clients/batch-delete",
+      "POST /api/master/suppliers/batch-delete"
+    ],
+    "permissions": [
+      "client:delete",
+      "supplier:delete"
+    ],
+    "request": {
+      "items": "1..500 records with id UUID and optional optimistic version; preserve the original selection versions",
+      "confirmReferencedHide": "optional boolean; omitted, null or false means the initial command; only Boolean.TRUE enables confirmed reference hiding"
+    },
+    "response": {
+      "succeeded": "successful item count",
+      "failed": "unsuccessful item count, including items requiring confirmation",
+      "results": "per-record id, label, ok, reason, confirmationRequired and references",
+      "confirmationRequired": "true only for server-approved counterparty reference warnings; permissions and stale-version failures remain false",
+      "references": "bounded, server-authorized records with kind, id and label; the client never reconstructs inaccessible document identities"
+    },
+    "confirmation": [
+      "Show 去查看 and 仍然删除 for confirmationRequired items; explain that master lists and new-document choices are hidden while historical documents and balances remain.",
+      "去查看 navigates only to the supplied, authorized relationship and sends no delete command.",
+      "仍然删除 resends only the confirmationRequired subset, retains each original version, and sets confirmReferencedHide=true.",
+      "Permission, object scope and version are rechecked by the server; the confirmation flag is not a general force-delete bypass.",
+      "Cancellation, closing, account/dataset changes and repeated clicks must not issue another write; an unknown submission must be reconciled before resubmission."
+    ]
+  },
+  "readAndSelection": [
+    "Master lists, categories, search, header facets and exports omit hidden counterparty rows according to the owning service query.",
+    "New business pickers and new-reference validation omit or reject hidden counterparties; stale picker snapshots cannot create a newly selected hidden reference.",
+    "Historical ID lookup and dictionaries preserve the original identity and name; selectable=false is authoritative for new choices.",
+    "Historical filters may explicitly request the owning historical candidate mode; do not use a new-business-only list to erase access to old statements.",
+    "Existing documents retain their original client/supplier UUID and continue under existing lifecycle, permissions, amount and source guards; hidden status alone does not invalidate them."
+  ],
+  "ownerPresentation": {
+    "unassignedLabel": "未分配",
+    "unassignedBrush": "Uten.Error",
+    "tokenSource": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Tokens.g.xaml",
+    "rule": "Use the generated semantic error brush for unassigned owner text; assigned owner labels keep the existing theme style. A shared native owner cell must be used when these pages are migrated."
+  },
+  "nativeImplementation": {
+    "implemented": false,
+    "customerSupplierPagesPresent": false,
+    "relatedBusinessPickersPresent": false,
+    "businessWritesOpened": false,
+    "workItemStatusesAdvanced": false,
+    "targetPcAcceptance": false,
+    "formalRelease": false
+  },
+  "historicalSnapshotCompatibility": {
+    "authority": "server V995 fn_party_master_history_schema + MasterOperationHistoryService read projection",
+    "scope": "Only clients/suppliers object snapshots: missing is_hidden=false and hidden_at=null. Explicit values, non-object rows and all other tables are unchanged.",
+    "originalEvidence": "Immutable before_row/after_row audit snapshots are not rewritten.",
+    "personalUndoRedo": "Both service/SQL CAS and existing cross-operation token lineage use the same server normalization. Hidden=true, non-null hidden_at or any other actual subsequent change still fails CAS.",
+    "objectVersionRestore": "Existing commandHead and alignedTarget behavior is retained: restoring an old version without hidden fields preserves current hidden-state values.",
+    "nativeConsumer": "Use the authoritative server result; do not implement a second snapshot-normalization or CAS rule in the native client."
+  }
+}

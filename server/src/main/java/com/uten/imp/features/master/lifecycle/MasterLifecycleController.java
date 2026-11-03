@@ -89,7 +89,7 @@ public class MasterLifecycleController {
     @PostMapping("/clients/batch-delete")
     @PreAuthorize("hasAuthority('client:delete')")
     public MasterBatchResult clientDelete(@Valid @RequestBody MasterBatchRequests.DeleteRequest body) {
-        return service.batchDelete(MasterEntityKind.CLIENT, body.items());
+        return service.batchDelete(MasterEntityKind.CLIENT, body.items(), Boolean.TRUE.equals(body.confirmReferencedHide()));
     }
 
     @PostMapping("/suppliers/batch-status")
@@ -101,7 +101,7 @@ public class MasterLifecycleController {
     @PostMapping("/suppliers/batch-delete")
     @PreAuthorize("hasAuthority('supplier:delete')")
     public MasterBatchResult supplierDelete(@Valid @RequestBody MasterBatchRequests.DeleteRequest body) {
-        return service.batchDelete(MasterEntityKind.SUPPLIER, body.items());
+        return service.batchDelete(MasterEntityKind.SUPPLIER, body.items(), Boolean.TRUE.equals(body.confirmReferencedHide()));
     }
 
     @PostMapping("/moulds/batch-status")

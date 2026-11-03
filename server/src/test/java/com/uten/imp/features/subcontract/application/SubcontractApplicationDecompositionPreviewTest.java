@@ -135,6 +135,7 @@ class SubcontractApplicationDecompositionPreviewTest {
                     mock(TxSessionVars.class),
                     mock(DocNumberService.class),
                     em,
+                    mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),
                     mock(SecurityContextCurrentUser.class),
                     mock(EmployeeNameResolver.class),
                     mock(ProductionSubcontractSupplyTransitionPort.class),

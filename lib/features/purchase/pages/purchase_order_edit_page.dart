@@ -736,8 +736,7 @@ class _PurchaseOrderEditPageState extends ConsumerState<PurchaseOrderEditPage>
         if (r.supplierId == null &&
             terms.supplierId != null &&
             terms.supplierId!.isNotEmpty &&
-            names.supplierReferenceKnown(terms.supplierId) &&
-            !names.isSupplierDisabled(terms.supplierId)) {
+            names.supplierReferenceSelectable(terms.supplierId)) {
           r.supplierId = terms.supplierId;
           r.markTermsAutofilled('supplier', terms.supplierId!);
           changed = true;

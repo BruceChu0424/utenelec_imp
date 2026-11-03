@@ -69,4 +69,37 @@ class MasterLifecycleControllerTest {
                 .andExpect(jsonPath("$.results[0].reason").value("已被他人修改，请刷新后重试"));
         verify(service).batchStatus(eq(MasterEntityKind.SUPPLIER), eq("禁用"), any());
     }
+
+    @Test
+    void partyConfirmationIsExplicitAndOtherMasterKindsCannotOptOutOfReferenceGuards() throws Exception {
+        UUID id=UUID.randomUUID();
+        when(service.batchDelete(eq(MasterEntityKind.CLIENT), anyList(), eq(true)))
+                .thenReturn(MasterBatchResult.of(List.of(new MasterBatchResult.ItemResult(id,"客户",true,null))));
+        mvc.perform(post("/api/master/clients/batch-delete").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\":[{\"id\":\""+id+"\",\"version\":4}],\"confirmReferencedHide\":true}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.succeeded").value(1));
+        verify(service).batchDelete(eq(MasterEntityKind.CLIENT), anyList(), eq(true));
+        when(service.batchDelete(eq(MasterEntityKind.GOODS), anyList()))
+                .thenReturn(MasterBatchResult.of(List.of(new MasterBatchResult.ItemResult(id,"货品",false,"BOM引用"))));
+        mvc.perform(post("/api/master/goods/batch-delete").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\":[{\"id\":\""+id+"\"}],\"confirmReferencedHide\":true}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.results[0].confirmationRequired").value(false));
+        verify(service).batchDelete(eq(MasterEntityKind.GOODS), anyList());
+    }
+
+    @Test
+    void omittedNullAndFalseConfirmationKeepEveryExistingDeleteRequestCompatible() throws Exception {
+        UUID id=UUID.randomUUID();
+        for(var kind:MasterEntityKind.values()) {
+            var result=MasterBatchResult.of(List.of(new MasterBatchResult.ItemResult(id,"资料",true,null)));
+            boolean party=kind==MasterEntityKind.CLIENT||kind==MasterEntityKind.SUPPLIER;
+            if(party)when(service.batchDelete(eq(kind),anyList(),eq(false))).thenReturn(result);
+            else when(service.batchDelete(eq(kind),anyList())).thenReturn(result);
+            for(String confirmation:List.of("",",\"confirmReferencedHide\":null",",\"confirmReferencedHide\":false")) {
+                mvc.perform(post("/api/master/"+kind.table()+"/batch-delete").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\":[{\"id\":\""+id+"\"}]"+confirmation+"}"))
+                        .andExpect(status().isOk()).andExpect(jsonPath("$.succeeded").value(1));
+            }
+        }
+    }
 }

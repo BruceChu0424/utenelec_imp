@@ -119892,7 +119892,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c886864d08f21b0930ad7164bb8e310dd4bdf1ecd0116cdc7ce37ef7ce02d024"
+          "targetSha256": "e83ad7f4d262f761e50a791fe0b1abbf7cb210feb03e061819c221ee0a8b6e10"
         },
         {
           "directive": "import",
@@ -124637,7 +124637,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c886864d08f21b0930ad7164bb8e310dd4bdf1ecd0116cdc7ce37ef7ce02d024"
+          "targetSha256": "e83ad7f4d262f761e50a791fe0b1abbf7cb210feb03e061819c221ee0a8b6e10"
         },
         {
           "directive": "import",
@@ -153622,8 +153622,8 @@
       "id": "page:sales/pages/sales_doc_edit_page.dart",
       "feature": "sales",
       "source": "lib/features/sales/pages/sales_doc_edit_page.dart",
-      "sha256": "80dd01613c8ebfb9636ff93c613eaa23cf96097d061449f701e3ad9d0e718afc",
-      "lineCount": 4852,
+      "sha256": "d3d4d16fd8674e29c6f49ff73e5602a63b27630c5c51a0d4d54781f500e22c10",
+      "lineCount": 4857,
       "classes": [
         {
           "name": "SalesDocEditPage",
@@ -154832,7 +154832,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c886864d08f21b0930ad7164bb8e310dd4bdf1ecd0116cdc7ce37ef7ce02d024"
+          "targetSha256": "e83ad7f4d262f761e50a791fe0b1abbf7cb210feb03e061819c221ee0a8b6e10"
         },
         {
           "directive": "import",
@@ -154883,28 +154883,28 @@
         {
           "symbol": "Perm.salesQuoteView",
           "literal": "sales_quote:view",
-          "line": 2901,
+          "line": 2906,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 305
         },
         {
           "symbol": "Perm.salesQuoteCreate",
           "literal": "sales_quote:create",
-          "line": 2901,
+          "line": 2906,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 591
         },
         {
           "symbol": "Perm.currencyCreate",
           "literal": "currency:create",
-          "line": 4804,
+          "line": 4809,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 574
         },
         {
           "symbol": "Perm.settlementMethodCreate",
           "literal": "settlement_method:create",
-          "line": 4807,
+          "line": 4812,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 587
         }
@@ -155503,7 +155503,7 @@
         {
           "symbol": "_importFromUpstream",
           "receiver": null,
-          "line": 1440,
+          "line": 1445,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "import"
@@ -155513,7 +155513,7 @@
         {
           "symbol": "removeWhere",
           "receiver": "_grid",
-          "line": 1482,
+          "line": 1487,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155523,7 +155523,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofilled",
-          "line": 1516,
+          "line": 1521,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155533,7 +155533,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofilled",
-          "line": 1517,
+          "line": 1522,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155543,7 +155543,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofilled",
-          "line": 1518,
+          "line": 1523,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155553,7 +155553,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofilled",
-          "line": 1519,
+          "line": 1524,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155563,7 +155563,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofilled",
-          "line": 1520,
+          "line": 1525,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155573,7 +155573,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofillValues",
-          "line": 1521,
+          "line": 1526,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155583,7 +155583,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofillValues",
-          "line": 1522,
+          "line": 1527,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155593,7 +155593,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofilled",
-          "line": 1698,
+          "line": 1703,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155603,7 +155603,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofillValues",
-          "line": 1699,
+          "line": 1704,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155613,7 +155613,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofilled",
-          "line": 1706,
+          "line": 1711,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155623,7 +155623,7 @@
         {
           "symbol": "showClientShipAddressSheet",
           "receiver": null,
-          "line": 1718,
+          "line": 1723,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "ship"
@@ -155633,7 +155633,7 @@
         {
           "symbol": "remove",
           "receiver": null,
-          "line": 1735,
+          "line": 1740,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155643,7 +155643,7 @@
         {
           "symbol": "remove",
           "receiver": null,
-          "line": 1736,
+          "line": 1741,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155653,7 +155653,7 @@
         {
           "symbol": "removeListener",
           "receiver": "c",
-          "line": 1744,
+          "line": 1749,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155663,7 +155663,7 @@
         {
           "symbol": "remove",
           "receiver": "_errors",
-          "line": 1945,
+          "line": 1950,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155673,7 +155673,7 @@
         {
           "symbol": "removeRows",
           "receiver": "_grid",
-          "line": 2014,
+          "line": 2019,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155683,7 +155683,7 @@
         {
           "symbol": "_save",
           "receiver": null,
-          "line": 2021,
+          "line": 2026,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "save"
@@ -155693,7 +155693,7 @@
         {
           "symbol": "_finishCreatedShipments",
           "receiver": null,
-          "line": 2056,
+          "line": 2061,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -155703,7 +155703,7 @@
         {
           "symbol": "_saveShipmentBatch",
           "receiver": null,
-          "line": 2060,
+          "line": 2065,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -155713,7 +155713,7 @@
         {
           "symbol": "_finishCreatedDocument",
           "receiver": null,
-          "line": 2065,
+          "line": 2070,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -155723,7 +155723,7 @@
         {
           "symbol": "toSaveJson",
           "receiver": null,
-          "line": 2249,
+          "line": 2254,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -155733,7 +155733,7 @@
         {
           "symbol": "_saveShipmentBatch",
           "receiver": null,
-          "line": 2255,
+          "line": 2260,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -155743,7 +155743,7 @@
         {
           "symbol": "saveFormDraftNow",
           "receiver": null,
-          "line": 2260,
+          "line": 2265,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -155753,7 +155753,7 @@
         {
           "symbol": "create",
           "receiver": "repo",
-          "line": 2264,
+          "line": 2269,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -155763,7 +155763,7 @@
         {
           "symbol": "update",
           "receiver": "repo",
-          "line": 2265,
+          "line": 2270,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "update"
@@ -155773,7 +155773,7 @@
         {
           "symbol": "_finishCreatedDocument",
           "receiver": null,
-          "line": 2288,
+          "line": 2293,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -155783,7 +155783,7 @@
         {
           "symbol": "completeFormDraft",
           "receiver": null,
-          "line": 2291,
+          "line": 2296,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "complete"
@@ -155793,7 +155793,7 @@
         {
           "symbol": "popSavedEditOrReplace",
           "receiver": null,
-          "line": 2296,
+          "line": 2301,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "edit"
@@ -155803,7 +155803,7 @@
         {
           "symbol": "describeSubmitError",
           "receiver": null,
-          "line": 2306,
+          "line": 2311,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -155813,7 +155813,7 @@
         {
           "symbol": "_saveShipmentBatch",
           "receiver": null,
-          "line": 2313,
+          "line": 2318,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "save"
@@ -155823,7 +155823,7 @@
         {
           "symbol": "saveFormDraftNow",
           "receiver": null,
-          "line": 2319,
+          "line": 2324,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -155833,7 +155833,7 @@
         {
           "symbol": "batchShip",
           "receiver": null,
-          "line": 2323,
+          "line": 2328,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "ship"
@@ -155843,7 +155843,7 @@
         {
           "symbol": "_finishCreatedShipments",
           "receiver": null,
-          "line": 2362,
+          "line": 2367,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -155853,7 +155853,7 @@
         {
           "symbol": "describeSubmitError",
           "receiver": null,
-          "line": 2381,
+          "line": 2386,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -155863,7 +155863,7 @@
         {
           "symbol": "_finishCreatedShipments",
           "receiver": null,
-          "line": 2389,
+          "line": 2394,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "finish"
@@ -155873,7 +155873,7 @@
         {
           "symbol": "completeFormDraft",
           "receiver": null,
-          "line": 2400,
+          "line": 2405,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "complete"
@@ -155883,7 +155883,7 @@
         {
           "symbol": "_finishCreatedDocument",
           "receiver": null,
-          "line": 2456,
+          "line": 2461,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "finish"
@@ -155893,7 +155893,7 @@
         {
           "symbol": "completeFormDraft",
           "receiver": null,
-          "line": 2469,
+          "line": 2474,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "complete"
@@ -155903,7 +155903,7 @@
         {
           "symbol": "_confirmBatchIntake",
           "receiver": null,
-          "line": 2592,
+          "line": 2597,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -155913,7 +155913,7 @@
         {
           "symbol": "_cancelIntakeSelecting",
           "receiver": null,
-          "line": 2619,
+          "line": 2624,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "cancel"
@@ -155923,7 +155923,7 @@
         {
           "symbol": "remove",
           "receiver": "_intakeSelected",
-          "line": 2630,
+          "line": 2635,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155933,7 +155933,7 @@
         {
           "symbol": "_confirmBatchIntake",
           "receiver": null,
-          "line": 2637,
+          "line": 2642,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "confirm"
@@ -155943,7 +155943,7 @@
         {
           "symbol": "remove",
           "receiver": "_intakeBusyFiles",
-          "line": 2814,
+          "line": 2819,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155953,7 +155953,7 @@
         {
           "symbol": "downloadBytes",
           "receiver": null,
-          "line": 2853,
+          "line": 2858,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "download"
@@ -155963,7 +155963,7 @@
         {
           "symbol": "create",
           "receiver": "repository",
-          "line": 3311,
+          "line": 3316,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -155973,7 +155973,7 @@
         {
           "symbol": "remove",
           "receiver": "_errors",
-          "line": 3372,
+          "line": 3377,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155983,7 +155983,7 @@
         {
           "symbol": "removeWhere",
           "receiver": "_grid",
-          "line": 3415,
+          "line": 3420,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155993,7 +155993,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 3707,
+          "line": 3712,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -156003,7 +156003,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 3729,
+          "line": 3734,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -156013,7 +156013,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 3761,
+          "line": 3766,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -156023,7 +156023,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 3774,
+          "line": 3779,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -156033,7 +156033,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 3800,
+          "line": 3805,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -156043,7 +156043,7 @@
         {
           "symbol": "utenMakerAuditCells",
           "receiver": null,
-          "line": 3849,
+          "line": 3854,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "audit"
@@ -156053,7 +156053,7 @@
         {
           "symbol": "UtenImportButton",
           "receiver": null,
-          "line": 4565,
+          "line": 4570,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "import"
@@ -156063,7 +156063,7 @@
         {
           "symbol": "updateFor",
           "receiver": null,
-          "line": 4585,
+          "line": 4590,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "update"
@@ -156073,7 +156073,7 @@
         {
           "symbol": "UtenEditFloatingActions",
           "receiver": null,
-          "line": 4681,
+          "line": 4686,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "edit"
@@ -161671,7 +161671,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c886864d08f21b0930ad7164bb8e310dd4bdf1ecd0116cdc7ce37ef7ce02d024"
+          "targetSha256": "e83ad7f4d262f761e50a791fe0b1abbf7cb210feb03e061819c221ee0a8b6e10"
         },
         {
           "directive": "import",
@@ -173926,7 +173926,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c886864d08f21b0930ad7164bb8e310dd4bdf1ecd0116cdc7ce37ef7ce02d024"
+          "targetSha256": "e83ad7f4d262f761e50a791fe0b1abbf7cb210feb03e061819c221ee0a8b6e10"
         },
         {
           "directive": "import",
@@ -176568,7 +176568,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c886864d08f21b0930ad7164bb8e310dd4bdf1ecd0116cdc7ce37ef7ce02d024"
+          "targetSha256": "e83ad7f4d262f761e50a791fe0b1abbf7cb210feb03e061819c221ee0a8b6e10"
         },
         {
           "directive": "import",
@@ -206138,7 +206138,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c886864d08f21b0930ad7164bb8e310dd4bdf1ecd0116cdc7ce37ef7ce02d024"
+          "targetSha256": "e83ad7f4d262f761e50a791fe0b1abbf7cb210feb03e061819c221ee0a8b6e10"
         },
         {
           "directive": "import",
@@ -209733,7 +209733,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c886864d08f21b0930ad7164bb8e310dd4bdf1ecd0116cdc7ce37ef7ce02d024"
+          "targetSha256": "e83ad7f4d262f761e50a791fe0b1abbf7cb210feb03e061819c221ee0a8b6e10"
         },
         {
           "directive": "import",
@@ -225522,7 +225522,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c886864d08f21b0930ad7164bb8e310dd4bdf1ecd0116cdc7ce37ef7ce02d024"
+          "targetSha256": "e83ad7f4d262f761e50a791fe0b1abbf7cb210feb03e061819c221ee0a8b6e10"
         }
       ],
       "partUnits": [],
@@ -239884,8 +239884,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/master/reference/BusinessMasterReferenceController.java",
-      "sha256": "8155330b8fa1bde1c1dfa33450940b040554e3257009a508899a749a09887de4",
-      "lineCount": 202,
+      "sha256": "e7e3a69c96d8868f9be690eaa3e7cc9ddb4ca696ead442fab7a81dff30f0fccd",
+      "lineCount": 204,
       "class": "BusinessMasterReferenceController",
       "declaredBasePaths": [
         "/api/business-references"
@@ -240024,7 +240024,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 174,
+          "line": 176,
           "declaredPathLiterals": [
             "/goods/search-category-ids"
           ],
@@ -240034,7 +240034,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 182,
+          "line": 184,
           "declaredPathLiterals": [
             "/goods/facet-values"
           ],
@@ -240044,7 +240044,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 194,
+          "line": 196,
           "declaredPathLiterals": [
             "/goods/facets"
           ],
@@ -252589,8 +252589,8 @@
     },
     {
       "source": "lib/features/basic_data/widgets/uten_goods_picker.dart",
-      "sha256": "c886864d08f21b0930ad7164bb8e310dd4bdf1ecd0116cdc7ce37ef7ce02d024",
-      "lineCount": 1736
+      "sha256": "e83ad7f4d262f761e50a791fe0b1abbf7cb210feb03e061819c221ee0a8b6e10",
+      "lineCount": 1751
     },
     {
       "source": "lib/features/basic_data/widgets/uten_supplier_picker.dart",
@@ -254714,8 +254714,8 @@
     },
     {
       "source": "lib/features/sales/pages/sales_doc_edit_page.dart",
-      "sha256": "80dd01613c8ebfb9636ff93c613eaa23cf96097d061449f701e3ad9d0e718afc",
-      "lineCount": 4852
+      "sha256": "d3d4d16fd8674e29c6f49ff73e5602a63b27630c5c51a0d4d54781f500e22c10",
+      "lineCount": 4857
     },
     {
       "source": "lib/features/sales/pages/sales_doc_list_page.dart",
@@ -257609,8 +257609,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/master/reference/BusinessMasterReferenceController.java",
-      "sha256": "8155330b8fa1bde1c1dfa33450940b040554e3257009a508899a749a09887de4",
-      "lineCount": 202
+      "sha256": "e7e3a69c96d8868f9be690eaa3e7cc9ddb4ca696ead442fab7a81dff30f0fccd",
+      "lineCount": 204
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/master/referencemethod/ReferenceMethodController.java",

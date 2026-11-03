@@ -4722,10 +4722,11 @@
       "evidence": [
         "clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json",
         "clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json",
-        "docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md"
+        "docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md",
+        "clients/windows_legacy/progress/evidence/shared-picker-field-regression-20261102.json"
       ],
-      "notes": "2026-11-01 BOM对比追加：左右选中联动，目标侧按钮分组与顶部通知；编辑/替换先暂存，替换和最终保存弹窗确认，未保存关闭可保存/放弃/继续。Web和Flutter共用；完整WPF货品详情和此交互未迁移，未知回执/权限/精度须同合同接续，不算真机或原生完成。\n2026-11-01 Web/Flutter goods detail gains symmetric window insets and a unified theme surface. BOM comparison uses the SAME MasterDataTableView and UtenTreeTableCell as assembly, with linked scroll/selection and bidirectional selected/all-component replacement through existing snapshot/preview/commit. Native full detail/BOM remains unported. Follow source+target fingerprints, exact decimals, permissions and unknown-commit recovery. See E-GOODS-BOM-COMPARE-20261101; current source hashes belong to that evidence.\n2026-11-01价格权限收口：来源价格码、来源查看和分析权共同控制价格分析/历史入口；财务数据范围不替代商业字段码。采购/委外公共字段与草稿历史投影同源；AI登记及执行按种类重验。当前原生货品售价读取合同不变；价格分析与采购/委外原生完整入口仍未迁移，状态/DoD不变。见docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md。",
-      "lastUpdated": "2026-11-02T05:18:08.490420+00:00"
+      "notes": "2026-11-01 BOM对比追加：左右选中联动，目标侧按钮分组与顶部通知；编辑/替换先暂存，替换和最终保存弹窗确认，未保存关闭可保存/放弃/继续。Web和Flutter共用；完整WPF货品详情和此交互未迁移，未知回执/权限/精度须同合同接续，不算真机或原生完成。\n2026-11-01 Web/Flutter goods detail gains symmetric window insets and a unified theme surface. BOM comparison uses the SAME MasterDataTableView and UtenTreeTableCell as assembly, with linked scroll/selection and bidirectional selected/all-component replacement through existing snapshot/preview/commit. Native full detail/BOM remains unported. Follow source+target fingerprints, exact decimals, permissions and unknown-commit recovery. See E-GOODS-BOM-COMPARE-20261101; current source hashes belong to that evidence.\n2026-11-01价格权限收口：来源价格码、来源查看和分析权共同控制价格分析/历史入口；财务数据范围不替代商业字段码。采购/委外公共字段与草稿历史投影同源；AI登记及执行按种类重验。当前原生货品售价读取合同不变；价格分析与采购/委外原生完整入口仍未迁移，状态/DoD不变。见docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md。\n2026-11-02 公共选货回填修复：价格/折扣保留原独立字段权限，BOM库存预览仅goods:view；同一单调读代次覆盖分类、建议、确认和回写。共享合同 contracts/business-master-references/v1.json；当前原生业务选择/BOM编辑尚未迁移，不以Web、Flutter或服务端测试替代原生验收，状态不变。",
+      "lastUpdated": "2026-11-03T06:19:38.890512+00:00"
     },
     {
       "id": "W7-BIZ-216",
@@ -8242,7 +8243,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_material_discovery_request_page.dart",
       "sourceSha256": "14063da1c71602498e3624413370d5699b927a0546e4f7087d9c4855b8758294",
-      "sourceProofSha256": "94158c826043fd3575c221ff7d6df5efb8ce0cef16d0555ef2a3cab892df5d71",
+      "sourceProofSha256": "c31118b702857e0c070ef40b854c9abac9d00f05d7133e234fc0ac22af922489",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9537,9 +9538,10 @@
       ],
       "evidence": [
         "clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json",
-        "clients/windows_legacy/progress/evidence/staff-feedback-20261103.json"
+        "clients/windows_legacy/progress/evidence/staff-feedback-20261103.json",
+        "clients/windows_legacy/progress/evidence/shared-picker-field-regression-20261102.json"
       ],
-      "notes": "2026-11-03：订单新建无需填写发运策略，缺省 ALLOW_PARTIAL；客户切换/未落单草稿同口径，已有订单省略字段保留原策略及修订保护。WPF 尚未迁移，保持 todo。",
+      "notes": "2026-11-03：订单新建无需填写发运策略，缺省 ALLOW_PARTIAL；客户切换/未落单草稿同口径，已有订单省略字段保留原策略及修订保护。WPF 尚未迁移，保持 todo。\n尚未迁移；先做动作/合同审计。\n2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。\n2026-11-02 公共选货回填修复：价格/折扣保留原独立字段权限，BOM库存预览仅goods:view；同一单调读代次覆盖分类、建议、确认和回写。共享合同 contracts/business-master-references/v1.json；当前原生业务选择/BOM编辑尚未迁移，不以Web、Flutter或服务端测试替代原生验收，状态不变。",
       "lastUpdated": "2026-11-03T11:59:01.414476+00:00"
     },
     {
@@ -9761,7 +9763,7 @@
       "feature": "sales",
       "businessSource": "lib/features/sales/pages/sales_scarcity_page.dart",
       "sourceSha256": "ccf843f3920337e799b0e058321ff0f55dc86241891d5eacb1e2614421743172",
-      "sourceProofSha256": "61c8e6defebd7354fd60f0d06d987ab5f97ae28506078397f9954f85bb29e08c",
+      "sourceProofSha256": "1c56115e1fe1bb02c0e8d91223e531682c8c4a7729bdb88ba3a3e5f99f16a922",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -10425,7 +10427,7 @@
       "feature": "subcontract",
       "businessSource": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
       "sourceSha256": "3438ca8433cd9a014b5e967fd6eb10b40bd8a6f757198cedbafbac3a92bbcdf7",
-      "sourceProofSha256": "eeb6470c85057269f170bad650c953371396aa151f8bf445746377ae33f27eb7",
+      "sourceProofSha256": "3cb2b37787fc875cc7a460f381758166bec16d8ead0f2ba48e441608da6a9161",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -10553,7 +10555,7 @@
       "feature": "subcontract",
       "businessSource": "lib/features/subcontract/pages/subcontract_order_edit_page.dart",
       "sourceSha256": "a2832d36ee2ffae0cbf5b765f04334234cf0f837fe997cf212574bbc8ffdf3be",
-      "sourceProofSha256": "2a15ada8a9fe52682871ea002affaeb1085c20a8ec3750f264651f51508a2fc0",
+      "sourceProofSha256": "4372350e649230d810de7a1624d1482e62fc7f681eda897400d773f292213ffc",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -11647,7 +11649,7 @@
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/production_material_discovery_page.dart",
       "sourceSha256": "ab85b756809df14b975154034a4f363e025cd31bd836b3911a97d495cfc2130c",
-      "sourceProofSha256": "32cd5669302f123226d1d15710698f71f1227e4242ed6b46c855ab856a2f7046",
+      "sourceProofSha256": "d9ae227ee324d147f6e53dc9313980302d313801b67c3c5bee767c31b7271d7b",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -12809,7 +12811,7 @@
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/warehouse_weigh_count_page.dart",
       "sourceSha256": "25bc463fac8eee80592212b2bd9dea3c9447a7989a3fe9d0a992abddf9a0c4dc",
-      "sourceProofSha256": "a12f738db573d9c6c28166ff4197b1a2b20dedcf25cbb8b61692124ef16fa740",
+      "sourceProofSha256": "65b499b33d5e61bf51f7603da823cec7853639d806fd18a6366611ab64498df1",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",

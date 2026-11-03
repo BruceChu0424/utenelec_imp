@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "goods": {
+    "id": "a4af5277-f8db-461e-84bc-949d6e18692f",
+    "code": "2801011241",
+    "name": "吴昊S300多功能五孔插座",
+    "categoryId": "root-cause-category",
+    "status": "使用",
+    "price": 39.13,
+    "discount": 0.2,
+    "stockQty": 123,
+    "unitId": "unit-pcs",
+    "colorId": "color-gray",
+    "stockPlace": "A-01",
+    "minOrderQty": 12,
+    "orderMultipleQty": 6,
+    "issueMethod": "PERIODIC",
+    "periodicCostBasis": "OWN",
+    "bulkPackageQty": 25,
+    "recycledMaterial": true
+  },
+  "cases": [
+    {"name": "business-only", "grants": [], "priceVisible": false, "discountVisible": false, "stockVisible": false},
+    {"name": "price-only", "grants": ["goods:price:view"], "priceVisible": true, "discountVisible": false, "stockVisible": false},
+    {"name": "discount-only", "grants": ["goods:discount:view"], "priceVisible": false, "discountVisible": true, "stockVisible": false},
+    {"name": "price-and-discount", "grants": ["goods:price:view", "goods:discount:view"], "priceVisible": true, "discountVisible": true, "stockVisible": false},
+    {"name": "price-edit", "grants": ["goods:price:edit"], "priceVisible": true, "discountVisible": false, "stockVisible": false},
+    {"name": "master-view-only", "grants": ["goods:view"], "priceVisible": false, "discountVisible": false, "stockVisible": true},
+    {"name": "master-and-fields", "grants": ["goods:view", "goods:price:view", "goods:discount:view"], "priceVisible": true, "discountVisible": true, "stockVisible": true}
+  ],
+  "rules": {
+    "candidateScope": "Existing GoodsService lifecycle, owner and category predicates remain authoritative.",
+    "price": "goods:price:view OR goods:price:edit; selection grants and sales_order:price:view do not grant this master field.",
+    "discount": "goods:discount:view independently of price; absent/zero retains the document's existing default policy.",
+    "stockQty": "goods:view only, preserving the original master-list access used by BOM previews.",
+    "salesDisplay": "Sales quote/order additionally retain sales_order:price:view and the server's priceMasked flag.",
+    "privateFields": "No master write access, cost fields, account balances, bank/tax/contact details are granted by selecting a reference.",
+    "identity": "Opening, loading and confirmation belong to one monotonic account/permission/server/read-scope epoch. Revocation followed by regrant cannot revive the old selection."
+  }
+}

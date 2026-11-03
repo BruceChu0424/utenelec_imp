@@ -1324,7 +1324,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   /// 选中的第一个填当前行，其余各自追加一新行，一次选完不用逐个重复"加行→选货品"。
   Future<void> _pickGoods(SalesGridRow row) async {
     final picked = await ref.read(salesGridGoodsPickerProvider)(context, ref);
-    if (!mounted || picked.isEmpty) return;
+    if (!mounted ||
+        !formDraftIdentityIsCurrent ||
+        picked.isEmpty ||
+        !_grid.rows.contains(row)) {
+      return;
+    }
     var replacedQuoteLine = false;
     void fill(SalesGridRow target, GoodsListItem g) {
       // 报价核定(折扣锁定)的行重新选了同一个货品(同颜色同单位)：什么都不动，

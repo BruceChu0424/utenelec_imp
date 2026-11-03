@@ -9,6 +9,8 @@
 //  - 同一份文件「替换」重新导入, 备注不重复; 明细里给识别行换货品按文件单价重算折扣;
 //  - 重新打开的外币订单换货品: 不知道参考汇率, 折扣留空请销售核对。
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -81,10 +83,13 @@ Future<_Env> _pump(
   List<GoodsListItem> pickedGoods = const [],
   Map<String, dynamic>? lastTerms,
   Map<String, dynamic>? intakeResult,
+  bool useRealReferencePicker = false,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1800, 1400));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final api = _IntakeApi(detail, lastTerms: lastTerms);
+  api.useRealReferencePicker = useRealReferencePicker;
+  api.referencePermissions = permissions;
   final runner = FakeAiJobRunner(result: intakeResult ?? intakeResultJson());
   final repo = FakeSalesIntakeRepository();
   final presenter = FakeProgressPresenter();
@@ -108,9 +113,10 @@ Future<_Env> _pump(
         ),
         aiStatusProvider.overrideWith((ref) async => status),
         salesIntakeRepositoryProvider.overrideWithValue(repo),
-        salesGridGoodsPickerProvider.overrideWithValue(
-          (_, _) async => pickedGoods,
-        ),
+        if (!useRealReferencePicker)
+          salesGridGoodsPickerProvider.overrideWithValue(
+            (_, _) async => pickedGoods,
+          ),
       ],
       child: MaterialApp.router(
         locale: const Locale('zh'),
@@ -216,6 +222,75 @@ Map<String, dynamic> _draftSnapshot(WidgetTester tester) =>
         .captureFormDraft();
 
 void main() {
+  for (final fixture
+      in (_referenceContract['cases'] as List).cast<Map<String, dynamic>>()) {
+    testWidgets(
+      'reference picker: ${fixture['name']} on initial pick and reselect',
+      (tester) async {
+        final env = await _pump(
+          tester,
+          docType: SalesDocType.order,
+          permissions: {
+            ..._orderPerms,
+            ...(fixture['grants'] as List).cast<String>(),
+          },
+          useRealReferencePicker: true,
+        );
+        final grid = tester
+            .widget<UtenEditableGrid<SalesGridRow>>(
+              find.byType(UtenEditableGrid<SalesGridRow>),
+            )
+            .controller;
+        final row = grid.rows.single;
+        expect(_rootCauseMasterGoods['price'], 39.13);
+        expect(_rootCauseMasterGoods['discount'], 0.2);
+        for (var attempt = 0; attempt < 2; attempt++) {
+          await tester.tap(_goodsCell(row));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('复现成品分类'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('吴昊S300多功能五孔插座').last);
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const Key('goods-picker-multi-confirm')));
+          await tester.pumpAndSettle();
+          expect(row.goods?.id, _rootCauseMasterGoods['id']);
+          expect(
+            row.price.text,
+            fixture['priceVisible'] == true ? '39.13' : '',
+            reason:
+                'master price authority remains separate from sales price authority',
+          );
+          expect(
+            row.discount.text,
+            fixture['discountVisible'] == true ? '0.2' : '1',
+            reason: 'discount authority remains independent of price authority',
+          );
+          final priceField = tester
+              .widgetList<TextField>(find.byType(TextField))
+              .singleWhere((field) => identical(field.controller, row.price));
+          expect(priceField.readOnly, isTrue);
+          expect(priceField.decoration?.hintText, '重新选货取价');
+          if (fixture['priceVisible'] == true &&
+              fixture['discountVisible'] == true) {
+            row.qty.text = '10';
+            expect(row.amountExactNotifier.value, '78.26');
+          }
+        }
+        expect(
+          env.api.rootCauseReads
+              .where((p) => p == '/business-references/goods')
+              .length,
+          2,
+        );
+        expect(
+          env.api.rootCauseReads.where((p) => p.startsWith('/goods/')),
+          isEmpty,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets(
     'AI page snapshot carries recognition review reasons and the editor closed action set',
     (tester) async {
@@ -728,10 +803,18 @@ void main() {
     );
     expect(find.text('拖入或点击添加客户文件，加入后可在文件卡上 AI 识别'), findsOneWidget);
     // 没有附件上传权限也能加文件识别(manageWithoutUploadPerm 通道)。
-    expect(
-      find.byKey(const ValueKey('pending-attachment-upload-dropzone')),
-      findsOneWidget,
+    // The shared compact presentation uses the clickable upload area as its
+    // add action; assert that action rather than the retired header button.
+    final uploadArea = find.byKey(
+      const ValueKey('pending-attachment-upload-dropzone'),
     );
+    expect(uploadArea, findsOneWidget);
+    expect(tester.widget<InkWell>(uploadArea).onTap, isNotNull);
+    final pendingSection = tester.widget<PendingAttachmentSection>(
+      find.byType(PendingAttachmentSection),
+    );
+    expect(pendingSection.canManage, isTrue);
+    expect(pendingSection.manageWithoutUploadPerm, isTrue);
 
     await _runIntake(tester);
     expect(env.runner.lastRequest!.params['docType'], 'quote');
@@ -1589,12 +1672,40 @@ class _IntakeApi extends ApiClient {
   Map<String, dynamic>? lastPostBody;
   String? lastPostPath;
   bool failBusinessColumns = false;
+  bool useRealReferencePicker = false;
+  Set<String> referencePermissions = const {};
+  final rootCauseReads = <String>[];
 
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (useRealReferencePicker) {
+      rootCauseReads.add(path);
+      if (path == '/business-references/goods') {
+        // Shared contract: mirrors the independently masked GoodsService DTO.
+        final projected = Map<String, dynamic>.from(_rootCauseMasterGoods);
+        if (!referencePermissions.contains(Perm.goodsPriceView) &&
+            !referencePermissions.contains(Perm.goodsPriceEdit)) {
+          projected.remove('price');
+        }
+        if (!referencePermissions.contains(Perm.goodsDiscountView)) {
+          projected.remove('discount');
+        }
+        if (!referencePermissions.contains(Perm.goodsView)) {
+          projected.remove('stockQty');
+        }
+        return {
+          'items': [projected],
+          'page': 1,
+          'size': 20,
+          'total': 1,
+          'totalPages': 1,
+        };
+      }
+      if (path == '/business-references/goods/facets') return {};
+    }
     final d = detail;
     if (d != null && path.endsWith('/${d['id']}')) return d;
     if (path.endsWith('/last-terms')) {
@@ -1616,6 +1727,18 @@ class _IntakeApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (useRealReferencePicker &&
+        path == '/business-references/goods/categories') {
+      return [
+        {
+          'id': 'root-cause-category',
+          'code': '28',
+          'name': '复现成品分类',
+          'level': 0,
+          'children': <Map<String, dynamic>>[],
+        },
+      ];
+    }
     if (path == '/master/reference-methods/settlement') {
       return [
         {'id': 'settlement-net30', 'code': 'NET30', 'name': '月结30天'},
@@ -1656,3 +1779,13 @@ class _IntakeApi extends ApiClient {
     return detail!;
   }
 }
+
+final _referenceContract =
+    jsonDecode(
+          File(
+            'contracts/business-master-references/v1.json',
+          ).readAsStringSync(),
+        )
+        as Map<String, dynamic>;
+final _rootCauseMasterGoods =
+    _referenceContract['goods'] as Map<String, dynamic>;

@@ -8,7 +8,7 @@ import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.goods.dto.GoodsQueryFilter;
 
-/** Whitelisted physical identity and quantity rules; prices, discount and stock totals are not references. */
+/** Business selection fields. Commercial values are already field-masked by GoodsService. */
 public final class GoodsReferenceProjection {
     private GoodsReferenceProjection() { }
     private static final Set<String> QUERY_FIELDS = Set.of("id", "code", "name", "nameEn", "model", "spec",
@@ -45,11 +45,22 @@ public final class GoodsReferenceProjection {
         }
     }
     public static Map<String,Object> of(GoodsListItem item) {
+        return of(item, false);
+    }
+
+    public static Map<String,Object> of(GoodsListItem item, boolean includeMasterStock) {
         Map<String,Object> row = new LinkedHashMap<>();
         row.put("id", item.getId());
         row.put("code", item.getCode());
         row.put("name", item.getName());
         row.put("nameEn", item.getNameEn());
+        // Do not read the entity again or infer field authority from a business action.
+        // GoodsService independently applies goods:price:view|edit and goods:discount:view.
+        if (item.getPrice() != null) row.put("price", item.getPrice());
+        if (item.getDiscount() != null) row.put("discount", item.getDiscount());
+        // BOM replacement previews used the original master list's stock quantity.
+        // Business-only selectors must not gain this aggregate from a document grant.
+        if (includeMasterStock) row.put("stockQty", item.getStockQty());
         row.put("model", item.getModel());
         row.put("spec", item.getSpec());
         row.put("status", item.getStatus());

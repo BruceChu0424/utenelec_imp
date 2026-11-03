@@ -17,8 +17,35 @@ import 'package:uten_imp/features/basic_data/repositories/product_category_repos
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_goods_picker.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
 
 void main() {
+  testWidgets(
+    'default goods picker cannot reopen a stale tree after permission ABA',
+    (tester) async {
+      final epoch = _TestPickerEpoch();
+      final categories = _HeldCategoryRepository();
+      GoodsListItem? selected;
+      await _pumpPicker(
+        tester,
+        _FakeGoodsRepository(),
+        onSelected: (value) => selected = value,
+        categories: categories,
+        epoch: epoch,
+      );
+      await tester.tap(find.byKey(const Key('open-goods-picker')));
+      await tester.pump();
+      epoch.advance();
+      await tester.pump();
+      epoch.advance();
+      categories.pending.complete(_tree);
+      await tester.pumpAndSettle();
+      expect(_widePickerSheet(), findsNothing);
+      expect(selected, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('single picker can opt into double-click confirmation', (
     tester,
   ) async {
@@ -563,6 +590,8 @@ Future<void> _pumpPicker(
   GoodsRepository goodsRepository, {
   ValueChanged<GoodsListItem?>? onSelected,
   bool confirmOnDoubleTap = false,
+  ProductCategoryRepository? categories,
+  _TestPickerEpoch? epoch,
 }) async {
   tester.view.devicePixelRatio = 1;
   // Leave enough room for the fixture's longest complete category row and
@@ -575,8 +604,9 @@ Future<void> _pumpPicker(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        if (epoch != null) exportContextEpochProvider.overrideWith(() => epoch),
         businessGoodsCategoryRepositoryProvider.overrideWithValue(
-          _FakeCategoryRepository(),
+          categories ?? _FakeCategoryRepository(),
         ),
         businessGoodsReferenceRepositoryProvider.overrideWithValue(
           goodsRepository,
@@ -694,6 +724,18 @@ class _FakeCategoryRepository extends Fake
   // 货品选择器不消费货品计数；沿用无计数树即可。
   @override
   Future<List<ProductCategoryNode>> treeWithGoodsCounts() async => _tree;
+}
+
+class _HeldCategoryRepository extends _FakeCategoryRepository {
+  final pending = Completer<List<ProductCategoryNode>>();
+  @override
+  Future<List<ProductCategoryNode>> tree() => pending.future;
+}
+
+class _TestPickerEpoch extends ExportContextEpoch {
+  @override
+  int build() => 0;
+  void advance() => state++;
 }
 
 class _FakeGoodsRepository extends Fake implements GoodsRepository {

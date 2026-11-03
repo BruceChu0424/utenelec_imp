@@ -43,6 +43,10 @@ public class BusinessMasterReferenceAccess {
         return allowed(resource, staff.currentStaffPermissions());
     }
 
+    public boolean canReadMasterGoods() {
+        return staff.currentStaffPermissions().contains("goods:view");
+    }
+
     public static boolean allowed(String resource, Set<String> granted) {
         return switch (resource) {
             case "supplier" -> granted.contains("supplier:view") || document(granted, SUPPLIER_CONTEXTS);

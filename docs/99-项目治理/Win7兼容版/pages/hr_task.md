@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | HrReconcilePage @45 (page-class)<br>_HrReconcilePageState @52 (state-class)<br>_HrReconcileRecordsSheet @1501 (supporting-class)<br>_HrReconcileRecordsSheetState @1509 (state-class) |
-| 真实路由绑定 | reconcile；router @2342；builder ['HrReconcilePage']；redirect None |
+| 真实路由绑定 | reconcile；router @2346；builder ['HrReconcilePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | employee:view @288；定义 lib/shared/auth/permissions.dart:12<br>employee:edit @289；定义 lib/shared/auth/permissions.dart:14<br>employee:view @299；定义 lib/shared/auth/permissions.dart:12<br>employee:pii:edit @302；定义 lib/shared/auth/permissions.dart:84<br>employee:view @990；定义 lib/shared/auth/permissions.dart:12<br>employee:edit @991；定义 lib/shared/auth/permissions.dart:14<br>employee:view @1520；定义 lib/shared/auth/permissions.dart:12<br>employee:edit @1521；定义 lib/shared/auth/permissions.dart:14 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | HrTaskListPage @136 (page-class)<br>_HrTaskListPageState @145 (state-class) |
-| 真实路由绑定 | :type；router @2347；builder ['HrTaskListPage']；redirect None |
+| 真实路由绑定 | :type；router @2351；builder ['HrTaskListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | notice:publish @183；定义 lib/shared/auth/permissions.dart:514<br>notice:read @186；定义 lib/shared/auth/permissions.dart:513<br>employee:pii:view @188；定义 lib/shared/auth/permissions.dart:83<br>employee:confirm @190；定义 lib/shared/auth/permissions.dart:745<br>employee:view @200；定义 lib/shared/auth/permissions.dart:12<br>employee:edit @201；定义 lib/shared/auth/permissions.dart:14<br>employee:confirm @665；定义 lib/shared/auth/permissions.dart:745<br>employee:task_takeover @670；定义 lib/shared/auth/permissions.dart:749 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -45,7 +45,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | HrWorkbenchPage @51 (page-class)<br>_EntryCard @445 (supporting-class)<br>_QuickTile @535 (supporting-class) |
-| 真实路由绑定 | /hr/tasks；router @2331；builder ['HrWorkbenchPage']；redirect None |
+| 真实路由绑定 | /hr/tasks；router @2335；builder ['HrWorkbenchPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | notice:publish @66；定义 lib/shared/auth/permissions.dart:514<br>employee:view @124；定义 lib/shared/auth/permissions.dart:12<br>employee:edit @125；定义 lib/shared/auth/permissions.dart:14 |
 | 接口常量 | 未静态确认；不能当作不存在 |

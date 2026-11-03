@@ -62,7 +62,14 @@ String _arApRateText(String? value) {
 }
 
 class FinanceArApPage extends ConsumerStatefulWidget {
-  const FinanceArApPage({super.key});
+  const FinanceArApPage({
+    super.key,
+    this.initialPartyId,
+    this.initialDirection,
+  });
+
+  final String? initialPartyId;
+  final String? initialDirection;
 
   @override
   ConsumerState<FinanceArApPage> createState() => _FinanceArApPageState();
@@ -101,6 +108,11 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
   @override
   void initState() {
     super.initState();
+    _partyId = widget.initialPartyId;
+    _direction = const {'AR', 'AP'}.contains(widget.initialDirection)
+        ? widget.initialDirection
+        : null;
+    _directionSelected = _direction != null;
     listenReadOwner(ref, () {
       _loadRequests.begin();
       _columnFilters.reset();

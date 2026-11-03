@@ -44,9 +44,11 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/models/sales_shipment_policy.dart';
 import '../models/client_node.dart';
+import '../models/master_batch.dart';
 import '../models/party_directory_models.dart';
 import '../repositories/client_repository.dart';
 import '../repositories/master_status_repository.dart';
+import '../repositories/master_batch_repository.dart';
 import '../repositories/party_directory_repository.dart';
 import '../models/supplier_node.dart';
 import '../repositories/supplier_repository.dart';
@@ -60,6 +62,10 @@ import '../widgets/master_edit_dialog.dart';
 import '../widgets/master_read_only_fields.dart';
 import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_status_confirmation.dart';
+import '../widgets/master_batch_feedback.dart';
+import '../widgets/master_owner_label.dart';
+import '../widgets/master_referenced_delete.dart';
+import '../widgets/master_reference_details.dart';
 import '../widgets/master_edit_owner.dart';
 import '../widgets/supplier_master_edit.dart';
 import '../widgets/uten_detail_tab_bar.dart';
@@ -566,10 +572,6 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       if (fullName?.isNotEmpty == true)
         _isClient ? '全称 $fullName' : '描述 $fullName',
     ].join(' · ');
-    final meta2 = [
-      _isClient ? '负责人 $owner' : '业务员 $owner',
-      if (linkman?.isNotEmpty == true) '联系人 $linkman',
-    ].join(' · ');
     final name = (_title?.trim().isNotEmpty == true)
         ? _title!.trim()
         : (_isClient ? '客户' : '供应商');
@@ -622,10 +624,22 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
                         ),
                       ),
                     ],
-                    if (meta2.isNotEmpty) ...[
+                    ...[
                       const SizedBox(height: 2),
-                      Text(
-                        meta2,
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(text: _isClient ? '负责人 ' : '业务员 '),
+                            TextSpan(
+                              text: masterOwnerLabel(owner),
+                              style: TextStyle(
+                                color: masterOwnerLabelColor(context, owner),
+                              ),
+                            ),
+                            if (linkman?.isNotEmpty == true)
+                              TextSpan(text: ' · 联系人 $linkman'),
+                          ],
+                        ),
                         style: theme.textTheme.bodyMedium?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),
@@ -2060,6 +2074,12 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     final snapshot = _isClient ? _client : _supplier;
     final type = widget.partyType;
     final id = widget.id;
+    final version = _isClient ? _client?.version : _supplier?.version;
+    final entityPath = _isClient
+        ? ApiEndpoints.clients
+        : ApiEndpoints.suppliers;
+    final items = [MasterBatchItem(id, version)];
+    final noun = _isClient ? '客户' : '供应商';
     final owner = MasterEditOwner(
       context,
       ref,
@@ -2096,7 +2116,7 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
           ctx,
           UtenAlertDialog(
             title: Text(_isClient ? '删除客户' : '删除供应商'),
-            content: Text('确定删除「$name」吗？'),
+            content: Text('确定删除「$name」吗？删除后不再出现在资料列表和新建单据中，历史记录继续保留。'),
             actionsAlignment: MainAxisAlignment.center,
             actions: [
               TextButton(
@@ -2120,12 +2140,57 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       );
       if (confirmed != true || !mounted || !owner.isCurrent) return;
       setState(() => _confirmingChange = false);
-      await owner.run(
-        () => type == 'client'
-            ? ref.read(clientRepositoryProvider).delete(id)
-            : ref.read(supplierRepositoryProvider).delete(id),
+      final initial = await owner.run(
+        () => ref
+            .read(masterBatchRepositoryProvider)
+            .delete(entityPath: entityPath, items: items),
       );
       if (!mounted || !owner.isCurrent) return;
+      final resolution = await resolveReferencedMasterDelete(
+        context: context,
+        noun: noun,
+        initial: initial,
+        originalItems: items,
+        isCurrent: () => mounted && owner.isCurrent,
+        dialogScopeBuilder: owner.ownDialog,
+        hide: (confirmedItems) => owner.run(
+          () => ref
+              .read(masterBatchRepositoryProvider)
+              .delete(
+                entityPath: entityPath,
+                items: confirmedItems,
+                confirmReferencedHide: true,
+              ),
+        ),
+      );
+      if (!mounted || !owner.isCurrent) return;
+      if (resolution.referencesToView.isNotEmpty) {
+        // Release the delete owner before opening a navigable review surface.
+        _changeOwner = null;
+        owner.dispose();
+        setState(() {
+          _busy = false;
+          _confirmingChange = false;
+        });
+        await showMasterReferenceDetails(
+          context,
+          ref,
+          entityPath: entityPath,
+          items: resolution.referencesToView,
+        );
+        return;
+      }
+      if (!resolution.showOutcome) return;
+      if (resolution.result.failed > 0) {
+        await showMasterBatchOutcome(
+          context,
+          resolution.result,
+          action: '删除',
+          noun: noun,
+          dialogScopeBuilder: owner.ownDialog,
+        );
+        return;
+      }
       context.appSuccess(type == 'client' ? '客户已删除' : '供应商已删除');
       backTo(
         context,

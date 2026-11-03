@@ -84,6 +84,7 @@ class FinanceReceiptKindFilterTest {
                 mock(SecurityContextCurrentUser.class),
                 mock(EmployeeNameResolver.class),
                 em,
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),
                 mock(DocNumberService.class),
                 access,
                 mock(GlPostingService.class),

@@ -14,6 +14,8 @@ import 'package:uten_imp/components/layout/uten_table_column_kit.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/basic_data/widgets/uten_supplier_picker.dart';
+import 'package:uten_imp/features/basic_data/models/supplier_node.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_detail_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_edit_page.dart';
@@ -24,6 +26,38 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import '../../support/document_scope_capability_overrides.dart';
 
 void main() {
+  testWidgets(
+    'payment header excludes hidden new candidates and preserves its old UUID/name',
+    (tester) async {
+      final api = await _pumpEditor(
+        tester,
+        detail: _directPaymentDetail(),
+        hideOriginalSupplier: true,
+      );
+      SupplierPickerField field() =>
+          tester.widget<SupplierPickerField>(find.byType(SupplierPickerField));
+      expect(field().initialId, 'supplier-1');
+      expect(field().initialName, '甲供应商');
+      await tester.tap(find.byType(SupplierPickerField));
+      await tester.pumpAndSettle();
+      expect(api.supplierQueries.single['selectableOnly'], isTrue);
+      final choices = tester.widget<MasterDataTableView<SupplierListItem>>(
+        find.byType(MasterDataTableView<SupplierListItem>),
+      );
+      expect(choices.items.map((row) => row.id), ['supplier-2']);
+      // The listed candidate is hidden by another user before it is chosen.
+      api.hideReplacementSupplier = true;
+      await tester.tap(find.text('可选供应商'));
+      await tester.pump();
+      await tester.tap(find.text('确定'));
+      await tester.pumpAndSettle();
+      expect(field().initialId, 'supplier-1');
+      expect(field().initialName, '甲供应商');
+      expect(api.lastPutBody, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test(
     'payment editor sends command idempotency and optimistic version facts',
     () {
@@ -446,11 +480,13 @@ Future<_PaymentApi> _pumpEditor(
   required Map<String, dynamic> detail,
   List<Map<String, dynamic>> ledgerItems = const [],
   Size size = const Size(1600, 1200),
+  bool hideOriginalSupplier = false,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
-  final api = _PaymentApi(detail, ledgerItems: ledgerItems);
+  final api = _PaymentApi(detail, ledgerItems: ledgerItems)
+    ..hideOriginalSupplier = hideOriginalSupplier;
   final router = GoRouter(
     initialLocation: '/finance/payments/${detail['id']}/edit',
     routes: [
@@ -640,6 +676,9 @@ class _PaymentApi extends ApiClient {
   final List<Map<String, dynamic>> ledgerItems;
   Map<String, dynamic>? lastPutBody;
   int writeCalls = 0;
+  bool hideOriginalSupplier = false;
+  bool hideReplacementSupplier = false;
+  final supplierQueries = <Map<String, dynamic>>[];
 
   @override
   Future<Map<String, dynamic>> post(
@@ -663,6 +702,30 @@ class _PaymentApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/business-references/suppliers') {
+      supplierQueries.add({...?query});
+      return {
+        'items': [
+          if (query?['selectableOnly'] != true)
+            {
+              'id': 'supplier-1',
+              'name': '甲供应商',
+              'categoryId': 'supplier-root',
+              'status': '使用',
+            },
+          {
+            'id': 'supplier-2',
+            'name': '可选供应商',
+            'categoryId': 'supplier-root',
+            'status': '使用',
+          },
+        ],
+        'page': 1,
+        'size': 100,
+        'total': query?['selectableOnly'] == true ? 1 : 2,
+        'totalPages': 1,
+      };
+    }
     if (path == '/finance/ar-ap') {
       return <String, dynamic>{
         'items': ledgerItems,
@@ -680,6 +743,32 @@ class _PaymentApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/business-references/supplier-categories') {
+      return [
+        {
+          'id': 'supplier-root',
+          'name': '供应商分类',
+          'code': 'S',
+          'level': 0,
+          'children': <Object>[],
+        },
+      ];
+    }
+    if (path == '/master/suppliers/lookup') {
+      final requested = (query?['ids'] as String? ?? '').split(',');
+      return [
+        for (final id in requested)
+          if (id == 'supplier-1' || id == 'supplier-2')
+            {
+              'id': id,
+              'name': id == 'supplier-1' ? '甲供应商' : '可选供应商',
+              'status': '使用',
+              'selectable': id == 'supplier-1'
+                  ? !hideOriginalSupplier
+                  : !hideReplacementSupplier,
+            },
+      ];
+    }
     if (path == '/master/suppliers/dict') {
       return const [
         {'id': 'supplier-1', 'name': '甲供应商'},

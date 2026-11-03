@@ -79,6 +79,7 @@ public class SubcontractApplicationService {
     private final TxSessionVars tx;
     private final DocNumberService docNumberService;
     private final EntityManager em;
+    private final com.uten.imp.application.port.MasterReferenceValidationPort references;
     // V476：叶子仓落库校验。字段注入+可空——单测手工构造时缺省跳过，Spring 环境恒注入。
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.uten.imp.features.master.warehouse.WarehouseScopeService warehouseScopes;
@@ -342,6 +343,9 @@ public class SubcontractApplicationService {
     }
 
     private void applyHeader(ApplicationSaveRequest req, SubcontractApplication r) {
+        if (req.getSupplierId() != null && !java.util.Objects.equals(r.getSupplierId(), req.getSupplierId())) {
+            references.requireSelectableSupplier(req.getSupplierId());
+        }
         // 单据号系统自动生成（服务端权威）：仅新建（billNo 空）时取号；更新保留既有号，忽略客户端值。
         if (r.getBillNo() == null || r.getBillNo().isBlank()) {
             r.setBillNo(docNumberService.nextNumber(DocNumberPrefix.SUB_APPLICATION));

@@ -38,21 +38,31 @@ class _Row {
 }
 
 class _FakeBatchRepository implements MasterBatchRepository {
-  _FakeBatchRepository({this.failIds = const {}});
+  _FakeBatchRepository({this.failIds = const {}, this.confirmIds = const {}});
 
   final Set<String> failIds;
+  final Set<String> confirmIds;
+  final deleteConfirmations = <bool>[];
   final statusCalls = <(String, String, List<MasterBatchItem>)>[];
   final deleteCalls = <(String, List<MasterBatchItem>)>[];
 
-  MasterBatchResult _result(List<MasterBatchItem> items) {
+  MasterBatchResult _result(
+    List<MasterBatchItem> items, {
+    bool confirmed = false,
+  }) {
     final results = [
       for (final item in items)
         MasterBatchItemResult(
           id: item.id,
           label: '货品-${item.id}',
-          ok: !failIds.contains(item.id),
+          ok:
+              !failIds.contains(item.id) &&
+              (!confirmIds.contains(item.id) || confirmed),
+          confirmationRequired: confirmIds.contains(item.id) && !confirmed,
           reason: failIds.contains(item.id)
               ? '货品「货品-${item.id}」不能删除：1) 它还是以下货品的 BOM 组件：FG-1 成品，请先在这些货品的 BOM 里移除它'
+              : confirmIds.contains(item.id) && !confirmed
+              ? '还有未结案的销售订单：XD001'
               : null,
         ),
     ];
@@ -78,9 +88,11 @@ class _FakeBatchRepository implements MasterBatchRepository {
   Future<MasterBatchResult> delete({
     required String entityPath,
     required List<MasterBatchItem> items,
+    bool confirmReferencedHide = false,
   }) async {
     deleteCalls.add((entityPath, items));
-    return _result(items);
+    deleteConfirmations.add(confirmReferencedHide);
+    return _result(items, confirmed: confirmReferencedHide);
   }
 }
 
@@ -115,6 +127,7 @@ Future<_Counters> _pump(
   _FakeStatusRepository status, {
   Future<PagedResult<_Row>> Function(MasterPaneQuery)? loadPage,
   Future<_Row> Function(String)? loadDetail,
+  bool supportsReferencedHide = false,
 }) async {
   final counters = _Counters();
   SharedPreferences.setMockInitialValues({});
@@ -162,6 +175,7 @@ Future<_Counters> _pump(
     canCreate: false,
     canEdit: true,
     canDelete: true,
+    supportsReferencedHide: supportsReferencedHide,
     canStatus: true,
     loadDetail: (id) async {
       counters.detailCalls++;
@@ -491,6 +505,124 @@ void main() {
     await tester.pumpAndSettle();
     expect(_table(tester).selectedIds, {'g3', 'g4'}, reason: '失败的留着方便处理后重试');
   });
+
+  testWidgets('关联资料仍然删除只确认服务端标记行，保留原版本和其它失败', (tester) async {
+    final batch = _FakeBatchRepository(failIds: {'g4'}, confirmIds: {'g3'});
+    await _pump(
+      tester,
+      batch,
+      _FakeStatusRepository(),
+      supportsReferencedHide: true,
+    );
+    await _selectAll(tester);
+    unawaited(Future<void>.sync(_batchMenuEntry(tester, '批量删除(100)').onTap));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(UtenButton, '删除'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('master-referenced-delete')), findsOneWidget);
+    expect(find.text('去查看'), findsOneWidget);
+    expect(find.textContaining('已有单据、往来账和业务记录继续保留'), findsOneWidget);
+    expect(batch.deleteCalls, hasLength(1));
+    await tester.tap(find.byKey(const Key('master-referenced-delete-confirm')));
+    await tester.pumpAndSettle();
+    expect(batch.deleteCalls, hasLength(2));
+    expect(batch.deleteConfirmations, [false, true]);
+    expect(batch.deleteCalls.last.$2.single.id, 'g3');
+    expect(batch.deleteCalls.last.$2.single.version, 10);
+    expect(find.text('已删除 99 个，1 个没有处理'), findsOneWidget);
+    await tester.tap(find.byType(UtenCloseButton));
+    await tester.pumpAndSettle();
+    expect(_table(tester).selectedIds, {'g4'});
+  });
+
+  testWidgets('关联确认弹窗遇范围失效即关闭，不能继续确认删除', (tester) async {
+    final batch = _FakeBatchRepository(confirmIds: {'g3'});
+    await _pump(
+      tester,
+      batch,
+      _FakeStatusRepository(),
+      supportsReferencedHide: true,
+    );
+    await _selectAll(tester);
+    unawaited(Future<void>.sync(_batchMenuEntry(tester, '批量删除(100)').onTap));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(UtenButton, '删除'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('master-referenced-delete')), findsOneWidget);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(MasterEntityDetailPane<_Row, _Row>)),
+    );
+    container.read(readScopeRevisionProvider.notifier).state++;
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('master-referenced-delete')), findsNothing);
+    expect(batch.deleteCalls, hasLength(1));
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final cancel in [false, true]) {
+    testWidgets('500项关联资料${cancel ? '取消' : '连续点击确认'}保留完整目标且不重复提交', (
+      tester,
+    ) async {
+      final rows = [
+        for (var i = 0; i < 500; i++) _Row('g$i', '客户$i', '使用', i + 7),
+      ];
+      final ids = rows.map((row) => row.id).toSet();
+      final batch = _FakeBatchRepository(confirmIds: ids);
+      await _pump(
+        tester,
+        batch,
+        _FakeStatusRepository(),
+        supportsReferencedHide: true,
+        loadPage: (_) async => PagedResult(
+          items: rows,
+          page: 1,
+          size: 500,
+          total: 500,
+          totalPages: 1,
+        ),
+      );
+      _table(tester).onSelectedIdsChanged!(ids);
+      await tester.pumpAndSettle();
+      final action = _batchMenuEntry(tester, '批量删除(500)').onTap;
+      unawaited(Future<void>.sync(action));
+      unawaited(Future<void>.sync(action));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(UtenButton, '删除'));
+      await tester.pumpAndSettle();
+      expect(batch.deleteCalls, hasLength(1));
+      expect(batch.deleteCalls.single.$2, hasLength(500));
+      final list = find.descendant(
+        of: find.byKey(const Key('master-referenced-delete')),
+        matching: find.byType(ListView),
+      );
+      expect(list, findsOneWidget);
+      expect(find.text('货品-g499'), findsNothing, reason: '大列表按可视区域构建');
+      await tester.drag(list, const Offset(0, -1200));
+      await tester.pumpAndSettle();
+      if (cancel) {
+        await tester.tap(find.byType(UtenCloseButton));
+      } else {
+        final button = find.byKey(
+          const Key('master-referenced-delete-confirm'),
+        );
+        final location = tester.getCenter(button);
+        await tester.tapAt(location);
+        await tester.tapAt(location);
+      }
+      await tester.pumpAndSettle();
+      expect(batch.deleteCalls, hasLength(cancel ? 1 : 2));
+      if (!cancel) {
+        final sent = batch.deleteCalls.last.$2;
+        expect(sent, hasLength(500));
+        expect(sent.last.id, 'g499');
+        expect(sent.last.version, 506);
+        expect(_table(tester).selectedIds, isEmpty);
+      } else {
+        expect(_table(tester).selectedIds, ids);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   testWidgets('追加第二页后批量操作携带两页货品各自的版本', (tester) async {
     final batch = _FakeBatchRepository();

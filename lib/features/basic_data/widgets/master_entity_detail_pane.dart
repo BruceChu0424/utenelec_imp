@@ -58,6 +58,8 @@ import '../models/product_category_node.dart';
 import '../repositories/master_batch_repository.dart';
 import '../repositories/master_status_repository.dart';
 import 'master_batch_feedback.dart';
+import 'master_referenced_delete.dart';
+import 'master_reference_details.dart';
 import 'master_data_table_view.dart';
 import 'master_inline_edit.dart';
 import 'system_master_category_guard.dart';
@@ -215,6 +217,7 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     this.inlineDiscardNote,
     this.inlineExitOnSave = false,
     this.readStableWritePermission,
+    this.supportsReferencedHide = false,
   });
 
   /// 面向人的实体名(客户/供应商/模具/货品)。
@@ -271,6 +274,7 @@ class MasterEntityPaneConfig<TItem, TDetail> {
   final bool canCreate;
   final bool canEdit;
   final bool canDelete;
+  final bool supportsReferencedHide;
   final bool canStatus;
   final String? defaultSortKey;
   final Color? Function(TItem item)? rowColor;
@@ -894,6 +898,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     final path = _c.batchEntityPath;
     final noun = _c.noun;
     final single = targets.length == 1 ? labels[targets.single] : null;
+    MasterDeleteResolution? resolution;
     final result = await _writeCommand<MasterBatchResult>(
       canWrite: () => _c.canDelete && _targetsWritable(targets),
       confirm: (scope) async =>
@@ -905,7 +910,9 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
                 title: Text(single != null ? '删除$noun' : '批量删除$noun'),
                 content: Text(
                   single != null
-                      ? '确定删除「$single」吗？'
+                      ? '确定删除「$single」吗？${_c.supportsReferencedHide ? '删除后不再出现在资料列表和新建单据中，历史记录继续保留。' : ''}'
+                      : _c.supportsReferencedHide
+                      ? '确定删除选中的 ${targets.length} 个$noun吗？删除后不再出现在资料列表和新建单据中，历史记录继续保留。'
                       : '确定删除选中的 ${targets.length} 个$noun吗？还在被单据、库存或其它资料使用的会逐条说明原因并保留。',
                 ),
                 actions: [
@@ -935,17 +942,58 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
       write: () => ref
           .read(masterBatchRepositoryProvider)
           .delete(entityPath: path, items: items),
+      resolve: _c.supportsReferencedHide
+          ? (initial, current, scope) async {
+              resolution = await resolveReferencedMasterDelete(
+                context: context,
+                noun: noun,
+                initial: initial,
+                originalItems: items,
+                isCurrent: current,
+                dialogScopeBuilder: scope,
+                hide: (confirmedItems) => ref
+                    .read(masterBatchRepositoryProvider)
+                    .delete(
+                      entityPath: path,
+                      items: confirmedItems,
+                      confirmReferencedHide: true,
+                    ),
+              );
+              return resolution!.result;
+            }
+          : null,
     );
     if (result == null || !mounted || !result.isCurrent()) return;
-    await _afterBatch(result, '删除', noun, labels);
+    final view =
+        resolution?.referencesToView ?? const <MasterBatchItemResult>[];
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    await _afterBatch(
+      result,
+      '删除',
+      noun,
+      labels,
+      showOutcome: resolution?.showOutcome ?? true,
+    );
+    if (view.isNotEmpty &&
+        mounted &&
+        boundary == ref.read(sensitiveReadBoundaryProvider) &&
+        path == _c.batchEntityPath) {
+      await showMasterReferenceDetails(
+        context,
+        ref,
+        entityPath: path,
+        items: view,
+      );
+    }
   }
 
   Future<void> _afterBatch(
     _PaneWriteResult<MasterBatchResult> command,
     String action,
     String noun,
-    Map<String, String?> labels,
-  ) async {
+    Map<String, String?> labels, {
+    bool showOutcome = true,
+  }) async {
     if (!command.isCurrent()) return;
     final result = command.value;
     // 成功的从勾选里剪掉，失败的留着方便用户处理后重试。
@@ -955,14 +1003,16 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
           if (!r.ok && _selectedIds.contains(r.id)) r.id,
       };
     });
-    await showMasterBatchOutcome(
-      context,
-      result,
-      action: action,
-      noun: noun,
-      labelOf: (id) => labels[id],
-      dialogScopeBuilder: command.dialogScope,
-    );
+    if (showOutcome) {
+      await showMasterBatchOutcome(
+        context,
+        result,
+        action: action,
+        noun: noun,
+        labelOf: (id) => labels[id],
+        dialogScopeBuilder: command.dialogScope,
+      );
+    }
     if (mounted && command.isCurrent()) await reload();
   }
 
@@ -993,6 +1043,12 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
     required Future<bool> Function(Widget Function(BuildContext, Widget))
     confirm,
     required Future<R> Function() write,
+    Future<R> Function(
+      R,
+      bool Function(),
+      Widget Function(BuildContext, Widget),
+    )?
+    resolve,
   }) async {
     if (_busy ||
         _queryPending ||
@@ -1039,7 +1095,10 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
           write: () async {
             if (!await confirm(scope) || !current()) return null;
             setState(() => _lifecycleWriting = true);
-            return await write();
+            final initial = await write();
+            return resolve != null && current()
+                ? await resolve(initial, current, scope)
+                : initial;
           },
         );
       } catch (error) {

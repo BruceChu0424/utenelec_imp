@@ -120,9 +120,10 @@ void main() {
   }
 
   testWidgets(
-    'row reference imports its supplier and preserves entered bank reference',
+    'row reference imports its hidden supplier and preserves entered bank reference',
     (tester) async {
       final env = await _open(tester, FinanceDocType.payment);
+      env.api.supplierSelectable = false;
       final row = _table(tester).controller[0];
       row.entry.partyId = 'supplier-A';
       row.entry.bankReference.text = 'OPTIONAL-REFERENCE';
@@ -144,6 +145,23 @@ void main() {
       await env.close(tester);
     },
   );
+
+  testWidgets('new row rejects a supplier hidden while its picker was open', (
+    tester,
+  ) async {
+    final env = await _open(tester, FinanceDocType.payment);
+    await tester.tap(find.text('选择供应商').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('供应商甲'));
+    env.api.supplierSelectable = false;
+    await tester.pump();
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    expect(_table(tester).controller.rows.single.entry.partyId, isNull);
+    expect(env.api.paths, isEmpty);
+    expect(tester.takeException(), isNull);
+    await env.close(tester);
+  });
 
   testWidgets(
     'batch fill applies only selected rows and cancel preserves input',
@@ -450,31 +468,51 @@ class _Api extends ApiClient {
   final bodies = <Map<String, dynamic>>[];
   final paths = <String>[];
   bool timeout = false;
+  bool supplierSelectable = true;
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
-  }) async => path == '/finance/ar-ap'
-      ? {
-          'items': [
-            {
-              'id': 'ap-cny',
-              'direction': 'AP',
-              'billNo': 'AP-CNY-001',
-              'supplierId': 'supplier-A',
-              'currencyId': 'cny',
-              'currencyCode': 'CNY',
-              'currencyName': '人民币',
-              'amountOriginal': 30,
-              'amountSettled': 0,
-              'amountBalanceOriginal': 30,
-            },
-          ],
-          'total': 1,
-          'page': 1,
-          'size': 50,
-        }
-      : {'items': <dynamic>[], 'total': 0};
+  }) async {
+    if (path.endsWith('/suppliers')) {
+      return {
+        'items': [
+          {
+            'id': 'supplier-A',
+            'name': '供应商甲',
+            'categoryId': 'supplier-category',
+            'status': '使用',
+          },
+        ],
+        'page': 1,
+        'size': 100,
+        'total': 1,
+        'totalPages': 1,
+      };
+    }
+    return path == '/finance/ar-ap'
+        ? {
+            'items': [
+              {
+                'id': 'ap-cny',
+                'direction': 'AP',
+                'billNo': 'AP-CNY-001',
+                'supplierId': 'supplier-A',
+                'currencyId': 'cny',
+                'currencyCode': 'CNY',
+                'currencyName': '人民币',
+                'amountOriginal': 30,
+                'amountSettled': 0,
+                'amountBalanceOriginal': 30,
+              },
+            ],
+            'total': 1,
+            'page': 1,
+            'size': 50,
+          }
+        : {'items': <dynamic>[], 'total': 0};
+  }
+
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {
@@ -482,7 +520,23 @@ class _Api extends ApiClient {
   }) async {
     if (path.contains('suppliers') && path.contains('lookup')) {
       return [
-        {'id': 'supplier-A', 'name': '供应商甲', 'status': '使用'},
+        {
+          'id': 'supplier-A',
+          'name': '供应商甲',
+          'status': '使用',
+          'selectable': supplierSelectable,
+        },
+      ];
+    }
+    if (path.contains('supplier-categories')) {
+      return [
+        {
+          'id': 'supplier-category',
+          'name': '供应商分类',
+          'code': 'S',
+          'level': 0,
+          'children': <dynamic>[],
+        },
       ];
     }
     if (path.endsWith('/accounts') || path.contains('/accounts/')) {

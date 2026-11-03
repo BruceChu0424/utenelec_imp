@@ -177,6 +177,7 @@ public class MasterOperationHistoryService {
             else if(row.table().equals("payment_styles")&&op.type().equals("EDIT")) {if(changed(row,"name"))needed.add("payment_style:edit");}
             else needed.add(permission+":"+action);
             if(changed(row,"status"))needed.add(permission+":status");
+            if(changed(row,"is_hidden"))needed.add(permission+":delete");
             if(row.before()==null&&row.after()!=null&&row.after().hasNonNull("status")&&!"使用".equals(row.after().path("status").asText()))needed.add(permission+":status");
             if(changed(row,"balance_floor"))needed.add("account:warning:manage");
             if(row.table().equals("clients")&&ClientFinancialPolicy.FINANCIAL_COLUMNS.stream().anyMatch(field->changed(row,field)))needed.add("client:finance");
@@ -334,7 +335,7 @@ public class MasterOperationHistoryService {
         return result.stream().map(r->new Operation(uuid(r[0]),r[1].toString(),r[2].toString(),time(r[3]),r[4].toString(),((Number)r[5]).longValue(),(Boolean)r[6],(String)r[7],r[8].toString())).toList();
     }
     private List<Row> rows(UUID id) {
-        @SuppressWarnings("unchecked") List<Object[]> result=em.createNativeQuery("SELECT table_name,row_id,before_row::text,after_row::text,expected_row::text FROM master_operation_history_rows WHERE operation_id=:id ORDER BY capture_order").setParameter("id",id).getResultList();
+        @SuppressWarnings("unchecked") List<Object[]> result=em.createNativeQuery("SELECT table_name,row_id,fn_party_master_history_schema(before_row,table_name)::text,fn_party_master_history_schema(after_row,table_name)::text,fn_party_master_history_schema(expected_row,table_name)::text FROM master_operation_history_rows WHERE operation_id=:id ORDER BY capture_order").setParameter("id",id).getResultList();
         return result.stream().map(r->new Row(r[0].toString(),uuid(r[1]),json(r[2]),json(r[3]),json(r[4]))).toList();
     }
     private UUID nextRedo(UUID actor,String entity) {

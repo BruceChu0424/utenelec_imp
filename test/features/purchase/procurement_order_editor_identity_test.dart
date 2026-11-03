@@ -31,13 +31,18 @@ final _reader = StateProvider<AuthenticatedScope?>(
 
 void main() {
   for (final subcontract in [false, true]) {
-    for (final freshStatus in [null, '禁用']) {
+    for (final (freshStatus, hidden) in <(String?, bool)>[
+      (null, false),
+      ('禁用', false),
+      ('使用', true),
+    ]) {
       testWidgets(
-        '${subcontract ? 'subcontract' : 'purchase'} rejects ${freshStatus ?? 'missing'} supplier proof after an active candidate was offered',
+        '${subcontract ? 'subcontract' : 'purchase'} rejects ${hidden ? 'hidden' : freshStatus ?? 'missing'} supplier proof after an active candidate was offered',
         (tester) async {
           final api = _Api(subcontract)
             ..replacementDraft = true
-            ..supplierStatus = freshStatus;
+            ..supplierStatus = freshStatus
+            ..supplierHidden = hidden;
           await _mount(tester, api, subcontract);
           await tester.pumpAndSettle();
           final supplier = find.byType(ProcurementSupplierCell).first;
@@ -62,6 +67,31 @@ void main() {
         },
       );
     }
+    testWidgets(
+      '${subcontract ? 'subcontract' : 'purchase'} keeps its saved hidden supplier and original rows readable',
+      (tester) async {
+        final api = _Api(subcontract)..supplierHidden = true;
+        await _mount(tester, api, subcontract);
+        await tester.pumpAndSettle();
+        expect(find.text('历史供应商'), findsWidgets);
+        if (subcontract) {
+          final grid = tester.widget<UtenEditableGrid<SubcontractGridRow>>(
+            find.byType(UtenEditableGrid<SubcontractGridRow>),
+          );
+          expect(grid.controller.rows.single.supplierId, 's1');
+          expect(grid.controller.rows.single.qty.text, '4');
+        } else {
+          final grid = tester.widget<UtenEditableGrid<PurchaseGridRow>>(
+            find.byType(UtenEditableGrid<PurchaseGridRow>),
+          );
+          expect(grid.controller.rows.single.supplierId, 's1');
+          expect(grid.controller.rows.single.qty.text, '4');
+        }
+        expect(api.supplierLookupCalls, greaterThan(0));
+        expect(api.writes, isEmpty);
+        expect(tester.takeException(), isNull);
+      },
+    );
     testWidgets(
       '${subcontract ? 'subcontract' : 'purchase'} replacement draft opens with blank supplier and accepts a new supplier',
       (tester) async {
@@ -413,6 +443,7 @@ class _Api extends ApiClient {
   int detailCalls = 0;
   bool replacementDraft = false;
   String? supplierStatus = '使用';
+  bool supplierHidden = false;
   int supplierLookupCalls = 0;
   @override
   Future<Map<String, dynamic>> get(
@@ -434,7 +465,9 @@ class _Api extends ApiClient {
             ))
           : detailGate!.future;
     }
-    if (replacementDraft && path.startsWith('/master/suppliers')) {
+    if (replacementDraft &&
+        (path == '/master/suppliers' ||
+            path == '/business-references/suppliers')) {
       return {
         'items': [
           {
@@ -459,7 +492,9 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (replacementDraft && path == '/master/supplier-categories/tree') {
+    if (replacementDraft &&
+        (path == '/master/supplier-categories/tree' ||
+            path == '/business-references/supplier-categories')) {
       return [
         {
           'id': 'supplier-category',
@@ -470,15 +505,17 @@ class _Api extends ApiClient {
         },
       ];
     }
-    if (replacementDraft && path == '/master/suppliers/lookup') {
+    if ((replacementDraft || supplierHidden) &&
+        path == '/master/suppliers/lookup') {
       supplierLookupCalls++;
       if (supplierStatus == null) return [];
       return [
         {
-          'id': 'new-supplier',
+          'id': replacementDraft ? 'new-supplier' : 's1',
           'code': 'SUP-NEW',
-          'name': '新供应商',
+          'name': replacementDraft ? '新供应商' : '历史供应商',
           'status': supplierStatus,
+          'selectable': !supplierHidden && supplierStatus == '使用',
         },
       ];
     }

@@ -148,7 +148,7 @@ public class SupplierService {
                 new com.uten.imp.features.master.reference.PartyReference(s.getId(), s.getCode(),
                         s.getName() == null || s.getName().isBlank() ? s.getDescription() : s.getName(),
                         s.getCategory() == null ? null : s.getCategory().getId(), s.getStatus(),
-                        s.getDefaultSettlementMethodId(), s.getStatus() == null || "使用".equals(s.getStatus()))).toList(), result);
+                        s.getDefaultSettlementMethodId(), !s.isHidden() && (s.getStatus() == null || "使用".equals(s.getStatus())))).toList(), result);
     }
 
     @Transactional(readOnly = true)
@@ -182,6 +182,7 @@ public class SupplierService {
                                         CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            if (!referenceOnly || f.selectableOnly()) ps.add(cb.isFalse(root.get("hidden")));
             ps.add(com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
                     com.uten.imp.features.master.search.MasterColumnSearch.Domain.SUPPLIER, f.columnSearch()));
             // 单据选商口径：仅「使用」状态（老库 status 为空的按启用处理）可被选择。
@@ -343,7 +344,7 @@ public class SupplierService {
             String col = e.getValue();
             var fq = em.createNativeQuery(
                     "select " + col + " as v, count(*) as c from suppliers "
-                            + "where is_deleted = false" + categoryClause + " and " + col + " is not null "
+                            + "where is_deleted = false AND is_hidden = false" + categoryClause + " and " + col + " is not null "
                             + "group by " + col + " order by c desc, v asc limit " + FACET_LIMIT);
             if (ids != null) fq.setParameter("ids", ids);
             List<Object[]> rows = NativeQueryResults.objectArrayRows(fq);
@@ -354,7 +355,7 @@ public class SupplierService {
             buckets.put(field, bucketList);
             var nq = em.createNativeQuery(
                     "select count(*) from suppliers "
-                            + "where is_deleted = false" + categoryClause + " and " + col + " is null");
+                            + "where is_deleted = false AND is_hidden = false" + categoryClause + " and " + col + " is null");
             if (ids != null) nq.setParameter("ids", ids);
             Long nc = ((Number) nq.getSingleResult()).longValue();
             nullCounts.put(field, nc);
@@ -382,7 +383,7 @@ public class SupplierService {
         var fq = em.createNativeQuery(
                 "select employees.id as v, employees.full_name as label, count(*) as c "
                         + "from suppliers join employees on employees.id = suppliers.owner_employee_id "
-                        + "where suppliers.is_deleted = false " + (ids == null ? "" : "and suppliers.category_id in (:ids) ")
+                        + "where suppliers.is_deleted = false AND suppliers.is_hidden = false " + (ids == null ? "" : "and suppliers.category_id in (:ids) ")
                         + "and suppliers.owner_employee_id is not null "
                         + "group by employees.id, employees.full_name "
                         + "order by c desc, label asc limit " + FACET_LIMIT);
@@ -400,7 +401,7 @@ public class SupplierService {
     private Long ownerNullCount(List<UUID> ids) {
         var nq = em.createNativeQuery(
                 "select count(*) from suppliers "
-                        + "where is_deleted = false " + (ids == null ? "" : "and category_id in (:ids) ") + "and owner_employee_id is null");
+                        + "where is_deleted = false AND is_hidden = false " + (ids == null ? "" : "and category_id in (:ids) ") + "and owner_employee_id is null");
         if (ids != null) nq.setParameter("ids", ids);
         return ((Number) nq.getSingleResult()).longValue();
     }
@@ -427,7 +428,7 @@ public class SupplierService {
 
     private static SupplierDictItem dictionaryItem(Supplier supplier) {
         return new SupplierDictItem(supplier.getId(), supplier.getCode(), supplier.getName(), supplier.getStatus(),
-                supplier.getDefaultSettlementMethodId());
+                supplier.getDefaultSettlementMethodId(), !supplier.isHidden() && (supplier.getStatus() == null || "使用".equals(supplier.getStatus())));
     }
 
     private Specification<Supplier> dictionarySpec() {

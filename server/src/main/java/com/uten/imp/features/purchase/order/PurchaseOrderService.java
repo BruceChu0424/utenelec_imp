@@ -505,6 +505,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
                 LEFT JOIN suppliers sup
                   ON sup.id = g.default_supplier_id
                  AND sup.is_deleted = false
+                 AND sup.is_hidden = false
                  AND sup.is_internal_workshop = false
                 LEFT JOIN currencies cur ON cur.id = sup.default_currency_id
                 WHERE g.id IN (:ids)
@@ -729,7 +730,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         if (order.getStatus() == null || order.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.CONFLICT, "订货单已不再是待生效草稿");
         }
-        references.requireSelectableSupplier(order.getSupplierId());
+        references.requireExistingSupplier(order.getSupplierId());
         List<PurchaseOrderItem> items = itemRepo.findByOrderIdOrderByLineNoAsc(id);
         captureGoodsSnapshots(
                 items,

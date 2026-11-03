@@ -215,6 +215,7 @@ class ProcurementDecompositionPreviewPostgresTest {
         var service = new SubcontractApplicationService(mock(com.uten.imp.features.subcontract.application.SubcontractApplicationRepository.class),
                 mock(com.uten.imp.features.subcontract.application.SubcontractApplicationItemRepository.class),
                 mock(com.uten.imp.security.TxSessionVars.class), mock(com.uten.imp.common.docnumber.DocNumberService.class), em,
+                mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),
                 mock(com.uten.imp.security.SecurityContextCurrentUser.class), mock(com.uten.imp.common.util.EmployeeNameResolver.class),
                 mock(com.uten.imp.application.port.ProductionSubcontractSupplyTransitionPort.class), mock(com.uten.imp.common.integrity.ProductionSupplySourceGuard.class));
         return service.decompositionPreview(ids);

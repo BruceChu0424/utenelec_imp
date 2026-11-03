@@ -100,7 +100,7 @@ public class GoodsMasterRelationshipResolver {
 
     public Client client(UUID id) {
         UUID targetId = requiredUuid(id);
-        references.requireVisibleActiveClient(targetId);
+        references.requireSelectableClient(targetId);
         return clientRepo.findById(targetId)
                 .orElseThrow(() -> notFound("客户不存在"));
     }
@@ -114,7 +114,7 @@ public class GoodsMasterRelationshipResolver {
     public Supplier supplier(UUID id) {
         Supplier target = supplierRepo.findById(requiredUuid(id))
                 .orElseThrow(() -> notFound("供应商不存在"));
-        requireActive(target.isDeleted(), target.getStatus(),
+        requireActive(target.isDeleted() || target.isHidden(), target.getStatus(),
                 "供应商「" + masterLabel(target.getCode(), target.getName()) + "」已删除或停用，不能新选");
         return target;
     }

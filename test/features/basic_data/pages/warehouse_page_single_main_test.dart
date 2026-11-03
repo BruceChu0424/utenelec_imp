@@ -1045,6 +1045,7 @@ class _WarehouseBatch implements MasterBatchRepository {
   Future<MasterBatchResult> delete({
     required String entityPath,
     required List<MasterBatchItem> items,
+    bool confirmReferencedHide = false,
   }) async {
     expect(entityPath, ApiEndpoints.warehouses);
     commands.add({

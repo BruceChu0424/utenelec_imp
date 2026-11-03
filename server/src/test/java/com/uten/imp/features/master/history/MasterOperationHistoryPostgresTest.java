@@ -233,6 +233,84 @@ class MasterOperationHistoryPostgresTest {
             assertEquals("edited",value("SELECT name FROM colors WHERE id=:id",color));
         } finally {writer.getTransaction().rollback();writer.close();}
     }
+
+    @Test void oldPartySnapshotsUndoRedoAcrossTwoEditsWithoutRewritingRetainedEvidence() {
+        for(String table:List.of("clients","suppliers")) {
+            UUID party=table.equals("clients")?client():supplier();
+            String original=value("SELECT name FROM "+table+" WHERE id=:id",party);
+            UUID first=oldPartyEdit(table,party,"legacy one"),second=oldPartyEdit(table,party,"legacy two");
+            String evidence=evidence(first)+evidence(second);
+            assertTrue(service.list(table).entries().stream().filter(e->e.id().equals(second)).findFirst().orElseThrow().canUndo());
+            assertThrows(ApiException.class,()->inTx(()->service.undo(table,first,0)));
+            inTx(()->service.undo(table,second,0));inTx(()->service.undo(table,first,0));
+            assertEquals(original,value("SELECT name FROM "+table+" WHERE id=:id",party));
+            inTx(()->service.redo(table,first,1));inTx(()->service.redo(table,second,1));
+            assertEquals("legacy two",value("SELECT name FROM "+table+" WHERE id=:id",party));
+            assertEquals(evidence,evidence(first)+evidence(second));
+            assertEquals("false",value("SELECT is_hidden::text FROM "+table+" WHERE id=:id",party));
+        }
+    }
+    @Test void oldPartySnapshotDefaultsDoNotHideRealMarkerTimeOrVersionChanges() {
+        for(String table:List.of("clients","suppliers"))for(String mutation:List.of(
+                "is_hidden=true","hidden_at=clock_timestamp()","version=version+1")) {
+            UUID party=table.equals("clients")?client():supplier();
+            UUID operation=oldPartyEdit(table,party,"old format changed");
+            inTx(()->{em.createNativeQuery("UPDATE "+table+" SET "+mutation+" WHERE id=:id").setParameter("id",party).executeUpdate();return null;});
+            assertFalse(service.list(table).entries().stream().filter(e->e.id().equals(operation)).findFirst().orElseThrow().canUndo());
+            String actual=value("SELECT to_jsonb(t)::text FROM "+table+" t WHERE id=:id",party);
+            assertThrows(ApiException.class,()->inTx(()->service.undo(table,operation,0)));
+            assertEquals(actual,value("SELECT to_jsonb(t)::text FROM "+table+" t WHERE id=:id",party));
+        }
+    }
+    @Test void newPartyHideStillUndoRedoesWithDeletePermissionAndRejectsAnOutsideWriter() {
+        for(String table:List.of("clients","suppliers")) {
+            login(Set.of(),true);
+            UUID party=table.equals("clients")?client():supplier();
+            UUID operation=inTx(()->{provenance("/api/master/"+table+"/batch-delete","POST");
+                em.createNativeQuery("UPDATE "+table+" SET is_hidden=true,hidden_at=clock_timestamp(),version=version+1 WHERE id=:id")
+                        .setParameter("id",party).executeUpdate();return latest();});
+            String evidence=evidence(operation);
+            String permission=table.equals("clients")?"client":"supplier";
+            login(Set.of(permission+":view",permission+":delete"),false);
+            inTx(()->service.undo(table,operation,0));
+            assertEquals("false",value("SELECT is_hidden::text FROM "+table+" WHERE id=:id",party));
+            inTx(()->service.redo(table,operation,1));
+            assertEquals("true",value("SELECT is_hidden::text FROM "+table+" WHERE id=:id",party));
+            inTx(()->{em.createNativeQuery("UPDATE "+table+" SET name='outside writer',version=version+1 WHERE id=:id").setParameter("id",party).executeUpdate();return null;});
+            assertThrows(ApiException.class,()->inTx(()->service.undo(table,operation,2)));
+            assertEquals(evidence,evidence(operation));
+        }
+    }
+    @Test void partyHistorySchemaOnlyDefaultsMissingObjectKeysAndKeepsEveryOtherValue() {
+        inTx(()->{
+            assertEquals(true,em.createNativeQuery("SELECT fn_party_master_history_schema(NULL,'clients') IS NULL").getSingleResult());
+            for(String raw:List.of("null","[]","17","true"))assertEquals(true,em.createNativeQuery(
+                    "SELECT fn_party_master_history_schema(CAST(:raw AS jsonb),'clients')=CAST(:raw AS jsonb)").setParameter("raw",raw).getSingleResult());
+            assertEquals(true,em.createNativeQuery("SELECT fn_party_master_history_schema('{}','colors')='{}'::jsonb").getSingleResult());
+            assertEquals(true,em.createNativeQuery("SELECT fn_party_master_history_schema('{}','clients')=jsonb_build_object('is_hidden',false,'hidden_at',NULL)").getSingleResult());
+            assertEquals(true,em.createNativeQuery("SELECT fn_party_master_history_schema('{\"is_hidden\":null}','clients')->'is_hidden'='null'::jsonb").getSingleResult());
+            assertEquals(true,em.createNativeQuery("SELECT fn_party_master_history_schema('{\"is_hidden\":true,\"hidden_at\":\"retained\",\"future\":17}','suppliers')='{\"is_hidden\":true,\"hidden_at\":\"retained\",\"future\":17}'::jsonb").getSingleResult());
+            return null;
+        });
+    }
+    private UUID oldPartyEdit(String table,UUID party,String name) {
+        return inTx(()->{
+            set("app.actor_id",actor.toString());set("app.audit_request_path","/test-fixture/pre-hidden-party");
+            String before=value("SELECT (fn_goods_history_snapshot('"+table+"'::regclass,t)-ARRAY['is_hidden','hidden_at'])::text FROM "+table+" t WHERE id=:id",party);
+            em.createNativeQuery("UPDATE "+table+" SET name=:name,version=version+1,updated_at=clock_timestamp() WHERE id=:id").setParameter("name",name).setParameter("id",party).executeUpdate();
+            String after=value("SELECT (fn_goods_history_snapshot('"+table+"'::regclass,t)-ARRAY['is_hidden','hidden_at'])::text FROM "+table+" t WHERE id=:id",party);
+            UUID operation=UUID.randomUUID();
+            em.createNativeQuery("INSERT INTO master_operation_history(id,actor_id,entity_type,request_id,transaction_id,operation_type,label,request_path,request_method) VALUES(:op,:actor,:table,:request,txid_current(),'EDIT','pre-V995 fixture',:path,'PUT')")
+                    .setParameter("op",operation).setParameter("actor",actor).setParameter("table",table).setParameter("request",UUID.randomUUID()).setParameter("path","/api/master/"+table+"/"+party).executeUpdate();
+            em.createNativeQuery("INSERT INTO master_operation_history_rows(operation_id,table_name,row_id,before_row,after_row,expected_row,before_token,after_token) VALUES(:op,:table,:id,CAST(:before AS jsonb),CAST(:after AS jsonb),CAST(:after AS jsonb),CAST(:before AS jsonb),CAST(:after AS jsonb))")
+                    .setParameter("op",operation).setParameter("table",table).setParameter("id",party).setParameter("before",before).setParameter("after",after).executeUpdate();
+            return operation;
+        });
+    }
+    private String evidence(UUID operation) {
+        return value("SELECT jsonb_build_array(before_row,after_row)::text FROM master_operation_history_rows WHERE operation_id=:id",operation);
+    }
+
     private void insertMould(UUID id,UUID category) {em.createNativeQuery("INSERT INTO moulds(id,code,name,status,category_id,code_sequence,code_managed) VALUES(:id,:code,'cascade mould','使用',:category,(SELECT coalesce(max(code_sequence),0)+1 FROM moulds),false)")
         .setParameter("id",id).setParameter("code","M-"+id).setParameter("category",category).executeUpdate();}
     private UUID client() {UUID id=UUID.randomUUID();return inTx(()->{em.createNativeQuery("INSERT INTO clients(id,code,name,status,code_sequence) VALUES(:id,:code,'directory client','使用',(SELECT coalesce(max(code_sequence),0)+1 FROM clients))").setParameter("id",id).setParameter("code","C-"+id).executeUpdate();return id;});}

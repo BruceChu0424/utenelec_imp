@@ -95,6 +95,7 @@ public class FinancePaymentService {
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
+    private final com.uten.imp.application.port.MasterReferenceValidationPort references;
     private final DocNumberService docNumberService;
     private final FinanceDocumentAccessPolicy access;
     private final GlPostingService glPostingService;
@@ -795,6 +796,11 @@ public class FinancePaymentService {
     // ===================== CRUD 辅助 =====================
 
     private void applyHeader(FinancePaymentSaveRequest req, FinancePayment p) {
+        if (req.getSupplierId() != null && !java.util.Objects.equals(p.getSupplierId(), req.getSupplierId())
+                && (req.getItems() == null || req.getItems().isEmpty())) {
+            // AP settlement validates its old ledger source; an independent advance is new business.
+            references.requireSelectableSupplier(req.getSupplierId());
+        }
         p.setAmountAuthorityVersion((short)0);
         p.setAccountCurrencyId(req.getAccountCurrencyId());
         p.setAccountAmount(req.getAccountAmount()==null?null:positiveMoney(req.getAccountAmount(),"银行实际扣款"));

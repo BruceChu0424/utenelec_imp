@@ -164,7 +164,7 @@ public class ClientService {
                 new com.uten.imp.features.master.reference.PartyReference(c.getId(), c.getCode(),
                         c.getName() == null || c.getName().isBlank() ? c.getFullName() : c.getName(),
                         c.getCategory() == null ? null : c.getCategory().getId(), c.getStatus(),
-                        c.getDefaultSettlementMethodId(), "使用".equals(c.getStatus()))).toList(), result);
+                        c.getDefaultSettlementMethodId(), !c.isHidden() && "使用".equals(c.getStatus()))).toList(), result);
     }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
@@ -208,7 +208,7 @@ public class ClientService {
     }
 
     private static ClientDictItem dictionaryItem(Client client) {
-        return new ClientDictItem(client.getId(), client.getCode(), client.getName(), "使用".equals(client.getStatus()));
+        return new ClientDictItem(client.getId(), client.getCode(), client.getName(), !client.isHidden() && "使用".equals(client.getStatus()));
     }
 
     private Specification<Client> dictionarySpec(ClientAccessPolicy.ClientScope scope, boolean excludeLegacyFinanceStub) {
@@ -251,6 +251,7 @@ public class ClientService {
                                       CriteriaBuilder cb) -> {
             List<Predicate> ps = new ArrayList<>();
             ps.add(cb.isFalse(root.get("deleted")));
+            if (!referenceOnly || f.selectableOnly()) ps.add(cb.isFalse(root.get("hidden")));
             ps.add(com.uten.imp.features.master.search.MasterColumnSearch.predicate(cb, root.get("id"),
                     com.uten.imp.features.master.search.MasterColumnSearch.Domain.CLIENT, f.columnSearch()));
             if (f.excludeLegacyFinanceStub()) {
@@ -426,7 +427,7 @@ public class ClientService {
             String col = e.getValue();
             var fq = em.createNativeQuery(
                     "select " + col + " as v, count(*) as c from clients "
-                            + "where is_deleted = false" + categoryClause + " and " + col + " is not null "
+                            + "where is_deleted = false AND is_hidden = false" + categoryClause + " and " + col + " is not null "
                             + legacyStubClause + " and " + accessSql.predicate()
                             + " group by " + col + " order by c desc, v asc limit " + FACET_LIMIT);
             if (ids != null) fq.setParameter("ids", ids);
@@ -439,7 +440,7 @@ public class ClientService {
             buckets.put(field, bucketList);
             var nq = em.createNativeQuery(
                     "select count(*) from clients "
-                            + "where is_deleted = false" + categoryClause + " and " + col + " is null"
+                            + "where is_deleted = false AND is_hidden = false" + categoryClause + " and " + col + " is null"
                             + legacyStubClause + " and " + accessSql.predicate());
             if (ids != null) nq.setParameter("ids", ids);
             accessSql.bind(nq);
@@ -471,7 +472,7 @@ public class ClientService {
                 "select employees.id as v, employees.full_name as label, count(*) as c "
                         + "from clients join employees on (employees.id = clients.owner_employee_id "
                         + "or exists(select 1 from client_co_owners co_owner where co_owner.client_id=clients.id and co_owner.employee_id=employees.id)) "
-                        + "where clients.is_deleted = false " + (ids == null ? "" : "and clients.category_id in (:ids) ")
+                        + "where clients.is_deleted = false AND clients.is_hidden = false " + (ids == null ? "" : "and clients.category_id in (:ids) ")
                         + "and clients.owner_employee_id is not null "
                         + legacyStubClause + " and " + accessSql.predicate()
                         + " group by employees.id, employees.full_name "
@@ -492,7 +493,7 @@ public class ClientService {
             List<UUID> ids, String legacyStubClause, ClientAccessPolicy.NativeReadScope accessSql) {
         var nq = em.createNativeQuery(
                 "select count(*) from clients "
-                        + "where is_deleted = false " + (ids == null ? "" : "and category_id in (:ids) ") + "and owner_employee_id is null"
+                        + "where is_deleted = false AND is_hidden = false " + (ids == null ? "" : "and category_id in (:ids) ") + "and owner_employee_id is null"
                         + legacyStubClause + " and " + accessSql.predicate());
         if (ids != null) nq.setParameter("ids", ids);
         accessSql.bind(nq);

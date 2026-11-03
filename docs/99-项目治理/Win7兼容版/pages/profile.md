@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | MyProfileChangesPage @44 (page-class)<br>_MyProfileChangesPageState @52 (state-class)<br>_MyBatchDetailDialog @369 (supporting-class) |
-| 真实路由绑定 | /profile/me/changes；router @2317；builder ['MyProfileChangesPage']；redirect None |
+| 真实路由绑定 | /profile/me/changes；router @2321；builder ['MyProfileChangesPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProfileEditPage @51 (page-class)<br>_ProfileEditPageState @62 (state-class) |
-| 真实路由绑定 | /profile/edit；router @2302；builder ['ProfileEditPage']；redirect None |
+| 真实路由绑定 | /profile/edit；router @2306；builder ['ProfileEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

@@ -4,14 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/network/api_client.dart';
 import '../../core/ui/app_notification.dart';
 import '../../features/basic_data/models/master_facet.dart';
-import '../../features/basic_data/repositories/client_repository.dart';
-import '../../features/basic_data/repositories/supplier_repository.dart';
+import '../../features/basic_data/repositories/business_reference_repository.dart';
 import '../../features/basic_data/widgets/uten_client_picker.dart';
 import '../auth/permissions.dart';
 import 'export_context_epoch_provider.dart';
 
 /// Complete candidate pages are separate from the bounded cache of referenced party names.
-/// Historical filters include disabled parties; write selectors use the existing master picker.
+/// Historical filters include disabled/hidden identities through minimal business references;
+/// master lists and new-document selectors continue to exclude hidden parties.
 MasterFacetColumnLoader clientPartyFacetLoader(
   WidgetRef ref, {
   bool excludeLegacyFinanceStub = true,
@@ -20,7 +20,7 @@ MasterFacetColumnLoader clientPartyFacetLoader(
   final epoch = ref.read(exportContextEpochProvider);
   final api = ref.read(apiClientProvider);
   final result = await ref
-      .read(clientRepositoryProvider)
+      .read(businessClientReferenceRepositoryProvider)
       .search(
         keyword,
         page: page,
@@ -51,7 +51,7 @@ MasterFacetColumnLoader supplierPartyFacetLoader(WidgetRef ref) =>
       final epoch = ref.read(exportContextEpochProvider);
       final api = ref.read(apiClientProvider);
       final result = await ref
-          .read(supplierRepositoryProvider)
+          .read(businessSupplierReferenceRepositoryProvider)
           .search(keyword, page: page, size: 100);
       if (!context.mounted ||
           epoch != ref.read(exportContextEpochProvider) ||

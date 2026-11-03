@@ -1290,7 +1290,6 @@ public class SalesOrderService {
         // 普通新建、AI 开单与报价转单共用默认；旧客户端仍可显式传入齐套策略。
         requireSelectableShipmentPolicy(req == null ? null : req.getShipmentPolicy());
         tx.bind();
-        referenceValidator.validate(req);
         if (expectedQuoteOwner != null && req.getCurrencyId() == null) {
             // 报价单本身没有币种字段；一键转订单只能使用唯一、明确的启用人民币主档，禁止按汇率猜测。
             req.setCurrencyId(resolveQuoteConversionCurrencyId());
@@ -1302,6 +1301,7 @@ public class SalesOrderService {
                 throw new ApiException(ErrorCode.CONFLICT, "来源报价须按本位币计价，请重新报价");
             }
         }
+        referenceValidator.validate(req, sourceQuote == null ? null : sourceQuote.getClientId());
         SalesOrder o = new SalesOrder();
         applyHeader(req, o);
         if (sourceQuote != null) {
@@ -1458,7 +1458,7 @@ public class SalesOrderService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "「客户确认后分批」仅历史单保留，请选择允许分批发货或整单齐套后发货");
         }
-        referenceValidator.validate(req);
+        referenceValidator.validate(req, o.getClientId());
         if (rejectedRevision || approvedRevision) {
             String before = revisions.snapshot(id);
             OrderDetail revised = reviseApprovedOrder(o, req);

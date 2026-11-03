@@ -8,6 +8,29 @@ import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_ar_ap_page.dart';
 
 void main() {
+  testWidgets('related-party deep link loads the exact historical account', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(1800, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = _ArApApi();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [apiClientProvider.overrideWithValue(api)],
+        child: const MaterialApp(
+          home: FinanceArApPage(
+            initialPartyId: 'hidden-client',
+            initialDirection: 'AR',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(api.lastQuery?['partyId'], 'hidden-client');
+    expect(api.lastQuery?['direction'], 'AR');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('AR ledger exposes due date settlement style and remark', (
     tester,
   ) async {

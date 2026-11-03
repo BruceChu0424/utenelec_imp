@@ -29,12 +29,18 @@ public interface MasterReferenceValidationPort {
 
     void requireVisibleActiveClient(UUID clientId);
 
+    /** New or changed customer references exclude hidden parties; existing document references keep their identity. */
+    default void requireSelectableClient(UUID clientId) { requireVisibleActiveClient(clientId); }
+
     /**
      * Requires a supplier that may receive new purchase/subcontract business.
      * Null legacy status remains selectable; deleted, disabled, and internal-workshop
      * rows are rejected. Implementations lock the row for the caller transaction.
      */
     void requireSelectableSupplier(UUID supplierId);
+
+    /** Existing orders may finish after a supplier is hidden, with the same state checks as before. */
+    default void requireExistingSupplier(UUID supplierId) { requireSelectableSupplier(supplierId); }
 
     ResolvedLineUnit resolveVisibleActiveGoodsUnit(
             UUID goodsId,

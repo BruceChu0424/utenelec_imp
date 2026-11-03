@@ -39,7 +39,7 @@ class SalesMasterReferenceValidatorTest {
         var ordering = org.mockito.Mockito.inOrder(references);
         ordering.verify(references).lockGoodsQuantityBasis(List.of(goodsId));
         ordering.verify(references).resolveVisibleActiveGoodsUnit(goodsId, null, null, 1);
-        verify(references).requireVisibleActiveClient(clientId);
+        verify(references).requireSelectableClient(clientId);
         assertEquals(baseUnitId, line.getUnitId());
         assertEquals(0, BigDecimal.ONE.compareTo(line.getUnitRate()));
     }
@@ -66,7 +66,7 @@ class SalesMasterReferenceValidatorTest {
 
         validator.validate(request);
 
-        verify(references).requireVisibleActiveClient(clientId);
+        verify(references).requireSelectableClient(clientId);
         verify(references).resolveVisibleActiveGoodsUnit(
                 goodsId, unitId, new BigDecimal("12"), 7);
     }

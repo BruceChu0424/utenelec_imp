@@ -21,4 +21,9 @@ public class SupplierDictItem {
     private String name;
     private String status;
     private UUID defaultSettlementMethodId;
+    private boolean selectable;
+
+    public SupplierDictItem(UUID id, String code, String name, String status, UUID defaultSettlementMethodId) {
+        this(id, code, name, status, defaultSettlementMethodId, status == null || "使用".equals(status));
+    }
 }

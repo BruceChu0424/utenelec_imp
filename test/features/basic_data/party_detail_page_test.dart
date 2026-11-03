@@ -4,6 +4,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/core/router/route_names.dart';
+import 'package:uten_imp/features/basic_data/models/master_batch.dart';
+import 'package:uten_imp/features/basic_data/repositories/master_batch_repository.dart';
 import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,6 +38,69 @@ class _Session extends SessionNotifier {
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('客户详情确认隐藏关联资料走同一批次合同并保留版本', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1500, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final batch = _DetailBatch();
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (_, _) =>
+              const PartyDetailPage(partyType: 'client', id: 'client-1'),
+        ),
+        GoRoute(
+          path: RouteName.basicinfoClient,
+          builder: (_, _) => const Scaffold(body: Text('返回客户资料')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionProvider.overrideWith(_Session.new),
+          authenticatedScopeProvider.overrideWithValue(
+            const AuthenticatedScope(userId: 'party-test'),
+          ),
+          sharedPreferencesProvider.overrideWithValue(
+            await SharedPreferences.getInstance(),
+          ),
+          apiClientProvider.overrideWithValue(_EmptyApi()),
+          currentPermissionsProvider.overrideWithValue({
+            Perm.clientView,
+            Perm.clientDelete,
+          }),
+          isSuperAdminProvider.overrideWithValue(false),
+          clientRepositoryProvider.overrideWithValue(_FakeClientRepository()),
+          clientDirectoryRepositoryProvider.overrideWithValue(
+            _FakePartyDirectoryRepository(),
+          ),
+          masterBatchRepositoryProvider.overrideWithValue(batch),
+        ],
+        child: MaterialApp.router(
+          routerConfig: router,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('party-detail-delete')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '删除'));
+    await tester.pumpAndSettle();
+    expect(batch.calls, hasLength(1));
+    expect(find.text('去查看'), findsOneWidget);
+    await tester.tap(find.widgetWithText(UtenButton, '仍然删除'));
+    await tester.pumpAndSettle();
+    expect(batch.calls.map((call) => call.$2), [false, true]);
+    expect(batch.calls.last.$1.single.id, 'client-1');
+    expect(batch.calls.last.$1.single.version, 17);
+    expect(find.text('返回客户资料'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   for (final size in [const Size(1269, 900), const Size(390, 844)]) {
     testWidgets('客户各分区卡片与身份卡同宽，查看编辑不重复缩进 $size', (tester) async {
@@ -600,6 +668,7 @@ class _FakeClientRepository implements ClientRepository {
     name: '中山测试客户',
     nameEn: nameEn,
     code: 'C-001',
+    version: 17,
     status: '使用',
     linkman: '张三',
     mobile: '13800000000',
@@ -614,6 +683,36 @@ class _FakeClientRepository implements ClientRepository {
   Future<void> update(String id, Map<String, dynamic> body) async {
     lastUpdateId = id;
     lastUpdateBody = body;
+  }
+}
+
+class _DetailBatch implements MasterBatchRepository {
+  final calls = <(List<MasterBatchItem>, bool)>[];
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+
+  @override
+  Future<MasterBatchResult> delete({
+    required String entityPath,
+    required List<MasterBatchItem> items,
+    bool confirmReferencedHide = false,
+  }) async {
+    expect(entityPath, '/master/clients');
+    calls.add((items, confirmReferencedHide));
+    return MasterBatchResult(
+      succeeded: confirmReferencedHide ? 1 : 0,
+      failed: confirmReferencedHide ? 0 : 1,
+      results: [
+        MasterBatchItemResult(
+          id: items.single.id,
+          label: '中山测试客户',
+          ok: confirmReferencedHide,
+          confirmationRequired: !confirmReferencedHide,
+          reason: confirmReferencedHide ? null : '还有未结案的销售订单：XD001',
+        ),
+      ],
+    );
   }
 }
 

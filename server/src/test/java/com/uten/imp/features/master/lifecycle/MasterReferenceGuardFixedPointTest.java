@@ -127,6 +127,23 @@ class MasterReferenceGuardFixedPointTest {
         assertThat(text).contains("我的货品").contains("等共 2 处")
                 .doesNotContain("别人的货品").doesNotContain("SO-别人")
                 .contains("还有未结案的销售订单：共 1 处(你没有权限查看明细");
+        assertThat(result.get(component).stream().flatMap(blocker -> blocker.references().stream()))
+                .extracting(MasterReferenceGuard.Reference::label).containsExactly("我的货品");
+    }
+
+    @Test
+    void partyReferencesKeepStableIdsAndDoNotInventLinksForCompositeKeys() {
+        UUID client = UUID.randomUUID();
+        UUID order = UUID.randomUUID();
+        var rows = List.of(
+                row(client, "SALES_ORDER", order.toString(), "XD001", 1),
+                row(client, "RECEIVABLE", "legacy:opening", "期初往来", 1));
+        var result = guard(rows).blockers(MasterEntityKind.CLIENT, List.of(client), List.of());
+        assertThat(only(result.get(client), MasterReferenceGuard.RefKind.SALES_ORDER).references())
+                .containsExactly(new MasterReferenceGuard.Reference("SALES_ORDER", order, "XD001"));
+        var opening = only(result.get(client), MasterReferenceGuard.RefKind.RECEIVABLE);
+        assertThat(opening.samples()).containsExactly("期初往来");
+        assertThat(opening.references()).isEmpty();
     }
 
     // ---- helpers -------------------------------------------------------------------

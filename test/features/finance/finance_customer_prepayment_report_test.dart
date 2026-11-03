@@ -24,6 +24,33 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
   });
+  testWidgets(
+    'prepayment history can select a hidden customer and query its original UUID',
+    (tester) async {
+      final api = _ReportApi();
+      await tester.binding.setSurfaceSize(const Size(1300, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        _reportApp(api, extraPermissions: {Perm.clientView}),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(ClientPickerField));
+      await tester.pumpAndSettle();
+      expect(api.candidateQueries.single['selectableOnly'], isNot(true));
+      await tester.tap(find.text('已隐藏历史客户'));
+      await tester.pump();
+      await tester.tap(find.text('确定'));
+      await tester.pumpAndSettle();
+      expect(api.lastQuery?['clientId'], 'hidden-customer');
+      expect(
+        tester
+            .widget<ClientPickerField>(find.byType(ClientPickerField))
+            .initialName,
+        '已隐藏历史客户',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
   test(
     'report config and route use exact endpoint and compound permissions',
     () {
@@ -142,26 +169,28 @@ void main() {
   });
 }
 
-Widget _reportApp(_ReportApi api) => ProviderScope(
-  overrides: [
-    localServerReachableProvider.overrideWith(
-      (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
-    ),
-    sharedPreferencesProvider.overrideWithValue(_preferences),
-    apiClientProvider.overrideWithValue(api),
-    currentPermissionsProvider.overrideWithValue(const {
-      Perm.financeReportView,
-      Perm.customerPrepaymentView,
-      Perm.financeViewAll,
-    }),
-  ],
-  child: const MaterialApp(
-    localizationsDelegates: AppLocalizations.localizationsDelegates,
-    supportedLocales: AppLocalizations.supportedLocales,
-    locale: Locale('zh'),
-    home: FinanceReportTablePage(cardId: 'customer-prepayment'),
-  ),
-);
+Widget _reportApp(_ReportApi api, {Set<String> extraPermissions = const {}}) =>
+    ProviderScope(
+      overrides: [
+        localServerReachableProvider.overrideWith(
+          (ref) => LocalServerReachabilityNotifier(_preferences, web: true),
+        ),
+        sharedPreferencesProvider.overrideWithValue(_preferences),
+        apiClientProvider.overrideWithValue(api),
+        currentPermissionsProvider.overrideWithValue({
+          Perm.financeReportView,
+          Perm.customerPrepaymentView,
+          Perm.financeViewAll,
+          ...extraPermissions,
+        }),
+      ],
+      child: const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: Locale('zh'),
+        home: FinanceReportTablePage(cardId: 'customer-prepayment'),
+      ),
+    );
 
 Widget _hubApp(Set<String> permissions) => ProviderScope(
   overrides: [
@@ -187,12 +216,32 @@ class _ReportApi extends ApiClient {
   final Object? failure;
   int reportCalls = 0;
   Map<String, dynamic>? lastQuery;
+  final candidateQueries = <Map<String, dynamic>>[];
 
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/business-references/clients') {
+      candidateQueries.add({...?query});
+      final items = [
+        if (query?['selectableOnly'] != true)
+          {
+            'id': 'hidden-customer',
+            'name': '已隐藏历史客户',
+            'categoryId': 'client-root',
+            'status': '使用',
+          },
+      ];
+      return {
+        'items': items,
+        'page': 1,
+        'size': 100,
+        'total': items.length,
+        'totalPages': 1,
+      };
+    }
     if (path == '/finance/reports/customer-prepayment/events') {
       reportCalls++;
       lastQuery = Map<String, dynamic>.from(query ?? const {});
@@ -201,6 +250,22 @@ class _ReportApi extends ApiClient {
     }
     return const <String, dynamic>{};
   }
+
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => path == '/business-references/client-categories'
+      ? [
+          {
+            'id': 'client-root',
+            'name': '客户分类',
+            'code': 'C',
+            'level': 0,
+            'children': <Object>[],
+          },
+        ]
+      : [];
 }
 
 const _response = <String, dynamic>{

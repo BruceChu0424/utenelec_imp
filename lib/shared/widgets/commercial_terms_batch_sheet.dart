@@ -145,6 +145,24 @@ class _CommercialTermsBatchSheetState
     return result;
   }
 
+  Future<void> _apply() async {
+    final supplierId = _supplierId;
+    if (supplierId != null && supplierId.isNotEmpty) {
+      final confirmed = await resolvePickedParty<String>(
+        ref,
+        () async => supplierId,
+        idOf: (id) => id,
+        loadNames: ref.read(masterNameServiceProvider).loadSupplierNames,
+        isResolved: (id) =>
+            ref.read(masterNameServiceProvider).supplierReferenceSelectable(id),
+        isCurrent: () => mounted && _supplierId == supplierId,
+      );
+      if (confirmed == null || !mounted) return;
+    }
+    final result = _assemble();
+    if (result != null && mounted) Navigator.of(context).pop(result);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -242,10 +260,7 @@ class _CommercialTermsBatchSheetState
               Expanded(
                 child: UtenButton(
                   icon: Icons.done_all_rounded,
-                  onPressed: () {
-                    final result = _assemble();
-                    if (result != null) Navigator.of(context).pop(result);
-                  },
+                  onPressed: _apply,
                   child: const Text('应用到选中行'),
                 ),
               ),

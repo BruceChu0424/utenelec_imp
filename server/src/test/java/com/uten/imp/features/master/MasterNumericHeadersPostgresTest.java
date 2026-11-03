@@ -52,7 +52,7 @@ class MasterNumericHeadersPostgresTest {
         try(var connection=database.openConnection();var statement=connection.createStatement()) {
             statement.execute("CREATE SCHEMA master_header_oracle");
             statement.execute("SET search_path=master_header_oracle,public");
-            MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(connection,"goods","goods_bom_items","colors","units",
+            MigratedProjectionSchema.copyEmptyTablesFromMigratedCatalog(connection,"goods","goods_bom_items","colors","units","currencies",
                     "material_categories","moulds","mould_categories","clients","client_categories","suppliers","supplier_categories",
                     "stock_balances","warehouses","employees","departments","positions","subcontract_orders","subcontract_order_items","subcontract_short_delivery_cases","procurement_order_qty_change_logs");
         }
@@ -66,6 +66,7 @@ class MasterNumericHeadersPostgresTest {
         var factory=new LocalContainerEntityManagerFactoryBean();factory.setDataSource(source);
         factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
         factory.setManagedTypes(PersistenceManagedTypes.of(Goods.class.getName(),GoodsBomItem.class.getName(),Color.class.getName(),Unit.class.getName(),
+                com.uten.imp.features.master.currency.Currency.class.getName(),
                 MaterialCategory.class.getName(),Mould.class.getName(),MouldCategory.class.getName(),Client.class.getName(),ClientCategory.class.getName(),
                 Supplier.class.getName(),SupplierCategory.class.getName(),com.uten.imp.features.master.warehouse.Warehouse.class.getName(),
                 com.uten.imp.features.org.employee.Employee.class.getName(),com.uten.imp.features.org.department.Department.class.getName(),
@@ -81,7 +82,7 @@ class MasterNumericHeadersPostgresTest {
         }
     }
     @BeforeEach void clean() {
-        db.execute("TRUNCATE goods,goods_bom_items,moulds,clients,suppliers,stock_balances,warehouses,subcontract_orders,subcontract_order_items,subcontract_short_delivery_cases,procurement_order_qty_change_logs");
+        db.execute("TRUNCATE goods,goods_bom_items,moulds,clients,suppliers,stock_balances,warehouses,currencies,subcontract_orders,subcontract_order_items,subcontract_short_delivery_cases,procurement_order_qty_change_logs");
         em=emf.createEntityManager();repositories=new JpaRepositoryFactory(em);
     }
     @AfterEach void closeEntityManager() { if(em!=null)em.close(); }
@@ -161,7 +162,7 @@ class MasterNumericHeadersPostgresTest {
         assertThat(service.list(filter,1,1,"tqty","desc").getItems().getFirst().getId()).isEqualTo(large);
         assertThat(service.list(filter,2,1,"tqty","desc").getItems().getFirst().getId()).isEqualTo(small);
         UUID customer=UUID.randomUUID();
-        db.update("INSERT INTO clients(id,code,name,tday,credit,credit_floor,is_deleted,version,code_managed) VALUES(?,'C1','客户',30,12.3456,10.1234,false,0,false)",customer);
+        db.update("INSERT INTO clients(id,code,name,tday,credit,credit_floor,is_deleted,is_hidden,version,code_managed) VALUES(?,'C1','客户',30,12.3456,10.1234,false,false,0,false)",customer);
         var cb=em.getCriteriaBuilder();var query=cb.createQuery(UUID.class);var root=query.from(Client.class);
         query.select(root.get("id")).where(MasterColumnSearch.predicate(cb,root.get("id"),MasterColumnSearch.Domain.CLIENT,
                 Map.of("tday",">=30","credit","12.35","creditFloor","10.12")));
@@ -174,7 +175,7 @@ class MasterNumericHeadersPostgresTest {
         UUID id=UUID.randomUUID();db.update("INSERT INTO warehouses(id,is_accountable,is_defective,is_line_side) VALUES(?,true,?,?)",id,defective,lineSide);return id;
     }
     private UUID supplier(String code) {
-        UUID id=UUID.randomUUID();db.update("INSERT INTO suppliers(id,code,name,is_deleted,is_internal_workshop,code_managed,version) VALUES(?,?,'供应%_商',false,false,false,0)",id,code);return id;
+        UUID id=UUID.randomUUID();db.update("INSERT INTO suppliers(id,code,name,is_deleted,is_hidden,is_internal_workshop,code_managed,version) VALUES(?,?,'供应%_商',false,false,false,false,0)",id,code);return id;
     }
     private void loss(UUID supplier,String ordered,String loss) {
         UUID order=UUID.randomUUID(),line=UUID.randomUUID();

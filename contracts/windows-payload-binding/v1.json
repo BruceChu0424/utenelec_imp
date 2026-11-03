@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "contractId": "uten-windows-payload-binding-v1",
+  "magicAscii": "UTEN-PAYLOAD-BINDING-V1\u0000",
+  "footer": "uint32-little-endian JSON byte length, then 24-byte magic",
+  "maximumJsonBytes": 8388608,
+  "maximumFiles": 20000,
+  "maximumCertificateBytes": 16777216,
+  "maximumCertificateRecords": 16,
+  "inventoryFields": ["schemaVersion", "runtimeFamily", "version", "buildNumber", "architecture", "executable", "files"],
+  "recordFields": ["path", "size", "sha256"],
+  "recordSort": "unsigned UTF-8 path byte lexicographic order",
+  "canonicalProducerJson": "UTF-8, sorted object keys, no insignificant whitespace, no ASCII escaping, no NaN, no duplicate keys",
+  "placement": "max(SizeOfHeaders, nonempty section raw-data ends), then 0..7 zero bytes, JSON and footer; footer end equals aligned PE certificate-table offset; certificate table ends at EOF",
+  "certificateTable": "WIN_CERTIFICATE records revision 0x0200/type 2, bounded lengths, alignment padding all zero; cryptographic trust is verified separately",
+  "excludedRuntimePaths": ["the main executable", "uten-client-manifest.json", "client_updater/**"],
+  "bootstrap": "installer-only updater is separately company signed and protected by the signed complete Setup; the update ZIP excludes it",
+  "metadata": "runtimeFamily/version/buildNumber/architecture/executable must equal the owning validated package metadata"
+}

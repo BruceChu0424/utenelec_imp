@@ -54,5 +54,22 @@
     "liveStack": "AXNodeData::GetStringAttribute / GetString16Attribute / AXPlatformNodeWin::get_accValue",
     "incidentUtc": "2026-11-02T15:48:35.8010855Z",
     "reverseBasePatchAfterReversingThisTestPatch": true
+  },
+  "rootReparentRegression": {
+    "patch": "flutter-3.44.2-root-reparent-regression.patch",
+    "sha256": "34f9297322e193b6c673866e493c7d35bda5df94173b4502c77e05a49c252033",
+    "productionCodeChanged": false,
+    "applyAfter": "flutter-3.44.2-retained-text-value-regression.patch",
+    "customerReleaseRva": "0x3A9FA",
+    "symbol": "AccessibilityBridge::CreateRemoveReparentedNodesUpdate / ui::AXNode::id",
+    "customerSourceLine": "accessibility_bridge.cc:229",
+    "rootCause": "root referenced as child dereferences null parent in Release",
+    "existingRepair": "common tree patch guards absent parent and transactionally rejects cyclic root topology",
+    "redWithoutParentGuard": "SEH 0xc0000005 in the new test body",
+    "releaseCommonCases": 241,
+    "repeatIterations": 1000,
+    "greenPreservesLiveTreeAndLaterUpdate": true,
+    "reviewedReleaseEngineRawSha256": "1c47300271ef26e5ec62cb133811516041ce1d980d14b4aaa73700b0109e969a",
+    "fieldEvidenceLimit": "No dump bytes: matching PDB identifies the source instruction; the regression proves a null-parent trigger, not the exact field registers or semantics batch"
   }
 }

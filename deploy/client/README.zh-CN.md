@@ -89,9 +89,59 @@ WPF 的独立构建、私有依赖、PE/CLR 架构、安装器、更新清单及
 员工无需额外导入证书，不修改 Windows 系统信任库，不关闭证书、主机名或账号验证。
 证书错误不会伪装成网络断开后把密码转交外网。CA 轮换须审核新证书及摘要后随客户端发布。
 
-这些检查不等于 Authenticode：当前环境没有已配置的公司代码签名证书/私钥或托管签名凭据。
-Ed25519 发布摘要和 SHA-256 文件校验不能代替 Windows 发行者签名，也不能承诺消除 SmartScreen
-新文件信誉提示。可信发行者签名和浏览器对内网证书的信任仍需各自完成正式配置。
+这些 TLS 检查、Ed25519 发布摘要和 SHA-256 文件校验不能代替 Windows 发行者签名。
+正式 Windows 包现在必须通过 `windows_authenticode.py` 的独立签名门；缺少可信签名、公司
+发行者不匹配、时间戳/可信链失败、工具超时或出现警告时拒绝产出/复验，不引导员工关闭
+智能应用控制、Defender 或修改系统信任库。有效签名也不承诺消除所有 SmartScreen 新文件信誉提示。
+
+签名机器先配置以下非秘密标识；私钥保留在公司控制的硬件/Windows 密钥提供程序中，不导出
+到仓库、命令行或日志。公司尚未申请证书时，代码完成不代表可以交付已签名正式包。
+
+| 配置 | 含义 |
+|---|---|
+| `UTEN_WINDOWS_PUBLISHER_SHA256` | 1..4 个审核过的公司叶证书 DER SHA-256，逗号分隔以允许受控轮换；服务端使用同名配置 |
+| `UTEN_WINDOWS_SIGNING_THUMBPRINT` | `CurrentUser\\My` 或 `LocalMachine\\My` 中可访问私钥的证书 SHA-1 thumbprint，只作选择器 |
+| `UTEN_WINDOWS_SIGNTOOL_PATH` | 已审核 Windows SDK `signtool.exe` 的绝对路径；未指定时只查标准 SDK 路径，不从 PATH 任意加载 |
+| `UTEN_WINDOWS_TIMESTAMP_URL` | 已审核的公开 RFC 3161 时间戳服务 URL，按 CA 提供的地址配置；拒绝凭据/query/fragment，避免秘密进入回执或工具日志 |
+
+```powershell
+python deploy/client/windows_authenticode.py --check-config
+```
+
+该命令只读检查工具、证书关联私钥存在、有效期、code-signing EKU、公司证书 pin、可信链/撤销
+及时间戳 URL 配置，不签文件、不改证书存储，也不代表已验证时间戳服务在线。正式一键构建在
+耗时 AOT 之前执行同一检查；硬件令牌/PIN/私钥 ACL 是否可实际签名仍由真实签名步骤验证。
+私有 staging 通过 SignTool `/fd SHA256 /tr <TSA> /td SHA256`
+签名；独立复验执行 `/pa /all /tw`，全部嵌套签名和时间戳必须通过。签名校验最多 128 个
+PE/脚本，整包 120 秒、每个工具进程 30 秒；签名准备阶段总限时 600 秒，最终复验另限 120 秒。
+
+公司主程序、自建 Flutter 引擎、固定更新器和 Setup 必须匹配公司 pin；其他 DLL 保留可信
+第三方签名。PE 识别同时检查文件头，不能改扩展名绕过。正式 Setup 通过 Inno `SignTool`
+和 `SignedUninstaller=yes` 覆盖外层、运行时自拷贝和卸载器；最终签名后的 Setup 摘要才写入
+更新 ZIP 的 `installerSha256`。源 build/既有安装目录不会被原地签名。
+
+完整运行时还必须通过 `windows_payload_binding.py` 的主 EXE 绑定。先对其他 PE/脚本签名，
+再按公共运行时 allowlist/JNI 选择结果对所有最终叶文件（含已签 DLL、AOT、assets 和运行时
+profile）记录大小和 SHA-256，把确定性 inventory 放到主 EXE 的受签名 overlay 后，最后
+签主 EXE。inventory 排除主 EXE 本身、根更新 manifest 和 installer-only bootstrap 以避免
+循环；bootstrap 仍单独公司签名并由完整 Setup 签名保护。Setup 与更新 ZIP 复用同一主 EXE。
+单向 `installerSha256` 和可重算的 ZIP manifest 均不能代替这项绑定。
+
+共享合同和跨语言反例位于 `contracts/windows-payload-binding/`。inventory 必须紧邻 PE
+certificate table 之前，不能取证书 padding 或签名后的未认证尾数据；最多 8 MiB/20,000 叶，
+绑定版本、构建号、运行时和架构。独立复验重算每个实际叶文件；改 AOT/assets 后重算 manifest
+也会失败。ZIP 在构造 `ZipFile` 之前经过公共 `zip_directory.py` 流式中央目录检查，Flutter
+上限 20,001 项/16 MiB，WPF 维持 7 项/64 KiB 的更严合同。
+
+LocalTest 只有在已验证运行时元数据确实为 `local_test` 时才豁免正式签名门；不能给 formal
+载荷加一个 `allow_local_test` 标志绕过。WPF 公司候选生产与 ZIP 独立复验复用同一签名门，
+主 EXE inventory 消费门同样拒绝缺失/不匹配。Company 构建通过 `package_wpf.py prepare-company`
+从编译输出冻结合同六文件到全新私有目录，验证固定 BC 的原始 NuGet/DLL/license 摘要和已有
+厂商签名，签 Core 后 seal/签 main；`prepare-bootstrap` 只签独立 bootstrap 副本。两者记录
+签名前后文件及真实 source receipt，Setup/ZIP 消费者核对最终文件，不改原编译输出或既有安装。
+本次受审 BouncyCastle 原 DLL 已有可信厂商签名及时间戳，按原 raw 锁完整保留；已有签名
+无效、撤销或时间戳失败时直接拒绝，不用公司签名覆盖掩盖，也不放宽固定依赖锁。
+真实公司签名/安装更新验收仍需公司证书；WPF 的完整 ERP 和 Win7 真机验收状态继续保持候选。
 
 `windows_installer.iss` 使用 Inno Setup 6.5+：首次安装显示目录选择页，默认当前用户目录
 `{localappdata}\Programs\Uten\UIMP`，已有正式安装沿用原目录，创建桌面/开始菜单快捷方式，

@@ -55,7 +55,7 @@ class ClientReleasePublicationFlowTest {
         @Bean ClientReleaseCatalog catalog(ClientUpdateProperties properties, ObjectMapper mapper) {
             return new ClientReleaseCatalog(properties, new StorageProperties(), mapper);
         }
-        @Bean ClientPackageInspector inspector(ObjectMapper mapper) { return new ClientPackageInspector(mapper); }
+        @Bean ClientPackageInspector inspector(ObjectMapper mapper) { return ClientReleaseFixtures.structuralInspector(mapper); }
         @Bean ClientReleaseService service(ClientReleaseCatalog catalog, ClientPackageInspector inspector,
                                           ClientUpdateProperties properties, SecurityContextCurrentUser users, AuditService audit) {
             return new ClientReleaseService(catalog, inspector, properties, users, audit);

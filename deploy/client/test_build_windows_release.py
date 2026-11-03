@@ -2,6 +2,7 @@ import json
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from unittest.mock import patch
 from pathlib import Path
 from types import SimpleNamespace
@@ -35,6 +36,11 @@ def fixture_compiler_runner(command, **options):
 
 class BuildWindowsReleaseTest(unittest.TestCase):
     def setUp(self):
+        from test_package_windows import synthetic_signature_boundary
+        synthetic_signature_boundary(self)
+        patch = mock.patch("build_windows_release.check_configuration", return_value={"syntheticSignatureBoundary": True})
+        patch.start()
+        self.addCleanup(patch.stop)
         self.temporary = tempfile.TemporaryDirectory(prefix="uten formal release ")
         self.root = Path(self.temporary.name).resolve()
         self.repository = self.root / "repository"

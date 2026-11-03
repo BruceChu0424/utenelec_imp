@@ -1,0 +1,35 @@
+--- a/engine/src/flutter/shell/platform/common/accessibility_bridge_unittests.cc
++++ b/engine/src/flutter/shell/platform/common/accessibility_bridge_unittests.cc
+@@ -216,0 +217,32 @@
++TEST(AccessibilityBridgeTest,
++     RootReparentCycleIsRejectedWithoutMutatingLiveTreeAndRecovers) {
++  auto bridge = std::make_shared<TestAccessibilityBridge>();
++  std::vector<int32_t> children{1};
++  bridge->AddFlutterSemanticsNodeUpdate(
++      CreateSemanticsNode(0, "root", &children));
++  bridge->AddFlutterSemanticsNodeUpdate(CreateSemanticsNode(1, "original"));
++  bridge->CommitUpdates();
++  auto retained = bridge->GetFlutterPlatformNodeDelegateFromID(1).lock();
++  ASSERT_TRUE(retained);
++  auto* live = retained->GetAXNode();
++
++  // Field Release RVA 0x3A9FA dereferenced child->parent()->id() here.
++  // A root referenced by an incomplete/cyclic batch has no parent.
++  std::vector<int32_t> root_as_child{0};
++  bridge->AddFlutterSemanticsNodeUpdate(
++      CreateSemanticsNode(1, "must not publish", &root_as_child));
++  bridge->CommitUpdates();
++  EXPECT_TRUE(bridge->GetTree()->error().empty());
++  EXPECT_EQ(retained->GetAXNode(), live);
++  EXPECT_EQ(retained->GetName(), "original");
++  EXPECT_EQ(bridge->GetRootAsAXNode()->id(), 0);
++  EXPECT_EQ(bridge->GetRootAsAXNode()->parent(), nullptr);
++  EXPECT_EQ(bridge->GetRootAsAXNode()->GetUnignoredChildCount(), 1u);
++
++  bridge->AddFlutterSemanticsNodeUpdate(CreateSemanticsNode(1, "recovered"));
++  bridge->CommitUpdates();
++  EXPECT_TRUE(bridge->GetTree()->error().empty());
++  EXPECT_EQ(retained->GetAXNode(), bridge->GetNodeFromTree(1));
++  EXPECT_EQ(retained->GetName(), "recovered");
++}
++

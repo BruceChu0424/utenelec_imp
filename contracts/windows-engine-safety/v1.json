@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "algorithm": "mapped-pe-image-sha256-v1",
+  "scope": "Mapped PE content identity for reviewed-engine admission and known-unsafe denial, invariant under signing; not an Authenticode hash or a signature trust result",
+  "reference": "https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#appendix-a-calculating-authenticode-pe-image-hash",
+  "hashSequence": [
+    "PE headers from byte 0 through SizeOfHeaders, omitting OptionalHeader.CheckSum (4 bytes) and CertificateTable directory (8 bytes)",
+    "Each complete nonempty raw section in ascending PointerToRawData order; reject overlap with headers/other sections/certificates",
+    "Ignore bytes outside headers and raw sections, including CertificateTable and overlay"
+  ],
+  "engines": [
+    {
+      "rawSha256": "72bf222a81e542348a8100ffb1e60ecee6fb066086b678a8f1c28497e7b4695e",
+      "peImageSha256": "3fa4c5f9a9edc6679df1a154fc6f1fd30f02c86f1e0168068d2d7585ef6fe379",
+      "classification": "confirmed-crashing",
+      "reason": "Flutter 3.44.2 Windows x64 Profile: null accessibility child on restore"
+    },
+    {
+      "rawSha256": "a5f0e1c7d685a022995ce49ed8529fb72523b0a3e9634ac10a8b0754af23df14",
+      "peImageSha256": "90bf26ab288778d3dbfec32718e8d38ceea9d975f49a881d4e8aed49d4da9438",
+      "classification": "confirmed-crashing",
+      "reason": "Incomplete accessibility child guard: stale AXNodeData after tree reparent/update"
+    },
+    {
+      "rawSha256": "011e87e890b7bfbac89f63c763341ffb8393d2b4a617dd836c471a0cdaa1346f",
+      "peImageSha256": "1a33b1f4e0384d20882b8b2b9680c502efa91df1fc03314f3140216d57237e10",
+      "classification": "confirmed-crashing",
+      "reason": "Flutter 3.44.2 x64 Release: field access violations in HitTestSync, retained AXNodeData, and root-parent dereference (RVA 0x3A9FA)"
+    },
+    {
+      "rawSha256": "f10968fa4899f83d6415aaaa675aee92e96c27dde2d1c084f65c7589013df634",
+      "peImageSha256": "86daf469c324b1a2f092263f3c507903aa8f71d0f439e14188d21458ff53706f",
+      "classification": "source-confirmed-unrepaired",
+      "reason": "Common AXTree repair without Windows HitTestSync missing-delegate protection"
+    }
+  ],
+  "reviewedEngines": [
+    {
+      "rawSha256": "1c47300271ef26e5ec62cb133811516041ce1d980d14b4aaa73700b0109e969a",
+      "peImageSha256": "bdce4bd2479a568e184292e601eaea5b0e2910c215663d506107cc7ecceebdfd",
+      "architecture": "x64",
+      "runtimeMode": "release",
+      "engineRevision": "77e2e94772b6eb43759e34ed1ad7da4674e19cab",
+      "patchProvenance": "deploy/client/flutter-engine-patches/patch-provenance.json",
+      "reviewedProductVersion": "2.5.44",
+      "approval": "reviewed-source-built-runtime; final release still requires trusted signatures and native acceptance"
+    }
+  ]
+}

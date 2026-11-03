@@ -348,8 +348,12 @@ class ApiClientReleasePublishGateway implements ClientReleasePublishGateway {
     ),
   );
   @override
-  Future<Map<String, dynamic>> publish(String id) =>
-      _run(() => api.post('/admin/client-releases/$id/publish'));
+  Future<Map<String, dynamic>> publish(String id) => _run(
+    () => api.postLongRunning(
+      '/admin/client-releases/$id/publish',
+      receiveTimeout: const Duration(minutes: 5),
+    ),
+  );
   @override
   Future<Map<String, dynamic>> read(String id) =>
       _run(() => api.get('/admin/client-releases/$id'));

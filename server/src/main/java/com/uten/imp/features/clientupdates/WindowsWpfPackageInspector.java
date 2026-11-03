@@ -15,10 +15,6 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 import java.nio.file.Path;
-import java.nio.channels.FileChannel;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.file.StandardOpenOption;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
@@ -31,28 +27,9 @@ final class WindowsWpfPackageInspector {
     private WindowsWpfPackageInspector() { }
     static boolean allowedFile(String name) { return REQUIRED.contains(name); }
     static void requireDirectory(Path path) throws IOException {
-        // ZIP format EOCD + maximum 16-bit comment, before ZipFile allocates entries.
-        try (var file = FileChannel.open(path, StandardOpenOption.READ)) {
-            long size = file.size();
-            int count = (int) Math.min(size, 22 + 65535);
-            var tail = ByteBuffer.allocate(count).order(ByteOrder.LITTLE_ENDIAN);
-            file.position(size - count);
-            while (tail.hasRemaining()) if (file.read(tail) < 0) throw invalid("WPF ZIP 目录截断");
-            int position = -1;
-            for (int index = count - 4; index >= 0; index--)
-                if (tail.getInt(index) == 0x06054b50) { position = index; break; }
-            if (position < 0 || position > count - 22) throw invalid("WPF ZIP 缺少有界目录");
-            int expected = REQUIRED.size() + 1;
-            long length = Integer.toUnsignedLong(tail.getInt(position + 12));
-            long offset = Integer.toUnsignedLong(tail.getInt(position + 16));
-            if (tail.getShort(position + 4) != 0 || tail.getShort(position + 6) != 0
-                    || Short.toUnsignedInt(tail.getShort(position + 8)) != expected
-                    || Short.toUnsignedInt(tail.getShort(position + 10)) != expected
-                    || length < expected * 46 || length > WpfPackageContract.MAXIMUM_CENTRAL_DIRECTORY_BYTES
-                    || offset + length != size - count + position
-                    || position + 22 + Short.toUnsignedInt(tail.getShort(position + 20)) != count)
-                throw invalid("WPF ZIP 必须为单盘、非 ZIP64、有界七条目目录");
-        }
+        int expected = REQUIRED.size() + 1;
+        var directory = ClientZipDirectory.inspect(path, expected, WpfPackageContract.MAXIMUM_CENTRAL_DIRECTORY_BYTES);
+        if (directory.entries() != expected) throw invalid("WPF ZIP 必须为单盘、非 ZIP64、有界七条目目录");
     }
     static void inspect(ZipFile zip, Map<String, ZipArchiveEntry> files, ClientReleaseDto.Release release, ObjectMapper mapper)
             throws IOException {

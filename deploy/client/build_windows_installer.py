@@ -21,6 +21,7 @@ import tempfile
 import zipfile
 
 from package_windows import inspect_executable_info, package_release, validate_package
+import windows_authenticode
 
 PRODUCT_NAME = "Uten IMP Windows Setup"
 ORIGINAL_FILENAME = "UtenIMPSetup.exe"
@@ -84,6 +85,8 @@ def validate_setup(path: Path, *, version: str, build_number: int, architecture:
             "validation": "outer-pe-version-resources-only"}
     if local_test:
         receipt["localTest"] = True
+    else:
+        receipt["authenticode"] = windows_authenticode.verify_files([("Setup.exe", path)], company_files={"Setup.exe"})
     return receipt
 
 
@@ -110,7 +113,13 @@ def compiler_command(compiler: Path | None, payload: Path, output_directory: Pat
         "AllowedArchitectures": allowed, "Install64Architectures": install64, "AppIcon": str(ICON),
     }
     return [str(compiler or "ISCC.exe"), "/Qp", *(f"/D{key}={value}" for key, value in values.items()),
-            *(["/DLocalTest"] if local_test else []), str(SCRIPT)]
+            *(["/DLocalTest"] if local_test else [inno_signing_argument()]), str(SCRIPT)]
+
+
+def inno_signing_argument() -> str:
+    # $f is substituted and quoted by Inno. Paths are arguments, never shell
+    # fragments; the callback receives no private key or certificate password.
+    return windows_authenticode.inno_signing_argument()
 
 
 def _output_path(path: Path, bundle: Path, extension: str) -> Path:
@@ -222,6 +231,8 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
     if local_test and update_output is not None:
         raise ValueError("Local-test setup cannot emit an update ZIP for the production distribution channel")
     bundle = bundle.resolve(strict=True)
+    with (bundle / "uten_imp.exe").open("rb") as source:
+        pre_sign_main_sha256 = hashlib.file_digest(source, "sha256").hexdigest()
     payload_info = inspect_executable_info(bundle / "uten_imp.exe")
     if payload_info["fileVersion"] != expected_version or payload_info["productVersion"] != expected_version:
         raise ValueError("Runtime executable file/product version differs from the requested release")
@@ -235,6 +246,8 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
     compiler = find_compiler(compiler)
     if compile and compiler is None:
         raise ValueError("Inno Setup ISCC.exe is not installed; install an approved compiler before an explicitly requested build")
+    if compile and not local_test:
+        windows_authenticode.check_configuration()
     # All transient inputs are private and removed on failure or dry run. The
     # original output is atomically replaced only after a successful EXE check.
     with tempfile.TemporaryDirectory(prefix="uten-uimp-setup-") as temporary:
@@ -242,6 +255,40 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
         archive_path = staging / "validated-bootstrap.zip"
         payload = staging / "payload"
         compiler_output = staging / "compiled"
+        signing_receipt = None
+        if compile and not local_test:
+            # Never sign a caller's build tree or installed application in place.
+            # Check the original engine before signing can change its file hash.
+            from package_windows import reject_known_unsafe_engine
+            engine = bundle / "flutter_windows.dll"
+            with engine.open("rb") as source:
+                reject_known_unsafe_engine("flutter_windows.dll", hashlib.file_digest(source, "sha256").hexdigest(),
+                                          stream=source, size=engine.stat().st_size, require_approved=True)
+            signed_source = staging / "signed-source"
+            shutil.copytree(bundle, signed_source, symlinks=True)
+            with (signed_source / "uten_imp.exe").open("rb") as frozen:
+                if hashlib.file_digest(frozen, "sha256").hexdigest() != pre_sign_main_sha256:
+                    raise ValueError("Runtime executable changed while freezing the signing snapshot")
+            from package_windows import collect_runtime_sources
+            import windows_payload_binding
+            runtime_sources, _, _ = collect_runtime_sources(signed_source, architecture=architecture,
+                kind="installer", source_root=source_root)
+            main = signed_source / "uten_imp.exe"
+            others = [(relative, path) for relative, path in runtime_sources
+                      if relative != "uten_imp.exe" and windows_authenticode.is_signable(path)]
+            windows_authenticode.sign_files(others)
+            binding = windows_payload_binding.inventory({"runtimeFamily": "flutter", "version": version,
+                "buildNumber": build_number, "architecture": architecture, "executable": "uten_imp.exe"},
+                windows_payload_binding.file_records(runtime_sources))
+            windows_payload_binding.write(main, binding)
+            main_signatures = windows_authenticode.sign_files([("uten_imp.exe", main)])
+            with main.open("rb") as source:
+                final_main_sha256 = hashlib.file_digest(source, "sha256").hexdigest()
+            signing_receipt = {"policy": "authenticode-company-pinned-v1",
+                "payloadBinding": "uten-windows-payload-binding-v1", "preSignMainSha256": pre_sign_main_sha256,
+                "signedMainSha256": final_main_sha256, "sourceBundleModified": False,
+                "mainSignatureEvidence": main_signatures}
+            bundle = signed_source
         payload_receipt = package_release(bundle, archive_path, build_number=build_number,
                                           architecture=architecture, kind="installer", version=version,
                                           source_root=source_root, allow_local_test=local_test)
@@ -284,6 +331,10 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
             return plan
         runner(command, check=True, capture_output=True, **UTF8_TOOL_OUTPUT)
         generated = compiler_output / output.name
+        if not local_test:
+            # Inno signs both Setup and uninstaller through the same callback;
+            # re-read the outer bytes independently before binding their hash.
+            windows_authenticode.verify_files([("Setup.exe", generated)], company_files={"Setup.exe"})
         setup_receipt = validate_setup(generated, version=version, build_number=build_number,
                                        architecture=architecture, local_test=local_test)
         installer_sha256 = setup_receipt["sha256"]
@@ -319,6 +370,8 @@ def build_windows_setup(bundle: Path, output: Path, *, version: str, build_numbe
         result = {**receipts[0], "dryRun": False,
                   "runtimeValidation": payload_receipt["runtimeValidation"],
                   "omittedUnusedNativeArtifacts": payload_receipt["omittedUnusedNativeArtifacts"]}
+        if signing_receipt is not None:
+            result["windowsSigning"] = signing_receipt
         if update_output is not None:
             result["updatePackage"] = receipts[1]
             result["publication"] = {"atomicAcrossFiles": False, "strategy": "validated-staging-with-task-scoped-rollback"}

@@ -54,7 +54,7 @@ class ClientReleaseRetentionTest {
         when(actor.getLoginAccount()).thenReturn("publisher");
         when(users.get()).thenReturn(Optional.of(actor));
         catalog = new FaultingCatalog(properties, mapper);
-        service = new ClientReleaseService(catalog, new ClientPackageInspector(mapper), properties, users, mock(AuditService.class));
+        service = new ClientReleaseService(catalog, ClientReleaseFixtures.structuralInspector(mapper), properties, users, mock(AuditService.class));
     }
 
     @Test
@@ -93,7 +93,7 @@ class ClientReleaseRetentionTest {
     }
 
     @Test
-    void pairedRevalidationFailureLeavesOldVersionIntactAndPublishedRetryFinishesCleanup() throws Exception {
+    void pairedPrevalidationFailureLeavesDraftAndOldVersionIntactUntilRepairedRetry() throws Exception {
         var old = pair(10, "x64");
         var setup = publish(20, "x64", "installer", "2.5.20");
         var original = Files.readAllBytes(binary(setup));
@@ -101,7 +101,8 @@ class ClientReleaseRetentionTest {
         var update = uploaded(20, "x64", "update", "2.5.20");
         assertCode(() -> service.publish(update.id()), ErrorCode.VALIDATION_FAILED);
         assertRetained(old);
-        assertThat(receipt(update).state()).isEqualTo("PUBLISHED");
+        // The signed-publication preflight now rejects a broken partner before committing visibility.
+        assertThat(receipt(update).state()).isEqualTo("DRAFT");
         Files.write(binary(setup), original);
         assertThat(service.publish(update.id()).state()).isEqualTo("PUBLISHED");
         old.forEach(this::assertRetired);

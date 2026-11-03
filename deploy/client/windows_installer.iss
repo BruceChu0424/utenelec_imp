@@ -65,6 +65,10 @@ SolidCompression=yes
 DiskSpanning=no
 ; yes deliberately fixes the outer loader to x86. Payload architecture is separate.
 UseSetupLdr=yes
+#ifndef LocalTest
+SignTool=uten
+SignedUninstaller=yes
+#endif
 #ifdef LocalTest
 VersionInfoProductName=Uten IMP Windows Local Test Setup
 VersionInfoOriginalFileName=UtenIMPLocalTestSetup.exe

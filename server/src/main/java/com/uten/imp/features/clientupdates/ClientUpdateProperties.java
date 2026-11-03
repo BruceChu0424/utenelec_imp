@@ -16,4 +16,11 @@ public class ClientUpdateProperties {
     private int pollIntervalSeconds = 300;
     private int maxReleases = 200;
     private long minFreeBytes = 1073741824L;
+    /** Public trust material only. Private signing keys never belong on the publication server. */
+    private String windowsPublisherSha256 = "";
+    private String windowsSignatureVerifier = "/usr/bin/osslsigncode";
+    private String windowsSignatureCaFile = "";
+    private String windowsSignatureTsaCaFile = "";
+    private String windowsSignatureCrlFile = "";
+    private String windowsSignatureTsaCrlFile = "";
 }

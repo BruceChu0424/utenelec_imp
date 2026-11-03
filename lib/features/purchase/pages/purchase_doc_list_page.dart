@@ -126,9 +126,9 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
   /// 当前选中分段；null = 未选择引导态（不发请求）。
   _PurchaseDocSeg? _seg;
 
-  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
-  /// 最近三个月加载），none 仅为值形态护栏。
-  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+  /// 历史记录段的时间门控值；默认近一个月（2026-11-03 用户口径，进段即按
+  /// 最近一个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastMonth();
 
   /// 待处理段计数（中性括号 `(N)`）；null = 加载中（不渲染，不把未知伪装成 0）。
   int? _actionableCount;
@@ -318,7 +318,7 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     _supplierIdFilter = null;
     _warehouseIdFilter = null;
     _statusHeader = null;
-    _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+    _historyTime = UtenHistoryTimeValue.lastMonth();
   }
 
   void _readerChanged() {
@@ -593,9 +593,9 @@ class _PurchaseDocListPageState extends ConsumerState<PurchaseDocListPage>
     setState(() {
       _seg = seg;
       _statusHeader = null;
-      // 进历史段重新按默认近三个月加载；非历史段不消费时间门控，回 all() 占位。
+      // 进历史段重新按默认近一个月加载；非历史段不消费时间门控，回 all() 占位。
       _historyTime = seg.history
-          ? UtenHistoryTimeValue.lastThreeMonths()
+          ? UtenHistoryTimeValue.lastMonth()
           : const UtenHistoryTimeValue.all();
     });
     _reload(1);

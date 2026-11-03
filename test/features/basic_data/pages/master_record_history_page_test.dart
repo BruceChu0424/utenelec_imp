@@ -34,9 +34,9 @@ final _identity = StateProvider<AuthenticatedScope?>(
   (_) => const AuthenticatedScope(userId: 'reader-a'),
 );
 
-/// 历史门默认近三个月（2026-10-24 口径）下，无其他筛选时的期望查询。
+/// 历史门默认近一个月（2026-11-03 口径）下，无其他筛选时的期望查询。
 Map<String, dynamic> _defaultDatedQuery() {
-  final range = UtenHistoryTimeValue.lastThreeMonths().range!;
+  final range = UtenHistoryTimeValue.lastMonth().range!;
   return {
     'size': 50,
     'dateFrom': ChinaDateTime.formatDate(range.start),
@@ -642,7 +642,7 @@ void main() {
       expect(wire.queries.last.containsKey('recordId'), isFalse);
       await tester.tap(_button('清除筛选'));
       await tester.pumpAndSettle();
-      // 清除筛选回到历史门默认的近三个月（2026-10-24 口径）。
+      // 清除筛选回到历史门默认的近一个月（2026-11-03 口径）。
       expect(
         wire.queries.lastWhere((query) => !query.containsKey('cursor')),
         _defaultDatedQuery(),
@@ -657,7 +657,7 @@ void main() {
       final wire = _Transport();
       await _pump(tester, wire);
       final initial = wire.queries.length;
-      // 初始查询即带历史门默认的近三个月（2026-10-24 口径）。
+      // 初始查询即带历史门默认的近一个月（2026-11-03 口径）。
       expect(wire.queries, [
         _defaultDatedQuery(),
         {..._defaultDatedQuery(), 'cursor': 'opaque-next-token'},
@@ -885,7 +885,7 @@ void main() {
       expect(find.text('编号 / 名称'), findsNothing);
       final code = tester.getRect(find.text('编号').hitTestable());
       final name = tester.getRect(find.text('名称').hitTestable());
-      // 默认近三个月挂值后表头显示「修改时间：<起> ~ <止>」，按前缀定位。
+      // 默认近一个月挂值后表头显示「修改时间：<起> ~ <止>」，按前缀定位。
       final time = tester.getRect(find.textContaining('修改时间').hitTestable());
       expect(code.left, lessThan(name.left));
       expect(name.left, lessThan(time.left));

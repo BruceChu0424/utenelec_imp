@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
@@ -195,7 +196,7 @@ class _SupplierSettlementCreatePanelState
 
   Future<void> _pickPeriod() async {
     final today = DateTime.now();
-    final picked = await showDatePicker(
+    final picked = await showUtenDatePicker(
       context: context,
       initialDate: _periodStart,
       firstDate: DateTime(2000),

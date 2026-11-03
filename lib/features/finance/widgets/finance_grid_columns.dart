@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 // 钱流单据明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
 // FinanceGridRow：统一承载 3 种模式的字段（settle 核销 / allocate 分摊 / transfer 转入）。
@@ -896,7 +897,7 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
           valueListenable: row.occurDateNotifier,
           builder: (context, v, _) => InkWell(
             onTap: () async {
-              final picked = await showDatePicker(
+              final picked = await showUtenDatePicker(
                 context: context,
                 initialDate: v == null
                     ? ChinaDateTime.today()

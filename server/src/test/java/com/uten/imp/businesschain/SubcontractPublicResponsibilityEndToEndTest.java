@@ -119,7 +119,8 @@ class SubcontractPublicResponsibilityEndToEndTest {
 
     private Prepared prepare(boolean twoSources,boolean aliases) {
         // Keep every direct BOM ratio one, including the aliased subcontract level.
-        var c=h.create(true,false,twoSources?"10":"5",true,twoSources?2:1,"1");
+        var c=h.createWithSources(true,false,twoSources?"10":"5",true,twoSources?2:1,"1",
+                new AggregateMaterialOrderEndToEndTest.GoodsSources(aliases?"MAKE":"SUBCONTRACT",aliases?"SUBCONTRACT":"MAKE","BUY"));
         if(twoSources) {
             var view=h.analyses.detail(c.analysis());var items=new ArrayList<>(sourceInputs(view));
             // A refresh may change analysed quantities, but cannot add a new source identity.
@@ -129,7 +130,7 @@ class SubcontractPublicResponsibilityEndToEndTest {
             h.analyses.preview(new com.uten.imp.features.production.analysis.MaterialAnalysisContracts.PreviewRequest(c.analysis(),view.version(),view.fingerprint(),
                     c.world().warehouseId(),"public-owner-add-source-"+UUID.randomUUID(),items));
         }
-        UUID target=aliases?c.child():c.common();h.setRoute(c,target,"SUBCONTRACT");
+        UUID target=aliases?c.child():c.common();h.assertMasterRoute(c,target,"SUBCONTRACT");
         var initial=h.analyses.detail(c.analysis());
         List<UUID> originals=initial.flatMaterials().stream().filter(row->row.goodsId().equals(target)&&row.nodeRole().equals("BOM_COMPONENT"))
                 .map(MaterialView::materialLineId).sorted().toList();

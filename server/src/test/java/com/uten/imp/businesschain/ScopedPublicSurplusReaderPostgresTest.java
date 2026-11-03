@@ -219,8 +219,7 @@ class ScopedPublicSurplusReaderPostgresTest {
         if(route.equals("SUBCONTRACT"))support.fixture.addSubcontractDirectMaterial(world,goods,"1");
         AnalysisView source=ReflectionTestUtils.invokeMethod(support,"target",world,goods,"source");
         MaterialView row=material(source,goods);
-        if(!route.equals(row.sourceConfirmed()))source=analyses.saveRoutes(source.analysisId(),new RouteRequest(source.version(),source.fingerprint(),"dimension-route-"+source.analysisId(),
-                List.of(new RouteDecision(row.materialLineId(),row.actionGroupKey(),route,null))));
+        assertEquals(route,row.sourceConfirmed(),"The dimension analysis adopts the configured master role");
         row=material(source,goods);
         commands.notifySupply(source.analysisId(),new NotifyRequest(source.version(),source.fingerprint(),"dimension-source-"+source.analysisId(),route,
                 List.of(row.materialLineId()),List.of(),List.of(new SupplyQuantityInput(null,row.materialLineId(),new BigDecimal("1000"),BigDecimal.ZERO))));

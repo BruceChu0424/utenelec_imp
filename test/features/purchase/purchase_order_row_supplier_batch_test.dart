@@ -21,13 +21,14 @@ import 'package:uten_imp/features/purchase/widgets/purchase_grid_columns.dart';
 import 'package:uten_imp/features/basic_data/models/reference_method_option.dart';
 import 'package:uten_imp/features/basic_data/repositories/reference_method_repository.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
+import '../../support/uten_test_actions.dart';
 
 void main() {
   testWidgets(
     'late supplier defaults do not overwrite a newer supplier choice',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1400, 1000));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final methods = Completer<List<ReferenceMethodOption>>();
       await tester.pumpWidget(
         ProviderScope(
@@ -84,8 +85,8 @@ void main() {
   );
 
   testWidgets('勾选多行后在任一选中行选供应商，联动填到所有选中行', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1400, 1000));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
 
     await tester.pumpWidget(
       ProviderScope(
@@ -209,10 +210,10 @@ class _OrderApi extends ApiClient {
           if (ids.contains(row['id'])) row,
       ];
     }
-    if (path.contains('/master/suppliers/dict')) {
+    if (path == '${ApiEndpoints.suppliers}/dict') {
       return _suppliers;
     }
-    if (path.contains('/master/supplier-categories/tree')) {
+    if (path == ApiEndpoints.businessReferenceSupplierCategories) {
       return const [
         {
           'id': 'cat1',
@@ -231,7 +232,7 @@ class _OrderApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == ApiEndpoints.suppliers) {
+    if (path == ApiEndpoints.businessReferenceSuppliers) {
       expectSync(query!['size'], lessThanOrEqualTo(100));
       expectSync(query['selectableOnly'], isTrue);
       // 供应商分页（面板 selectableOnly 口径）：仅启用供应商。

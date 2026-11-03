@@ -34,6 +34,7 @@ import 'package:uten_imp/shared/platform_tables/table_column_projection.dart';
 import 'outbound_weight_fakes.dart';
 import 'subcontract_outbound_test_support.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
+import '../../support/uten_test_actions.dart';
 
 const _issueIds = ['issue-1', 'issue-2', 'issue-3'];
 const _detailTableKey =
@@ -48,8 +49,8 @@ void main() {
   });
   for (final header in [false, true]) {
     testWidgets('无栈委外批量出库${header ? '标题' : '底部'}返回可用', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1440, 1100));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1440, 1100));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final api = SubcontractOutboundFakeApi();
       final router = GoRouter(
         initialLocation: '/batch',
@@ -96,8 +97,8 @@ void main() {
     ['document', 'status'],
   ]) {
     testWidgets('委外旧单页偏好仅补入未曾保存的状态和单号 $savedPrefix', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1600, 1100));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1600, 1100));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final projection = TableColumnProjectionController();
       addTearDown(projection.dispose);
       final order = ['warehouse', ...savedPrefix, 'goodsName', 'quantity'];
@@ -146,8 +147,8 @@ void main() {
     testWidgets('委外明细实际列序${saved ? '保留已有用户设置' : '默认状态单号在前且货品颜色相邻'}', (
       tester,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(1440, 1100));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1440, 1100));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final projection = TableColumnProjectionController();
       addTearDown(projection.dispose);
       final savedOrder = [
@@ -196,8 +197,8 @@ void main() {
   testWidgets(
     'partial subcontract selection never saves away unselected reservations',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1600, 1200));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1600, 1200));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final api = SubcontractOutboundFakeApi();
       api.addLine(
         'issue-1',
@@ -248,8 +249,8 @@ void main() {
   );
 
   testWidgets('自动交期保存为null直到服务端成功确认，人工交期原样提交', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1440, 1100));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1440, 1100));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi();
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
@@ -280,8 +281,8 @@ void main() {
   });
 
   testWidgets('默认交货日随重开当天，人工日期保留；表头字段等高', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1440, 1100));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1440, 1100));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi();
     await tester.pumpWidget(_app(api, productionTheme: true));
     await tester.pumpAndSettle();
@@ -340,8 +341,8 @@ void main() {
   });
 
   testWidgets('发出仓预填需核对，表尾按货品和真实单位汇总', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1440, 1100));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1440, 1100));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi();
     api.pickLines['issue-2']!.single['unitName'] = '箱';
     ((api.documents['issue-2']!['items'] as List).single
@@ -381,8 +382,8 @@ void main() {
   });
 
   testWidgets('员工名称查询缓慢不阻塞出仓明细，原经办人UUID仍保留', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1440, 1100));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1440, 1100));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final employee = Completer<Map<String, dynamic>>();
     addTearDown(() {
       if (!employee.isCompleted) {
@@ -412,8 +413,8 @@ void main() {
     testWidgets('完成选中出仓返回任务中心并刷新，未确认结果保留 interrupted=$interrupted', (
       tester,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(1440, 1100));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1440, 1100));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final api = SubcontractOutboundFakeApi()
         ..timeoutAfterSecondApproval = interrupted;
       final router = GoRouter(
@@ -478,8 +479,8 @@ void main() {
   }
 
   testWidgets('实称重量列紧跟本次出库，录入的千克随草稿保存且不改数量', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1440, 1100));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1440, 1100));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi();
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
@@ -533,8 +534,8 @@ void main() {
   });
 
   testWidgets('顶部卡片不含发出仓和备注，表内默认仓及备注按原单同步并准确提交', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1440, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1440, 1200));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi();
     api.documents['issue-1']!['remark'] = '原单交接说明';
     api.addLine(
@@ -622,8 +623,8 @@ void main() {
   });
 
   testWidgets('同单明细独立选择，未选齐不保存，整单取消后可办理其它单', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 1100));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1200, 1100));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi();
     api.addLine(
       'issue-1',
@@ -687,8 +688,8 @@ void main() {
   });
 
   testWidgets('改多被拦在确认前: 数量只能小于或等于领料数量', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1440, 1100));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1440, 1100));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi();
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
@@ -711,8 +712,8 @@ void main() {
   });
 
   testWidgets('填 0 的行不回传(服务端删行); 一张单每行都 0 拦在确认前', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1440, 1100));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1440, 1100));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi();
     api.addLine(
       'issue-1',
@@ -770,8 +771,8 @@ void main() {
   });
 
   testWidgets('打开和取消确认均不写单据', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1200, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi();
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
@@ -799,8 +800,8 @@ void main() {
   });
 
   testWidgets('审核回执超时暂停，GET核实后仅继续未执行单据且不重放成功项', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1200, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi()..timeoutAfterSecondApproval = true;
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
@@ -829,8 +830,8 @@ void main() {
   });
 
   testWidgets('他人修改已读草稿后禁止覆盖并保留后续未执行项', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1200, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi();
     await tester.pumpWidget(_app(api));
     await tester.pumpAndSettle();
@@ -845,8 +846,8 @@ void main() {
   });
 
   testWidgets('勾选的领料单已出仓时整页提示单据已变', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1200, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi();
     api.documents['issue-2']!['status'] = 1;
     await tester.pumpWidget(_app(api));
@@ -858,8 +859,8 @@ void main() {
   });
 
   testWidgets('缺审核权限时隐藏批量执行，窄屏仍为可横向滚动明细表', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(375, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(375, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi();
     await tester.pumpWidget(
       _app(

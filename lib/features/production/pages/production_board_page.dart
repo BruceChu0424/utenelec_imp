@@ -41,6 +41,7 @@ import '../../../components/layout/uten_collapsible_content.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_date_range_selection_button.dart';
 import '../../../components/data_display/uten_goods_identity_cell.dart';
 import '../../../components/data_display/uten_selection_summary_pill.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -67,6 +68,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/date_range_defaults.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/formatters/quantity_display.dart';
@@ -122,9 +124,9 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
   /// 页级搜索关键字（300ms 防抖后的值，下发给当前分段）。
   String _keyword = '';
 
-  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
-  /// 最近三个月加载），none 仅为值形态护栏。
-  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+  /// 历史记录段的时间门控值；默认近一个月（2026-10-24 用户口径，进段即按
+  /// 最近一个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastMonth();
 
   @override
   void initState() {
@@ -247,9 +249,9 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                         selected: segment == null ? const {} : {segment},
                         onSelectionChanged: (value) => setState(() {
                           _segment = value;
-                          // 进历史段重新按默认近三个月加载；非历史段回 all() 占位。
+                          // 进历史段重新按默认近一个月加载；非历史段回 all() 占位。
                           _historyTime = value == 'history'
-                              ? UtenHistoryTimeValue.lastThreeMonths()
+                              ? UtenHistoryTimeValue.lastMonth()
                               : const UtenHistoryTimeValue.all();
                         }),
                         searchHint: '搜索订单号 / 计划单号 / 客户 / 货品',
@@ -1392,8 +1394,8 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
   int _pageSize = 20;
 
   String? _workshop; // null=全部车间
-  DateTime? _from; // 开单日期范围（从；历史模式下被 forced 覆盖）
-  DateTime? _to; // 开单日期范围（至；历史模式下被 forced 覆盖）
+  DateTime? _from = recentMonthStart(); // 开单日期范围（历史模式由 forced 覆盖）
+  DateTime? _to = ChinaDateTime.today();
   final Set<String> _expanded = {};
 
   /// 显示设置（Excel 列显隐思路）：卡片上哪些信息块可见。
@@ -1597,25 +1599,6 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
     if (ok && mounted) _load();
   }
 
-  Future<void> _pickDate(bool begin) async {
-    final now = ChinaDateTime.today();
-    final d = await showDatePicker(
-      context: context,
-      initialDate: begin ? (_from ?? now) : (_to ?? now),
-      firstDate: DateTime(2000),
-      lastDate: now.add(const Duration(days: 365)),
-    );
-    if (d == null) return;
-    if (begin) {
-      _from = d;
-      if (_to != null && _to!.isBefore(d)) _to = null;
-    } else {
-      _to = d;
-      if (_from != null && _from!.isAfter(d)) _from = null;
-    }
-    _reload();
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1760,44 +1743,25 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
     );
   }
 
-  /// 时间范围筛选（开单日期 从/至 + 清除）。
-  Widget _dateRange() {
-    return Wrap(
-      spacing: 4,
-      children: [
-        OutlinedButton.icon(
-          onPressed: () => _pickDate(true),
-          icon: const Icon(Icons.date_range_rounded, size: 16),
-          label: Text(_from == null ? '开单从' : _fmtDate(_from!)),
-          style: _from != null
-              ? OutlinedButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.primary,
-                )
-              : null,
-        ),
-        OutlinedButton.icon(
-          onPressed: () => _pickDate(false),
-          icon: const Icon(Icons.event_rounded, size: 16),
-          label: Text(_to == null ? '开单至' : _fmtDate(_to!)),
-          style: _to != null
-              ? OutlinedButton.styleFrom(
-                  foregroundColor: Theme.of(context).colorScheme.primary,
-                )
-              : null,
-        ),
-        if (_from != null || _to != null)
-          IconButton(
-            icon: const Icon(Icons.clear_rounded, size: 18),
-            tooltip: '清除时间筛选',
-            onPressed: () {
-              _from = null;
-              _to = null;
-              _reload();
-            },
-          ),
-      ],
-    );
-  }
+  /// 开单日期统一使用一个范围入口，保留不限开始/结束的筛选能力。
+  Widget _dateRange() => UtenDateRangeSelectionButton(
+    from: _from,
+    to: _to,
+    firstDate: DateTime(2000),
+    lastDate: ChinaDateTime.today().add(const Duration(days: 365)),
+    allowOpenRange: true,
+    helpText: '选择开单日期范围',
+    onClear: () {
+      _from = null;
+      _to = null;
+      return _reload();
+    },
+    onChanged: (start, end) {
+      _from = start;
+      _to = end;
+      return _reload();
+    },
+  );
 
   Widget _settingsMenu() {
     return UtenDropdownScrollScope(

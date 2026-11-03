@@ -337,14 +337,6 @@
   },
   {
     "kind": "raw-close-icon",
-    "path": "lib/features/finance/widgets/finance_date_range_filter.dart",
-    "owner": "FinanceDateRangeFilter.field",
-    "fingerprint": "d42459f6028fe2e4268d26c2ea6a58449d2c7b4b8fb98f729ff050ff939f1808",
-    "count": 1,
-    "reason": "Clears one draft endpoint of a finance date range."
-  },
-  {
-    "kind": "raw-close-icon",
     "path": "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
     "owner": "_HrProfileChangesListPageState._batchActions",
     "fingerprint": "d1a4375f73f7806efb4e91420cd7eafcb44e0315d99ec0b76339f2efc762b0b8",
@@ -366,14 +358,6 @@
     "fingerprint": "85ca984425cfbe7a555cea73faaa04b6f90f487d1c42e0e14e4421626d05785c",
     "count": 1,
     "reason": "A failed-step status marker in a textual material submission summary."
-  },
-  {
-    "kind": "raw-close-icon",
-    "path": "lib/features/production/pages/production_board_page.dart",
-    "owner": "_PlanPanelState._dateRange",
-    "fingerprint": "a131b541c2cb998098ee892d5adb661611d8e08ee0bc36a2b5585ccb182cc1cb",
-    "count": 1,
-    "reason": "Clears the production-board date filter."
   },
   {
     "kind": "raw-close-icon",
@@ -446,14 +430,6 @@
     "fingerprint": "1ea4e44bca35ff58ba427d108ac0784025e83bedca9ce30e87236ec876d86fd6",
     "count": 1,
     "reason": "Displays a cancelled FQC replenishment status."
-  },
-  {
-    "kind": "raw-close-icon",
-    "path": "lib/features/quality/pages/quality_inspection_records_page.dart",
-    "owner": "_QualityInspectionRecordsPageState._buildFilters",
-    "fingerprint": "ed11edd0db0e5dd9d258a9201ad91d2b7d20e845a58981d3e652973cdd2e4de0",
-    "count": 1,
-    "reason": "Clears quality inspection date filtering."
   },
   {
     "kind": "raw-close-icon",
@@ -553,14 +529,6 @@
   },
   {
     "kind": "raw-close-icon",
-    "path": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
-    "owner": "_WarehouseTaskRecordsViewState.build",
-    "fingerprint": "49d350907ea00dcd13ea0742c46f22e0fb151e4fcde190dcef146d87dbd2f201",
-    "count": 1,
-    "reason": "Clears the warehouse record date range."
-  },
-  {
-    "kind": "raw-close-icon",
     "path": "lib/features/webinquiry/pages/website_inquiry_detail_page.dart",
     "owner": "_ActionPanel.build",
     "fingerprint": "65c4523dd654fb16037c0d53973772aff53d008e7be4ce6ede56799063fe5eb1",
@@ -646,5 +614,13 @@
     "fingerprint": "0af8759bd84cba15d583cbbfc4562f48df16c86e71df6da9f9715827ef3fbcce",
     "count": 1,
     "reason": "Clears only the selected-row set in the compact selection summary; onClear has no window or navigation action."
+  },
+  {
+    "kind": "raw-close-icon",
+    "path": "lib/features/sales/widgets/sales_plan_progress_panel.dart",
+    "owner": "_ProgressList._materialAnalysisProgress",
+    "fingerprint": "3a6e870f566c4aab0cce6609cc832903367c902ae9d6cc0c515a04dd56060ab6",
+    "count": 1,
+    "reason": "Non-interactive cancelled material-analysis status icon. The tuple supplies a label, status glyph and color; it has no dismiss, navigation or window action."
   }
 ]

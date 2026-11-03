@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
-import 'package:uten_imp/components/inputs/uten_date_field.dart';
+import 'package:uten_imp/components/buttons/uten_date_range_selection_button.dart';
 import 'package:uten_imp/components/inputs/uten_table_cell_action.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -68,19 +68,20 @@ void main() {
       int reads() =>
           api.reads.where((path) => path.endsWith('/postings')).length;
       expect(reads(), 1);
-      var fields = tester
-          .widgetList<UtenDateField>(find.byType(UtenDateField))
-          .toList();
-      expect(fields.first.value!.isUtc, isTrue);
-      expect(fields.last.value!.isUtc, isTrue);
-      fields.first.onChanged(DateTime(2026, 10));
+      var field = tester.widget<UtenDateRangeSelectionButton>(
+        find.byType(UtenDateRangeSelectionButton),
+      );
+      expect(field.from!.isUtc, isTrue);
+      expect(field.to!.isUtc, isTrue);
+      field.onChanged(DateTime(2026, 10), DateTime(2026, 10));
       await tester.pumpAndSettle();
       expect(reads(), 2);
-      fields = tester
-          .widgetList<UtenDateField>(find.byType(UtenDateField))
-          .toList();
-      expect(fields.first.value!.isUtc, isTrue);
-      fields.first.onChanged(DateTime(2026, 10, 2));
+      field = tester.widget<UtenDateRangeSelectionButton>(
+        find.byType(UtenDateRangeSelectionButton),
+      );
+      expect(field.from!.isUtc, isTrue);
+      expect(field.to!.isUtc, isTrue);
+      field.onChanged(DateTime(2026, 10, 2), DateTime(2026, 10));
       await tester.pumpAndSettle();
       expect(reads(), 2);
       expect(find.text('来源开始日期不能晚于结束日期'), findsWidgets);

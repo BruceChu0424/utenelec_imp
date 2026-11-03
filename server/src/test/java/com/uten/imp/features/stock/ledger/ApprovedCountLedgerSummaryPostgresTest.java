@@ -15,7 +15,7 @@ class ApprovedCountLedgerSummaryPostgresTest {
         try(var pg=new PostgreSQLContainer("postgres:16-alpine")) {
             pg.start();var db=new NamedParameterJdbcTemplate(new DriverManagerDataSource(pg.getJdbcUrl(),pg.getUsername(),pg.getPassword()));
             com.uten.imp.support.MigratedProjectionSchema.createCurrentTables(db.getJdbcTemplate(),
-                    "stock_balances", "stock_movements", "stock_weight_adjustments");
+                    "stock_balances", "stock_movements", "stock_weight_adjustments", "warehouses");
             UUID goods=UUID.randomUUID(),warehouse=UUID.randomUUID();
             db.getJdbcTemplate().update("INSERT INTO stock_balances(goods_id,warehouse_id,color_id,qty,weight) VALUES (?,?,NULL,80,80)",goods,warehouse);
             db.getJdbcTemplate().update("""

@@ -107,8 +107,8 @@ class _SubcontractShortDeliveryPageState
   SubcontractShortDeliverySegment _seg =
       SubcontractShortDeliverySegment.pending;
 
-  /// 历史段的时间门控值；默认近三个月（2026-10-24 用户口径）。
-  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+  /// 历史段的时间门控值；默认近一个月（2026-11-03 用户口径）。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastMonth();
 
   /// 表头排序 + 订货单号列值筛选 + facets 桶 + 防串台代数
   /// （2026-09-25 单号列统一，共享状态见 MasterServerColumnFilters）；
@@ -318,9 +318,9 @@ class _SubcontractShortDeliveryPageState
     setState(() {
       _seg = seg;
       _page = 1;
-      // 进历史段重新按默认近三个月加载；非历史段回 all() 占位。
+      // 进历史段重新按默认近一个月加载；非历史段回 all() 占位。
       _historyTime = seg == SubcontractShortDeliverySegment.history
-          ? UtenHistoryTimeValue.lastThreeMonths()
+          ? UtenHistoryTimeValue.lastMonth()
           : const UtenHistoryTimeValue.all();
     });
     _load(page: 1);

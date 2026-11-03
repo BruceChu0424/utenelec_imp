@@ -71,9 +71,9 @@ class _ProcurementReturnTasksPageState
   /// 当前分段；null = 未选（2026-09-24 任务中心统一范式：未选不发请求）。
   _ReturnSeg? _seg;
 
-  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
-  /// 最近三个月加载），none 仅为值形态护栏。
-  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+  /// 历史记录段的时间门控值；默认近一个月（2026-11-03 用户口径，进段即按
+  /// 最近一个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastMonth();
 
   /// 页级搜索关键字（分段行搜索框，300ms 防抖后进请求）。
   String _keyword = '';
@@ -417,9 +417,9 @@ class _ProcurementReturnTasksPageState
                 setState(() {
                   _seg = value;
                   _selected.clear();
-                  // 进历史段重新按默认近三个月加载；非历史段回 all() 占位。
+                  // 进历史段重新按默认近一个月加载；非历史段回 all() 占位。
                   _historyTime = value == _ReturnSeg.history
-                      ? UtenHistoryTimeValue.lastThreeMonths()
+                      ? UtenHistoryTimeValue.lastMonth()
                       : const UtenHistoryTimeValue.all();
                 });
                 if (value != _ReturnSeg.history || !_historyTime.isNone) {

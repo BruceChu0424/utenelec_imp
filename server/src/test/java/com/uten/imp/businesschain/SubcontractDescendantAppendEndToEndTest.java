@@ -42,8 +42,9 @@ class SubcontractDescendantAppendEndToEndTest {
 
     @ParameterizedTest @ValueSource(ints={1,3})
     void subcontractAppendThroughOriginalNestedPathExposesThePurchaseGapAndIssuesItOnce(int sources) {
-        var c=h.create(true,false,"100",true,sources,"1");
-        h.setRoute(c,c.child(),"SUBCONTRACT");
+        var c=h.createWithSources(true,false,"100",true,sources,"1",
+                new AggregateMaterialOrderEndToEndTest.GoodsSources("MAKE","SUBCONTRACT","BUY"));
+        h.assertMasterRoute(c,c.child(),"SUBCONTRACT");
         var initial=h.analyses.detail(c.analysis());
         UUID parent=initial.flatMaterials().stream().filter(row->row.goodsId().equals(c.child()))
                 .findFirst().orElseThrow().materialLineId();

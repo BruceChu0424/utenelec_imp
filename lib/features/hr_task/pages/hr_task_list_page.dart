@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 // HR 工作台子页面：按类型展示任务列表(转正办理/生日关怀/入职周年/新近入职/证件核对)。
 //
 // 2026-10-05 证件核对(identity)：列 工号/姓名/原因(红字，服务端原话，紧跟姓名，
@@ -926,7 +927,7 @@ class _HrTaskListPageState extends ConsumerState<HrTaskListPage> {
               icon: const Icon(Icons.event_outlined, size: 18),
               label: Text(fmt(selected)),
               onPressed: () async {
-                final picked = await showDatePicker(
+                final picked = await showUtenDatePicker(
                   context: dialogContext,
                   initialDate: selected,
                   firstDate: DateTime(2000),

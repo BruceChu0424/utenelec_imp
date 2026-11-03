@@ -754,6 +754,23 @@ void main() {
                   ],
                 );
           await _mount(tester, repo, table, language: language);
+          final feedbackContext = tester.element(
+            find.byKey(const ValueKey('platform-table-read-error')),
+          );
+          const serverReason = '原单据已撤回，请刷新后核对';
+          expect(
+            platformTableRecoveryReason(feedbackContext, serverReason),
+            serverReason,
+          );
+          for (final message in [
+            NetworkException().message,
+            '网络连不上，请检查网络后再试',
+          ]) {
+            expect(
+              platformTableRecoveryReason(feedbackContext, message),
+              platformTableRecoveryText(feedbackContext, 'networkReason'),
+            );
+          }
           await tester.tap(
             find.byKey(const ValueKey('platform-table-read-details')),
           );

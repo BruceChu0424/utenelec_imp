@@ -129,7 +129,7 @@ class MaterialPreparationBudgetPostgresTest {
         }
         var view=analyses.preview(new PreviewRequest(null,null,null,seed.world().warehouseId(),"private-parent-analysis-"+UUID.randomUUID(),inputs));
         view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"private-parent-routes-"+UUID.randomUUID(),
-                view.flatMaterials().stream().map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.goodsId().equals(seed.material())?"BUY":"MAKE",null)).toList()));
+                view.flatMaterials().stream().filter(MaterialView::actionable).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.sourceSuggestion(),null)).toList()));
         var c=new AggregateMaterialOrderEndToEndTest.Case(seed.world(),view.analysisId(),seed.common(),parent,seed.material(),seed.workshop(),seed.worker());
         var rows=view.flatMaterials().stream().filter(row->row.goodsId().equals(c.common())).toList();assertEquals(2,rows.size());
         UUID originalA=rows.getFirst().materialLineId(),originalB=rows.getLast().materialLineId();
@@ -168,8 +168,8 @@ class MaterialPreparationBudgetPostgresTest {
         for(String route:List.of("BUY","MAKE"))wholeAnalysisContribution(route,true);
     }
     private void wholeAnalysisContribution(String route,boolean manualSiblings){
-        var c=support.createWithChild("1000");UUID goods=c.child();
-        db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",c.world().supplierId(),goods);support.setRoute(c,goods,route);
+        var c=support.createWithChild("1000",3,new AggregateMaterialOrderEndToEndTest.GoodsSources("MAKE",route,"BUY"));UUID goods=c.child();
+        db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",c.world().supplierId(),goods);support.assertMasterRoute(c,goods,route);
         var before=analyses.detail(c.analysis());
         List<UUID> originals=before.flatMaterials().stream().filter(row->row.goodsId().equals(goods)).map(MaterialView::materialLineId).toList();
         assertEquals(3,originals.size());for(UUID id:originals)amount("1000",material(before,id).requiredQty());
@@ -200,7 +200,7 @@ class MaterialPreparationBudgetPostgresTest {
     private AnalysisView otherAnalysis(AggregateMaterialOrderEndToEndTest.Case c,UUID component,String qty){
         UUID root=UUID.randomUUID();support.fixture.insertGoods(root,"BUDGET-ROOT-"+root,"预算核对产品","自制",c.world().unitId(),c.world().unitLegacy());support.fixture.insertBom(root,component,"1");
         var view=analyses.preview(new PreviewRequest(null,null,null,c.world().warehouseId(),"budget-analysis-"+root,List.of(new PreviewItem("OTHER",null,root,null,c.world().unitId(),"budget-source-"+root,"可用预算专项",BusinessTime.today().plusDays(10),new BigDecimal(qty)))));
-        return analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"budget-route-"+root,view.flatMaterials().stream().filter(MaterialView::actionable).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.goodsId().equals(c.material())?"BUY":"MAKE",null)).toList()));
+        return analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"budget-route-"+root,view.flatMaterials().stream().filter(MaterialView::actionable).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.sourceSuggestion(),null)).toList()));
     }
     private MaterialPreparationBudgetTestAccess.Facts read(AnalysisView view){var transaction=new TransactionTemplate(transactions);transaction.setReadOnly(true);return transaction.execute(status->MaterialPreparationBudgetTestAccess.read(em,view));}
     private static BigDecimal shared(MaterialPreparationBudgetTestAccess.Facts facts,UUID material){return facts.shared().getOrDefault(facts.pools().get(material),BigDecimal.ZERO);}

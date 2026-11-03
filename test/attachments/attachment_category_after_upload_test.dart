@@ -18,6 +18,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import '../support/filter_segment_tap.dart';
 import 'attachment_test_actions.dart';
+import '../support/uten_test_actions.dart';
 
 /// 分类改成「上传之后在文件旁边可选设置」：
 /// 上传本身不带分类，也没有任何决定上传归类的芯片；每个文件旁边一个安静的入口。
@@ -175,10 +176,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('合同'), findsOneWidget);
     expect(find.text('图片'), findsNothing);
-    expect(
-      container.read(appNotificationProvider).single.message,
-      contains('分类未能保存'),
-    );
+    expect(container.read(appNotificationProvider).single.message, '单据已锁定');
   });
 
   testWidgets('没有上传权限时分类只读：有分类就显示标签，没有就不占位', (tester) async {
@@ -200,8 +198,8 @@ void main() {
   });
 
   testWidgets('375 宽 + 1.5 倍字号：不溢出，设与未设两态同高', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(375, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(375, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     await pump(
       tester,
       _Files(),

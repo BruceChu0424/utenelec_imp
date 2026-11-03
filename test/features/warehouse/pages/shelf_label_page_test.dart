@@ -19,6 +19,7 @@ import 'package:uten_imp/features/warehouse/pages/shelf_label_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../../support/uten_test_actions.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -185,8 +186,8 @@ Future<void> _pumpPage(
   _FakeStockQueryRepository repo,
 ) async {
   final preferences = await SharedPreferences.getInstance();
-  await tester.binding.setSurfaceSize(const Size(1600, 1100));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(1600, 1100));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [

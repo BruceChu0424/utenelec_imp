@@ -505,10 +505,10 @@ public class ProductionMaterialStockLedgerService {
             UUID reservationId = (UUID) row[0];
             UUID demandId = (UUID) row[1];
             BigDecimal chunk = remaining.min(decimal(row[2]));
-            em.createNativeQuery("SELECT fn_stock_claim_consume(:id,:warehouse,:qty,:doc,:item)")
-                    .setParameter("id",reservationId).setParameter("warehouse",line.warehouseId()).setParameter("qty",chunk)
-                    .setParameter("doc",line.documentId()).setParameter("item",line.documentItemId()).getSingleResult();
             int updated = em.createNativeQuery("""
+                            WITH consumed_location AS MATERIALIZED (
+                                SELECT fn_stock_claim_consume(:id,:warehouse,:qty,:doc,:item)
+                            )
                             UPDATE stock_reservations
                             SET consumed_qty = consumed_qty + :qty,
                                 status = CASE
@@ -518,6 +518,7 @@ public class ProductionMaterialStockLedgerService {
                                 lock_version = lock_version + 1,
                                 updated_at = now(),
                                 updated_by = :actorId
+                            FROM consumed_location
                             WHERE id = :id
                               AND status = :effective
                               AND is_deleted = FALSE
@@ -529,6 +530,9 @@ public class ProductionMaterialStockLedgerService {
                     .setParameter("effective", RESERVATION_EFFECTIVE)
                     .setParameter("actorId", actorId)
                     .setParameter("id", reservationId)
+                    .setParameter("warehouse", line.warehouseId())
+                    .setParameter("doc", line.documentId())
+                    .setParameter("item", line.documentItemId())
                     .executeUpdate();
             if (updated != 1) concurrentConflict();
             insertPosting(

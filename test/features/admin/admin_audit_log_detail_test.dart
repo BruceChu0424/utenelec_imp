@@ -1608,6 +1608,44 @@ void main() {
       expect(repository.listCalls, isEmpty);
       expect(repository.summaryCalls, isEmpty);
 
+      final originalRange = tester
+          .widget<AuditQueryScopeComposer>(find.byType(AuditQueryScopeComposer))
+          .dateRange;
+      // Business-day bounds count dates, independently of DST/time carriers.
+      tester
+          .widget<AuditQueryScopeComposer>(find.byType(AuditQueryScopeComposer))
+          .onDateChanged(
+            DateTimeRange(
+              start: DateTime.utc(2026, 3, 1, 23),
+              end: DateTime.utc(2026, 4),
+            ),
+          );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<AuditQueryScopeComposer>(
+              find.byType(AuditQueryScopeComposer),
+            )
+            .dateRange,
+        originalRange,
+      );
+      tester
+          .widget<AuditQueryScopeComposer>(find.byType(AuditQueryScopeComposer))
+          .onDateChanged(
+            DateTimeRange(
+              start: DateTime.utc(2026, 3, 1, 23),
+              end: DateTime.utc(2026, 3, 31, 23),
+            ),
+          );
+      await tester.pumpAndSettle();
+      final acceptedRange = tester
+          .widget<AuditQueryScopeComposer>(find.byType(AuditQueryScopeComposer))
+          .dateRange!;
+      expect(acceptedRange.start, DateTime.utc(2026, 3));
+      expect(acceptedRange.end, DateTime.utc(2026, 3, 31));
+      expect(repository.listCalls, isEmpty);
+      expect(repository.sessionCalls, isEmpty);
+
       await tester.tap(find.byKey(const ValueKey('audit-date-today')));
       await tester.pumpAndSettle();
       expect(repository.listCalls, isEmpty);

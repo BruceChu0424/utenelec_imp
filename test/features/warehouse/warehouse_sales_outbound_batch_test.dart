@@ -33,6 +33,7 @@ import 'package:uten_imp/shared/warehouse/warehouse_task_scope.dart';
 import '../../helpers/badge_summary_fixture.dart';
 import 'outbound_weight_fakes.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
+import '../../support/uten_test_actions.dart';
 
 late SharedPreferences _preferences;
 
@@ -216,8 +217,8 @@ void main() {
   testWidgets('batch outbound preserves each actual warehouse and location', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1800, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1800, 1000));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final a = _detail('1', warehouseSelectable: true);
     final b = _detail('2', warehouseSelectable: true);
     final gateway = _Gateway([a, b]);
@@ -272,8 +273,8 @@ void main() {
   testWidgets(
     'batch outbound sends each document its own line weights and soft-confirms weight alerts',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1800, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1800, 1000));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final a = _detail('1', unitRate: 1);
       final b = _detail('2', unitRate: 1);
       final gateway = _Gateway([a, b]);
@@ -320,8 +321,8 @@ void main() {
   testWidgets(
     'select all reviews eligible documents and confirms one stage only',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1500, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1500, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final gateway = _Gateway([
         _detail('1'),
         _detail('2'),
@@ -433,8 +434,8 @@ void main() {
   testWidgets(
     'failure stops remaining commands and removes repeat submission',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1440, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1440, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final gateway = _Gateway([_detail('1'), _detail('2'), _detail('3')])
         ..failId = '2';
       await _pump(
@@ -499,13 +500,13 @@ void main() {
   testWidgets(
     'batch cards retain document dates while every physical line shares one table',
     (tester) async {
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       for (final size in [
         const Size(390, 844),
         const Size(760, 900),
         const Size(1440, 900),
       ]) {
-        await tester.binding.setSurfaceSize(size);
+        await setUtenTestSurfaceSize(tester, size);
         await tester.pumpWidget(const SizedBox.shrink());
         final gateway = _Gateway([_detail('1'), _detail('2')]);
         await _pump(
@@ -559,7 +560,7 @@ void main() {
       final gateway = _Gateway([_detail('1', quantity: '12.5000')]);
       for (final size in [const Size(420, 900), const Size(1440, 900)]) {
         await tester.pumpWidget(const SizedBox.shrink());
-        await tester.binding.setSurfaceSize(size);
+        await setUtenTestSurfaceSize(tester, size);
         await _pump(
           tester,
           gateway,
@@ -590,15 +591,15 @@ void main() {
         );
         expect(tester.takeException(), isNull);
       }
-      await tester.binding.setSurfaceSize(null);
+      await setUtenTestSurfaceSize(tester, null);
     },
   );
 
   testWidgets(
     'an uncertain single action requires refresh before another write',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1440, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1440, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final gateway = _Gateway([_detail('1')])..failId = '1';
       await _pump(
         tester,
@@ -623,8 +624,8 @@ void main() {
     (tester) async {
       // 表头筛选生效冒烟：仓库作业固定枚举桶（含分段之外的 取消/红冲/迁移异常），
       // 选桶 → status 收到该值并回第 1 页；切段时清表头筛选。
-      await tester.binding.setSurfaceSize(const Size(1500, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1500, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final gateway = _Gateway([_detail('1')]);
       final tasks = _TaskCenterGateway(gateway);
       await _pump(

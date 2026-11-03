@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -482,12 +483,21 @@ class AccountStatementScalePostgresTest {
         }
 
         try(Connection connection=connection();
-            PreparedStatement invalidEvidence=connection.prepareStatement(
+            PreparedStatement optionalReference=connection.prepareStatement(
                     "UPDATE finance_receipts SET bank_reference=NULL WHERE id=?")){
-            invalidEvidence.setObject(1,receiptId);
-            PSQLException error=assertThrows(
-                    PSQLException.class,invalidEvidence::executeUpdate);
-            assertEquals("23514",error.getSQLState());
+            // V992 makes this external reference optional. It must not disable
+            // the independent maker/approver or real account-flow guards below.
+            optionalReference.setObject(1,receiptId);
+            assertEquals(1,optionalReference.executeUpdate());
+        }
+        try(Connection connection=connection();
+            PreparedStatement reference=connection.prepareStatement(
+                    "SELECT bank_reference FROM finance_receipts WHERE id=?")){
+            reference.setObject(1,receiptId);
+            try(ResultSet rows=reference.executeQuery()){
+                assertTrue(rows.next());
+                assertNull(rows.getString(1));
+            }
         }
 
         try(Connection connection=connection();

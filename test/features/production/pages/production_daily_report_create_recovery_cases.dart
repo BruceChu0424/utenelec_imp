@@ -65,8 +65,8 @@ void registerDailyReportCreateRecoveryTests() {
   testWidgets(
     'R1 data scope ABA preserves original UNKNOWN CREATE body and idempotency key',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1800, 1100));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1800, 1100));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final storage = MemoryFormDraftStorage();
       final fake = _IdentityApi()..receiptStatus = 'UNKNOWN';
       final env = await _openIdentityPage(tester, storage, fake);
@@ -118,8 +118,8 @@ void registerDailyReportCreateRecoveryTests() {
     testWidgets('R1 actual CREATE frozen body proof boundary: $outcome', (
       tester,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(1800, 1100));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1800, 1100));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final storage = MemoryFormDraftStorage();
       final fake = _IdentityApi()..successfulCreate = outcome != 'timeout';
       if (outcome == 'legacy') fake.receiptStatus = 'LEGACY_UNCONFIRMED';
@@ -202,8 +202,8 @@ void registerDailyReportCreateRecoveryTests() {
   testWidgets(
     'R1 definite CREATE validation remains editable and preserves inputs',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1800, 1100));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1800, 1100));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final storage = MemoryFormDraftStorage(),
           fake = _IdentityApi()..createHttpError = 422;
       final env = await _openIdentityPage(tester, storage, fake);
@@ -237,8 +237,8 @@ void registerDailyReportCreateRecoveryTests() {
   testWidgets(
     'R1 local pre-dispatch persistence failure preserves input and sends nothing',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1800, 1100));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1800, 1100));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final storage = _RejectingDraftStorage(),
           fake = _IdentityApi()..successfulCreate = true;
       final env = await _openIdentityPage(tester, storage, fake);
@@ -263,8 +263,8 @@ void registerDailyReportCreateRecoveryTests() {
     testWidgets(
       'R1 actual attachment $changed blocks bytes/confirm and keeps both originals',
       (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1800, 1100));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1800, 1100));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         final storage = MemoryFormDraftStorage(),
             fake = _IdentityApi()..successfulCreate = true;
         final pipeline = ControlledAttachmentPipeline(waitAt: 'presign');
@@ -363,8 +363,8 @@ void registerDailyReportCreateRecoveryTests() {
   testWidgets(
     'R1 no current view permission cannot dispatch an unverifiable CREATE',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1800, 1100));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1800, 1100));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final storage = MemoryFormDraftStorage(),
           fake = _IdentityApi()..successfulCreate = true;
       final env = await _openIdentityPage(tester, storage, fake);

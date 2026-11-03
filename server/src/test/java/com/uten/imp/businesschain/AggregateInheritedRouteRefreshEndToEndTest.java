@@ -37,9 +37,10 @@ class AggregateInheritedRouteRefreshEndToEndTest {
 
     @ParameterizedTest @ValueSource(strings={"BUY","MAKE"})
     void inheritedChildSupplyKeepsCanonicalRouteWhenOriginalOrdersPrecedeParentMerge(String route){
-        var c=h.create(true,false,"100",true,3,"1");
-        h.setRoute(c,c.child(),"SUBCONTRACT");
-        if("MAKE".equals(route))h.setRoute(c,c.material(),route);
+        var c=h.createWithSources(true,false,"100",true,3,"1",
+                new AggregateMaterialOrderEndToEndTest.GoodsSources("MAKE","SUBCONTRACT",route));
+        h.assertMasterRoute(c,c.child(),"SUBCONTRACT");
+        if("MAKE".equals(route))h.assertMasterRoute(c,c.material(),route);
         h.writer.submit(c.analysis(),h.command(c,List.of(h.input(c,c.material(),route,"400",true))));
         var parent=h.writer.submit(c.analysis(),h.command(c,List.of(h.input(c,c.common(),"MAKE","300",false)))).batches().getFirst();
         AnalysisView merged=h.analyses.detail(c.analysis());

@@ -40,7 +40,7 @@ class ReportExportSpecialSourcesPostgresTest {
             .withDatabaseName("b1_special_readers").withReuse(false)
             .withCreateContainerCmdModifier(cmd -> cmd.getHostConfig().withMemory(768L * 1024 * 1024).withNanoCPUs(1_000_000_000L));
     private static final String[] TABLES = {"currencies","clients","suppliers","accounts","units","colors","departments",
-            "goods","material_categories","payment_styles","gl_entries","stock_balances","stock_measurement_holds",
+            "goods","material_categories","payment_styles","gl_entries","stock_balances","stock_movements","stock_measurement_holds",
             "procurement_inspection_items","goods_weight_estimates","production_plans","production_plan_items",
             "warehouses","warehouse_goods_place_preferences","finance_reconciliations","account_flow_monthly_summaries",
             "finance_receipts","finance_receipt_lines","finance_payments","finance_payment_lines","ar_ap_ledger",

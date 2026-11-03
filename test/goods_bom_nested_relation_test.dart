@@ -22,6 +22,7 @@ import 'package:uten_imp/features/basic_data/widgets/goods_bom_tab.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
+import 'support/uten_test_actions.dart';
 
 class _FakeGoodsBomRepository implements GoodsBomRepository {
   _FakeGoodsBomRepository({
@@ -164,8 +165,8 @@ Future<void> _pumpBom(
   ValueChanged<bool>? interactionChanged,
   TargetPlatform platform = TargetPlatform.windows,
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 900));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(1600, 900));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -524,8 +525,8 @@ void main() {
     'goods:view + goods:bom:create cannot bypass edit mode permission',
     (tester) async {
       final repo = _FakeGoodsBomRepository(empty: true);
-      await tester.binding.setSurfaceSize(const Size(1600, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1600, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
@@ -572,8 +573,8 @@ void main() {
     tester,
   ) async {
     final repo = _FakeGoodsBomRepository();
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1600, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     var previews = 0;
     await tester.pumpWidget(
       ProviderScope(
@@ -744,8 +745,8 @@ void main() {
 
   testWidgets('audit mode marks row audited on single tap', (tester) async {
     final repo = _FakeGoodsBomRepository();
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1600, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
@@ -791,8 +792,8 @@ void main() {
     tester,
   ) async {
     final repo = _FakeGoodsBomRepository();
-    await tester.binding.setSurfaceSize(const Size(1600, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1600, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     await tester.pumpWidget(
       ProviderScope(
         overrides: [

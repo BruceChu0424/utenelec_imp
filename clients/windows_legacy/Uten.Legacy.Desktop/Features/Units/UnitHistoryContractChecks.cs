@@ -2,6 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
+using System.Windows.Interop;
+using Uten.Legacy.Desktop.Controls;
+using Uten.Legacy.Desktop.Shared;
 using System.Net;
 using System.Net.Http;
 using System.Reflection;
@@ -139,7 +143,27 @@ namespace Uten.Legacy.Desktop.Features.Units
                     check(Field<Button>(window, "before").IsEnabled && !Field<Button>(window, "after").IsEnabled, "native restore uses selected server direction capabilities");
                     Snapshot(window, "unit-record-history-fixture.png");
                     var search = Field<TextBox>(window, "keyword"); search.Text = "保留的查询";
+                    var dateEntry = Field<Button>(window, "dateRange");
+                    check(dateEntry.Content.ToString().StartsWith("选择日期 ", StringComparison.Ordinal), "history has a single date selection entry with selected range");
+                    var defaultQuery = (UnitHistoryQuery)typeof(UnitRecordHistoryWindow).GetMethod("Query", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(window, null);
+                    var chinaToday = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8)).Date;
+                    check(defaultQuery.DateFrom == chinaToday.AddMonths(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) && defaultQuery.DateTo == chinaToday.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), "history defaults to recent calendar month in China wall time");
+                    new WindowInteropHelper(window).EnsureHandle();
+                    Dispatcher.CurrentDispatcher.BeginInvoke(new Action(() =>
+                    {
+                        var picker = window.OwnedWindows.OfType<UtenDateRangeDialog>().Single();
+                        DateRangeDialogChecks.CompleteRange(picker, 2026, 10, 1, 2);
+                    }));
+                    dateEntry.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    check(rows.ItemsSource == null && search.Text == "保留的查询", "date selection invalidates old rows while retaining other filters");
                     Field<Button>(window, "refresh").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); PumpUntil(() => rows.Items.Count == 1);
+                    check(fixture.Handler.LastPath.Contains("dateFrom=2026-10-01") && fixture.Handler.LastPath.Contains("dateTo=2026-10-02"), "confirmed range uses unchanged server date filter keys");
+                    var clearDate = Field<Button>(window, "clearDate");
+                    check(clearDate.Style == Application.Current.FindResource("Uten.CaptionButton") && clearDate.Visibility == Visibility.Visible, "date card uses the shared red circular clear button");
+                    clearDate.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    check(clearDate.Visibility == Visibility.Collapsed && Equals(dateEntry.Content, "选择日期") && rows.ItemsSource == null && search.Text == "保留的查询", "date clear removes both bounds and preserves unrelated filters");
+                    Field<Button>(window, "refresh").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); PumpUntil(() => rows.Items.Count == 1);
+                    check(!fixture.Handler.LastPath.Contains("dateFrom=") && !fixture.Handler.LastPath.Contains("dateTo="), "cleared dates leave authoritative query unbounded");
                     fixture.Handler.ReauthRead = true;
                     fixture.Session.GetAsync("/fixture-refresh", CancellationToken.None).GetAwaiter().GetResult(); Pump();
                     check(search.Text == "保留的查询" && rows.Items.Count == 1, "ordinary auth refresh preserves query and table");

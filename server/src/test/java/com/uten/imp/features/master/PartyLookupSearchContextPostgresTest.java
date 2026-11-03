@@ -175,8 +175,8 @@ class PartyLookupSearchContextPostgresTest {
                                                 var other = new JdbcTemplate(new SingleConnectionDataSource(writer, true));
                                                 UUID category = new UUID(0, 3);
                                                 other.update("INSERT INTO client_categories(id,code,name,version,is_deleted,level,path,sort_order) VALUES(?,'CAT3','迟到类',0,false,0,'/',0)", category);
-                                                other.update("INSERT INTO clients(id,name,code,category_id,owner_employee_id,status,is_deleted,version,access_version,code_managed,code_sequence)"
-                                                        + " VALUES(?,'晚提交','LATE',?,?,'使用',false,0,0,false,1)", UUID.randomUUID(), category, viewer);
+                                                other.update("INSERT INTO clients(id,name,code,category_id,owner_employee_id,status,is_deleted,is_hidden,version,access_version,code_managed,code_sequence)"
+                                                        + " VALUES(?,'晚提交','LATE',?,?,'使用',false,false,0,0,false,1)", UUID.randomUUID(), category, viewer);
                                                 writer.commit();
                                             }
                                         }
@@ -200,12 +200,12 @@ class PartyLookupSearchContextPostgresTest {
                 id, "CAT" + sequence, name); return id;
     }
     private UUID client(UUID category, UUID owner, String status, boolean deleted, String code, String name) {
-        UUID id = UUID.randomUUID(); jdbc.update("INSERT INTO clients(id,name,code,category_id,owner_employee_id,status,is_deleted,version,access_version,code_managed,code_sequence,mobile,bank_account)"
-                + " VALUES(?,?,?,?,?,?,?,0,0,false,1,'PRIVATE-MOBILE','PRIVATE-BANK')", id, name, code, category, owner, status, deleted); return id;
+        UUID id = UUID.randomUUID(); jdbc.update("INSERT INTO clients(id,name,code,category_id,owner_employee_id,status,is_deleted,is_hidden,version,access_version,code_managed,code_sequence,mobile,bank_account)"
+                + " VALUES(?,?,?,?,?,?,?,false,0,0,false,1,'PRIVATE-MOBILE','PRIVATE-BANK')", id, name, code, category, owner, status, deleted); return id;
     }
     private UUID supplier(UUID category, String status, boolean workshop, boolean deleted, String code) {
-        UUID id = UUID.randomUUID(); jdbc.update("INSERT INTO suppliers(id,name,code,category_id,status,is_internal_workshop,is_deleted,version,code_managed,code_sequence)"
-                + " VALUES(?,'供应商',?,?,?,?,?,0,false,1)", id, code, category, status, workshop, deleted); return id;
+        UUID id = UUID.randomUUID(); jdbc.update("INSERT INTO suppliers(id,name,code,category_id,status,is_internal_workshop,is_deleted,is_hidden,version,code_managed,code_sequence)"
+                + " VALUES(?,'供应商',?,?,?,?,?,false,0,false,1)", id, code, category, status, workshop, deleted); return id;
     }
     private static ClientQueryFilter clientFilter(String keyword, boolean selectable) {
         Map<String, Object> input = new HashMap<>(); input.put("keyword", keyword); input.put("selectableOnly", selectable);

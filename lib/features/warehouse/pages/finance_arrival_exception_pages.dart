@@ -34,7 +34,7 @@ import '../../../core/utils/display_datetime.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/auth/permissions.dart';
-import '../../finance/providers/finance_audit_preparation_provider.dart';
+import '../providers/finance_arrival_prepared_page_provider.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart'
     show nativeReadAccessDenied;
 import '../../../shared/models/procurement_inbound.dart';
@@ -151,8 +151,7 @@ class _FinanceArrivalExceptionTasksPageState
       final repo = ref.read(procurementInboundRepositoryProvider);
       final result = page == 1
           ? await ref
-                .read(financeAuditPreparedPagesProvider)
-                .arrivals
+                .read(financeArrivalPreparedPageProvider)
                 .read(
                   financeArrivalReadKey(repo, page: page, status: query),
                   () => repo.financeTasks(page: page, status: query),

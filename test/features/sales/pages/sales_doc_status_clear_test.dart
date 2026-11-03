@@ -148,9 +148,9 @@ void main() {
           expect(api.queries.last.containsKey('dateFrom'), isFalse);
           expect(api.queries.last.containsKey('dateTo'), isFalse);
         } else {
-          // returnDoc 清除状态后留在历史段：保留历史门默认的近三个月范围
-          //（2026-10-24 口径，ADR-180 历史保留原时间范围）。
-          final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
+          // returnDoc 清除状态后留在历史段：保留历史门默认的近一个月范围
+          //（2026-11-03 口径，ADR-180 历史保留原时间范围）。
+          final defaultRange = UtenHistoryTimeValue.lastMonth().range!;
           expect(
             api.queries.last['dateFrom'],
             ChinaDateTime.formatDate(defaultRange.start),

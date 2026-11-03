@@ -168,10 +168,12 @@ class MaterialAnalysisOptionalRouteReasonPostgresTest {
     @Test
     void actualConfirmationAndRefreshAcceptNullBlankSingleCharacterAndMaximumLength() {
         Fixture fixture = createFixture();
+        assertThat(jdbc.queryForObject("SELECT source_type FROM goods WHERE id=?", String.class, COMPONENT))
+                .isEqualTo("采购");
         for (String reason : new String[]{null, " \t\n", "1", "理".repeat(1000)}) {
-            confirm(fixture, "MAKE", reason);
+            confirm(fixture, "BUY", reason);
             Map<String, Object> saved = confirmation(fixture.materialId());
-            assertThat(saved.get("confirmed_route")).isEqualTo("MAKE");
+            assertThat(saved.get("confirmed_route")).isEqualTo("BUY");
             assertThat(saved.get("route_reason")).isEqualTo(MaterialAnalysisService.normalizeRouteReason(reason));
             assertThat(saved.get("route_confirmed_by")).isEqualTo(actor);
             assertThat(saved.get("route_confirmed_at")).isNotNull();

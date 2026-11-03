@@ -19,12 +19,18 @@ class GoodsSellingPriceCurrencyPostgresTest {
         try(var database = new PostgreSQLContainer("postgres:16-alpine")) {
             database.start();
             var db = new JdbcTemplate(new DriverManagerDataSource(database.getJdbcUrl(),database.getUsername(),database.getPassword()));
-            db.execute("CREATE TABLE currencies(id uuid PRIMARY KEY,is_base_currency boolean NOT NULL DEFAULT false)");
-            db.execute("CREATE TABLE goods(id uuid PRIMARY KEY,price numeric(18,4),is_deleted boolean NOT NULL DEFAULT false)");
-            db.execute("CREATE TABLE goods_operation_history_rows(table_name text,before_row jsonb,after_row jsonb,expected_row jsonb,before_token jsonb,after_token jsonb)");
+            // V995 upgrades the real preceding catalog; do not hand-invent a
+            // smaller goods/currency schema or pre-add the column under test.
+            com.uten.imp.support.MigratedProjectionSchema.createTables(db, "994", "currencies", "goods", "goods_operation_history_rows");
+            assertEquals(0, db.queryForObject("SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name='goods' AND column_name='currency_id'", Integer.class));
             UUID id=UUID.randomUUID();
             db.update("INSERT INTO goods(id,price) VALUES (?,1234.5678)",id);
-            db.execute("INSERT INTO goods_operation_history_rows VALUES ('goods','{\"price\":1}','{\"price\":2}','{\"version\":3}','{\"version\":1}','{\"version\":2}'),('colors','{}','{}','{}','{}',NULL)");
+            db.update("""
+                    INSERT INTO goods_operation_history_rows
+                        (operation_id,table_name,row_id,before_row,after_row,expected_row,before_token,after_token)
+                    VALUES(gen_random_uuid(),'goods',?,'{"price":1}','{"price":2}','{"version":3}','{"version":1}','{"version":2}'),
+                          (gen_random_uuid(),'colors',gen_random_uuid(),'{}','{}','{}','{}',NULL)
+                    """, id);
             try(var input=Objects.requireNonNull(getClass().getResourceAsStream("/db/migration/V995__goods_selling_price_currency.sql"))) {
                 db.execute(new String(input.readAllBytes(), StandardCharsets.UTF_8));
             }

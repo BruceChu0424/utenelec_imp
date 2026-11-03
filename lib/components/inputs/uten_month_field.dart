@@ -1,10 +1,9 @@
-import 'uten_dropdown_scroll_scope.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../../core/utils/china_datetime.dart';
 import '../../shared/ai/page_context/ai_page_context.dart';
-import '../feedback/uten_dialog.dart';
+import '../feedback/uten_date_range_picker.dart';
 import 'required_field_decoration.dart';
 import 'uten_field_message.dart';
 import 'uten_input_decoration.dart';
@@ -60,6 +59,7 @@ class _UtenMonthFieldState extends State<UtenMonthField> {
   final _aiSlot = AiPageSlot();
   String? _aiValue;
   bool _edited = false;
+  bool _picking = false;
 
   bool get _invalid =>
       _edited &&
@@ -146,68 +146,30 @@ class _UtenMonthFieldState extends State<UtenMonthField> {
   }
 
   Future<void> _pick() async {
-    FocusManager.instance.primaryFocus?.unfocus();
-    final current = _validMonth(_controller.text) ?? ChinaDateTime.today();
-    var year = current.year.clamp(widget.firstYear, widget.lastYear);
-    final month = await showDialog<DateTime>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => UtenAlertDialog(
-          title: Text(widget.label),
-          content: SizedBox(
-            width: 320,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                UtenDropdownScrollScope(
-                  nativeDropdown: true,
-                  child: DropdownButton<int>(
-                    value: year,
-                    isExpanded: true,
-                    items: [
-                      for (var y = widget.lastYear; y >= widget.firstYear; y--)
-                        DropdownMenuItem(value: y, child: Text('$y年')),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) setDialogState(() => year = value);
-                    },
-                  ),
-                ),
-                const SizedBox(height: 12),
-                for (var row = 0; row < 4; row++)
-                  Row(
-                    children: [
-                      for (var col = 1; col <= 3; col++)
-                        Expanded(
-                          child: TextButton(
-                            onPressed: () => Navigator.of(
-                              dialogContext,
-                            ).pop(DateTime(year, row * 3 + col)),
-                            child: Text('${row * 3 + col}月'),
-                          ),
-                        ),
-                    ],
-                  ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('取消'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (month == null || !mounted) return;
-    final value = UtenMonthField.format(month);
-    setState(() {
-      _aiValue = null;
-      _edited = true;
-      _controller.text = value;
-    });
-    widget.onChanged(value);
+    if (!widget.enabled || _picking) return;
+    _picking = true;
+    try {
+      FocusManager.instance.primaryFocus?.unfocus();
+      final current = _validMonth(_controller.text) ?? ChinaDateTime.today();
+      final year = current.year.clamp(widget.firstYear, widget.lastYear);
+      final month = await showUtenMonthPicker(
+        context: context,
+        firstYear: widget.firstYear,
+        lastYear: widget.lastYear,
+        initialMonth: DateTime(year, current.month),
+        helpText: widget.label,
+      );
+      if (month == null || !mounted || !widget.enabled) return;
+      final value = UtenMonthField.format(month);
+      setState(() {
+        _aiValue = null;
+        _edited = true;
+        _controller.text = value;
+      });
+      widget.onChanged(value);
+    } finally {
+      _picking = false;
+    }
   }
 
   @override

@@ -182,6 +182,9 @@ class FixtureSchemaDriftGuardPostgresTest {
 
     // New private probes are class-scoped; another fixture cannot reuse the name to evade real-schema checks.
     private static final Set<String> CLASS_SCOPED_FIXTURE_RELATIONS = Set.of(
+            // Batch atomicity/replay oracle's private downstream write sink; it models
+            // no production document and only this exact fixture may create it.
+            "com/uten/imp/features/finance/FinanceBatchEntryPostgresTest.java#synthetic_documents",
             // This one candidate oracle owns sparse facts behind its source
             // views; these names never exempt production binding relations or
             // another fixture with the same relation name.

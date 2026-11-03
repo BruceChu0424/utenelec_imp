@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -130,8 +131,7 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
                 SELECT is_deleted, status, is_internal_workshop, is_hidden
                 FROM suppliers
                 WHERE id = :id
-                FOR SHARE
-                """).setParameter("id", supplierId));
+                """ + selectionLock()).setParameter("id", supplierId));
         if (rows.size() != 1) {
             throw notFound("供应商不存在");
         }
@@ -146,11 +146,16 @@ public class MasterReferenceValidationAdapter implements MasterReferenceValidati
     }
 
     private void requireNotHidden(String table, UUID id, String noun) {
-        // Table is an internal constant. SHARE serializes new selection against party hide's row UPDATE lock.
-        List<?> hidden = em.createNativeQuery("SELECT is_hidden FROM " + table + " WHERE id=:id FOR SHARE")
+        // Read-only prefills use their owning transaction snapshot. Writes keep
+        // SHARE so a new reference serializes against the party-hide row UPDATE.
+        List<?> hidden = em.createNativeQuery("SELECT is_hidden FROM " + table + " WHERE id=:id" + selectionLock())
                 .setParameter("id", id).getResultList();
         if (hidden.size() != 1) throw notFound(noun + "不存在");
         if (Boolean.TRUE.equals(hidden.getFirst())) throw conflict(noun + "已从资料中删除，不能用于新业务");
+    }
+
+    private static String selectionLock() {
+        return TransactionSynchronizationManager.isCurrentTransactionReadOnly() ? "" : " FOR SHARE";
     }
 
     @Override

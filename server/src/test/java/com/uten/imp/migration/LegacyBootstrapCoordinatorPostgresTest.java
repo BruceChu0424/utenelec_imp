@@ -92,6 +92,17 @@ class LegacyBootstrapCoordinatorPostgresTest {
         // Install the deliberately downgraded synthetic inputs only after they pass.
         Files.copy(Path.of("legacy_migration/warehouse_crosswalk.csv"), legacy.resolve("warehouse_crosswalk.csv"));
         currentMappingVersion = Files.readString(legacy.resolve("mapping-version.txt"), StandardCharsets.UTF_8);
+        // The semantic child audit binds real documentary evidence, not just
+        // the loader and migration bytes. Freeze its two owning documents too.
+        Path evidenceDirectory = candidate.resolve("docs/数据迁移");
+        Files.createDirectories(evidenceDirectory);
+        StringBuilder evidenceManifest = new StringBuilder();
+        for (String name : List.of("04-模具资料-老库溯源.md", "77-V457货品后模镶件编号.md")) {
+            byte[] contents = Files.readAllBytes(Path.of("../docs/数据迁移").resolve(name));
+            Files.write(evidenceDirectory.resolve(name), contents);
+            evidenceManifest.append(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(contents)))
+                    .append("  docs/数据迁移/").append(name).append('\n');
+        }
         var loader = LegacyBootstrapCoordinatorPostgresTest.class.getClassLoader();
         Path migrationDirectory = candidate.resolve("server/src/main/resources/db/migration");
         Files.createDirectories(migrationDirectory);
@@ -144,6 +155,10 @@ class LegacyBootstrapCoordinatorPostgresTest {
         put(ROOT + "/server/target/python-entity-sources.sha256", javaManifest.toString());
         shell("cd /bootstrap && sha256sum --strict -c server/target/python-entity-sources.sha256"
                 + " > /tmp/verified-python-entity-sources.log");
+        postgres.copyFileToContainer(MountableFile.forHostPath(evidenceDirectory), ROOT + "/docs/数据迁移");
+        put(ROOT + "/server/target/python-document-evidence.sha256", evidenceManifest.toString());
+        shell("cd /bootstrap && sha256sum --strict -c server/target/python-document-evidence.sha256"
+                + " > /tmp/verified-python-document-evidence.log");
         try (var files = Files.list(legacy)) {
             for (Path file : files.filter(Files::isRegularFile).toList()) {
                 String name = file.getFileName().toString();

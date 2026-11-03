@@ -1,11 +1,12 @@
 import '../../models/paged_result.dart';
+import '../../auth/read_owner_fence.dart';
 import '../../paging/scoped_paged_read.dart';
 import '../../paging/scoped_paged_read_view_mixin.dart';
 // 库存面板「出入库流水」分段: 按中式存货明细账排版 (ADR-135 §6.3)。
 //
 // 列: 日期 | 类型 | 单号(可点回源单) | 往来方 | 仓库 | 颜色 | 收入数量 | 发出数量 | 结存数量 | 单位 |
 //     收入重量 | 发出重量 | 结存重量 | 操作人 | 备注。
-// 筛选: 日期 (默认近90天) / 仓库(含下级) / 颜色 / 类型 (表头筛选, 服务端 facet) / 显示重量调整。
+// 筛选: 日期 (默认近一月) / 仓库(含下级) / 颜色 / 类型 (表头筛选, 服务端 facet) / 显示重量调整。
 // 结存数量/结存重量按「仓库(含下级) + 颜色」范围由服务端算好, 与类型筛选无关;
 // 合计条: 期初结存 · 本期收入 · 本期发出 · 期末结存 (数量与重量), 全部来自服务端汇总。
 // 重量悬停说明来源: 实称 / 按数量(精确) / 按比例分摊 / ≈按库存均重 / ≈按单重估算;
@@ -20,10 +21,13 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../components/data_display/uten_totals_summary_bar.dart';
+import '../../../components/inputs/uten_date_range_button.dart';
 import '../../../components/feedback/uten_date_range_picker.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_filter_picker_field.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/date_range_defaults.dart';
 import '../../../features/basic_data/models/master_facet.dart';
 import '../../../features/basic_data/widgets/master_data_table_view.dart';
 import '../../measurement/weight_prefs.dart';
@@ -89,6 +93,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
       setState(() {
         _data = null;
         _loading = false;
+        _dateHeaderApplying = false;
         _error = null;
       });
     }
@@ -99,9 +104,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
     }
   }
 
-  /// 默认近90天 (含今天); 每页 50 行 (StockLedgerQuery 默认)。
-  static const _defaultDays = 90;
-
+  /// 默认近一月 (含今天); 每页 50 行 (StockLedgerQuery 默认)。
   late DateTime _from;
   late DateTime _to;
   String? _warehouseId;
@@ -116,14 +119,16 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
   bool _loading = false;
   String? _error;
   int _version = 0;
+  bool _dateHeaderPicking = false;
+  bool _dateHeaderApplying = false;
   TableColumnQuery _columnQuery = const TableColumnQuery();
 
   @override
   void initState() {
     super.initState();
-    final today = ChinaDateTime.today();
-    _to = DateTime(today.year, today.month, today.day);
-    _from = _to.subtract(const Duration(days: _defaultDays - 1));
+    final dates = recentMonthDateRange();
+    _to = DateTime(dates.end.year, dates.end.month, dates.end.day);
+    _from = DateTime(dates.start.year, dates.start.month, dates.start.day);
     _applyScope(widget.scope);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) trackRefresh(_load(1));
@@ -264,20 +269,38 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
   }
 
   Future<void> _pickDates() async {
-    final today = ChinaDateTime.today();
-    final picked = await showUtenDateRangePicker(
-      context: context,
-      firstDate: DateTime(2010),
-      lastDate: DateTime(today.year, today.month, today.day),
-      initialDateRange: DateTimeRange(start: _from, end: _to),
-      helpText: '选择流水日期范围',
-    );
-    if (picked == null || !mounted) return;
+    if (_dateHeaderPicking) return;
+    _dateHeaderPicking = true;
+    final ownerIsCurrent = captureReadOwner(ref);
+    final goodsId = widget.goodsId;
+    try {
+      final picked = await showUtenDateRangePicker(
+        context: context,
+        firstDate: DateTime(2010),
+        lastDate: ChinaDateTime.today(),
+        initialDateRange: DateTimeRange(start: _from, end: _to),
+        helpText: '选择流水日期范围',
+      );
+      if (picked == null || !ownerIsCurrent() || widget.goodsId != goodsId) {
+        return;
+      }
+      setState(() => _dateHeaderApplying = true);
+      await _applyDates(picked);
+    } finally {
+      _dateHeaderPicking = false;
+      if (mounted) setState(() => _dateHeaderApplying = false);
+    }
+  }
+
+  Future<void> _applyDates(DateTimeRange picked) async {
+    if (!mounted) return;
     setState(() {
+      // A failed new period must not relabel old movement/balance facts.
+      _data = null;
       _from = DateTime(picked.start.year, picked.start.month, picked.start.day);
       _to = DateTime(picked.end.year, picked.end.month, picked.end.day);
     });
-    _load(1);
+    await _load(1);
   }
 
   Future<void> _pickWarehouse() async {
@@ -312,110 +335,117 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
         rows
             .map((r) => r.unitName)
             .firstWhere((u) => u != null && u.isNotEmpty, orElse: () => null);
-    return MasterDataTableView<StockLedgerRow>(
-      rowsController: _readViewportRows,
-      expensiveRowMounts: false,
-      tableKey:
-          'shared.stock_ledger.widgets.goods_stock_ledger_view.GoodsStockLedgerViewState.build.1',
-      key: const Key('stock-item-ledger-table'),
-      // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
-      primary: true,
-      columns: _columns(display),
-      serverColumnSearch: true,
-      sortColumn: _columnQuery.sort,
-      sortAscending: _columnQuery.ascending,
-      onSortChange: (key, ascending) {
-        setState(() => _columnQuery = _columnQuery.sorted(key, ascending));
-        _load(1);
-      },
-      items: rows,
-      rowKeyOf: (row) => '${row.rowKind}:${row.id}',
-      facets: {
-        'type': data?.facets['movementType'] ?? const [],
-        'warehouse': data?.facets['warehouse'] ?? const [],
-        'color': data?.facets['color'] ?? const [],
-      },
-      // 「无颜色」是服务端的普通桶 (值 '__null__' = kMasterFilterNullValue), 不另走空值计数。
-      nullCounts: const {},
-      filters: {
-        ..._columnQuery.searches,
-        if (_typeFilter != null) 'type': _typeFilter,
-        if (_warehouseId != null) 'warehouse': _warehouseId,
-        if (_colorFilter != null) 'color': _colorFilter,
-      },
-      onFilterChanged: _onFilterChanged,
-      toolbarLeadingActions: [
-        if (_columnQuery.searches.isNotEmpty)
-          const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('列检索'),
-              UtenFieldHintIcon(
-                info: '列检索定位记录；台账结存及合计仍按所选日期、仓库、颜色和类型范围。',
-                dense: true,
-              ),
-            ],
-          ),
-        OutlinedButton.icon(
-          key: const ValueKey('stock-ledger-date-range'),
-          onPressed: _pickDates,
-          icon: const Icon(Icons.date_range_outlined, size: 18),
-          label: Text(
-            '${ChinaDateTime.formatDate(_from)} ~ ${ChinaDateTime.formatDate(_to)}',
-          ),
-        ),
-        UtenFilterPickerField(
-          key: const ValueKey('stock-ledger-warehouse'),
-          label: '仓库(含下级)',
-          icon: Icons.warehouse_outlined,
-          width: 220,
-          value: _warehouseId == null
-              ? null
-              : names.warehouseEntries[_warehouseId],
-          onTap: _pickWarehouse,
-        ),
-        UtenFilterChip(
-          key: const ValueKey('stock-ledger-show-adjustments'),
-          label: const Text('显示重量调整'),
-          selected: _includeAdjustments,
-          onSelected: (v) {
-            setState(() => _includeAdjustments = v);
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        MasterDataTableView<StockLedgerRow>(
+          rowsController: _readViewportRows,
+          expensiveRowMounts: false,
+          tableKey:
+              'shared.stock_ledger.widgets.goods_stock_ledger_view.GoodsStockLedgerViewState.build.1',
+          key: const Key('stock-item-ledger-table'),
+          // primary:true → 表体拾取联动容器注入的 PrimaryScrollController。
+          primary: true,
+          columns: _columns(display),
+          serverColumnSearch: true,
+          sortColumn: _columnQuery.sort,
+          sortAscending: _columnQuery.ascending,
+          onSortChange: (key, ascending) {
+            setState(() => _columnQuery = _columnQuery.sorted(key, ascending));
             _load(1);
           },
-        ),
-      ],
-      onRowTap: _openSource,
-      canOpenRow: (row) => stockLedgerSourcePath(row) != null,
-      isLoading: _loading && data == null,
-      loadingMore: _loading && data != null,
-      error: _error,
-      onRetry: () => _load(_visibleReadPage),
-      emptyMessage: '所选范围内没有出入库流水',
-      summaryBar: data == null
-          ? null
-          : UtenTotalsSummaryBar(
-              key: const ValueKey('stock-ledger-summary'),
-              density: true,
-              compact: true,
-              entries: stockLedgerSummaryEntries(
-                data.summary,
-                unitName: unit,
-                display: display,
+          items: rows,
+          rowKeyOf: (row) => '${row.rowKind}:${row.id}',
+          facets: {
+            'type': data?.facets['movementType'] ?? const [],
+            'warehouse': data?.facets['warehouse'] ?? const [],
+            'color': data?.facets['color'] ?? const [],
+          },
+          // 「无颜色」是服务端的普通桶 (值 '__null__' = kMasterFilterNullValue), 不另走空值计数。
+          nullCounts: const {},
+          filters: {
+            ..._columnQuery.searches,
+            if (_typeFilter != null) 'type': _typeFilter,
+            if (_warehouseId != null) 'warehouse': _warehouseId,
+            if (_colorFilter != null) 'color': _colorFilter,
+          },
+          onFilterChanged: _onFilterChanged,
+          toolbarLeadingActions: [
+            if (_columnQuery.searches.isNotEmpty)
+              const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('列检索'),
+                  UtenFieldHintIcon(
+                    info: '列检索定位记录；台账结存及合计仍按所选日期、仓库、颜色和类型范围。',
+                    dense: true,
+                  ),
+                ],
               ),
+            UtenDateRangeButton(
+              key: const ValueKey('stock-ledger-date-range'),
+              range: DateTimeRange(start: _from, end: _to),
+              firstDate: DateTime(2010),
+              lastDate: ChinaDateTime.today(),
+              helpText: '选择流水日期范围',
+              onChanged: _applyDates,
             ),
-      currentPage: data?.page ?? 1,
-      totalPages: data?.totalPages ?? 1,
-      paginationScope: (
-        widget.goodsId,
-        _warehouseId,
-        _colorFilter,
-        _typeFilter,
-        _from,
-        _to,
-        _includeAdjustments,
-        _columnQuery,
-      ),
-      onPageChange: (page) => _load(page, useCache: true),
+            UtenFilterPickerField(
+              key: const ValueKey('stock-ledger-warehouse'),
+              label: '仓库(含下级)',
+              icon: Icons.warehouse_outlined,
+              width: 220,
+              value: _warehouseId == null
+                  ? null
+                  : names.warehouseEntries[_warehouseId],
+              onTap: _pickWarehouse,
+            ),
+            UtenFilterChip(
+              key: const ValueKey('stock-ledger-show-adjustments'),
+              label: const Text('显示重量调整'),
+              selected: _includeAdjustments,
+              onSelected: (v) {
+                setState(() => _includeAdjustments = v);
+                _load(1);
+              },
+            ),
+          ],
+          onRowTap: _openSource,
+          canOpenRow: (row) => stockLedgerSourcePath(row) != null,
+          isLoading: _loading && data == null,
+          loadingMore: _loading && data != null,
+          error: _error,
+          onRetry: () => _load(_visibleReadPage),
+          emptyMessage: '所选范围内没有出入库流水',
+          summaryBar: data == null
+              ? null
+              : UtenTotalsSummaryBar(
+                  key: const ValueKey('stock-ledger-summary'),
+                  density: true,
+                  compact: true,
+                  entries: stockLedgerSummaryEntries(
+                    data.summary,
+                    unitName: unit,
+                    display: display,
+                  ),
+                ),
+          currentPage: data?.page ?? 1,
+          totalPages: data?.totalPages ?? 1,
+          paginationScope: (
+            widget.goodsId,
+            _warehouseId,
+            _colorFilter,
+            _typeFilter,
+            _from,
+            _to,
+            _includeAdjustments,
+            _columnQuery,
+          ),
+          onPageChange: (page) => _load(page, useCache: true),
+        ),
+        if (_dateHeaderApplying)
+          const UtenBusyOverlay(title: '正在应用日期', showDoNotLeaveHint: false),
+      ],
     );
   }
 

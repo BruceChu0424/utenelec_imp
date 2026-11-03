@@ -179,6 +179,64 @@ class HotTableTriggerHygieneContractTest {
         }
     }
 
+    @Test
+    void storageClaimGuardQueuesBusinessChangesButNotMetadata() throws SQLException {
+        try(Connection connection=database.openConnection();Statement statement=connection.createStatement()){
+            connection.setAutoCommit(false);
+            try {
+                statement.execute("CREATE TEMP TABLE storage_claim_gate_probe ON COMMIT DROP AS SELECT * FROM stock_reservations WITH NO DATA");
+                statement.execute("CREATE TEMP TABLE inspection_gate_calls(operation text) ON COMMIT DROP");
+                statement.execute("CREATE FUNCTION pg_temp.record_storage_gate() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN INSERT INTO inspection_gate_calls VALUES(TG_OP); RETURN NULL; END $$");
+                String definition;
+                try(ResultSet rows=statement.executeQuery("SELECT pg_get_triggerdef(oid) FROM pg_trigger WHERE tgrelid='public.stock_reservations'::regclass AND tgname='trg_check_stock_claim_storage_reservation'")){
+                    assertThat(rows.next()).isTrue();
+                    definition=rows.getString(1);
+                }
+                String probe=definition.replace(" ON public.stock_reservations "," ON pg_temp.storage_claim_gate_probe ");
+                assertThat(probe).isNotEqualTo(definition);
+                statement.execute(probe.substring(0,probe.indexOf("EXECUTE FUNCTION"))+"EXECUTE FUNCTION pg_temp.record_storage_gate()");
+                statement.execute("ALTER TABLE storage_claim_gate_probe ENABLE ALWAYS TRIGGER trg_check_stock_claim_storage_reservation");
+                statement.execute("SET LOCAL session_replication_role='replica'");
+                statement.execute("INSERT INTO storage_claim_gate_probe(id,warehouse_id,goods_id,qty,consumed_qty,released_qty,status,is_deleted) VALUES(gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),10,0,0,0,FALSE)");
+                statement.execute("SET CONSTRAINTS ALL IMMEDIATE");
+                assertProbeCalls(statement,0);
+                statement.execute("UPDATE storage_claim_gate_probe SET updated_at=clock_timestamp(),updated_by=gen_random_uuid()");
+                assertProbeCalls(statement,0);
+                statement.execute("UPDATE storage_claim_gate_probe SET id=id,warehouse_id=warehouse_id,goods_id=goods_id,color_id=color_id,qty=qty,consumed_qty=consumed_qty,released_qty=released_qty,status=status,is_deleted=is_deleted");
+                assertProbeCalls(statement,0);
+                for(String change:List.of("qty=qty+1","consumed_qty=consumed_qty+0.25","released_qty=released_qty+0.5",
+                        "status=1","is_deleted=TRUE","id=gen_random_uuid()","warehouse_id=gen_random_uuid()",
+                        "goods_id=gen_random_uuid()","color_id=gen_random_uuid()")){
+                    statement.execute("UPDATE storage_claim_gate_probe SET "+change);
+                    assertProbeCalls(statement,1);
+                }
+            } finally {connection.rollback();}
+        }
+    }
+
+    @Test
+    void storageClaimForwardGatePreservesEveryInstalledTriggerMode() throws Exception {
+        String migration;
+        try(var input=getClass().getResourceAsStream("/db/migration/V999__stock_claim_relevant_update_gate.sql")){
+            assertThat(input).isNotNull();
+            migration=new String(input.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
+        }
+        for(String mode:List.of("O","A","R","D")){
+            String clause=switch(mode){case "A"->"ENABLE ALWAYS";case "R"->"ENABLE REPLICA";case "D"->"DISABLE";default->"ENABLE";};
+            try(Connection connection=database.openConnection();Statement statement=connection.createStatement()){
+                connection.setAutoCommit(false);
+                try {
+                    statement.execute("ALTER TABLE public.stock_reservations "+clause+" TRIGGER trg_check_stock_claim_storage_reservation");
+                    statement.execute(migration);
+                    try(ResultSet rows=statement.executeQuery("SELECT tgenabled::text FROM pg_trigger WHERE tgrelid='public.stock_reservations'::regclass AND tgname='trg_check_stock_claim_storage_reservation'")){
+                        assertThat(rows.next()).isTrue();
+                        assertThat(rows.getString(1)).isEqualTo(mode);
+                    }
+                } finally {connection.rollback();}
+            }
+        }
+    }
+
     private static void assertProbeCalls(Statement statement,int expected)throws SQLException{
         try(ResultSet rows=statement.executeQuery("SELECT count(*) FROM inspection_gate_calls")){
             assertThat(rows.next()).isTrue();assertThat(rows.getInt(1)).isEqualTo(expected);

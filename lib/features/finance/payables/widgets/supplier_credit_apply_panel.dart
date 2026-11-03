@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 import '../../../../shared/paging/scoped_paged_read_view_mixin.dart';
@@ -221,7 +222,7 @@ class _SupplierCreditApplyPanelState
   }
 
   Future<void> _pickDate() async {
-    final picked = await showDatePicker(
+    final picked = await showUtenDatePicker(
       context: context,
       initialDate: _effectiveDate,
       firstDate: DateTime(2000),

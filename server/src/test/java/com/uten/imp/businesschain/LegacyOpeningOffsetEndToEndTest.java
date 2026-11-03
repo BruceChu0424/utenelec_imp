@@ -104,6 +104,9 @@ class LegacyOpeningOffsetEndToEndTest {
         jdbc.update("UPDATE system_posting_style_roles role SET style_id=style.id FROM payment_styles style WHERE role.role_key='CUSTOMER_ADVANCE' AND style.code='SYN-ADVANCE'");
         maker=fixture.createUserWithPerms(world,"offset-maker-"+sequence,"finance_payment:create","finance_payment:edit","finance_payment:view","finance_receipt:create","finance_receipt:edit","finance_receipt:view","finance:view:all","finance_post:execute","customer_prepayment:view");
         reviewer=fixture.createUserWithPerms(world,"offset-reviewer-"+sequence,"finance_payment:view","finance_payment:approve","finance_payment:reverse","finance_receipt:view","finance_receipt:approve","finance_receipt:reverse","finance:view:all","customer_prepayment:view");
+        // The finance maker selects this customer as a real, owned reference;
+        // finance:view:all is intentionally not a customer visibility grant.
+        jdbc.update("UPDATE clients SET owner_employee_id=(SELECT employee_id FROM users WHERE id=?) WHERE id=?",maker,client);
         fixture.loginAs(maker);
     }
     @AfterEach void clearUser(){SecurityContextHolder.clearContext();}

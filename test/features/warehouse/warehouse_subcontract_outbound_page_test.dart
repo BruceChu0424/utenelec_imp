@@ -27,6 +27,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import '../../helpers/badge_summary_fixture.dart';
 import 'outbound_weight_fakes.dart';
 import 'subcontract_outbound_test_support.dart';
+import '../../support/uten_test_actions.dart';
 
 late SharedPreferences _preferences;
 
@@ -38,8 +39,8 @@ void main() {
 
   for (final unknown in [false, true]) {
     testWidgets('原待发料行显示填写状态且按同一领料UUID续填，待核对=$unknown', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1400, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final api = SubcontractOutboundFakeApi();
       final router = _router();
       addTearDown(router.dispose);
@@ -90,8 +91,8 @@ void main() {
   }
 
   testWidgets('服务端办结离开待发料队列后，未知原提交仍有核对入口', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1400, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi()..taskHeaders.clear();
     final router = _router();
     addTearDown(router.dispose);
@@ -131,8 +132,8 @@ void main() {
   });
 
   testWidgets('一行一张领料单: 单击选中、双击按领料单进拣货页, 返回后重拉列表', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1400, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     // ADR-184：没有出仓执行资格的账号由服务端在行上下发 canHandle=false，
     // 行仍可见可看原单，但前端不给勾选批量办理。
     final api = SubcontractOutboundFakeApi()..rowsHandleable = false;
@@ -200,8 +201,8 @@ void main() {
   });
 
   testWidgets('服务端授予办理资格时可勾选多张领料单进批量出库页', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1400, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1400, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi();
     final router = _router();
     addTearDown(router.dispose);
@@ -236,8 +237,8 @@ void main() {
   });
 
   testWidgets('窄屏仍是表格, 搜索 / 翻页 / 加载失败照常', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(375, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(375, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = SubcontractOutboundFakeApi();
     final router = _router();
     addTearDown(router.dispose);

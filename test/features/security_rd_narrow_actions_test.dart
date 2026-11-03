@@ -15,6 +15,7 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../helpers/badge_summary_fixture.dart';
+import '../support/uten_test_actions.dart';
 
 class _Api extends ApiClient {
   _Api() : super(Dio());
@@ -124,8 +125,8 @@ void main() {
   });
 
   testWidgets('160逻辑画布大字保安输入可填写并只核验实际六位通行码', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(160, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(160, 700));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final preferences = await SharedPreferences.getInstance();
     final api = _Api();
     await tester.pumpWidget(_app(const SecurityScanPage(), api, preferences));
@@ -145,8 +146,8 @@ void main() {
   });
 
   testWidgets('160逻辑画布长研发任务可滚看全文并完成同一UUID/version一次', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(160, 700));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(160, 700));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final preferences = await SharedPreferences.getInstance();
     final api = _Api();
     await tester.pumpWidget(_app(const RdTaskPage(), api, preferences));

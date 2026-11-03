@@ -318,10 +318,10 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
                 goods = UUID.randomUUID(), unit = UUID.randomUUID(),
                 supplier = UUID.randomUUID(), currency = UUID.randomUUID(),
                 settlement = UUID.randomUUID();
-        jdbc.update("INSERT INTO suppliers VALUES (?, 'S1', '供应商甲')", supplier);
+        jdbc.update("INSERT INTO suppliers(id,code,name) VALUES (?, 'S1', '供应商甲')", supplier);
         jdbc.update("INSERT INTO currencies(id,name) VALUES (?, '美元')", currency);
         jdbc.update("INSERT INTO settlement_methods VALUES (?, '电汇')", settlement);
-        jdbc.update("INSERT INTO goods VALUES (?, 'G1', '货品甲')", goods);
+        jdbc.update("INSERT INTO goods(id,code,name) VALUES (?, 'G1', '货品甲')", goods);
         jdbc.update("INSERT INTO units VALUES (?, '个')", unit);
         jdbc.update("INSERT INTO " + prefix + "_orders(id,supplier_id,warehouse_id,currency_id,settlement_method_id,purchaser_id,maker_id,remark) VALUES (?, ?, NULL, ?, ?, NULL, NULL, NULL)",
                 order, supplier, currency, settlement);
@@ -395,12 +395,12 @@ class ProcurementFinanceApprovalExchangeRatePostgresTest {
                 CREATE TABLE inbound_expectation_items(id uuid,expectation_id uuid,order_item_id uuid,line_no int,
                   goods_id uuid,color_id uuid,unit_id uuid,unit_rate numeric,ordered_qty numeric,accepted_qty numeric,
                   expected_date date);
-                CREATE TABLE suppliers(id uuid,code text,name text);
+                CREATE TABLE suppliers(id uuid,code text,name text, is_hidden boolean NOT NULL DEFAULT false, hidden_at timestamptz);
                 CREATE TABLE warehouses(id uuid,name text);
                 CREATE TABLE currencies(id uuid,name text,is_base_currency boolean DEFAULT FALSE,is_deleted boolean DEFAULT FALSE,status text DEFAULT '使用');
                 CREATE TABLE settlement_methods(id uuid,name text);
                 CREATE TABLE employees(id uuid,full_name text);
-                CREATE TABLE goods(id uuid,code text,name text, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8), client_goods_name text);
+                CREATE TABLE goods(id uuid,code text,name text, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8), client_goods_name text, currency_id uuid);
                 CREATE TABLE colors(id uuid,name text,remark text);
                 CREATE TABLE units(id uuid,name text);
                 """);

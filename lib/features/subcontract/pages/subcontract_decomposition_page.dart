@@ -204,9 +204,9 @@ class _SubcontractDecompositionPageState
   String? _exception;
   static const _allExceptions = '__ALL_EXCEPTIONS__';
 
-  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
-  /// 最近三个月加载），none 仅为值形态护栏。
-  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+  /// 历史记录段的时间门控值；默认近一个月（2026-11-03 用户口径，进段即按
+  /// 最近一个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastMonth();
 
   final Set<String> _selectedIds = <String>{};
   final _taskRows = MasterDataTableRowsController<OperationsWorkbenchTask>();
@@ -559,7 +559,7 @@ class _SubcontractDecompositionPageState
     _drawApplicationItemIds = const {};
     _drawApplicationId = null;
     _drawApplicationLabel = null;
-    _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+    _historyTime = UtenHistoryTimeValue.lastMonth();
   }
 
   void _readerChanged() {
@@ -1208,9 +1208,9 @@ class _SubcontractDecompositionPageState
       _seg = seg;
       _exception = null;
       _page = 1;
-      // 进历史段重新按默认近三个月加载；非历史段回 all() 占位。
+      // 进历史段重新按默认近一个月加载；非历史段回 all() 占位。
       _historyTime = seg.history
-          ? UtenHistoryTimeValue.lastThreeMonths()
+          ? UtenHistoryTimeValue.lastMonth()
           : const UtenHistoryTimeValue.all();
       _selectedIds.clear();
       _columnFilters.clear();

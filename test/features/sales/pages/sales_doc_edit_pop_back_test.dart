@@ -25,6 +25,10 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/repositories/task_claim_repository.dart';
 
 import '../../../helpers/finance_claim_fixture.dart';
+import '../../../support/owned_provider_widget_tests.dart';
+import '../../../support/uten_test_actions.dart';
+
+final _providerTests = OwnedProviderWidgetTests();
 
 const _detail = {
   'id': 'order-1',
@@ -50,7 +54,7 @@ const _detail = {
 };
 
 void main() {
-  testWidgets('编辑保存 pop 回宿主详情；返回一次回列表；宿主重取新数据', (tester) async {
+  _providerTests.testWidgets('编辑保存 pop 回宿主详情；返回一次回列表；宿主重取新数据', (tester) async {
     final (:router, :api) = await _pumpFlow(tester);
 
     // 列表 → 详情 V1（GET #1）。
@@ -90,7 +94,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('草稿列表直接编辑保存后进入详情审核页；一次返回原草稿列表', (tester) async {
+  _providerTests.testWidgets('草稿列表直接编辑保存后进入详情审核页；一次返回原草稿列表', (tester) async {
     final (:router, :api) = await _pumpFlow(tester, fromDraftList: true);
 
     // 与订货进度「草稿」行相同：直接 push 编辑页，栈下没有详情页。
@@ -130,8 +134,8 @@ Future<({GoRouter router, _PopApi api})> _pumpFlow(
   WidgetTester tester, {
   bool fromDraftList = false,
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 1200));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(1600, 1200));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
 
   // fake PUT 推进真实的写修订号，详情返回后的刷新沿用生产接线。
   late final _PopApi api;
@@ -151,7 +155,7 @@ Future<({GoRouter router, _PopApi api})> _pumpFlow(
       }),
     ],
   );
-  addTearDown(container.dispose);
+  _providerTests.own(container);
   api = _PopApi(container);
 
   final listPath = fromDraftList ? '/drafts' : '/list';

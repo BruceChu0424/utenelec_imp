@@ -1,0 +1,128 @@
+{
+  "id": "E-DATE-RANGE-ENTRY-20261103",
+  "baselineCommit": "929efd37812eac24e8cd052ff65e73d06d40164b",
+  "branch": "uimp/date-picker-unification-20261103",
+  "classification": "frontend-presentation-and-interaction",
+  "status": "local-native-date-range-increment",
+  "nativeRuntimeFamily": "wpf_legacy",
+  "architectures": [
+    "x86",
+    "x64"
+  ],
+  "entryAudit": {
+    "existingApplicableNativeCallers": [
+      "UnitRecordHistoryWindow"
+    ],
+    "search": "DatePicker|Calendar|开始日期|结束日期|StartDate|EndDate over all native *.cs/*.xaml",
+    "nativeMigration": "start/end TextBox pair replaced with one date entry card"
+  },
+  "contract": {
+    "entry": "One 选择日期 button; shared Uten.CaptionButton red circle with white X clears both dates inside the same card at the far right.",
+    "default": "China wall today (UTC+08:00) minus one calendar month through today inclusive; DateTime.AddMonths clamps month ends.",
+    "navigation": "Month/year heading opens a virtualized year dropdown and twelve month choices; selecting the visible month does not change selected range.",
+    "selection": "First click starts; later date ends; earlier date resets start; confirm a single picked date as same-day range.",
+    "openBounds": "Explicit 不限开始/不限结束 are retained for the existing open-ended unit history query. Effective start/end cannot be reversed.",
+    "cancel": "No caller change on cancel, close, or owner retirement.",
+    "clear": "Explicit clear removes both dateFrom/dateTo while retaining other filters; default is not silently restored.",
+    "serverAuthority": "Unchanged /master/record-history query keys, server paging and restore authority; changing dates invalidates old rows and old response sequence."
+  },
+  "localVerification": {
+    "dateDialogAssertionsPerArchitecture": 37,
+    "unitHistoryUiAssertionsPerArchitecture": 10,
+    "stress": "20 dialog reopen/close cycles, each with 40 rapid month/year-panel switches; cancelled ranges never publish.",
+    "screenshots": [
+      "date-range-days.png",
+      "date-range-year-month.png",
+      "date-range-narrow.png",
+      "unit-record-history-fixture.png"
+    ],
+    "logs": "build/windows-wpf/date-picker-verification/",
+    "host": "Windows development host, not Win7 target PC",
+    "x64FullNativeRunnerPassed": true,
+    "x64FullRunnerSummary": "goods66/downloads39/publish95/units38/history31/historyUI14/print21/columns55/columnUI9/drafts16/exports16/inline70/updater203/outcomes13; full Core and shared date fixtures passed"
+  },
+  "unportedBusinessPackages": [
+    {
+      "id": "W7-BIZ-005",
+      "source": "lib/features/admin/pages/admin_audit_log_page.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-029",
+      "source": "lib/features/basic_data/pages/master_record_history_page.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-072",
+      "source": "lib/features/finance/pages/finance_report_table_page.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-114",
+      "source": "lib/features/production/pages/production_report_page.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-126",
+      "source": "lib/features/purchase/pages/purchase_report_page.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-127",
+      "source": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-131",
+      "source": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-140",
+      "source": "lib/features/sales/pages/sales_report_page.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-151",
+      "source": "lib/features/stock/pages/instant_inventory_overview_page.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-152",
+      "source": "lib/features/stock/pages/instant_inventory_page.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-160",
+      "source": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "status": "todo"
+    },
+    {
+      "id": "W7-BIZ-202",
+      "source": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "status": "todo"
+    }
+  ],
+  "TargetPcAcceptance": false,
+  "FullErpAcceptance": false,
+  "formalPackagesCreated": false,
+  "productionRequestsExecuted": false,
+  "sourceHashes": {
+    "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenDateRangeDialog.cs": "91d62901806d0c3b0760d8756a8fc95bfc03e81f8c18433c3f56ec9ce2393dbb",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Shared/DateRangeDialogChecks.cs": "2e1f1f150f3f2fd50859fcdb2f93e1fa521e474b2f555787ec683a5c9566c6e3",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitRecordHistoryWindow.cs": "cf07b3371aecdf60917f48e24571bca1c2ec505762c467fc86a37dba0b861f6a",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitHistoryContractChecks.cs": "cf4f236bdfb936ffc81fdcba38ed3e65a6af37f339d8da10e1fb9e0f5de95f5f",
+    "clients/windows_legacy/Uten.Legacy.Tests/Program.cs": "cf23efd5ac7539bbe1b0119c1edbb58f509b044d69b3d44f809967b81ea263be",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Uten.Legacy.Desktop.csproj": "9a4fe8ab3840e2fe164f22411042a4ba6995c5d7421be899a83a293783ab23c1",
+    "contracts/date-range-selection/v1.json": "666d01a5e89024ab40a85d9c0ed6a36cc1ea741f6338f7febc8b800bd967cfb5"
+  },
+  "sharedContract": "contracts/date-range-selection/v1.json",
+  "sharedFixtureCases": 5,
+  "verificationLogHashes": {
+    "x64-build.log": "5405c7ba296aefe2d5bdbc627bc5cac75fb3e940d2d1d91b21dadf3ad7e884db",
+    "x64-date-range.log": "bfccc87cf5f88b9b5a10a71741fbccf5c204c7066c865e63cbc338d17d776f15",
+    "x86-build.log": "620f7c9416b5de6173485893ba8bce05c3f3fc1659a0be3c77f33105ca9a37b4",
+    "x86-date-range.log": "1e0563fbf3c011198c525621bfd2fb20cb8bd1ca76e4b90ece64a8b3f72e7000",
+    "x64-full-runner.log": "8f39cdf9d822fd32aa43e98db8d846c31087e01a6d1d50bb10a47f3f74e843e1"
+  }
+}

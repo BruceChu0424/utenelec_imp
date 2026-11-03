@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
@@ -1300,7 +1301,7 @@ class _RecordReturnDialogState extends State<_RecordReturnDialog> {
 
   Future<void> _pickDate() async {
     final today = DateTime.now();
-    final selected = await showDatePicker(
+    final selected = await showUtenDatePicker(
       context: context,
       initialDate: _date,
       firstDate: DateTime(2000),

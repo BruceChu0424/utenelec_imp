@@ -17,6 +17,10 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
+import '../../support/owned_provider_widget_tests.dart';
+import '../../support/uten_test_actions.dart';
+
+final _providerTests = OwnedProviderWidgetTests();
 
 const _families = [
   (
@@ -59,7 +63,7 @@ const _families = [
 
 void main() {
   for (final family in _families) {
-    testWidgets(
+    _providerTests.testWidgets(
       '${family.name} actual route drops A late GET after changing to B',
       (tester) async {
         final api = _Api()..gates['doc-A'] = Completer<Map<String, dynamic>>();
@@ -90,7 +94,7 @@ void main() {
       },
     );
 
-    testWidgets(
+    _providerTests.testWidgets(
       '${family.name} actual route removes accepted A form while B loads',
       (tester) async {
         final api = _Api();
@@ -132,8 +136,8 @@ Future<GoRouter> _mount(
   String template,
   String location,
 ) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 1000));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(1600, 1000));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   final container = ProviderContainer(
@@ -169,7 +173,7 @@ Future<GoRouter> _mount(
       writeAllDocumentScope(DocumentDataScope.productionPlan),
     ],
   );
-  addTearDown(container.dispose);
+  _providerTests.own(container);
   final original = _findRoute(
     container.read(appRouterProvider).configuration.routes,
     template,

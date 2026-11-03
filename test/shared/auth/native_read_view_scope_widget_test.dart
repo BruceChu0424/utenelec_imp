@@ -31,6 +31,10 @@ import 'package:uten_imp/shared/models/user.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
 import '../../helpers/badge_summary_fixture.dart';
+import '../../support/owned_provider_widget_tests.dart';
+import '../../support/uten_test_actions.dart';
+
+final _providerTests = OwnedProviderWidgetTests();
 
 // Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
 // ignore_for_file: invalid_use_of_internal_member
@@ -197,8 +201,8 @@ Future<ProviderContainer> _pump(
   SessionState? realSession,
   Future<SessionSnapshot?>? firstSnapshot,
 }) async {
-  await tester.binding.setSurfaceSize(const Size(2400, 1200));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(2400, 1200));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   SharedPreferences.setMockInitialValues({'performancePreference': 'lite'});
   final prefs = await SharedPreferences.getInstance();
   final container = ProviderContainer(
@@ -233,7 +237,7 @@ Future<ProviderContainer> _pump(
       isSuperAdminProvider.overrideWithValue(false),
     ],
   );
-  addTearDown(container.dispose);
+  _providerTests.own(container);
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
@@ -285,7 +289,7 @@ bool _hasEditing(WidgetTester tester) => tester
 void main() {
   for (final family in _Family.values) {
     for (final failedLateRead in [false, true]) {
-      testWidgets(
+      _providerTests.testWidgets(
         '${family.name} data scope revision retires accepted fields and rejects same-role ABA late ${failedLateRead ? 'failure' : 'success'}',
         (tester) async {
           final api = _Api(family);
@@ -328,7 +332,7 @@ void main() {
     }
   }
 
-  testWidgets(
+  _providerTests.testWidgets(
     'data scope revision preserves private purchase raw input while requiring a new native read',
     (tester) async {
       final api = _Api(_Family.purchase, request: true);
@@ -355,7 +359,7 @@ void main() {
     },
   );
 
-  testWidgets(
+  _providerTests.testWidgets(
     'same-role data scope ABA never revives an old private quote confirmation',
     (tester) async {
       final api = _Api(_Family.sales);
@@ -387,7 +391,7 @@ void main() {
 
   for (final family in _Family.values) {
     for (final transition in ['account', 'server', 'actor']) {
-      testWidgets(
+      _providerTests.testWidgets(
         '${family.name} hides displayed fields immediately on $transition and rejects ABA late detail',
         (tester) async {
           final api = _Api(family);
@@ -430,7 +434,7 @@ void main() {
       );
     }
     for (final failure in [false, true]) {
-      testWidgets(
+      _providerTests.testWidgets(
         '${family.name} rejects initial A read late ${failure ? 'failure' : 'success'} after A-B-A',
         (tester) async {
           final old = Completer<Map<String, dynamic>>();
@@ -462,7 +466,7 @@ void main() {
         },
       );
     }
-    testWidgets(
+    _providerTests.testWidgets(
       '${family.name} same-reader refresh hides unverified details and rechecks native capabilities',
       (tester) async {
         final api = _Api(family);
@@ -497,7 +501,7 @@ void main() {
     );
   }
 
-  testWidgets(
+  _providerTests.testWidgets(
     'purchase inline input survives same-reader refresh but is cleared for another reader',
     (tester) async {
       final api = _Api(_Family.purchase, request: true);
@@ -534,7 +538,7 @@ void main() {
     },
   );
 
-  testWidgets(
+  _providerTests.testWidgets(
     'quote confirmation cannot submit across permission refresh or expose old reader overlay',
     (tester) async {
       final api = _Api(_Family.sales);
@@ -578,7 +582,7 @@ void main() {
     },
   );
 
-  testWidgets(
+  _providerTests.testWidgets(
     'purchase preserves same-base 37 and saves the exact current command once',
     (tester) async {
       final api = _Api(_Family.purchase, request: true);
@@ -605,7 +609,7 @@ void main() {
     },
   );
 
-  testWidgets(
+  _providerTests.testWidgets(
     'purchase 10 to 20 refresh freezes original 37 instead of adopting the new base',
     (tester) async {
       final api = _Api(_Family.purchase, request: true);
@@ -677,7 +681,7 @@ void main() {
       ),
       const SessionState(status: AuthStatus.authenticated),
     ]) {
-      testWidgets(
+      _providerTests.testWidgets(
         '${family.name} rejects real null scope ${invalid.status.name}/${invalid.user != null}',
         (tester) async {
           final api = _Api(family);
@@ -692,7 +696,7 @@ void main() {
         },
       );
     }
-    testWidgets(
+    _providerTests.testWidgets(
       '${family.name} confirmed loss of view hides old fields and closes exports/actions',
       (tester) async {
         final api = _Api(family);
@@ -713,7 +717,7 @@ void main() {
     );
   }
 
-  testWidgets(
+  _providerTests.testWidgets(
     'confirmed quote refresh removes convert and all old price text using fresh native authority',
     (tester) async {
       final api = _Api(_Family.sales)
@@ -754,7 +758,7 @@ void main() {
   );
 
   for (final family in _Family.values) {
-    testWidgets(
+    _providerTests.testWidgets(
       '${family.name} delays its only first detail until Me confirms current view',
       (tester) async {
         final me = Completer<SessionSnapshot?>();
@@ -784,7 +788,7 @@ void main() {
       },
     );
   }
-  testWidgets(
+  _providerTests.testWidgets(
     'quote waits for late first Me before fetching current masked price and actions',
     (tester) async {
       final me = Completer<SessionSnapshot?>();

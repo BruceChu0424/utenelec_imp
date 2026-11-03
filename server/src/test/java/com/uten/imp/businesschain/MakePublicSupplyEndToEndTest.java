@@ -234,10 +234,14 @@ class MakePublicSupplyEndToEndTest {
     }
     @Test void aPurchasedRootCanUseExistingManufacturingOutputWithoutOpeningAnotherRequest(){
         var c=support.create(true,true,"1");
+        com.uten.imp.support.GoodsFixtureAdjustment.prepareForMasterMaintenance(db,c.common());
         writer.submit(c.analysis(),support.command(c,List.of(support.input(c,c.common(),"MAKE","5",true))));
+        support.fixture.loginAs(c.world().superAdminUserId());
+        com.uten.imp.support.GoodsFixtureAdjustment.maintainSourceType(db,
+                beans.getBean(com.uten.imp.features.master.goods.GoodsInlineEditService.class),c.common(),"采购");
         var target=analyses.preview(new PreviewRequest(null,null,null,c.world().warehouseId(),"root-buy-adopt-"+UUID.randomUUID(),List.of(new PreviewItem("OTHER",null,c.common(),null,c.world().unitId(),"root-buy-source-"+UUID.randomUUID(),"采购路线采用同货品已有自制公共供给",BusinessTime.today().plusDays(10),new BigDecimal("2")))));
         UUID root=target.products().getFirst().rootMaterialLineId();
-        target=analyses.saveRoutes(target.analysisId(),new RouteRequest(target.version(),target.fingerprint(),"root-buy-route-"+target.analysisId(),List.of(new RouteDecision(root,target.flatMaterials().stream().filter(row->row.materialLineId().equals(root)).findFirst().orElseThrow().actionGroupKey(),"BUY",null))));
+        assertEquals("BUY",target.flatMaterials().stream().filter(row->row.materialLineId().equals(root)).findFirst().orElseThrow().sourceConfirmed());
         var request=new NotifyRequest(target.version(),target.fingerprint(),"root-buy-order-"+target.analysisId(),"BUY",List.of(root),List.of(),List.of(new SupplyQuantityInput(null,root,new BigDecimal("2"),BigDecimal.ZERO)));
         var adopted=commands.notifySupply(target.analysisId(),request);commands.notifySupply(target.analysisId(),request);
         assertEquals(0,db.queryForObject("SELECT count(*) FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SUPPLY'",Integer.class,target.analysisId()));

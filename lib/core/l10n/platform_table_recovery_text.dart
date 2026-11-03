@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import '../network/api_error_message.dart';
 
 String platformTableRecoveryText(BuildContext context, String key) {
   final values = platformTableRecoveryTexts[key]!;
@@ -11,6 +12,12 @@ String platformTableRecoveryText(BuildContext context, String key) {
 
 /// Translate only known client messages. Preserve business-specific server detail verbatim.
 String platformTableRecoveryReason(BuildContext context, String message) {
+  if (message == apiErrorMessage('NETWORK_TIMEOUT', '')) {
+    return platformTableRecoveryText(context, 'timeoutReason');
+  }
+  if (message == apiErrorMessage('NETWORK', '')) {
+    return platformTableRecoveryText(context, 'networkReason');
+  }
   final key = switch (message) {
     '等待服务器响应时间过长，请检查网络后再试' => 'timeoutReason',
     '网络连不上，请检查网络后再试' => 'networkReason',
@@ -30,9 +37,9 @@ const platformTableRecoveryTexts = <String, List<String>>{
     '추가 필드 레코드를 모두 불러오지 못했습니다.',
   ],
   'timeoutReason': [
-    '服务器响应超时。',
-    'The server response timed out.',
-    '서버 응답 시간이 초과되었습니다.',
+    '服务器未及时响应，请先核对操作结果。',
+    'The server did not respond in time. Check the result before continuing.',
+    '서버가 제시간에 응답하지 않았습니다. 계속하기 전에 결과를 확인하세요.',
   ],
   'networkReason': [
     '网络连接失败。',

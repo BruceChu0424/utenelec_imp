@@ -599,7 +599,7 @@ public class SalesOrderService {
      * 报价及其他销售表单共用功能权限，读取前须通过客户可读范围与启用状态校验。
      * 前端只回填空字段并黄标提醒核对；报价仍保留本位币与报价有效期约定。
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     @PreAuthorize(com.uten.imp.security.SalesClientTermsAccess.READ)
     public MasterDefaultTermsForClient masterDefaultTermsForClient(UUID clientId) {
         if (clientId == null) {

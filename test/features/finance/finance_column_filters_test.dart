@@ -6,18 +6,20 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_list_page.dart';
 import 'package:uten_imp/features/finance/pages/finance_reconciliation_page.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../support/uten_test_actions.dart';
 
 void main() {
   testWidgets(
     'raw account flow headers retain exact money, full lineage and complete source choices',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1500, 950));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1500, 950));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
       final api = _FinanceFilterApi();
@@ -83,8 +85,8 @@ void main() {
     testWidgets(
       '${type.name} ordinary headers send exact server conditions and scope candidate counts',
       (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1500, 950));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1500, 950));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         SharedPreferences.setMockInitialValues({});
         final preferences = await SharedPreferences.getInstance();
         final api = _FinanceFilterApi();
@@ -365,7 +367,7 @@ class _FinanceFilterApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/master/clients') {
+    if (path == ApiEndpoints.businessReferenceClients) {
       clientQueries.add(Map<String, dynamic>.from(query!));
       return {
         'items': [

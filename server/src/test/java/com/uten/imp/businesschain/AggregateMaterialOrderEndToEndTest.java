@@ -241,10 +241,9 @@ class AggregateMaterialOrderEndToEndTest {
     }
 
     @Test void directSubcontractIsOneApplicationLineWithThreeExactSources(){
-        Case c=create(false,false,"1");
+        Case c=createMaterial("1","SUBCONTRACT");
         // ADR-143 §二.3: 委外件(汇总下单也一样)要先有可发外直属物料才能下达。
-        fixture.addSubcontractDirectMaterial(c.world(),c.material(),"1");
-        setRoute(c,c.material(),"SUBCONTRACT");
+        assertMasterRoute(c,c.material(),"SUBCONTRACT");
         var batch=writer.submit(c.analysis(),command(c,List.of(input(c,c.material(),"SUBCONTRACT","6",false)))).batches().getFirst();
         assertEquals("SUBCONTRACT_APPLICATION",batch.documentType());assertNull(batch.planId());
         assertEquals(1,count("SELECT count(*) FROM subcontract_application_items WHERE application_id=? AND NOT is_deleted",batch.documentId()));
@@ -414,15 +413,15 @@ class AggregateMaterialOrderEndToEndTest {
      * 委外节点的直属物料真实消耗，别名随需求一起穿过委外中间件。
      */
     @Test void deepSupplyBelowSubcontractIntermediateStaysCoveredAfterParentMerge() {
-        assertDeepSupplyRemainsCovered(createWithChild("1"), "3", "6", "8", 3);
+        assertDeepSupplyRemainsCovered(createWithChild("1",3,new GoodsSources("MAKE","SUBCONTRACT","BUY")), "3", "6", "8", 3);
     }
 
     @Test void twoProductsOf100KeepTheInitial400SupplyAfterParentMerge() {
-        assertDeepSupplyRemainsCovered(create(true,false,"100",true,2,"1"), "200", "200", "400", 2);
+        assertDeepSupplyRemainsCovered(createWithSources(true,false,"100",true,2,"1",new GoodsSources("MAKE","SUBCONTRACT","BUY")), "200", "200", "400", 2);
     }
 
     @Test void twoProductsOf100KeepTheInitial400ManufacturingSupplyAfterParentMerge() {
-        assertDeepSupplyRemainsCovered(create(true,false,"100",true,2,"1"), "200", "200", "400", 2, "MAKE");
+        assertDeepSupplyRemainsCovered(createWithSources(true,false,"100",true,2,"1",new GoodsSources("MAKE","SUBCONTRACT","MAKE")), "200", "200", "400", 2, "MAKE");
     }
 
     @Test void threeProductsOf1000OrderAllMaterialsAfterTwo4000OrdersWithoutIssuingTopLevelTasks() throws Exception {
@@ -494,8 +493,8 @@ class AggregateMaterialOrderEndToEndTest {
     }
 
     @Test void sharedMakeResidualAtOneTickRemainsARealResponsibility() throws Exception {
-        Case c=create(true,false,"1",true,1,"0.0001");
-        setRoute(c,c.child(),"SUBCONTRACT");setRoute(c,c.material(),"MAKE");
+        Case c=createWithSources(true,false,"1",true,1,"0.0001",new GoodsSources("MAKE","SUBCONTRACT","MAKE"));
+        assertMasterRoute(c,c.child(),"SUBCONTRACT");assertMasterRoute(c,c.material(),"MAKE");
         var made=writer.submit(c.analysis(),command(c,List.of(input(c,c.common(),"MAKE","1",false))));
         UUID anchor=made.batches().getFirst().anchorAnalysisItemId();
         AnalysisView after=analyses.detail(c.analysis());
@@ -519,10 +518,10 @@ class AggregateMaterialOrderEndToEndTest {
     @ParameterizedTest @ValueSource(strings={"MAKE","BUY"})
     void twoPreorderedMaterialsKeep400EachWhenEveryRemainingLevelIsIssued(String siblingRoute) {
         UUID sibling=UUID.randomUUID();
-        Case c=create(true,false,"100",true,2,"1",sibling);
-        setRoute(c,c.child(),"SUBCONTRACT");
-        setRoute(c,c.material(),"MAKE");
-        if(!"MAKE".equals(siblingRoute))setRoute(c,sibling,siblingRoute);
+        Case c=create(true,false,"100",true,2,"1",sibling,new GoodsSources("MAKE","SUBCONTRACT","MAKE",siblingRoute));
+        assertMasterRoute(c,c.child(),"SUBCONTRACT");
+        assertMasterRoute(c,c.material(),"MAKE");
+        if(!"MAKE".equals(siblingRoute))assertMasterRoute(c,sibling,siblingRoute);
         AnalysisView initial=analyses.detail(c.analysis());
         GroupInput common=input(c,c.common(),"MAKE","200",false);
         GroupInput subcontract=input(c,c.child(),"SUBCONTRACT","200",false);
@@ -744,8 +743,8 @@ class AggregateMaterialOrderEndToEndTest {
     }
 
     private void assertDeepSupplyRemainsCovered(Case c,String parentQty,String needed,String ordered,int sourceCount,String route) {
-        setRoute(c,c.child(),"SUBCONTRACT");
-        if ("MAKE".equals(route)) setRoute(c,c.material(),route);
+        assertMasterRoute(c,c.child(),"SUBCONTRACT");
+        if ("MAKE".equals(route)) assertMasterRoute(c,c.material(),route);
         List<UUID> leafs=analyses.detail(c.analysis()).flatMaterials().stream()
                 .filter(row->row.goodsId().equals(c.material())).map(MaterialView::materialLineId).toList();
         assertEquals(sourceCount,leafs.size());
@@ -962,18 +961,22 @@ class AggregateMaterialOrderEndToEndTest {
 
     private record CohortCase(Case c,List<UUID> outputs) { }
     private CohortCase createIndependentCohort() {
+        return createIndependentCohort("MAKE");
+    }
+    private CohortCase createIndependentCohort(String outputRoute) {
         Case seed=create(true,false,"1");var world=seed.world();
         List<MaterialAnalysisContracts.PreviewItem> roots=new ArrayList<>();List<UUID> outputs=new ArrayList<>();
         for(int index=0;index<2;index++) {
             UUID root=UUID.randomUUID(),output=UUID.randomUUID();outputs.add(output);
             fixture.insertGoods(root,"COHORT-ROOT-"+root,"独立父产品","自制",world.unitId(),world.unitLegacy());
-            fixture.insertGoods(output,"COHORT-OUT-"+output,"共用原料的独立子件","自制",world.unitId(),world.unitLegacy());
+            fixture.insertGoods(output,"COHORT-OUT-"+output,"共用原料的独立子件",FullChainEndToEndTest.goodsSourceType(outputRoute),world.unitId(),world.unitLegacy());
             fixture.insertBom(root,output,"1");fixture.insertBom(output,seed.material(),"1");
             roots.add(new MaterialAnalysisContracts.PreviewItem("OTHER",null,root,null,world.unitId(),"cohort-"+root,"验证共享原料不重复预留",BusinessTime.today().plusDays(10),BigDecimal.ONE));
         }
         var view=analyses.preview(new MaterialAnalysisContracts.PreviewRequest(null,null,null,world.warehouseId(),"cohort-analysis-"+UUID.randomUUID(),roots));
         view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"cohort-routes-"+UUID.randomUUID(),view.flatMaterials().stream()
-                .map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.goodsId().equals(seed.material())?"BUY":"MAKE",null)).toList()));
+                .filter(MaterialView::actionable)
+                .map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.sourceSuggestion(),null)).toList()));
         Case c=new Case(world,view.analysisId(),seed.common(),null,seed.material(),seed.workshop(),seed.worker());
         return new CohortCase(c,List.copyOf(outputs));
     }
@@ -1003,7 +1006,14 @@ class AggregateMaterialOrderEndToEndTest {
         return inbound.getFirst();
     }
 
-    void setRoute(Case c,UUID goods,String route){var view=analyses.detail(c.analysis());analyses.saveRoutes(c.analysis(),new RouteRequest(view.version(),view.fingerprint(),"route-change-"+UUID.randomUUID(),view.flatMaterials().stream().filter(row->row.goodsId().equals(goods)).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),route,"汇总委外测试明确路线")).toList()));}
+    void assertMasterRoute(Case c,UUID goods,String route) {
+        assertEquals(FullChainEndToEndTest.goodsSourceType(route),
+                db.queryForObject("SELECT source_type FROM goods WHERE id=?",String.class,goods));
+        var rows=analyses.detail(c.analysis()).flatMaterials().stream()
+                .filter(row->row.goodsId().equals(goods)).toList();
+        assertFalse(rows.isEmpty());
+        rows.forEach(row->assertEquals(route,row.sourceConfirmed()));
+    }
 
     void receive(Case c,UUID goods,String qty){var stock=beans.getBean(com.uten.imp.features.stock.StockDocService.class);var request=new com.uten.imp.features.stock.dto.StockDocSaveRequest();request.setDocType("OTHER_IN");request.setWarehouseId(c.world().warehouseId());request.setBillDate(BusinessTime.today());
         var line=new com.uten.imp.features.stock.dto.StockDocItemLine();line.setGoodsId(goods);line.setUnitId(c.world().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));line.setPrice(BigDecimal.TEN);line.setAmountOriginal(new BigDecimal(qty).multiply(BigDecimal.TEN));line.setAmountLocal(line.getAmountOriginal());request.setItems(List.of(line));stock.approve(stock.create(request).getId());}
@@ -1012,6 +1022,22 @@ class AggregateMaterialOrderEndToEndTest {
     Case create(boolean manufacture,boolean fixed,String quantity){return create(manufacture,fixed,quantity,false);}
     Case createWithChild(String quantity){return create(true,false,quantity,true);}
     Case createWithChild(String quantity,int sourceCount){return create(true,false,quantity,true,sourceCount);}
+    record GoodsSources(String common, String child, String material, String sibling) {
+        GoodsSources(String common,String child,String material) { this(common,child,material,"MAKE"); }
+    }
+    Case createWithChild(String quantity,int sourceCount,String commonRoute) {
+        return createWithChild(quantity,sourceCount,new GoodsSources(commonRoute,"MAKE","BUY"));
+    }
+    Case createWithChild(String quantity,int sourceCount,GoodsSources sources) {
+        return create(true,false,quantity,true,sourceCount,"2",null,sources);
+    }
+    Case createMaterial(String quantity,String route) {
+        return create(false,false,quantity,false,3,"2",null,new GoodsSources(route,"MAKE",route));
+    }
+    Case createWithSources(boolean manufacture,boolean fixed,String quantity,boolean nested,
+                           int sourceCount,String leafBomQty,GoodsSources sources) {
+        return create(manufacture,fixed,quantity,nested,sourceCount,leafBomQty,null,sources);
+    }
     Case createForkedFixed() {
         Case seed=create(true,true,"1");var world=seed.world();
         UUID root=UUID.randomUUID(),left=UUID.randomUUID(),right=UUID.randomUUID();
@@ -1072,6 +1098,11 @@ class AggregateMaterialOrderEndToEndTest {
         return create(manufacture,fixed,quantity,nested,sourceCount,leafBomQty,null);
     }
     private Case create(boolean manufacture,boolean fixed,String quantity,boolean nested,int sourceCount,String leafBomQty,UUID sibling) {
+        return create(manufacture,fixed,quantity,nested,sourceCount,leafBomQty,sibling,
+                new GoodsSources(manufacture?"MAKE":"BUY","MAKE","BUY"));
+    }
+    private Case create(boolean manufacture,boolean fixed,String quantity,boolean nested,int sourceCount,String leafBomQty,
+                        UUID sibling,GoodsSources sourcesByRole) {
         String tag="aggregate-"+UUID.randomUUID();var world=fixture.seedWorld(tag);fixture.loginAs(world.superAdminUserId());
         Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment",tag);UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId"),worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
         // ADR-147 (V802): 直送只送已开通内料仓的车间; 本车间的内料仓开通在测试世界的主仓下。
@@ -1083,12 +1114,22 @@ class AggregateMaterialOrderEndToEndTest {
         if(nested){fixture.insertGoods(child,"AG-C-"+child,"先下达制造子件","自制",world.unitId(),world.unitLegacy());fixture.insertBom(common,child,"1");fixture.insertBom(child,world.goodsD(),leafBomQty);}
         else if(manufacture){fixture.insertBom(common,world.goodsD(),"1");if(fixed)db.update("UPDATE goods_bom_items SET consumption_basis='FIXED_BATCH',basis_output_qty=5 WHERE goods_id=?",common);}
         if(sibling!=null){fixture.insertGoods(sibling,"AG-S-"+sibling,"先超量下达的第二种物料","自制",world.unitId(),world.unitLegacy());fixture.insertBom(common,sibling,"1");}
+        Map<UUID,String> masterSources=new LinkedHashMap<>();
+        masterSources.put(common,sourcesByRole.common());
+        if(child!=null)masterSources.put(child,sourcesByRole.child());
+        if(common.equals(world.goodsD()))assertEquals(sourcesByRole.common(),sourcesByRole.material());
+        masterSources.put(world.goodsD(),sourcesByRole.material());
+        if(sibling!=null)masterSources.put(sibling,sourcesByRole.sibling());
+        fixture.seedGoodsSources(masterSources);
+        masterSources.forEach((goods,route)->{
+            if("SUBCONTRACT".equals(route))fixture.ensureSubcontractDirectMaterial(world,goods);
+        });
         List<PreviewItem> sources=new ArrayList<>();
         for(int index=0;index<sourceCount;index++){UUID root=UUID.randomUUID();fixture.insertGoods(root,"AG-R-"+root,"不同顶层"+index,"自制",world.unitId(),world.unitLegacy());fixture.insertBom(root,common,manufacture?"1":"2");
             UUID order=fixture.createApprovedOrder(world,root,quantity,"100");UUID orderItem=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,order);
             sources.add(new PreviewItem("SALES_ORDER_ITEM",orderItem,null,null,null,null,null,BusinessTime.today().plusDays(10),new BigDecimal(quantity)));}
         var view=analyses.preview(new MaterialAnalysisContracts.PreviewRequest(null,null,null,world.warehouseId(),"analysis-"+UUID.randomUUID(),sources));
-        analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"routes-"+UUID.randomUUID(),view.flatMaterials().stream().map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.goodsId().equals(world.goodsD())?"BUY":"MAKE",null)).toList()));
+        analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"routes-"+UUID.randomUUID(),view.flatMaterials().stream().filter(MaterialView::actionable).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.sourceSuggestion(),null)).toList()));
         return new Case(world,view.analysisId(),common,child,world.goodsD(),workshop,worker);
     }
     GroupInput input(Case c,UUID goods,String route,String qty,boolean extra){var view=analyses.detail(c.analysis());return new GroupInput(goods.toString(),view.flatMaterials().stream().filter(row->row.goodsId().equals(goods)&&row.nodeRole().equals("BOM_COMPONENT")).map(MaterialView::materialLineId).toList(),route,new BigDecimal(qty),extra,"MAKE".equals(route)?c.workshop():null,"MAKE".equals(route)?c.worker():null,null,null,null,null,"MAKE".equals(route)?BigDecimal.ZERO:null,BigDecimal.ZERO);}

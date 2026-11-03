@@ -75,7 +75,10 @@ void main() {
         );
       }
       expect(
-        local.allowsExternalUri(Uri.file('C:/local/export.pdf'), localApi: api),
+        local.allowsExternalUri(
+          Uri.file('C:/local/export.pdf', windows: true),
+          localApi: api,
+        ),
         isTrue,
       );
       expect(

@@ -245,6 +245,28 @@ class StockDrawIssueBatchReceiptEndToEndTest {
     @Test void aLateReceiptFailureRollsBackEveryApprovalPostingAndQuantityAndLeavesTheKeyReusable() {
         var setup = setup(2, true);
         var command = command("late-receipt-failure-", setup.documents(), null);
+        var located = db.queryForMap("""
+                SELECT reservation.id,reservation.warehouse_id,reservation.supply_id,reservation.demand_id,
+                       reservation.qty-reservation.consumed_qty-reservation.released_qty AS open_qty,
+                       mapping.document_item_id
+                FROM production_planning_package_document_items mapping
+                JOIN stock_reservations reservation ON reservation.demand_id=mapping.demand_id
+                WHERE mapping.document_id=? AND mapping.document_type='DRAW'
+                  AND reservation.owner_type='PRODUCTION_MATERIAL_DEMAND'
+                  AND NOT reservation.is_deleted AND reservation.status=0
+                  AND reservation.qty-reservation.consumed_qty-reservation.released_qty>0
+                ORDER BY reservation.id LIMIT 1
+                """, setup.documents().getFirst());
+        UUID reservationId = (UUID) located.get("id");
+        UUID originalWarehouse = (UUID) located.get("warehouse_id");
+        BigDecimal locatedQty = (BigDecimal) located.get("open_qty");
+        new org.springframework.transaction.support.TransactionTemplate(
+                beans.getBean(org.springframework.transaction.PlatformTransactionManager.class)).executeWithoutResult(status -> {
+            db.update("INSERT INTO stock_reservation_storage_positions(reservation_id,warehouse_id,qty) VALUES(?,?,?)",
+                    reservationId, originalWarehouse, locatedQty);
+            db.update("INSERT INTO stock_reservation_storage_events(reservation_id,event_type,to_warehouse_id,qty) VALUES(?,'OPEN',?,?)",
+                    reservationId, originalWarehouse, locatedQty);
+        });
         db.execute("""
                 CREATE FUNCTION test_reject_stock_batch_receipt() RETURNS trigger LANGUAGE plpgsql AS $$
                 BEGIN RAISE EXCEPTION 'test failure after every issue and before receipt'; END; $$
@@ -258,6 +280,11 @@ class StockDrawIssueBatchReceiptEndToEndTest {
         }
         assertEquals(0, receipts(command));
         assertEquals(0, events(setup.documents()));
+        assertEquals(0, locatedQty.compareTo(db.queryForObject(
+                "SELECT qty FROM stock_reservation_storage_positions WHERE reservation_id=? AND warehouse_id=?",
+                BigDecimal.class, reservationId, originalWarehouse)));
+        assertEquals(0, db.queryForObject("SELECT count(*) FROM stock_reservation_storage_events WHERE reservation_id=? AND event_type='CONSUME'",
+                Integer.class, reservationId));
         for (UUID document : setup.documents()) {
             assertEquals(0, issuedQuantity(document).signum());
             assertEquals(0, movementCount(document));
@@ -265,6 +292,19 @@ class StockDrawIssueBatchReceiptEndToEndTest {
         }
         assertEquals(2, stock.issueFullBatch(command).issuedCount());
         assertEquals(1, receipts(command));
+        assertEquals(0, db.queryForObject("SELECT qty FROM stock_reservation_storage_positions WHERE reservation_id=? AND warehouse_id=?",
+                BigDecimal.class, reservationId, originalWarehouse).signum());
+        assertEquals(0, locatedQty.compareTo(db.queryForObject("""
+                SELECT sum(qty) FROM stock_reservation_storage_events
+                WHERE reservation_id=? AND event_type='CONSUME' AND from_warehouse_id=?
+                  AND document_id=? AND document_item_id=?
+                """, BigDecimal.class, reservationId, originalWarehouse, setup.documents().getFirst(), located.get("document_item_id"))));
+        assertEquals(originalWarehouse, db.queryForObject("SELECT warehouse_id FROM stock_reservations WHERE id=?", UUID.class, reservationId));
+        assertEquals(located.get("supply_id"), db.queryForObject("SELECT supply_id FROM stock_reservations WHERE id=?", UUID.class, reservationId));
+        assertEquals(located.get("demand_id"), db.queryForObject("SELECT demand_id FROM stock_reservations WHERE id=?", UUID.class, reservationId));
+        assertTrue(stock.issueFullBatch(command).replayed());
+        assertEquals(1, db.queryForObject("SELECT count(*) FROM stock_reservation_storage_events WHERE reservation_id=? AND event_type='CONSUME'",
+                Integer.class, reservationId));
     }
 
     @Test void legacyChildFactsWithoutParentBlockTheWholeMixedBatchWithoutInventingHistoricalIntent() {

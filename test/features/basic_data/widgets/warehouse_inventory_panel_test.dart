@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/utils/date_range_defaults.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
@@ -73,6 +75,13 @@ Map<String, dynamic> _result(
       'colorName': colorId == null ? null : '红色',
       'qty': qty,
       'unitName': '个',
+      if (query['dateFrom'] != null && query['dateTo'] != null) ...{
+        'periodSelected': true,
+        'periodInQty': qty,
+        'periodOutQty': 0,
+        'closingQty': qty,
+        'costMasked': true,
+      },
     },
   ],
   'page': query['page'] ?? 1,
@@ -177,6 +186,53 @@ MasterDataTableView<InstantInventoryRow> _table(WidgetTester tester) =>
     );
 
 void main() {
+  testWidgets('new warehouse inventory uses the recent business month', (
+    tester,
+  ) async {
+    final expected = recentMonthDateRange();
+    final harness = await _pump(tester);
+    for (final query in harness.api.queries) {
+      expect(query['dateFrom'], inventoryPeriodDate(expected.start));
+      expect(query['dateTo'], inventoryPeriodDate(expected.end));
+    }
+    expect(
+      tester
+          .widget<InstantInventoryPeriodButton>(
+            find.byType(InstantInventoryPeriodButton),
+          )
+          .range,
+      expected,
+    );
+  });
+
+  testWidgets(
+    'period clear waits with one overlay and releases it on failure',
+    (tester) async {
+      final harness = await _pump(tester);
+      final pending = Completer<Map<String, dynamic>>();
+      harness.api.respond = (_) => pending.future;
+      final before = harness.api.queries.length;
+      final clearPoint = tester.getCenter(
+        find.byKey(const Key('instant-inventory-clear-period')),
+      );
+      await tester.tapAt(clearPoint);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
+      for (var repeat = 0; repeat < 12; repeat++) {
+        await tester.tapAt(clearPoint);
+        await tester.pump();
+      }
+      expect(harness.api.queries.length, before + 1);
+      pending.completeError(StateError('test unavailable'));
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(find.byType(UtenBusyOverlayCard), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'period picker cancels without a query and dates follow print and export',
     (tester) async {
@@ -190,6 +246,15 @@ void main() {
       );
       harness.api.respond = (q) =>
           Future.value({..._result(q), 'total': 1, 'totalPages': 1});
+      final defaults = recentMonthDateRange();
+      expect(
+        harness.api.queries.last['dateFrom'],
+        inventoryPeriodDate(defaults.start),
+      );
+      expect(
+        harness.api.queries.last['dateTo'],
+        inventoryPeriodDate(defaults.end),
+      );
       final before = harness.api.queries.length;
       await tester.tap(
         find.byKey(const Key('instant-inventory-select-period')),
@@ -209,7 +274,7 @@ void main() {
       await tester.pumpAndSettle();
       Navigator.of(
         tester.element(find.byType(UtenDateRangePickerDialog)),
-      ).pop<DateTimeRange>(range);
+      ).pop<UtenDateRangeSelection>((start: range.start, end: range.end));
       await tester.pumpAndSettle();
       expect(harness.api.queries.last['dateFrom'], '2026-10-01');
       expect(harness.api.queries.last['dateTo'], '2026-10-31');
@@ -349,6 +414,7 @@ void main() {
     tester,
   ) async {
     final harness = await _pump(tester);
+    final defaults = recentMonthDateRange();
     expect(harness.api.queries, [
       for (final page in [1, 2, 3])
         {
@@ -358,12 +424,39 @@ void main() {
           'includeDefective': true,
           'includeLineSide': true,
           'warehouseRelatedOnly': true,
+          'dateFrom': inventoryPeriodDate(defaults.start),
+          'dateTo': inventoryPeriodDate(defaults.end),
         },
     ]);
     expect(_table(tester).items.single.goodsCode, 'M3-001');
     expect(_table(tester).currentPage, 1);
     expect(_table(tester).embedded, isFalse);
-    expect(find.text('0.0001 个'), findsOneWidget);
+    expect(
+      _table(tester).columns
+          .singleWhere((column) => column.key == 'qty')
+          .value(_table(tester).items.single),
+      '0.0001 个',
+    );
+    // The selected month can show the same exact quantity in multiple columns.
+    expect(find.text('0.0001 个'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('leaving during a period read removes the waiting overlay', (
+    tester,
+  ) async {
+    final harness = await _pump(tester);
+    final pending = Completer<Map<String, dynamic>>();
+    harness.api.respond = (_) => pending.future;
+    await tester.tap(find.byKey(const Key('instant-inventory-clear-period')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(UtenBusyOverlayCard), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+    expect(find.byType(UtenBusyOverlayCard), findsNothing);
+    pending.complete(_result({'warehouseId': 'hardware'}));
+    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 
@@ -561,7 +654,13 @@ void main() {
       _table(tester).onRetry!();
       await tester.pumpAndSettle();
       expect(_table(tester).items, hasLength(1));
-      expect(find.text('0 个'), findsOneWidget);
+      expect(
+        _table(tester).columns
+            .singleWhere((column) => column.key == 'qty')
+            .value(_table(tester).items.single),
+        '0 个',
+      );
+      expect(find.text('0 个'), findsWidgets);
       expect(_table(tester).error, isNull);
     },
   );
@@ -644,7 +743,7 @@ void main() {
       expect(values['owningWarehouse'], '成品仓');
       expect(values['weight'], '未称');
       expect(values['pendingStockInQty'], '3 个');
-      expect(values['periodInQty'], '请选择时间范围');
+      expect(values['periodInQty'], '服务器未提供期间统计');
       expect(values, isNot(contains('moreQty')));
       expect(
         table.columns.every((column) => !column.supportsKeywordSearch),
@@ -679,6 +778,7 @@ void main() {
         api: api,
         permissions: {Perm.stockView, Perm.stockReportExport},
       );
+      final defaults = recentMonthDateRange();
       expect(_table(tester).facets['color']!.single.label, '红色');
       expect(_table(tester).nullCounts['owningWarehouse'], 2);
       _table(tester).onFilterChanged('color', 'red');
@@ -707,6 +807,8 @@ void main() {
         'colorId': 'red',
         'series': '金属',
         'owningWarehouseNull': true,
+        'dateFrom': inventoryPeriodDate(defaults.start),
+        'dateTo': inventoryPeriodDate(defaults.end),
         'sort': 'weight',
         'order': 'asc',
       });
@@ -723,6 +825,8 @@ void main() {
         'colorId': 'red',
         'series': '金属',
         'owningWarehouseNull': true,
+        'dateFrom': inventoryPeriodDate(defaults.start),
+        'dateTo': inventoryPeriodDate(defaults.end),
         'sort': 'weight',
         'order': 'asc',
         'weightUnit': 'KG',

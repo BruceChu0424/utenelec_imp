@@ -144,7 +144,7 @@ class AggregatePublicExternalLifecycleEndToEndTest {
         amount("3",h.db.queryForObject("SELECT qty FROM "+table+" WHERE id=?",BigDecimal.class,publicItem(s.action())));
 
         // The opposite transition starts with an ordinary private line and no public ID.
-        var ordinary=h.createWithChild("5",1);h.setRoute(ordinary,ordinary.common(),route);
+        var ordinary=h.createWithChild("5",1,route);h.assertMasterRoute(ordinary,ordinary.common(),route);
         var first=h.writer.submit(ordinary.analysis(),h.command(ordinary,List.of(h.input(ordinary,ordinary.common(),route,"5",false)))).batches().getFirst();
         UUID firstAction=action(first);assertEquals(null,publicItem(firstAction));
         var append=h.command(ordinary,List.of(h.input(ordinary,ordinary.common(),route,"1",true)));
@@ -159,10 +159,10 @@ class AggregatePublicExternalLifecycleEndToEndTest {
 
     @ParameterizedTest @ValueSource(strings={"BUY","SUBCONTRACT"})
     void anExternalAppendCohortRollsEveryPhysicalLineAndEventBackAfterItsSecondWriteFails(String route) {
-        Object cohort=ReflectionTestUtils.invokeMethod(h,"createIndependentCohort");
+        Object cohort=ReflectionTestUtils.invokeMethod(h,"createIndependentCohort",route);
         AggregateMaterialOrderEndToEndTest.Case c=ReflectionTestUtils.invokeMethod(cohort,"c");
         List<UUID> outputs=ReflectionTestUtils.invokeMethod(cohort,"outputs");
-        outputs.forEach(goods->h.setRoute(c,goods,route));
+        outputs.forEach(goods->h.assertMasterRoute(c,goods,route));
         h.writer.submit(c.analysis(),h.command(c,cohortInputs(c,outputs,route,"1",false,null)));
         var publicBatches=h.writer.submit(c.analysis(),h.command(c,cohortInputs(c,outputs,route,"2",true,BusinessTime.today().plusDays(11)))).batches();
         assertEquals(2,publicBatches.size());
@@ -207,7 +207,7 @@ class AggregatePublicExternalLifecycleEndToEndTest {
     @ParameterizedTest @ValueSource(strings={"BUY","SUBCONTRACT"})
     void privateAndMixedBatchesKeepTheirOwnRequiredSourceProof(String route) {
         for(String qty:List.of("5","7")) {
-            var c=h.createWithChild("5",1);h.setRoute(c,c.common(),route);
+            var c=h.createWithChild("5",1,route);h.assertMasterRoute(c,c.common(),route);
             var made=h.writer.submit(c.analysis(),h.command(c,List.of(h.input(c,c.common(),route,qty,qty.equals("7"))))).batches().getFirst();
             UUID action=action(made);assertStatus(action,"CREATED");refresh(c);assertStatus(action,"CREATED");
             amount("5",h.db.queryForObject("SELECT requested_qty FROM preplan_supply_actions WHERE id=?",BigDecimal.class,action));
@@ -246,7 +246,7 @@ class AggregatePublicExternalLifecycleEndToEndTest {
 
     @ParameterizedTest @ValueSource(strings={"BUY","SUBCONTRACT"})
     void aMissingPublicSliceCannotBeHiddenByAValidPrivateSlice(String route) {
-        var c=h.createWithChild("5",1);h.setRoute(c,c.common(),route);
+        var c=h.createWithChild("5",1,route);h.assertMasterRoute(c,c.common(),route);
         var made=h.writer.submit(c.analysis(),h.command(c,List.of(h.input(c,c.common(),route,"7",true)))).batches().getFirst();
         UUID action=action(made);
         assertRejectedInvariant(new Scenario(c,made,made,action),()->h.db.update("UPDATE preplan_supply_actions SET public_surplus_external_item_id=NULL WHERE id=?",action));
@@ -254,7 +254,7 @@ class AggregatePublicExternalLifecycleEndToEndTest {
 
     @ParameterizedTest @ValueSource(strings={"BUY","SUBCONTRACT"})
     void oneBrokenPrivateMemberCannotBeHiddenByTheOtherPrivateAndPublicMembers(String route) {
-        var c=h.createWithChild("5",2);h.setRoute(c,c.common(),route);
+        var c=h.createWithChild("5",2,route);h.assertMasterRoute(c,c.common(),route);
         var made=h.writer.submit(c.analysis(),h.command(c,List.of(h.input(c,c.common(),route,"12",true)))).batches().getFirst();
         UUID action=action(made);
         assertEquals(2,h.count("SELECT count(*) FROM preplan_supply_action_allocations WHERE action_id=?",action));
@@ -264,7 +264,7 @@ class AggregatePublicExternalLifecycleEndToEndTest {
 
     @ParameterizedTest @ValueSource(strings={"BUY","SUBCONTRACT"})
     void nonzeroPrivateDemandCannotLoseItsOnlyPrivateAllocation(String route) {
-        var c=h.createWithChild("5",1);h.setRoute(c,c.common(),route);
+        var c=h.createWithChild("5",1,route);h.assertMasterRoute(c,c.common(),route);
         var made=h.writer.submit(c.analysis(),h.command(c,List.of(h.input(c,c.common(),route,"7",true)))).batches().getFirst();
         UUID action=action(made);
         String allocations=h.db.queryForObject("SELECT jsonb_agg(to_jsonb(allocation) ORDER BY id)::text FROM preplan_supply_action_allocations allocation WHERE action_id=?",String.class,action);
@@ -330,7 +330,7 @@ class AggregatePublicExternalLifecycleEndToEndTest {
     void safetyAndPublicPurchaseKeepEverySliceOpenUntilQualifiedAndStocked(boolean withPrivate) {
         Scenario s;
         if(withPrivate) {
-            var c=h.createWithChild("5",1);h.setRoute(c,c.common(),"BUY");
+            var c=h.createWithChild("5",1,"BUY");h.assertMasterRoute(c,c.common(),"BUY");
             h.db.update("UPDATE goods SET min_qty=3 WHERE id=?",c.common());
             var input=h.input(c,c.common(),"BUY","7",true);
             var group=new GroupInput(input.clientGroupKey(),input.materialLineIds(),"BUY",input.qty(),true,
@@ -404,8 +404,8 @@ class AggregatePublicExternalLifecycleEndToEndTest {
         return publicBatch(route,explicitIntent,"0");
     }
     private Scenario publicBatch(String route,boolean explicitIntent,String safety) {
-        var c=h.createWithChild("5",1);
-        h.setRoute(c,c.common(),route);
+        var c=h.createWithChild("5",1,route);
+        h.assertMasterRoute(c,c.common(),route);
         var first=h.writer.submit(c.analysis(),h.command(c,List.of(h.input(c,c.common(),route,"5",false))))
                 .batches().getFirst();
         if(!safety.equals("0"))h.db.update("UPDATE goods SET min_qty=3 WHERE id=?",c.common());
@@ -442,7 +442,7 @@ class AggregatePublicExternalLifecycleEndToEndTest {
                 "public-growth-target-"+UUID.randomUUID(),List.of(new MaterialAnalysisContracts.PreviewItem(
                 "SALES_ORDER_ITEM",orderItem,null,null,null,null,null,BusinessTime.today().plusDays(10),BigDecimal.ONE))));
         var c=new AggregateMaterialOrderEndToEndTest.Case(w,target.analysisId(),s.c().common(),s.c().child(),s.c().material(),s.c().workshop(),s.c().worker());
-        h.setRoute(c,c.common(),route);return h.analyses.detail(c.analysis());
+        h.assertMasterRoute(c,c.common(),route);return h.analyses.detail(c.analysis());
     }
     private UUID approvePurchase(Scenario s,UUID item,String qty) {
         var purchasing=new PreplanPublicFutureReplenishmentEndToEndTest();beans.autowireBean(purchasing);

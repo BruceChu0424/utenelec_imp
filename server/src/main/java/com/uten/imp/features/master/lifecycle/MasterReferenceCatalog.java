@@ -315,6 +315,18 @@ final class MasterReferenceCatalog {
                     .formatted(col.column(), reservationLabel, QTY.formatted(open), owner, scope, TARGETS, open)));
         }
 
+        // A transfer retains reservation ownership but moves its physical claim.
+        // The destination warehouse remains in use until this position is consumed/released.
+        out.add(new Reference(WAREHOUSE, "stock_reservation_storage_positions", "warehouse_id",
+                RefKind.RESERVATION, """
+                SELECT p.warehouse_id, 'RESERVATION', CAST(r.id AS text),
+                       %1$s || ' ' || %2$s, g.owner_employee_id, 'goods'
+                FROM stock_reservation_storage_positions p
+                JOIN stock_reservations r ON r.id=p.reservation_id
+                JOIN goods g ON g.id=r.goods_id
+                WHERE p.warehouse_id %3$s AND p.qty > 0 AND NOT r.is_deleted AND r.status=0"""
+                .formatted(GOODS_LABEL, QTY.formatted("p.qty"), TARGETS)));
+
         inFlight(out);
         finance(out);
         return List.copyOf(out);
@@ -588,6 +600,9 @@ final class MasterReferenceCatalog {
         exempt(out, ExemptReason.HISTORY, "未使用货品编号复用归属证据，旧新 UUID 独立保留", "goods_code_reuse_releases", "old_goods_id", "new_goods_id");
         exempt(out, ExemptReason.HISTORY, "库存流水", "stock_movements",
                 "goods_id", "color_id", "unit_id", "warehouse_id");
+        exempt(out, ExemptReason.HISTORY,
+                "仅追加的预留物理流转证据；当前锁定由 stock_reservation_storage_positions 活跃位置守卫覆盖",
+                "stock_reservation_storage_events", "from_warehouse_id", "to_warehouse_id");
         exempt(out, ExemptReason.HISTORY,
                 "stock_movements 已发生库存流水的可重建月度投影；不是独立在办引用，当前库存由 stock_balances 守卫覆盖",
                 "stock_monthly_summaries", "goods_id", "color_id", "warehouse_id");

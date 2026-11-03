@@ -12,10 +12,12 @@ import '../../../components/feedback/uten_context_menu.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/theme/uten_anim.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
-import '../../../components/inputs/uten_date_field.dart';
+import '../../../components/buttons/uten_date_range_selection_button.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/date_range_defaults.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/ui/app_notification.dart';
@@ -51,7 +53,8 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
   List<Map<String, dynamic>> _baselines = [];
   GoodsCostSheet? _baseline;
   String? _baselineId;
-  DateTime? _from, _to;
+  DateTime? _from = recentMonthStart();
+  DateTime? _to = ChinaDateTime.today();
   String? _segment, _revision, _error;
   bool _loading = false, _showFilters = false, _showBaseline = false;
   int _tab = 0, _request = 0;
@@ -729,21 +732,20 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      SizedBox(
-                        width: width,
-                        child: UtenDateField(
-                          label: _l.costActualFrom,
-                          value: _from,
-                          onChanged: (d) => setState(() => _from = d),
-                        ),
-                      ),
-                      SizedBox(
-                        width: width,
-                        child: UtenDateField(
-                          label: _l.costActualTo,
-                          value: _to,
-                          onChanged: (d) => setState(() => _to = d),
-                        ),
+                      UtenDateRangeSelectionButton(
+                        from: _from,
+                        to: _to,
+                        allowOpenRange: true,
+                        enabled: !_loading,
+                        helpText: '选择实际成本日期范围',
+                        onClear: () => setState(() {
+                          _from = null;
+                          _to = null;
+                        }),
+                        onChanged: (start, end) => setState(() {
+                          _from = start;
+                          _to = end;
+                        }),
                       ),
                       SizedBox(
                         width: width,

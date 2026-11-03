@@ -5,6 +5,7 @@ import '../../../components/inputs/uten_field_hint_icon.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/cards/uten_card.dart';
+import '../../../components/inputs/uten_date_range_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -34,7 +35,8 @@ class AuditQueryScopeComposer extends StatelessWidget {
     required this.onYesterday,
     required this.onSevenDays,
     required this.onThirtyDays,
-    required this.onCustomDate,
+    required this.onDateChanged,
+    this.onClearDate,
     required this.onRunQuery,
     required this.onRequestIdChanged,
     required this.onRequestIdSubmitted,
@@ -56,7 +58,8 @@ class AuditQueryScopeComposer extends StatelessWidget {
   final VoidCallback onYesterday;
   final VoidCallback onSevenDays;
   final VoidCallback onThirtyDays;
-  final VoidCallback onCustomDate;
+  final ValueChanged<DateTimeRange> onDateChanged;
+  final VoidCallback? onClearDate;
   final VoidCallback onRunQuery;
   final ValueChanged<String> onRequestIdChanged;
 
@@ -286,25 +289,17 @@ class AuditQueryScopeComposer extends StatelessWidget {
                 onPressed: hasActorScope ? onThirtyDays : null,
                 child: const Text('近 30 天'),
               ),
-              OutlinedButton.icon(
+              UtenDateRangeButton(
                 key: const ValueKey('audit-date-custom'),
-                style: scopeButtonStyle,
-                onPressed: hasActorScope ? onCustomDate : null,
-                icon: const Icon(Icons.date_range_outlined, size: 18),
-                label: const Text('自定义区间'),
+                range: range,
+                firstDate: DateTime.utc(2020),
+                lastDate: ChinaDateTime.today(),
+                helpText: '选择审计时间范围',
+                enabled: hasActorScope && !loading,
+                onChanged: onDateChanged,
+                onClear: onClearDate,
               ),
             ],
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            rangeLabel,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: range == null
-                  ? theme.colorScheme.onSurfaceVariant
-                  : theme.colorScheme.primary,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
           ),
         ],
       ),

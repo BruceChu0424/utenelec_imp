@@ -27,7 +27,13 @@ const aiUsePermissionScope = PagePermissionScope(
 PagePermissionScope? pagePermissionScopeFor(String location) {
   final path = _normalizedPath(location);
   if (path == null) return null;
-  if (path == '/company-files') return _companyFilesScope;
+  if (path == '/company-files' ||
+      path == '/company-files/history' ||
+      _isDescendant(path, '/company-files/history')) {
+    // History inherits the owning file area. Folder ACLs and record/restore
+    // authority are still enforced by the same server-side source.
+    return _companyFilesScope;
+  }
   if (path == '/stock/count-session') {
     return const PagePermissionScope(
       surfaceKey: 'warehouse.stock-item',

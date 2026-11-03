@@ -183,11 +183,11 @@ class AggregateMaterialOrderingBoundaryEndToEndTest {
     }
 
     private AggregateMaterialOrderEndToEndTest.Case makeCase(){
-        var c=h.create(false,false,"1");h.setRoute(c,c.material(),"MAKE");return c;
+        var c=h.createMaterial("1","MAKE");h.assertMasterRoute(c,c.material(),"MAKE");return c;
     }
     private AggregateMaterialOrderEndToEndTest.Case externalCase(String route){
-        var c=h.create(false,false,"1");
-        if("SUBCONTRACT".equals(route)){h.fixture.addSubcontractDirectMaterial(c.world(),c.material(),"1");h.setRoute(c,c.material(),route);}
+        var c=h.createMaterial("1",route);
+        h.assertMasterRoute(c,c.material(),route);
         return c;
     }
     private SubmitRequest command(AggregateMaterialOrderEndToEndTest.Case c,String route,String quantity,boolean extra,boolean approve){

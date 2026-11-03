@@ -5,8 +5,8 @@ void registerDailyReportPartialQuantityTests() {
     testWidgets(
       '1000 task saves the entered 800 with the exact source and no final flag: actualOutput=$allowsActualOutput',
       (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1800, 1000));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1800, 1000));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         SharedPreferences.setMockInitialValues({});
         final preferences = await SharedPreferences.getInstance();
         Map<String, dynamic>? submitted;

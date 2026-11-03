@@ -239,6 +239,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('操作 2'));
       await tester.tap(find.text('操作 2'));
+      await tester.pumpAndSettle();
       expect(actions, 1);
       expect(tester.takeException(), isNull);
     },

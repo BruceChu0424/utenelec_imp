@@ -3544,17 +3544,21 @@ void main() {
     }
   });
 
-  testWidgets('没确认路线的行：供应方式框标红、不给填数、也下不了单', (tester) async {
+  testWidgets('来源未确认的行：只读主档来源、不给填数、也下不了单', (tester) async {
     await _pump(tester);
-    // 红框是这一行唯一的入口提示。
+    // 排产只读货品来源，不能用下拉代替主档维护。
     expect(
-      find.byKey(const ValueKey('material-route-pending-m-1')),
+      find.byKey(const ValueKey('material-route-readonly-m-1')),
       findsOneWidget,
     );
-    // 已确认的行不该有红框。
     expect(
-      find.byKey(const ValueKey('material-route-pending-m-2')),
+      find.byKey(const ValueKey('material-route-dropdown-m-1')),
       findsNothing,
+    );
+    // 已确认的来源也只能读取。
+    expect(
+      find.byKey(const ValueKey('material-route-readonly-m-2')),
+      findsOneWidget,
     );
     // 路线未定 = 两个数量格都不给填。
     expect(_orderQty('m-1'), findsNothing);
@@ -3567,6 +3571,10 @@ void main() {
     );
     // 调拨按钮照常在(置灰), 这一列没被整个抹掉。
     expect(_transferButton('m-1'), findsOneWidget);
+    expect(
+      requests.where((request) => request.path.endsWith('/routes')),
+      isEmpty,
+    );
   });
 
   testWidgets('确认过路线但没下过单的行：下单数量可填并预填还缺数量，追加下单恒为只读 0', (tester) async {
@@ -6491,7 +6499,7 @@ void main() {
     expect(_aggregateSubmits().single.body!['groups'], firstRequest!['groups']);
   });
 
-  testWidgets('下过生产计划的自制行(含顶层)：供应方式锁死，不再给下拉', (tester) async {
+  testWidgets('所有自制行均只读主档来源，已下达计划的原来源继续保留', (tester) async {
     await _pump(
       tester,
       permissions: {..._permissions, Perm.productionMaterialAnalysisGenerate},
@@ -6518,10 +6526,22 @@ void main() {
       find.byKey(const ValueKey('material-route-dropdown-m-7')),
       findsNothing,
     );
-    // 没下过计划的自制行照旧可改。
+    // 没下过计划的自制行也不能从排产修改主档角色。
     expect(
       find.byKey(const ValueKey('material-route-dropdown-m-6')),
-      findsOneWidget,
+      findsNothing,
+    );
+    for (final id in ['m-6', 'm-7']) {
+      expect(
+        tester
+            .widget<Text>(find.byKey(ValueKey('material-route-readonly-$id')))
+            .data,
+        MaterialSupplyRoute.make.label,
+      );
+    }
+    expect(
+      requests.where((request) => request.path.endsWith('/routes')),
+      isEmpty,
     );
   });
 

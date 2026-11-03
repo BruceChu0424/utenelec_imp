@@ -14,6 +14,7 @@ import 'package:uten_imp/features/warehouse/pages/shelf_label_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../../support/uten_test_actions.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -116,8 +117,8 @@ MasterDataTableView<ShelfLabelRow> _table(WidgetTester tester) =>
 
 Future<_DimensionRepository> _pump(WidgetTester tester) async {
   final preferences = await SharedPreferences.getInstance();
-  await tester.binding.setSurfaceSize(const Size(1600, 1100));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(1600, 1100));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   final repository = _DimensionRepository();
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(

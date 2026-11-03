@@ -1,3 +1,4 @@
+import 'dart:async';
 import '../../support/native_facet_fake_transport.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -5,6 +6,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/utils/date_range_defaults.dart';
+import 'package:uten_imp/core/utils/china_datetime.dart';
+import 'package:uten_imp/components/inputs/uten_date_range_button.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/quality/models/quality_inspection_record.dart';
 import 'package:uten_imp/features/quality/pages/quality_inspection_records_page.dart';
@@ -51,6 +56,41 @@ Future<void> _pumpPage(
 }
 
 void main() {
+  testWidgets('决定日期默认近一月，卡片内清除后按全部日期重新查询', (tester) async {
+    final api = _RecordApi();
+    await _pumpPage(
+      tester,
+      api: api,
+      permissions: const {Perm.procurementInspectionView},
+      size: const Size(1400, 950),
+    );
+    final dates = recentMonthDateRange();
+    final control = tester.widget<UtenDateRangeButton>(
+      find.byKey(const Key('quality-inspection-record-date-filter')),
+    );
+    expect(control.range?.start, dates.start);
+    expect(control.range?.end, dates.end);
+    expect(
+      api.listQueries.last['from'],
+      ChinaDateTime.wallTimeToUtc(dates.start).toIso8601String(),
+    );
+    expect(
+      api.listQueries.last['to'],
+      ChinaDateTime.wallTimeToUtc(
+        dates.end
+            .add(const Duration(days: 1))
+            .subtract(const Duration(microseconds: 1)),
+      ).toIso8601String(),
+    );
+    await tester.tap(find.byKey(const Key('uten-date-range-clear')));
+    await tester.pumpAndSettle();
+    expect(api.listQueries.last.containsKey('from'), isFalse);
+    expect(api.listQueries.last.containsKey('to'), isFalse);
+    expect(api.listQueries.last['page'], 1);
+    expect(find.byKey(const Key('uten-date-range-clear')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final fqc in [false, true]) {
     testWidgets(
       'ordinary ${fqc ? 'FQC' : 'IQC'} record headers keep full criteria for list and candidates',
@@ -120,18 +160,37 @@ void main() {
       permissions: const {Perm.procurementInspectionView},
       size: const Size(1400, 950),
     );
-    final header = find.text('决定时间');
+    // The date column is virtualized beyond the first horizontal viewport.
+    for (final state in tester.stateList<ScrollableState>(
+      find.descendant(
+        of: find.byKey(const Key('quality-inspection-record-table')),
+        matching: find.byType(Scrollable),
+      ),
+    )) {
+      if (state.widget.axisDirection == AxisDirection.right) {
+        state.position.jumpTo(state.position.maxScrollExtent);
+      }
+    }
+    await tester.pumpAndSettle();
+    final header = find.textContaining(RegExp(r'^决定时间'));
     await tester.ensureVisible(header);
     await tester.pumpAndSettle();
     await tester.tap(header);
     await tester.pumpAndSettle();
     expect(find.text('选择检验决定日期范围'), findsOneWidget);
+    expect(find.byType(UtenBusyOverlay), findsNothing);
     await tester.tap(find.text('1'));
     await tester.pump();
     await tester.tap(find.text('1'));
     await tester.pump();
+    api.listGate = Completer<void>();
     await tester.tap(find.text('OK'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.byType(UtenBusyOverlay), findsOneWidget);
+    api.listGate!.complete();
     await tester.pumpAndSettle();
+    expect(find.byType(UtenBusyOverlay), findsNothing);
     expect(api.listQueries.last['from'], isNotNull);
     expect(api.listQueries.last['to'], isNotNull);
     expect(api.listQueries.last['page'], 1);
@@ -461,6 +520,7 @@ class _RecordApi extends ApiClient with NativeFacetFakeTransport {
   final List<Map<String, dynamic>> listQueries = [];
   final List<String> facetPaths = [];
   bool failNextList = false;
+  Completer<void>? listGate;
 
   @override
   Future<Map<String, dynamic>> get(
@@ -494,6 +554,7 @@ class _RecordApi extends ApiClient with NativeFacetFakeTransport {
     }
     listPaths.add(path);
     listQueries.add(Map<String, dynamic>.from(query ?? const {}));
+    await listGate?.future;
     if (failNextList) {
       failNextList = false;
       throw DioException(

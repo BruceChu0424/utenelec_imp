@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/api_error_message.dart';
 import 'package:uten_imp/shared/concurrency/task_claim_session.dart';
 import 'package:uten_imp/shared/models/task_claim_view.dart';
 import '../../helpers/finance_claim_fixture.dart';
@@ -84,7 +85,7 @@ void main() {
   test(
     'local network and unknown failures use the selected language without guessing a permission cause',
     () async {
-      for (final language in ['en', 'ko']) {
+      for (final language in ['zh', 'en', 'ko']) {
         final l10n = lookupAppLocalizations(Locale(language));
         for (final (error, expected) in <(Object, String)>[
           (NetworkException(), l10n.taskClaimNetworkUnavailable),
@@ -96,6 +97,27 @@ void main() {
           (StateError('当前单据正在恢复，请稍后重试'), '当前单据正在恢复，请稍后重试'),
           (ApiException('FORBIDDEN', ''), l10n.taskClaimPermissionDenied),
           (ApiException('CONFLICT', ''), l10n.taskClaimConflict),
+          (ApiException('FORBIDDEN', '审核权限已被收回，请联系权限管理员'), '审核权限已被收回，请联系权限管理员'),
+          (
+            ApiException('FORBIDDEN', '', hasResponseCode: true),
+            apiErrorMessage('FORBIDDEN', ''),
+          ),
+          (
+            ApiException(
+              'CONFLICT',
+              'The original review is still pending. Check its result first.',
+              hasResponseCode: true,
+            ),
+            'The original review is still pending. Check its result first.',
+          ),
+          (
+            ApiException(
+              'SERVER_OPERATION_OUTCOME_UNCERTAIN',
+              '原操作结果待确认，请先核对，不要重复提交',
+              hasResponseCode: true,
+            ),
+            '原操作结果待确认，请先核对，不要重复提交',
+          ),
         ]) {
           final repo = FinanceClaimFixture()..claimError = error;
           final session = TaskClaimSession(
@@ -106,6 +128,8 @@ void main() {
           await session.claimAll('SALES_ORDER_FINANCE_CONFIRM', ['a']);
           expect(session.isReady, isFalse);
           expect(session.failureMessage, expected);
+          expect(await session.validateForDecision(), isFalse);
+          expect(repo.renewed, isEmpty);
           await session.releaseAll();
         }
       }

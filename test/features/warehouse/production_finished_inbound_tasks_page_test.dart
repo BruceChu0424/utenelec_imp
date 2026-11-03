@@ -25,6 +25,7 @@ import 'package:uten_imp/shared/warehouse/warehouse_task_badges.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import '../../helpers/warehouse_request_scope_fixture.dart';
+import '../../support/uten_test_actions.dart';
 
 const _reportId = '20000000-0000-0000-0000-000000000001';
 const _documentId = '10000000-0000-0000-0000-000000000001';
@@ -46,8 +47,8 @@ void main() {
     testWidgets(
       'finished queue stale shelf action observes current authority ($mode)',
       (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1400, 900));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1400, 900));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         SharedPreferences.setMockInitialValues({});
         final preferences = await SharedPreferences.getInstance();
         var navigations = 0;
@@ -139,8 +140,8 @@ void main() {
     testWidgets(
       'sparse superadmin finished queue requires explicit extra ($withExtra)',
       (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1400, 900));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1400, 900));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         SharedPreferences.setMockInitialValues({});
         final preferences = await SharedPreferences.getInstance();
         final api = _FinishedInboundApi()..allowPreStock = withExtra;
@@ -189,8 +190,8 @@ void main() {
   testWidgets('finished inbound queue uses the multi-select table at 375px', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(375, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(375, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
 
@@ -306,8 +307,8 @@ void main() {
   testWidgets('finished inbound queue gives view-only staff no count promise', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(375, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(375, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
 

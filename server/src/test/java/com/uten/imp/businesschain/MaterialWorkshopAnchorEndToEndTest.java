@@ -2,6 +2,7 @@ package com.uten.imp.businesschain;
 
 import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.production.analysis.MaterialAnalysisCommandService;
 import com.uten.imp.features.production.analysis.MaterialAnalysisService;
 import com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
@@ -423,36 +424,30 @@ class MaterialWorkshopAnchorEndToEndTest {
                 + "WHERE plan.material_analysis_id=? AND demand.required_qty=3000 AND demand.is_deleted=FALSE", c.analysis()));
     }
 
-    @Test void mixedGoodsRoutesRemainIndependentAndDoNotLearnARequestOrderDependentDefault() {
+    @Test void mixedPlanningRoutesCannotOverrideTheSingleMasterSource() {
         Case c = create("routes-mixed", true);
         var before = analyses.detail(c.analysis());
         long goodsVersion = db.queryForObject("SELECT version FROM goods WHERE id=?", Long.class, c.world().goodsC());
         var choices = List.of(new RouteDecision(c.materials().get(0), null, "BUY", "外购物料路径"),
                 new RouteDecision(c.materials().get(1), null, "MAKE", "车间自制路径"));
-        var changed = analyses.saveRoutes(c.analysis(), new RouteRequest(before.version(), before.fingerprint(),
-                "route-mixed-" + c.analysis(), choices));
-        assertEquals("BUY", material(changed, c.materials().get(0)).sourceConfirmed());
-        assertEquals("MAKE", material(changed, c.materials().get(1)).sourceConfirmed());
-        assertEquals("自制", db.queryForObject("SELECT source_type FROM goods WHERE id=?", String.class, c.world().goodsC()));
-        assertEquals(goodsVersion, db.queryForObject("SELECT version FROM goods WHERE id=?", Long.class, c.world().goodsC()));
         var routeFacts = db.queryForList("SELECT id,confirmed_route,route_reason,route_confirmed_by,route_confirmed_at FROM production_material_analysis_materials WHERE analysis_id=? ORDER BY id", c.analysis());
         var reversed = new ArrayList<>(choices); java.util.Collections.reverse(reversed);
-        var repeated = analyses.saveRoutes(c.analysis(), new RouteRequest(changed.version(), changed.fingerprint(),
-                "route-mixed-reverse-" + c.analysis(), reversed));
-        assertEquals(routeFacts, db.queryForList("SELECT id,confirmed_route,route_reason,route_confirmed_by,route_confirmed_at FROM production_material_analysis_materials WHERE analysis_id=? ORDER BY id", c.analysis()),
-                "Equal confirmations must not rewrite their actor or time when request order changes");
-        assertEquals("BUY", material(repeated, c.materials().get(0)).sourceConfirmed());
-        assertEquals("MAKE", material(repeated, c.materials().get(1)).sourceConfirmed());
         var uniform = choices.stream().map(choice -> new RouteDecision(choice.materialLineId(), null, "BUY", null)).toList();
-        var learned = analyses.saveRoutes(c.analysis(), new RouteRequest(repeated.version(), repeated.fingerprint(),
-                "route-uniform-" + c.analysis(), uniform));
-        assertEquals("采购", db.queryForObject("SELECT source_type FROM goods WHERE id=?", String.class, c.world().goodsC()));
-        assertEquals(goodsVersion + 1, db.queryForObject("SELECT version FROM goods WHERE id=?", Long.class, c.world().goodsC()));
-        for (UUID id : c.materials()) assertEquals("BUY", material(learned, id).sourceConfirmed());
+        for(var requested : List.of(choices,reversed,uniform)) {
+            var rejected=assertThrows(ApiException.class,()->analyses.saveRoutes(c.analysis(),
+                    new RouteRequest(before.version(),before.fingerprint(),"forbidden-source-"+UUID.randomUUID(),requested)));
+            assertEquals(ErrorCode.CONFLICT,rejected.getCode());
+            assertTrue(rejected.getMessage().contains("排产不能修改产品角色或供应方式"));
+            assertEquals(routeFacts,db.queryForList("SELECT id,confirmed_route,route_reason,route_confirmed_by,route_confirmed_at FROM production_material_analysis_materials WHERE analysis_id=? ORDER BY id",c.analysis()));
+            assertEquals(before.version(),analyses.detail(c.analysis()).version());
+            assertEquals("自制",db.queryForObject("SELECT source_type FROM goods WHERE id=?",String.class,c.world().goodsC()));
+            assertEquals(goodsVersion,db.queryForObject("SELECT version FROM goods WHERE id=?",Long.class,c.world().goodsC()));
+            for(UUID id:c.materials())assertEquals("MAKE",material(analyses.detail(c.analysis()),id).sourceConfirmed());
+        }
     }
 
     @Test void routeBatchRejectsDuplicateInvalidForeignAndCommittedChangesWithoutPartialWrites() {
-        Case c = create("routes-atomic", true);
+        Case c = create("routes-atomic", true, "BUY");
         var initial = analyses.detail(c.analysis());
         var good = new RouteDecision(c.materials().get(0), null, "BUY", null);
         var original = db.queryForList("SELECT id,confirmed_route,route_reason,route_confirmed_at FROM production_material_analysis_materials WHERE analysis_id=? ORDER BY id", c.analysis());
@@ -463,7 +458,7 @@ class MaterialWorkshopAnchorEndToEndTest {
                     initial.fingerprint(), "bad-route-" + UUID.randomUUID(), choices)));
             assertEquals(original, db.queryForList("SELECT id,confirmed_route,route_reason,route_confirmed_at FROM production_material_analysis_materials WHERE analysis_id=? ORDER BY id", c.analysis()));
             assertEquals(initial.version(), analyses.detail(c.analysis()).version());
-            assertEquals("自制", db.queryForObject("SELECT source_type FROM goods WHERE id=?", String.class, c.world().goodsC()));
+            assertEquals("采购", db.queryForObject("SELECT source_type FROM goods WHERE id=?", String.class, c.world().goodsC()));
         }
         var buyer = analyses.saveRoutes(c.analysis(), new RouteRequest(initial.version(), initial.fingerprint(),
                 "route-buy-" + c.analysis(), List.of(good)));
@@ -478,7 +473,7 @@ class MaterialWorkshopAnchorEndToEndTest {
         assertEquals("采购", db.queryForObject("SELECT source_type FROM goods WHERE id=?", String.class, c.world().goodsC()));
     }
 
-    @Test void concurrentRouteBatchesRejectTheStaleVersionAndLearnGoodsExactlyOnce() throws Exception {
+    @Test void concurrentForbiddenRoleBatchesLeaveMasterAndAnalysisUnchanged() throws Exception {
         Case c = create("routes-concurrent", true);
         var initial = analyses.detail(c.analysis());
         long goodsVersion = db.queryForObject("SELECT version FROM goods WHERE id=?", Long.class, c.world().goodsC());
@@ -502,11 +497,13 @@ class MaterialWorkshopAnchorEndToEndTest {
                     assertInstanceOf(ApiException.class, failure.getCause()); conflicted++;
                 }
             }
-            assertEquals(1, succeeded); assertEquals(1, conflicted);
+            assertEquals(0, succeeded); assertEquals(2, conflicted);
         } finally { workers.shutdownNow(); }
         fixture.loginAs(c.planner());
-        assertEquals(goodsVersion + 1, db.queryForObject("SELECT version FROM goods WHERE id=?", Long.class, c.world().goodsC()));
-        for (UUID id : c.materials()) assertEquals("BUY", material(analyses.detail(c.analysis()), id).sourceConfirmed());
+        assertEquals(goodsVersion, db.queryForObject("SELECT version FROM goods WHERE id=?", Long.class, c.world().goodsC()));
+        assertEquals("自制",db.queryForObject("SELECT source_type FROM goods WHERE id=?",String.class,c.world().goodsC()));
+        assertEquals(initial.version(),analyses.detail(c.analysis()).version());
+        for (UUID id : c.materials()) assertEquals("MAKE", material(analyses.detail(c.analysis()), id).sourceConfirmed());
     }
 
     private void postGenericStock(Case c, UUID goods, String quantity, String type) {
@@ -858,7 +855,7 @@ class MaterialWorkshopAnchorEndToEndTest {
         fixture.loginAs(planner);
         AnalysisView view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"preview-"+tag,List.of(
                 new PreviewItem("OTHER",null,root,null,w.unitId(),"manual-"+tag,"混合候选原始需求",BusinessTime.today().plusDays(10),new BigDecimal("10000")))));
-        var routes=view.flatMaterials().stream().map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),
+        var routes=view.flatMaterials().stream().filter(MaterialView::actionable).map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),
                 m.goodsId().equals(w.goodsD())?"BUY":m.goodsId().equals(sub)?"SUBCONTRACT":"MAKE",null)).toList();
         analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"routes-"+tag,routes));
         view=analyses.detail(view.analysisId());
@@ -940,8 +937,13 @@ class MaterialWorkshopAnchorEndToEndTest {
     }
 
     private Case create(String tag,boolean twoPaths){return create(tag,twoPaths,false,"10000");}
+    private Case create(String tag,boolean twoPaths,String materialRoute){return create(tag,twoPaths,false,"10000",materialRoute);}
     private Case create(String tag,boolean twoPaths,boolean salesSource,String sourceQty){
+        return create(tag,twoPaths,salesSource,sourceQty,"MAKE");
+    }
+    private Case create(String tag,boolean twoPaths,boolean salesSource,String sourceQty,String materialRoute){
         var w=fixture.seedWorld(tag);UUID root=UUID.randomUUID();
+        fixture.seedGoodsSources(java.util.Map.of(w.goodsC(),materialRoute));
         fixture.insertGoods(root,"ROOT-"+tag,"锚点回归成品","自制",w.unitId(),w.unitLegacy());
         if(twoPaths){
             for(int i=0;i<2;i++){
@@ -970,7 +972,7 @@ class MaterialWorkshopAnchorEndToEndTest {
                 :new PreviewItem("OTHER",null,root,null,w.unitId(),source,"明确的原始生产需求",BusinessTime.today().plusDays(10),new BigDecimal(sourceQty));
         AnalysisView view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"preview-"+tag,List.of(sourceItem)));
         var routes=view.flatMaterials().stream().map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),
-                m.goodsId().equals(w.goodsD())?"BUY":"MAKE",null)).toList();
+                m.sourceSuggestion(),null)).toList();
         analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"routes-"+tag,routes));
         view=analyses.detail(view.analysisId());
         List<UUID> materialIds=view.flatMaterials().stream().filter(m->m.goodsId().equals(w.goodsC()))

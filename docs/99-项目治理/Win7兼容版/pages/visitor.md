@@ -22,21 +22,21 @@
 
 ## W7-BIZ-166 · lib/features/visitor/pages/visitor_apply_page.dart
 
-模块 `visitor`；443 行；SHA256 `2001cef6c573628af00bc7cd4c5361155bc642fe17091f7e3b360f2952469c6f`。
+模块 `visitor`；444 行；SHA256 `c1c0c0e8d93ce09cc22d993439c034b5e55c22dd11eaf7e125ff96f0c2e12250`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | VisitorApplyPage @33 (page-class)<br>_VisitorApplyPageState @40 (state-class) |
+| 页面/状态类 | VisitorApplyPage @34 (page-class)<br>_VisitorApplyPageState @41 (state-class) |
 | 真实路由绑定 | /visitor/apply；router @553；builder ['VisitorApplyPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/visitor/repositories/visitor_repository.dart；接口：/visitor/applications、/visitor/applications/mine、/visitor/applications/{id}、/visitor/auth/login、/visitor/auth/logout、/visitor/auth/send-code、/visitor/directory/employees、/visitor/me |
-| 动作处理 | _submit @171 [method-declaration-candidate] 提示 ['submit']；Future<void> _submit() async {<br>submit @208 [action-like-invocation] 提示 ['submit']；final app = await repo.submit({<br>copyWith @407 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith( |
+| 动作处理 | _submit @172 [method-declaration-candidate] 提示 ['submit']；Future<void> _submit() async {<br>submit @209 [action-like-invocation] 提示 ['submit']；final app = await repo.submit({<br>copyWith @408 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith( |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/visitor/VisitorAccountController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/visitor/VisitorAuthController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/visitor/VisitorController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/visitor/VisitorDirectoryController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 访客门户前端已被全局redirect下线；保留源码不等于本次需要恢复该门户，需确认范围。<br>存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/core/ui/human_error_message.dart` (core)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/cards/uten_card.dart` (sharedComponents)；`lib/components/feedback/uten_busy_overlay.dart` (sharedComponents)；`lib/components/inputs/uten_employee_picker.dart` (sharedComponents)；`lib/components/inputs/uten_input.dart` (sharedComponents)；`lib/components/inputs/required_field_decoration.dart` (sharedComponents)；`lib/components/inputs/uten_input_decoration.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_section_header.dart` (sharedComponents)；`lib/core/input/china_input_formatters.dart` (core)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/responsive/scale.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/core/utils/id_card_utils.dart` (core)；`lib/core/theme/uten_colors.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/features/visitor/models/visitor_application.dart` (models)；`lib/features/visitor/repositories/visitor_repository.dart` (repositories)。
+直接源依赖：`lib/components/feedback/uten_date_range_picker.dart` (sharedComponents)；`lib/core/ui/human_error_message.dart` (core)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/cards/uten_card.dart` (sharedComponents)；`lib/components/feedback/uten_busy_overlay.dart` (sharedComponents)；`lib/components/inputs/uten_employee_picker.dart` (sharedComponents)；`lib/components/inputs/uten_input.dart` (sharedComponents)；`lib/components/inputs/required_field_decoration.dart` (sharedComponents)；`lib/components/inputs/uten_input_decoration.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_floating_action_group.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_section_header.dart` (sharedComponents)；`lib/core/input/china_input_formatters.dart` (core)；`lib/core/l10n/gen/app_localizations.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/core/responsive/scale.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/core/utils/id_card_utils.dart` (core)；`lib/core/theme/uten_colors.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/core/ui/app_notification.dart` (core)；`lib/features/visitor/models/visitor_application.dart` (models)；`lib/features/visitor/repositories/visitor_repository.dart` (repositories)。
 
 ## W7-BIZ-167 · lib/features/visitor/pages/visitor_home_page.dart
 

@@ -78,8 +78,8 @@ class _HistoryPageState extends ConsumerState<RecordHistoryPage>
   String? _sourceType;
   String _actor = '';
 
-  /// 修改日期门控；默认近三个月（2026-10-24 用户口径，与全站历史段一致）。
-  UtenHistoryTimeValue _time = UtenHistoryTimeValue.lastThreeMonths();
+  /// 修改日期门控；默认近一个月（2026-11-03 用户口径，与全站历史段一致）。
+  UtenHistoryTimeValue _time = UtenHistoryTimeValue.lastMonth();
   final _cursorPages =
       CursorPagedReadAdapter<
         MasterRecordRevision,
@@ -190,7 +190,7 @@ class _HistoryPageState extends ConsumerState<RecordHistoryPage>
       _actor = '';
       _summaryKeyword = '';
       _sourceType = null;
-      _time = UtenHistoryTimeValue.lastThreeMonths();
+      _time = UtenHistoryTimeValue.lastMonth();
       invalidateNativeReadAccess();
       _clear();
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -505,7 +505,7 @@ class _HistoryPageState extends ConsumerState<RecordHistoryPage>
       _actor = '';
       _summaryKeyword = '';
       _sourceType = null;
-      _time = UtenHistoryTimeValue.lastThreeMonths();
+      _time = UtenHistoryTimeValue.lastMonth();
     });
     _load(reset: true);
   }

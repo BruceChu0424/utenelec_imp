@@ -44,7 +44,7 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path != ApiEndpoints.warehousesDict) return [];
+    if (path != ApiEndpoints.businessReferenceWarehouses) return [];
     calls++;
     if (failures-- > 0) throw ApiException('FORBIDDEN', '没有仓库查看权限');
     return pending?.future ?? _warehouses;

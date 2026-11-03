@@ -86,6 +86,37 @@ class MasterReferenceCatalogCoverageTest {
     }
 
     @Test
+    void transferredPhysicalClaimRetainsGoodsVisibilityAndExcludesZeroOrFinishedReservations() throws SQLException {
+        var reference = MasterReferenceCatalog.references(MasterEntityKind.WAREHOUSE).stream()
+                .filter(entry -> entry.table().equals("stock_reservation_storage_positions")).findFirst().orElseThrow();
+        UUID warehouse = UUID.randomUUID(), goods = UUID.randomUUID(), owner = UUID.randomUUID();
+        UUID active = UUID.randomUUID(), zero = UUID.randomUUID(), finished = UUID.randomUUID(), deleted = UUID.randomUUID();
+        // A SELECT-only predicate oracle, separate from the real migrated-schema/FK inventory below.
+        // Physical location is independent of the reservation's original warehouse.
+        String fixtures = """
+                WITH targets(id) AS (VALUES ('%1$s'::uuid)),
+                goods(id,code,name,owner_employee_id) AS (VALUES ('%2$s'::uuid,'G001','测试货品','%3$s'::uuid)),
+                stock_reservations(id,goods_id,is_deleted,status) AS (VALUES
+                    ('%4$s'::uuid,'%2$s'::uuid,false,0), ('%5$s'::uuid,'%2$s'::uuid,false,0),
+                    ('%6$s'::uuid,'%2$s'::uuid,false,1), ('%7$s'::uuid,'%2$s'::uuid,true,0)),
+                stock_reservation_storage_positions(reservation_id,warehouse_id,qty) AS (VALUES
+                    ('%4$s'::uuid,'%1$s'::uuid,5::numeric), ('%5$s'::uuid,'%1$s'::uuid,0::numeric),
+                    ('%6$s'::uuid,'%1$s'::uuid,5::numeric), ('%7$s'::uuid,'%1$s'::uuid,5::numeric))
+                """.formatted(warehouse, goods, owner, active, zero, finished, deleted);
+        try (Connection connection = connection(); var query = connection.createStatement();
+             var rows = query.executeQuery(fixtures + reference.sql())) {
+            assertThat(rows.next()).isTrue();
+            assertThat(rows.getObject(1, UUID.class)).isEqualTo(warehouse);
+            assertThat(rows.getString(2)).isEqualTo("RESERVATION");
+            assertThat(rows.getString(3)).isEqualTo(active.toString());
+            assertThat(rows.getString(4)).isEqualTo("G001 测试货品 5");
+            assertThat(rows.getObject(5, UUID.class)).isEqualTo(owner);
+            assertThat(rows.getString(6)).isEqualTo("goods");
+            assertThat(rows.next()).isFalse();
+        }
+    }
+
+    @Test
     void everyColumnPointingAtAMasterIsEitherCheckedOrExemptedWithAReason() throws SQLException {
         Map<String, MasterEntityKind> inventory = inventory();
         Map<String, MasterEntityKind> covered = new TreeMap<>();

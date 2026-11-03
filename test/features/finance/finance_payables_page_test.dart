@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
@@ -373,7 +374,19 @@ void main() {
       find.descendant(of: billDate, matching: find.byType(UtenButton)),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('This month'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenDateRangePickerDialog),
+        matching: find.text('10'),
+      ),
+    );
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenDateRangePickerDialog),
+        matching: find.text('20'),
+      ),
+    );
+    await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
     expect(api.lastQuery?['dateFrom'], isNotNull);
     expect(api.lastQuery?['dateTo'], isNotNull);
@@ -416,7 +429,8 @@ void main() {
     SharedPreferences.setMockInitialValues(const {});
     final preferences = await SharedPreferences.getInstance();
     final api = _PageApi(itemCount: 60);
-    tester.view.physicalSize = const Size(1440, 760);
+    // Keep the content viewport above the shared 600px compact fallback.
+    tester.view.physicalSize = const Size(1440, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);

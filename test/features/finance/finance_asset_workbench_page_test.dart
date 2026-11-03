@@ -21,6 +21,7 @@ import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/layout/uten_collapsing_header_scroll_view.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import '../../support/uten_test_actions.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -28,8 +29,8 @@ void main() {
   testWidgets('refreshing month-end processing preserves the period input', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     await _pumpWorkbench(tester, repository: _FakeAssetRepository());
     await tester.tap(find.text('月末处理'));
     await tester.pumpAndSettle();
@@ -51,8 +52,8 @@ void main() {
   testWidgets('ledger headers send independent name and state queries', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1800, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1800, 1000));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final repository = _FakeAssetRepository();
     await _pumpWorkbench(tester, repository: repository);
     await tester.tap(find.byKey(const ValueKey('master-column-filter-name')));
@@ -85,8 +86,8 @@ void main() {
   testWidgets(
     'header refresh waits for visible ledger and revalidates hidden ledger on return',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1280, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final repository = _FakeAssetRepository();
       await _pumpWorkbench(tester, repository: repository);
       await tester.tap(find.text('长期待摊'));
@@ -211,8 +212,8 @@ void main() {
   testWidgets(
     'draft deletion needs its own grant and rechecks revocation after confirmation',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1280, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final access = StateProvider<Set<String>>(
         (ref) => {Perm.financeAssetView, Perm.financeAssetEdit},
       );
@@ -261,8 +262,8 @@ void main() {
   testWidgets(
     'local asset draft search requires all visible name and amount words without crossing ledgers',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1280, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1280, 1000));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       FormDraft draft(String id, String ledger, String name, String amount) =>
           FormDraft(
             id: id,
@@ -308,8 +309,8 @@ void main() {
   testWidgets(
     'asset inputs join their own ledger draft status and policy drafts stay separate',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1280, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1280, 1000));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       FormDraft input(String id, String route, Map<String, dynamic> data) =>
           FormDraft(
             id: id,
@@ -412,16 +413,16 @@ void main() {
     tester,
   ) async {
     for (final width in [360.0, 720.0, 1280.0]) {
-      await tester.binding.setSurfaceSize(Size(width, 900));
+      await setUtenTestSurfaceSize(tester, Size(width, 900));
       await _pumpWorkbench(tester, repository: _FakeAssetRepository());
       expect(tester.takeException(), isNull, reason: 'width=$width');
     }
-    await tester.binding.setSurfaceSize(null);
+    await setUtenTestSurfaceSize(tester, null);
   });
 
   testWidgets('read-only permission exposes no write entry', (tester) async {
     final repository = _FakeAssetRepository();
-    await tester.binding.setSurfaceSize(const Size(360, 900));
+    await setUtenTestSurfaceSize(tester, const Size(360, 900));
     await _pumpWorkbench(
       tester,
       repository: repository,
@@ -434,13 +435,13 @@ void main() {
       findsNothing,
     );
     expect(repository.createCalls, 0);
-    await tester.binding.setSurfaceSize(null);
+    await setUtenTestSurfaceSize(tester, null);
   });
 
   testWidgets('posting safety gate is distinct from category policy', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(360, 900));
+    await setUtenTestSurfaceSize(tester, const Size(360, 900));
     await _pumpWorkbench(
       tester,
       repository: _FakeAssetRepository(),
@@ -460,12 +461,12 @@ void main() {
       find.byKey(const Key('finance-asset-create-FIXED_ASSET')),
       findsOneWidget,
     );
-    await tester.binding.setSurfaceSize(null);
+    await setUtenTestSurfaceSize(tester, null);
   });
 
   testWidgets('list failure renders a real retry and recovers', (tester) async {
     final repository = _FakeAssetRepository(failFirstList: true);
-    await tester.binding.setSurfaceSize(const Size(360, 900));
+    await setUtenTestSurfaceSize(tester, const Size(360, 900));
     await _pumpWorkbench(tester, repository: repository);
 
     expect(
@@ -493,14 +494,14 @@ void main() {
       find.byKey(const Key('finance-asset-retry-FIXED_ASSET')),
       findsNothing,
     );
-    await tester.binding.setSurfaceSize(null);
+    await setUtenTestSurfaceSize(tester, null);
   });
 
   testWidgets('blocking preview never exposes submit or post actions', (
     tester,
   ) async {
     final repository = _FakeAssetRepository(blockPreview: true);
-    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    await setUtenTestSurfaceSize(tester, const Size(1280, 900));
     await _pumpWorkbench(
       tester,
       repository: repository,
@@ -523,14 +524,14 @@ void main() {
     expect(find.byKey(const Key('finance-asset-post-submit')), findsNothing);
     expect(find.byKey(const Key('finance-asset-post-post')), findsNothing);
     expect(repository.postingActionCalls, 0);
-    await tester.binding.setSurfaceSize(null);
+    await setUtenTestSurfaceSize(tester, null);
   });
 
   testWidgets(
     'preview workflow advances optimistic-lock version at each step',
     (tester) async {
       final repository = _FakeAssetRepository();
-      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      await setUtenTestSurfaceSize(tester, const Size(1280, 900));
       await _pumpWorkbench(
         tester,
         repository: repository,
@@ -557,7 +558,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(repository.postingExpectedVersions, [0, 1, 2]);
-      await tester.binding.setSurfaceSize(null);
+      await setUtenTestSurfaceSize(tester, null);
     },
   );
 
@@ -565,7 +566,7 @@ void main() {
     tester,
   ) async {
     final repository = _FakeAssetRepository(denyMakerApproval: true);
-    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    await setUtenTestSurfaceSize(tester, const Size(1280, 900));
     await _pumpWorkbench(
       tester,
       repository: repository,
@@ -585,7 +586,7 @@ void main() {
 
     expect(find.byKey(const Key('finance-asset-post-approve')), findsNothing);
     expect(repository.postingActionCalls, 1);
-    await tester.binding.setSurfaceSize(null);
+    await setUtenTestSurfaceSize(tester, null);
   });
 
   testWidgets('history exposes server-allowed approve and post actions', (
@@ -605,7 +606,7 @@ void main() {
         ),
       ],
     );
-    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    await setUtenTestSurfaceSize(tester, const Size(1280, 900));
     await _pumpWorkbench(
       tester,
       repository: repository,
@@ -627,15 +628,15 @@ void main() {
       find.byKey(const Key('finance-asset-history-post-run-history')),
       findsOneWidget,
     );
-    await tester.binding.setSurfaceSize(null);
+    await setUtenTestSurfaceSize(tester, null);
   });
 
   for (final reverseOnly in [false, true]) {
     testWidgets(
       'approved reversal posting uses reversal permission (reverseOnly=$reverseOnly)',
       (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1280, 900));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         final repository = _FakeAssetRepository(
           historyRuns: [
             AssetPostingRun.fromJson({
@@ -680,8 +681,8 @@ void main() {
     testWidgets(
       'asset posting reversal needs its own permission (reverseOnly=$reverseOnly)',
       (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1280, 900));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         await _pumpWorkbench(
           tester,
           repository: _FakeAssetRepository(
@@ -723,7 +724,7 @@ void main() {
   testWidgets('policy banner masks English policy keys with Chinese labels', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(720, 900));
+    await setUtenTestSurfaceSize(tester, const Size(720, 900));
     await _pumpWorkbench(
       tester,
       repository: _FakeAssetRepository(),
@@ -749,14 +750,14 @@ void main() {
       find.textContaining('DEFERRED_EXPENSE_CATEGORY_POLICY'),
       findsNothing,
     );
-    await tester.binding.setSurfaceSize(null);
+    await setUtenTestSurfaceSize(tester, null);
   });
 
   testWidgets('wide: overview scrolls away and ledger remains usable', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1280, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     await _pumpWorkbench(
       tester,
       repository: _FakeAssetRepository(),

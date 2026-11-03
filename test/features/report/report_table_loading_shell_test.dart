@@ -7,6 +7,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/inputs/uten_date_range_button.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/inputs/uten_reference_picker_field.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -37,6 +41,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/stock_ledger/material_trace_models.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../support/uten_test_actions.dart';
 
 Map<String, dynamic> _report(String label) => {
   'columns': [
@@ -138,8 +143,8 @@ Future<void> _mount(
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   final names = _Names(api, hold: page is FinanceAccountFlowPage);
-  await tester.binding.setSurfaceSize(const Size(1500, 1000));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(1500, 1000));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -148,7 +153,14 @@ Future<void> _mount(
         authenticatedScopeProvider.overrideWithValue(
           const AuthenticatedScope(userId: 'report-reader'),
         ),
-        currentPermissionsProvider.overrideWithValue(const {}),
+        currentPermissionsProvider.overrideWithValue(const {
+          Perm.financeReportExport,
+          Perm.purchaseReportExport,
+          Perm.salesReportExport,
+          Perm.subcontractReportExport,
+          Perm.stockReportExport,
+          Perm.productionReportExport,
+        }),
         isSuperAdminProvider.overrideWithValue(false),
         financeStatementReportPrefsProvider.overrideWith(_StatementPrefs.new),
         financeAccountFlowReportPrefsProvider.overrideWith(
@@ -169,6 +181,23 @@ Future<void> _mount(
   await tester.pump(const Duration(milliseconds: 200));
 }
 
+Future<UtenExportButton> _exportControl(WidgetTester tester) async {
+  var finder = find.byType(UtenExportButton);
+  if (finder.evaluate().isNotEmpty) return tester.widget(finder);
+  final actions = find.byKey(const ValueKey('master-table-action-overflow'));
+  expect(actions, findsOneWidget);
+  await tester.tap(actions);
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+  finder = find.byType(UtenExportButton);
+  expect(finder, findsOneWidget);
+  final control = tester.widget<UtenExportButton>(finder);
+  await tester.tapAt(const Offset(4, 4));
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 300));
+  return control;
+}
+
 void main() {
   testWidgets('恢复银行原币金额排序时不带已丢失币种的排序条件', (tester) async {
     final api = _Api();
@@ -177,10 +206,7 @@ void main() {
     api.pending.single.complete(_report('银行字段'));
     await tester.pumpAndSettle();
     expect(
-      tester
-          .widget<UtenExportButton>(find.byType(UtenExportButton))
-          .queryParams
-          .containsKey('sort'),
+      (await _exportControl(tester)).queryParams.containsKey('sort'),
       isFalse,
     );
     expect(tester.takeException(), isNull);
@@ -223,9 +249,7 @@ void main() {
     expect(accountTable(tester).items, isEmpty);
     expect(accountTable(tester).error, contains('暂时无法读取账户二'));
     expect(accountTable(tester).isLoading, isFalse);
-    final export = tester.widget<UtenExportButton>(
-      find.byType(UtenExportButton),
-    );
+    final export = (await _exportControl(tester));
     expect(export.queryParams['accountId'], 'account-2');
     accountTable(tester).onRetry!();
     await tester.pump();
@@ -272,9 +296,7 @@ void main() {
       expect(api.queries.last['dateTo'], isNotNull);
       api.pending.last.complete(accountReport('银行真实单据', 120));
       await tester.pumpAndSettle();
-      final export = tester.widget<UtenExportButton>(
-        find.byType(UtenExportButton),
-      );
+      final export = (await _exportControl(tester));
       expect(export.report, bank.$2);
       expect(export.queryParams, {
         for (final e in api.queries.last.entries)
@@ -337,9 +359,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     expect(api.queries.last['f.search.closingQty'], '>0');
     expect(
-      tester
-          .widget<UtenExportButton>(find.byType(UtenExportButton))
-          .queryParams['f.search.closingQty'],
+      (await _exportControl(tester)).queryParams['f.search.closingQty'],
       '>0',
     );
     api.pending.last.complete(response());
@@ -387,9 +407,7 @@ void main() {
       expect(table.serverColumnSearchKeys, {'differenceQty'});
       expect(table.filters['search.differenceQty'], '-10..0');
       expect(
-        tester
-            .widget<UtenExportButton>(find.byType(UtenExportButton))
-            .queryParams['f.search.differenceQty'],
+        (await _exportControl(tester)).queryParams['f.search.differenceQty'],
         '-10..0',
       );
       api.pending.last.complete({
@@ -436,6 +454,54 @@ void main() {
       );
       expect(loaded.isLoading, isFalse);
       expect(loaded.columns.single.label, '服务端真实字段');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final entry in <(String, Widget)>[
+    ('采购', const PurchaseReportTablePage(kind: PurchaseReportKind.detail)),
+    ('销售', const SalesReportPage(kind: SalesReportKind.detail)),
+    (
+      '委外',
+      const SubcontractReportTablePage(kind: SubcontractReportKind.detail),
+    ),
+    ('仓库', const WarehouseReportTablePage(kind: WarehouseReportKind.detail)),
+    ('生产', const ProductionReportPage(kind: ProductionReportKind.detail)),
+  ]) {
+    testWidgets('${entry.$1}日期单入口取消保留条件，确认后一次查询完整区间并等待结束', (tester) async {
+      final api = _Api();
+      await _mount(tester, entry.$2, api);
+      api.pending.single.complete(_report('真实字段'));
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenDateRangeButton), findsOneWidget);
+      final entryButton = find.descendant(
+        of: find.byType(UtenDateRangeButton),
+        matching: find.byType(UtenButton),
+      );
+      expect(find.text('选择日期'), findsOneWidget);
+      await tester.tap(entryButton);
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenDateRangePickerDialog), findsOneWidget);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(api.queries, hasLength(1));
+      await tester.tap(entryButton);
+      await tester.pumpAndSettle();
+      Navigator.of(
+        tester.element(find.byType(UtenDateRangePickerDialog)),
+      ).pop((start: DateTime(2024, 2), end: DateTime(2024, 2, 29)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      expect(api.queries, hasLength(2));
+      expect(api.queries.last['dateFrom'], '2024-02-01');
+      expect(api.queries.last['dateTo'], '2024-02-29');
+      expect(api.queries.last['page'], 1);
+      expect(find.byType(UtenBusyOverlay), findsOneWidget);
+      api.pending.last.complete(_report('新区间真实字段'));
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenBusyOverlay), findsNothing);
+      expect(find.byType(UtenDateRangePickerDialog), findsNothing);
       expect(tester.takeException(), isNull);
     });
   }

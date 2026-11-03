@@ -141,10 +141,16 @@ class UnplacedPublicSupplyEndToEndTest {
         Case c=create("BUY");UUID raw=UUID.randomUUID();
         fixture.insertGoods(raw,"PUBLIC-ROOT-RAW-"+raw,"自制根件原料","采购",c.world.unitId(),c.world.unitLegacy());
         fixture.insertBom(c.goods,raw,"1");
+        com.uten.imp.support.GoodsFixtureAdjustment.prepareForMasterMaintenance(db,c.goods);
+        fixture.loginAs(c.world.superAdminUserId());
+        com.uten.imp.support.GoodsFixtureAdjustment.maintainSourceType(db,
+                beans.getBean(com.uten.imp.features.master.goods.GoodsInlineEditService.class),c.goods,"自制");
         var target=analyses.preview(new PreviewRequest(null,null,null,c.world.warehouseId(),"public-root-"+UUID.randomUUID(),
                 List.of(new PreviewItem("OTHER",null,c.goods,null,c.world.unitId(),"public-root-source-"+UUID.randomUUID(),"采用现有采购供给的自制根件",BusinessTime.today().plusDays(10),new BigDecimal("2")))));
         target=analyses.saveRoutes(target.analysisId(),new RouteRequest(target.version(),target.fingerprint(),"public-root-route-"+UUID.randomUUID(),
-                target.flatMaterials().stream().map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.goodsId().equals(c.goods)?"MAKE":"BUY",null)).toList()));
+                target.flatMaterials().stream().filter(MaterialView::actionable).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.sourceSuggestion(),null)).toList()));
+        assertEquals("MAKE",material(target,c.goods).sourceConfirmed());
+        assertEquals("BUY",db.queryForObject("SELECT route FROM preplan_supply_actions WHERE id=?",String.class,c.action));
         Object assignment=ReflectionTestUtils.invokeMethod(fixture,"productionAssignment","public-root-"+UUID.randomUUID());
         UUID workshop=ReflectionTestUtils.invokeMethod(assignment,"workshopId"),worker=ReflectionTestUtils.invokeMethod(assignment,"workerId");
         var root=target.products().getFirst();
@@ -195,7 +201,7 @@ class UnplacedPublicSupplyEndToEndTest {
             inputs.add(new PreviewItem("OTHER",null,root,null,world.unitId(),"same-source-"+root,"同单供给认领回归",BusinessTime.today().plusDays(10),new BigDecimal("1000")));
         }
         var view=analyses.preview(new PreviewRequest(null,null,null,world.warehouseId(),"same-analysis-"+UUID.randomUUID(),inputs));
-        view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"same-route-"+UUID.randomUUID(),view.flatMaterials().stream().map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.goodsId().equals(goods)?route:"MAKE",null)).toList()));
+        view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"same-route-"+UUID.randomUUID(),view.flatMaterials().stream().filter(MaterialView::actionable).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.sourceSuggestion(),null)).toList()));
         var targets=view.flatMaterials().stream().filter(row->row.goodsId().equals(goods)).toList();assertEquals(2,targets.size());
         var source=commands.notifySupply(view.analysisId(),notify(view,targets.getFirst().materialLineId(),route,"10000","same-source-"+UUID.randomUUID()));
         UUID action=db.queryForObject("SELECT id FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SUPPLY'",UUID.class,view.analysisId());
@@ -257,13 +263,12 @@ class UnplacedPublicSupplyEndToEndTest {
         db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",world.supplierId(),goods);
         if(route.equals("SUBCONTRACT"))fixture.addSubcontractDirectMaterial(world,goods,"1"); // ADR-143 §二.3: 委外件要有直属物料才能下达
         var source=target(world,goods,"source");var sm=material(source,goods);
-        if(!route.equals(sm.sourceConfirmed()))source=analyses.saveRoutes(source.analysisId(),new RouteRequest(source.version(),source.fingerprint(),"route-"+source.analysisId(),List.of(new RouteDecision(sm.materialLineId(),sm.actionGroupKey(),route,null))));
-        sm=material(source,goods);
+        assertEquals(route,sm.sourceConfirmed(),"The source analysis adopts the configured master role");
         commands.notifySupply(source.analysisId(),new NotifyRequest(source.version(),source.fingerprint(),"source-"+source.analysisId(),route,
             List.of(sm.materialLineId()),List.of(),List.of(new SupplyQuantityInput(null,sm.materialLineId(),new BigDecimal("1000"),BigDecimal.ZERO))));
         Map<String,Object> row=db.queryForMap("SELECT id,public_surplus_external_item_id item FROM preplan_supply_actions WHERE analysis_id=? AND operation_type='SUPPLY'",source.analysisId());
         var target=target(world,goods,"target");
-        if(!route.equals(material(target,goods).sourceConfirmed()))target=analyses.saveRoutes(target.analysisId(),new RouteRequest(target.version(),target.fingerprint(),"route-"+target.analysisId(),List.of(new RouteDecision(material(target,goods).materialLineId(),material(target,goods).actionGroupKey(),route,null))));
+        assertEquals(route,material(target,goods).sourceConfirmed(),"The target analysis adopts the same master role");
         return new Case(world,goods,source,target,(UUID)row.get("id"),(UUID)row.get("item"));
     }
     private AnalysisView target(FullChainEndToEndTest.World world,UUID goods,String label){

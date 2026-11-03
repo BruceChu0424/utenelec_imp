@@ -29,7 +29,7 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
     if (!periodSelected) return '请选择时间范围';
     if (periodLoading) return '计算中';
     if (periodError) return '统计加载失败，请重试';
-    if (!row.periodSelected) return '期间统计不可用，请刷新';
+    if (!row.periodSelected) return '服务器未提供期间统计';
     if (money && row.costMasked) return '已隐藏';
     if (value == null) return '—';
     if (price) return '${formatQty(value)} 元';

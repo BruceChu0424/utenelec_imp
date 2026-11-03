@@ -2,7 +2,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/data_write_revision.dart';
 import '../../../shared/models/paged_result.dart';
-import '../../../shared/models/procurement_inbound.dart';
 import '../../../shared/paging/page_preparation_budget_provider.dart';
 import '../../../shared/paging/page_preparation_coordinator.dart';
 import '../../../shared/paging/prepared_page_read.dart';
@@ -13,11 +12,13 @@ import '../../../shared/providers/retain_read_snapshot.dart';
 import '../../../shared/sales_review/sales_order_review.dart';
 import '../../../shared/sales_review/sales_order_review_repository.dart';
 import '../../procurement_iqc_rejection/models/procurement_iqc_rejection.dart';
+import '../../procurement_iqc_rejection/providers/finance_iqc_prepared_page_provider.dart';
 import '../../procurement_iqc_rejection/repositories/procurement_iqc_rejection_repository.dart';
 import '../../sales/providers/sales_shipment_task_reads.dart';
 import '../../sales/repositories/sales_repository.dart';
 import '../../sales/models/sales_doc.dart';
 import '../../warehouse/repositories/procurement_inbound_repository.dart';
+import '../../warehouse/providers/finance_arrival_prepared_page_provider.dart';
 import '../models/finance_procurement_workflow.dart';
 import '../repositories/finance_procurement_workflow_repository.dart';
 import '../models/sales_quote_finance_review.dart';
@@ -28,15 +29,11 @@ import '../repositories/sales_quote_finance_review_repository.dart';
 class FinanceAuditPreparedPages {
   final confirmations = PreparedPageRead<SalesOrderFinancePendingItem>();
   final procurements = PreparedPageRead<FinanceProcurementApprovalTask>();
-  final arrivals = PreparedPageRead<ProcurementArrivalException>();
-  final iqc = PreparedPageRead<ProcurementIqcRejectionCase>();
   final quotes = PreparedPageRead<SalesQuoteFinanceListItem>();
 
   void dispose() {
     confirmations.dispose();
     procurements.dispose();
-    arrivals.dispose();
-    iqc.dispose();
     quotes.dispose();
   }
 }
@@ -124,17 +121,6 @@ financeProcurementSnapshot(FinanceProcurementApprovalPage response) =>
       ),
       snapshot: response,
     );
-
-Object financeArrivalReadKey(
-  Object repo, {
-  int page = 1,
-  String status = 'PENDING_FINANCE',
-}) => [repo, page, status];
-
-Object financeIqcReadKey(Object repo, ProcurementIqcRejectionFilter filter) => [
-  repo,
-  filter.toQuery(),
-];
 
 Object financeQuoteReadKey(
   Object repo, {
@@ -232,14 +218,16 @@ List<Future<void> Function()> financeAuditPreparationJobs(
       return [() => prepareFinanceShipmentFirstPage(ref)];
     case 'arrival':
       final repo = ref.watch(procurementInboundRepositoryProvider);
+      final arrivalPage = ref.watch(financeArrivalPreparedPageProvider);
       return [
-        () => pages.arrivals.prepare(
+        () => arrivalPage.prepare(
           financeArrivalReadKey(repo),
           () => repo.financeTasks(status: 'PENDING_FINANCE'),
         ),
       ];
     case 'iqc':
       final repo = ref.watch(procurementIqcRejectionRepositoryProvider);
+      final iqcPage = ref.watch(financeIqcPreparedPageProvider);
       return [
         () async {
           await ref
@@ -265,7 +253,7 @@ List<Future<void> Function()> financeAuditPreparationJobs(
         ])
           () {
             final filter = ProcurementIqcRejectionFilter(status: status);
-            return pages.iqc.prepare(
+            return iqcPage.prepare(
               financeIqcReadKey(repo, filter),
               () => repo.list(filter),
             );
@@ -291,6 +279,8 @@ final financeAuditPreparationJobsProvider =
         financeProcurementWorkflowRepositoryProvider,
         procurementInboundRepositoryProvider,
         procurementIqcRejectionRepositoryProvider,
+        financeArrivalPreparedPageProvider,
+        financeIqcPreparedPageProvider,
         salesRepositoryProvider,
         scopedCategoryReadProvider,
       ],

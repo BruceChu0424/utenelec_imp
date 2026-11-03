@@ -14,6 +14,7 @@ import 'package:uten_imp/features/sales/config/sales_report_config.dart';
 import 'package:uten_imp/features/sales/pages/sales_report_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../support/uten_test_actions.dart';
 
 class _Api extends ApiClient {
   _Api(this.production) : super(Dio());
@@ -71,8 +72,8 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance(),
           api = _Api(false);
-      await tester.binding.setSurfaceSize(const Size(1500, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1500, 1000));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
@@ -147,8 +148,8 @@ void main() {
         SharedPreferences.setMockInitialValues({});
         final preferences = await SharedPreferences.getInstance(),
             api = _Api(production);
-        await tester.binding.setSurfaceSize(const Size(1500, 1000));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1500, 1000));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         await tester.pumpWidget(
           ProviderScope(
             overrides: [
@@ -204,8 +205,8 @@ void main() {
         SharedPreferences.setMockInitialValues({});
         final preferences = await SharedPreferences.getInstance(),
             api = _Api(production);
-        await tester.binding.setSurfaceSize(const Size(1500, 1000));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1500, 1000));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         await tester.pumpWidget(
           ProviderScope(
             overrides: [

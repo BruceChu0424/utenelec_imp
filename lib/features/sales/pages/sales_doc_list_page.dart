@@ -145,9 +145,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   /// 订货单 null = 当前大类内全部状态；其他单据 null = 引导占位。
   _SalesDocSeg? _statusSeg;
 
-  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
-  /// 最近三个月加载），none 仅为值形态护栏。
-  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+  /// 历史记录段的时间门控值；默认近一个月（2026-11-03 用户口径，进段即按
+  /// 最近一个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastMonth();
 
   /// 可发货置顶（订货单工作台小项）：true 时后端按"有预留单排前 + 交货日升序"
   /// 排序，忽略列排序。
@@ -326,7 +326,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     _columnFilters.reset();
     _stage = null;
     _statusSeg = null;
-    _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+    _historyTime = UtenHistoryTimeValue.lastMonth();
     _clientIdFilter = null;
     _financeAuditFilter = null;
     _warehouseWorkStatusFilter = null;
@@ -725,9 +725,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     setState(() {
       _stage = stage;
       _statusSeg = null;
-      // 进历史段重新按默认近三个月加载；其他大类不消费时间门控，回 all() 占位。
+      // 进历史段重新按默认近一个月加载；其他大类不消费时间门控，回 all() 占位。
       _historyTime = stage == _kHistoryStage
-          ? UtenHistoryTimeValue.lastThreeMonths()
+          ? UtenHistoryTimeValue.lastMonth()
           : const UtenHistoryTimeValue.all();
     });
     // 订货单大类选中即加载（小类默认不选=全部效果）。
@@ -740,10 +740,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     clearDraftSelection();
     setState(() {
       _statusSeg = seg;
-      // 进历史段重新按默认近三个月加载；历史内换状态筛选保留已选时间
+      // 进历史段重新按默认近一个月加载；历史内换状态筛选保留已选时间
       // （ADR-180 历史保留原时间范围）；非历史段回 all() 占位。
       if (seg.history) {
-        if (!wasHistory) _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+        if (!wasHistory) _historyTime = UtenHistoryTimeValue.lastMonth();
       } else {
         _historyTime = const UtenHistoryTimeValue.all();
       }

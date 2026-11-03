@@ -88,7 +88,7 @@ void _collect(RouteBase base, String parent, List<String> out) {
   }
 }
 
-/// 原守卫基数 204，新增路径另由下方精确登记；当前 247 条守卫 / 19 条豁免。
+/// 原守卫基数 204，新增路径另由下方精确登记；当前 251 条守卫 / 19 条豁免。
 /// 2026-10-31 销售负责人队列与报价/订货详情独立登记三条路径，各自查看码不授予决策动作。
 /// 2026-10-29 客户端发布工作台 /settings/software-publish 上线（client-updates
 /// 批次），any=[client_release:publish]（V946 INDIVIDUAL_ONLY），守卫 244→245；
@@ -195,6 +195,12 @@ const _reviewedNewAnyGuardedRoutes = <String, List<String>>{
   // V925: entering the library requires view; folder ACL and mutations remain
   // independent server decisions, even for an employee holding this grant.
   '/company-files': [Perm.companyFileView],
+  // Scoped history inherits the same entry grant; the server still checks the
+  // concrete folder/record ACL and the independent restore authority.
+  '/company-files/history': [Perm.companyFileView],
+  '/company-files/history/:entityType/:id': [Perm.companyFileView],
+  '/admin/permissions/history': [Perm.authorizationManage],
+  '/admin/permissions/history/:entityType/:id': [Perm.authorizationManage],
   // ADR-189: history and revision reading use the current master view grant;
   // restoring remains an independent server-side action.
   '/basicinfo/history': _masterHistoryViewPermissions,

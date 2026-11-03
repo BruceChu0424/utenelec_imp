@@ -19,8 +19,8 @@ void registerDailyReportLateAttachmentAckTests() {
     testWidgets(
       'lateACK real CREATE upload commit restart readonly receipt: $outcome',
       (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1800, 1100));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1800, 1100));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         final storage = MemoryFormDraftStorage(),
             fake = _IdentityApi()..successfulCreate = true;
         final pipeline = ControlledAttachmentPipeline(

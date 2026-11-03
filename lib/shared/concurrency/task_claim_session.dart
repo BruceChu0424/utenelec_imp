@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/network/api_error_message.dart';
 import '../../core/ui/human_error_message.dart';
 import '../models/task_claim_view.dart';
 import '../repositories/task_claim_repository.dart';
@@ -194,7 +195,15 @@ class TaskClaimSession extends ChangeNotifier {
     }
     if (error.code == 'NETWORK') return _l10n.taskClaimNetworkUnavailable;
     if (error.code == 'NETWORK_TIMEOUT') return _l10n.taskClaimNetworkTimeout;
-    if (error.message.trim().isNotEmpty) return error.message.trim();
+    final message = error.message.trim();
+    final localDefault = apiErrorMessage(
+      error.code,
+      '',
+      httpStatus: error.httpStatus,
+    );
+    // ApiException also supplies display defaults for local/status fallbacks.
+    // Only an actual custom reason should override this session's language.
+    if (message.isNotEmpty && message != localDefault) return message;
     return switch (error.code) {
       'UNAUTHORIZED' => _l10n.taskClaimLoginExpired,
       'FORBIDDEN' => _l10n.taskClaimPermissionDenied,

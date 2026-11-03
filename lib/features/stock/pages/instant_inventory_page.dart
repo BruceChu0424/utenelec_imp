@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/utils/date_range_defaults.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 // 即时库存页（仓库管理 hub 入口，stock:view）。
 //
@@ -163,7 +164,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
   bool get _includeDefective =>
       _restoredIncludeDefective ?? ref.read(instantInventoryPrefsProvider);
   // 列排序态：null=后端默认（库存数量 DESC）。
-  DateTimeRange? _period;
+  DateTimeRange? _period = recentMonthDateRange();
   String? get _dateFrom =>
       _period == null ? null : inventoryPeriodDate(_period!.start);
   String? get _dateTo =>
@@ -758,7 +759,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
     }
   }
 
-  void _changePeriod(DateTimeRange? range) {
+  Future<void> _changePeriod(DateTimeRange? range) async {
     if (inlineEdit.active || range == _period) return;
     _loadRequests.begin();
     _queryContextVersion++;
@@ -770,7 +771,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
       _sortKey = null;
       _pageNum = 1;
     });
-    _load(1);
+    await _load(1);
   }
 
   Widget _buildCategoryPane() {

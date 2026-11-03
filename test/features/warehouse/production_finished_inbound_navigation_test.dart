@@ -27,6 +27,7 @@ import 'package:uten_imp/shared/badges/badge_registry.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import '../../helpers/warehouse_request_scope_fixture.dart';
+import '../../support/uten_test_actions.dart';
 
 const _arrivalTaskId = '20000000-0000-0000-0000-000000000001';
 const _finalTaskId = '10000000-0000-0000-0000-000000000001';
@@ -43,8 +44,8 @@ void main() {
   testWidgets(
     'hub entry loads once and refresh search arrival return stay operable',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1200, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1200, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final api = _TrackingFinishedInboundApi();
       final router = _buildRouter(initialLocation: RouteName.warehouse);
       addTearDown(router.dispose);
@@ -178,8 +179,8 @@ void main() {
   testWidgets(
     'view-only row menu is read-only and final-count double click works',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1200, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1200, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final api = _TrackingFinishedInboundApi()..rowsHandleable = false;
       final router = _buildRouter(
         initialLocation: RouteName.warehouseProductionFinishedInboundTasks,
@@ -222,8 +223,8 @@ void main() {
   testWidgets(
     'registration multi-select shows both route buttons and carries the route into the batch page',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1200, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1200, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final api = _TrackingFinishedInboundApi()..allowPreStock = true;
       final router = _buildRouter(
         initialLocation: RouteName.warehouseProductionFinishedInboundTasks,

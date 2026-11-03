@@ -11,18 +11,17 @@ import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
-import 'package:uten_imp/components/layout/uten_collapsible_section.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/finance/intake/finance_intake_launcher.dart';
-import 'package:uten_imp/features/finance/config/finance_doc_config.dart';
 import 'package:uten_imp/features/finance/models/finance_doc.dart';
 import 'package:uten_imp/features/finance/pages/finance_doc_edit_page.dart';
 import 'package:uten_imp/features/finance/widgets/finance_entry_file_picker.dart';
 import 'package:uten_imp/features/finance/widgets/finance_grid_columns.dart';
+import 'package:uten_imp/features/finance/widgets/ar_ap_picker_dialog.dart';
 import 'package:uten_imp/shared/attachments/attachment_file_rules.dart';
 import 'package:uten_imp/shared/attachments/business_attachment_section.dart';
 import 'package:uten_imp/shared/attachments/pending_attachment_controller.dart';
@@ -36,6 +35,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
 import '../../support/document_scope_capability_overrides.dart';
 import '../../support/native_detail_reader_overrides.dart';
+import '../../support/uten_test_actions.dart';
 
 final _permissions = StateProvider<Set<String>>((ref) => _allPermissions);
 final _identity = StateProvider<AuthenticatedScope?>((ref) => _initialIdentity);
@@ -52,7 +52,7 @@ const _allPermissions = {
   Perm.attachmentView,
   Perm.aiUse,
 };
-const _recognizeKey = ValueKey('finance-entry-recognize');
+Finder get _recognizeAction => find.text('识别银行回单');
 
 void main() {
   for (final type in [FinanceDocType.receipt, FinanceDocType.payment]) {
@@ -112,43 +112,59 @@ void main() {
     expect(env.api.writes, isEmpty);
   });
 
-  testWidgets('empty receipt keeps recognition until AR rows are referenced', (
-    tester,
-  ) async {
-    final launch = _Launch();
-    final env = await _pump(tester, launch: launch, withArRow: false);
-    await _selectAccount(tester, FinanceDocType.receipt);
-    final bankCells = find.byKey(
-      const ValueKey('finance-receipt-bank-reference'),
-    );
-    expect(bankCells, findsNothing);
-    await _recognize(tester);
-    expect(launch.calls, 1);
-    expect(bankCells, findsNothing);
-    expect(
-      (await _field(tester, FinanceDocType.receipt, 'account-amount')).text,
-      '123456789012.34',
-    );
-    expect((await _pending(tester)).items, hasLength(1));
+  testWidgets(
+    'AR rows inherit the source reference with independent entry controllers',
+    (tester) async {
+      final launch = _Launch();
+      final env = await _pump(tester, launch: launch, withArRow: false);
+      await _selectAccount(tester, FinanceDocType.receipt);
+      final initial = _table(tester).controller.rows.single;
+      expect(initial.appliedLedgerId, isNull);
+      expect(initial.entry.bankReference.text, isEmpty);
+      await _recognize(tester);
+      expect(launch.calls, 1);
+      expect(initial.entry.bankReference.text, 'BANK-20261003-001');
+      expect(
+        (await _field(tester, FinanceDocType.receipt, 'account-amount')).text,
+        '123456789012.34',
+      );
+      expect((await _pending(tester)).items, hasLength(1));
 
-    await _addArRow(tester);
-    await _addArRow(tester, index: 2);
-    final first = await _field(
-      tester,
-      FinanceDocType.receipt,
-      'bank-reference',
-    );
-    expect(bankCells, findsNWidgets(2));
-    final second = tester.widget<TextField>(bankCells.last).controller!;
-    expect(first, same(second));
-    expect(first.text, 'BANK-20261003-001');
-    await tester.ensureVisible(bankCells.last);
-    await tester.enterText(bankCells.last, 'BANK-REVIEWED-002');
-    await tester.pumpAndSettle();
-    expect(first.text, 'BANK-REVIEWED-002');
-    expect(env.api.writes, isEmpty);
-    expect(tester.takeException(), isNull);
-  });
+      await _addArRow(tester);
+      await _addArRow(tester, index: 2);
+      final first = await _field(
+        tester,
+        FinanceDocType.receipt,
+        'bank-reference',
+      );
+      final rows = _table(tester).controller.rows;
+      expect(rows.map((row) => row.appliedLedgerId), ['ledger-1', 'ledger-2']);
+      final second = rows.last.entry.bankReference;
+      expect(first, isNot(same(second)));
+      expect(first.text, 'BANK-20261003-001');
+      expect(second.text, 'BANK-20261003-001');
+      expect(rows.first.entry.accountId, 'account-1');
+      expect(rows.last.entry.accountId, 'account-1');
+      expect(rows.first.entry.accountAmount.text, '123456789012.34');
+      expect(
+        rows.last.entry.accountAmount.text,
+        isEmpty,
+        reason:
+            'Appending another AR row must not duplicate the bank actual amount.',
+      );
+      final secondField = find.byWidgetPredicate(
+        (widget) => widget is TextField && widget.controller == second,
+      );
+      await tester.ensureVisible(secondField);
+      await tester.enterText(secondField, 'BANK-REVIEWED-002');
+      await tester.pumpAndSettle();
+      expect(first.text, 'BANK-20261003-001');
+      expect(second.text, 'BANK-REVIEWED-002');
+      expect((await _pending(tester)).items, hasLength(1));
+      expect(env.api.writes, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   for (final removed in [
     Perm.financeReceiptView,
@@ -162,7 +178,7 @@ void main() {
         launch: launch,
         permissions: {..._allPermissions}..remove(removed),
       );
-      expect(find.byKey(_recognizeKey), findsNothing);
+      expect(_recognizeAction, findsNothing);
       expect(launch.calls, 0);
     });
   }
@@ -172,7 +188,7 @@ void main() {
   ) async {
     final launch = _Launch();
     final env = await _pump(tester, launch: launch, existing: true);
-    expect(find.byKey(_recognizeKey), findsNothing);
+    expect(_recognizeAction, findsNothing);
     expect(launch.calls, 0);
     expect(env.api.writes, isEmpty);
   });
@@ -304,19 +320,20 @@ void main() {
   }
 }
 
+Finder get _tableFinder => find.byWidgetPredicate(
+  (widget) => widget is UtenEditableGrid<FinanceGridRow>,
+);
+
+UtenEditableGrid<FinanceGridRow> _table(WidgetTester tester) =>
+    tester.widget<UtenEditableGrid<FinanceGridRow>>(_tableFinder);
+
 Future<void> _recognize(WidgetTester tester, {bool pending = false}) async {
-  tester
-      .state<ScrollableState>(find.byType(Scrollable).first)
-      .position
-      .jumpTo(0);
+  final grid = _table(tester).controller;
+  grid.setSelected(grid.rows, false);
+  grid.setSelected([grid.rows.first], true);
   await tester.pump();
-  final entry = find.byKey(_recognizeKey);
-  await tester.scrollUntilVisible(
-    entry,
-    300,
-    scrollable: find.byType(Scrollable).first,
-  );
-  await tester.tap(entry);
+  await tester.ensureVisible(_recognizeAction);
+  await tester.tap(_recognizeAction);
   if (pending) {
     await tester.pump(const Duration(milliseconds: 100));
   } else {
@@ -329,105 +346,84 @@ Future<TextEditingController> _field(
   FinanceDocType type,
   String suffix,
 ) async {
-  if (type == FinanceDocType.receipt && suffix == 'account-amount') {
-    final sectionFinder = find.byKey(
-      const ValueKey('finance-receipt-settlement-fees'),
-    );
-    await tester.scrollUntilVisible(
-      sectionFinder,
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    final section = tester.widget<UtenCollapsibleSection>(sectionFinder);
-    if (!(section.expanded ?? section.initiallyExpanded)) {
-      await tester.tap(
-        find.descendant(of: sectionFinder, matching: find.text(section.title)),
-      );
-      await tester.pumpAndSettle();
-    }
-  }
-  final field = find.byKey(ValueKey('finance-${type.name}-$suffix')).first;
-  await tester.scrollUntilVisible(
-    field,
-    200,
-    scrollable: find.byType(Scrollable).first,
-  );
-  return tester.widget<TextField>(field).controller!;
+  final table = _table(tester);
+  expect(table.tableKey, 'finance.${type.name}.entry.v1');
+  final key = switch (suffix) {
+    'account-amount' => 'entryAccountAmount',
+    'bank-reference' => 'entryBankReference',
+    'bank-fee' => 'entryFee',
+    _ => throw StateError('Unsupported entry field $suffix'),
+  };
+  expect(table.columns.map((column) => column.key), contains(key));
+  final entry = table.controller.rows.first.entry;
+  return switch (suffix) {
+    'account-amount' => entry.accountAmount,
+    'bank-reference' => entry.bankReference,
+    'bank-fee' => entry.fee,
+    _ => throw StateError('Unsupported entry field $suffix'),
+  };
 }
 
 Future<void> _addArRow(WidgetTester tester, {int index = 1}) async {
-  final gridFinder = find.byWidgetPredicate(
-    (widget) => widget is UtenEditableGrid<FinanceGridRow>,
-  );
-  await tester.scrollUntilVisible(
-    gridFinder,
-    -200,
-    scrollable: find.byType(Scrollable).first,
-  );
-  final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(gridFinder);
-  final row = FinanceGridRow(mode: ItemMode.settle)
-    ..appliedLedgerId = 'ledger-$index'
-    ..appliedBillNo = 'AR-00$index'
-    ..sourceDocType = 'SALES_SHIPMENT'
-    ..sourceDocNo = 'XSCK-00$index'
-    ..currencyId = 'currency-cny'
-    ..currencyCode = 'CNY'
-    ..receivableOriginalText = '100.00'
-    ..balanceOriginalText = '100.00';
-  row.amount.text = '1.00';
-  row.exchangeRate.text = '1';
-  grid.controller.addRow(row);
+  final grid = _table(tester).controller;
+  final target = grid.rows.first;
+  target.entry.partyId = 'client-1';
+  target.entry.touch();
+  grid.setSelected(grid.rows, false);
+  grid.setSelected([target], true);
+  await tester.pumpAndSettle();
+  final import = find.text('引用应收').first;
+  await tester.ensureVisible(import);
+  await tester.tap(import);
+  await tester.pumpAndSettle();
+  final selected = find.byKey(ValueKey('ar-ap-select-ledger-$index'));
+  expect(selected, findsOneWidget);
+  await tester.ensureVisible(selected);
+  await tester.tap(selected);
+  await tester.pumpAndSettle();
+  final confirm = find.byKey(const ValueKey('ar-ap-confirm'));
+  await tester.ensureVisible(confirm);
+  await tester.tap(confirm);
   await tester.pumpAndSettle();
 }
 
 Future<PendingAttachmentController> _pending(WidgetTester tester) async {
-  final section = find.byKey(const ValueKey('finance-doc-draft-attachments'));
-  await tester.scrollUntilVisible(
-    section,
-    200,
-    scrollable: find.byType(Scrollable).first,
+  final section = find.byWidgetPredicate(
+    (widget) =>
+        widget is BusinessAttachmentSection && widget.draftController != null,
   );
+  await tester.ensureVisible(section);
   return tester.widget<BusinessAttachmentSection>(section).draftController!;
 }
 
 Future<void> _selectAccount(WidgetTester tester, FinanceDocType type) async {
-  if (type == FinanceDocType.payment) {
-    final field = find.byWidgetPredicate(
-      (widget) => widget is UtenDropdownField && widget.label == '付款账户',
-    );
-    tester.widget<UtenDropdownField>(field).onChanged('account-1');
-  } else {
-    final field = find.byKey(const Key('finance-receipt-account-picker'));
-    expect(
-      find.descendant(of: field, matching: find.text('收款账户')),
-      findsWidgets,
-    );
-    await tester.scrollUntilVisible(
-      field,
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(field);
-    await tester.pumpAndSettle();
-    final accountRow = find.byKey(
-      const ValueKey('finance-account-picker-account-1'),
-    );
-    await tester.ensureVisible(accountRow);
-    expect(
-      find.descendant(of: accountRow, matching: find.text('人民币账户')),
-      findsOneWidget,
-    );
-    expect(
-      find.descendant(of: accountRow, matching: find.text('ZH000001')),
-      findsOneWidget,
-    );
-    await tester.tap(accountRow);
-    await tester.pumpAndSettle();
-    final confirm = find.byKey(const Key('finance-account-picker-confirm'));
-    await tester.ensureVisible(confirm);
-    await tester.tap(confirm);
-  }
+  expect(_table(tester).tableKey, 'finance.${type.name}.entry.v1');
+  final cell = find
+      .byKey(const ValueKey(('uten-grid-cell', 'entryAccount')))
+      .first;
+  final action = find.descendant(of: cell, matching: find.byType(UtenButton));
+  await tester.ensureVisible(action);
+  await tester.tap(action);
   await tester.pumpAndSettle();
+  final accountRow = find.byKey(
+    const ValueKey('finance-account-picker-account-1'),
+  );
+  await tester.ensureVisible(accountRow);
+  expect(
+    find.descendant(of: accountRow, matching: find.text('人民币账户')),
+    findsOneWidget,
+  );
+  expect(
+    find.descendant(of: accountRow, matching: find.text('ZH000001')),
+    findsOneWidget,
+  );
+  await tester.tap(accountRow);
+  await tester.pumpAndSettle();
+  final confirm = find.byKey(const Key('finance-account-picker-confirm'));
+  await tester.ensureVisible(confirm);
+  await tester.tap(confirm);
+  await tester.pumpAndSettle();
+  expect(_table(tester).controller.rows.first.entry.accountId, 'account-1');
 }
 
 class _Launch {
@@ -489,8 +485,8 @@ Future<({ProviderContainer container, _Api api})> _pump(
   bool existing = false,
   bool withArRow = true,
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 1200));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(1600, 1200));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   final api = _Api();
@@ -528,6 +524,11 @@ Future<({ProviderContainer container, _Api api})> _pump(
       ),
     ],
   );
+  addTearDown(() async {
+    await tester.pumpWidget(const SizedBox());
+    router.dispose();
+    container.dispose();
+  });
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
@@ -541,13 +542,26 @@ Future<({ProviderContainer container, _Api api})> _pump(
   );
   await tester.pumpAndSettle();
   if (type == FinanceDocType.receipt && !existing && withArRow) {
-    await _addArRow(tester);
+    final row = _table(tester).controller.rows.single;
+    row.applyLedger(
+      const AppliedArAp(
+        ledgerId: 'ledger-1',
+        appliedBillNo: 'AR-001',
+        receiptAmountText: '1.00',
+        sourceDocType: 'SALES_SHIPMENT',
+        sourceDocNo: 'XSCK-001',
+        currencyId: 'currency-cny',
+        currencyCode: 'CNY',
+        currencyName: '人民币',
+        receivableOriginalText: '100.00',
+        balanceOriginalText: '100.00',
+      ),
+    );
+    row.entry.partyId = 'client-1';
+    row.entry.currencyId = 'currency-cny';
+    row.entry.touch();
+    await tester.pumpAndSettle();
   }
-  addTearDown(() async {
-    await tester.pumpWidget(const SizedBox());
-    router.dispose();
-    container.dispose();
-  });
   expect(tester.takeException(), isNull);
   return (container: container, api: api);
 }
@@ -568,23 +582,57 @@ class _Api extends ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
-  }) async => path.endsWith('/draft-1')
-      ? {
-          'id': 'draft-1',
-          'status': 0,
-          'version': 1,
-          'makerId': 'finance-maker',
-          'billNo': 'SK-001',
-          'billDate': '2026-10-03',
-          'receiptKind': 'AR_SETTLEMENT',
-          'accountId': 'account-1',
-          'items': <Map<String, dynamic>>[],
-        }
-      : {
-          'items': <Map<String, dynamic>>[],
-          'total': 0,
-          'counts': <String, int>{},
-        };
+  }) async {
+    if (path == '/finance/ar-ap') {
+      return {
+        'items': [
+          for (final index in [1, 2])
+            {
+              'id': 'ledger-$index',
+              'direction': 'AR',
+              'clientId': 'client-1',
+              'clientName': '客户甲',
+              'billNo': 'AR-00$index',
+              'billDate': '2026-10-03',
+              'sourceDocType': 'SALES_SHIPMENT',
+              'sourceDocNo': 'XSCK-00$index',
+              'currencyId': 'currency-cny',
+              'currencyCode': 'CNY',
+              'currencyName': '人民币',
+              'amountOriginal': 100,
+              'amountOriginalExact': '100.00',
+              'amountReceivedOriginal': 0,
+              'amountReceivedOriginalExact': '0',
+              'amountWriteOffOriginal': 0,
+              'amountWriteOffOriginalExact': '0',
+              'amountBalanceOriginal': 100,
+              'amountBalanceOriginalExact': '100.00',
+            },
+        ],
+        'page': 1,
+        'size': 50,
+        'total': 2,
+        'totalPages': 1,
+      };
+    }
+    return path.endsWith('/draft-1')
+        ? {
+            'id': 'draft-1',
+            'status': 0,
+            'version': 1,
+            'makerId': 'finance-maker',
+            'billNo': 'SK-001',
+            'billDate': '2026-10-03',
+            'receiptKind': 'AR_SETTLEMENT',
+            'accountId': 'account-1',
+            'items': <Map<String, dynamic>>[],
+          }
+        : {
+            'items': <Map<String, dynamic>>[],
+            'total': 0,
+            'counts': <String, int>{},
+          };
+  }
 
   @override
   Future<List<Map<String, dynamic>>> getList(

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 // 物料分析「手工需求单」录入(ADR-130)。
 //
 // 一张手工需求单 = 一个单头(来源类型 / 需求编号 / 来源原因 / 需求日期) + 多行货品
@@ -585,7 +586,7 @@ materialManualDemandGridColumns({
           return InkWell(
             onTap: enabled
                 ? () async {
-                    final picked = await showDatePicker(
+                    final picked = await showUtenDatePicker(
                       context: context,
                       initialDate: materialManualDemandPickerInitialDate(
                         value,

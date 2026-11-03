@@ -15,13 +15,14 @@ import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_doc_list_page.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category_table.dart';
+import '../../support/uten_test_actions.dart';
 
 void main() {
   testWidgets('receipt headers send supplier and warehouse filters to API', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1500, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1500, 1000));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     SharedPreferences.setMockInitialValues(const {});
     final preferences = await SharedPreferences.getInstance();
     final api = _PurchaseFilterApi();
@@ -173,7 +174,7 @@ class _PurchaseFilterApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == ApiEndpoints.suppliers) {
+    if (path == ApiEndpoints.businessReferenceSuppliers) {
       supplierCandidateQueries.add(Map<String, dynamic>.from(query!));
       return const {
         'items': [

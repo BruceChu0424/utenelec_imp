@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using Uten.Legacy.Core;
 using Uten.Legacy.Desktop.Controls;
 
@@ -19,7 +20,10 @@ namespace Uten.Legacy.Desktop.Features.Units
             public string Value { get; set; }
         }
         private readonly TextBox keyword = new TextBox(), actor = new TextBox();
-        private readonly TextBox from = new TextBox(), to = new TextBox(), summaryKeyword = new TextBox();
+        private readonly TextBox summaryKeyword = new TextBox();
+        private readonly Button dateRange = new Button { Content = "选择日期" };
+        private readonly Button clearDate = new Button();
+        private DateTime? dateFrom, dateTo;
         private readonly ComboBox action = new ComboBox(), sourceType = new ComboBox();
         private readonly WrapPanel filters = new WrapPanel();
         private readonly StackPanel scopeBar = new StackPanel { Orientation = Orientation.Horizontal };
@@ -40,6 +44,8 @@ namespace Uten.Legacy.Desktop.Features.Units
         {
             if (recordId != null) UnitHistoryContract.RequireUuid(recordId);
             recordScopeId = recordId;
+            dateTo = UtenDateRangeDialog.ChinaToday;
+            dateFrom = UtenDateRangeDialog.RecentMonthStart(dateTo.Value);
             if (recordId != null)
             {
                 scopeBar.Margin = new Thickness(0, 0, 0, Space("S8"));
@@ -51,10 +57,25 @@ namespace Uten.Legacy.Desktop.Features.Units
             AddFilter("编号、名称或摘要", keyword, 180); AddFilter("操作人", actor, 130);
             AddChoice("动作", action, new[] { "CREATE", "EDIT", "DELETE", "STATUS", "RESTORE" }, UnitHistoryContract.ActionLabel);
             AddChoice("修改范围", sourceType, new[] { "RECORD", "EXTENSION" }, UnitHistoryContract.SourceLabel);
-            AddFilter("开始日期 yyyy-MM-dd", from, 145); AddFilter("结束日期 yyyy-MM-dd", to, 145);
+            var dateEntry = new Grid();
+            dateEntry.ColumnDefinitions.Add(new ColumnDefinition()); dateEntry.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            dateRange.BorderThickness = new Thickness(0); dateRange.HorizontalContentAlignment = HorizontalAlignment.Left;
+            dateRange.Click += (sender, args) => ChooseDates(); dateEntry.Children.Add(dateRange);
+            clearDate.Content = "×"; clearDate.ToolTip = "清除日期";
+            clearDate.Style = (Style)FindResource("Uten.CaptionButton"); clearDate.Background = (Brush)FindResource("Uten.Caption.Close");
+            System.Windows.Automation.AutomationProperties.SetName(clearDate, "清除日期");
+            clearDate.Click += (sender, args) =>
+            {
+                if (!Current || Mutating) return;
+                dateFrom = dateTo = null; UpdateDateEntry(); InvalidateFilters(); cursors.Clear(); cursors.Add(null);
+            };
+            Grid.SetColumn(clearDate, 1); dateEntry.Children.Add(clearDate);
+            var dateCard = UtenSurfaces.Wrap(dateEntry, UtenSurfaceRole.Card);
+            dateCard.VerticalAlignment = VerticalAlignment.Bottom; dateCard.Margin = new Thickness(0, 0, Space("S8"), Space("S8"));
+            filters.Children.Add(dateCard); UpdateDateEntry();
             AddFilter("摘要关键词", summaryKeyword, 170);
             Body.Children.Add(filters);
-            Body.Children.Add(Note("按版本顺序向前翻页。列表只显示概要，选中版本后读取完整差异和当前可恢复范围。"));
+
             revisions.Columns.Add(Column("编号", "RecordCode", 105)); revisions.Columns.Add(Column("单位", "RecordName", 130));
             revisions.Columns.Add(Column("动作", "ActionLabel", 90)); revisions.Columns.Add(Column("范围", "SourceLabel", 100));
             revisions.Columns.Add(Column("操作人", "ActorName", 115)); revisions.Columns.Add(Column("时间", "RecordedAtDisplay", 165));
@@ -70,11 +91,11 @@ namespace Uten.Legacy.Desktop.Features.Units
             refresh = ActionButton("查询 / 刷新", () => { cursors.Clear(); cursors.Add(null); _ = LoadPageAsync(); });
             before = ActionButton("恢复到修改前", () => { _ = RestoreAsync(true); });
             after = ActionButton("恢复到修改后", () => { _ = RestoreAsync(false); }, primary: true);
-            ActionButton("关闭", () => Close());
+
             previous.Click += async (sender, args) => { if (cursors.Count > 1) { cursors.RemoveAt(cursors.Count - 1); await LoadPageAsync(); } };
             next.Click += async (sender, args) => { if (page?.Value.NextCursor != null) { cursors.Add(page.Value.NextCursor); await LoadPageAsync(); } };
             revisions.SelectionChanged += async (sender, args) => await LoadDetailAsync();
-            foreach (var input in new[] { keyword, actor, from, to, summaryKeyword })
+            foreach (var input in new[] { keyword, actor, summaryKeyword })
                 input.TextChanged += (sender, args) => InvalidateFilters();
             action.SelectionChanged += (sender, args) => InvalidateFilters(); sourceType.SelectionChanged += (sender, args) => InvalidateFilters();
             Loaded += async (sender, args) => await LoadPageAsync(); UpdateActions();
@@ -111,8 +132,25 @@ namespace Uten.Legacy.Desktop.Features.Units
         private UnitHistoryQuery Query()
         {
             return new UnitHistoryQuery(recordScopeId, cursors[cursors.Count - 1], (action.SelectedItem as Choice)?.Value,
-                null, Empty(actor.Text), Empty(keyword.Text), Empty(from.Text), Empty(to.Text), 50,
+                null, Empty(actor.Text), Empty(keyword.Text), DateText(dateFrom), DateText(dateTo), 50,
                 (sourceType.SelectedItem as Choice)?.Value, Empty(summaryKeyword.Text));
+        }
+        private static string DateText(DateTime? value) { return value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture); }
+        private void ChooseDates()
+        {
+            if (!Current || Mutating) return;
+            var dialog = new UtenDateRangeDialog(this, dateFrom, dateTo);
+            dialog.ShowDialog();
+            if (!Current || !dialog.Applied) return;
+            dateFrom = dialog.SelectedStart; dateTo = dialog.SelectedEnd;
+            UpdateDateEntry();
+            InvalidateFilters(); cursors.Clear(); cursors.Add(null);
+        }
+        private void UpdateDateEntry()
+        {
+            string value = (DateText(dateFrom) ?? "不限") + " 至 " + (DateText(dateTo) ?? "不限");
+            dateRange.Content = dateFrom.HasValue || dateTo.HasValue ? "选择日期 " + value : "选择日期";
+            dateRange.ToolTip = value; clearDate.Visibility = dateFrom.HasValue || dateTo.HasValue ? Visibility.Visible : Visibility.Collapsed;
         }
         private static string Empty(string value) { return String.IsNullOrWhiteSpace(value) ? null : value; }
         private async Task LoadPageAsync()
@@ -187,8 +225,8 @@ namespace Uten.Legacy.Desktop.Features.Units
             pageSequence++; detailSequence++; pageRead?.Cancel(); detailRead?.Cancel(); page = null; selected = null;
             revisions.ItemsSource = changes.ItemsSource = null; detail.Text = paging.Text = "";
             scopeBar.Visibility = Visibility.Collapsed;
-            recordScopeId = null;
-            foreach (var box in new[] { keyword, actor, from, to, summaryKeyword }) box.Clear();
+            recordScopeId = null; dateFrom = dateTo = null; UpdateDateEntry();
+            foreach (var box in new[] { keyword, actor, summaryKeyword }) box.Clear();
             cursors.Clear(); cursors.Add(null);
         }
         protected override void OnClosed(EventArgs args) { base.OnClosed(args); pageRead?.Dispose(); detailRead?.Dispose(); }

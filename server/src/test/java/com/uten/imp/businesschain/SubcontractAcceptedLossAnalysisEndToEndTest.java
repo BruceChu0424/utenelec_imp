@@ -60,7 +60,7 @@ class SubcontractAcceptedLossAnalysisEndToEndTest {
     void acceptedLossPreservesBothThePublicTailAndAnyRealPrivateShortage(String ordered,String receivedQty,String remaining) {
         // 来源需求100。公共尾差：下110、收100、损耗10，私有需求足额完成。
         // 私有真缺口：下100、收90、损耗10，仍须补10，损耗不能冒充实收。
-        var c=h.createWithChild("100",1);var w=c.world();h.setRoute(c,c.common(),"SUBCONTRACT");
+        var c=h.createWithChild("100",1,"SUBCONTRACT");var w=c.world();h.assertMasterRoute(c,c.common(),"SUBCONTRACT");
         var batch=h.writer.submit(c.analysis(),h.command(c,List.of(h.input(c,c.common(),"SUBCONTRACT",ordered,true))))
                 .batches().getFirst();
         UUID applicationItem=h.db.queryForObject("SELECT id FROM subcontract_application_items WHERE application_id=? AND NOT is_deleted",UUID.class,batch.documentId());

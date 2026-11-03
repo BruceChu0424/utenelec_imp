@@ -8,6 +8,7 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
@@ -237,6 +238,42 @@ class MasterReferenceValidationAdapterTest {
         adapter.requireVisibleActiveClient(id);
         assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->adapter.requireSelectableClient(id)).getCode());
         verify(em).createNativeQuery("SELECT is_hidden FROM clients WHERE id=:id FOR SHARE");
+    }
+
+    @Test
+    void readOnlyClientPrefillChecksHiddenStateWithoutAcquiringARowLock() throws Exception {
+        EntityManager em=mock(EntityManager.class);
+        tupleQuery(em,new Object[]{false,null,"使用"});
+        Query hidden=mock(Query.class);
+        when(em.createNativeQuery(org.mockito.ArgumentMatchers.startsWith("SELECT is_hidden"))).thenReturn(hidden);
+        when(hidden.setParameter(anyString(),any())).thenReturn(hidden);
+        when(hidden.getResultList()).thenReturn(List.of(false));
+        MasterReferenceValidationAdapter adapter=adapter(em,mock(OwnerVisibility.class),false);
+        boolean previous=TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+        try {
+            TransactionSynchronizationManager.setCurrentTransactionReadOnly(true);
+            adapter.requireSelectableClient(UUID.randomUUID());
+        } finally {
+            TransactionSynchronizationManager.setCurrentTransactionReadOnly(previous);
+        }
+        verify(em).createNativeQuery("SELECT is_hidden FROM clients WHERE id=:id");
+    }
+
+    @Test
+    void readOnlySupplierReferencesUseTheOwningSnapshotWithoutAcquiringARowLock() throws Exception {
+        EntityManager em=mock(EntityManager.class);
+        tupleQuery(em,new Object[]{false,"使用",false,false});
+        MasterReferenceValidationAdapter adapter=adapter(em,mock(OwnerVisibility.class),false);
+        boolean previous=TransactionSynchronizationManager.isCurrentTransactionReadOnly();
+        try {
+            TransactionSynchronizationManager.setCurrentTransactionReadOnly(true);
+            adapter.requireSelectableSupplier(UUID.randomUUID());
+        } finally {
+            TransactionSynchronizationManager.setCurrentTransactionReadOnly(previous);
+        }
+        ArgumentCaptor<String> sql=ArgumentCaptor.forClass(String.class);
+        verify(em).createNativeQuery(sql.capture());
+        assertTrue(!sql.getValue().contains("FOR SHARE"));
     }
 
     @Test

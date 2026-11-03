@@ -61,7 +61,8 @@ class BootstrapInventoryContractTest(unittest.TestCase):
                 'employee_identity_historical_claims', 'employee_identity_merge_payloads',
                 'employee_identity_merges', 'employee_identity_review_certificates', 'employee_identity_user_tombstones',
                 'employee_legacy_identity_aliases', 'party_month_dirty', 'party_monthly_summaries',
-                'scheduled_task_runs', 'stock_monthly_summaries', 'sales_order_manager_review_events'):
+                'scheduled_task_runs', 'stock_monthly_summaries', 'sales_order_manager_review_events',
+                'finance_batch_entry_commands', 'stock_reservation_storage_events', 'stock_reservation_storage_positions'):
             with self.subTest(table=table):
                 self.assertEqual(inventory[table], 'EMPTY')
 
@@ -95,7 +96,7 @@ class BootstrapInventoryPostgresTest(unittest.TestCase):
     def tearDownClass(cls):
         subprocess.run(['docker', 'rm', '--force', cls.container], check=True, capture_output=True)
 
-    def execute(self, change='', error=None, postcheck=''):
+    def fixture_sql(self):
         columns = {
             'legacy_migration_runs': '''run_id uuid,status text,target text,migration_mode text,
                 finished_at timestamptz,exit_code int,mapping_version text,migration_repository_commit text,
@@ -115,11 +116,18 @@ class BootstrapInventoryPostgresTest(unittest.TestCase):
             for name, _ in INVENTORY)
         fixture += '\nINSERT INTO employee_identity_legacy_roles(source_table,uuid_column,legacy_column,namespace_key) VALUES ' + ','.join(
             '(' + ','.join(repr(value) for value in role) + ')' for role in LEGACY_ROLES) + ';'
+        return fixture
+
+    def query(self, database, sql):
+        return subprocess.run(['docker', 'exec', '-i', '-e', 'PGPASSWORD=isolated-contract-only', self.container,
+                               'psql', '-h', '127.0.0.1', '-d', database, '-X', '-q', '-t', '-A',
+                               '-v', 'ON_ERROR_STOP=1', '-U', 'postgres'], input=sql.encode('utf-8'),
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def execute(self, change='', error=None, postcheck=''):
+        fixture = self.fixture_sql()
         sql = fixture + '\n' + change + '\n' + GUARD + '\n' + postcheck + '\nROLLBACK;'
-        result = subprocess.run(['docker', 'exec', '-i', '-e', 'PGPASSWORD=isolated-contract-only', self.container,
-                                 'psql', '-h', '127.0.0.1', '-d', 'postgres', '-X', '-q',
-                                 '-v', 'ON_ERROR_STOP=1', '-U', 'postgres'], input=sql.encode('utf-8'),
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = self.query('postgres', sql)
         diagnostics = result.stderr.decode('utf-8', errors='replace')
         if error:
             self.assertNotEqual(result.returncode, 0)
@@ -140,6 +148,44 @@ class BootstrapInventoryPostgresTest(unittest.TestCase):
     def test_existing_business_fact_is_rejected(self):
         self.execute('INSERT INTO public.production_plan_costs DEFAULT VALUES;',
                      error='bootstrap target already contains business facts in production_plan_costs')
+
+    def test_new_command_and_storage_facts_are_rejected_without_changing_persistent_rows(self):
+        database = 'guard_readonly_' + uuid.uuid4().hex[:12]
+        created = self.query('postgres', 'CREATE DATABASE ' + database + ';')
+        self.assertEqual(0, created.returncode, created.stderr.decode('utf-8', errors='replace'))
+        try:
+            prepared = self.query(database, self.fixture_sql() + '\nCOMMIT;')
+            self.assertEqual(0, prepared.returncode, prepared.stderr.decode('utf-8', errors='replace'))
+            # The owning bootstrap transaction permits a private ON COMMIT DROP
+            # inventory table; the guard must never change persistent facts.
+            empty = self.query(database, 'BEGIN;\n' + GUARD + '\nCOMMIT;')
+            self.assertEqual(0, empty.returncode, empty.stderr.decode('utf-8', errors='replace'))
+            for table in ('finance_batch_entry_commands', 'stock_reservation_storage_events',
+                          'stock_reservation_storage_positions'):
+                with self.subTest(table=table):
+                    marker = str(uuid.uuid4())
+                    staged = self.query(database, "INSERT INTO public." + table + "(id) VALUES('" + marker + "');")
+                    self.assertEqual(0, staged.returncode, staged.stderr.decode('utf-8', errors='replace'))
+                    rejected = self.query(database, 'BEGIN;\n' + GUARD + '\nCOMMIT;')
+                    self.assertNotEqual(0, rejected.returncode)
+                    self.assertIn('bootstrap target already contains business facts in ' + table,
+                                  rejected.stderr.decode('utf-8', errors='replace'))
+                    original = self.query(database, 'SELECT id FROM public.' + table + ';')
+                    self.assertEqual(marker, original.stdout.decode('utf-8').strip())
+                    cleaned = self.query(database, 'DELETE FROM public.' + table + ';')
+                    self.assertEqual(0, cleaned.returncode)
+            staged = self.query(database, 'CREATE TABLE public.unreviewed_business_fact(id int); '
+                                         'INSERT INTO public.unreviewed_business_fact VALUES(7);')
+            self.assertEqual(0, staged.returncode)
+            rejected = self.query(database, 'BEGIN;\n' + GUARD + '\nCOMMIT;')
+            self.assertNotEqual(0, rejected.returncode)
+            self.assertIn('unclassified unreviewed_business_fact', rejected.stderr.decode('utf-8', errors='replace'))
+            original = self.query(database, 'SELECT id FROM public.unreviewed_business_fact;')
+            self.assertEqual('7', original.stdout.decode('utf-8').strip())
+        finally:
+            self.assertRegex(database, r'^guard_readonly_[0-9a-f]{12}$')
+            dropped = self.query('postgres', 'DROP DATABASE ' + database + ';')
+            self.assertEqual(0, dropped.returncode, dropped.stderr.decode('utf-8', errors='replace'))
 
     def test_configuration_identity_is_preserved_without_allowing_business_identity(self):
         self.execute("INSERT INTO public.business_record_identities(source_table) VALUES('departments');",

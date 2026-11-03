@@ -20,6 +20,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import static com.uten.imp.features.production.analysis.MaterialAnalysisContracts.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -176,7 +177,7 @@ class PreplanPrivateFutureTransferEndToEndTest {
      * 精确归原分析。
      */
     @Test void subcontractSupplyWithDirectMaterialsIsNotAPrivateTransferSourceAndReturnsToItsOwnAnalysis() {
-        var c=scenario("private-subcontract-direct");db.update("UPDATE goods SET source_type='委外' WHERE id=?",c.material());
+        var c=scenario("private-subcontract-direct");fixture.seedGoodsSources(Map.of(c.material(),"SUBCONTRACT"));
         fixture.addSubcontractDirectMaterial(c.world(),c.material(),"1");
         var a=preview(c,"A","100");var am=material(a,c.material());
         commands.notifySupply(a.analysisId(),new NotifyRequest(a.version(),a.fingerprint(),"future-sc-notify-"+a.analysisId(),"SUBCONTRACT",List.of(am.materialLineId()),List.of(),null));
@@ -219,7 +220,7 @@ class PreplanPrivateFutureTransferEndToEndTest {
         var c=scenario("cross-route-make");
         AnalysisView a=preview(c,"A","100");
         var original=order(c,a,"100",BusinessTime.today().plusDays(2));
-        // B 计划把同一个货品确认为「自制（车间）」路线。
+        // 主档维护为自制后，B 读取新来源；A 已下单的历史采购供给仍保留原来源。
         AnalysisView b=previewWithRoute(c,"B","100","MAKE");
         var bm=material(b,c.material());
         assertEquals("MAKE",bm.sourceConfirmed());
@@ -320,23 +321,28 @@ class PreplanPrivateFutureTransferEndToEndTest {
                 "future-refresh-"+UUID.randomUUID(),sources));
     }
 
-    private Scenario scenario(String label){var w=fixture.seedWorld(label);fixture.loginAs(w.superAdminUserId());UUID product=UUID.randomUUID(),material=UUID.randomUUID();fixture.insertGoods(product,"FUT-P-"+product,"在途归属产品","自制",w.unitId(),w.unitLegacy());fixture.insertGoods(material,"FUT-M-"+material,"在途归属材料","采购",w.unitId(),w.unitLegacy());fixture.insertBom(product,material,"1");db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",w.supplierId(),material);return new Scenario(w,product,material);}
-    /** 与 preview 相同，只是显式指定该物料的确认路线（用于跨路线调入用例）。 */
+    private Scenario scenario(String label){var w=fixture.seedWorld(label);fixture.loginAs(w.superAdminUserId());UUID product=UUID.randomUUID(),material=UUID.randomUUID();fixture.insertGoods(product,"FUT-P-"+product,"在途归属产品","自制",w.unitId(),w.unitLegacy());fixture.insertGoods(material,"FUT-M-"+material,"在途归属材料","采购",w.unitId(),w.unitLegacy());fixture.insertBom(product,material,"1");db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",w.supplierId(),material);com.uten.imp.support.GoodsFixtureAdjustment.prepareForMasterMaintenance(db,material);return new Scenario(w,product,material);}
+    /** Maintain the master before the new analysis; issued donor supply retains its original route. */
     private AnalysisView previewWithRoute(Scenario c,String label,String quantity,String route){
         fixture.loginAs(c.world().superAdminUserId());
+        com.uten.imp.support.GoodsFixtureAdjustment.maintainSourceType(db,
+                beans.getBean(com.uten.imp.features.master.goods.GoodsInlineEditService.class),
+                c.material(),FullChainEndToEndTest.goodsSourceType(route));
         var view=analyses.preview(new PreviewRequest(null,null,null,c.world().warehouseId(),
                 "future-preview-"+c.product()+label,
                 List.of(new PreviewItem("OTHER",null,c.product(),null,c.world().unitId(),
                         "future-"+c.product()+label,"跨路线在途调入",
                         BusinessTime.today().plusDays(10),new BigDecimal(quantity)))));
-        return analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),
+        var confirmed=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),
                 "future-route-"+view.analysisId(),
                 view.flatMaterials().stream().filter(MaterialView::actionable)
                         .map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),
-                                row.goodsId().equals(c.material())?route:"MAKE",null)).toList()));
+                                row.sourceSuggestion(),null)).toList()));
+        assertEquals(route,material(confirmed,c.material()).sourceConfirmed());
+        return confirmed;
     }
 
-    private AnalysisView preview(Scenario c,String label,String quantity){fixture.loginAs(c.world().superAdminUserId());String route="委外".equals(db.queryForObject("SELECT source_type FROM goods WHERE id=?",String.class,c.material()))?"SUBCONTRACT":"BUY";var view=analyses.preview(new PreviewRequest(null,null,null,c.world().warehouseId(),"future-preview-"+c.product()+label,List.of(new PreviewItem("OTHER",null,c.product(),null,c.world().unitId(),"future-"+c.product()+label,"私有在途与公共在途独立",BusinessTime.today().plusDays(10),new BigDecimal(quantity)))));return analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"future-route-"+view.analysisId(),view.flatMaterials().stream().filter(MaterialView::actionable).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.goodsId().equals(c.material())?route:"MAKE",null)).toList()));}
+    private AnalysisView preview(Scenario c,String label,String quantity){fixture.loginAs(c.world().superAdminUserId());var view=analyses.preview(new PreviewRequest(null,null,null,c.world().warehouseId(),"future-preview-"+c.product()+label,List.of(new PreviewItem("OTHER",null,c.product(),null,c.world().unitId(),"future-"+c.product()+label,"私有在途与公共在途独立",BusinessTime.today().plusDays(10),new BigDecimal(quantity)))));return analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"future-route-"+view.analysisId(),view.flatMaterials().stream().filter(MaterialView::actionable).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.sourceSuggestion(),null)).toList()));}
     private Ordered order(Scenario c,AnalysisView view,String quantity,LocalDate eta){
         var material=material(view,c.material());commands.notifySupply(view.analysisId(),new NotifyRequest(view.version(),view.fingerprint(),"future-notify-"+view.analysisId(),"BUY",List.of(material.materialLineId()),List.of(),null));
         var source=db.queryForMap("SELECT action.id action_id,allocation.id allocation_id,allocation.external_item_id FROM preplan_supply_actions action JOIN preplan_supply_action_allocations allocation ON allocation.action_id=action.id WHERE action.analysis_id=? AND action.operation_type='SUPPLY' AND action.route='BUY'",view.analysisId());

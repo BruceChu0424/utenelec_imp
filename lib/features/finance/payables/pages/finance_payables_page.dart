@@ -31,6 +31,8 @@ import '../../../../core/router/route_names.dart';
 import '../../../../core/theme/uten_tokens.dart';
 import '../../../../core/ui/app_notification.dart';
 import '../../../../core/utils/currency_display.dart';
+import '../../../../core/utils/china_datetime.dart';
+import '../../../../core/utils/date_range_defaults.dart';
 import '../../../../shared/auth/permissions.dart';
 import '../../../../shared/formatters/money_display.dart';
 import '../../../basic_data/widgets/master_server_column_filters.dart';
@@ -81,8 +83,8 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
   String? _status;
   String? _settlementMethodId;
   String? _currencyId;
-  DateTime? _dateFrom;
-  DateTime? _dateTo;
+  DateTime? _dateFrom = recentMonthStart();
+  DateTime? _dateTo = ChinaDateTime.today();
   DateTime? _dueFrom;
   DateTime? _dueTo;
   // 列排序 + 2026-09-25 单号列统一（来源单号表头值筛选 + 服务端桶 + 防串台
@@ -154,8 +156,8 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
         _status = null;
         _settlementMethodId = null;
         _currencyId = null;
-        _dateFrom = null;
-        _dateTo = null;
+        _dateFrom = recentMonthStart();
+        _dateTo = ChinaDateTime.today();
         _dueFrom = null;
         _dueTo = null;
         _columnFilters.reset();
@@ -329,13 +331,13 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
     context.appError('加载应付结算失败：$message');
   }
 
-  void _changeFilter(VoidCallback change) {
+  Future<void> _changeFilter(VoidCallback change) {
     setState(() {
       change();
       _selectedIds = <String>{};
       _selectedItemsById.clear();
     });
-    _load(1);
+    return _load(1);
   }
 
   int get _activeFilterCount {

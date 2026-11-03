@@ -30,7 +30,6 @@ void main() {
     'employee->profile',
     'expense->basic_data',
     'finance->basic_data',
-    'finance->employee',
     'finance->report',
     'finance->warehouse',
     'hr_profile->profile',
@@ -41,7 +40,6 @@ void main() {
     'notice->hr_task',
     'operations_workbench->basic_data',
     'production->basic_data',
-    'production->employee',
     // 2026-09-14（ADR-081 §7.2）曾允许 production->purchase：「父件+下层一起下单」
     // 的已下单子件分支要把追加量并入原采购申请明细，前端直接复用了采购侧仓库。
     // 2026-09-21（ADR-099）数量改为只在服务端算一次、追加下达由服务端自行认领公共在途
@@ -53,14 +51,12 @@ void main() {
     'profile->department',
     'profile->employee',
     'purchase->basic_data',
-    'purchase->employee',
     'purchase->notice',
     'purchase->report',
     'purchase->warehouse',
     'rd_task->basic_data',
     'report->basic_data',
     'sales->basic_data',
-    'sales->employee',
     'sales->notice',
     'sales->report',
     // 2026-09-18：安全黑名单页复用 basic_data 的 MasterDataTableView 表格壳
@@ -78,7 +74,6 @@ void main() {
     // 整个结果集上算，把契约复制一份到 stock 下反而会出现两套「能不能相加」的判断口径。
     'stock->report',
     'subcontract->basic_data',
-    'subcontract->employee',
     'subcontract->operations_workbench',
     'subcontract->report',
     'subcontract->warehouse',
@@ -89,7 +84,6 @@ void main() {
     // 仓库代采购/委外执行收货登记，复用两类收货仓储与配置（与后端
     // WarehouseInboundController 注入 Purchase/SubcontractReceiptService 同构）；
     // 收货人/采购员选择器复用员工与部门检索（与 purchase->employee/department 同款）。
-    'warehouse->employee',
     'warehouse->purchase',
     'warehouse->subcontract',
     'warehouse->report',

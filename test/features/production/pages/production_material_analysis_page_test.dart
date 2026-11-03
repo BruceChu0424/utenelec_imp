@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import '../../../support/production_person_reference_fixture.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
@@ -1428,10 +1429,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.byType(DatePickerDialog), findsOneWidget);
+      expect(find.byType(UtenDateRangePickerDialog), findsOneWidget);
       await tester.tap(find.text('取消'));
       await tester.pumpAndSettle();
-      expect(find.byType(DatePickerDialog), findsNothing);
+      expect(find.byType(UtenDateRangePickerDialog), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

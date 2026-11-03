@@ -132,12 +132,13 @@ class PreplanReallocationMakeSupplementEndToEndTest {
         finish(c,originalPlan,"10");a=analyses.detail(a.analysisId());
         String originalHistory=planHistory(originalPlan.planId());
 
+        maintainChildSource(c,"BUY");
         AnalysisView b=preview(c,"B","4");MaterialView borrowerMaterial=material(b,c.child());
-        b=analyses.saveRoutes(b.analysisId(),new RouteRequest(b.version(),b.fingerprint(),"borrower-buy-route-"+b.analysisId(),
-                List.of(new RouteDecision(borrowerMaterial.materialLineId(),borrowerMaterial.actionGroupKey(),"BUY",null))));
+        assertEquals("BUY",borrowerMaterial.sourceConfirmed());
         commands.notifySupply(b.analysisId(),new NotifyRequest(b.version(),b.fingerprint(),"borrower-buy-first-"+b.analysisId(),"BUY",List.of(borrowerMaterial.materialLineId()),List.of(),null));
         UUID borrowerPurchase=ReflectionTestUtils.invokeMethod(fixture,"approveExistingAnalysisPurchase",c.world(),b.analysisId(),c.child());
         qty("4",db.queryForObject("SELECT qty FROM purchase_order_items WHERE id=?",BigDecimal.class,borrowerPurchase));
+        maintainChildSource(c,"MAKE");
 
         fixture.loginAs(c.world().superAdminUserId());yieldFour(c,analyses.detail(a.analysisId()),analyses.detail(b.analysisId()));
         var yielded=analyses.detail(a.analysisId());qty("4",material(yielded,c.child()).priorityPendingQty());
@@ -174,11 +175,12 @@ class PreplanReallocationMakeSupplementEndToEndTest {
         var first=commands.issueWorkshopPlans(a.analysisId(),planRequest(c,a,materialId,"10","aggregate-net-first-"+a.analysisId())).plans().getFirst();
         UUID child=db.queryForObject("SELECT material_analysis_item_id FROM production_plans WHERE id=?",UUID.class,first.planId());
         finish(c,first,"10");String history=planHistory(first.planId());
+        maintainChildSource(c,"BUY");
         AnalysisView b=preview(c,"B","4");MaterialView receiver=material(b,c.child());
-        b=analyses.saveRoutes(b.analysisId(),new RouteRequest(b.version(),b.fingerprint(),"aggregate-net-buy-route-"+b.analysisId(),
-                List.of(new RouteDecision(receiver.materialLineId(),receiver.actionGroupKey(),"BUY",null))));
+        assertEquals("BUY",receiver.sourceConfirmed());
         commands.notifySupply(b.analysisId(),new NotifyRequest(b.version(),b.fingerprint(),"aggregate-net-buy-"+b.analysisId(),"BUY",List.of(receiver.materialLineId()),List.of(),null));
         UUID purchase=ReflectionTestUtils.invokeMethod(fixture,"approveExistingAnalysisPurchase",c.world(),b.analysisId(),c.child());
+        maintainChildSource(c,"MAKE");
         fixture.loginAs(c.world().superAdminUserId());yieldFour(c,analyses.detail(a.analysisId()),analyses.detail(b.analysisId()));
         ReflectionTestUtils.invokeMethod(fixture,"receiveAndPassPurchase",c.world(),purchase,c.child(),new BigDecimal("2"),"aggregate-net-return-"+purchase);
         fixture.loginAs(c.world().superAdminUserId());
@@ -210,6 +212,7 @@ class PreplanReallocationMakeSupplementEndToEndTest {
         fixture.insertGoods(root,"Y-ROOT-"+root,"让料原父产品","自制",w.unitId(),w.unitLegacy());
         fixture.insertGoods(child,"Y-CHILD-"+child,"让料可补子件",make?"自制":"委外",w.unitId(),w.unitLegacy());
         fixture.insertGoods(raw,"Y-RAW-"+raw,"子件实际原材料","采购",w.unitId(),w.unitLegacy());
+        com.uten.imp.support.GoodsFixtureAdjustment.prepareForMasterMaintenance(db,root,child,raw);
         // 自制子件领 raw 生产; 委外子件(ADR-143 §二.3 必须有直属物料)把 raw 领出发给委外商。
         fixture.insertBom(root,child,"1");fixture.insertBom(child,raw,"1");
         db.update("UPDATE goods SET default_supplier_id=? WHERE id IN (?,?)",w.supplierId(),child,raw);
@@ -224,7 +227,13 @@ class PreplanReallocationMakeSupplementEndToEndTest {
                 List.of(new PreviewItem("OTHER",null,c.root(),null,c.world().unitId(),"yield-"+c.root()+suffix,"让料后的正式补供",BusinessTime.today().plusDays(10),new BigDecimal(quantity)))));
         return analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"yield-routes-"+view.analysisId(),
                 view.flatMaterials().stream().filter(MaterialView::actionable).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),
-                        row.goodsId().equals(c.raw())||row.goodsId().equals(c.world().goodsD())?"BUY":row.goodsId().equals(c.child())&&!c.make()?"SUBCONTRACT":"MAKE",null)).toList()));
+                        row.sourceSuggestion(),null)).toList()));
+    }
+    private void maintainChildSource(Scenario c,String route) {
+        fixture.loginAs(c.world().superAdminUserId());
+        com.uten.imp.support.GoodsFixtureAdjustment.maintainSourceType(db,
+                beans.getBean(com.uten.imp.features.master.goods.GoodsInlineEditService.class),
+                c.child(),FullChainEndToEndTest.goodsSourceType(route));
     }
     private IssueWorkshopPlansRequest planRequest(Scenario c,AnalysisView view,UUID material,String quantity,String key) {
         return new IssueWorkshopPlansRequest(view.version(),view.fingerprint(),key,c.world().warehouseId(),BusinessTime.today(),null,true,

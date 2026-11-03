@@ -15,6 +15,7 @@ import 'package:uten_imp/features/production/pages/production_plan_list_page.dar
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../../support/uten_test_actions.dart';
 
 final _reader = StateProvider<AuthenticatedScope?>(
   (_) => const AuthenticatedScope(userId: 'reader-a'),
@@ -36,7 +37,9 @@ void main() {
         expect(api.dictionaryPaths, isEmpty);
       } else {
         expect(find.text('SC-1'), findsOneWidget);
-        expect(api.dictionaryPaths, [ApiEndpoints.departmentsTree]);
+        expect(api.dictionaryPaths, [
+          ApiEndpoints.businessReferenceDepartments,
+        ]);
         if (mode == _ResultMode.snapshots) {
           expect(find.text('随行车间'), findsOneWidget);
           expect(find.text('随行跟单员'), findsOneWidget);
@@ -72,8 +75,8 @@ void main() {
 }
 
 Future<ProviderContainer> _mount(WidgetTester tester, _PlanApi api) async {
-  await tester.binding.setSurfaceSize(const Size(1500, 1000));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(1500, 1000));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
   final router = GoRouter(

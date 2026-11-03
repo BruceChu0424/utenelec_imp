@@ -11,6 +11,7 @@ import 'package:uten_imp/features/subcontract/config/subcontract_report_config.d
 import 'package:uten_imp/features/subcontract/pages/subcontract_report_table_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import '../../support/uten_test_actions.dart';
 
 void main() {
   for (final entry in const {
@@ -21,8 +22,8 @@ void main() {
     testWidgets(
       '${entry.key} order switch loads authoritative variance and keeps export on the same report',
       (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1500, 1000));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1500, 1000));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         SharedPreferences.setMockInitialValues({});
         final prefs = await SharedPreferences.getInstance();
         final api = _OrderReportApi();

@@ -3044,6 +3044,7 @@ class FullChainEndToEndTest {
     @Test
     void rootSupply_buyReceiptTransfersToSalesAndReceiptReverseRestoresRootDemand() {
         World w=seedWorld("rootBuy");
+        seedGoodsSources(java.util.Map.of(w.goodsA(),"BUY"));
         UUID order=createApprovedOrder(w,w.goodsA(),"10","100");
         loginAs(w.superAdminUserId());
         AnalysisView initial=analysisService.preview(new PreviewRequest(null,null,null,w.warehouseId(),
@@ -3090,6 +3091,7 @@ class FullChainEndToEndTest {
 
     private void rootPurchaseReversalBoundary(List<BigDecimal> batches,boolean ship){
         World w=seedWorld(ship?"rootRevUsed":batches.size()>1?"rootRevSplit":"rootRevPartial");
+        seedGoodsSources(java.util.Map.of(w.goodsA(),"BUY"));
         UUID order=createApprovedOrder(w,w.goodsA(),"10","100");loginAs(w.superAdminUserId());
         AnalysisView analysis=analysisService.preview(new PreviewRequest(null,null,null,w.warehouseId(),
                 "root-reverse-boundary-"+order,List.of(new PreviewItem("SALES_ORDER_ITEM",orderItemId(order),
@@ -3126,6 +3128,7 @@ class FullChainEndToEndTest {
     @Test
     void rootSupply_existingOnlyIsIdempotentAndHasAReachableCompletedAnalysisRevoke() {
         World w=seedWorld("rootStock");
+        seedGoodsSources(java.util.Map.of(w.goodsC(),"BUY"));
         UUID order=createApprovedOrder(w,w.goodsC(),"10","100");
         loginAs(w.superAdminUserId());
         AnalysisView initial=analysisService.preview(new PreviewRequest(null,null,null,w.warehouseId(),
@@ -3162,6 +3165,7 @@ class FullChainEndToEndTest {
     @Test
     void rootSupply_manualRequiresNewReceiptAndDoesNotReusePublicStock() {
         World w=seedWorld("rootManual");
+        seedGoodsSources(java.util.Map.of(w.goodsC(),"BUY"));
         loginAs(w.superAdminUserId());
         jdbc.update("insert into stock_balances(warehouse_id,goods_id,color_id,qty) values (?,?,null,1)",w.warehouseId(),w.goodsC());
         AnalysisView initial=analysisService.preview(new PreviewRequest(null,null,null,w.warehouseId(),
@@ -3184,6 +3188,7 @@ class FullChainEndToEndTest {
     @Test
     void rootSupply_existingStockCannotConsumeAlreadyIssuedFutureDemand() {
         World w=seedWorld("rootFuture");
+        seedGoodsSources(java.util.Map.of(w.goodsC(),"BUY"));
         UUID order=createApprovedOrder(w,w.goodsC(),"10","100");
         loginAs(w.superAdminUserId());
         PreviewItem source=new PreviewItem("SALES_ORDER_ITEM",orderItemId(order),null,null,null,null,null,
@@ -3217,6 +3222,7 @@ class FullChainEndToEndTest {
     @Test
     void rootSupply_existingRevokeRejectsOtherOwnerPickingPickedAndShipped() {
         World w=seedWorld("rootGuard");
+        seedGoodsSources(java.util.Map.of(w.goodsC(),"BUY"));
         UUID order=createApprovedOrder(w,w.goodsC(),"10","100");
         loginAs(w.superAdminUserId());
         AnalysisView initial=analysisService.preview(new PreviewRequest(null,null,null,w.warehouseId(),
@@ -3290,6 +3296,7 @@ class FullChainEndToEndTest {
     @Test
     void rootSupply_oneBoxTransfersTwentyBaseUnitsWithoutDoubleCounting() {
         World w=seedWorld("rootTwenty");
+        seedGoodsSources(java.util.Map.of(w.goodsC(),"BUY"));
         loginAs(w.superAdminUserId());
         UUID box=UUID.randomUUID();
         jdbc.update("insert into units(id,code,name) values (?,?,'box')",box,"ROOT-BOX-"+box);
@@ -14126,6 +14133,26 @@ class FullChainEndToEndTest {
         return new World(deptId, employeeId, superAdminUserId,
                 goodsA, goodsB, goodsC, goodsD, goodsE,
                 clientId, supplierId, warehouseId, unitId, currencyId, colorId, unitLegacy);
+    }
+
+    /** Explicit test-world master defaults, before any analysis snapshots exist. */
+    void seedGoodsSources(java.util.Map<UUID, String> routes) {
+        for (var entry : routes.entrySet()) {
+            assertEquals(0L, jdbc.queryForObject(
+                    "SELECT count(*) FROM production_material_analysis_materials WHERE goods_id=?",
+                    Long.class, entry.getKey()), "Fixture sources must be configured before analysis");
+            assertEquals(1, jdbc.update("UPDATE goods SET source_type=? WHERE id=?",
+                    goodsSourceType(entry.getValue()), entry.getKey()));
+        }
+    }
+
+    static String goodsSourceType(String route) {
+        return switch (route) {
+            case "MAKE" -> "自制";
+            case "BUY" -> "采购";
+            case "SUBCONTRACT" -> "委外";
+            default -> throw new IllegalArgumentException("Unsupported fixture source: " + route);
+        };
     }
 
     void insertGoods(UUID id, String code, String name, String sourceType,

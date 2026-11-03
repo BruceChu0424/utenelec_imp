@@ -10,9 +10,11 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/performance/ui_work_budget.dart';
 import 'package:uten_imp/features/basic_data/models/client_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/client_repository.dart';
+import 'package:uten_imp/features/basic_data/repositories/business_reference_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_doc_list_page.dart';
@@ -20,6 +22,7 @@ import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/drafts/form_draft_category_table.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
+import '../../../support/uten_test_actions.dart';
 
 late SharedPreferences _preferences;
 
@@ -31,8 +34,8 @@ void main() {
   testWidgets('shipment headers send client and enum filters to API', (
     tester,
   ) async {
-    await tester.binding.setSurfaceSize(const Size(1500, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1500, 1000));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = _ShipmentFilterApi();
     final clientsRepository = _YieldingClientRepository(api);
     final router = GoRouter(
@@ -57,7 +60,9 @@ void main() {
           ),
           sharedPreferencesProvider.overrideWithValue(_preferences),
           apiClientProvider.overrideWithValue(api),
-          clientRepositoryProvider.overrideWithValue(clientsRepository),
+          businessClientReferenceRepositoryProvider.overrideWithValue(
+            clientsRepository,
+          ),
           salesMasterNameServiceProvider.overrideWithValue(
             SalesMasterNameService(api),
           ),
@@ -137,7 +142,12 @@ void main() {
 /// A responsive repository may yield even for one row when its first decode
 /// exceeds the time slice. Force that real timer turn without CPU contention.
 class _YieldingClientRepository extends DioClientRepository {
-  _YieldingClientRepository(super.api);
+  _YieldingClientRepository(ApiClient api)
+    : super(
+        api,
+        queryBasePath: ApiEndpoints.businessReferenceClients,
+        selectionFlagsInBody: true,
+      );
 
   int completedCheckpoints = 0;
 
@@ -173,7 +183,7 @@ class _ShipmentFilterApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/master/clients') {
+    if (path == ApiEndpoints.businessReferenceClients) {
       clientCandidateQueries.add(Map<String, dynamic>.from(query!));
       return const {
         'items': [
@@ -213,7 +223,7 @@ class _ShipmentFilterApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/master/clients/lookup') {
+    if (path == '${ApiEndpoints.clients}/lookup') {
       final ids = (query!['ids'] as String).split(',').toSet();
       expectSync(ids, isNotEmpty);
       expectSync(ids.length, lessThanOrEqualTo(100));

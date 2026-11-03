@@ -22,6 +22,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../../../helpers/badge_summary_fixture.dart';
 import '../../../support/filter_segment_tap.dart';
 import '../support/production_draw_request_fixture.dart';
+import '../../../support/uten_test_actions.dart';
 
 const _permissions = {
   Perm.productionExecutionView,
@@ -358,8 +359,8 @@ Future<ProviderContainer> _mount(
 }) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
-  await tester.binding.setSurfaceSize(const Size(1800, 1000));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(1800, 1000));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   final router = GoRouter(
     initialLocation: '/',
     routes: [

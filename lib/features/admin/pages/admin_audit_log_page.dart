@@ -54,6 +54,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/date_range_defaults.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/master_name_provider.dart';
@@ -70,6 +71,17 @@ import '../widgets/audit_session_card.dart';
 part 'audit_overview_widgets.dart';
 part 'audit_detail_panel.dart';
 part 'audit_device_evidence.dart';
+
+/// Audit queries retain their existing maximum of 31 inclusive dates.
+DateTimeRange _defaultAuditDateRange() {
+  final range = recentMonthDateRange();
+  return range.duration.inDays <= 30
+      ? range
+      : DateTimeRange(
+          start: range.end.subtract(const Duration(days: 30)),
+          end: range.end,
+        );
+}
 
 class AdminAuditLogPage extends ConsumerStatefulWidget {
   const AdminAuditLogPage({this.initialRequestId, super.key});
@@ -106,7 +118,7 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
   String? _riskFilter;
   String? _categoryFilter;
   String? _outcomeFilter;
-  DateTimeRange? _dateRange;
+  DateTimeRange? _dateRange = _defaultAuditDateRange();
 
   AuditLogPage? _page;
   AuditSummary? _summary;
@@ -1329,6 +1341,12 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       context.appWarning('请先选择要查看的人员。');
       return;
     }
+    final ownerIsCurrent = captureReadOwner(ref);
+    final actorScope = (
+      _selectedActor?.actorId,
+      _anonymousMode,
+      _systemAnomalyMode,
+    );
     final today = ChinaDateTime.today();
     final picked = await showUtenDateRangePicker(
       context: context,
@@ -1337,13 +1355,34 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
       initialDateRange: _dateRange,
       helpText: '选择审计时间范围',
     );
-    if (picked == null || !mounted) return;
-    if (picked.duration.inDays > 30) {
+    if (picked == null ||
+        !ownerIsCurrent() ||
+        actorScope !=
+            (_selectedActor?.actorId, _anonymousMode, _systemAnomalyMode)) {
+      return;
+    }
+    _applyDateRange(picked);
+  }
+
+  void _applyDateRange(DateTimeRange picked) {
+    if (_selectedActor == null && !_anonymousMode && !_systemAnomalyMode) {
+      return;
+    }
+    final start = ChinaDateTime.dateOnly(picked.start);
+    final end = ChinaDateTime.dateOnly(picked.end);
+    if (end.difference(start).inDays > 30) {
       context.appWarning('一次最多查看连续 31 天，请缩短日期区间。');
       return;
     }
     setState(() {
-      _dateRange = picked;
+      _dateRange = DateTimeRange(start: start, end: end);
+      _invalidateScopeResults();
+    });
+  }
+
+  void _clearDateRange() {
+    setState(() {
+      _dateRange = null;
       _invalidateScopeResults();
     });
   }
@@ -1757,7 +1796,8 @@ class _AdminAuditLogPageState extends ConsumerState<AdminAuditLogPage> {
                           },
                           onSevenDays: () => _setDatePreset(7),
                           onThirtyDays: () => _setDatePreset(30),
-                          onCustomDate: _pickDateRange,
+                          onDateChanged: _applyDateRange,
+                          onClearDate: _clearDateRange,
                           onRunQuery: _applyScopeQuery,
                           onRequestIdChanged: _onRequestIdDraftChanged,
                           onRequestIdSubmitted: _onRequestIdSubmitted,

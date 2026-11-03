@@ -54,11 +54,10 @@ void main() {
         await selectFilterSegment(tester, '2024-01-01 ~ 2024-01-31');
         await tester.pumpAndSettle();
         expect(find.byType(UtenDateRangePickerDialog), findsOneWidget);
-        final calendarRange = tester
-            .widget<UtenDateRangePickerDialog>(
-              find.byType(UtenDateRangePickerDialog),
-            )
-            .initialDateRange!;
+        final dialog = tester.widget<UtenDateRangePickerDialog>(
+          find.byType(UtenDateRangePickerDialog),
+        );
+        final calendarRange = dialog.initialDateRange!;
         // Material normalizes calendar values to local date-only instances.
         // Compare their wall fields, retaining the domain's UTC date carrier.
         expect(
@@ -108,7 +107,7 @@ void main() {
         ),
       ),
     );
-    await tester.tap(find.text('时间段'));
+    await tester.tap(find.text('选择日期'));
     await tester.pumpAndSettle();
     expect(find.byType(UtenDateRangePickerDialog), findsNothing);
     expect(changes, 0);

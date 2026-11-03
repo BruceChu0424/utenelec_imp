@@ -303,8 +303,8 @@ void registerDailyReportDraftIdentityTests() {
   testWidgets(
     'daily-report business selection autosaves through its material-ownership listener and restores',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1800, 1100));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1800, 1100));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final storage = MemoryFormDraftStorage();
       final fake = _IdentityApi();
       var env = await _openIdentityPage(tester, storage, fake);
@@ -347,8 +347,8 @@ void registerDailyReportDraftIdentityTests() {
   testWidgets(
     'stable draft products survive duplicate goods, reorder and changed dynamic material rows',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1800, 1100));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1800, 1100));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final storage = MemoryFormDraftStorage();
       final fake = _IdentityApi();
       var env = await _openIdentityPage(tester, storage, fake);
@@ -429,8 +429,8 @@ void registerDailyReportDraftIdentityTests() {
     testWidgets(
       'legacy daily draft preserves unprovable values; meaningful=$meaningful',
       (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1800, 1100));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1800, 1100));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         final storage = MemoryFormDraftStorage();
         final fake = _IdentityApi();
         var env = await _openIdentityPage(tester, storage, fake);
@@ -491,8 +491,8 @@ void registerDailyReportDraftIdentityTests() {
     testWidgets(
       'accepted daily draft resumes authoritative item IDs without recreate; unavailable=$unavailable',
       (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1800, 1100));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1800, 1100));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         final storage = MemoryFormDraftStorage();
         final fake = _IdentityApi();
         var env = await _openIdentityPage(tester, storage, fake);

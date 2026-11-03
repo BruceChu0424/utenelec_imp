@@ -15,6 +15,10 @@ import 'package:uten_imp/features/sales/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import '../../../support/native_detail_reader_overrides.dart';
 import '../../../support/page_resume_test_bridge.dart';
+import '../../../support/owned_provider_widget_tests.dart';
+import '../../../support/uten_test_actions.dart';
+
+final _providerTests = OwnedProviderWidgetTests();
 
 class _Adapter implements HttpClientAdapter {
   int detailReads = 0, claims = 0, releases = 0, approvals = 0;
@@ -86,11 +90,11 @@ class _Adapter implements HttpClientAdapter {
 }
 
 void main() {
-  testWidgets(
+  _providerTests.testWidgets(
     'rejected order can be approved immediately after edit return without refreshing forever',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1440, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1440, 1000));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final adapter = _Adapter();
       final dio = Dio(BaseOptions(baseUrl: 'http://localhost'))
         ..httpClientAdapter = adapter;
@@ -110,7 +114,7 @@ void main() {
           isSuperAdminProvider.overrideWithValue(false),
         ],
       );
-      addTearDown(container.dispose);
+      _providerTests.own(container);
       dio.interceptors.add(
         DataWriteRevisionInterceptor(
           (_) => container.read(dataWriteRevisionProvider.notifier).state++,

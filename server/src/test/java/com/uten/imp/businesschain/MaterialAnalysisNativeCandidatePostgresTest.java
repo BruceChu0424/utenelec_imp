@@ -82,10 +82,10 @@ class MaterialAnalysisNativeCandidatePostgresTest {
 
     @Test
     void unrelatedApprovedOrdersAndStockedReceiptsDoNotExpandNativeProofCandidates() throws Exception {
-        var c = h.createWithChild("1");
+        var c = h.createWithChild("1", 3, "SUBCONTRACT");
         var world = c.world();
         h.fixture.ensureSubcontractDirectMaterial(world, c.common());
-        h.setRoute(c, c.common(), "SUBCONTRACT");
+        h.assertMasterRoute(c, c.common(), "SUBCONTRACT");
         var batch = h.writer.submit(c.analysis(), h.command(c,
                 List.of(h.input(c, c.common(), "SUBCONTRACT", "3", false)))).batches().getFirst();
         UUID action = db.queryForObject("SELECT action_id FROM preplan_aggregate_batches WHERE id=?",

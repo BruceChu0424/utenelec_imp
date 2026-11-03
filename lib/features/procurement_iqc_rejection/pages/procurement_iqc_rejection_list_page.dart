@@ -28,7 +28,7 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/procurement_iqc_rejection.dart';
 import '../repositories/procurement_iqc_rejection_repository.dart';
-import '../../finance/providers/finance_audit_preparation_provider.dart';
+import '../providers/finance_iqc_prepared_page_provider.dart';
 import '../../../shared/paging/scoped_category_read.dart';
 import '../widgets/procurement_iqc_rejection_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
@@ -216,8 +216,7 @@ class _ProcurementIqcRejectionListPageState
                 );
                 if (page != 1) return repository.list(pageFilter);
                 return ref
-                    .read(financeAuditPreparedPagesProvider)
-                    .iqc
+                    .read(financeIqcPreparedPageProvider)
                     .read(
                       financeIqcReadKey(repository, pageFilter),
                       () => repository.list(pageFilter),

@@ -88,6 +88,7 @@ class MasterDataIntegrityEndToEndTest {
     @Autowired JdbcTemplate db;
     @Autowired PlatformTransactionManager transactions;
     @Autowired MasterLifecycleService lifecycle;
+    @Autowired com.uten.imp.application.port.MasterReferenceValidationPort references;
     @Autowired GoodsBomPasteService paste;
     @Autowired com.uten.imp.features.master.goods.GoodsBomService bomService;
     @Autowired GoodsService goodsService;
@@ -188,7 +189,7 @@ class MasterDataIntegrityEndToEndTest {
         assertTrue(result.results().get(1).ok());
     }
 
-    /** 七种主档的引用查询都在真库上跑一遍(整条 UNION 语句)，在用的逐条挡住并说明被谁用。 */
+    /** In-use masters stay protected; parties require explicit confirmation and retain business identity. */
     @Test
     void everyMasterKindRejectsDeletingRecordsThatAreStillInUse() {
         var w = world("kinds");
@@ -197,7 +198,9 @@ class MasterDataIntegrityEndToEndTest {
                 + "(SELECT COALESCE(MAX(code_sequence), 0) + 1 FROM moulds))", mould, "MJ-" + mould, "在用模具");
         db.update("UPDATE goods SET mould_id = ?, owning_warehouse_id = ?, default_supplier_id = ? WHERE id = ?",
                 mould, w.warehouseId(), w.supplierId(), w.goodsD());
-        salesOrders.create(fixture.orderRequest(w, w.goodsA(), "2", "100"));
+        var order = salesOrders.create(fixture.orderRequest(w, w.goodsA(), "2", "100"));
+        String originalOrder = rowSnapshot("sales_orders", order.getId());
+        String originalGoods = rowSnapshot("goods", w.goodsD());
 
         Map<MasterEntityKind, UUID> inUse = Map.of(
                 MasterEntityKind.UNIT, w.unitId(),
@@ -212,13 +215,32 @@ class MasterDataIntegrityEndToEndTest {
                 MasterEntityKind.SUPPLIER, "以下货品还在用它",
                 MasterEntityKind.MOULD, "以下货品还在用它");
         for (var entry : inUse.entrySet()) {
+            boolean party = entry.getKey() == MasterEntityKind.CLIENT || entry.getKey() == MasterEntityKind.SUPPLIER;
+            String table = entry.getKey() == MasterEntityKind.CLIENT ? "clients" : "suppliers";
+            String before = party ? partyBusinessSnapshot(table, entry.getValue()) : null;
+            String fullBefore = party ? rowSnapshot(table, entry.getValue()) : null;
             MasterBatchResult result = lifecycle.batchDelete(entry.getKey(),
                     List.of(new MasterBatchRequests.Item(entry.getValue(), null)));
             assertEquals(0, result.succeeded(), entry.getKey() + " " + result);
             assertThat(result.results().getFirst().reason())
                     .as(entry.getKey().name())
-                    .contains("不能删除")
                     .contains(expected.get(entry.getKey()));
+            if (party) {
+                var detail = result.results().getFirst();
+                assertTrue(detail.confirmationRequired());
+                assertThat(detail.reason()).contains("仍有关联业务").contains("已有单据、往来账和业务关联继续保留");
+                UUID source = entry.getKey() == MasterEntityKind.CLIENT ? order.getId() : w.goodsD();
+                assertThat(detail.references()).anySatisfy(reference -> assertEquals(source, reference.id()));
+                assertEquals(fullBefore, rowSnapshot(table, entry.getValue()), "unconfirmed preview cannot mutate the master");
+                assertEquals(1, lifecycle.batchDelete(entry.getKey(),
+                        List.of(new MasterBatchRequests.Item(entry.getValue(), null)), true).succeeded());
+                assertHiddenPartyPreserved(entry.getKey(), entry.getValue(), before);
+                assertEquals(originalOrder, rowSnapshot("sales_orders", order.getId()));
+                assertEquals(originalGoods, rowSnapshot("goods", w.goodsD()));
+            } else {
+                assertFalse(result.results().getFirst().confirmationRequired());
+                assertThat(result.results().getFirst().reason()).contains("不能删除");
+            }
         }
         // 没人用的同类记录照常删除(引用查询零命中)。
         UUID spareUnit = UUID.randomUUID();
@@ -529,7 +551,7 @@ class MasterDataIntegrityEndToEndTest {
         lifecycle.delete(MasterEntityKind.GOODS, goods);
         assertTrue(deleted(goods), "草稿退货撤掉之后照常可删");
 
-        // (b) 客户还有没收完的应收：删了客户，这笔应收就再也挂不上新的收款单。
+        // (b) Open receivables require confirmation; hiding must retain the exact ledger and party identity.
         UUID ledger = UUID.randomUUID();
         String arNo = ("AR-OPEN-" + ledger.toString().substring(0, 8)).toUpperCase();
         db.update("""
@@ -541,10 +563,20 @@ class MasterDataIntegrityEndToEndTest {
                 VALUES (?, 'AR', 'SALES_SHIPMENT', ?, ?, ?, CURRENT_DATE, ?, ?, 1, 100, 100,
                     0, 100, FALSE, 'SALES', 'RECEIVABLE', 0, 0, 100, 0, 0)
                 """, ledger, UUID.randomUUID(), "SH-" + arNo, arNo, w.clientId(), w.currencyId());
+        String originalLedger = rowSnapshot("ar_ap_ledger", ledger);
+        String originalClient = partyBusinessSnapshot("clients", w.clientId());
+        String originalClientRow = rowSnapshot("clients", w.clientId());
         MasterBatchResult client = lifecycle.batchDelete(MasterEntityKind.CLIENT, items(w.clientId()));
         assertEquals(0, client.succeeded(), client.toString());
         assertThat(client.results().getFirst().reason()).contains("还有没收完的应收款").contains(arNo)
-                .contains("请先收完或核销这些应收款");
+                .contains("已有单据、往来账和业务关联继续保留");
+        assertTrue(client.results().getFirst().confirmationRequired());
+        assertThat(client.results().getFirst().references()).anySatisfy(reference -> assertEquals(ledger, reference.id()));
+        assertEquals(originalClientRow, rowSnapshot("clients", w.clientId()));
+        assertEquals(originalLedger, rowSnapshot("ar_ap_ledger", ledger));
+        assertEquals(1, lifecycle.batchDelete(MasterEntityKind.CLIENT, items(w.clientId()), true).succeeded());
+        assertHiddenPartyPreserved(MasterEntityKind.CLIENT, w.clientId(), originalClient);
+        assertEquals(originalLedger, rowSnapshot("ar_ap_ledger", ledger));
 
         // (c) 仓库/供应商还挂在草稿采购退货单上。
         UUID purchaseReturn = UUID.randomUUID();
@@ -552,13 +584,47 @@ class MasterDataIntegrityEndToEndTest {
         db.update("INSERT INTO purchase_returns(id, bill_no, bill_date, supplier_id, warehouse_id) "
                         + "VALUES (?, ?, CURRENT_DATE, ?, ?)",
                 purchaseReturn, purchaseReturnNo, w.supplierId(), w.warehouseId());
+        String originalReturn = rowSnapshot("purchase_returns", purchaseReturn);
         for (MasterEntityKind kind : List.of(MasterEntityKind.WAREHOUSE, MasterEntityKind.SUPPLIER)) {
             UUID id = kind == MasterEntityKind.WAREHOUSE ? w.warehouseId() : w.supplierId();
             MasterBatchResult result = lifecycle.batchDelete(kind, items(id));
             assertEquals(0, result.succeeded(), kind + " " + result);
             assertThat(result.results().getFirst().reason()).as(kind.name())
                     .contains("还有未审核的采购退货单").contains(purchaseReturnNo);
+            if (kind == MasterEntityKind.SUPPLIER) {
+                String before = partyBusinessSnapshot("suppliers", id);
+                assertTrue(result.results().getFirst().confirmationRequired());
+                assertThat(result.results().getFirst().references())
+                        .anySatisfy(reference -> assertEquals(purchaseReturn, reference.id()));
+                assertEquals(1, lifecycle.batchDelete(kind, items(id), true).succeeded());
+                assertHiddenPartyPreserved(kind, id, before);
+                assertEquals(originalReturn, rowSnapshot("purchase_returns", purchaseReturn));
+            } else {
+                assertFalse(result.results().getFirst().confirmationRequired());
+            }
         }
+    }
+
+    private String rowSnapshot(String table, UUID id) {
+        return db.queryForObject("SELECT to_jsonb(source_row)::text FROM " + table + " source_row WHERE id=?", String.class, id);
+    }
+
+    private String partyBusinessSnapshot(String table, UUID id) {
+        return db.queryForObject("SELECT (to_jsonb(source_row)-ARRAY['is_hidden','hidden_at','version','updated_at','updated_by'])::text "
+                + "FROM " + table + " source_row WHERE id=?", String.class, id);
+    }
+
+    private void assertHiddenPartyPreserved(MasterEntityKind kind, UUID id, String before) {
+        String table = kind == MasterEntityKind.CLIENT ? "clients" : "suppliers";
+        assertEquals(before, partyBusinessSnapshot(table, id), "UUID, status, financial and owner fields must remain exact");
+        assertEquals(Boolean.TRUE, db.queryForObject("SELECT is_hidden FROM " + table + " WHERE id=?", Boolean.class, id));
+        assertEquals(Boolean.FALSE, db.queryForObject("SELECT is_deleted FROM " + table + " WHERE id=?", Boolean.class, id));
+        ApiException rejected = assertThrows(ApiException.class, () -> new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            if (kind == MasterEntityKind.CLIENT) references.requireSelectableClient(id);
+            else references.requireSelectableSupplier(id);
+        }));
+        assertEquals(ErrorCode.CONFLICT, rejected.getCode());
+        assertThat(rejected.getMessage()).contains("已从资料中删除");
     }
 
     // ---- 9) 不动点：一个组件被 10 个以上父件挡住也必须收敛(第二轮 blocker) -------------------

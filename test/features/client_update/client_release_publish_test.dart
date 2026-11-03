@@ -207,6 +207,19 @@ class _Api extends ApiClient {
   }
 
   @override
+  Future<Map<String, dynamic>> postLongRunning(
+    String path, {
+    Object? body,
+    required Duration receiveTimeout,
+  }) {
+    // Publication is a long transaction; keep the real gateway path and timeout
+    // contract while all writes stay in this fixture's durable per-file ledger.
+    expect(path, endsWith('/publish'));
+    expect(receiveTimeout, const Duration(minutes: 5));
+    return post(path, body: body);
+  }
+
+  @override
   Future<void> uploadClientPackage(
     String path,
     Uint8List bytes, {

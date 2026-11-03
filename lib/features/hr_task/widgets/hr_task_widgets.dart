@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 // HR 工作台共享组件：任务类型元数据、任务行（认领徽标 + 快捷操作）、转正办理对话框。
 // 文案硬编码中文（与 rd_task 等运维页同惯例）。
 // 2026-10-05 新增「证件核对」(identity)：证件号码缺失 / 校验未通过 / 尚未校验的在职员工，
@@ -598,7 +599,7 @@ Future<void> showHrConfirmDialog(
                 '-${selected.day.toString().padLeft(2, '0')}',
               ),
               onPressed: () async {
-                final picked = await showDatePicker(
+                final picked = await showUtenDatePicker(
                   context: ctx,
                   initialDate: selected,
                   firstDate: DateTime(2000),

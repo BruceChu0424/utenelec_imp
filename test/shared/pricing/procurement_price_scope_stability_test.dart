@@ -184,6 +184,8 @@ Future<ProviderContainer> _mount(
         currentPermissionsProvider.overrideWithValue({
           Perm.goodsView,
           Perm.goodsPriceAnalysisView,
+          Perm.purchaseOrderView,
+          Perm.purchaseOrderPriceView,
         }),
         isSuperAdminProvider.overrideWithValue(false),
         priceAnalysisRepositoryProvider.overrideWithValue(repository),

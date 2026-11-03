@@ -42,13 +42,12 @@ class AggregateMaterialWithdrawalEndToEndTest {
 
     @ParameterizedTest @ValueSource(strings={"BUY","SUBCONTRACT"})
     void sharedParentPreservesSeparatelyOrderedPurchaseAndSubcontractChildren(String route) {
-        var c=h.createWithChild("5",1);
+        var c=h.createWithChild("5",1,new AggregateMaterialOrderEndToEndTest.GoodsSources("MAKE",route,"BUY"));
         var parent=h.writer.submit(c.analysis(),h.command(c,List.of(h.input(c,c.common(),"MAKE","5",false)))).batches().getFirst();
         if("SUBCONTRACT".equals(route))h.receive(c,c.material(),"10");
         var routeView=h.analyses.detail(c.analysis());
         UUID material=routeView.flatMaterials().stream().filter(row->row.analysisLineId().equals(parent.anchorAnalysisItemId())&&row.goodsId().equals(c.child())).findFirst().orElseThrow().materialLineId();
-        h.analyses.saveRoutes(c.analysis(),new com.uten.imp.features.production.analysis.MaterialAnalysisContracts.RouteRequest(routeView.version(),routeView.fingerprint(),"external-child-route-"+UUID.randomUUID(),
-                List.of(new com.uten.imp.features.production.analysis.MaterialAnalysisContracts.RouteDecision(material,null,route,"独立子件外部供给"))));
+        h.assertMasterRoute(c,c.child(),route);
         var input=new com.uten.imp.features.production.analysis.AggregateMaterialOrderContracts.GroupInput(c.child().toString(),List.of(material),route,new BigDecimal("5"),false,null,null,null,null,null,null,null,BigDecimal.ZERO);
         var child=h.writer.submit(c.analysis(),h.command(c,List.of(input))).batches().getFirst();
         UUID parentAction=h.db.queryForObject("SELECT action_id FROM preplan_aggregate_batches WHERE id=?",UUID.class,parent.batchId());

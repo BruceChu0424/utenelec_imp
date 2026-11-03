@@ -37,6 +37,7 @@ import 'package:uten_imp/shared/providers/session_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../../shared/drafts/memory_form_draft_storage.dart';
+import '../../../support/uten_test_actions.dart';
 
 final _canViewPricesProvider = StateProvider<bool>((ref) => true);
 
@@ -535,8 +536,8 @@ void main() {
   testWidgets(
     'new sales order restores incomplete rows, selection and file bytes after hard close',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1600, 1400));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1600, 1400));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       SharedPreferences.setMockInitialValues({});
       final storage = MemoryFormDraftStorage();
       var env = await _pump(tester, storage);
@@ -628,8 +629,8 @@ Future<({ProviderContainer container, GoRouter router, _Api api})> _pump(
   AttachmentService? files,
   bool canViewPrices = true,
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1600, 1400));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(1600, 1400));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   final prefs = await SharedPreferences.getInstance();
   final api = apiOverride ?? _Api();
   final container = ProviderContainer(

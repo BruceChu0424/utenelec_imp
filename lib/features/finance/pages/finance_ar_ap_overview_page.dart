@@ -215,10 +215,10 @@ class _FinanceArApOverviewPageState
   ///
   /// 2026-09-11 撤掉「查询」按钮后，筛选不再需要用户再点一下确认——改日期/下拉
   /// 即刻生效，关键词走搜索框自身的防抖与回车（用户要求：搜索回车即查询）。
-  void _persistAndReload() {
+  Future<void> _persistAndReload() {
     _persistPrefs();
     _page = 1;
-    _load();
+    return _load();
   }
 
   void _persistPrefs() {
@@ -791,7 +791,7 @@ class _FinanceArApOverviewPageState
           _from = from!;
           _to = to!;
         });
-        _persistAndReload();
+        return _persistAndReload();
       },
     ),
     UtenDropdownScrollScope(

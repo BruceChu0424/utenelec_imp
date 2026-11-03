@@ -277,6 +277,35 @@ class SalesClientLastTermsPostgresTest {
         assertCode(() -> controller.masterDefaultTerms(shared), ErrorCode.NOT_FOUND);
     }
 
+    @Test
+    void readOnlyPrefillKeepsOneSnapshotWhileIndependentMasterMaintenanceCanCommit() {
+        UUID customer=client("SNAPSHOT");
+        UUID first=currency("SNAPSHOT-FIRST"), second=currency("SNAPSHOT-SECOND");
+        sync(customer,null,null,first);
+        var executor=java.util.concurrent.Executors.newSingleThreadExecutor();
+        var read=new org.springframework.transaction.support.TransactionTemplate(txm);
+        read.setReadOnly(true);
+        read.setIsolationLevel(org.springframework.transaction.TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        try {
+            read.executeWithoutResult(status -> {
+                assertThat(jdbc.queryForObject("SHOW transaction_read_only",String.class)).isEqualTo("on");
+                assertThat(service.masterDefaultTermsForClient(customer).currencyId()).isEqualTo(first);
+                var write=executor.submit(() -> new org.springframework.transaction.support.TransactionTemplate(txm).execute(tx -> {
+                    jdbc.execute("SET LOCAL lock_timeout='2s'");
+                    return jdbc.update("UPDATE clients SET default_currency_id=? WHERE id=?",second,customer);
+                }));
+                org.assertj.core.api.Assertions.assertThatCode(() -> write.get(5,java.util.concurrent.TimeUnit.SECONDS))
+                        .doesNotThrowAnyException();
+                assertThat(jdbc.queryForObject("SELECT default_currency_id FROM clients WHERE id=?",UUID.class,customer))
+                        .isEqualTo(first);
+                assertThat(service.masterDefaultTermsForClient(customer).currencyId()).isEqualTo(first);
+            });
+        } finally {
+            executor.shutdownNow();
+        }
+        assertThat(service.masterDefaultTermsForClient(customer).currencyId()).isEqualTo(second);
+    }
+
     private static void assertCode(Runnable action, ErrorCode code) {
         assertThatThrownBy(action::run).isInstanceOf(ApiException.class)
                 .extracting(error -> ((ApiException) error).getCode()).isEqualTo(code);

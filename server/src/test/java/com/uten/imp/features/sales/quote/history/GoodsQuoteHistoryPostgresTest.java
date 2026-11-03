@@ -26,7 +26,7 @@ class GoodsQuoteHistoryPostgresTest {
         jdbc = new JdbcTemplate(source);
         service = new GoodsQuoteHistoryService(new NamedParameterJdbcTemplate(source));
         jdbc.execute("""
-                CREATE TABLE clients(id uuid primary key, name text);
+                CREATE TABLE clients(id uuid primary key, name text, is_hidden boolean NOT NULL DEFAULT false, hidden_at timestamptz);
                 CREATE TABLE employees(id uuid primary key, full_name text);
                 CREATE TABLE sales_quotes(id uuid primary key, bill_no text, client_id uuid, seller_id uuid, maker_id uuid, manager_review_state text NOT NULL DEFAULT 'NOT_REQUIRED', manager_approved_at timestamptz, manager_approved_by uuid, manager_rejected_at timestamptz, manager_rejected_by uuid, manager_reject_reason text, manager_review_remark text, manager_decision_claim_id uuid);
                 CREATE TABLE sales_orders(id uuid primary key, source_quote_id uuid, client_id uuid, bill_no text, is_deleted boolean, created_at timestamptz default now(), requoted_to_id uuid, requoted_at timestamptz, requoted_by uuid, manager_review_state text NOT NULL DEFAULT 'NOT_REQUIRED', manager_approved_at timestamptz, manager_approved_by uuid, manager_rejected_at timestamptz, manager_rejected_by uuid, manager_reject_reason text, manager_review_remark text, manager_decision_claim_id uuid);
@@ -39,7 +39,7 @@ class GoodsQuoteHistoryPostgresTest {
     @Test void historyUsesEverySubmittedSnapshotAndPreservesDeletedLinesAndOldCustomer() {
         UUID goods = UUID.randomUUID(), otherGoods = UUID.randomUUID();
         UUID quote = UUID.randomUUID(), order = UUID.randomUUID(), client = UUID.randomUUID();
-        jdbc.update("INSERT INTO clients VALUES (?, '客户后来改名')", client);
+        jdbc.update("INSERT INTO clients(id,name) VALUES (?, '客户后来改名')", client);
         jdbc.update("INSERT INTO sales_quotes(id,bill_no,client_id) VALUES (?, 'XB-HISTORY', ?)", quote, client);
         jdbc.update("INSERT INTO sales_orders(id,source_quote_id,client_id,bill_no,is_deleted) VALUES (?,?,?,'XD-HISTORY',true)", order, quote, client);
         snapshot(quote, goods, 1, "SUBMIT", "1234567890.123456", client, "甲客户");
@@ -81,7 +81,7 @@ class GoodsQuoteHistoryPostgresTest {
 
     @Test void legacySnapshotWithoutPartyIdentityNeverBorrowsCurrentCustomerSellerOrOrder() {
         UUID goods = UUID.randomUUID(), quote = UUID.randomUUID(), client = UUID.randomUUID(), seller = UUID.randomUUID();
-        jdbc.update("INSERT INTO clients VALUES (?, '当前客户乙')", client);
+        jdbc.update("INSERT INTO clients(id,name) VALUES (?, '当前客户乙')", client);
         jdbc.update("INSERT INTO employees VALUES (?, '当前销售乙')", seller);
         jdbc.update("INSERT INTO sales_quotes(id,bill_no,client_id,seller_id) VALUES (?, 'XB-LEGACY', ?, ?)", quote, client, seller);
         jdbc.update("INSERT INTO sales_orders(id,source_quote_id,client_id,bill_no,is_deleted) VALUES (?,?,?,'XD-CURRENT',false)", UUID.randomUUID(), quote, client);
@@ -100,7 +100,7 @@ class GoodsQuoteHistoryPostgresTest {
 
     @Test void anEarlierCustomerQuoteSnapshotCannotNavigateToTheLaterCustomersOrder() {
         UUID goods = UUID.randomUUID(), quote = UUID.randomUUID(), oldClient = UUID.randomUUID(), newClient = UUID.randomUUID();
-        jdbc.update("INSERT INTO clients VALUES (?, '当前客户乙')", newClient);
+        jdbc.update("INSERT INTO clients(id,name) VALUES (?, '当前客户乙')", newClient);
         jdbc.update("INSERT INTO sales_quotes(id,bill_no,client_id) VALUES (?, 'XB-CHANGED-CUSTOMER', ?)", quote, newClient);
         jdbc.update("INSERT INTO sales_orders(id,source_quote_id,client_id,bill_no,is_deleted) VALUES (?,?,?,'XD-CUSTOMER-B',false)", UUID.randomUUID(), quote, newClient);
         snapshot(quote, goods, 1, "SUBMIT", "13.1", oldClient, "原客户甲");

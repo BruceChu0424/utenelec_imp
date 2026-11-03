@@ -6,10 +6,13 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -19,6 +22,8 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /** Executes the production query, including pagination, facets, date bounds and masking. */
 @EnabledIfEnvironmentVariable(named = "UTEN_RUN_DB_TESTS", matches = "(?i)true")
@@ -81,6 +86,37 @@ class InstantInventoryPeriodPostgresTest {
         assertThat(row.getCostPrice()).isEqualByComparingTo("5");
         assertThat(row.isPeriodSelected()).isTrue();
         assertThat(response.getTotal()).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/api/stock/instant-inventory", "/api/stock/instant-inventory/attention"})
+    void httpDatesReachTheDatabaseAndSerializeThePeriodContract(String path) throws Exception {
+        var http = MockMvcBuilders.standaloneSetup(new StockQueryController(service)).build();
+        http.perform(get(path).param("warehouseId", parent.toString())
+                        .param("attention", "UNKNOWN_WEIGHT")
+                        .param("dateFrom", "2026-10-01").param("dateTo", "2026-10-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("items[0].periodSelected").value(true))
+                .andExpect(jsonPath("items[0].periodInQty").value(30))
+                .andExpect(jsonPath("items[0].periodOutQty").value(8))
+                .andExpect(jsonPath("items[0].closingQty").value(162))
+                .andExpect(jsonPath("items[0].periodCostAmount").value(810))
+                .andExpect(jsonPath("items[0].costPrice").value(5));
+
+        // A later range must change both flow and the historical closing balance.
+        // The present balance alone cannot satisfy this assertion.
+        when(masker.canView()).thenReturn(false);
+        http.perform(get(path).param("warehouseId", parent.toString())
+                        .param("attention", "UNKNOWN_WEIGHT")
+                        .param("dateFrom", "2026-11-01").param("dateTo", "2026-11-01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("items[0].periodSelected").value(true))
+                .andExpect(jsonPath("items[0].periodInQty").value(8))
+                .andExpect(jsonPath("items[0].periodOutQty").value(0))
+                .andExpect(jsonPath("items[0].closingQty").value(170))
+                .andExpect(jsonPath("items[0].costMasked").value(true))
+                .andExpect(jsonPath("items[0].periodCostAmount").isEmpty())
+                .andExpect(jsonPath("items[0].costPrice").isEmpty());
     }
 
     @Test void explicitLeafIncludesCrossBoundaryTransferAndEmptyAllowedScopeCannotExpand() {

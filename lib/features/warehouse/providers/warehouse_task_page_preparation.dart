@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/data_write_revision.dart';
 import '../../../core/router/route_access_policy.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/date_range_defaults.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/paging/page_preparation_coordinator.dart';
 import '../../../shared/paging/page_preparation_budget_provider.dart';
@@ -200,6 +202,9 @@ void prepareWarehouseTaskPages(
       .toList(growable: false);
   if (allowedSources.isEmpty) return;
   final canPrepareAll = allowedSources.length == visibleSources.length;
+  final dates = recentMonthDateRange();
+  final dateFrom = ChinaDateTime.formatDate(dates.start);
+  final dateTo = ChinaDateTime.formatDate(dates.end);
   ref
       .watch(_warehouseTaskPreparationProvider)
       .prepare(
@@ -210,6 +215,8 @@ void prepareWarehouseTaskPages(
           canPrepareAll,
           scope,
           keyword.trim(),
+          dateFrom,
+          dateTo,
           refreshTick,
         ],
         [
@@ -218,6 +225,8 @@ void prepareWarehouseTaskPages(
               direction: direction,
               source: source,
               keyword: keyword,
+              dateFrom: dateFrom,
+              dateTo: dateTo,
               scope: scope,
             )._prepare(ref, repository),
         ],

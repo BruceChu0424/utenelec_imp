@@ -93,6 +93,7 @@ class AggregateRetainedResponsibilityEndToEndTest {
 
     @Test void ancestorQualifiedEightyLeavesOnlyTwentyNewPrivateOutputAndNoGhostFuture() {
         var c=h.createWithChild("100",1);var initial=h.analyses.detail(c.analysis());
+        com.uten.imp.support.GoodsFixtureAdjustment.prepareForMasterMaintenance(h.db,c.common());
         var common=originals(initial,c.common());var children=originals(initial,c.child());
         var parent=h.writer.submit(c.analysis(),h.command(c,List.of(input(c,c.common(),common)))).batches().getFirst();
         var child=h.writer.submit(c.analysis(),h.command(c,List.of(input(c,c.child(),children)))).batches().getFirst();
@@ -100,6 +101,9 @@ class AggregateRetainedResponsibilityEndToEndTest {
         UUID donorProduct=UUID.randomUUID();
         h.fixture.insertGoods(donorProduct,"RET-DONOR-"+donorProduct,"祖先最终件的独立来源","自制",c.world().unitId(),c.world().unitLegacy());
         h.fixture.insertBom(donorProduct,c.common(),"1");
+        h.fixture.loginAs(c.world().superAdminUserId());
+        var master=beans.getBean(com.uten.imp.features.master.goods.GoodsInlineEditService.class);
+        com.uten.imp.support.GoodsFixtureAdjustment.maintainSourceType(h.db,master,c.common(),"采购");
         var donor=h.analyses.preview(new PreviewRequest(null,null,null,c.world().warehouseId(),"ancestor-donor-"+UUID.randomUUID(),
                 List.of(new PreviewItem("OTHER",null,donorProduct,null,c.world().unitId(),"祖先最终件独立采购","核对真实最终件对下层责任的影响",BusinessTime.today().plusDays(10),new BigDecimal("80")))));
         UUID donorMaterial=donor.flatMaterials().stream().filter(row->row.goodsId().equals(c.common())).findFirst().orElseThrow().materialLineId();
@@ -109,7 +113,9 @@ class AggregateRetainedResponsibilityEndToEndTest {
         UUID orderItem=org.springframework.test.util.ReflectionTestUtils.invokeMethod(h.fixture,"approveExistingAnalysisPurchase",c.world(),donor.analysisId(),c.common());
         org.springframework.test.util.ReflectionTestUtils.invokeMethod(h.fixture,"receiveAndPassPurchase",c.world(),orderItem,c.common(),new BigDecimal("80"),"ancestor-eighty-"+UUID.randomUUID());
         h.fixture.loginAs(c.world().superAdminUserId());
+        com.uten.imp.support.GoodsFixtureAdjustment.maintainSourceType(h.db,master,c.common(),"自制");
         donor=h.analyses.detail(donor.analysisId());var view=h.analyses.detail(c.analysis());UUID commonMaterial=common.keySet().iterator().next();
+        assertEquals("BUY",donor.flatMaterials().stream().filter(row->row.materialLineId().equals(donorMaterial)).findFirst().orElseThrow().sourceConfirmed());
         view=h.analyses.saveRoutes(c.analysis(),new RouteRequest(view.version(),view.fingerprint(),"ancestor-target-make-"+UUID.randomUUID(),
                 List.of(new RouteDecision(commonMaterial,null,"MAKE","保留余量的真实制造责任"))));
         beans.getBean(com.uten.imp.features.production.analysis.MaterialStockReallocationService.class).createReturningTarget(donor.analysisId(),

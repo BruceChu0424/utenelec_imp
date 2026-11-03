@@ -64,6 +64,7 @@ import 'package:uten_imp/shared/platform_tables/platform_table_binding.dart';
 import 'package:uten_imp/platform_table_registry.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/drafts/memory_form_draft_storage.dart';
+import '../../../support/uten_test_actions.dart';
 
 part 'production_daily_report_draft_identity_cases.dart';
 part 'production_daily_report_create_recovery_cases.dart';
@@ -117,8 +118,8 @@ void main() {
     testWidgets(
       'workshop save returns saved draft for review, never approves: attachments=$attachmentMode',
       (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1440, 1000));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1440, 1000));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         SharedPreferences.setMockInitialValues({});
         final preferences = await SharedPreferences.getInstance();
         var creates = 0;
@@ -362,8 +363,8 @@ void main() {
     testWidgets('approval resume restores exact whole input: $scenario', (
       tester,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(1440, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1440, 1000));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
       Map<String, dynamic>? saved;
@@ -609,8 +610,8 @@ void main() {
     testWidgets(
       'cancelling over-limit confirmation preserves actual quantity reason other rows and material ${sample.over}',
       (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1440, 1000));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1440, 1000));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         SharedPreferences.setMockInitialValues({});
         final preferences = await SharedPreferences.getInstance();
         Map<String, dynamic>? submitted;
@@ -798,8 +799,8 @@ void main() {
     testWidgets('actual output requires explicit server permission: $mode', (
       tester,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1400, 1000));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
       Map<String, dynamic>? saved;
@@ -911,8 +912,8 @@ void main() {
   testWidgets(
     'over-limit actual output requires a reason and preserves input',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1400, 1000));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
       Map<String, dynamic>? saved;
@@ -989,8 +990,8 @@ void main() {
   testWidgets(
     'pending supplement leaves only the planned reportable quantity',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1400, 1000));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
       Map<String, dynamic>? saved;
@@ -1083,8 +1084,8 @@ void main() {
     testWidgets('editing draft preserves stored use: $scenario', (
       tester,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(1400, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1400, 1000));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
       Map<String, dynamic>? saved;
@@ -1518,8 +1519,8 @@ void main() {
   testWidgets(
     'exact execution segment applies its only reportable source without reopening picker',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1200, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1200, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       final api = _api();
       final employees = _FakeEmployeeRepository();
       SharedPreferences.setMockInitialValues({});
@@ -1954,8 +1955,8 @@ void main() {
   });
 
   testWidgets('报工表明头右键菜单：弹菜单、隐藏列、移动换位、必填列锁定', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1200, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = _api();
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
@@ -2085,8 +2086,8 @@ void main() {
   });
 
   testWidgets('新建日报勾选口径：来源行自动勾选，没勾行时保存置灰并说明原因', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await setUtenTestSurfaceSize(tester, const Size(1200, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
     final api = _api();
     final employees = _FakeEmployeeRepository();
     SharedPreferences.setMockInitialValues({});
@@ -2150,8 +2151,8 @@ void main() {
   testWidgets(
     'reopening the same task uses each latest partial-report remainder',
     (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1200, 900));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await setUtenTestSurfaceSize(tester, const Size(1200, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
       final authoritativeSource = <String, dynamic>{
@@ -2256,8 +2257,8 @@ void main() {
     testWidgets(
       'partially reported task prefills unallocated goods and available remainder $availableQty',
       (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1200, 900));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1200, 900));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         SharedPreferences.setMockInitialValues({});
         final preferences = await SharedPreferences.getInstance();
         final sourceRequests = <RequestOptions>[];
@@ -2495,8 +2496,8 @@ void main() {
     testWidgets(
       'last report saves entered usage without surplus dialog: $used',
       (tester) async {
-        await tester.binding.setSurfaceSize(const Size(1440, 1000));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1440, 1000));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         SharedPreferences.setMockInitialValues({});
         final preferences = await SharedPreferences.getInstance();
         Map<String, dynamic>? saved;
@@ -2718,8 +2719,8 @@ Future<void> _pumpNewReport(
   bool followSessionIdentity = false,
   GoRouter? router,
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1440, 1000));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(1440, 1000));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   await tester.pumpWidget(
@@ -2837,8 +2838,8 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpAllocationPage(
   GlobalKey? captureKey,
   ThemeData? theme,
 }) async {
-  await tester.binding.setSurfaceSize(const Size(1800, 1000));
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, const Size(1800, 1000));
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   final api = _api(
@@ -2960,8 +2961,8 @@ Future<UtenEditableGridController<DailyGridRow>> _pumpEditDraftPage(
   ThemeData? theme,
   void Function(Map<String, dynamic> body)? onPutBody,
 }) async {
-  await tester.binding.setSurfaceSize(surfaceSize);
-  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await setUtenTestSurfaceSize(tester, surfaceSize);
+  addTearDown(() => setUtenTestSurfaceSize(tester, null));
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
   final items =

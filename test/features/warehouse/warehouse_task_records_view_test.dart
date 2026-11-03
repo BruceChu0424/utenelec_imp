@@ -11,6 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/utils/china_datetime.dart';
+import 'package:uten_imp/core/utils/date_range_defaults.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -94,6 +96,8 @@ class WarehouseTaskRecordsCall {
     this.view = WarehouseTaskView.active,
     this.keyword,
     this.billNo,
+    this.dateFrom,
+    this.dateTo,
     this.sort,
     this.order,
     this.columns = const {},
@@ -106,6 +110,8 @@ class WarehouseTaskRecordsCall {
   final WarehouseTaskView view;
   final String? keyword;
   final String? billNo;
+  final String? dateFrom;
+  final String? dateTo;
   final String? sort;
   final String? order;
   final Map<String, String?> columns;
@@ -173,6 +179,8 @@ class WarehouseTaskRecordsFakeGateway implements WarehouseTaskCenterGateway {
       status: status,
       keyword: keyword,
       billNo: billNo,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
       scope: warehouseScope,
       page: page,
       sort: sort,
@@ -477,6 +485,21 @@ Future<void> _doubleTap(WidgetTester tester, String text) async {
 }
 
 void main() {
+  testWidgets('任务日期默认近一月，卡片内清除不保留旧范围', (tester) async {
+    final gateway = WarehouseTaskRecordsFakeGateway(const []);
+    await _pump(tester, gateway);
+    final dates = recentMonthDateRange();
+    expect(gateway.calls.last.dateFrom, ChinaDateTime.formatDate(dates.start));
+    expect(gateway.calls.last.dateTo, ChinaDateTime.formatDate(dates.end));
+    await tester.tap(find.byKey(const Key('uten-date-range-clear')));
+    await tester.pumpAndSettle();
+    expect(gateway.calls.last.dateFrom, isNull);
+    expect(gateway.calls.last.dateTo, isNull);
+    expect(gateway.calls.last.page, 1);
+    expect(find.byKey(const Key('uten-date-range-clear')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final source in ['PURCHASE', 'SUBCONTRACT']) {
     for (final canViewReturn in [true, false]) {
       testWidgets('$source 已入库余量待退显示分量并按退回读取资格双击导航 $canViewReturn', (

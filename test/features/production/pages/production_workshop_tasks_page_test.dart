@@ -1248,13 +1248,13 @@ void main() {
           repository.calls.where((call) => call.status == 'COMPLETED').toList();
       expect(historyCalls(), isEmpty);
 
-      // ADR-066 §1.3（2026-10-24 修订）：点历史任务默认近三个月直接加载；
+      // ADR-066 §1.3（2026-10-24 修订）：点历史任务默认近一个月直接加载；
       // 时间胶囊仍可切「全部」或具体时间段。
       await tester.tap(find.text('历史任务'));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('workshop-history-time')), findsOneWidget);
       expect(find.text('历史数据可能较多，请先在上方选择时间段或「全部」'), findsNothing);
-      final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
+      final defaultRange = UtenHistoryTimeValue.lastMonth().range!;
       expect(historyCalls(), hasLength(1));
       expect(historyCalls().single.status, 'COMPLETED');
       expect(

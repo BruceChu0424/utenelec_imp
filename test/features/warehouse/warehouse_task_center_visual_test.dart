@@ -29,6 +29,7 @@ import '../../helpers/badge_summary_fixture.dart';
 import '../../support/audit_screenshot_support.dart';
 import 'warehouse_task_records_view_test.dart'
     show WarehouseTaskRecordsFakeGateway;
+import '../../support/uten_test_actions.dart';
 
 const _output = String.fromEnvironment(
   'WAREHOUSE_VISUAL_OUTPUT',
@@ -297,10 +298,10 @@ void main() {
     ('warehouse-inbound-light-375', 'inbound', false, const Size(375, 900)),
   ]) {
     testWidgets('真实任务中心渲染 ${scenario.$1}', (tester) async {
-      await tester.binding.setSurfaceSize(scenario.$4);
+      await setUtenTestSurfaceSize(tester, scenario.$4);
       tester.view.devicePixelRatio = 1;
       addTearDown(() {
-        tester.binding.setSurfaceSize(null);
+        setUtenTestSurfaceSize(tester, null);
         tester.view.resetDevicePixelRatio();
       });
       await loadAuditScreenshotFonts(tester);

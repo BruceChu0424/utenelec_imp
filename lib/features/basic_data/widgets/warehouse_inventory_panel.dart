@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/utils/date_range_defaults.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:flutter/material.dart';
@@ -84,7 +85,7 @@ class _WarehouseInventoryPanelState
   int _page = 1;
   int _size = 30;
   Map<String, String?> _filters = {};
-  DateTimeRange? _period;
+  DateTimeRange? _period = recentMonthDateRange();
   String? get _dateFrom =>
       _period == null ? null : inventoryPeriodDate(_period!.start);
   String? get _dateTo =>
@@ -493,7 +494,7 @@ class _WarehouseInventoryPanelState
             toolbarLeadingActions: [
               InstantInventoryPeriodButton(
                 range: _period,
-                onChanged: (range) {
+                onChanged: (range) async {
                   if (range == _period) return;
                   setState(() {
                     _period = range;
@@ -501,7 +502,7 @@ class _WarehouseInventoryPanelState
                     _readEpoch++;
                     _sortKey = null;
                   });
-                  _load(1);
+                  await _load(1);
                 },
               ),
               const WeightDisplayUnitButton(),

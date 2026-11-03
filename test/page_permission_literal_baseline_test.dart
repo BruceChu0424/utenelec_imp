@@ -215,6 +215,9 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       // Optional category-tree reads require their own view grant; stock rows
       // remain usable without this grant and retain the stock:view boundary.
       'Perm.materialCategoryView': 1,
+      // Optional cost columns use the same explicit goods-cost view authority
+      // as the backend mask; this does not gate ordinary stock rows.
+      'Perm.goodsCostView': 1,
       'Perm.goodsEdit': 1,
       'Perm.goodsView': 1,
       'Perm.stockReportExport': 2,
@@ -244,8 +247,6 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     tokens: {
       'Perm.stockDocView': 1,
       'Perm.warehouseInboundView': 1,
-      'Perm.warehousePurchaseReceiptHistoryView': 1,
-      'Perm.warehouseSubcontractReceiptHistoryView': 1,
       'Perm.workshopMaterialView': 1,
     },
   ),
@@ -253,27 +254,12 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 4,
     tokens: {
       'Perm.stockDocView': 1,
-      'Perm.subcontractOutboundView': 1,
-      'Perm.warehouseSalesOutboundView': 1,
-      'Perm.warehouseSubcontractOutboundHistoryView': 1,
       'Perm.workshopMaterialIssue': 1,
       'Perm.workshopMaterialView': 1,
     },
   ),
-  // ADR-186: synchronous read invalidation matches GoodsMarketReferenceService's
-  // purchase/finance alternatives. Editing is exclusively server canManage plus
-  // native ownership; these six references never grant a mutation capability.
-  'lib/features/basic_data/widgets/goods_material_market_panel.dart': (
-    legacyCount: 0,
-    tokens: {
-      'Perm.goodsView': 1,
-      'Perm.goodsPriceAnalysisView': 1,
-      'Perm.purchaseOrderView': 1,
-      'Perm.financeOrderApprovalView': 1,
-      'Perm.purchaseOrderPriceView': 1,
-      'Perm.financeViewAll': 1,
-    },
-  ),
+  // ADR-186 market/analysis guards now live in shared/pricing/price_analysis_access.dart.
+  // Its contract tests retain the composite grants; no retired local allowance remains.
   // Managed market runtime status is read-only and clears immediately on admin
   // authority loss; policy changes use the existing server settings capability.
   'lib/features/admin/widgets/material_forecast_runtime_status_card.dart': (
@@ -519,16 +505,6 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
   ),
   'lib/features/warehouse/pages/warehouse_material_return_batch_receive_page.dart':
       (legacyCount: 1, tokens: {'Perm.stockDocApprove': 3}),
-  'lib/features/basic_data/pages/goods_price_analysis_page.dart': (
-    legacyCount: 0,
-    tokens: {
-      'Perm.goodsPriceAnalysisView': 1,
-      'Perm.goodsView': 1,
-      'Perm.salesOrderPriceView': 1,
-      'Perm.salesOrderView': 1,
-      'Perm.salesQuoteFinanceView': 1,
-    },
-  ),
   'lib/features/basic_data/widgets/goods_detail_body.dart': (
     legacyCount: 16,
     tokens: {
@@ -538,24 +514,17 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
       'Perm.goodsDiscountView': 2,
       'Perm.goodsEdit': 2,
       'Perm.goodsPurchaseEdit': 1,
-      'Perm.goodsPriceAnalysisView': 1,
       'Perm.goodsPriceEdit': 2,
       'Perm.goodsPriceView': 2,
-      'Perm.goodsView': 3,
+      // Commercial analysis now delegates this AND pair to price_analysis_access;
+      // the owning body no longer repeats the two local permission checks.
+      'Perm.goodsView': 2,
       'Perm.salesQuoteFinanceView': 1,
       'Perm.stockView': 1,
       'Perm.unitCreate': 1,
     },
   ),
   'lib/features/basic_data/widgets/goods_price_facet_picker.dart': (
-    legacyCount: 0,
-    tokens: {'Perm.goodsPriceAnalysisView': 1, 'Perm.goodsView': 1},
-  ),
-  'lib/features/basic_data/widgets/goods_price_observation_detail.dart': (
-    legacyCount: 0,
-    tokens: {'Perm.goodsPriceAnalysisView': 1, 'Perm.goodsView': 1},
-  ),
-  'lib/features/basic_data/widgets/goods_subcontract_supplier_table.dart': (
     legacyCount: 0,
     tokens: {'Perm.goodsPriceAnalysisView': 1, 'Perm.goodsView': 1},
   ),
@@ -924,7 +893,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      290, // Retired two review-page allowances; global cap stays 677.
+      269, // +1 stock-cost, -17 delegated pricing, -5 retired task guards; cap 677.
     );
   });
 

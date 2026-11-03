@@ -513,7 +513,10 @@ void main() {
         ),
       );
       await _openActions(tester);
-      await tester.tap(find.text('时间段'));
+      final filter = tester.widget<UtenHistoryTimeFilter>(
+        find.byType(UtenHistoryTimeFilter),
+      );
+      await tester.tap(find.text(filter.rangeLabel));
       await tester.pumpAndSettle();
       expect(find.byType(UtenDateRangePickerDialog), findsOneWidget);
       expect(find.byTooltip('关闭操作面板'), findsNothing);

@@ -449,6 +449,25 @@ class DailyReportMaterialReviewMigrationPostgresTest {
                 "CREATE INDEX idx_arap_imported_client ON public.ar_ap_ledger USING btree (client_id) WHERE ((direction = 'AR'::text) AND (legacy_import_run_id IS NOT NULL))"));
         assertNull(expectedIndexes.put("idx_arap_imported_supplier",
                 "CREATE INDEX idx_arap_imported_supplier ON public.ar_ap_ledger USING btree (supplier_id) WHERE ((direction = 'AP'::text) AND (legacy_import_run_id IS NOT NULL))"));
+        // V991 retains atomic finance command receipts; V993 records physical
+        // claim locations and append-only movement evidence. V995 adds only
+        // the nullable selling-price currency lookup. These declarations are
+        // independent of the catalog under test; no unlisted delta is allowed.
+        for (String table : List.of("finance_batch_entry_commands",
+                "stock_reservation_storage_positions", "stock_reservation_storage_events")) {
+            assertTrue(expectedTables.add(table));
+        }
+        Map.ofEntries(
+                Map.entry("finance_batch_entry_commands_pkey", "CREATE UNIQUE INDEX finance_batch_entry_commands_pkey ON public.finance_batch_entry_commands USING btree (actor_id, idempotency_key)"),
+                Map.entry("stock_reservation_storage_positions_pkey", "CREATE UNIQUE INDEX stock_reservation_storage_positions_pkey ON public.stock_reservation_storage_positions USING btree (reservation_id, warehouse_id)"),
+                Map.entry("stock_reservation_storage_events_pkey", "CREATE UNIQUE INDEX stock_reservation_storage_events_pkey ON public.stock_reservation_storage_events USING btree (id)"),
+                Map.entry("stock_reservation_storage_events_reverse_of_key", "CREATE UNIQUE INDEX stock_reservation_storage_events_reverse_of_key ON public.stock_reservation_storage_events USING btree (reverse_of)"),
+                Map.entry("idx_stock_storage_event_document", "CREATE INDEX idx_stock_storage_event_document ON public.stock_reservation_storage_events USING btree (document_id, document_item_id)"),
+                Map.entry("idx_stock_storage_event_reservation", "CREATE INDEX idx_stock_storage_event_reservation ON public.stock_reservation_storage_events USING btree (reservation_id, created_at, id)"),
+                Map.entry("idx_stock_storage_position_warehouse", "CREATE INDEX idx_stock_storage_position_warehouse ON public.stock_reservation_storage_positions USING btree (warehouse_id, reservation_id) INCLUDE (qty)"),
+                Map.entry("idx_stock_storage_claim_dimension", "CREATE INDEX idx_stock_storage_claim_dimension ON public.stock_reservations USING btree (goods_id, color_id, id) INCLUDE (warehouse_id, order_item_id, qty, consumed_qty, released_qty) WHERE ((NOT is_deleted) AND (status = 0))"),
+                Map.entry("idx_goods_currency_id", "CREATE INDEX idx_goods_currency_id ON public.goods USING btree (currency_id) WHERE (NOT is_deleted)"))
+                .forEach((name, definition) -> assertNull(expectedIndexes.put(name, definition)));
         List<String> actualTables = tables();
         TreeMap<String,String> actualIndexes = catalogMap(indexes());
         if (!expectedTables.stream().toList().equals(actualTables) || !expectedIndexes.equals(actualIndexes)) {

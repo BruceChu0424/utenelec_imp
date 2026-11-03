@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
@@ -198,7 +199,7 @@ class _LossDecisionEditorState extends ConsumerState<_LossDecisionEditor> {
   }
 
   Future<void> _pickDueDate(_ResolutionDraft draft) async {
-    final picked = await showDatePicker(
+    final picked = await showUtenDatePicker(
       context: context,
       initialDate: draft.dueDate ?? DateTime.now(),
       firstDate: DateTime.now().subtract(const Duration(days: 1)),
@@ -817,7 +818,7 @@ class _LossFulfillmentEditorState
 
   Future<void> _pickCashReceiptDate() async {
     final today = DateTime.now();
-    final picked = await showDatePicker(
+    final picked = await showUtenDatePicker(
       context: context,
       initialDate: _cashReceiptDate,
       firstDate: DateTime(2000),

@@ -139,7 +139,15 @@ void materialOrderAuthorityCases() {
     );
     expect(
       find.byKey(const ValueKey('material-route-dropdown-shared-1')),
-      findsOneWidget,
+      findsNothing,
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey('material-route-readonly-shared-1')),
+          )
+          .data,
+      MaterialSupplyRoute.buy.label,
     );
     await _showMaterialSummary(tester);
     final row = find.byKey(
@@ -154,6 +162,10 @@ void materialOrderAuthorityCases() {
         ),
       ),
       findsNothing,
+    );
+    expect(
+      requests.where((request) => request.path.endsWith('/routes')),
+      isEmpty,
     );
   });
 

@@ -73,8 +73,8 @@ class _ProductionPlanListPageState extends ConsumerState<ProductionPlanListPage>
   int? _statusFilter; // null=全部
   bool _historyMode = false;
 
-  /// 历史单据段的时间门控值；默认近三个月（2026-10-24 用户口径）。
-  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+  /// 历史单据段的时间门控值；默认近一个月（2026-11-03 用户口径）。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastMonth();
   bool _statusFilterSelected = false; // 进页面不预选（不选=不过滤）
 
   /// 表头列筛选：车间（departments/tree 展平桶，value=UUID 回传 departmentId）。

@@ -11,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -101,7 +102,19 @@ void main() {
     final reportState = tester.state(find.byType(FinanceArApOverviewPage));
     await tester.tap(find.byType(FinanceDateRangeFilter));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('上月'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenDateRangePickerDialog),
+        matching: find.text('10'),
+      ),
+    );
+    await tester.tap(
+      find.descendant(
+        of: find.byType(UtenDateRangePickerDialog),
+        matching: find.text('20'),
+      ),
+    );
+    await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('finance-ar-ap-display-mode')));
     await tester.pumpAndSettle();
@@ -224,7 +237,19 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byType(FinanceDateRangeFilter));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('上月'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenDateRangePickerDialog),
+          matching: find.text('10'),
+        ),
+      );
+      await tester.tap(
+        find.descendant(
+          of: find.byType(UtenDateRangePickerDialog),
+          matching: find.text('20'),
+        ),
+      );
+      await tester.tap(find.text('确定'));
       await tester.pumpAndSettle();
       final dates = tester.widget<FinanceDateRangeFilter>(
         find.byType(FinanceDateRangeFilter),

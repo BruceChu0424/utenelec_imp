@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
@@ -86,7 +87,7 @@ class _ProcurementIqcRejectionActionDialogState
       '${value.day.toString().padLeft(2, '0')}';
 
   Future<void> _pickDate() async {
-    final value = await showDatePicker(
+    final value = await showUtenDatePicker(
       context: context,
       initialDate: _date,
       firstDate: DateTime(2000),

@@ -211,16 +211,28 @@ void main() {
       // path_provider_windows derives the preference directory from these EXE
       // fields, so changing them during branding work would lose old settings.
       final resource = File('windows/runner/Runner.rc').readAsStringSync();
-      expect(resource, contains('VALUE "FileDescription", "UTEN"'));
+      expect(resource, contains('#include "client_runtime_identity.h"'));
+      expect(resource, contains('VALUE "FileDescription", UTEN_DISPLAY_NAME'));
       expect(resource, contains('VALUE "CompanyName", "Uten"'));
-      expect(resource, contains('VALUE "ProductName", "优腾综合管理平台"'));
+      expect(
+        resource,
+        contains('VALUE "ProductName", UTEN_NATIVE_PRODUCT_NAME'),
+      );
+      final formalIdentity = File(
+        'windows/runner/client_runtime_profile.default.g.h',
+      ).readAsStringSync();
+      expect(formalIdentity, contains('#define UTEN_DISPLAY_NAME "UTEN"'));
+      expect(
+        formalIdentity,
+        contains('#define UTEN_NATIVE_PRODUCT_NAME "优腾综合管理平台"'),
+      );
       expect(
         File('windows/CMakeLists.txt').readAsStringSync(),
         contains('set(BINARY_NAME "uten_imp")'),
       );
       expect(
         File('windows/runner/main.cpp').readAsStringSync(),
-        contains('window.Create(L"UTEN"'),
+        contains('window.Create(UTEN_DISPLAY_NAME_W'),
       );
       await controller.update(title: '其他公司平台', source: 'https://b.example/api');
       expect(calls.single.arguments, '其他公司平台');

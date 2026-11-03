@@ -92,9 +92,10 @@ class AggregateMaterialOrderingLifecycleEndToEndTest {
 
     @ParameterizedTest @ValueSource(strings={"MAKE","BUY"})
     void threeHundredDemandWithFourHundredOrderedKeepsOriginalAppendAndRouteLock(String route){
-        var c=h.create(true,false,"100",true,3,"1");
-        h.setRoute(c,c.child(),"SUBCONTRACT");
-        if("MAKE".equals(route))h.setRoute(c,c.material(),route);
+        var c=h.createWithSources(true,false,"100",true,3,"1",
+                new AggregateMaterialOrderEndToEndTest.GoodsSources("MAKE","SUBCONTRACT",route));
+        h.assertMasterRoute(c,c.child(),"SUBCONTRACT");
+        if("MAKE".equals(route))h.assertMasterRoute(c,c.material(),route);
         GroupInput leaves=h.input(c,c.material(),route,"400",true);
         h.writer.submit(c.analysis(),h.command(c,List.of(leaves)));
         h.writer.submit(c.analysis(),h.command(c,List.of(h.input(c,c.common(),"MAKE","300",false))));
@@ -321,8 +322,8 @@ class AggregateMaterialOrderingLifecycleEndToEndTest {
 
     @ParameterizedTest @ValueSource(strings={"MAKE","BUY"})
     void revokedRouteAuthorityCannotSubmitOrCancelTheSameActorsOrder(String route){
-        var c=h.create(false,false,"1");
-        if("MAKE".equals(route))h.setRoute(c,c.material(),route);
+        var c=h.createMaterial("1",route);
+        h.assertMasterRoute(c,c.material(),route);
         SubmitRequest intent=h.command(c,List.of(h.input(c,c.material(),route,"6",false)));
         Authentication actor=SecurityContextHolder.getContext().getAuthentication();
         String permission="MAKE".equals(route)?"production_material_analysis:generate":"production_material_analysis:notify";
@@ -343,8 +344,8 @@ class AggregateMaterialOrderingLifecycleEndToEndTest {
     }
 
     @Test void ordinaryPartialMakePlanAtOneTickAlsoLocksTheOriginalSupplyRoute(){
-        var c=h.create(false,false,"1");
-        h.setRoute(c,c.material(),"MAKE");
+        var c=h.createMaterial("1","MAKE");
+        h.assertMasterRoute(c,c.material(),"MAKE");
         AnalysisView initial=h.analyses.detail(c.analysis());
         MaterialView original=initial.flatMaterials().stream().filter(row->row.goodsId().equals(c.material())).findFirst().orElseThrow();
         h.ordinary.issueWorkshopPlans(c.analysis(),new IssueWorkshopPlansRequest(initial.version(),initial.fingerprint(),

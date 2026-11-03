@@ -74,10 +74,10 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                 String extraKey = type.equals("PURCHASE") ? "giftQty" : "allowedLossPct";
                 UUID order = UUID.randomUUID(), item = UUID.randomUUID(), goods = UUID.randomUUID(), unit = UUID.randomUUID();
                 UUID supplier = UUID.randomUUID(), currency = UUID.randomUUID(), settlement = UUID.randomUUID();
-                jdbc.update("INSERT INTO suppliers VALUES (?, 'S1', '原供应商')", supplier);
+                jdbc.update("INSERT INTO suppliers(id,code,name) VALUES (?, 'S1', '原供应商')", supplier);
                 jdbc.update("INSERT INTO currencies VALUES (?, '美元')", currency);
                 jdbc.update("INSERT INTO settlement_methods VALUES (?, '原结算方式')", settlement);
-                jdbc.update("INSERT INTO goods VALUES (?, 'G1', '现有主档名称')", goods);
+                jdbc.update("INSERT INTO goods(id,code,name) VALUES (?, 'G1', '现有主档名称')", goods);
                 jdbc.update("INSERT INTO units VALUES (?, '公斤')", unit);
                 jdbc.update("INSERT INTO " + prefix + "_orders(id,supplier_id,warehouse_id,currency_id,settlement_method_id,purchaser_id,maker_id,remark) VALUES (?, ?, NULL, ?, ?, NULL, NULL, '原头备注')", order, supplier, currency, settlement);
                 jdbc.update("INSERT INTO " + prefix + "_order_items(id,order_id,line_no,goods_id,unit_id,goods_code_snapshot,goods_name_snapshot,weight," + extraColumn + ",remark) VALUES (?, ?, 1, ?, ?, 'G1', '提交时货品', 1.2500, 2.50, '原行备注')", item, order, goods, unit);
@@ -201,12 +201,12 @@ class ProcurementApprovalDisplaySnapshotPostgresTest {
                   finance_tax_rate numeric,finance_exchange_rate numeric,finance_total_local numeric);
                 CREATE TABLE procurement_order_approval_events(id uuid,case_id uuid,event_type text,actor_user_id uuid,
                   actor_employee_id uuid,from_assignee_user_id uuid,to_assignee_user_id uuid,reason text,event_snapshot jsonb,created_at timestamptz DEFAULT now());
-                CREATE TABLE suppliers(id uuid,code text,name text);
+                CREATE TABLE suppliers(id uuid,code text,name text, is_hidden boolean NOT NULL DEFAULT false, hidden_at timestamptz);
                 CREATE TABLE warehouses(id uuid,name text);
                 CREATE TABLE currencies(id uuid,name text);
                 CREATE TABLE settlement_methods(id uuid,name text);
                 CREATE TABLE employees(id uuid,full_name text);
-                CREATE TABLE goods(id uuid,code text,name text, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8), client_goods_name text);
+                CREATE TABLE goods(id uuid,code text,name text, production_overproduction_rate numeric(9,6), name_en VARCHAR(255), name_en_source VARCHAR(8), client_goods_name text, currency_id uuid);
                 CREATE TABLE colors(id uuid,name text,remark text);
                 CREATE TABLE units(id uuid,name text);
                 """);

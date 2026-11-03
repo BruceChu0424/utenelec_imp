@@ -60,10 +60,14 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         return seed(tag,warehouse,qty,false);
     }
     private Tree seed(String tag,UUID warehouse,String qty,boolean fixedBatch) {
+        return seed(tag,warehouse,qty,fixedBatch,"BUY");
+    }
+    private Tree seed(String tag,UUID warehouse,String qty,boolean fixedBatch,String childSource) {
         var w=fixture.seedWorld("planned-qty-"+tag);fixture.loginAs(w.superAdminUserId());
         UUID root=UUID.randomUUID(),parent=UUID.randomUUID();
         fixture.insertGoods(root,"PQ-ROOT-"+root,"计划量成品","自制",w.unitId(),w.unitLegacy());
         fixture.insertGoods(parent,"PQ-P-"+parent,"计划量自制父件","自制",w.unitId(),w.unitLegacy());
+        fixture.seedGoodsSources(java.util.Map.of(w.goodsC(),childSource));
         fixture.insertBom(root,parent,"1");fixture.insertBom(parent,w.goodsC(),"1");fixture.insertBom(root,w.goodsD(),"1");
         if(fixedBatch) db.update("UPDATE goods_bom_items SET qty=10,consumption_basis='FIXED_BATCH',basis_output_qty=100,allow_partial_package=FALSE WHERE goods_id=? AND component_goods_id=?",parent,w.goodsC());
         db.update("UPDATE goods SET default_supplier_id=? WHERE id IN (?,?)",w.supplierId(),w.goodsC(),w.goodsD());
@@ -72,7 +76,7 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
                 List.of(new PreviewItem("OTHER",null,root,null,w.unitId(),"planned-source-"+tag+"-"+root,"计划量单一入口",BusinessTime.today().plusDays(10),new BigDecimal(qty)))));
         view=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"planned-routes-"+view.analysisId(),
                 view.flatMaterials().stream().filter(MaterialView::actionable)
-                        .map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),m.goodsId().equals(parent)||m.goodsId().equals(root)?"MAKE":"BUY",null)).toList()));
+                        .map(m->new RouteDecision(m.materialLineId(),m.actionGroupKey(),m.sourceSuggestion(),null)).toList()));
         return new Tree(w,view.analysisId(),root,parent,view.products().getFirst().analysisLineId(),
                 line(view,parent),line(view,w.goodsC()),line(view,w.goodsD()));
     }
@@ -268,11 +272,10 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
      * 预览同口径, 不会按库内旧快照把孙层锚点多退或多涨。
      */
     @Test void issuePreviewEqualsTheRealIssueAfterStockDriftSinceTheLastRefresh() {
-        Tree t=seed("parity-drift");
+        Tree t=seed("parity-drift",null,"1000",false,"MAKE");
         AnalysisView routed=analyses.detail(t.analysis());
         MaterialView child=material(routed,t.childLine());
-        routed=analyses.saveRoutes(t.analysis(),new RouteRequest(routed.version(),routed.fingerprint(),"parity-drift-route-"+t.analysis(),
-                List.of(new RouteDecision(child.materialLineId(),child.actionGroupKey(),"MAKE",null))));
+        assertEquals("MAKE",child.sourceConfirmed());
         commands.issueWorkshopPlans(t.analysis(),issue(routed,t,"parity-drift-child-600",candidate(t.childLine(),"600")));
         UUID childAnchor=material(analyses.detail(t.analysis()),t.childLine()).planAnchorAnalysisLineId();
         assertNotNull(childAnchor);
@@ -1054,6 +1057,7 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         UUID root=UUID.randomUUID(),sub=UUID.randomUUID();
         fixture.insertGoods(root,"PQL-ROOT-"+root,"单一子件委外成品","自制",w.unitId(),w.unitLegacy());
         fixture.insertGoods(sub,"PQL-S-"+sub,"我方供料委外件","委外",w.unitId(),w.unitLegacy());
+        fixture.seedGoodsSources(java.util.Map.of(w.goodsC(),"BUY"));
         // 委外件有一种直属物料 C(我方发给委外商)。
         fixture.insertBom(root,sub,"1");fixture.insertBom(sub,w.goodsC(),"1");
         db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",w.supplierId(),w.goodsC());
@@ -1097,6 +1101,7 @@ class PreplanPlannedQuantitySingleEntryEndToEndTest {
         UUID root=UUID.randomUUID(),sub=UUID.randomUUID();
         fixture.insertGoods(root,"PQA-ROOT-"+root,"追加计量成品","自制",w.unitId(),w.unitLegacy());
         fixture.insertGoods(sub,"PQA-S-"+sub,"追加委外父件","委外",w.unitId(),w.unitLegacy());
+        fixture.seedGoodsSources(java.util.Map.of(w.goodsC(),"BUY"));
         fixture.insertBom(root,sub,"1");fixture.insertBom(sub,w.goodsC(),"1");
         db.update("UPDATE goods SET default_supplier_id=? WHERE id IN (?,?)",w.supplierId(),sub,w.goodsC());
         AnalysisView view=analyses.preview(new PreviewRequest(null,null,null,w.warehouseId(),"planned-sub-append-preview-"+root,

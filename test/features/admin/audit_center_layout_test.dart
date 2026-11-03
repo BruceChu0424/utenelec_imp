@@ -268,7 +268,7 @@ Future<void> _pumpComposer(
                 onYesterday: () {},
                 onSevenDays: () {},
                 onThirtyDays: () {},
-                onCustomDate: () {},
+                onDateChanged: (_) {},
                 onRunQuery: () {},
                 onRequestIdChanged: (_) {},
                 onRequestIdSubmitted: (_) => true,

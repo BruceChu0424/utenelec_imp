@@ -33,6 +33,9 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../support/audit_screenshot_support.dart';
 import '../support/document_scope_capability_overrides.dart';
 import '../support/pump_until.dart';
+import '../support/owned_provider_widget_tests.dart';
+
+final _providerTests = OwnedProviderWidgetTests();
 
 const _id = 'e65a0a91-4302-430b-adc6-f8277a947893';
 const _owner = '88c21312-0a3e-4e03-a872-9acbff33cf37';
@@ -193,7 +196,7 @@ Future<ProviderContainer> _pump(
       isSuperAdminProvider.overrideWithValue(false),
     ],
   );
-  addTearDown(container.dispose);
+  _providerTests.own(container);
   final theme = dark ? buildDarkTheme() : buildLightTheme();
   await tester.pumpWidget(
     UncontrolledProviderScope(
@@ -236,7 +239,7 @@ Finder get _scaffold => find.byType(Scaffold).first;
 
 void main() {
   for (final family in _Family.values) {
-    testWidgets(
+    _providerTests.testWidgets(
       '${family.name} loading error and retry use shared feedback without issuing business writes',
       (tester) async {
         final api = _DetailApi(family)..readGate = Completer<void>();
@@ -259,7 +262,7 @@ void main() {
       },
     );
 
-    testWidgets(
+    _providerTests.testWidgets(
       '${family.name} failed refresh preserves read feedback and hides old actions until the new detail arrives',
       (tester) async {
         final api = _DetailApi(family);
@@ -316,7 +319,7 @@ void main() {
     );
 
     for (final narrow in [true, false]) {
-      testWidgets(
+      _providerTests.testWidgets(
         '${family.name} recovery action remains reachable with large text narrow=$narrow',
         (tester) async {
           final capture =

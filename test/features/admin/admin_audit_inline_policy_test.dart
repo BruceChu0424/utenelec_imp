@@ -66,7 +66,7 @@ void main() {
                   onYesterday: () {},
                   onSevenDays: () {},
                   onThirtyDays: () {},
-                  onCustomDate: () {},
+                  onDateChanged: (_) {},
                   onRunQuery: () {},
                   onRequestIdChanged: (_) {},
                   onRequestIdSubmitted: (_) => false,

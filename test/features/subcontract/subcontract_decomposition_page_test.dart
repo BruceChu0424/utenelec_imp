@@ -1485,7 +1485,7 @@ void main() {
         selectStage(category);
         await tester.pumpAndSettle();
         if (category == '历史记录') {
-          // 2026-10-24 起历史门默认近三个月；这里再切「全部」看全量。
+          // 2026-10-24 起历史门默认近一个月；这里再切「全部」看全量。
           await selectFilterSegment(tester, '全部');
           await tester.pumpAndSettle();
         }

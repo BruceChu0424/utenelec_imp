@@ -176,9 +176,9 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   /// 当前主工作阶段内的状态表头筛选；清除时回到主阶段全部记录。
   String? _stageFilter;
 
-  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
-  /// 最近三个月加载），none 仅为值形态护栏。
-  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+  /// 历史记录段的时间门控值；默认近一个月（2026-11-03 用户口径，进段即按
+  /// 最近一个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastMonth();
 
   String _keyword = '';
   int _requestVersion = 0;
@@ -379,9 +379,9 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     setState(() {
       _seg = seg;
       _stageFilter = null;
-      // 进历史段重新按默认近三个月加载；非历史段不消费时间门控，回 all() 占位。
+      // 进历史段重新按默认近一个月加载；非历史段不消费时间门控，回 all() 占位。
       _historyTime = seg.history
-          ? UtenHistoryTimeValue.lastThreeMonths()
+          ? UtenHistoryTimeValue.lastMonth()
           : const UtenHistoryTimeValue.all();
     });
     if (!seg.history || !_historyTime.isNone) {

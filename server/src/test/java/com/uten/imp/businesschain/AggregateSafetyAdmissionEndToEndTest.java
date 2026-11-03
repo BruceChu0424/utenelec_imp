@@ -45,7 +45,7 @@ class AggregateSafetyAdmissionEndToEndTest {
 
     @ParameterizedTest @ValueSource(strings={"0","3","9.9999","10.0001","11"})
     void purchaseMustConfirmTheWholeCurrentSafetyGapBeforeAnyBusinessWrite(String confirmed) {
-        var c=h.createWithChild("5",1);h.setRoute(c,c.common(),"BUY");
+        var c=h.createWithChild("5",1,"BUY");h.assertMasterRoute(c,c.common(),"BUY");
         h.db.update("UPDATE goods SET min_qty=10 WHERE id=?",c.common());
         var request=h.request(c,List.of(withSafety(h.input(c,c.common(),"BUY","5",false),confirmed)));
         var before=writeCounts(c);
@@ -62,7 +62,7 @@ class AggregateSafetyAdmissionEndToEndTest {
 
     @ParameterizedTest @ValueSource(strings={"MAKE","SUBCONTRACT"})
     void unsupportedRoutesCannotHideAnUnfilledPublicSafetyGap(String route) {
-        var c=h.createWithChild("5",1);h.setRoute(c,c.common(),route);
+        var c=h.createWithChild("5",1,route);h.assertMasterRoute(c,c.common(),route);
         h.db.update("UPDATE goods SET min_qty=3 WHERE id=?",c.common());
         var request=h.request(c,List.of(h.input(c,c.common(),route,"5",false)));
         var before=writeCounts(c);var reviewed=h.preview.preview(c.analysis(),request);
@@ -78,7 +78,7 @@ class AggregateSafetyAdmissionEndToEndTest {
 
     @ParameterizedTest @ValueSource(strings={"MAKE","SUBCONTRACT"})
     void nonPurchaseWithAnAlreadyCoveredSafetyGapKeepsItsActionSnapshotZero(String route) {
-        var c=h.createWithChild("5",1);h.setRoute(c,c.common(),route);
+        var c=h.createWithChild("5",1,route);h.assertMasterRoute(c,c.common(),route);
         h.db.update("UPDATE goods SET min_qty=3 WHERE id=?",c.common());
         h.db.update("INSERT INTO stock_balances(warehouse_id,goods_id,qty) VALUES (?,?,3)",c.world().warehouseId(),c.common());
         var request=h.request(c,List.of(h.input(c,c.common(),route,"5",false)));
@@ -100,7 +100,7 @@ class AggregateSafetyAdmissionEndToEndTest {
     }
 
     @Test void exactPurchaseSafetyIsSeparateFromPrivateDemandAndPublicExtra() {
-        var c=h.createWithChild("5",1);h.setRoute(c,c.common(),"BUY");
+        var c=h.createWithChild("5",1,"BUY");h.assertMasterRoute(c,c.common(),"BUY");
         h.db.update("UPDATE goods SET min_qty=10 WHERE id=?",c.common());
         var request=h.request(c,List.of(withSafety(h.input(c,c.common(),"BUY","7",true),"10")));
         var reviewed=h.preview.preview(c.analysis(),request);assertNull(reviewed.groups().getFirst().blockedReason());
@@ -118,7 +118,7 @@ class AggregateSafetyAdmissionEndToEndTest {
     }
 
     @Test void onePhysicalSafetyOwnerAlsoCoversOtherPurchaseBatchesWithDifferentDeliveryDates() {
-        var c=h.createWithChild("5",2);h.setRoute(c,c.common(),"BUY");
+        var c=h.createWithChild("5",2,"BUY");h.assertMasterRoute(c,c.common(),"BUY");
         h.db.update("UPDATE goods SET min_qty=10 WHERE id=?",c.common());
         var ids=h.input(c,c.common(),"BUY","10",false).materialLineIds();assertEquals(2,ids.size());
         var request=h.request(c,List.of(split("a-demand",ids.get(1),"0",11),split("z-safety",ids.get(0),"10",10)));
@@ -136,7 +136,7 @@ class AggregateSafetyAdmissionEndToEndTest {
     }
 
     @Test void duplicateSafetyOwnersAreRejectedBeforeEitherBatchExists() {
-        var c=h.createWithChild("5",2);h.setRoute(c,c.common(),"BUY");
+        var c=h.createWithChild("5",2,"BUY");h.assertMasterRoute(c,c.common(),"BUY");
         h.db.update("UPDATE goods SET min_qty=10 WHERE id=?",c.common());
         var ids=h.input(c,c.common(),"BUY","10",false).materialLineIds();
         var request=h.request(c,List.of(split("first",ids.get(0),"10",10),split("second",ids.get(1),"10",11)));

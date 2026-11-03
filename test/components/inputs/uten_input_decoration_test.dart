@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -214,7 +215,7 @@ void main() {
     await tester.tap(find.byIcon(Icons.info_outline));
     await tester.pump();
     expect(find.text(info), findsOneWidget);
-    expect(find.byType(DatePickerDialog), findsNothing);
+    expect(find.byType(UtenDateRangePickerDialog), findsNothing);
     expect(changed, isFalse);
   });
 

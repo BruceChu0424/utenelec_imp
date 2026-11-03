@@ -104,4 +104,23 @@ class MasterReferenceCatalogShapeTest {
         assertThat(MasterReferenceCatalog.references())
                 .noneMatch(reference -> reference.table().equals("stock_monthly_summaries"));
     }
+
+    @Test
+    void physicalStorageClaimsGuardTheirWarehouseWhileAppendOnlyMovesRemainHistory() {
+        assertThat(MasterReferenceCatalog.references().stream()
+                .filter(reference -> reference.table().equals("stock_reservation_storage_positions")).toList())
+                .singleElement().satisfies(reference -> {
+                    assertThat(reference.target()).isEqualTo(MasterEntityKind.WAREHOUSE);
+                    assertThat(reference.column()).isEqualTo("warehouse_id");
+                    assertThat(reference.kind()).isEqualTo(MasterReferenceGuard.RefKind.RESERVATION);
+                });
+        assertThat(MasterReferenceCatalog.exemptions().stream()
+                .filter(exemption -> exemption.table().equals("stock_reservation_storage_events")).toList())
+                .extracting(MasterReferenceCatalog.Exemption::column)
+                .containsExactlyInAnyOrder("from_warehouse_id", "to_warehouse_id");
+        assertThat(MasterReferenceCatalog.exemptions().stream()
+                .filter(exemption -> exemption.table().equals("stock_reservation_storage_events")).toList())
+                .allSatisfy(exemption -> assertThat(exemption.reason())
+                        .isEqualTo(MasterReferenceCatalog.ExemptReason.HISTORY));
+    }
 }

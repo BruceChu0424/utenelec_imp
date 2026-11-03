@@ -948,7 +948,7 @@ class _RackMotif extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.09),
           border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: UtenRadius.controlAll,
         ),
         child: Row(
           children: [
@@ -1036,7 +1036,7 @@ class _MaintenanceChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(UtenRadius.pill),
       ),
       child: Text(
         label,

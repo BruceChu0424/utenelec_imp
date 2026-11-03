@@ -8,6 +8,7 @@ import 'package:uten_imp/shared/providers/document_status_counts_provider.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/subcontract/config/subcontract_doc_config.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
@@ -398,7 +399,7 @@ class _RecordingApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/master/suppliers') {
+    if (path == ApiEndpoints.businessReferenceSuppliers) {
       supplierCandidateQueries.add(Map<String, dynamic>.from(query!));
       return const {
         'items': [
@@ -435,7 +436,7 @@ class _RecordingApi extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/master/suppliers/lookup') {
+    if (path == '${ApiEndpoints.suppliers}/lookup') {
       final ids = (query!['ids'] as String).split(',').toSet();
       expectSync(ids, isNotEmpty);
       expectSync(ids.length, lessThanOrEqualTo(100));

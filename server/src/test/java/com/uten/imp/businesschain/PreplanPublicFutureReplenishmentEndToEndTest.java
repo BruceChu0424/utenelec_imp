@@ -218,7 +218,7 @@ class PreplanPublicFutureReplenishmentEndToEndTest {
         var view=analyses.preview(new PreviewRequest(null,null,null,warehouse,"public-preview-"+product+label,
                 List.of(new PreviewItem("OTHER",null,product,null,w.unitId(),"public-source-"+product+label,"公共在途认领",need,new BigDecimal(amount)))));
         return analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),"public-route-"+view.analysisId(),
-                view.flatMaterials().stream().filter(MaterialView::actionable).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.goodsId().equals(goods)?"BUY":"MAKE",null)).toList()));
+                view.flatMaterials().stream().filter(MaterialView::actionable).map(row->new RouteDecision(row.materialLineId(),row.actionGroupKey(),row.sourceSuggestion(),null)).toList()));
     }
     private UUID approveOrder(FullChainEndToEndTest.World w,UUID requestItem,UUID goods,String amount,LocalDate eta) {
         fixture.loginAs(w.superAdminUserId());

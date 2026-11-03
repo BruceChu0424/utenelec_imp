@@ -7,9 +7,12 @@ import 'dart:io' show Directory;
 
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/utils/china_datetime.dart';
+import 'package:uten_imp/core/utils/date_range_defaults.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/inputs/uten_date_range_button.dart';
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -572,6 +575,12 @@ class _BomRepository extends Fake implements GoodsBomRepository {
   }
 }
 
+void _expectRecentDates(Map<String, dynamic>? query) {
+  final dates = recentMonthDateRange();
+  expect(query?['dateFrom'], ChinaDateTime.formatDate(dates.start));
+  expect(query?['dateTo'], ChinaDateTime.formatDate(dates.end));
+}
+
 void _configureView(WidgetTester tester, Size size) {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -804,6 +813,8 @@ void main() {
         find.byKey(const Key('where-used-export')),
       );
       expect(export.queryParams, containsPair('f.search.goodsName', '墙壁_% 插座'));
+      _expectRecentDates(api.lastQuery);
+      _expectRecentDates(export.queryParams);
       expect(api.reportQueries.last['page'], 1);
       final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
         find.byType(MasterDataTableView<Map<String, dynamic>>),
@@ -1676,7 +1687,15 @@ void main() {
     'relationship source filters retain all choices and cancel does not query',
     (tester) async {
       final api = _WhereUsedApi();
-      await _pumpSimplePage(tester, api, size: const Size(1400, 900));
+      await _pumpSimplePage(
+        tester,
+        api,
+        size: const Size(1400, 900),
+        permissions: {
+          Perm.productionWhereUsedView,
+          Perm.productionWhereUsedExport,
+        },
+      );
       await _selectMaterial(tester);
       final before = api.reportCalls;
       await tester.tap(find.byKey(const Key('where-used-filters')));
@@ -1707,8 +1726,27 @@ void main() {
         await tester.tap(find.byKey(const Key('where-used-filter-apply')));
         await tester.pumpAndSettle();
         expect(api.lastQuery?['source'], source);
-        expect(api.lastQuery?.containsKey('dateFrom'), isFalse);
+        _expectRecentDates(api.lastQuery);
+        _expectRecentDates(
+          tester
+              .widget<UtenExportButton>(
+                find.byKey(const Key('where-used-export')),
+              )
+              .queryParams,
+        );
       }
+      await tester.tap(find.byKey(const Key('where-used-filters')));
+      await tester.pumpAndSettle();
+      await selectFilterSegment(tester, '全部历史');
+      await tester.tap(find.byKey(const Key('where-used-filter-apply')));
+      await tester.pumpAndSettle();
+      expect(api.lastQuery?.containsKey('dateFrom'), isFalse);
+      expect(api.lastQuery?.containsKey('dateTo'), isFalse);
+      final export = tester.widget<UtenExportButton>(
+        find.byKey(const Key('where-used-export')),
+      );
+      expect(export.queryParams.containsKey('dateFrom'), isFalse);
+      expect(export.queryParams.containsKey('dateTo'), isFalse);
       expect(tester.takeException(), isNull);
     },
   );
@@ -1932,21 +1970,21 @@ void main() {
       await tester.pumpAndSettle();
       await selectFilterSegment(tester, '自定义');
       await tester.pumpAndSettle();
-      // Invoke the real control callback: this regression targets date-carrier
-      // boundaries, independently of the existing collapsible-header layout.
-      tester
-          .widget<OutlinedButton>(find.byKey(const Key('where-used-date-from')))
-          .onPressed!();
+      expect(find.byType(UtenDateRangeButton), findsOneWidget);
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const Key('where-used-select-dates')),
+          matching: find.byType(UtenButton),
+        ),
+      );
       await tester.pumpAndSettle();
       final today = ChinaDateTime.today();
-      tester
-          .widget<CalendarDatePicker>(find.byType(CalendarDatePicker))
-          .onDateChanged(DateTime(today.year, today.month, today.day));
-      await tester.pumpAndSettle();
-      final ok = MaterialLocalizations.of(
-        tester.element(find.byType(CalendarDatePicker)),
-      ).okButtonLabel;
-      await tester.tap(find.text(ok));
+      // This caller regression isolates local date carriers returned by the
+      // shared range dialog; its day/year/month interaction has component tests.
+      Navigator.of(tester.element(find.byType(UtenDateRangePickerDialog))).pop((
+        start: DateTime(today.year, today.month, today.day),
+        end: DateTime(today.year, today.month, today.day),
+      ));
       await tester.pumpAndSettle();
       final before = api.reportCalls;
       tester
@@ -2073,8 +2111,7 @@ void main() {
       expect(api.lastQuery, containsPair('source', 'all'));
       expect(api.lastQuery, containsPair('page', 1));
       expect(api.lastQuery, containsPair('size', 50));
-      expect(api.lastQuery?.containsKey('dateFrom'), isFalse);
-      expect(api.lastQuery?.containsKey('dateTo'), isFalse);
+      _expectRecentDates(api.lastQuery);
       expect(find.text('BOM 与历史关系'), findsOneWidget);
       expect(find.text('全部已知关系'), findsOneWidget);
       expect(find.text('全部关系'), findsNothing);
@@ -2105,7 +2142,14 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('关系依据'));
       await tester.pumpAndSettle();
-      expect(find.text('全部历史 · A 螺丝(MAT-001)'), findsOneWidget);
+      final dates = recentMonthDateRange();
+      expect(
+        find.text(
+          '${ChinaDateTime.formatDate(dates.start)} 至 '
+          '${ChinaDateTime.formatDate(dates.end)} · A 螺丝(MAT-001)',
+        ),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const Key('where-used-current-bom-section')),
         findsOneWidget,

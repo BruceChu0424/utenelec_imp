@@ -23,6 +23,7 @@ import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
+import '../../support/uten_test_actions.dart';
 
 class _Api extends ApiClient {
   _Api(this.endpoint) : super(Dio());
@@ -162,8 +163,8 @@ void main() {
       (tester) async {
         SharedPreferences.setMockInitialValues({});
         final prefs = await SharedPreferences.getInstance();
-        await tester.binding.setSurfaceSize(const Size(1700, 1100));
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await setUtenTestSurfaceSize(tester, const Size(1700, 1100));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
         final api = _Api(scenario.endpoint);
         await tester.pumpWidget(
           ProviderScope(

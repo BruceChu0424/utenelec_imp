@@ -5,11 +5,10 @@ import '../../../core/router/page_navigation_session.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
-import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
-import 'package:uten_imp/components/inputs/uten_field_placeholder.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_date_range_selection_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
@@ -439,25 +438,6 @@ class _ProductionExecutionSegmentsCardState
           final currentTeamMissing =
               teamId != null && !teams.any((item) => item.id == teamId);
 
-          Future<void> pickDate(bool isBegin) async {
-            final now = DateTime.now();
-            final picked = await showDatePicker(
-              context: ctx,
-              initialDate: (isBegin ? begin : end) ?? now,
-              firstDate: now.subtract(const Duration(days: 365)),
-              lastDate: now.add(const Duration(days: 3650)),
-            );
-            if (picked == null) return;
-            setDialogState(() {
-              if (isBegin) {
-                begin = picked;
-                if (end != null && end!.isBefore(picked)) end = picked;
-              } else {
-                end = picked;
-              }
-            });
-          }
-
           return UtenAlertDialog(
             scrollable: false,
             title: Text('调整 ${segment.segmentCode}'),
@@ -557,26 +537,21 @@ class _ProductionExecutionSegmentsCardState
                           setDialogState(() => responsible = value),
                     ),
                     const SizedBox(height: UtenSpacing.s12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _dateField(
-                            ctx,
-                            '计划开工',
-                            begin,
-                            () => pickDate(true),
-                          ),
-                        ),
-                        const SizedBox(width: UtenSpacing.s12),
-                        Expanded(
-                          child: _dateField(
-                            ctx,
-                            '计划完工',
-                            end,
-                            () => pickDate(false),
-                          ),
-                        ),
-                      ],
+                    UtenDateRangeSelectionButton(
+                      label: '计划起止',
+                      from: begin,
+                      to: end,
+                      firstDate: DateTime.now().subtract(
+                        const Duration(days: 365),
+                      ),
+                      lastDate: DateTime.now().add(const Duration(days: 3650)),
+                      allowOpenRange: true,
+                      openStartLabel: '未安排开工',
+                      openEndLabel: '未安排完工',
+                      onChanged: (start, finish) => setDialogState(() {
+                        begin = start;
+                        end = finish;
+                      }),
                     ),
                   ],
                 ),
@@ -1382,26 +1357,6 @@ class _ProductionExecutionSegmentsCardState
         child: const Text('详情'),
       ),
     ];
-  }
-
-  Widget _dateField(
-    BuildContext context,
-    String label,
-    DateTime? value,
-    VoidCallback onTap,
-  ) {
-    return InkWell(
-      onTap: onTap,
-      child: InputDecorator(
-        decoration: UtenInputDecoration(
-          InputDecoration(
-            labelText: label,
-            suffixIcon: const Icon(Icons.date_range_rounded, size: 18),
-          ),
-        ),
-        child: Text(_dateText(value) ?? utenFieldPlaceholder(label: label)!),
-      ),
-    );
   }
 }
 

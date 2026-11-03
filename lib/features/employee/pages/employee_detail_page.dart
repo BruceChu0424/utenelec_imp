@@ -18,6 +18,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/cards/uten_card.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_date_range_selection_button.dart';
+import '../../../components/feedback/uten_date_range_picker.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../components/data_display/uten_info_row.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -25,8 +27,6 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/feedback/uten_inline_notice.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
-import '../../../components/inputs/uten_field_message.dart';
-import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
@@ -1144,28 +1144,24 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                       onChanged: (v) =>
                           setState(() => contractType = v ?? 'fixed'),
                     ),
-                    // 简化：开始/结束用文本输入（YYYY-MM-DD）；生产可换日期选择器。
-                    TextFormField(
-                      errorBuilder: utenTextFieldErrorBuilder,
-                      decoration: const UtenInputDecoration(
-                        InputDecoration(
-                          labelText: '开始日期',
-                          hintText: 'YYYY-MM-DD(留空=今天)',
-                        ),
-                      ),
-                      onChanged: (v) =>
-                          startDate = v.trim().isEmpty ? null : v.trim(),
-                    ),
-                    TextFormField(
-                      errorBuilder: utenTextFieldErrorBuilder,
-                      decoration: const UtenInputDecoration(
-                        InputDecoration(
-                          labelText: '结束日期',
-                          hintText: 'YYYY-MM-DD(无固定期限留空)',
-                        ),
-                      ),
-                      onChanged: (v) =>
-                          endDate = v.trim().isEmpty ? null : v.trim(),
+                    UtenDateRangeSelectionButton(
+                      label: '合同期间',
+                      from: DateTime.tryParse(startDate ?? ''),
+                      to: DateTime.tryParse(endDate ?? ''),
+                      firstDate: DateTime(1900),
+                      lastDate: DateTime(2100),
+                      allowOpenRange: true,
+                      openStartLabel: '使用今天',
+                      openEndLabel: '无截止日期',
+                      info: '开始日期留空时使用今天；无固定期限合同的结束日期可留空。',
+                      onChanged: (start, end) => setState(() {
+                        startDate = start == null
+                            ? null
+                            : ChinaDateTime.formatDate(start);
+                        endDate = end == null
+                            ? null
+                            : ChinaDateTime.formatDate(end);
+                      }),
                     ),
                   ],
                 ),
@@ -1859,7 +1855,7 @@ class _EmployeeDetailPageState extends ConsumerState<EmployeeDetailPage>
                   icon: const Icon(Icons.event_outlined, size: 18),
                   label: Text(_fmtDate(selected)),
                   onPressed: () async {
-                    final picked = await showDatePicker(
+                    final picked = await showUtenDatePicker(
                       context: ctx,
                       initialDate: selected,
                       firstDate: DateTime(2000),

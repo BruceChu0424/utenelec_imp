@@ -170,6 +170,8 @@ BEGIN
         ('finance_asset_recognition_reversals','EMPTY'),
         ('finance_bank_transfer_lines','EMPTY'),
         ('finance_bank_transfers','EMPTY'),
+        -- Idempotent command receipts retain business submissions, not seed configuration.
+        ('finance_batch_entry_commands','EMPTY'),
         ('finance_check_register','EMPTY'),
         ('finance_deferral_schedule_lines','EMPTY'),
         ('finance_deferral_schedule_versions','EMPTY'),
@@ -496,6 +498,9 @@ BEGIN
         ('stock_draw_issue_batches','EMPTY'),
         ('stock_measurement_holds','EMPTY'),
         ('stock_movements','EMPTY'),
+        -- The location journal/projection are business facts even when generic audit is NONE.
+        ('stock_reservation_storage_events','EMPTY'),
+        ('stock_reservation_storage_positions','EMPTY'),
         ('stock_reservations','EMPTY'),
         ('stock_value_acquisition_sources','EMPTY'),
         ('stock_value_edges','EMPTY'),

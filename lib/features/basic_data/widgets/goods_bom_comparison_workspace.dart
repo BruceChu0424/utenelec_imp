@@ -706,34 +706,23 @@ class _GoodsBomComparisonWorkspaceState
         ? window.extra as GoodsDetailSequence
         : null;
     final index = sequence?.ids.indexOf(detail?.id ?? '') ?? -1;
+    final title = detail == null
+        ? '${left ? '左侧' : '右侧'} · 选择货品'
+        : '${left ? '左侧' : '右侧'} · ${detail.name}  ${detail.code}'
+              '${_editor?.draftFor(detail.id) == null ? ' · 只读对比' : ''}';
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: Row(
         children: [
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '${left ? '左侧' : '右侧'} · ${detail?.code ?? '选择货品'}',
-                  style: Theme.of(context).textTheme.labelLarge,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Text(
-                  detail?.name ?? '打开货品后即可分析组件',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (detail != null)
-                  Text(
-                    _editor?.draftFor(detail.id) != null
-                        ? '编辑模式 · 修改后实时核对'
-                        : '只读对比',
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-              ],
+            child: Tooltip(
+              message: title,
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.labelLarge,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ),
           IconButton(
@@ -854,7 +843,7 @@ class _GoodsBomComparisonWorkspaceState
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.end,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (owned) ...[
                 Wrap(
@@ -875,23 +864,32 @@ class _GoodsBomComparisonWorkspaceState
                 const SizedBox(height: UtenSpacing.s8),
               ],
               Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 spacing: UtenSpacing.s8,
                 runSpacing: UtenSpacing.s8,
                 children: [
-                  FilledButton.tonal(
-                    key: Key('bom-compare-selected-$side'),
-                    onPressed: _canReplace(toLeft, false)
-                        ? () => _prepare(toLeft, false)
-                        : null,
-                    child: Text(toLeft ? '← 用右侧替换所选' : '用左侧替换所选 →'),
+                  Wrap(
+                    spacing: UtenSpacing.s8,
+                    runSpacing: UtenSpacing.s8,
+                    children: [
+                      FilledButton.tonal(
+                        key: Key('bom-compare-selected-$side'),
+                        onPressed: _canReplace(toLeft, false)
+                            ? () => _prepare(toLeft, false)
+                            : null,
+                        child: Text(toLeft ? '← 用右侧替换所选' : '用左侧替换所选 →'),
+                      ),
+                      OutlinedButton(
+                        key: Key('bom-compare-all-$side'),
+                        onPressed: _canReplace(toLeft, true)
+                            ? () => _prepare(toLeft, true)
+                            : null,
+                        child: Text(toLeft ? '← 用右侧全部组件替换左侧' : '用左侧全部组件替换右侧 →'),
+                      ),
+                    ],
                   ),
-                  OutlinedButton(
-                    key: Key('bom-compare-all-$side'),
-                    onPressed: _canReplace(toLeft, true)
-                        ? () => _prepare(toLeft, true)
-                        : null,
-                    child: Text(toLeft ? '← 用右侧全部组件替换左侧' : '用左侧全部组件替换右侧 →'),
-                  ),
+                  if (toLeft) _selectionActions(),
                 ],
               ),
             ],
@@ -999,8 +997,33 @@ class _GoodsBomComparisonWorkspaceState
     );
   }
 
-  Widget _actions() {
-    if (_reviewDialogOpen) return const SizedBox.shrink();
+  Widget _selectionActions() => Wrap(
+    spacing: UtenSpacing.s8,
+    runSpacing: UtenSpacing.s8,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    children: [
+      Text('已选 ${_selected.length} 项差异'),
+      TextButton(
+        onPressed: _locked || _comparison == null
+            ? null
+            : () => setState(() {
+                final keys = _comparison!.rows
+                    .where((r) => r.difference != BomDifference.same)
+                    .map((r) => r.key)
+                    .toSet();
+                if (_selected.length == keys.length) {
+                  _selected = {};
+                } else {
+                  _selected = keys;
+                }
+              }),
+        child: Text(_selected.isEmpty ? '全选差异' : '全选 / 清空'),
+      ),
+    ],
+  );
+
+  Widget? _actions() {
+    if (_reviewDialogOpen) return null;
     final replacement = _replacement, preview = _preview;
     if (replacement != null && preview != null) {
       return Padding(
@@ -1043,6 +1066,11 @@ class _GoodsBomComparisonWorkspaceState
         ),
       );
     }
+    if (_editor?.hasChanges != true &&
+        _editor?.hasMasterChanges != true &&
+        _editor?.hasStaleRoots != true) {
+      return null;
+    }
     return Padding(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       child: Wrap(
@@ -1055,23 +1083,6 @@ class _GoodsBomComparisonWorkspaceState
             const Text('规格、型号等属于共用货品属性，保存会同步相同组件'),
           if (_editor?.hasStaleRoots == true)
             const Text('另一侧仍有基于旧版共用资料的草稿，请按保存提示核对版本'),
-          Text('已选 ${_selected.length} 项差异'),
-          TextButton(
-            onPressed: _locked || _comparison == null
-                ? null
-                : () => setState(() {
-                    final keys = _comparison!.rows
-                        .where((r) => r.difference != BomDifference.same)
-                        .map((r) => r.key)
-                        .toSet();
-                    if (_selected.length == keys.length) {
-                      _selected = {};
-                    } else {
-                      _selected = keys;
-                    }
-                  }),
-            child: Text(_selected.isEmpty ? '全选差异' : '全选 / 清空'),
-          ),
         ],
       ),
     );
@@ -1080,6 +1091,7 @@ class _GoodsBomComparisonWorkspaceState
   @override
   Widget build(BuildContext context) {
     ref.watch(sensitiveReadBoundaryProvider);
+    final actions = _actions();
     return Material(
       color: Theme.of(context).colorScheme.surface,
       child: SafeArea(
@@ -1125,16 +1137,18 @@ class _GoodsBomComparisonWorkspaceState
                 initialRatio: _ratio,
               ),
             ),
-            const Divider(height: 1),
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * .3,
+            if (actions != null) ...[
+              const Divider(height: 1),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * .3,
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: SingleChildScrollView(child: actions),
+                ),
               ),
-              child: SizedBox(
-                width: double.infinity,
-                child: SingleChildScrollView(child: _actions()),
-              ),
-            ),
+            ],
           ],
         ),
       ),

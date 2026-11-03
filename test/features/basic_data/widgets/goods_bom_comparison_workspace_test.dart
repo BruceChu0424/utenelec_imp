@@ -721,7 +721,7 @@ void main() {
     (tester) async {
       final env = await _mount(tester);
       await _open(tester);
-      expect(find.text('编辑模式 · 修改后实时核对'), findsNWidgets(2));
+      expect(find.text('编辑模式 · 修改后实时核对'), findsNothing);
       final field = await editText(tester, 'left', 'qty', 'changed', '2');
       expect(find.byKey(const ValueKey('bom-compare-save-a')), findsOneWidget);
       expect(env.bom.writes, 0);
@@ -906,8 +906,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('窗口 1 · 资料对照'));
     await tester.pumpAndSettle();
-    expect(find.text('左侧 · 280149003'), findsOneWidget);
-    expect(find.text('右侧 · 280149001'), findsOneWidget);
+    expect(find.text('左侧 · Q7 二开铁架（喷粉）  280149003'), findsOneWidget);
+    expect(find.text('右侧 · 单联双控开关带二三极插座  280149001'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1114,8 +1114,8 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('已选 0 项差异'), findsOneWidget);
-      expect(find.textContaining('右侧 · 280149003'), findsOneWidget);
-      expect(find.textContaining('左侧 · 280149001'), findsOneWidget);
+      expect(find.text('右侧 · Q7 二开铁架（喷粉）  280149003'), findsOneWidget);
+      expect(find.text('左侧 · 单联双控开关带二三极插座  280149001'), findsOneWidget);
       expect(env.api.previewCalls, 0);
       expect(tester.takeException(), isNull);
     },

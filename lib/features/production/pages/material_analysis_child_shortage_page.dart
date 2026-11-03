@@ -352,7 +352,7 @@ class _ChildShortageFillPageState extends State<_ChildShortageFillPage> {
               if (routeFirst > 0)
                 UtenStatusBadge(
                   key: const Key('child-shortage-count-route'),
-                  label: '先选供应方式 $routeFirst 种',
+                  label: '先维护货品来源 $routeFirst 种',
                   type: UtenStatusBadgeType.danger,
                   icon: Icons.alt_route_rounded,
                   size: UtenStatusBadgeSize.large,

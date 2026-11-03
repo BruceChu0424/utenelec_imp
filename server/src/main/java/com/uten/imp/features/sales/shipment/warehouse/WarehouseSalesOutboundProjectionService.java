@@ -355,7 +355,7 @@ public class WarehouseSalesOutboundProjectionService {
                 )
                 SELECT warehouse.id,warehouse.name,item.id,item.order_item_id,item.goods_id,item.color_id,
                        COALESCE(item.unit_rate,1)::numeric,item.qty::numeric,
-                       LEAST(GREATEST(COALESCE(balance.qty,0)-GREATEST(COALESCE(goods.min_qty::numeric,0),0)-COALESCE(other_reserved.qty,0),0),global_budget.qty)::numeric,
+                       fn_stock_storage_movable(warehouse.id,item.goods_id,item.color_id,CAST(string_to_array(:ownIdsCsv, ',') AS uuid[]),TRUE)::numeric,
                        GREATEST(COALESCE(own.qty,0),0)::numeric
                 FROM active_wh warehouse JOIN warehouses physical ON physical.id=warehouse.id
                 JOIN sales_shipment_items item ON item.shipment_id=:shipment AND NOT item.is_deleted
@@ -363,26 +363,16 @@ public class WarehouseSalesOutboundProjectionService {
                 LEFT JOIN v_stock_operable_balances balance ON balance.warehouse_id=warehouse.id AND balance.goods_id=item.goods_id
                     AND balance.color_id IS NOT DISTINCT FROM item.color_id
                 LEFT JOIN LATERAL (
-                    SELECT sum(reservation.qty-reservation.consumed_qty-reservation.released_qty) qty FROM stock_reservations reservation
-                    WHERE reservation.warehouse_id=warehouse.id AND reservation.goods_id=item.goods_id
-                      AND reservation.color_id IS NOT DISTINCT FROM item.color_id AND NOT reservation.is_deleted AND reservation.status=0
-                      AND (reservation.order_item_id IS NULL OR reservation.order_item_id NOT IN (:ownIds))
-                ) other_reserved ON TRUE
-                LEFT JOIN LATERAL (
-                    SELECT sum(reservation.qty-reservation.consumed_qty-reservation.released_qty) qty FROM stock_reservations reservation
-                    WHERE (reservation.warehouse_id IS NULL OR reservation.warehouse_id=warehouse.id)
+                    SELECT sum(fn_stock_claim_open_at(reservation.id,warehouse.id)) qty FROM stock_reservations reservation
+                    WHERE fn_stock_claim_open_at(reservation.id,warehouse.id)>0
                       AND reservation.order_item_id=item.order_item_id AND reservation.goods_id=item.goods_id
                       AND reservation.color_id IS NOT DISTINCT FROM item.color_id AND NOT reservation.is_deleted AND reservation.status=0
                 ) own ON TRUE
-                LEFT JOIN LATERAL (
-                    SELECT fn_stock_global_usable(item.goods_id, item.color_id,
-                        CAST(string_to_array(:ownIdsCsv, ',') AS uuid[])) qty
-                ) global_budget ON TRUE
                 WHERE fn_warehouse_counts_as_usable(warehouse.id)
                   AND EXISTS(SELECT 1 FROM v_stock_operable_balances present WHERE present.warehouse_id=warehouse.id AND present.qty>0
                     AND present.goods_id IN(SELECT goods_id FROM sales_shipment_items WHERE shipment_id=:shipment AND NOT is_deleted))
                 ORDER BY warehouse.name,warehouse.id,item.line_no,item.id
-                """).setParameter("shipment",source.getId()).setParameter("ownIds",ownIds)
+                """).setParameter("shipment",source.getId())
                 .setParameter("ownIdsCsv",ownIds.stream().map(UUID::toString)
                         .collect(java.util.stream.Collectors.joining(","))));
         Map<UUID,List<WarehouseSalesOutboundWarehouseChoice>> choices=new LinkedHashMap<>();

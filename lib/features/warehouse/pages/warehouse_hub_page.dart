@@ -104,7 +104,7 @@ class WarehouseHubPage extends ConsumerWidget {
           (
             icon: Icons.swap_horiz_outlined,
             label: '新建调拨单',
-            description: '仓与仓之间的库存调拨',
+            description: '仓库之间搬货，保留订单和任务锁定，到目标仓取货',
             location: RoutePath.stockDocNew(StockDocType.transfer.code),
           ),
           (

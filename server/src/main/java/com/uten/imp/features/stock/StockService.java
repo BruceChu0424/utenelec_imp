@@ -193,7 +193,7 @@ public class StockService {
             BigDecimal physical=rows.isEmpty()?BigDecimal.ZERO:rows.getFirst().getQty();
             if(physical.subtract(previous).compareTo(request.qty())<0)
                 throw new ApiException(ErrorCode.CONFLICT,"原入库货物数量不足，请先撤回出库或核对库存");
-            if(!classification.defective()&&!classification.quarantineLeg()) {
+            if(!classification.defective()&&!classification.quarantineLeg()&&!storageTransfer(request)) {
                 BigDecimal movable=balanceRepo.warehouseAvailableBase(request.warehouseId(),request.goodsId(),request.colorId());
                 if(movable==null||movable.subtract(previous).compareTo(request.qty())<0)
                     throw new ApiException(ErrorCode.CONFLICT,"原入库货物已有库存预留或安全库存占用，请先处理占用再反审");
@@ -284,6 +284,7 @@ public class StockService {
                     && !REVERSAL_RETURN_TYPES.contains(req.movementType())
                     && !defectiveWarehouse
                     && !warehouseClass.quarantineLeg()
+                    && !storageTransfer(req)
                     && (bin == null || binIssue)) {
                 boolean allocatedProductionIssue = false;
                 if (req.costReference() instanceof InventoryMovementCostReference.WorkshopReturn returned) {
@@ -412,6 +413,13 @@ public class StockService {
         WeightSource source = WeightSource.fromColumn(stored.getWeightSource());
         return new PostedMovement(movementId, stored.getWeight(),
                 source == null && stored.getWeight() != null ? WeightSource.MEASURED : source, true);
+    }
+
+    private boolean storageTransfer(MovementRequest request) {
+        return "STOCK_DOC".equals(request.sourceDocType())
+                && (request.movementType() == 7 || request.movementType() == 8)
+                && Boolean.TRUE.equals(balanceRepo.storageTransferAuthorized(request.sourceDocId(), request.sourceItemId(),
+                        request.warehouseId(), request.goodsId(), request.colorId(), request.qty(), request.movementType()));
     }
 
     /** 本维度的重量上下文; 没有读取器(手工 new 的纯单测)时只用余额快照。 */

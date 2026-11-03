@@ -1,3 +1,4 @@
+import '../widgets/stock_storage_transfer_notice.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../../../shared/documents/document_unapproval.dart';
 // 仓库单据详情页：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
@@ -1389,6 +1390,9 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
+                                if (widget.docType == StockDocType.otherOut ||
+                                    widget.docType == StockDocType.transfer)
+                                  const StockStorageTransferNotice(),
                                 DocumentUnapprovalBanner(
                                   family: 'stockDocument',
                                   documentId: widget.id,

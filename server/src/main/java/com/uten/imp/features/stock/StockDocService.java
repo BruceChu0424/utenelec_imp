@@ -5039,6 +5039,9 @@ public class StockDocService implements ProductionPreStockedInboundPort {
                         if (d.getWarehouseId() != null)weighed=move(d,it,T_TRANSFER_OUT,DIR_OUT,baseQty,actualWeight,d.getWarehouseId(),ts,sign,outbound);
                         if (d.getToWarehouseId() != null)move(d,it,T_TRANSFER_IN,DIR_IN,baseQty,null,d.getToWarehouseId(),ts,sign);
                     }
+                    em.createNativeQuery("SELECT fn_stock_relocate_claims(:doc,:item,:reverse)")
+                            .setParameter("doc",d.getId()).setParameter("item",it.getId())
+                            .setParameter("reverse",sign<0).getSingleResult();
                 }
                 case "CHECK" -> applyCheckLine(d, it, ts, sign, count, observedAt);
                 default -> { /* 未识别类型不动库存 */ }

@@ -348,7 +348,7 @@ class ProductionPlanRepository {
   }
 
   // 2026-09-16：GET /last-routes 已退役。供应方式的单一事实源是货品主档
-  // goods.source_type——确认路线同事务回写主档，新分析的建议路线
+  // goods.source_type——计划只读取默认来源，不在排产确认时回写主档，新分析的建议路线
   // (sourceSuggestion) 随分析快照一起下发，前端不再另发一趟记忆请求。
 
   /// Avoid turning a large analysis into dozens of simultaneous GETs. Four

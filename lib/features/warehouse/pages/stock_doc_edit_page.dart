@@ -19,6 +19,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import '../widgets/stock_storage_transfer_notice.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
@@ -1232,6 +1233,9 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
                             // 底部多留一屏悬浮按钮的高度，最后一行明细不被「取消/保存」压住。
                             padding: resolvedPagePadding,
                             children: [
+                              if (widget.docType == StockDocType.otherOut ||
+                                  widget.docType == StockDocType.transfer)
+                                const StockStorageTransferNotice(),
                               Card(
                                 child: Padding(
                                   padding: const EdgeInsets.all(

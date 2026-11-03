@@ -1,0 +1,121 @@
+{
+  "id": "E-STORAGE-CLAIM-ROLE-20261102",
+  "date": "2026-11-02",
+  "branch": "uimp/warehouse-transfer-fix-20261102",
+  "classification": [
+    "backend",
+    "frontend",
+    "shared-contract"
+  ],
+  "supportedConsumers": [
+    "Web / Flutter",
+    "Flutter desktop"
+  ],
+  "nativeUnmigratedWorkItems": [
+    "W7-BIZ-108",
+    "W7-BIZ-185",
+    "W7-BIZ-186",
+    "W7-BIZ-187"
+  ],
+  "nativeStatusChanged": false,
+  "nativeWritesEnabled": false,
+  "win7Accepted": false,
+  "receipt": "docs/99-项目治理/2026-11-02-仓库调拨保留锁定与排产角色保护.md",
+  "verification": {
+    "backendPassed": 61,
+    "backendSuites": [
+      {
+        "tests": 10,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "suite": "StockTransferCostConservationEndToEndTest"
+      },
+      {
+        "tests": 4,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "suite": "MaterialRouteMasterWriteBackEndToEndTest"
+      },
+      {
+        "tests": 6,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "suite": "SalesShipmentWarehouseAssignmentEndToEndTest"
+      },
+      {
+        "tests": 8,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "suite": "MaterialAnalysisRouteBatchWriterPostgresTest"
+      },
+      {
+        "tests": 24,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "suite": "StockDocReviewedOutboundTest"
+      },
+      {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "suite": "StockDocToWarehouseFilterTest"
+      },
+      {
+        "tests": 7,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "suite": "MaterialRouteAutoConfirmEndToEndTest"
+      },
+      {
+        "tests": 1,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "suite": "MaterialAnalysisBlankSourceRoutePostgresTest"
+      }
+    ],
+    "flutterPassed": 45,
+    "additionalDefaultRouteCases": 8,
+    "finalStaticAnalysis": "passed",
+    "finalStorageMigrationSha256": "77C60C6623BAB19B7722E154A3E677984AB3FF56B99618E1373BF03BD9DD8560"
+  },
+  "actualUiAcceptance": false,
+  "productionDataChanged": false,
+  "finishedGoodsSupplement": {
+    "productionReadOnlyInvestigation": true,
+    "productionDataChanged": false,
+    "productionFixInstalledAtObservation": false,
+    "firstFullSuite": {
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "liveShapeSuite": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "uniqueTransferCasesAcrossRuns": 13,
+    "liveShapeCases": [
+      "actualSubcontractFinishedRootSupplyKeepsItsOriginalReceiptAndOrderWhenMovedToFinishedWarehouse",
+      "actualMadeFinishedGoodsCanMoveFromHardwareToFinishedWarehouseAndShipWithoutReleasingTheOrder",
+      "actualHistoricalStoppedSubcontractFinishedStockCanMoveWhileCostIsPendingWithoutResumingOrReleasing"
+    ],
+    "compilation": "Maven test compiled the initial 12-case run; the two changed test sources were then recompiled with javac --release 21 using that successful run's exact test classpath before the final selected-method Maven Surefire run.",
+    "sourceGuardCoverage": [
+      "FINISHED_IN made product, 20 units",
+      "SUBCONTRACT_RECEIPT with ROOT_SUPPLY_INBOUND sales claim",
+      "historical stopped source order with pending cost dependencies"
+    ],
+    "actualUiAcceptance": false
+  }
+}

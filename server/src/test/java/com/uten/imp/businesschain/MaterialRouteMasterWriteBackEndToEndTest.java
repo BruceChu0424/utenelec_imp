@@ -19,25 +19,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * 供应方式单一事实源 = 货品主档 goods.source_type (2026-09-16)。
- *
- * <p>用户实测口径：「在物料分析准备页改了供应方式，下次进来还是老的。」根因是确认路线
- * 只写分析行 confirmed_route、货品主档从没更新，而新分析的建议路线又是从主档算出来的。
- * 本类用真实库锁住改完之后的四条事实：
- * <ol>
- *   <li>确认路线同事务回写主档 (BUY -> 采购、MAKE -> 自制、SUBCONTRACT -> 委外)，真改了抬
- *       goods.version，本行 source_suggestion 同时对齐成确认值；</li>
- *   <li><b>同一分析再刷新一次，确认不被清掉</b>——本轮最关键的断言：主档回写后刷新算出的
- *       建议 = 刚确认的值，若本行 source_suggestion 还停在旧建议，就会被
- *       NODE_FACT_CHANGED_CONDITION 当成「主档事实变更」把确认清掉 (反馈环)；</li>
- *   <li>改确认另一条路线再回写一次；相同值再确认不再抬 version (值没变不落盘)；</li>
- *   <li>同一货品新建的第二份分析，建议路线直接来自主档 (/last-routes 记忆已整套退役)。</li>
- * </ol>
- *
- * <p><b>CI 必须显式设置 {@code UTEN_RUN_DB_TESTS=true}</b>：本类 (与 FullChain/Scale 同款门控)
- * 未设置时全部 SKIP，surefire 仍 exit 0，会出现「全绿但没跑」的假象。
- */
+/** Planning follows master defaults and cannot mutate product roles, including through old clients. */
 @EnabledIfEnvironmentVariable(named="UTEN_RUN_DB_TESTS",matches="(?i)true")
 @SpringBootTest(webEnvironment=SpringBootTest.WebEnvironment.MOCK,properties={
         "spring.profiles.active=dev","uten.audit.retention.enabled=false","uten.reporting.materialized-view-refresh.enabled=false",
@@ -55,60 +37,25 @@ class MaterialRouteMasterWriteBackEndToEndTest {
     private FullChainEndToEndTest fixture;
     @BeforeEach void prepare(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
 
-    /**
-     * 确认「自制」把主档从采购改成自制并抬 version；紧接着的刷新不得把这次确认清掉。
-     * 第二条就是反馈环回归：主档回写与本行 source_suggestion 对齐必须在同一条 UPDATE 里，
-     * 少一半刷新就会看到「建议变了」而静默清空确认。
-     */
-    @Test void confirmingMakeWritesTheGoodsMasterAndSurvivesTheNextRefresh(){
-        Case c=create("route-master-make");
-        assertEquals("采购",sourceType(c.leaf()),"夹具起点：叶子件主档来源是采购");
-        long versionBefore=goodsVersion(c.leaf());
-
-        confirm(c,"MAKE","make");
-
-        assertEquals("自制",sourceType(c.leaf()));
-        assertEquals(versionBefore+1,goodsVersion(c.leaf()),"人工决定的回写要抬主档版本");
-        assertEquals("MAKE",confirmedRoute(c.line()));
-        assertEquals("MAKE",storedSuggestion(c.line()),
-                "本行建议必须对齐成确认值，否则下一次刷新会把确认当成主档事实变更清掉");
-
-        AnalysisView refreshed=refresh(c,"after-make");
-
-        assertEquals(0,refreshed.routeResetCount(),"主档按新来源算出的建议与本行一致，零条确认被清");
-        assertEquals("MAKE",confirmedRoute(c.line()));
-        assertEquals("MAKE",material(refreshed,c.line()).sourceConfirmed());
-        assertEquals("自制",sourceType(c.leaf()),"刷新只读主档，不反向改写它");
+    @Test void planningCannotChangeTheMasterRoleAndFailureIsAtomic(){
+        Case c=create("role-protected-"+UUID.randomUUID());
+        long before=goodsVersion(c.leaf());
+        for(String route:List.of("MAKE","SUBCONTRACT")) {
+            var failure=assertThrows(com.uten.imp.common.web.ApiException.class,()->confirm(c,route,route));
+            assertTrue(failure.getMessage().contains("排产不能修改产品角色"));
+            assertEquals("采购",sourceType(c.leaf()));assertEquals(before,goodsVersion(c.leaf()));
+            assertEquals("BUY",confirmedRoute(c.line()));
+        }
+        assertEquals("BUY",material(refresh(c,"unchanged"),c.line()).sourceConfirmed());
     }
 
-    /**
-     * 改确认「委外」再回写一次；相同值重复确认不再抬 version；同一货品新建的第二份分析
-     * 直接按主档给出 SUBCONTRACT 建议——这正是用户要的「改过的供应方式下次进来就是新值」。
-     */
-    @Test void reconfirmingSubcontractRewritesTheMasterAndSeedsTheNextAnalysisSuggestion(){
-        Case c=create("route-master-sub");
-        confirm(c,"MAKE","make");
-        long afterMake=goodsVersion(c.leaf());
-
-        confirm(c,"SUBCONTRACT","subcontract");
-
-        assertEquals("委外",sourceType(c.leaf()));
-        assertEquals(afterMake+1,goodsVersion(c.leaf()));
-
-        confirm(c,"SUBCONTRACT","subcontract-again");
-
-        assertEquals("委外",sourceType(c.leaf()));
-        assertEquals(afterMake+1,goodsVersion(c.leaf()),"值没变不落盘，主档版本不动");
-
+    @Test void oldClientsMayConfirmTheSameDefaultWithoutWritingTheMaster(){
+        Case c=create("role-confirm-"+UUID.randomUUID());long before=goodsVersion(c.leaf());
+        confirm(c,"BUY","same-default");confirm(c,"BUY","repeat-default");
+        assertEquals("采购",sourceType(c.leaf()));assertEquals(before,goodsVersion(c.leaf()));
+        assertEquals("BUY",storedSuggestion(c.line()));
         AnalysisView second=newAnalysisFor(c,"second");
-
-        MaterialView line=second.flatMaterials().stream().filter(m->m.goodsId().equals(c.leaf()))
-                .findFirst().orElseThrow();
-        assertEquals("SUBCONTRACT",line.sourceSuggestion(),"新分析的建议路线只从货品主档来");
-        // ADR-102 (2026-09-27): 有路线维护权限的人新建分析, 同一次请求就按主档把它确认掉,
-        // 不再要人再点一次, 也不再由页面补发 PUT /routes.
-        assertEquals("SUBCONTRACT",line.sourceConfirmed(),"主档给出的供应方式在新建分析时就确认");
-        assertTrue(second.autoConfirmedRouteCount()>0);
+        assertEquals("BUY",second.flatMaterials().stream().filter(m->m.goodsId().equals(c.leaf())).findFirst().orElseThrow().sourceConfirmed());
     }
 
     @Test void workshopLearningRejectsStaleEditorsAndDoesNotReturnResignedWorkers() {
@@ -130,19 +77,15 @@ class MaterialRouteMasterWriteBackEndToEndTest {
         assertNull(workshops.findValidByGoodsIds(java.util.Set.of(c.root())).getFirst().responsibleEmployeeId());
     }
 
-    @Test void anotherAnalysisChangingMasterDefaultsDoesNotClearExistingConfirmedRoutes() {
-        Case c = create("route-master-cross");
-        confirm(c, "BUY", "buy");
-        AnalysisView second = newAnalysisFor(c, "cross");
-        MaterialView secondLine = second.flatMaterials().stream().filter(m -> m.goodsId().equals(c.leaf()))
-                .findFirst().orElseThrow();
-        analyses.saveRoutes(second.analysisId(), new RouteRequest(second.version(), second.fingerprint(),
-                "cross-confirm-" + c.analysis(), List.of(new RouteDecision(secondLine.materialLineId(),
-                secondLine.actionGroupKey(), "MAKE", null))));
-        assertEquals("自制", sourceType(c.leaf()));
-        AnalysisView refreshed = refresh(c, "cross-refresh");
-        assertEquals("BUY", material(refreshed, c.line()).sourceConfirmed());
-        assertEquals(0, refreshed.routeResetCount());
+    @Test void onePlanningAnalysisCannotChangeAnotherOrdersDefault(){
+        Case c=create("role-cross-"+UUID.randomUUID());
+        AnalysisView second=newAnalysisFor(c,"cross");
+        MaterialView line=second.flatMaterials().stream().filter(m->m.goodsId().equals(c.leaf())).findFirst().orElseThrow();
+        assertThrows(com.uten.imp.common.web.ApiException.class,()->analyses.saveRoutes(second.analysisId(),
+            new RouteRequest(second.version(),second.fingerprint(),"role-cross-"+c.analysis(),
+                List.of(new RouteDecision(line.materialLineId(),line.actionGroupKey(),"MAKE",null)))));
+        assertEquals("采购",sourceType(c.leaf()));
+        assertEquals("BUY",material(refresh(c,"cross-refresh"),c.line()).sourceConfirmed());
     }
 
     /** 根(自制成品) -> 叶子件(主档「采购」)：一条叶子物料行，改路线不牵扯任何子层展开。 */

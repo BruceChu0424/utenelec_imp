@@ -977,7 +977,7 @@ class _RouteChip extends StatelessWidget {
     final resolved = route;
     if (resolved == null) {
       return const UtenStatusBadge(
-        label: '待选供应方式',
+        label: '待维护货品来源',
         size: UtenStatusBadgeSize.small,
         type: UtenStatusBadgeType.danger,
         icon: Icons.help_outline_rounded,

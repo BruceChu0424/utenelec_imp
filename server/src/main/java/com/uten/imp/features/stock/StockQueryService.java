@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -139,7 +140,22 @@ public class StockQueryService {
                                          boolean includeLineSide, String keyword, UUID owningWarehouse,
                                          Boolean owningWarehouseNull, UUID colorId, String series, UUID unitId,
                                          String attention, UUID goodsId, boolean colorNull, boolean inventoryOnly,
-                                         boolean includeRelated, boolean warehouseRelatedOnly) {
+                                         boolean includeRelated, boolean warehouseRelatedOnly,
+                                         LocalDate dateFrom, LocalDate dateTo) {
+        public InstantInventoryFilter {
+            if ((dateFrom == null) != (dateTo == null) || (dateFrom != null && dateFrom.isAfter(dateTo))) {
+                throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择完整且有效的时间范围");
+            }
+        }
+        public InstantInventoryFilter(UUID categoryId, UUID warehouseId, boolean includeDefective,
+                                      boolean includeLineSide, String keyword, UUID owningWarehouse,
+                                      Boolean owningWarehouseNull, UUID colorId, String series, UUID unitId,
+                                      String attention, UUID goodsId, boolean colorNull, boolean inventoryOnly,
+                                      boolean includeRelated, boolean warehouseRelatedOnly) {
+            this(categoryId, warehouseId, includeDefective, includeLineSide, keyword, owningWarehouse,
+                    owningWarehouseNull, colorId, series, unitId, attention, goodsId, colorNull, inventoryOnly,
+                    includeRelated, warehouseRelatedOnly, null, null);
+        }
         public InstantInventoryFilter(UUID categoryId, UUID warehouseId, boolean includeDefective,
                                       boolean includeLineSide, String keyword, UUID owningWarehouse,
                                       Boolean owningWarehouseNull, UUID colorId, String series, UUID unitId,
@@ -199,15 +215,20 @@ public class StockQueryService {
      * 即时库存列排序白名单：前端列 key → SQL 投影别名（命中才排序，否则默认 qty DESC + name ASC）。
      * 防注入：仅白名单值进入 ORDER BY。
      */
-    private static final Map<String, String> INSTANT_ALLOWED_SORT = Map.of(
-            "qty", "qty",
-            "weight", "weight",
-            "costAmount", "cost_amount",
-            "moreQty", "more_qty",
-            "pendingQty", "pending_qty",
-            "pendingStockInQty", "pending_stock_in_qty",
-            "negativeBalanceCount", "negative_balance_rows",
-            "name", "name");
+    private static final Map<String, String> INSTANT_ALLOWED_SORT = Map.ofEntries(
+            Map.entry("costPrice", "cost_price"),
+            Map.entry("periodCostAmount", "period_cost_amount"),
+            Map.entry("periodInQty", "period_in_qty"),
+            Map.entry("periodOutQty", "period_out_qty"),
+            Map.entry("closingQty", "closing_qty"),
+            Map.entry("qty", "qty"),
+            Map.entry("weight", "weight"),
+            Map.entry("costAmount", "cost_amount"),
+            Map.entry("moreQty", "more_qty"),
+            Map.entry("pendingQty", "pending_qty"),
+            Map.entry("pendingStockInQty", "pending_stock_in_qty"),
+            Map.entry("negativeBalanceCount", "negative_balance_rows"),
+            Map.entry("name", "name"));
 
     /**
      * 即时库存查询：**货品驱动**（对标老系统「分类下全是内容」——零库存货品也列出来，
@@ -311,6 +332,12 @@ public class StockQueryService {
         InstantInventoryFilter filter = new InstantInventoryFilter(categoryId, warehouseId, includeDefective,
                 includeLineSide, keyword, owningWarehouse, owningWarehouseNull, colorId, series, unitId,
                 attention, null, false, true, includeRelated, warehouseRelatedOnly);
+        return instantInventory(filter, page, size, sort, order);
+    }
+
+    @Transactional(readOnly = true, isolation = org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
+    public PageResponse<InstantInventoryRow> instantInventory(InstantInventoryFilter filter, int page, int size,
+                                                              String sort, String order) {
         InstantSql sql = instantSql(filter, sort);
         PageResponse<InstantInventoryRow> rows = instantPage(sql, page, size, sort, order);
 
@@ -475,6 +502,15 @@ public class StockQueryService {
                 item.setSearchRank(rank);
                 item.setSearchMatchKind(rank < GoodsSearchPolicy.RELATED_RANK_OFFSET ? "PRIMARY" : "RELATED");
             }
+            if (sql.filter().dateFrom() != null) {
+                int start = measurementIndex + 3;
+                item.setPeriodSelected(true);
+                item.setPeriodInQty(decimal(r[start]));
+                item.setPeriodOutQty(decimal(r[start + 1]));
+                item.setClosingQty(decimal(r[start + 2]));
+                item.setPeriodCostAmount(canViewCost ? decimal(r[start + 3]) : null);
+                item.setCostPrice(canViewCost ? decimal(r[start + 4]) : null);
+            }
             items.add(item);
         }
         long total = com.uten.imp.common.report.ReportReadPlan.UNKNOWN_TOTAL;
@@ -501,6 +537,10 @@ public class StockQueryService {
         }
 
         void bindBase(Query q) {
+            if (filter.dateFrom() != null) {
+                q.setParameter("periodFrom", com.uten.imp.common.time.BusinessTime.startOfDay(filter.dateFrom()));
+                q.setParameter("periodTo", com.uten.imp.common.time.BusinessTime.startOfDay(filter.dateTo().plusDays(1)));
+            }
             if (filter.goodsId() != null) q.setParameter("goodsId", filter.goodsId());
             if (filter.goodsId() != null && filter.colorId() != null) q.setParameter("colorId", filter.colorId());
             if (warehouseScope != null && warehouseScope.size() == 1) {
@@ -521,7 +561,7 @@ public class StockQueryService {
     private InstantSql instantSql(InstantInventoryFilter filter, String sort, Set<UUID> allowedWarehouseIds) {
         InstantInventoryAttention attention = InstantInventoryAttention.parse(filter.attention());
         boolean canViewCost = costMasker.canView();
-        if (!canViewCost && "costAmount".equals(sort)) {
+        if (!canViewCost && Set.of("costAmount", "periodCostAmount", "costPrice").contains(sort == null ? "" : sort)) {
             throw new ApiException(
                     ErrorCode.FORBIDDEN,
                     "无查看货品成本权限(" + StockCostMasker.PERMISSION + ")");
@@ -631,6 +671,32 @@ public class StockQueryService {
                 ? "COALESCE(base.color_id, :colorId)" : "base.color_id";
         String relevanceProjection = KeywordSearch.terms(filter.keyword()).isEmpty() ? ""
                 : ", " + keyword.rank() + " AS search_rank\n";
+        String periodProjection = ", CAST(NULL AS NUMERIC) AS period_in_qty, CAST(NULL AS NUMERIC) AS period_out_qty,"
+                + " CAST(NULL AS NUMERIC) AS closing_qty, CAST(NULL AS NUMERIC) AS period_cost_amount,"
+                + " CAST(NULL AS NUMERIC) AS cost_price\n";
+        String periodJoin = "";
+        if (filter.dateFrom() != null) {
+            String movementWhere = balWhere.toString().replace("b.", "m.");
+            String peerScope = balWhere.toString().replace(" WHERE 1=1", "TRUE")
+                    .replace("b.", "peer.").replace("w.", "peer_warehouse.");
+            String naturalIn = com.uten.imp.features.stock.ledger.StockMovementFlowSql.naturalIn("m");
+            String external = "NOT " + com.uten.imp.features.stock.ledger.StockMovementFlowSql.internalTransfer("m", peerScope);
+            String closing = "(COALESCE(base.qty,0)-COALESCE(period.after_qty,0))";
+            String amount = canViewCost ? "(COALESCE(base.amount_local,0)-COALESCE(period.after_amount,0))" : "CAST(NULL AS NUMERIC)";
+            periodProjection = ", COALESCE(period.in_qty,0) AS period_in_qty"
+                    + ", COALESCE(period.out_qty,0) AS period_out_qty, " + closing + " AS closing_qty"
+                    + ", " + amount + " AS period_cost_amount, "
+                    + (canViewCost ? "round(" + amount + "/NULLIF(" + closing + ",0),6)" : "CAST(NULL AS NUMERIC)")
+                    + " AS cost_price\n";
+            periodJoin = " LEFT JOIN (SELECT m.goods_id,m.color_id,"
+                    + " SUM(m.qty*m.direction) FILTER (WHERE m.transaction_date<:periodTo AND " + naturalIn + " AND " + external + ") AS in_qty,"
+                    + " SUM(-m.qty*m.direction) FILTER (WHERE m.transaction_date<:periodTo AND NOT " + naturalIn + " AND " + external + ") AS out_qty,"
+                    + " SUM(m.qty*m.direction) FILTER (WHERE m.transaction_date>=:periodTo) AS after_qty,"
+                    + (canViewCost ? " SUM(m.amount_local*m.direction) FILTER (WHERE m.transaction_date>=:periodTo)" : "CAST(NULL AS NUMERIC)")
+                    + " AS after_amount FROM stock_movements m JOIN warehouses w ON w.id=m.warehouse_id"
+                    + movementWhere + " AND m.transaction_date>=:periodFrom GROUP BY m.goods_id,m.color_id) period"
+                    + " ON period.goods_id=g.id AND period.color_id IS NOT DISTINCT FROM base.color_id\n";
+        }
         String core = cte + """
                 SELECT g.id AS goods_id, base.color_id AS color_id, mc.name AS category_name,
                        g.model, g.c_number, g.name, g.spec,
@@ -681,6 +747,7 @@ public class StockQueryService {
                        CASE WHEN COALESCE(base.measurement_pending,false) THEN 'LEGACY_QUANTITY_BASIS_UNPROVEN'
                             WHEN u.id IS NULL THEN 'MISSING_BASE_UNIT' END AS measurement_hold_reason,
                        (NOT COALESCE(base.measurement_pending,false) AND u.id IS NOT NULL) AS available_known
+                """ + periodProjection + """
                 FROM goods g
                 LEFT JOIN (
                     SELECT u.goods_id, u.color_id,
@@ -757,7 +824,7 @@ public class StockQueryService {
                 """ + (filter.goodsId() == null ? "" : " AND pi.goods_id = :goodsId\n") + """
                     GROUP BY pi.goods_id, pi.color_id
                 ) pm ON pm.goods_id = g.id AND pm.color_id IS NOT DISTINCT FROM base.color_id
-                """ + goodsWhere;
+                """ + periodJoin + goodsWhere;
         // A selected color with no rows still exposes the master and true zero stock under that color.
         // The same selected identity joins names, inspections and the global color-specific plan.
         if (!selectedColor.equals("base.color_id")) core = core.replace("base.color_id", selectedColor);

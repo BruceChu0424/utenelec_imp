@@ -62,9 +62,29 @@ class StockReportCostVisibilityTest {
 
         assertThat(payload.columns()).extracting(ExportColumn::key)
                 .contains("goodsCode", "series", "stockPlace", "weight",
-                        "qty", "pendingQty", "moreQty")
-                .doesNotContain("costAmount");
-        assertThat(payload.rows()).allSatisfy(row -> assertThat(row).doesNotContainKey("costAmount"));
+                        "qty", "pendingQty", "periodInQty", "periodOutQty", "closingQty")
+                .doesNotContain("costAmount", "costPrice", "periodCostAmount", "moreQty");
+        assertThat(payload.rows()).allSatisfy(row -> assertThat(row).doesNotContainKeys("costAmount", "costPrice", "periodCostAmount", "moreQty"));
+    }
+
+    @Test
+    void forgedOrSavedCostProjectionCannotRestoreSensitiveExportColumns() throws Exception {
+        when(costMasker.canView()).thenReturn(false);
+        ExportPayload payload = service.export("instant-inventory", Map.of(), null, null);
+        var projectionService = new com.uten.imp.common.export.ExportTableProjectionService(
+                mock(com.uten.imp.common.platformcolumns.PlatformColumnService.class));
+        for (String key : List.of("costPrice", "periodCostAmount", "costAmount")) {
+            var request = new com.uten.imp.common.export.TableColumnProjection("inventory", "view_warehouse",
+                    List.of(new com.uten.imp.common.export.TableColumnProjection.Column(key, "金额", 120d, "money", null)));
+            assertThatThrownBy(() -> projectionService.project(payload.columns(), payload.rows(), request, "view_warehouse"))
+                    .isInstanceOfSatisfying(ApiException.class,
+                            error -> assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.FORBIDDEN));
+        }
+        byte[] file = new com.uten.imp.common.export.XlsxExportService().build(payload.columns(), payload.rows());
+        try (var workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(file))) {
+            var header = workbook.getSheetAt(0).getRow(0);
+            for (var cell : header) assertThat(cell.getStringCellValue()).doesNotContain("成本", "多排");
+        }
     }
 
     @Test
@@ -75,13 +95,13 @@ class StockReportCostVisibilityTest {
                 service.export("instant-inventory", Map.of(), null, null);
 
         assertThat(payload.columns()).extracting(ExportColumn::key)
-                .contains("costAmount");
+                .contains("costPrice", "periodCostAmount");
         assertThat(payload.columns())
-                .filteredOn(column -> "costAmount".equals(column.key()))
+                .filteredOn(column -> "periodCostAmount".equals(column.key()))
                 .singleElement()
                 .extracting(ExportColumn::label)
-                .isEqualTo("库存台账金额");
-        assertThat(payload.rows().getFirst()).containsEntry("costAmount", new BigDecimal("123.45"));
+                .isEqualTo("成本金额");
+        assertThat(payload.rows().getFirst()).containsEntry("periodCostAmount", "请选择时间范围");
     }
 
     @Test

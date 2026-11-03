@@ -8,7 +8,7 @@
     "mergeMainAllowed": false,
     "productionDeploymentAllowed": false
   },
-  "inventorySha256": "31884fd3d4801d82aa07e64d3a1865a28c840cfef9484c504d93252c06010848",
+  "inventorySha256": "db2a527e799f4635cbf2c2fd88cf27f2c9c130a2539f617965c2fd1ce00c79b2",
   "baselineCounts": {
     "businessPagePackages": 220,
     "retainedBusinessPagePackages": 3,
@@ -5243,7 +5243,7 @@
       "feature": "basic_data",
       "businessSource": "lib/features/basic_data/pages/warehouse_page.dart",
       "sourceSha256": "a36431e004511e9dafaa4f20dafe5ca4c32e1b779eb90855675f0d75a03aacc1",
-      "sourceProofSha256": "ff3dfcce77c6a2a34855c87102cad905f1f98de1c948bc747dc880c687c1d4c7",
+      "sourceProofSha256": "c770f5310d44453d6fee4336e7a304ffc2f385c20637aae57bb97f451a24cba3",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -5271,9 +5271,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/instant-inventory-period-20261102.json"
+      ],
+      "notes": "2026-11-02：仓库资料内嵌即时库存随公共入口同步日期范围、期间数量与成本权限，打印和导出同口径。WPF 仓库资料与内嵌库存宿主仍未迁移，保持 todo；后续原生迁移按 W7-BIZ-152 同一服务端合同及 goods:cost:view 门禁验收。",
+      "lastUpdated": "2026-11-03T03:43:06.623695+00:00"
     },
     {
       "id": "W7-BIZ-215",
@@ -10152,7 +10154,7 @@
       "feature": "stock",
       "businessSource": "lib/features/stock/pages/instant_inventory_overview_page.dart",
       "sourceSha256": "d716c20fd61c2ddf8baf83d14850151ba618d0b3af4699a6e4b2a2f0c093b414",
-      "sourceProofSha256": "a8b23557c747f9a74dd44e078a21029ad653f40aaecdcf2c5386cf520bd40a39",
+      "sourceProofSha256": "7284d29dbd79f11962c33567e47214c5de875a7537090ff0a8782c81f882fd4e",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -10192,8 +10194,8 @@
       "phase": "D",
       "feature": "stock",
       "businessSource": "lib/features/stock/pages/instant_inventory_page.dart",
-      "sourceSha256": "1b2e1e6a29db05d9bf7ceb7670bca2a0d0de24e8ebb2f83da9b7f4faa4e7efcf",
-      "sourceProofSha256": "f8323cdce9da5a69c336441ba5484ad6073db6de051ab55dc5df74987c6e6d74",
+      "sourceSha256": "f9b47d9c2c103de259b4f86394301e2acfa584388ffe9590cc300ff61535d9e0",
+      "sourceProofSha256": "cd38d382c7c5820801716ee4302e9f5913a0cb003dc0c2bcd6e2511a7288e2e4",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -10221,9 +10223,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/instant-inventory-period-20261102.json"
+      ],
+      "notes": "2026-11-02：Web/Flutter 即时库存和仓库资料内嵌库存已共享日期范围、期间进出/结存与独立成本权限；移除全部分类顶部按钮及多排数量。WPF 即时库存宿主仍未迁移，不新增写入口、不标支持；后续迁移须消费 dateFrom/dateTo、periodSelected 及五项统计，成本显示/打印/导出均检查 goods:cost:view。",
+      "lastUpdated": "2026-11-03T03:42:18.384791+00:00"
     },
     {
       "id": "W7-BIZ-153",
@@ -11668,7 +11672,7 @@
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/shelf_label_page.dart",
       "sourceSha256": "754579a7b175ba544ed1edd8d57cc34dcde143e3c6960a390865034e30555383",
-      "sourceProofSha256": "fd96c7eb6930e1e3415b9cf69dfe5480580bcfc8aaf75f115493e2b2674a63d1",
+      "sourceProofSha256": "e01bda6149b14cb66bda76bd021c2ccbd79deaf1cc061d1922b01684bf0dd5a2",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -11750,7 +11754,7 @@
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/stock_doc_edit_page.dart",
       "sourceSha256": "fb385d268feeff0a24239d8c9d9f9f8e6435781030ef8e9a1ab8c061a007ed8d",
-      "sourceProofSha256": "989d68a6f2d95fae2ddcfd8c2a6f7ada6713b5557e91b3bb25b5cf1a813ab1c7",
+      "sourceProofSha256": "30ca2ad262d5c3c4d7a0fd6ca0e11ed1b705a7ac45cc8baa0d96206d5150529f",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",

@@ -1,0 +1,120 @@
+{
+  "id": "E-INSTANT-INVENTORY-PERIOD-20261102",
+  "baseCommit": "c75d6e1e3480057f4bec1a930475b402129f5a90",
+  "branch": "uimp/instant-stock-period-20261102",
+  "authorization": "Local implementation and validation only; no production access, deployment, publication or package.",
+  "classification": "frontend+backend+shared-contract",
+  "hosts": {
+    "web": "shared Flutter source",
+    "flutter_windows": "shared Flutter source",
+    "warehouse_detail_inventory": "migrated shared columns, period picker, paging, print and export",
+    "wpf_legacy": "W7-BIZ-152 remains todo; no native inventory host, not migrated or claimed supported"
+  },
+  "contract": {
+    "dates": [
+      "dateFrom",
+      "dateTo"
+    ],
+    "timezone": "Asia/Shanghai, inclusive dates converted to [start,next-day start)",
+    "periodInQty": "Natural inbound net movement, reversals reduce original side; same-scope transfers excluded",
+    "periodOutQty": "Natural outbound net movement, includes sales and other issues; reversals reduce original side",
+    "closingQty": "Current scoped balance minus signed movements after the selected end date",
+    "periodCostAmount": "Current scoped local ledger amount minus signed local amounts after the selected end date",
+    "costPrice": "periodCostAmount / closingQty, six decimal places, null for zero quantity",
+    "costAuthorization": "goods:cost:view; absent columns in UI, print and export settings; null values in API; forbidden cost sorting; server export columns and values omitted; forged/saved cost projections refused",
+    "permissionMigration": "V991 associates existing permission with inventory and warehouse surfaces; grants no permissions",
+    "noRange": "请选择时间范围; no historic zeros invented",
+    "legacyFields": "moreQty retained only for API compatibility; removed from both tables, print and export"
+  },
+  "checks": [
+    {
+      "suite": "Flutter inventory pages, warehouse panel, inline editing, personal layout, totals, summary and overview",
+      "passed": 93,
+      "failed": 0,
+      "skipped": 1,
+      "log": "build/flutter-period-targeted.log"
+    },
+    {
+      "suite": "Contextual inventory selection/search/export",
+      "passed": 1,
+      "failed": 0,
+      "log": "build/flutter-period-contextual.log"
+    },
+    {
+      "suite": "Backend stock inventory, costs, reports, ledger and real PostgreSQL",
+      "passed": 73,
+      "failed": 0,
+      "skipped": 0,
+      "log": "build/backend-period-tests.log",
+      "migratedThrough": "V991"
+    },
+    {
+      "suite": "Period PostgreSQL stress",
+      "movements": 25000,
+      "testElapsedSecondsIncludingInsertAndQuery": 3.232,
+      "passed": true
+    },
+    {
+      "suite": "Rapid date selection",
+      "changes": 12,
+      "reverseCompletion": true,
+      "oldRowsRejected": true,
+      "permissionRevocationClearsCost": true
+    },
+    {
+      "suite": "Full printing",
+      "rows": 2500,
+      "sharedExistingRegressionPassed": true
+    },
+    {
+      "suite": "Screenshot capture",
+      "passed": 1,
+      "variants": [
+        "desktop no range",
+        "desktop selected range",
+        "compact 2x no range",
+        "compact 2x selected range",
+        "compact category directory"
+      ],
+      "log": "build/flutter-period-capture.log"
+    },
+    {
+      "suite": "Targeted Flutter static analysis",
+      "passed": true,
+      "issues": 0,
+      "log": "build/flutter-period-analyze.log"
+    }
+  ],
+  "knownBaselineFailures": {
+    "suite": "contextual_candidate_search_test.dart compact2x count history/mode navigation",
+    "failed": 2,
+    "baselineReproducedWithOriginalSourceAndTestFrom": "c75d6e1e3",
+    "log": "build/flutter-contextual-baseline.log",
+    "status": "Existing and not changed by this scope; full frontend regression is not all-green"
+  },
+  "notRun": [
+    "Win7 x86/x64 inventory native migration and target-machine UAT",
+    "Real company business-data browser/desktop session",
+    "Full repository CI",
+    "Production deployment and release"
+  ],
+  "sourceSha256": {
+    "lib/shared/stock_inventory/instant_inventory_columns.dart": "e5abfca2f51e08588a48dd6f53117f459aa0608797a1bbe535a6470ee2a3e7c6",
+    "lib/shared/stock_inventory/instant_inventory_period_button.dart": "363ead61c41c7b19be0dd98b5cdd434eacbee5c7d988df29a25883a60ba9b66d",
+    "lib/shared/stock_inventory/instant_inventory_repository.dart": "5090bc8390ddd598ab48722189fcffa2be50a9fe038425164c5551e13afc1d72",
+    "lib/shared/stock_inventory/instant_inventory_row.dart": "4b025f93b5ffd0d444a0d40490f95d8d954892a70f1b69ca00c7853f159ae711",
+    "lib/features/stock/pages/instant_inventory_page.dart": "f9b47d9c2c103de259b4f86394301e2acfa584388ffe9590cc300ff61535d9e0",
+    "lib/features/stock/repositories/stock_query_repository.dart": "85c0b6db019b35a9652aef36b31f9eca43fe4842456a71650da179c061d5ffc5",
+    "lib/features/basic_data/widgets/warehouse_inventory_panel.dart": "741f4ddce9aa261736bd641f677d00ad1dd4becc921913e3dea2e751bbc846ec",
+    "server/src/main/java/com/uten/imp/features/stock/StockQueryService.java": "001a2af98db281c5116eb92f004ca1bec6d6cc7fdc0a63059bd7ef254455600a",
+    "server/src/main/java/com/uten/imp/features/stock/StockQueryController.java": "048e9fd9dd8b906e5e29a91b535fb78788cc5df07e90ff3d2bba8a6bf950cf89",
+    "server/src/main/java/com/uten/imp/features/stock/dto/InstantInventoryRow.java": "dfd226e68fbccf767d97d760d45fd716e0d71025f42460c0648eed21ff5af697",
+    "server/src/main/java/com/uten/imp/features/stock/ledger/StockLedgerSql.java": "372d657b18d9e2457834bff37d1cdb9ddf23dbf970db023ce735ba7449b65ba0",
+    "server/src/main/java/com/uten/imp/features/stock/ledger/StockMovementFlowSql.java": "8369bb3c76be329201c863cf881c8f981a50cc524b6acdab424cb0885ed8669e",
+    "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java": "2d28b9f3aacb1379abe054b9ec34087fb356e08f43844a837108db98a49c94dd",
+    "server/src/main/java/com/uten/imp/config/PlatformDisplayColumnsConfiguration.java": "8fb3dccf81016f230f22c870a611b003fc0c78f0bcf2ab05e722e671886f989b",
+    "server/src/main/resources/db/migration/V991__instant_inventory_cost_permission_surface.sql": "7ae0cc8407470933318012c6a2406e51e081e2dd6e9ee8d6906a2cf5a74c6a20",
+    "server/src/test/java/com/uten/imp/features/stock/InstantInventoryPeriodPostgresTest.java": "bb668487af2e60ee6373f5b49925c2cd28108b6360350c5cbc594084838195d0",
+    "server/src/test/java/com/uten/imp/features/stock/report/StockReportCostVisibilityTest.java": "59476afb83e8707b9b2a53a2adc335ce6dfd48954020a8bbdcd64be8f7c79967"
+  }
+}

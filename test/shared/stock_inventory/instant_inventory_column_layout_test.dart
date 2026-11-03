@@ -138,10 +138,10 @@ void main() {
         'goodsCode',
         'color',
         'qty',
+        'periodInQty',
+        'periodOutQty',
+        'closingQty',
         'weight',
-        'pendingQty',
-        'pendingStockInQty',
-        'moreQty',
       ]);
       expect(effective.order.last, 'remark');
       expect(effective.hidden, {'remark'});

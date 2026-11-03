@@ -94,9 +94,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/instant-inventory-period-20261102.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：2026-11-02：Web/Flutter 即时库存和仓库资料内嵌库存已共享日期范围、期间进出/结存与独立成本权限；移除全部分类顶部按钮及多排数量。WPF 即时库存宿主仍未迁移，不新增写入口、不标支持；后续迁移须消费 dateFrom/dateTo、periodSelected 及五项统计，成本显示/打印/导出均检查 goods:cost:view。。
 
 ## W7-BIZ-153
 

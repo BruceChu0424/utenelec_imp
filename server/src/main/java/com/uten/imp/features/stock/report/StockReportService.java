@@ -481,9 +481,12 @@ public class StockReportService {
                 // 带该列的表格投影导出会被「列不存在或不在可导出范围」整单拒绝。
                 ReportColumn.number("pendingStockInQty", "合格待入库").withUnitKey("unit")));
         if (canViewCost) {
-            columns.add(ReportColumn.money("costAmount", "库存台账金额").withUnitLabel("元"));
+            columns.add(ReportColumn.money("costPrice", "成本价").withUnitLabel("元"));
+            columns.add(ReportColumn.money("periodCostAmount", "成本金额").withUnitLabel("元"));
         }
-        columns.add(ReportColumn.number("moreQty", "多排数量").withUnitKey("unit"));
+        columns.add(ReportColumn.number("periodInQty", "进仓数量").withUnitKey("unit"));
+        columns.add(ReportColumn.number("periodOutQty", "发货数量").withUnitKey("unit"));
+        columns.add(ReportColumn.number("closingQty", "结存数量").withUnitKey("unit"));
         return List.copyOf(columns);
     }
 
@@ -510,7 +513,8 @@ public class StockReportService {
                 params.get("series"),
                 ReportQueryKit.parseUuid(params.get("unitId")),
                 params.get("attention"), null, false, true, "true".equalsIgnoreCase(params.get("includeRelated")),
-                "true".equalsIgnoreCase(params.get("warehouseRelatedOnly")));
+                "true".equalsIgnoreCase(params.get("warehouseRelatedOnly")),
+                ReportQueryKit.parseDate(params.get("dateFrom")), ReportQueryKit.parseDate(params.get("dateTo")));
         WeightUnit weightUnit = exportWeightUnit(params.get("weightUnit"));
         boolean canViewCost = costMasker.canView();
         List<ReportColumn> columns = instantExportColumns(weightUnit, canViewCost);
@@ -538,9 +542,12 @@ public class StockReportService {
                 m.put("pendingQty", it.getPendingQty());
                 m.put("pendingStockInQty", it.getPendingStockInQty());
                 if (canViewCost) {
-                    m.put("costAmount", it.getCostAmount());
+                    m.put("costPrice", it.isPeriodSelected() ? it.getCostPrice() : "请选择时间范围");
+                    m.put("periodCostAmount", it.isPeriodSelected() ? it.getPeriodCostAmount() : "请选择时间范围");
                 }
-                m.put("moreQty", it.getMoreQty());
+                m.put("periodInQty", it.isPeriodSelected() ? it.getPeriodInQty() : "请选择时间范围");
+                m.put("periodOutQty", it.isPeriodSelected() ? it.getPeriodOutQty() : "请选择时间范围");
+                m.put("closingQty", it.isPeriodSelected() ? it.getClosingQty() : "请选择时间范围");
                 rows.add(m);
             }
             return new ReportTableResponse(columns, rows, Map.of(),

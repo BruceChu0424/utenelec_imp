@@ -289,10 +289,7 @@ void main() {
       expect(api.inventoryQueries.last['categoryId'], 'raw');
       await editPlace(tester, 'B-02');
       final reads = api.inventoryQueries.length;
-      await tester.tap(
-        find.byKey(const Key('instant-inventory-all-categories')),
-        warnIfMissed: false,
-      );
+      await tester.tap(find.text('原材料分类'), warnIfMissed: false);
       await tester.pumpAndSettle();
       expect(controller(tester).dirty, isTrue);
       expect(api.inventoryQueries.length, reads);
@@ -301,9 +298,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('放弃修改'));
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('instant-inventory-all-categories')),
-      );
+      await tester.tap(find.text('原材料分类'));
       await tester.pumpAndSettle();
       expect(api.inventoryQueries.last['categoryId'], isNull);
       expect(api.writes, isEmpty);
@@ -382,7 +377,8 @@ class _LocationApi extends ApiClient {
       ? [
           {'id': 'raw', 'code': 'RAW', 'name': '原材料分类', 'goodsCount': 1},
         ]
-      : path.contains('warehouses/dict')
+      : (path.contains('warehouses/dict') ||
+            path.contains('business-references/warehouses'))
       ? [
           {'id': 'w1', 'name': '原仓库', 'code': 'W1', 'selectableForNew': true},
           {'id': 'w2', 'name': '新仓库', 'code': 'W2', 'selectableForNew': true},

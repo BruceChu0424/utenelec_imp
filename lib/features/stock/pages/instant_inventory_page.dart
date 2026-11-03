@@ -7,18 +7,19 @@ import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 //   自动隐藏；仓库「全部」= 参与核算仓库聚合，选主仓 = 自身 + 全部子仓聚合；
 // - 右侧工具栏：货品搜索 + 仓库字段 + 库存范围开关 + 共 N 项；
 // - 表格 = 统一 MasterDataTableView：货品识别、库存数量/重量与待处理量在前，
-//   主档位置及其他属性在后。库存台账金额列已从页面与预览打印移除
-//  （加密导出 Excel 仍由服务端按 goods:cost:view 独立裁列，口径不受本页影响）。
+//   期间进出/结存、成本价/金额按业务日期范围由服务端计算，未选日期显示提示。
+//   成本列受 goods:cost:view 独立授权；页面、打印、导出共用口径。
 //
 // 数据口径（后端 /api/stock/instant-inventory）：
-//   数量 = stock_balances 按货品+颜色聚合；多排数量 = 生产计划明细可排余量
-//  （老库 View_ProductMore 同口径）。
+//   数量 = stock_balances 按货品+颜色聚合；期间进出按已过账 stock_movements 聚合。
+//   期末结存与本币金额由当前余额减截止日之后的净变动倒推。
 //   重量 (ADR-135) = 仓库重量账 (千克), 紧跟库存数量: 含估算的前缀「≈」, 有库存但没称过
 //   显示「未称」(绝不当 0); 表格工具条「重量单位: 自动▾」切显示单位 (用户级偏好, 与流水/
 //   分析页共用)。合计「合计库存重量 ≈3.52 t (另有 12 项未称)」由服务端算好。
 //   导出文件的重量列用固定单位 (自动档按千克), 表头带单位, 不混单位。
 // 性能：后端一次聚合分页（LIMIT/OFFSET + 排序白名单），前端不拉全量，万级数据秒开。
 import 'dart:async';
+import '../../../shared/stock_inventory/instant_inventory_period_button.dart';
 
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_filter_chip.dart';
@@ -30,7 +31,6 @@ import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_app_bar_action_button.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
-import '../../../components/layout/uten_adaptive_hierarchy_pane.dart';
 import '../../../components/inputs/uten_filter_picker_field.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -163,6 +163,14 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
   bool get _includeDefective =>
       _restoredIncludeDefective ?? ref.read(instantInventoryPrefsProvider);
   // 列排序态：null=后端默认（库存数量 DESC）。
+  DateTimeRange? _period;
+  String? get _dateFrom =>
+      _period == null ? null : inventoryPeriodDate(_period!.start);
+  String? get _dateTo =>
+      _period == null ? null : inventoryPeriodDate(_period!.end);
+  bool get _canViewCost =>
+      ref.read(isSuperAdminProvider) ||
+      ref.read(currentPermissionsProvider).contains(Perm.goodsCostView);
   String? _sortKey;
   bool _sortAsc = false;
 
@@ -346,6 +354,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
       final pageColorId = _columnFilter('color');
       final pageSeries = _columnFilter('series');
       final pageUnitId = _columnFilter('unit');
+      final pageDateFrom = _dateFrom, pageDateTo = _dateTo;
       final pageSort = _sortKey;
       final pageOrder = _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc');
 
@@ -365,6 +374,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
           pageColorId,
           pageSeries,
           pageUnitId,
+          pageDateFrom,
+          pageDateTo,
           pageSort,
           pageOrder,
         ],
@@ -381,6 +392,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
           _columnFilter('color'),
           _columnFilter('series'),
           _columnFilter('unit'),
+          _dateFrom,
+          _dateTo,
           _sortKey,
           _sortKey == null ? null : (_sortAsc ? 'asc' : 'desc'),
         ],
@@ -398,6 +411,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
           colorId: pageColorId,
           series: pageSeries,
           unitId: pageUnitId,
+          dateFrom: pageDateFrom,
+          dateTo: pageDateTo,
           sort: pageSort,
           order: pageOrder,
         ),
@@ -557,6 +572,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
     if (_keyword.isNotEmpty && _includeRelated) 'includeRelated': true,
     'owningWarehouse': ?_owningFilterUuid,
     if (_owningFilterIsNull) 'owningWarehouseNull': true,
+    'dateFrom': ?_dateFrom,
+    'dateTo': ?_dateTo,
     'colorId': ?_columnFilter('color'),
     'series': ?_columnFilter('series'),
     'unitId': ?_columnFilter('unit'),
@@ -584,6 +601,7 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
     final colorId = _columnFilter('color'),
         series = _columnFilter('series'),
         unitId = _columnFilter('unit');
+    final dateFrom = _dateFrom, dateTo = _dateTo;
     final sort = _sortKey;
     final order = sort == null ? null : (_sortAsc ? 'asc' : 'desc');
     final columns = _columns();
@@ -610,6 +628,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
           colorId: colorId,
           series: series,
           unitId: unitId,
+          dateFrom: dateFrom,
+          dateTo: dateTo,
           sort: sort,
           order: order,
         ),
@@ -622,8 +642,13 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
         ],
         factsOf: (row) => {
           'qty': row.qty?.toString(),
-          'costAmount': row.costAmount?.toString(),
-          'moreQty': row.moreQty?.toString(),
+          if (_canViewCost) 'costAmount': row.costAmount?.toString(),
+          if (_canViewCost) 'costPrice': row.costPrice?.toString(),
+          if (_canViewCost)
+            'periodCostAmount': row.periodCostAmount?.toString(),
+          'periodInQty': row.periodInQty?.toString(),
+          'periodOutQty': row.periodOutQty?.toString(),
+          'closingQty': row.closingQty?.toString(),
           'pendingQty': row.pendingQty?.toString(),
           'pendingStockInQty': row.pendingStockInQty?.toString(),
           'weight': row.weight?.toString(),
@@ -640,6 +665,10 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
       instantInventoryColumns(
         context,
         weightDisplay: ref.read(warehouseWeightUnitsPrefsProvider).display,
+        canViewCost: _canViewCost,
+        periodSelected: _period != null,
+        periodLoading: _loading || _acceptPendingSearch,
+        periodError: _error != null,
       );
 
   void _onSearchInput(String raw) {
@@ -729,8 +758,22 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
     }
   }
 
+  void _changePeriod(DateTimeRange? range) {
+    if (inlineEdit.active || range == _period) return;
+    _loadRequests.begin();
+    _queryContextVersion++;
+    setState(() {
+      _period = range;
+      _page = null;
+      _summaryStale = true;
+      _error = null;
+      _sortKey = null;
+      _pageNum = 1;
+    });
+    _load(1);
+  }
+
   Widget _buildCategoryPane() {
-    final theme = Theme.of(context);
     return Builder(
       builder: (paneContext) => ExcludeFocus(
         excluding: inlineEdit.active,
@@ -739,26 +782,6 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              ListTile(
-                key: const Key('instant-inventory-all-categories'),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: UtenSpacing.s12,
-                ),
-                shape: const RoundedRectangleBorder(
-                  borderRadius: UtenRadius.controlAll,
-                ),
-                selected: _effectiveCategoryId == null,
-                selectedTileColor: theme.colorScheme.primaryContainer,
-                leading: const Icon(Icons.all_inbox_outlined),
-                title: const Text('全部分类'),
-                onTap: () {
-                  _selectCategory(null);
-                  UtenHierarchyPanelScope.maybeOf(
-                    paneContext,
-                  )?.onSelection?.call();
-                },
-              ),
-              const SizedBox(height: UtenSpacing.s8),
               if (_treeError != null)
                 TextButton(
                   onPressed: _loadTree,
@@ -777,7 +800,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
                   searchFieldKey: const Key(
                     'instant-inventory-category-search',
                   ),
-                  onNodeTap: (node) => _selectCategory(node.id),
+                  onNodeTap: (node) => _selectCategory(
+                    node.id == _effectiveCategoryId ? null : node.id,
+                  ),
                 ),
               ),
             ],
@@ -796,7 +821,9 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
       maxLeadingWidth: 400,
       minTrailingWidth: 520,
       minTwoPaneWidth: _minTwoPaneWidth,
-      selectedLeadingLabel: _categoryScopeLabel,
+      selectedLeadingLabel: _effectiveCategoryId == null
+          ? '分类目录'
+          : _categoryScopeLabel,
       selectedLeadingKey: _effectiveCategoryId,
       openLeadingButtonKey: const Key('instant-inventory-open-categories'),
       leading: _buildCategoryPane(),
@@ -954,6 +981,11 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
         items: _page?.items ?? const [],
         rowKeyOf: (r) => stockCountRowKey(r.goodsId ?? '', r.colorId),
         toolbarActions: [
+          InstantInventoryPeriodButton(
+            range: _period,
+            enabled: !inlineEdit.active,
+            onChanged: _changePeriod,
+          ),
           if (inlineEdit.active)
             Tooltip(
               message: '仅编辑货品主档的库位号、归属仓库，不移动库存。切换查询前请先保存或取消编辑。',
@@ -1066,6 +1098,8 @@ class _InstantInventoryPageState extends ConsumerState<InstantInventoryPage>
             ? UtenFloatingActionGroup.scrollClearance
             : 0,
         paginationScope: (
+          _dateFrom,
+          _dateTo,
           _effectiveCategoryId,
           _warehouseId,
           _includeLineSide,

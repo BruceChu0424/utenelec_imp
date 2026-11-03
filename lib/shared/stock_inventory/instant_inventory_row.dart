@@ -22,6 +22,12 @@ class InstantInventoryRow {
     this.qty,
     this.costAmount,
     this.costMasked = false,
+    this.periodSelected = false,
+    this.costPrice,
+    this.periodCostAmount,
+    this.periodInQty,
+    this.periodOutQty,
+    this.closingQty,
     this.moreQty,
     this.goodsCode,
     this.series,
@@ -68,6 +74,12 @@ class InstantInventoryRow {
   /// 不是 goods.c_total × qty 的标准成本估算。
   final double? costAmount;
   final bool costMasked;
+  final bool periodSelected;
+  final double? costPrice;
+  final double? periodCostAmount;
+  final double? periodInQty;
+  final double? periodOutQty;
+  final double? closingQty;
   final double? moreQty; // 多排数量
   final String? goodsCode; // 物料编码（goods.code）
   final String? series; // 物料系列（goods.series）
@@ -113,6 +125,16 @@ class InstantInventoryRow {
             ? null
             : (json['costAmount'] as num?)?.toDouble(),
         costMasked: json['costMasked'] == true,
+        periodSelected: json['periodSelected'] == true,
+        costPrice: json['costMasked'] == true
+            ? null
+            : (json['costPrice'] as num?)?.toDouble(),
+        periodCostAmount: json['costMasked'] == true
+            ? null
+            : (json['periodCostAmount'] as num?)?.toDouble(),
+        periodInQty: (json['periodInQty'] as num?)?.toDouble(),
+        periodOutQty: (json['periodOutQty'] as num?)?.toDouble(),
+        closingQty: (json['closingQty'] as num?)?.toDouble(),
         moreQty: (json['moreQty'] as num?)?.toDouble(),
         goodsCode: json['goodsCode'] as String?,
         series: json['series'] as String?,

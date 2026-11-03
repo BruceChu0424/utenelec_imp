@@ -177,17 +177,18 @@ void main() {
     await _chooseInventoryCategory(tester, '原材料');
     await _query(tester, '螺丝');
     expect(_inventory(tester).items.map((r) => r.goodsId), ['a']);
-    final old = await tester
-        .widget<UtenExportButton>(find.byType(UtenExportButton))
-        .prepareExport!();
+    final old = await _inventory(
+      tester,
+    ).toolbarActions!.whereType<UtenExportButton>().single.prepareExport!();
     await tester.tap(_related);
     await tester.pumpAndSettle();
     expect(old!.stillCurrent!(), isFalse);
     expect(_inventory(tester).items.map((r) => r.goodsId), ['a', 'r']);
     expect(_inventory(tester).facets['series']!.single.value, 'expanded');
     expect(
-      tester
-          .widget<UtenExportButton>(find.byType(UtenExportButton))
+      _inventory(tester).toolbarActions!
+          .whereType<UtenExportButton>()
+          .single
           .queryParams['includeRelated'],
       isTrue,
     );
@@ -197,8 +198,7 @@ void main() {
     await _chooseInventoryCategory(tester, '成品');
     expect(api.last('/stock/instant-inventory')['categoryId'], 'finished');
     expect(_inventory(tester).items.map((r) => r.goodsId), ['r']);
-    await tester.tap(find.byKey(const Key('instant-inventory-all-categories')));
-    await tester.pumpAndSettle();
+    await _chooseInventoryCategory(tester, '成品');
     expect(_inventory(tester).items.map((r) => r.goodsId), ['a', 'r']);
     await _query(tester, '');
     expect(_related, findsNothing);

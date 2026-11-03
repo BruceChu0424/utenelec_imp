@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/l10n/gen/app_localizations.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../formatters/quantity_display.dart';
+import '../formatters/money_display.dart';
 import '../measurement/weight_unit.dart';
 import '../measurement/widgets/weight_text.dart';
 import '../../features/basic_data/widgets/master_data_table_view.dart';
@@ -14,7 +15,31 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
   BuildContext context, {
   required WeightDisplay weightDisplay,
   bool? columnSearchEnabled,
+  bool canViewCost = false,
+  bool periodSelected = false,
+  bool periodLoading = false,
+  bool periodError = false,
 }) {
+  String periodValue(
+    InstantInventoryRow row,
+    double? value, {
+    bool money = false,
+    bool price = false,
+  }) {
+    if (!periodSelected) return '请选择时间范围';
+    if (periodLoading) return '计算中';
+    if (periodError) return '统计加载失败，请重试';
+    if (!row.periodSelected) return '期间统计不可用，请刷新';
+    if (money && row.costMasked) return '已隐藏';
+    if (value == null) return '—';
+    if (price) return '${formatQty(value)} 元';
+    if (money) return financeLocalMoneyWithUnitSuffix(value.toString());
+    return formatQtyWithUnit(
+      value,
+      row.measurementPending ? null : row.unitName,
+    );
+  }
+
   return <MasterColumnDef<InstantInventoryRow>>[
     // 先辨认货品和颜色，再看现存数量/重量及待处理量；
     // 库位和主档属性放在库存事实后面，备注收尾。
@@ -104,7 +129,59 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
         );
       },
     ),
-    // 重量紧跟数量 (ADR-135)：千克按用户显示单位换算，估算「≈」、没称「未称」。
+    if (canViewCost) ...[
+      MasterColumnDef(
+        key: 'costPrice',
+        label: '成本价',
+        width: 165,
+        type: 'money',
+        sortable: periodSelected,
+        columnSearchEnabled: false,
+        info: '截止日的库存台账金额 ÷ 结存数量；结存为零时不计算单价。单位：本币元/基本单位。',
+        value: (r) => periodValue(r, r.costPrice, money: true, price: true),
+      ),
+      MasterColumnDef(
+        key: 'periodCostAmount',
+        label: '成本金额',
+        width: 170,
+        type: 'money',
+        sortable: periodSelected,
+        columnSearchEnabled: false,
+        info: '所选截止日的库存台账本币金额，与上方仓库范围一致。',
+        value: (r) => periodValue(r, r.periodCostAmount, money: true),
+      ),
+    ],
+    MasterColumnDef(
+      key: 'periodInQty',
+      label: '进仓数量',
+      width: 170,
+      type: 'number',
+      sortable: periodSelected,
+      columnSearchEnabled: false,
+      info: '所选期间入库净量，含退货与红冲；所选仓库范围内调拨不重复计入。',
+      value: (r) => periodValue(r, r.periodInQty),
+    ),
+    MasterColumnDef(
+      key: 'periodOutQty',
+      label: '发货数量',
+      width: 170,
+      type: 'number',
+      sortable: periodSelected,
+      columnSearchEnabled: false,
+      info: '所选期间出仓净量，含销售发货、领料等出库及其红冲；范围内调拨不重复计入。',
+      value: (r) => periodValue(r, r.periodOutQty),
+    ),
+    MasterColumnDef(
+      key: 'closingQty',
+      label: '结存数量',
+      width: 170,
+      type: 'number',
+      sortable: periodSelected,
+      columnSearchEnabled: false,
+      info: '所选截止日结束时的结存；库存数量列仍显示当前实时库存。',
+      value: (r) => periodValue(r, r.closingQty),
+    ),
+    // 库存重量：千克按用户显示单位换算，估算「≈」、没称「未称」。
     MasterColumnDef(
       columnSearchEnabled: columnSearchEnabled,
       key: 'weight',
@@ -152,18 +229,6 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
       // 品质 PASS 只形成仓库任务；仓库确认前不进入库存数量。
       value: (r) => formatQtyWithUnit(
         r.pendingStockInQty,
-        r.measurementPending ? null : r.unitName,
-      ),
-    ),
-    MasterColumnDef(
-      columnSearchEnabled: columnSearchEnabled,
-      key: 'moreQty',
-      label: '多排数量',
-      width: 135,
-      type: 'number',
-      sortable: true,
-      value: (r) => formatQtyWithUnit(
-        r.moreQty,
         r.measurementPending ? null : r.unitName,
       ),
     ),

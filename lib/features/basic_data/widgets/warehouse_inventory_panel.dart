@@ -1,6 +1,7 @@
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:flutter/material.dart';
+import '../../../shared/stock_inventory/instant_inventory_period_button.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
@@ -83,6 +84,17 @@ class _WarehouseInventoryPanelState
   int _page = 1;
   int _size = 30;
   Map<String, String?> _filters = {};
+  DateTimeRange? _period;
+  String? get _dateFrom =>
+      _period == null ? null : inventoryPeriodDate(_period!.start);
+  String? get _dateTo =>
+      _period == null ? null : inventoryPeriodDate(_period!.end);
+  bool get _canViewCost {
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    return boundary.superAdmin ||
+        boundary.permissions.contains(Perm.goodsCostView);
+  }
+
   String? _sortKey;
   bool _sortAscending = false;
   int _requestVersion = 0;
@@ -161,6 +173,8 @@ class _WarehouseInventoryPanelState
   }
 
   Map<String, dynamic> get _exportQuery => {
+    'dateFrom': ?_dateFrom,
+    'dateTo': ?_dateTo,
     'warehouseId': widget.warehouse.id,
     'includeDefective': true,
     'includeLineSide': true,
@@ -202,7 +216,11 @@ class _WarehouseInventoryPanelState
           'weight',
           'pendingQty',
           'pendingStockInQty',
-          'moreQty',
+          'costPrice',
+          'periodCostAmount',
+          'periodInQty',
+          'periodOutQty',
+          'closingQty',
         }.contains(key)) {
       return;
     }
@@ -223,11 +241,14 @@ class _WarehouseInventoryPanelState
     final owningWarehouse = _filter('owningWarehouse');
     final owningNull = _filters['owningWarehouse'] == kMasterFilterNullValue;
     final colorId = _filter('color'), series = _filter('series');
+    final dateFrom = _dateFrom, dateTo = _dateTo;
     final sort = _sortKey;
     final order = sort == null ? null : (_sortAscending ? 'asc' : 'desc');
     final columns = instantInventoryColumns(
       context,
       weightDisplay: ref.read(warehouseWeightUnitsPrefsProvider).display,
+      canViewCost: _canViewCost,
+      periodSelected: _period != null,
     );
     bool current() =>
         _resultsReady &&
@@ -248,6 +269,8 @@ class _WarehouseInventoryPanelState
           owningWarehouseNull: owningNull,
           colorId: colorId,
           series: series,
+          dateFrom: dateFrom,
+          dateTo: dateTo,
           sort: sort,
           order: order,
         ),
@@ -261,7 +284,12 @@ class _WarehouseInventoryPanelState
         factsOf: (row) => {
           'qty': row.qty?.toString(),
           'weight': row.weight?.toString(),
-          'moreQty': row.moreQty?.toString(),
+          if (_canViewCost) 'costPrice': row.costPrice?.toString(),
+          if (_canViewCost)
+            'periodCostAmount': row.periodCostAmount?.toString(),
+          'periodInQty': row.periodInQty?.toString(),
+          'periodOutQty': row.periodOutQty?.toString(),
+          'closingQty': row.closingQty?.toString(),
           'pendingQty': row.pendingQty?.toString(),
           'pendingStockInQty': row.pendingStockInQty?.toString(),
         },
@@ -287,6 +315,7 @@ class _WarehouseInventoryPanelState
     final owning = _filter('owningWarehouse'),
         owningNull = _filters['owningWarehouse'] == kMasterFilterNullValue;
     final color = _filter('color'), series = _filter('series'), sort = _sortKey;
+    final dateFrom = _dateFrom, dateTo = _dateTo;
     final size = _size;
     final order = sort == null ? null : (_sortAscending ? 'asc' : 'desc');
     Object pagingQuery() => [
@@ -298,6 +327,8 @@ class _WarehouseInventoryPanelState
       _filters,
       _sortKey,
       _sortAscending,
+      _dateFrom,
+      _dateTo,
     ];
     try {
       final result = await readScopedPage<InstantInventoryRow>(
@@ -317,6 +348,8 @@ class _WarehouseInventoryPanelState
           owningWarehouseNull: owningNull,
           colorId: color,
           series: series,
+          dateFrom: dateFrom,
+          dateTo: dateTo,
           sort: sort,
           order: order,
         ),
@@ -452,8 +485,25 @@ class _WarehouseInventoryPanelState
               context,
               weightDisplay: weightDisplay,
               columnSearchEnabled: false,
+              canViewCost: _canViewCost,
+              periodSelected: _period != null,
+              periodLoading: _loading,
+              periodError: _failed,
             ),
             toolbarLeadingActions: [
+              InstantInventoryPeriodButton(
+                range: _period,
+                onChanged: (range) {
+                  if (range == _period) return;
+                  setState(() {
+                    _period = range;
+                    _result = null;
+                    _readEpoch++;
+                    _sortKey = null;
+                  });
+                  _load(1);
+                },
+              ),
               const WeightDisplayUnitButton(),
               UtenPrintPreviewButton(
                 key: const Key('warehouse-inventory-print'),
@@ -535,6 +585,8 @@ class _WarehouseInventoryPanelState
             onPageChange: (page) => _load(page, useCache: true),
             paginationScope: (
               widget.warehouse.id,
+              _dateFrom,
+              _dateTo,
               _keyword,
               _readEpoch,
               _size,

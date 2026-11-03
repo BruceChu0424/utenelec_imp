@@ -201,6 +201,37 @@ class BusinessMasterReferenceHttpPostgresTest {
         read(API + "/clients", Map.of(), 403);
     }
 
+    @Test void goodsSelectionRetainsOriginalIndependentPriceDiscountAndStockAuthorities() throws Exception {
+        java.nio.file.Path path = java.nio.file.Path.of("contracts/business-master-references/v1.json");
+        if (!java.nio.file.Files.exists(path)) path = java.nio.file.Path.of("..").resolve(path);
+        JsonNode contract = json.readTree(java.nio.file.Files.readString(path));
+        fixtureWrite(() -> db.update("UPDATE goods SET price=39.13,zk=0.2,min_order_qty=12,order_multiple_qty=6,stock_place='A-01' WHERE id=?", world.goodsA()));
+        int index = 0;
+        for (JsonNode sample : contract.path("cases")) {
+            List<String> grants = new ArrayList<>(List.of("sales_order:create", "sales_order:price:view"));
+            sample.path("grants").forEach(grant -> grants.add(grant.asText()));
+            login("-price-" + index++, grants.toArray(String[]::new));
+            JsonNode rows = read(API + "/goods", Map.of("keyword", tag), 200).path("items");
+            JsonNode item = null;
+            for (JsonNode row : rows) if (world.goodsA().toString().equals(row.path("id").asText())) item = row;
+            assertNotNull(item, sample.path("name").asText());
+            assertEquals(sample.path("priceVisible").asBoolean(), item.has("price"), sample.path("name").asText());
+            assertEquals(sample.path("discountVisible").asBoolean(), item.has("discount"));
+            assertEquals(sample.path("stockVisible").asBoolean(), item.has("stockQty"));
+            if (item.has("price")) assertEquals(0, item.path("price").decimalValue().compareTo(new java.math.BigDecimal("39.13")));
+            if (item.has("discount")) assertEquals(0, item.path("discount").decimalValue().compareTo(new java.math.BigDecimal("0.2")));
+            assertEquals("A-01", item.path("stockPlace").asText());
+            assertEquals(12, item.path("minOrderQty").asInt());
+            assertEquals(6, item.path("orderMultipleQty").asInt());
+            assertFalse(item.path("writable").asBoolean());
+            noFields(item, Set.of("cost", "costPrice", "stockAmount", "purchasePrice", "bankAccount", "phone"));
+            if (!grants.contains("goods:view")) {
+                read("/api/master/goods", Map.of(), 403);
+                read("/api/master/goods/" + world.goodsA(), Map.of(), 403);
+            }
+        }
+    }
+
     @Test void salesCreateRetainsCustomerObjectScopeAndDoesNotSearchHiddenContactData() throws Exception {
         UUID actor = login("-seller", "sales_order:create");
         UUID employee = db.queryForObject("SELECT employee_id FROM users WHERE id=?", UUID.class, actor);

@@ -46,9 +46,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/shared-picker-field-regression-20261102.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-02 公共选货回填修复：价格/折扣保留原独立字段权限，BOM库存预览仅goods:view；同一单调读代次覆盖分类、建议、确认和回写。共享合同 contracts/business-master-references/v1.json；当前原生业务选择/BOM编辑尚未迁移，不以Web、Flutter或服务端测试替代原生验收，状态不变。。
 
 ## W7-BIZ-137
 

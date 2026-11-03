@@ -167,7 +167,9 @@ public class BusinessMasterReferenceController {
         var scoped = filter.withColumnSearch(com.uten.imp.common.util.ColumnKeywordSearch.requestValues(request));
         GoodsReferenceProjection.validateQuery(scoped, sort);
         var result = goods.list(scoped, page, size, sort, order);
-        return new PageResponse<>(result.getItems().stream().map(GoodsReferenceProjection::of).toList(),
+        boolean includeMasterStock = access.canReadMasterGoods();
+        return new PageResponse<>(result.getItems().stream()
+                .map(item -> GoodsReferenceProjection.of(item, includeMasterStock)).toList(),
                 result.getPage(), result.getSize(), result.getTotal(), result.getTotalPages());
     }
 

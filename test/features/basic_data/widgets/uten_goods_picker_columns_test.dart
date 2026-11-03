@@ -1,4 +1,5 @@
 import 'package:uten_imp/features/basic_data/repositories/business_reference_repository.dart';
+import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,9 +13,57 @@ import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart'
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_goods_picker.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
 import '../../../support/filter_segment_tap.dart';
 
 void main() {
+  testWidgets('suggestion responses cannot revive after read owner ABA', (
+    tester,
+  ) async {
+    final api = _HeldColumnApi();
+    final epoch = _SuggestionEpoch();
+    Object? rejected;
+    final results = <GoodsListItem>[];
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          exportContextEpochProvider.overrideWith(() => epoch),
+          businessGoodsCategoryRepositoryProvider.overrideWithValue(
+            _Categories(),
+          ),
+        ],
+        child: MaterialApp(
+          home: Consumer(
+            builder: (context, ref, _) => TextButton(
+              onPressed: () async {
+                try {
+                  results.addAll(
+                    await loadUtenGoodsPickerSuggestions(ref, '开关'),
+                  );
+                } catch (error) {
+                  rejected = error;
+                }
+              },
+              child: const Text('候选'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('候选'));
+    await tester.pumpAndSettle();
+    expect(api.started, isTrue);
+    epoch.advance();
+    await tester.pump();
+    epoch.advance();
+    api.pending.complete();
+    await tester.pumpAndSettle();
+    expect(results, isEmpty);
+    expect(rejected, isStateError);
+    expect(tester.takeException(), isNull);
+  });
+
   test(
     'column filters survive every bounded root batch for both rows and category location',
     () async {
@@ -300,4 +349,24 @@ class _ColumnApi extends ApiClient {
     'status': '使用',
     'spec': '250V',
   };
+}
+
+class _HeldColumnApi extends _ColumnApi {
+  final pending = Completer<void>();
+  bool started = false;
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    started = true;
+    await pending.future;
+    return super.get(path, query: query);
+  }
+}
+
+class _SuggestionEpoch extends ExportContextEpoch {
+  @override
+  int build() => 0;
+  void advance() => state++;
 }

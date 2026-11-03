@@ -1,0 +1,86 @@
+{
+  "id": "E-SHARED-PICKER-FIELD-REGRESSION-20261102",
+  "baseCommit": "c75d6e1e3",
+  "candidateBranch": "uimp/shared-picker-field-regression-20261102",
+  "classification": "backend+frontend+shared-contract",
+  "sourceSha256": {
+    "lib/features/basic_data/widgets/uten_goods_picker.dart": "e83ad7f4d262f761e50a791fe0b1abbf7cb210feb03e061819c221ee0a8b6e10",
+    "lib/features/basic_data/widgets/uten_master_picker.dart": "f99a286784c457c1e4352ffa2c39ace52ff555e990fef8a9f98ccc2748d68990",
+    "lib/features/sales/pages/sales_doc_edit_page.dart": "d3d4d16fd8674e29c6f49ff73e5602a63b27630c5c51a0d4d54781f500e22c10",
+    "server/src/main/java/com/uten/imp/features/master/reference/GoodsReferenceProjection.java": "655d28bfa655f2b5adba6c58fb5762ba9a12c2025f611113cc8d3bbdd4293af6",
+    "server/src/main/java/com/uten/imp/features/master/reference/BusinessMasterReferenceAccess.java": "0282c6c53cd9e4d4b9265ca4d7307e1c1a745e50a5a5a90fe7fca315556ecf74",
+    "server/src/main/java/com/uten/imp/features/master/reference/BusinessMasterReferenceController.java": "e7e3a69c96d8868f9be690eaa3e7cc9ddb4ca696ead442fab7a81dff30f0fccd",
+    "contracts/business-master-references/v1.json": "c9956523235c06cd6e06aca134de6cb36fa749918d595c71cf2e4b697d304c95",
+    "contracts/business-master-references/callers-20261102.json": "7e920b76a3d57eb85a91ff16f4ef07e893674f6ec9a59ebeaa46b3bd8b30299a",
+    "tool/shared_picker_field_harness.dart": "c960afa328920b72eb8b936d0155f96dd4078916316fb8ed992a9d2920152502"
+  },
+  "contract": "contracts/business-master-references/v1.json",
+  "callers": "contracts/business-master-references/callers-20261102.json",
+  "changes": [
+    "Preserve independently field-masked master price and discount in business selection responses.",
+    "Return BOM stock preview only with original goods:view authority.",
+    "Use one monotonic read epoch from tree/suggestions through final picker confirmation; reject stale/deleted sales rows."
+  ],
+  "validation": {
+    "backend": {
+      "passed": 23,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "realPostgresqlHttpCases": 11,
+      "log": "tmp/picker-fix/backend-final.log"
+    },
+    "flutter": {
+      "uniquePassed": 190,
+      "failures": 0,
+      "errors": 0,
+      "conditionalScreenshotSkipped": 1,
+      "skippedTest": "stock_count_candidate_picker_test.dart optional capture case (skip: !_capturePicker)",
+      "finalLog": "tmp/picker-fix/flutter-final.log",
+      "scope": "16 relevant test files, including real shared selectors, sales, BOM, parties, procurement, production and stock callers."
+    },
+    "analyze": {
+      "result": "No issues found",
+      "log": "tmp/picker-fix/analyze-final.log"
+    },
+    "browser": {
+      "type": "local synthetic browser UI, no production requests",
+      "goodsCount": 1201,
+      "pages": 61,
+      "observed": [
+        "Authorized selected price 39.13 and discount 0.2.",
+        "Quantity 10 recalculates exact total 78.26.",
+        "Selecting another product then cancelling retains original product, quantity 10 and total 78.26.",
+        "Changing field permissions retires the open picker/editor; restoring permissions does not revive that old page.",
+        "After reload, the original local draft is still counted.",
+        "On the canonical sales create route, entering quantity and immediately leaving to the local draft list, then reopening, preserves product, quantity 10, master price 39.13, discount 0.2 and exact total 78.26."
+      ],
+      "draftRestorationConfirmed": true,
+      "screenshots": [
+        "tmp/picker-fix/browser-price-discount.png",
+        "tmp/picker-fix/browser-permission-aba.png",
+        "tmp/picker-fix/browser-draft-restored.png"
+      ],
+      "startupDebugObservation": "One Flutter web debug focus assertion occurred before initial layout; subsequent field/picker scenarios rendered and completed. This is not production or Windows native acceptance.",
+      "harnessConfiguration": "Uses the canonical /sales/orders/new route required by FormDraftSpec; the initial /edit diagnostic alias was replaced before final draft recovery acceptance."
+    }
+  },
+  "windowsLegacy": {
+    "nativeBusinessSelectorsImplemented": false,
+    "nativeGoodsViewerSource": "/master/goods",
+    "affectedWorkItems": [
+      "W7-BIZ-025",
+      "W7-BIZ-136"
+    ],
+    "statusesUnchanged": true,
+    "targetMachineUat": false,
+    "requirement": "Adopt the same field-authority and lifecycle fixture before native business/BOM selectors are implemented; existing WPF master viewer remains on its original endpoint."
+  },
+  "integration": {
+    "mergedToMain": false,
+    "pushed": false,
+    "deployed": false,
+    "formalPackagesBuilt": false,
+    "productionPermissionWrites": 0
+  }
+}

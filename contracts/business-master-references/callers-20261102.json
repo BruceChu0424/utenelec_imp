@@ -1,0 +1,254 @@
+{
+  "version": 1,
+  "baseCommit": "c75d6e1e3",
+  "scope": "Source and field-contract audit of the shared reference picker change; runtime evidence is recorded separately.",
+  "defaultAndAdaptedGoodsCallers": [
+    {
+      "path": "lib/features/basic_data/widgets/bom_component_picker.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_bom_batch_maintenance_dialog.dart",
+      "restoredFields": [
+        "price"
+      ],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_bom_comparison_table.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_bom_comparison_workspace.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_bom_tab.dart",
+      "restoredFields": [
+        "price",
+        "stockQty"
+      ],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/basic_data/widgets/goods_detail_body.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/production/pages/production_material_discovery_request_page.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/production/pages/production_plan_edit_page.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/production/widgets/material_manual_demand_editor.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/production/widgets/where_used_material_picker.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_doc_edit_page.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_order_edit_page.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/purchase/widgets/purchase_goods_picker.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/sales/intake/sales_intake_launcher.dart",
+      "restoredFields": [
+        "price"
+      ],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/sales/pages/sales_doc_edit_page.dart",
+      "restoredFields": [
+        "price",
+        "discount"
+      ],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/sales/pages/sales_scarcity_page.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/stock/counts/widgets/stock_count_candidate_picker.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_order_edit_page.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/subcontract/widgets/subcontract_goods_picker.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/warehouse/materialbin/widgets/workshop_request_material_picker.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/warehouse/pages/production_material_discovery_page.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/warehouse/pages/stock_doc_edit_page.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    },
+    {
+      "path": "lib/features/warehouse/pages/warehouse_weigh_count_page.dart",
+      "restoredFields": [],
+      "review": "Existing identity, unit/color, MOQ/multiple, stock-place, lifecycle and quantity-rule consumers retain their source. Dedicated dataSource adapters retain their own report/inventory eligibility and snapshots."
+    }
+  ],
+  "clientAndSupplierCallers": [
+    {
+      "path": "lib/features/basic_data/widgets/goods_cost_editor.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    },
+    {
+      "path": "lib/features/finance/pages/finance_doc_edit_page.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    },
+    {
+      "path": "lib/features/finance/pages/finance_report_table_page.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    },
+    {
+      "path": "lib/features/finance/pages/finance_statement_page.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    },
+    {
+      "path": "lib/features/finance/payables/widgets/supplier_settlement_actions.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_doc_edit_page.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    },
+    {
+      "path": "lib/features/purchase/pages/purchase_order_edit_page.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    },
+    {
+      "path": "lib/features/purchase/widgets/doc_link_picker.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    },
+    {
+      "path": "lib/features/sales/intake/sales_intake_launcher.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    },
+    {
+      "path": "lib/features/sales/pages/sales_doc_edit_page.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    },
+    {
+      "path": "lib/features/sales/widgets/sales_batch_ship_panel.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    },
+    {
+      "path": "lib/features/sales/widgets/sales_doc_link_picker.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    },
+    {
+      "path": "lib/features/subcontract/pages/subcontract_order_edit_page.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    },
+    {
+      "path": "lib/features/subcontract/widgets/subcontract_link_picker.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    },
+    {
+      "path": "lib/shared/widgets/commercial_terms_batch_sheet.dart",
+      "review": "Identity/state selection is compatible; document defaults and historical/scope/name resolution keep their own business readers. No contact/bank/tax or finance fields added."
+    }
+  ],
+  "businessEmployeeCallers": [
+    "lib/features/finance/pages/finance_doc_edit_page.dart",
+    "lib/features/production/pages/production_plan_edit_page.dart",
+    "lib/features/purchase/pages/purchase_doc_edit_page.dart",
+    "lib/features/purchase/pages/purchase_order_edit_page.dart",
+    "lib/features/sales/pages/sales_doc_edit_page.dart",
+    "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
+    "lib/features/subcontract/pages/subcontract_order_edit_page.dart",
+    "lib/features/warehouse/materialbin/pages/workshop_material_issue_page.dart",
+    "lib/features/warehouse/pages/inbound_arrival_registration_page.dart",
+    "lib/features/warehouse/pages/warehouse_subcontract_outbound_batch_page.dart",
+    "lib/features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart"
+  ],
+  "otherPickerOwners": [
+    {
+      "path": "lib/shared/widgets/business_employee_picker.dart",
+      "review": "Purpose-authorized references, code/name/department/position/status, independent preload and in-flight identity guards retained."
+    },
+    {
+      "path": "lib/shared/providers/master_dictionary_repository.dart",
+      "review": "Accounts retain type/currency/exchange-rate/baseCurrency/state; warehouses retain UUID hierarchy and selectable purpose flags; departments retain identity/tree metadata. Full account reconciliation dictionary stays separate."
+    },
+    {
+      "path": "lib/shared/widgets/warehouse_picker_panel.dart",
+      "review": "Parent/child selection, operational/defective/query policies use preserved server flags; no total/cost dependency."
+    },
+    {
+      "path": "lib/shared/widgets/uten_department_picker.dart",
+      "review": "Selection requires UUID/name/level/path from preserved hierarchy; no private HR fields required."
+    },
+    {
+      "path": "lib/features/finance/widgets/finance_account_picker_panel.dart",
+      "review": "Selection uses UUID/code/name/currency/state and preserves original finance write authority; no balance/bank field is needed."
+    }
+  ],
+  "permissionContract": "contracts/business-master-references/v1.json",
+  "candidateNativeClient": {
+    "state": "Business selectors remain unmigrated in WPF; current GoodsReadService is a master viewer using /master/goods. No WPF write workflow or target-machine acceptance is claimed."
+  },
+  "regressionTests": [
+    "server/src/test/java/com/uten/imp/businesschain/BusinessMasterReferenceHttpPostgresTest.java",
+    "server/src/test/java/com/uten/imp/features/master/reference/GoodsReferenceProjectionTest.java",
+    "test/features/sales/pages/sales_doc_edit_intake_test.dart",
+    "test/features/basic_data/widgets/uten_goods_picker_test.dart",
+    "test/features/basic_data/widgets/uten_client_picker_test.dart",
+    "test/features/basic_data/widgets/uten_supplier_picker_pagination_test.dart",
+    "test/features/purchase/purchase_goods_multi_pick_test.dart",
+    "test/features/subcontract/subcontract_goods_multi_picker_test.dart",
+    "test/features/production/widgets/where_used_material_picker_test.dart",
+    "test/features/stock/stock_count_candidate_picker_test.dart"
+  ]
+}

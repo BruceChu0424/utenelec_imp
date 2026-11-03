@@ -110,18 +110,27 @@ Future<TItem?> showUtenMasterPicker<TItem>(
   // 单根提升：与货品选择滑窗同口径（2026-09-24），单包装根不占一层。
   tree = hoistSingleRootTree(tree);
   // 滑窗宽度口径 2026-10-17：比例优先（browse 档 75% 屏宽），720 只作小屏下限。
-  return showUtenAdaptivePanel<TItem>(
+  final selected = await showUtenAdaptivePanel<TItem>(
     context: context,
     drawerWidth: 720,
-    builder: (_) => _MasterPickerSheet<TItem>(spec: spec, tree: tree),
+    builder: (_) =>
+        _MasterPickerSheet<TItem>(spec: spec, tree: tree, readerEpoch: epoch),
   );
+  return context.mounted && epoch == owner.read(exportContextEpochProvider)
+      ? selected
+      : null;
 }
 
 class _MasterPickerSheet<TItem> extends ConsumerStatefulWidget {
-  const _MasterPickerSheet({required this.spec, required this.tree});
+  const _MasterPickerSheet({
+    required this.spec,
+    required this.tree,
+    required this.readerEpoch,
+  });
 
   final UtenMasterPickerSpec<TItem> spec;
   final List<ProductCategoryNode> tree;
+  final int readerEpoch;
 
   @override
   ConsumerState<_MasterPickerSheet<TItem>> createState() =>
@@ -178,7 +187,7 @@ class _MasterPickerSheetState<TItem>
   @override
   void initState() {
     super.initState();
-    _readerEpoch = ref.read(exportContextEpochProvider);
+    _readerEpoch = widget.readerEpoch;
     ref.listenManual(exportContextEpochProvider, (previous, next) {
       if (!mounted || previous == next) return;
       _retireReader();
@@ -572,7 +581,9 @@ class _MasterPickerSheetState<TItem>
           pagination: UtenPickerPageControls(controller: _pickerRows),
           selectedCount: picked == null ? 0 : 1,
           selectedLabel: picked == null ? null : _spec.labelOf(picked),
-          onConfirm: () => Navigator.of(context).pop(_picked),
+          onConfirm: () {
+            if (_currentReader) Navigator.of(context).pop(_picked);
+          },
         ),
       ],
     );

@@ -17,7 +17,8 @@ import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // 已选清单滑层，可逐项取消；「确定(N)」返回所选列表。
 //
 // 与旧 sales_goods_picker / goods_picker_dialog（居中搜索框）的区别：带分类树浏览、
-// 默认返回业务所需 GoodsListItem 引用（含 colorId/unitId 及展示名称，不含价格/库存量等私有字段；legacy 仅供历史显示），供调用方
+// 返回业务所需 GoodsListItem；价格、折扣沿用服务端各自的原字段权限，
+// 库存合计仅 goods:view 可见。legacy 仅供历史显示，供调用方
 // 自动回填颜色/单位。
 import 'dart:async';
 
@@ -35,6 +36,7 @@ import '../../../components/layout/uten_picker_footer_layout.dart';
 import '../../../components/layout/uten_split_view.dart';
 import '../../../components/layout/uten_segment_row.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../../../shared/hierarchy/uten_tree_path.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/models/paged_result.dart';
@@ -273,12 +275,17 @@ Future<List<GoodsListItem>> loadUtenGoodsPickerSuggestions(
 }) async {
   if (query.trim().isEmpty) return const [];
   final boundary = ref.read(sensitiveReadBoundaryProvider);
+  final readerEpoch = ref.read(exportContextEpochProvider);
+  bool currentOwner() =>
+      ref.context.mounted &&
+      readerEpoch == ref.read(exportContextEpochProvider) &&
+      boundary == ref.read(sensitiveReadBoundaryProvider);
   final tree = _treeForScope(
     await ref.read(businessGoodsCategoryRepositoryProvider).tree(),
     scope,
   );
   if (tree.isEmpty) return const [];
-  if (boundary != ref.read(sensitiveReadBoundaryProvider)) {
+  if (!currentOwner()) {
     throw StateError('查找身份已变化，请重新输入');
   }
   final allowed = <String>{};
@@ -299,7 +306,7 @@ Future<List<GoodsListItem>> loadUtenGoodsPickerSuggestions(
         sort: _goodsPickerSort,
         order: _goodsPickerOrder,
       );
-  if (boundary != ref.read(sensitiveReadBoundaryProvider)) {
+  if (!currentOwner()) {
     throw StateError('查找身份已变化，请重新输入');
   }
   if (result.items.any((goods) => !allowed.contains(goods.categoryId))) {
@@ -426,6 +433,10 @@ Future<T?> _presentSheet<T>(
 }) async {
   // Capture invalidation before awaiting the tree as well as while the panel is
   // open. A revoke/regrant during that await must never reopen an old snapshot.
+  final owner = ProviderScope.containerOf(context, listen: false);
+  final readerEpoch = owner.read(exportContextEpochProvider);
+  bool currentOwner() =>
+      context.mounted && readerEpoch == owner.read(exportContextEpochProvider);
   var boundaryChanged =
       readBoundary != null &&
       readBoundary != ref.read(sensitiveReadBoundaryProvider);
@@ -435,7 +446,7 @@ Future<T?> _presentSheet<T>(
           if (next != readBoundary) boundaryChanged = true;
         });
   try {
-    if (boundaryChanged) return null;
+    if (boundaryChanged || !currentOwner()) return null;
     List<ProductCategoryNode> tree;
     List<ProductCategoryNode>? allTree;
     try {
@@ -449,12 +460,12 @@ Future<T?> _presentSheet<T>(
       }
       tree = _treeForScope(raw, scope);
     } catch (error) {
-      if (context.mounted && !boundaryChanged) {
+      if (context.mounted && currentOwner() && !boundaryChanged) {
         context.appError(_pickerErrorMessage(error, '货品分类加载失败，请稍后重试'));
       }
       return null;
     }
-    if (!context.mounted || boundaryChanged) return null;
+    if (!context.mounted || !currentOwner() || boundaryChanged) return null;
     // 单根提升：整库只有一个「货品资料」包装根时不占一层。
     final scopeTree = tree;
     if (dataSource == null) tree = hoistSingleRootTree(tree);
@@ -470,6 +481,7 @@ Future<T?> _presentSheet<T>(
       dataSource: dataSource,
       title: title,
       readBoundary: readBoundary,
+      readerEpoch: readerEpoch,
       allTree: allTree,
       initialKeyword: initialKeyword,
       confirmOnDoubleTap: confirmOnDoubleTap,
@@ -481,7 +493,7 @@ Future<T?> _presentSheet<T>(
       drawerWidth: 720,
       builder: (_) => sheet,
     );
-    return boundaryChanged ? null : result;
+    return boundaryChanged || !currentOwner() ? null : result;
   } finally {
     subscription?.close();
   }
@@ -492,6 +504,7 @@ class _GoodsPickerSheet extends ConsumerStatefulWidget {
     required this.tree,
     required this.scopeTree,
     required this.scope,
+    required this.readerEpoch,
     this.multiSelect = false,
     this.dataSource,
     this.title = '选择货品',
@@ -504,6 +517,7 @@ class _GoodsPickerSheet extends ConsumerStatefulWidget {
   final List<ProductCategoryNode> scopeTree;
   final List<ProductCategoryNode>? allTree;
   final UtenGoodsPickerScope scope;
+  final int readerEpoch;
   final bool multiSelect;
   final UtenGoodsPickerDataSource? dataSource;
   final String title;
@@ -584,6 +598,7 @@ class _GoodsPickerSheetState extends ConsumerState<_GoodsPickerSheet>
 
   bool get _canRead =>
       !_boundaryChanged &&
+      widget.readerEpoch == ref.read(exportContextEpochProvider) &&
       (widget.readBoundary == null ||
           widget.readBoundary == ref.read(sensitiveReadBoundaryProvider));
 

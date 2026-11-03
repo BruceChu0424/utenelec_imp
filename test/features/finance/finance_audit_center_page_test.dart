@@ -3,6 +3,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
@@ -22,11 +23,121 @@ import '../../helpers/badge_summary_fixture.dart';
 import '../../support/filter_segment_tap.dart';
 
 late SharedPreferences _preferences;
+final _repositorySource =
+    StateProvider<SalesOrderFinanceConfirmationRepository?>((ref) => null);
 
 void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     _preferences = await SharedPreferences.getInstance();
+  });
+
+  testWidgets('a fast category click adopts the prepared default queue once', (
+    tester,
+  ) async {
+    final pending = Completer<SalesOrderFinancePendingPage>();
+    final repository = _EmptyConfirmationRepository()..nextPending = pending;
+    await tester.pumpWidget(
+      _app(
+        const FinanceAuditCenterPage(),
+        {Perm.salesOrderFinanceView},
+        repository: repository,
+        emptyCounts: true,
+      ),
+    );
+    await tester.pump();
+    expect(find.byType(UtenFilterPlaceholder), findsOneWidget);
+    await selectFilterSegment(tester, '销售订单确认');
+    await tester.pump();
+    expect(
+      repository.pendingQueries.where((query) => query == (false, false, null)),
+      hasLength(1),
+    );
+    pending.complete(
+      const SalesOrderFinancePendingPage(
+        items: [],
+        page: 1,
+        size: 20,
+        total: 0,
+        totalPages: 1,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('sales-order-finance-desktop-table')),
+      findsOneWidget,
+    );
+    expect(
+      repository.pendingQueries.where((query) => query == (false, false, null)),
+      hasLength(1),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('same-category gateway replacement retires queued preparation', (
+    tester,
+  ) async {
+    final oldPending = Completer<SalesOrderFinancePendingPage>();
+    final nextPending = Completer<SalesOrderFinancePendingPage>();
+    final first = _EmptyConfirmationRepository()..nextPending = oldPending;
+    final next = _EmptyConfirmationRepository()..nextPending = nextPending;
+    await tester.pumpWidget(
+      _app(
+        const FinanceAuditCenterPage(),
+        {Perm.salesOrderFinanceView},
+        repository: first,
+        dynamicRepository: true,
+        emptyCounts: true,
+      ),
+    );
+    await tester.pump();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(FinanceAuditCenterPage)),
+    );
+    container.read(_repositorySource.notifier).state = next;
+    await tester.pump();
+    await tester.pump();
+    await selectFilterSegment(tester, '销售订单确认');
+    await tester.pump();
+    oldPending.complete(
+      SalesOrderFinancePendingPage(
+        items: [
+          SalesOrderFinancePendingItem.fromJson({
+            'orderId': 'old',
+            'billNo': 'OLD',
+          }),
+        ],
+        page: 1,
+        size: 20,
+        total: 1,
+        totalPages: 1,
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('OLD'), findsNothing);
+    expect(
+      next.pendingQueries.where((query) => query == (false, false, null)),
+      hasLength(1),
+    );
+    nextPending.complete(
+      SalesOrderFinancePendingPage(
+        items: [
+          SalesOrderFinancePendingItem.fromJson({
+            'orderId': 'new',
+            'billNo': 'NEW',
+          }),
+        ],
+        page: 1,
+        size: 20,
+        total: 1,
+        totalPages: 1,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('NEW'), findsWidgets);
+    expect(find.text('OLD'), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -127,7 +238,13 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text(help), findsOneWidget);
         expect(find.text(instruction), findsOneWidget);
-        expect(repository.pendingQueries, isEmpty);
+        expect(repository.pendingQueries, contains((false, false, null)));
+        expect(
+          repository.pendingQueries.every((query) => !query.$2),
+          isTrue,
+          reason:
+              'Preparation reads working queues without selecting or loading completed history',
+        );
         expect(
           find.byKey(const Key('sales-order-finance-desktop-table')),
           findsNothing,
@@ -269,7 +386,7 @@ void main() {
             find.byKey(const Key('sales-order-finance-desktop-table')),
           );
       expect(table.filters['status'], 'changes');
-      expect(repository.changesFilters.last, isTrue);
+      expect(repository.changesFilters, contains(true));
       expect(find.text('目前没有订单修改待确认的销售订单'), findsOneWidget);
     },
   );
@@ -299,7 +416,7 @@ void main() {
       'initial',
       'changes',
     ]);
-    expect(repository.pendingQueries.last, (false, false, null));
+    expect(repository.pendingQueries, contains((false, false, null)));
     // 非当前分类在收起面板内；实际切换仍使用原队列的服务端查询。
     await selectFilterSegment(tester, '已驳回');
     await tester.pumpAndSettle();
@@ -324,6 +441,7 @@ Widget _app(
   bool emptyCounts = false,
   int arrivalCount = 0,
   ApiClient? api,
+  bool dynamicRepository = false,
 }) {
   return ProviderScope(
     overrides: [
@@ -341,7 +459,13 @@ Widget _app(
           },
         ),
       ),
-      if (repository != null)
+      if (dynamicRepository)
+        _repositorySource.overrideWith((ref) => repository),
+      if (dynamicRepository)
+        salesOrderFinanceConfirmationRepositoryProvider.overrideWith(
+          (ref) => ref.watch(_repositorySource)!,
+        ),
+      if (repository != null && !dynamicRepository)
         salesOrderFinanceConfirmationRepositoryProvider.overrideWithValue(
           repository,
         ),

@@ -33,6 +33,7 @@ import '../../procurement_iqc_rejection/pages/procurement_iqc_rejection_list_pag
 import '../../sales/widgets/sales_shipment_task_workbench.dart';
 import '../../warehouse/pages/finance_arrival_exception_pages.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
+import '../providers/finance_audit_preparation_provider.dart';
 import '../../../shared/drafts/review_task_draft.dart';
 import 'finance_procurement_approval_tasks_page.dart';
 import 'finance_sales_order_confirmation_page.dart';
@@ -84,6 +85,8 @@ class _FinanceAuditCenterPageState
 
   Future<void> _refresh() async {
     if (_refreshing) return;
+    ref.invalidate(financeAuditPreparedPagesProvider);
+    ref.read(financeAuditPreparationProvider).retire();
     final completion = _visibleSegment == null ? null : Completer<void>();
     setState(() {
       _refreshing = true;
@@ -168,6 +171,21 @@ class _FinanceAuditCenterPageState
     _visibleSegment = segments.any((segment) => segment.value == _segment)
         ? _segment
         : null;
+    if (segments.isNotEmpty && !_refreshing) {
+      final group = _visibleSegment ?? segments.first.value;
+      final jobs = ref.watch(financeAuditPreparationJobsProvider(group));
+      ref
+          .watch(financeAuditPreparationProvider)
+          .prepare(
+            [group, jobs],
+            jobs,
+            canPrepare: () =>
+                mounted &&
+                !_refreshing &&
+                TickerMode.valuesOf(context).enabled &&
+                (ModalRoute.of(context)?.isCurrent ?? true),
+          );
+    }
     if (_visibleSegment == null) {
       final completion = _refreshCompletion;
       if (completion != null && !completion.isCompleted) {

@@ -27,6 +27,7 @@ import '../../core/network/api_client.dart';
 import '../../core/network/api_endpoints.dart';
 import '../../core/network/connection_recovery.dart';
 import '../../core/network/data_write_revision.dart';
+import '../../core/network/read_scope_revision.dart';
 import '../auth/permissions.dart';
 import '../providers/app_visibility_provider.dart';
 import '../providers/authenticated_scope_provider.dart';
@@ -271,6 +272,10 @@ class BadgeSummaryNotifier extends Notifier<BadgeSummary> {
   @override
   BadgeSummary build() {
     final scope = ref.watch(authenticatedScopeProvider);
+    // Same-address dataset/scope replacements and administrator changes retire
+    // both cached facts and in-flight reads, including their A-B-A boundary.
+    ref.watch(readScopeRevisionProvider);
+    ref.watch(isSuperAdminProvider);
     ref.watch(currentPermissionsProvider);
     ref.watch(apiClientProvider);
     final generation = ++_generation;

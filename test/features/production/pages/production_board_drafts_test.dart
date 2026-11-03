@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/feedback/uten_notification_badge.dart';
 import 'package:uten_imp/components/feedback/uten_segment_badge_label.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/features/production/pages/production_board_page.dart';
@@ -174,7 +175,19 @@ void main() {
     expect(find.byType(TextField), findsOneWidget);
     expect(find.text('新建计划'), findsNothing);
     expect(find.text('新建日报'), findsNothing);
-    expect(find.text('超产比例审批'), findsOneWidget);
+    final draftWorkspace = tester.widget<DraftWorkspaceTable>(
+      find.byType(DraftWorkspaceTable),
+    );
+    expect(
+      draftWorkspace.toolbarActions.any(
+        (action) =>
+            action is UtenButton &&
+            action.child is Text &&
+            (action.child as Text).data == '超产比例审批',
+      ),
+      isTrue,
+      reason: '工具条操作可由公共表格收入操作面板，仍保留已授权的审批入口',
+    );
     expect(find.text('批量审核计划 (0)'), findsOneWidget);
     expect(api.lastPlansQuery?['status'], 0);
     expect(api.lastReportsQuery?['status'], 0);

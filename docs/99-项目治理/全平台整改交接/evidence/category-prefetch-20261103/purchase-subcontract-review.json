@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 1,
+  "reviewDate": "2026-11-03",
+  "branch": "uimp/category-prefetch-sweep-20261103",
+  "baseline": "54475dc63",
+  "classification": "前端读取编排与徽章呈现；不改后端业务、数据库、API权限、数量或历史口径",
+  "platforms": {
+    "webAndFlutterDesktop": "共用本次修改的Dart页面与服务端权威；下列widget结果是本机受控交互，不是生产延迟或目标Windows安装包验收",
+    "wpfLegacy": "由主任务其他代理独立核查台账；本模块JSON不代替Win7业务迁移或真机验收"
+  },
+  "reviewedPages": [
+    {
+      "page": "采购管理入口 /purchase",
+      "source": "lib/features/purchase/pages/purchase_hub_page.dart",
+      "status": "已有同源并行无需改",
+      "finding": "模块与任务卡使用badgeSummary/effective汇总；采购任务中心实际委托operations_workbench，供应商退货委托warehouse，不复制徽章计算。",
+      "relatedOwner": "operations_workbench与warehouse关联页面由主任务其他代理负责"
+    },
+    {
+      "page": "采购订货 /purchase/orders",
+      "source": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "status": "已有同源并行无需改",
+      "finding": "状态桶复用exact-scope documentStatusCountsProvider；_loadBadge(force:false)复用短期快照，表格与计数独立；明细名称和facets不阻塞主列表。"
+    },
+    {
+      "page": "采购收货 /purchase/receipts",
+      "source": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "status": "已有同源并行无需改",
+      "finding": "与同一业务类型的公共状态桶同源；未发现销售式重复私有聚合等待。"
+    },
+    {
+      "page": "采购退货 /purchase/returns",
+      "source": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "status": "已有同源并行无需改",
+      "finding": "同一公共状态桶与列表并行读取；保留退货来源、库存与权限，不为扫描命中新增后台请求。"
+    },
+    {
+      "page": "计划采购申请 /purchase/requests",
+      "source": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "status": "历史或能力gate需保留",
+      "finding": "size:1列表total统计计划已下达且未结束申请，是普通可浏览单据数；工作台TASK徽章为责任任务行数，不能互换。计数与列表并行，保留差异。"
+    },
+    {
+      "page": "采购草稿任务分类",
+      "source": "lib/features/purchase/widgets/purchase_draft_task_category.dart",
+      "status": "已有同源并行无需改",
+      "finding": "共用DraftWorkspaceTable与FormDraftCategoryScope，按已授权单据类型传入；未另造一套草稿列表/计数。"
+    },
+    {
+      "page": "委外管理入口 /subcontract",
+      "source": "lib/features/subcontract/pages/subcontract_hub_page.dart",
+      "status": "已有同源并行无需改",
+      "finding": "父卡使用公共badgeSummary；短交卡来自subcontractShortDelivery事实，任务卡包含subcontractDraw事实。"
+    },
+    {
+      "page": "委外任务中心 /operations/subcontract/workbench",
+      "source": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "status": "已修复",
+      "rootCause": "父栏已有subcontractDraw.drawable/submitted，但子栏只等私有drawCounts结果；直接count还承担领料lane访问拒绝的关闭职责。",
+      "change": "本地count未返回时先显示父栏同源facts；保留直接访问gate，gate未确认时批量领料及详情领料动作不能使用summary开放；count拒绝继续隐藏领料lane。",
+      "preservedDifference": "申请行普通statusCounts与TASK责任数分开；直接draw gate保留，不从全局summary缺来源推断FORBIDDEN；申请/领料两路真实分页、来源定位和服务端canSubmitDraw继续权威。"
+    },
+    {
+      "page": "委外回厂短交判定 /subcontract/short-deliveries",
+      "source": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "status": "已修复",
+      "rootCause": "每次列表加载重复请求/count；父卡已经调用同一controller.count()并带回三个同口径事实。原页面也未清除reader epoch变化前已接受的行。",
+      "change": "子栏直接使用badgeFactOrNullProvider的pending/tolerant/waiting；移除私有计数请求和本地计数状态；明确刷新/判定后并行刷新公共badge与真实列表；补reader变更清表与旧在途响应隔离。",
+      "authority": "SubcontractShortDeliveryWorkbenchBadgeSources直接调用SubcontractShortDeliveryController.count；该count明确使用普通会话浏览，内部为决定权限及writable owner责任数，与原页面count完全一致。",
+      "preservedDifference": "徽章数不是可浏览案件总数；订货/供应商深链只限制列表，原本全局责任徽章不改范围；历史时间门控不变；真实列表拒绝仍清表，不从summary缺来源伪造访问错误。"
+    },
+    {
+      "page": "委外订货 /subcontract/orders",
+      "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "status": "已有同源并行无需改",
+      "finding": "SubcontractOrderWorkspacePage已复用公共exact-scope状态桶；财务分段/历史范围明确，行加载不等计数或主档名称。"
+    },
+    {
+      "page": "委外成品退回 /subcontract/returns",
+      "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "status": "已有同源并行无需改",
+      "finding": "SubcontractFinishedReturnHistoryPage复用公共状态桶与真实来源；历史范围不预加载。"
+    },
+    {
+      "page": "委外余料退回 /subcontract/material-returns",
+      "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "status": "已有同源并行无需改",
+      "finding": "SubcontractMaterialReturnHistoryPage复用公共状态桶；供应商在外结存与数量来源不改。"
+    },
+    {
+      "page": "委外损耗责任 /subcontract/wastes",
+      "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "status": "已有同源并行无需改",
+      "finding": "SubcontractWasteResponsibilityPage状态计数与行并行、同公共入口；不混并实物损耗、责任和财务事实。"
+    },
+    {
+      "page": "委外材料出仓 /subcontract/material-issues",
+      "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "status": "历史或能力gate需保留",
+      "finding": "材料出仓为只读/反向操作兼容入口，_actionableStatus为null，不挂TASK徽章；不新增活动首屏预加载或仓库写入口。"
+    },
+    {
+      "page": "委外询价 /subcontract/inquiries",
+      "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "status": "历史或能力gate需保留",
+      "finding": "未启用业务的历史只读入口，无待办徽章，不预加载历史。"
+    },
+    {
+      "page": "委外回厂与legacyOnly历史",
+      "source": "lib/features/subcontract/pages/subcontract_page_factory.dart",
+      "status": "历史或能力gate需保留",
+      "finding": "receipt或legacyOnly分派SubcontractLegacyHistoryPage；申请列表已并入任务中心，历史/来源合同不改。"
+    },
+    {
+      "page": "委外草稿任务分类",
+      "source": "lib/features/subcontract/widgets/subcontract_draft_task_category.dart",
+      "status": "已有同源并行无需改",
+      "finding": "与采购同用DraftWorkspaceTable和权限过滤类型清单，不复制草稿能力。"
+    },
+    {
+      "page": "采购/委外IQC退货处理",
+      "source": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
+      "status": "已有同源并行无需改",
+      "finding": "本代理只核查关联：计数含receiptType/keyword范围的普通可见数和actionable分桶，使用nativeScopedReadSnapshotProvider且与列表并行；本轮其他代理正在接入首屏准备，本代理无编辑。"
+    },
+    {
+      "page": "采购/委外供应商退货任务",
+      "source": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
+      "status": "历史或能力gate需保留",
+      "finding": "关联入口由warehouse代理负责；本记录只确认hub落点，未以父TASK数替换该页普通范围计数或重复修改。"
+    }
+  ],
+  "commonEntrypoints": [
+    "lib/shared/badges/badge_registry.dart::badgeFactOrNullProvider",
+    "lib/shared/badges/badge_registry.dart::refreshBadges",
+    "lib/shared/providers/document_status_counts_provider.dart::documentStatusCountsProvider/refreshDocumentStatusCounts",
+    "lib/shared/paging/scoped_paged_read_view_mixin.dart::scopedPagedReadOwnerChanged",
+    "lib/shared/drafts/draft_workspace_table.dart::DraftWorkspaceTable"
+  ],
+  "duplicateCleanup": [
+    "移除SubcontractShortDeliveryPage._counts与_loadCounts，列表筛选/分页不再重复调用/count",
+    "保留drawCounts直接访问gate：它控制已实现领料lane拒绝关闭，父summary仅作即时数字展示，不授予写能力",
+    "未在purchase/subcontract复制销售coordinator；对已有同源并行页面不为扫描命中新增预加载"
+  ],
+  "validation": [
+    {
+      "command": "flutter test --no-pub test/features/subcontract/subcontract_table_loading_responsiveness_test.dart",
+      "result": "7 passed",
+      "log": "output/category-sweep-subcontract-targeted-fixed.log",
+      "covers": ["父facts立即显示但draw gate未确认不开放动作", "shortDelivery未知不作零且不重复count", "父snapshot变化不重读表格", "真实列表FORBIDDEN清表", "reader epoch清已接受行", "旧pending列表不回写", "历史时间与表格不等工作台迟到行", "主档名称不阻塞业务表"]
+    },
+    {
+      "command": "dart analyze lib/features/subcontract/pages/subcontract_decomposition_page.dart lib/features/subcontract/pages/subcontract_short_delivery_page.dart lib/features/subcontract/providers/subcontract_short_delivery_count_provider.dart test/features/subcontract/subcontract_table_loading_responsiveness_test.dart",
+      "result": "No issues found"
+    },
+    {
+      "command": "git diff --check -- lib/features/subcontract test/features/subcontract/subcontract_table_loading_responsiveness_test.dart",
+      "result": "passed"
+    },
+    {
+      "command": "flutter test --no-pub test/features/subcontract/subcontract_table_loading_responsiveness_test.dart test/features/subcontract/subcontract_short_delivery_page_test.dart test/features/subcontract/subcontract_decomposition_page_test.dart test/features/subcontract/subcontract_task_counts_provider_test.dart",
+      "result": "initial run: 60 passed, 2 test-fixture failures; both corrected and covered by final 7-pass targeted run; no remaining implementation failure observed",
+      "log": "output/category-sweep-subcontract-tests.log",
+      "details": "两处fixture把segmentsKey命中的UtenSegmentRow误转UtenFilterToolbar，已改按真实toolbar类型定位。长跑完整结束，保留失败记录；其余短交操作/工作台/200+关联领料真实分页与刷新裁页/权限与能力gate回归均通过。"
+    }
+  ],
+  "acceptanceLimits": [
+    "未使用生产延迟数据宣称提速比例",
+    "未发布、部署或制作正式客户端包",
+    "未把候选WPF/Win7标为完整业务验收"
+  ]
+}

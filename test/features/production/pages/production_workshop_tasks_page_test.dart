@@ -1116,12 +1116,12 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
-    // 分类默认不选：初始不请求列表，点分类才发第一次请求。
-    expect(repository.calls, 0);
+    // 分类默认不选；两条有界预热已在途，点击采用同一Future。
+    expect(repository.calls, 2);
 
     await tester.tap(find.text('开工准备'));
     await tester.pump();
-    expect(repository.calls, 1);
+    expect(repository.calls, 2);
     await selectFilterSegment(tester, '生产中');
     await tester.pump();
     expect(repository.calls, 2);
@@ -1238,7 +1238,15 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(repository.calls, isEmpty);
+      expect(repository.calls.map((call) => call.status).toSet(), {
+        'PREPARING',
+        'IN_PROGRESS',
+        'REPORT_INSPECTION',
+      });
+      List<({String? status, String? dateFrom, String? dateTo})>
+      historyCalls() =>
+          repository.calls.where((call) => call.status == 'COMPLETED').toList();
+      expect(historyCalls(), isEmpty);
 
       // ADR-066 §1.3（2026-10-24 修订）：点历史任务默认近三个月直接加载；
       // 时间胶囊仍可切「全部」或具体时间段。
@@ -1247,24 +1255,24 @@ void main() {
       expect(find.byKey(const Key('workshop-history-time')), findsOneWidget);
       expect(find.text('历史数据可能较多，请先在上方选择时间段或「全部」'), findsNothing);
       final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
-      expect(repository.calls, hasLength(1));
-      expect(repository.calls.single.status, 'COMPLETED');
+      expect(historyCalls(), hasLength(1));
+      expect(historyCalls().single.status, 'COMPLETED');
       expect(
-        repository.calls.single.dateFrom,
+        historyCalls().single.dateFrom,
         ChinaDateTime.formatDate(defaultRange.start),
       );
       expect(
-        repository.calls.single.dateTo,
+        historyCalls().single.dateTo,
         ChinaDateTime.formatDate(defaultRange.end),
       );
 
       // 「全部」不再默认选中：点它切为不限时间，全量重查（不带日期）。
       await selectFilterSegment(tester, '全部');
       await tester.pumpAndSettle();
-      expect(repository.calls, hasLength(2));
-      expect(repository.calls.last.status, 'COMPLETED');
-      expect(repository.calls.last.dateFrom, isNull);
-      expect(repository.calls.last.dateTo, isNull);
+      expect(historyCalls(), hasLength(2));
+      expect(historyCalls().last.status, 'COMPLETED');
+      expect(historyCalls().last.dateFrom, isNull);
+      expect(historyCalls().last.dateTo, isNull);
       expect(find.text('已取消'), findsOneWidget);
       expect(find.text('已撤回'), findsOneWidget);
       expect(find.text('已红冲'), findsNothing);
@@ -1273,8 +1281,16 @@ void main() {
       await selectFilterSegment(tester, '生产中');
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('workshop-history-time')), findsNothing);
-      expect(repository.calls.last.status, 'IN_PROGRESS');
-      expect(repository.calls.last.dateFrom, isNull);
+      expect(
+        repository.calls.any(
+          (call) =>
+              call.status == 'IN_PROGRESS' &&
+              call.dateFrom == null &&
+              call.dateTo == null,
+        ),
+        isTrue,
+      );
+      expect(find.text('产品 A'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -1339,13 +1355,10 @@ void batchBusyOverlayTests() {
   testWidgets(
     'workshop readiness projection sorts every replacement page and respects server sort mode',
     (tester) async {
-      PagedResult<ProductionExecutionWorkbenchSegment>? raw;
+      final raw = <PagedResult<ProductionExecutionWorkbenchSegment>>[];
       await mountReady(
         tester,
-        repository: _repository(
-          withWaitingRow: true,
-          capturePage: (page) => raw = page,
-        ),
+        repository: _repository(withWaitingRow: true, capturePage: raw.add),
       );
       final finder = find.byWidgetPredicate(
         (widget) =>
@@ -1354,7 +1367,9 @@ void batchBusyOverlayTests() {
       MasterDataTableView<ProductionExecutionWorkbenchSegment> table() =>
           tester.widget(finder);
       expect(readWindowBindingOf(table().items), isNotNull);
-      final source = raw!;
+      final source = raw.lastWhere(
+        (page) => readWindowBindingOf(page.items) != null,
+      );
       final first = source.items.singleWhere(
         (row) => row.segmentId == 'segment-a',
       );

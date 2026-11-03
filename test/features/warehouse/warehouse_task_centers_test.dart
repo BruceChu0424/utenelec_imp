@@ -36,6 +36,7 @@ class _FakeApi extends ApiClient {
   Map<String, dynamic>? lastStockListQuery;
   Map<String, dynamic>? lastTaskListQuery;
   String? lastTaskDirection;
+  final taskListQueries = <Map<String, dynamic>>[];
 
   @override
   Future<Map<String, dynamic>> get(
@@ -49,6 +50,7 @@ class _FakeApi extends ApiClient {
         path == '/warehouse/task-center/outbound') {
       lastTaskListQuery = Map<String, dynamic>.from(query ?? const {});
       lastTaskDirection = path.split('/').last;
+      taskListQueries.add({...?query, 'direction': lastTaskDirection});
       return const {
         'items': <Map<String, dynamic>>[],
         'page': 1,
@@ -79,6 +81,23 @@ class _FakeApi extends ApiClient {
 }
 
 late SharedPreferences _preferences;
+
+void _expectTaskQuery(
+  _FakeApi api, {
+  required String direction,
+  required String source,
+  String view = 'ACTIVE',
+}) => expect(
+  api.taskListQueries,
+  contains(
+    predicate<Map<String, dynamic>>(
+      (query) =>
+          query['direction'] == direction &&
+          query['source'] == source &&
+          query['view'] == view,
+    ),
+  ),
+);
 
 class _Drafts extends FormDraftsNotifier {
   @override
@@ -229,7 +248,11 @@ void main() {
         await tester.tap(hint);
         await tester.pumpAndSettle();
         expect(find.text(guidance), findsOneWidget);
-        expect(api.lastTaskListQuery, isNull);
+        expect(find.byType(WarehouseTaskRecordsView), findsNothing);
+        expect(
+          api.taskListQueries.every((query) => query['view'] == 'ACTIVE'),
+          isTrue,
+        );
         expect(api.lastStockListQuery, isNull);
         expect(tester.takeException(), isNull);
         Tooltip.dismissAllToolTips();
@@ -334,13 +357,10 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(
-          api.lastTaskDirection,
-          section == 'pendingIssue' ? 'outbound' : 'inbound',
-        );
-        expect(
-          api.lastTaskListQuery?['source'],
-          section == 'pendingIssue' ? 'DRAW' : 'RETURN',
+        _expectTaskQuery(
+          api,
+          direction: section == 'pendingIssue' ? 'outbound' : 'inbound',
+          source: section == 'pendingIssue' ? 'DRAW' : 'RETURN',
         );
         expect(find.text('车间内料仓'), findsNothing);
         expect(find.byType(WarehouseTaskRecordsView), findsOneWidget);
@@ -535,8 +555,7 @@ void main() {
       expect(find.text('待领任务'), findsNothing);
       expect(find.text('生产领料'), findsOneWidget);
       expect(find.byType(WarehouseTaskRecordsView), findsOneWidget);
-      expect(api.lastTaskDirection, 'outbound');
-      expect(api.lastTaskListQuery?['source'], 'DRAW');
+      _expectTaskQuery(api, direction: 'outbound', source: 'DRAW');
       await tester.pump(const Duration(seconds: 61));
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump();
@@ -554,8 +573,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(api.lastTaskDirection, 'inbound');
-      expect(api.lastTaskListQuery?['source'], 'RETURN');
+      _expectTaskQuery(api, direction: 'inbound', source: 'RETURN');
       expect(find.text('生产退料'), findsOneWidget);
       expect(find.text('待领任务'), findsNothing);
       expect(tester.takeException(), isNull);
@@ -605,8 +623,7 @@ void main() {
       findsNothing,
     );
     expect(find.text('历史单据'), findsOneWidget);
-    expect(api.lastTaskListQuery?['source'], 'OTHER');
-    expect(api.lastTaskListQuery?['view'], 'ACTIVE');
+    _expectTaskQuery(api, direction: 'outbound', source: 'OTHER');
     await tester.tap(find.text('历史单据'));
     await tester.pumpAndSettle();
     final history = tester.widget<WarehouseTaskRecordsView>(
@@ -615,13 +632,16 @@ void main() {
     expect(history.source, 'ALL');
     expect(history.view, WarehouseTaskView.history);
     expect(history.sources.keys, ['SALES', 'DRAW', 'OTHER', 'FINISHED']);
-    expect(api.lastTaskListQuery?['source'], 'ALL');
-    expect(api.lastTaskListQuery?['view'], 'HISTORY');
+    _expectTaskQuery(
+      api,
+      direction: 'outbound',
+      source: 'ALL',
+      view: 'HISTORY',
+    );
     expect(find.text('委外出库'), findsNothing);
     await tester.tap(find.text('其它出库'));
     await tester.pumpAndSettle();
-    expect(api.lastTaskListQuery?['source'], 'OTHER');
-    expect(api.lastTaskListQuery?['view'], 'ACTIVE');
+    _expectTaskQuery(api, direction: 'outbound', source: 'OTHER');
     // 分段切换会触达 60s 轮询计数的重建，推进时钟排空再卸载页面。
     await tester.pump(const Duration(seconds: 61));
     await tester.pumpWidget(const SizedBox.shrink());
@@ -761,8 +781,7 @@ void main() {
       ]);
       expect(scaffold.segments[scaffold.segments.length - 2].label, '全部任务');
       expect(scaffold.segments.last.label, '历史单据');
-      expect(api.lastTaskListQuery?['source'], 'PURCHASE');
-      expect(api.lastTaskListQuery?['view'], 'ACTIVE');
+      _expectTaskQuery(api, direction: 'inbound', source: 'PURCHASE');
       await tester.tap(find.text('历史单据'));
       await tester.pumpAndSettle();
       final history = tester.widget<WarehouseTaskRecordsView>(
@@ -771,8 +790,12 @@ void main() {
       expect(history.source, 'ALL');
       expect(history.view, WarehouseTaskView.history);
       expect(history.sources.keys, ['PURCHASE', 'SUBCONTRACT']);
-      expect(api.lastTaskListQuery?['source'], 'ALL');
-      expect(api.lastTaskListQuery?['view'], 'HISTORY');
+      _expectTaskQuery(
+        api,
+        direction: 'inbound',
+        source: 'ALL',
+        view: 'HISTORY',
+      );
       expect(find.text('产成品入库'), findsNothing);
       expect(find.text('其它入库'), findsNothing);
     },
@@ -824,8 +847,7 @@ void main() {
     expect(find.text('生产退料'), findsNothing);
     expect(find.text('生产领料'), findsOneWidget);
     expect(find.byType(WarehouseTaskRecordsView), findsOneWidget);
-    expect(api.lastTaskDirection, 'outbound');
-    expect(api.lastTaskListQuery?['source'], 'DRAW');
+    _expectTaskQuery(api, direction: 'outbound', source: 'DRAW');
     await tester.pumpWidget(
       app(const WarehouseDrawTaskCenterPage(), const <String>{}),
     );

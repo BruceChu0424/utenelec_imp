@@ -51,6 +51,8 @@ import '../../basic_data/widgets/master_server_column_filters.dart';
 import 'package:uten_imp/shared/sales_review/sales_order_review.dart';
 import '../providers/finance_name_provider.dart';
 import '../providers/sales_order_finance_confirmation_count_provider.dart';
+import '../providers/finance_audit_preparation_provider.dart';
+import '../../../shared/paging/scoped_category_read.dart';
 import 'package:uten_imp/shared/sales_review/sales_order_review_repository.dart';
 import '../../../shared/drafts/review_task_draft.dart';
 import '../../../shared/badges/badge_registry.dart';
@@ -175,7 +177,7 @@ class _FinanceSalesOrderConfirmationPageState
       // 客户应收列前缀要显示本位币名(币种字典 baseCurrency 标记)。
       ref.read(financeNameServiceProvider).ensureLoaded();
       final completion = widget.refreshCompletion;
-      _load(1).whenComplete(() {
+      _load(1, preferPrepared: true).whenComplete(() {
         if (completion != null && !completion.isCompleted) {
           completion.complete();
         }
@@ -227,7 +229,7 @@ class _FinanceSalesOrderConfirmationPageState
         if (mounted &&
             _canView &&
             epoch == ref.read(exportContextEpochProvider)) {
-          _load(1);
+          _load(1, preferPrepared: true);
         }
       });
     }
@@ -246,7 +248,12 @@ class _FinanceSalesOrderConfirmationPageState
 
   Future<void> _navigatePage(int page) => _load(page, useCache: true);
 
-  Future<void> _load(int page, {bool useCache = false}) async {
+  Future<void> _load(
+    int page, {
+    bool useCache = false,
+    bool preferPrepared = false,
+    bool forceCounts = false,
+  }) async {
     final cacheQuery = _cacheQuery;
     final repo = ref.read(salesOrderFinanceConfirmationRepositoryProvider);
     final rejected = _showRejected;
@@ -273,7 +280,9 @@ class _FinanceSalesOrderConfirmationPageState
     });
     // 「已驳回」段全量数(不带关键字)先于列表请求发出, 列表请求始终是本轮最后一个请求;
     // 已驳回段下且未搜索时本页 total 就是全量驳回数, 不另发。
-    unawaited(_loadHistoryCounts(requestVersion));
+    if (!rejected || keyword != null || billNo != null) {
+      unawaited(_loadHistoryCounts(requestVersion, force: forceCounts));
+    }
     try {
       final cachedPage = await readScopedPage<SalesOrderFinancePendingItem>(
         page,
@@ -281,29 +290,39 @@ class _FinanceSalesOrderConfirmationPageState
         currentQuery: () => _cacheQuery,
         useCache: useCache,
         fetchPage: (target) async {
-          final response = await repo.pending(
-            page: target,
-            rejected: rejected,
-            keyword: keyword,
-            changesOnly: changesOnly,
-            confirmed: confirmed,
-            sort: sort,
-            order: order,
-            billNo: billNo,
-          );
-          return PagedReadSnapshot<
-            SalesOrderFinancePendingItem,
-            SalesOrderFinancePendingPage
-          >(
-            page: PagedResult(
-              items: response.items,
-              page: response.page,
-              size: response.size,
-              total: response.total,
-              totalPages: response.totalPages,
-            ),
-            snapshot: response,
-          );
+          Future<PagedResult<SalesOrderFinancePendingItem>> fetch() async {
+            final response = await repo.pending(
+              page: target,
+              rejected: rejected,
+              keyword: keyword,
+              changesOnly: changesOnly,
+              confirmed: confirmed,
+              sort: sort,
+              order: order,
+              billNo: billNo,
+            );
+            return financeConfirmationSnapshot(response);
+          }
+
+          if (target != 1) return fetch();
+          return ref
+              .read(financeAuditPreparedPagesProvider)
+              .confirmations
+              .read(
+                financeConfirmationReadKey(
+                  repo,
+                  page: target,
+                  rejected: rejected,
+                  keyword: keyword,
+                  changesOnly: changesOnly,
+                  confirmed: confirmed,
+                  sort: sort,
+                  order: order,
+                  billNo: billNo,
+                ),
+                fetch,
+                preferPrepared: preferPrepared,
+              );
         },
       );
       final result =
@@ -358,7 +377,10 @@ class _FinanceSalesOrderConfirmationPageState
   }
 
   /// 财务退回仍是未完成的修订工作；仅取其全量计数，不给已完成历史挂计数。
-  Future<void> _loadHistoryCounts(int requestVersion) async {
+  Future<void> _loadHistoryCounts(
+    int requestVersion, {
+    bool force = false,
+  }) async {
     final epoch = ref.read(exportContextEpochProvider);
     final generation = ++_countVersion;
     final repo = ref.read(salesOrderFinanceConfirmationRepositoryProvider);
@@ -368,7 +390,13 @@ class _FinanceSalesOrderConfirmationPageState
         generation == _countVersion &&
         epoch == ref.read(exportContextEpochProvider);
     try {
-      final rejected = await repo.pending(size: 1, rejected: true);
+      final rejected = await ref
+          .read(scopedCategoryReadProvider)
+          .read(
+            query: [repo, 'finance-rejected'],
+            force: force,
+            fetch: () => repo.pending(size: 1, rejected: true),
+          );
       if (!current()) return;
       setState(() {
         _rejectedCount = rejected.total;
@@ -452,7 +480,7 @@ class _FinanceSalesOrderConfirmationPageState
       _columnFilters.reset();
       _clearSelectionState();
     });
-    _load(1);
+    _load(1, preferPrepared: state != 'confirmed');
   }
 
   void _filterConfirmationKind(String? value) {
@@ -470,7 +498,7 @@ class _FinanceSalesOrderConfirmationPageState
   Future<void> _refreshCurrent() async {
     setState(_clearSelectionState);
     await Future.wait([
-      _load(_tableRows.visiblePage ?? _result?.page ?? 1),
+      _load(_tableRows.visiblePage ?? _result?.page ?? 1, forceCounts: true),
       refreshBadges(ref),
     ]);
   }

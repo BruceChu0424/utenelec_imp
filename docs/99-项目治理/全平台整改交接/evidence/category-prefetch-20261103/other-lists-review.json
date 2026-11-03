@@ -1,0 +1,37 @@
+{
+  "classification": "Source-level semantic comparison; these pages were not changed or claimed as target-PC accepted.",
+  "pages": [
+    {
+      "sources": ["lib/features/rd_task/pages/rd_task_page.dart"],
+      "result": "already-shared-and-starts-visible-list",
+      "evidence": "RdTaskPage 默认 pending，子红黄数直接读 rdTaskCenter 的 badgeEntry，_RdTaskListPanel 立即读取当前表格；没有等待第二份阶段计数再自动选择的链。"
+    },
+    {
+      "sources": ["lib/features/expense/pages/expense_list_page.dart", "lib/features/expense/pages/expense_approval_list_page.dart", "lib/features/expense/providers/expense_counts_provider.dart", "lib/features/expense/providers/expense_providers.dart"],
+      "result": "already-shared-and-parallel",
+      "evidence": "ExpenseCounts 直接投影同一 badge facts；本人/审批列表通过独立 list provider 立即读取，facets/队列摘要独立订阅。付款选项 accountFuture/styleFuture 已先同时启动，两次 await 不代表串行发起，也不阻断列表。"
+    },
+    {
+      "sources": ["lib/features/visitor_approval/pages/visitor_approval_list_page.dart", "lib/features/visitor_approval/pages/my_visitors_page.dart", "lib/features/visitor_approval/providers/visitor_pending_count_provider.dart", "lib/features/visitor_approval/providers/visitor_approval_providers.dart"],
+      "result": "already-shared-and-parallel",
+      "evidence": "待办/我的访客分段使用工作台同源 badge facts；当前列表与 facets 为不同 provider，默认 pending 直接查询，不等待第二份子计数。"
+    },
+    {
+      "sources": ["lib/features/notice/pages/notice_list_page.dart", "lib/features/suggestion/pages/suggestion_list_page.dart", "lib/features/webinquiry/pages/website_inquiry_list_page.dart", "lib/features/webinquiry/providers/website_inquiry_providers.dart"],
+      "result": "different-structure-current-list-starts-immediately",
+      "evidence": "通知、建议广场/我的、官网询盘的当前 list provider 在页面构造时订阅，非多业务父子任务中心；不存在父统计已到、再等待子统计后发起表格的相同链。历史/终态选择仍按各页面规则处理。"
+    },
+    {
+      "sources": ["lib/features/hr_profile/pages/hr_profile_changes_list_page.dart", "lib/features/payroll/pages/payroll_slip_list_page.dart", "lib/features/payroll/pages/payroll_review_page.dart"],
+      "result": "already-starts-visible-list-or-requires-record-selection",
+      "evidence": "员工资料审核待办直接读共享徽章，queue与facets独立；工资条列表直接读取当前query；工资批次详情依赖具体批次选择，不应把业务详情门控误当阶段计数等待。"
+    },
+    {
+      "sources": ["lib/features/basic_data/widgets/uten_detail_tab_bar.dart", "lib/features/admin/widgets/permission_catalog_browser.dart", "lib/features/admin/pages/audit_overview_widgets.dart"],
+      "result": "not-the-same-task-center-contract",
+      "evidence": "详情tab、权限目录和审计概览的分类表达展示/过滤已有模型或选择具体资源，不是服务端工作阶段待办计数；没有为它们增加后台业务列表请求。"
+    }
+  ],
+  "runtimeInteractionAccepted": false,
+  "productionLatencyMeasured": false
+}

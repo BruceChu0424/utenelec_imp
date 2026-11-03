@@ -16,6 +16,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
+import 'package:uten_imp/core/network/read_scope_revision.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/providers/app_visibility_provider.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
@@ -117,6 +119,82 @@ Future<void> _settle(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('administrator A-B-A retires both intervening badge reads', (
+    tester,
+  ) async {
+    final administrator = StateProvider((ref) => false);
+    final api = _BadgeApi();
+    final container = ProviderContainer(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(_prefs),
+        apiClientProvider.overrideWithValue(api),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'reader'),
+        ),
+        isSuperAdminProvider.overrideWith((ref) => ref.watch(administrator)),
+      ],
+    );
+    container.listen(badgeSummaryProvider, (_, _) {});
+    await _settle(tester);
+    expect(container.read(badgeSummaryProvider).total.todo, 1);
+
+    final retired = Completer<Map<String, dynamic>>();
+    final intervening = Completer<Map<String, dynamic>>();
+    final current = Completer<Map<String, dynamic>>();
+    api.responses.addAll([retired, intervening, current]);
+    final oldRead = container.read(badgeSummaryProvider.notifier).refresh();
+    await _settle(tester);
+    container.read(administrator.notifier).state = true;
+    expect(container.read(badgeSummaryProvider).loaded, isFalse);
+    await _settle(tester);
+    container.read(administrator.notifier).state = false;
+    expect(container.read(badgeSummaryProvider).loaded, isFalse);
+    await _settle(tester);
+    expect(api.calls, 4);
+
+    current.complete(_summaryJson(todo: 2));
+    await _settle(tester);
+    retired.complete(_summaryJson(todo: 99));
+    intervening.complete(_summaryJson(todo: 88));
+    await oldRead;
+    await _settle(tester);
+    expect(container.read(badgeSummaryProvider).total.todo, 2);
+    container.dispose();
+    await _settle(tester);
+  });
+
+  testWidgets(
+    'reader revision retires badge facts and late pre-revision reads',
+    (tester) async {
+      final (container, api) = _container();
+      await _settle(tester);
+      expect(container.read(badgeSummaryProvider).total.todo, 1);
+      final retired = Completer<Map<String, dynamic>>();
+      final current = Completer<Map<String, dynamic>>();
+      api.responses.addAll([retired, current]);
+      final previousRead = container
+          .read(badgeSummaryProvider.notifier)
+          .refresh();
+      await _settle(tester);
+      expect(api.calls, 2);
+
+      container.read(readScopeRevisionProvider.notifier).state++;
+      expect(container.read(badgeSummaryProvider).loaded, isFalse);
+      await _settle(tester);
+      expect(api.calls, 3);
+      current.complete(_summaryJson(todo: 2));
+      await _settle(tester);
+      expect(container.read(badgeSummaryProvider).total.todo, 2);
+
+      retired.complete(_summaryJson(todo: 99));
+      await previousRead;
+      await _settle(tester);
+      expect(container.read(badgeSummaryProvider).total.todo, 2);
+      container.dispose();
+      await _settle(tester);
+    },
+  );
+
   testWidgets('所选仓两条货品完整更新分段与入口，全局卡片和导航保持本人范围', (tester) async {
     Map<String, dynamic> inboundSnapshot(int count) => {
       'entries': {

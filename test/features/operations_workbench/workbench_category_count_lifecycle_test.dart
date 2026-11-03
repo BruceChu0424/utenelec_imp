@@ -38,6 +38,42 @@ final _permissions = StateProvider<Set<String>>(
 final _apiSource = StateProvider<_Api>((_) => _Api());
 
 void main() {
+  testWidgets(
+    'working first-page preparation is adopted by a fast stage click',
+    (tester) async {
+      final api = _Api()..gate = Completer<Map<String, dynamic>>();
+      await _mount(
+        tester,
+        _Gateway(),
+        false,
+        defaultRepository: true,
+        api: api,
+      );
+      await tester.pump();
+      await _select(tester, '进行中');
+      await tester.pump();
+      expect(
+        api.calls.where((call) => call.$2?['status'] == 'IN_PROGRESS'),
+        hasLength(1),
+      );
+      expect(
+        api.calls.where((call) => call.$2?['status'] == 'WAITING_ORDER'),
+        hasLength(1),
+      );
+      expect(
+        api.calls.any((call) => call.$2?['status'] == 'COMPLETED'),
+        isFalse,
+      );
+      api.gate!.complete(_jsonPage(3));
+      await tester.pumpAndSettle();
+      expect(
+        api.calls.where((call) => call.$2?['status'] == 'IN_PROGRESS'),
+        hasLength(1),
+      );
+      expect(_progressCounts(tester), (3, null));
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final subcontract in [false, true]) {
     final name = subcontract ? 'subcontract' : 'purchase';
     testWidgets(
@@ -337,6 +373,7 @@ Future<(ProviderContainer, FixedBadgeSummaryNotifier)> _mount(
   bool subcontract, {
   bool defaultRepository = false,
   Map<String, int> facts = const {},
+  _Api? api,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -369,6 +406,7 @@ Future<(ProviderContainer, FixedBadgeSummaryNotifier)> _mount(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        if (api != null) _apiSource.overrideWith((ref) => api),
         badgeSummaryProvider.overrideWith(() => badges),
         sharedPreferencesProvider.overrideWithValue(prefs),
         apiClientProvider.overrideWith((ref) => ref.watch(_apiSource)),
@@ -497,13 +535,18 @@ class _Api extends ApiClient {
   _Api({String server = 'http://localhost:8080/api'})
     : super(Dio(BaseOptions(baseUrl: server)));
   Completer<Map<String, dynamic>>? gate;
+  final calls = <(String, Map<String, dynamic>?)>[];
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
-  }) async => path.startsWith('/operations/workbench/')
-      ? (gate?.future ?? _jsonPage(1))
-      : {'items': <Object?>[], 'page': 1, 'total': 0, 'totalPages': 1};
+  }) async {
+    calls.add((path, query));
+    return path.startsWith('/operations/workbench/')
+        ? (gate?.future ?? _jsonPage(1))
+        : {'items': <Object?>[], 'page': 1, 'total': 0, 'totalPages': 1};
+  }
+
   @override
   Future<List<Map<String, dynamic>>> getList(
     String path, {

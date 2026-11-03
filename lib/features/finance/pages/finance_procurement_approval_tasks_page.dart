@@ -44,6 +44,7 @@ import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../finance_workflow_routes.dart';
 import '../models/finance_procurement_workflow.dart';
 import '../repositories/finance_procurement_workflow_repository.dart';
+import '../providers/finance_audit_preparation_provider.dart';
 import '../../../shared/drafts/review_task_draft.dart';
 import '../../../shared/badges/badge_registry.dart';
 
@@ -199,7 +200,7 @@ class _FinanceProcurementApprovalTasksPageState
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final completion = widget.refreshCompletion;
-      _load(1).whenComplete(() {
+      _load(1, preferPrepared: true).whenComplete(() {
         if (completion != null && !completion.isCompleted) {
           completion.complete();
         }
@@ -241,7 +242,7 @@ class _FinanceProcurementApprovalTasksPageState
       ++_columnFilters.generation;
       _clearSelectionState();
     });
-    _load(1);
+    _load(1, preferPrepared: true);
   }
 
   void _selectStatus(String status) {
@@ -254,7 +255,10 @@ class _FinanceProcurementApprovalTasksPageState
       _columnFilters.reset();
       _clearSelectionState();
     });
-    _load(1);
+    _load(
+      1,
+      preferPrepared: status == 'PENDING' || status == 'CLOSURE_PENDING',
+    );
   }
 
   void _applyKeyword(String value) {
@@ -300,7 +304,7 @@ class _FinanceProcurementApprovalTasksPageState
         if (mounted &&
             _allowed &&
             epoch == ref.read(exportContextEpochProvider)) {
-          _load(1);
+          _load(1, preferPrepared: true);
         }
       });
     }
@@ -319,7 +323,11 @@ class _FinanceProcurementApprovalTasksPageState
 
   Future<void> _navigatePage(int page) => _load(page, useCache: true);
 
-  Future<void> _load(int page, {bool useCache = false}) async {
+  Future<void> _load(
+    int page, {
+    bool useCache = false,
+    bool preferPrepared = false,
+  }) async {
     final cacheQuery = _cacheQuery;
     final repo = ref.read(financeProcurementWorkflowRepositoryProvider);
     final orderType = _orderType;
@@ -350,28 +358,37 @@ class _FinanceProcurementApprovalTasksPageState
         currentQuery: () => _cacheQuery,
         useCache: useCache,
         fetchPage: (target) async {
-          final response = await repo.approvalTasks(
-            page: target,
-            orderType: orderType,
-            keyword: keyword,
-            sort: sort,
-            order: order,
-            billNo: billNo,
-            status: status,
-          );
-          return PagedReadSnapshot<
-            FinanceProcurementApprovalTask,
-            FinanceProcurementApprovalPage
-          >(
-            page: PagedResult(
-              items: response.items,
-              page: response.page,
-              size: response.size,
-              total: response.total,
-              totalPages: response.totalPages,
-            ),
-            snapshot: response,
-          );
+          Future<PagedResult<FinanceProcurementApprovalTask>> fetch() async {
+            final response = await repo.approvalTasks(
+              page: target,
+              orderType: orderType,
+              keyword: keyword,
+              sort: sort,
+              order: order,
+              billNo: billNo,
+              status: status,
+            );
+            return financeProcurementSnapshot(response);
+          }
+
+          if (target != 1) return fetch();
+          return ref
+              .read(financeAuditPreparedPagesProvider)
+              .procurements
+              .read(
+                financeProcurementReadKey(
+                  repo,
+                  page: target,
+                  orderType: orderType,
+                  keyword: keyword,
+                  sort: sort,
+                  order: order,
+                  billNo: billNo,
+                  status: status,
+                ),
+                fetch,
+                preferPrepared: preferPrepared,
+              );
         },
       );
       final result =

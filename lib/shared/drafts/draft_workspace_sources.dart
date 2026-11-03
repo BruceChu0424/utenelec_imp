@@ -495,6 +495,7 @@ final draftWorkspaceRowsProvider = FutureProvider.autoDispose
         salesMasterNameServiceProvider,
         financeNameServiceProvider,
         exportContextEpochProvider,
+        salesRepositoryProvider,
       ],
     );
 

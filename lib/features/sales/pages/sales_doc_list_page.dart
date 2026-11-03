@@ -572,7 +572,10 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
   }
 
   /// 用当前筛选组装本页拉取（fetch 执行时读取控制器快照，pageNum 已更新）。
-  Future<PagedResult<SalesDocListItem>> _fetch([int? requestedPage]) async {
+  Future<PagedResult<SalesDocListItem>> _fetch([
+    int? requestedPage,
+    bool preferPrepared = false,
+  ]) async {
     final names = ref.read(salesMasterNameServiceProvider);
     final current = captureReadOwner(ref);
     final selectedParty = _clientIdFilter;
@@ -585,6 +588,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
           order: _shippableFirst && !_isHistory || _list.sortKey == null
               ? null
               : _list.sortOrder,
+          preferPrepared: preferPrepared,
         );
     if (!current()) throw StateError('读取作用域已变化');
     unawaited(
@@ -639,8 +643,9 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     int? page,
     bool silent = false,
     bool useCachedPage = false,
+    bool preferPrepared = false,
   ]) => trackRefresh(
-    _reloadRows(page, silent, useCachedPage),
+    _reloadRows(page, silent, useCachedPage, preferPrepared),
     replaceKey: 'rows',
   );
 
@@ -648,6 +653,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     int? page,
     bool silent = false,
     bool useCachedPage = false,
+    bool preferPrepared = false,
   ]) async {
     final cacheQuery = _pageQueryScope;
     final ownerCurrent = captureReadOwner(ref);
@@ -672,8 +678,8 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
     await _list.load(
       page ?? _list.pageNum,
       silent: silent,
-      fetch: _fetch,
-      fetchPage: _fetch,
+      fetch: () => _fetch(null, preferPrepared),
+      fetchPage: (target) => _fetch(target, preferPrepared),
       useCachedPage: useCachedPage,
       canPrefetch: () =>
           mounted &&
@@ -742,7 +748,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
         _historyTime = const UtenHistoryTimeValue.all();
       }
     });
-    _reload(1);
+    _reload(1, false, false, !seg.history);
   }
 
   void _onHistoryTime(UtenHistoryTimeValue value) {

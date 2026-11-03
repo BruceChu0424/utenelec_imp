@@ -46,6 +46,7 @@ import '../models/warehouse_task_center_record.dart';
 import '../models/arrival_registration_selection.dart';
 import '../models/warehouse_task_form_drafts.dart';
 import '../providers/warehouse_count_refresh.dart';
+import '../providers/warehouse_task_page_preparation.dart';
 import '../repositories/procurement_inbound_repository.dart';
 import '../repositories/warehouse_task_center_repository.dart';
 import 'warehouse_task_record_actions.dart';
@@ -156,7 +157,9 @@ class _WarehouseTaskRecordsViewState
     ref.listenManual(warehouseTaskScopeProvider, (previous, next) {
       if (previous != next) _invalidate(reset: true);
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load(1));
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _load(1, preferPrepared: true),
+    );
   }
 
   @override
@@ -213,10 +216,20 @@ class _WarehouseTaskRecordsViewState
   String? get _effectiveStatus =>
       _status?.startsWith('source:') == true ? null : _status;
 
-  Future<void> _load(int page, {bool useCache = false}) =>
-      trackRefresh(_loadPage(page, useCache: useCache), replaceKey: 'rows');
+  Future<void> _load(
+    int page, {
+    bool useCache = false,
+    bool preferPrepared = false,
+  }) => trackRefresh(
+    _loadPage(page, useCache: useCache, preferPrepared: preferPrepared),
+    replaceKey: 'rows',
+  );
 
-  Future<void> _loadPage(int page, {bool useCache = false}) async {
+  Future<void> _loadPage(
+    int page, {
+    bool useCache = false,
+    bool preferPrepared = false,
+  }) async {
     if (!mounted) return;
     final version = ++_requestVersion;
     setState(() {
@@ -277,7 +290,7 @@ class _WarehouseTaskRecordsViewState
         ],
         useCache: useCache,
         fetchPage: (target) async {
-          final snapshot = await pageRepository.list(
+          final snapshot = await WarehouseTaskPageQuery(
             direction: pageDirection,
             source: pageSource,
             view: pageView,
@@ -287,11 +300,11 @@ class _WarehouseTaskRecordsViewState
             columns: pageColumns,
             dateFrom: pageDateFrom,
             dateTo: pageDateTo,
-            warehouseScope: pageWarehouseScope,
+            scope: pageWarehouseScope,
             page: target,
             sort: pageSort,
             order: pageOrder,
-          );
+          ).read(ref, pageRepository, preferPrepared: preferPrepared);
           return PagedReadSnapshot<
             WarehouseTaskCenterRecord,
             WarehouseTaskCenterPageResult

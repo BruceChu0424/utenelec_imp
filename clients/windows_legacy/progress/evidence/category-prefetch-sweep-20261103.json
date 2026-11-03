@@ -1,0 +1,158 @@
+{
+  "id": "E-CATEGORY-PREFETCH-SWEEP-20261103",
+  "branch": "uimp/category-prefetch-sweep-20261103",
+  "base": "54475dc63",
+  "classification": [
+    "frontend-read-orchestration",
+    "shared-read-contract"
+  ],
+  "nativePackages": [
+    {
+      "id": "W7-BIZ-062",
+      "businessSource": "lib/features/finance/pages/finance_audit_center_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-068",
+      "businessSource": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-069",
+      "businessSource": "lib/features/finance/pages/finance_quote_review_list_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-073",
+      "businessSource": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-075",
+      "businessSource": "lib/features/finance/pages/finance_sales_shipment_audit_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-087",
+      "businessSource": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-093",
+      "businessSource": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-098",
+      "businessSource": "lib/features/production/pages/production_board_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-115",
+      "businessSource": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-137",
+      "businessSource": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-139",
+      "businessSource": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-142",
+      "businessSource": "lib/features/sales/pages/sales_task_center_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-149",
+      "businessSource": "lib/features/stock/counts/pages/stock_count_review_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-154",
+      "businessSource": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-161",
+      "businessSource": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-173",
+      "businessSource": "lib/features/warehouse/materialbin/pages/workshop_material_bin_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-222",
+      "businessSource": "lib/features/warehouse/pages/finance_arrival_exception_pages.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-191",
+      "businessSource": "lib/features/warehouse/pages/warehouse_draw_task_center_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-194",
+      "businessSource": "lib/features/warehouse/pages/warehouse_inbound_task_center_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-197",
+      "businessSource": "lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-201",
+      "businessSource": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    },
+    {
+      "id": "W7-BIZ-210",
+      "businessSource": "lib/features/warehouse/pages/warehouse_task_center_page.dart",
+      "status": "todo",
+      "nativeTargets": []
+    }
+  ],
+  "interpretation": "Current source/registry audit only. Existing status, owner, DoD, dependencies and prior evidence are retained. A Dart fix is not a WPF implementation or target-PC acceptance.",
+  "futureConsumerContract": [
+    "Reuse same-scope authoritative badge facts or category snapshots; ordinary browse counts and TASK/actionable counts remain separate.",
+    "Prepare only authorized working first pages; full source, warehouse, department, status, keyword, dates, ordering, columns, page size and repository/API identity belong to the query key.",
+    "Keep complete authoritative responses and metadata. Use at most two physical speculative transports per app scope, including across module/identity changes and page departure.",
+    "Explicit refresh, business writes and access/source changes retire prepared data; old results cannot publish. Background preparation never retries business writes.",
+    "Do not prefetch history-only sources through ALL, and do not replace draw/stock period/settlement/approval capability checks with parent badges.",
+    "The server retains calculations, authority, source ownership, precision, claims, expected revisions and unknown-submission outcomes."
+  ],
+  "nativeImplementationChanged": false,
+  "nativeBuildRun": false,
+  "win7Accepted": false,
+  "fullErpEquivalent": false,
+  "productionDeployment": false,
+  "formalPackages": false
+}

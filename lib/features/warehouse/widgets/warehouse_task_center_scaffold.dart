@@ -34,6 +34,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../shared/warehouse/warehouse_task_scope.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 import 'warehouse_scope_selector.dart';
 
 /// 一个任务中心大类分段。
@@ -73,6 +74,7 @@ class WarehouseTaskCenterScaffold extends ConsumerStatefulWidget {
     this.externalKeyword,
     this.externalRefreshTick,
     this.externalHeader,
+    this.onPrepare,
   });
 
   /// 本页路由常量（onPageResume 注册用；无路由上下文时同样安全）。
@@ -117,6 +119,13 @@ class WarehouseTaskCenterScaffold extends ConsumerStatefulWidget {
   /// 宿主（合并页）的大类行：嵌入态挂进分段视图折叠头随页滚走
   /// （2026-09-24 用户口径「表格完全置顶」；未选小类时仍钉在占位区上方）。
   final Widget? externalHeader;
+  final void Function(
+    String keyword,
+    WarehouseTaskScope scope,
+    int refreshTick,
+    bool canPrepare,
+  )?
+  onPrepare;
 
   @override
   ConsumerState<WarehouseTaskCenterScaffold> createState() =>
@@ -125,12 +134,14 @@ class WarehouseTaskCenterScaffold extends ConsumerStatefulWidget {
 
 class _WarehouseTaskCenterScaffoldState
     extends ConsumerState<WarehouseTaskCenterScaffold> {
-  // 进页面不预选任何大类（数据/内容不加载）；null = 未选择引导态。
+  // 进页面不预选任何大类；null = 未选择引导态，预热不发布表格或触发业务动作。
   String? _segment;
   String _keyword = '';
   String? _myLocation;
   int _refreshTick = 0;
   final _refreshController = UtenRefreshController();
+  Object? _preparationInputs;
+  bool _preparationPaused = false;
 
   @override
   void dispose() {
@@ -186,6 +197,29 @@ class _WarehouseTaskCenterScaffoldState
     // 自身 resume 计数与宿主刷新信号相加传导（任一变化都会推进分段重拉）。
     final keyword = widget.embedded ? (widget.externalKeyword ?? '') : _keyword;
     final refreshTick = _refreshTick + (widget.externalRefreshTick ?? 0);
+    final preparationInputs = (
+      keyword,
+      warehouseScope,
+      refreshTick,
+      ref.watch(exportContextEpochProvider),
+    );
+    if (_preparationInputs != null && _preparationInputs != preparationInputs) {
+      _preparationPaused = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _preparationInputs == preparationInputs) {
+          setState(() => _preparationPaused = false);
+        }
+      });
+    }
+    _preparationInputs = preparationInputs;
+    // Let the visible child's fresh post-frame request register before
+    // speculative jobs resume. Refresh never adopts a previous preparation.
+    widget.onPrepare?.call(
+      keyword,
+      warehouseScope,
+      refreshTick,
+      !_preparationPaused,
+    );
     final toolbar = UtenFilterToolbar<String>(
       segmentsKey: Key('warehouse-task-center-segments-${widget.title}'),
       searchKey: Key('warehouse-task-center-search-${widget.title}'),

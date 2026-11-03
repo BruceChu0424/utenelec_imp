@@ -5,6 +5,13 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/paging/scoped_category_read.dart';
 import '../../../shared/paging/scoped_paged_read.dart';
+import '../../../shared/paging/prepared_page_read.dart';
+import '../../../shared/paging/page_preparation_coordinator.dart';
+import '../../../shared/paging/page_preparation_budget_provider.dart';
+import '../../../shared/models/paged_result.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
+import '../../../shared/providers/retain_read_snapshot.dart';
+import '../../../core/network/data_write_revision.dart';
 import '../models/operations_workbench.dart';
 
 abstract interface class OperationsWorkbenchGateway {
@@ -78,9 +85,15 @@ class OperationsWorkbenchRepository
         OperationsWorkbenchGateway,
         OperationsWorkbenchOverviewGateway,
         SubcontractBomGapGateway {
-  const OperationsWorkbenchRepository(this.api);
+  const OperationsWorkbenchRepository(
+    this.api, {
+    this.prepared,
+    this.preparedReader,
+  });
 
   final ApiClient api;
+  final PreparedPageRead<OperationsWorkbenchTask>? prepared;
+  final PreparedPageRead<OperationsWorkbenchTask> Function()? preparedReader;
 
   @override
   Future<OperationsWorkbenchData> loadOverview({
@@ -114,31 +127,65 @@ class OperationsWorkbenchRepository
     String? issuedTo,
     String? needFrom,
     String? needTo,
+    bool preferPrepared = false,
   }) async {
-    final json = await api.get(
-      '/operations/workbench/${department.apiValue}',
-      query: {
-        'page': page,
-        'size': size,
-        if (keyword != null && keyword.trim().isNotEmpty)
-          'keyword': keyword.trim(),
-        if (status != null && status.isNotEmpty) 'status': status,
-        if (exception != null && exception.isNotEmpty) 'exception': exception,
-        'dateFrom': ?dateFrom,
-        'dateTo': ?dateTo,
-        'sort': ?sort,
-        if (sort != null) 'order': order ?? 'asc',
-        for (final entry in columnFilters.entries)
-          if (entry.value != null)
-            (entry.key.startsWith('search.') ? entry.key : 'f.${entry.key}'):
-                entry.value,
-        'issuedFrom': ?issuedFrom,
-        'issuedTo': ?issuedTo,
-        'needFrom': ?needFrom,
-        'needTo': ?needTo,
-      },
-    );
-    return OperationsWorkbenchData.fromJson(json, department);
+    final query = <String, dynamic>{
+      'page': page,
+      'size': size,
+      if (keyword != null && keyword.trim().isNotEmpty)
+        'keyword': keyword.trim(),
+      if (status != null && status.isNotEmpty) 'status': status,
+      if (exception != null && exception.isNotEmpty) 'exception': exception,
+      'dateFrom': ?dateFrom,
+      'dateTo': ?dateTo,
+      'sort': ?sort,
+      if (sort != null) 'order': order ?? 'asc',
+      for (final entry in columnFilters.entries)
+        if (entry.value != null)
+          (entry.key.startsWith('search.') ? entry.key : 'f.${entry.key}'):
+              entry.value,
+      'issuedFrom': ?issuedFrom,
+      'issuedTo': ?issuedTo,
+      'needFrom': ?needFrom,
+      'needTo': ?needTo,
+    };
+    Future<PagedResult<OperationsWorkbenchTask>> fetch() async =>
+        (await _fetch(department, query)).toPagedReadSnapshot();
+    final reads = preparedReader?.call() ?? prepared;
+    if (page == 1 && reads != null) {
+      final response = await reads.read(
+        [api, department, query],
+        fetch,
+        preferPrepared: preferPrepared,
+      );
+      return (response
+              as PagedReadSnapshot<
+                OperationsWorkbenchTask,
+                OperationsWorkbenchData
+              >)
+          .snapshot;
+    }
+    return _fetch(department, query);
+  }
+
+  Future<OperationsWorkbenchData> _fetch(
+    OperationsWorkbenchDepartment department,
+    Map<String, dynamic> query,
+  ) async => OperationsWorkbenchData.fromJson(
+    await api.get('/operations/workbench/${department.apiValue}', query: query),
+    department,
+  );
+
+  Future<void> prepareWorkingPage(
+    OperationsWorkbenchDepartment department,
+    String stage,
+  ) async {
+    final query = <String, dynamic>{'page': 1, 'size': 50, 'status': stage};
+    await (preparedReader?.call() ?? prepared)?.prepare([
+      api,
+      department,
+      query,
+    ], () async => (await _fetch(department, query)).toPagedReadSnapshot());
   }
 
   @override
@@ -155,5 +202,30 @@ class OperationsWorkbenchRepository
 
 final operationsWorkbenchRepositoryProvider =
     Provider<OperationsWorkbenchRepository>(
-      (ref) => OperationsWorkbenchRepository(ref.watch(apiClientProvider)),
+      (ref) => OperationsWorkbenchRepository(
+        ref.watch(apiClientProvider),
+        preparedReader: () => ref.read(operationsWorkbenchPreparedProvider),
+      ),
+      dependencies: [apiClientProvider, operationsWorkbenchPreparedProvider],
     );
+
+final operationsWorkbenchPreparedProvider = Provider.autoDispose((ref) {
+  ref.watch(exportContextEpochProvider);
+  ref.watch(dataWriteRevisionProvider);
+  retainReadSnapshot(ref);
+  final reads = PreparedPageRead<OperationsWorkbenchTask>();
+  ref.onDispose(reads.dispose);
+  return reads;
+}, dependencies: [exportContextEpochProvider]);
+
+final operationsWorkbenchPreparationProvider = Provider((ref) {
+  final coordinator = PagePreparationCoordinator(
+    budget: ref.read(pagePreparationBudgetProvider),
+  );
+  final retire = pagePreparationRetirementCallback(ref, coordinator.retire);
+
+  ref.listen(exportContextEpochProvider, (_, _) => retire());
+  ref.listen(dataWriteRevisionProvider, (_, _) => retire());
+  ref.onDispose(coordinator.dispose);
+  return coordinator;
+}, dependencies: [exportContextEpochProvider]);

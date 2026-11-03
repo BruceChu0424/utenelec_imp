@@ -52,6 +52,7 @@ import '../../../core/network/connection_recovery.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
+import '../../../core/router/route_access_policy.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
@@ -474,12 +475,14 @@ class _OperationsWorkbenchPageState
     int size = 50,
     bool background = false,
     bool useCache = false,
+    bool preferPrepared = false,
   }) => trackRefresh(
     _loadRows(
       page: page,
       size: size,
       background: background,
       useCache: useCache,
+      preferPrepared: preferPrepared,
     ),
     replaceKey: 'rows',
   );
@@ -489,6 +492,7 @@ class _OperationsWorkbenchPageState
     int size = 50,
     bool background = false,
     bool useCache = false,
+    bool preferPrepared = false,
   }) async {
     if (!mounted) return;
     final requestId = ++_requestId;
@@ -554,6 +558,24 @@ class _OperationsWorkbenchPageState
         if (!listing && repository is OperationsWorkbenchOverviewGateway) {
           return (repository as OperationsWorkbenchOverviewGateway)
               .loadOverview(department: department, keyword: keyword);
+        }
+        if (preferPrepared &&
+            !background &&
+            requestedPage == 1 &&
+            repository is OperationsWorkbenchRepository &&
+            seg != null &&
+            !seg.history &&
+            !draft &&
+            keyword.isEmpty &&
+            exception == null &&
+            sort == null &&
+            filters.values.every((value) => value == null)) {
+          return repository.load(
+            department: department,
+            size: size,
+            status: seg.code,
+            preferPrepared: true,
+          );
         }
         return repository.load(
           department: department,
@@ -708,7 +730,7 @@ class _OperationsWorkbenchPageState
       _sortAscending = true;
     });
     if (!seg.history || !_historyTime.isNone) {
-      _load(page: 1);
+      _load(page: 1, preferPrepared: !seg.history);
     }
   }
 
@@ -1226,6 +1248,32 @@ class _OperationsWorkbenchPageState
       OperationsWorkbenchDepartment.subcontract =>
         RouteName.operationsSubcontractWorkbench,
     };
+    final repository = _repository;
+    if ((_seg == null || !_loading) &&
+        repository is OperationsWorkbenchRepository &&
+        locationAllowedFor(
+          ref.watch(currentPermissionsProvider),
+          ref.watch(isSuperAdminProvider),
+          location,
+        )) {
+      ref
+          .watch(operationsWorkbenchPreparationProvider)
+          .prepare(
+            [repository, widget.department],
+            [
+              for (final stage in _stages)
+                () => repository.prepareWorkingPage(
+                  widget.department,
+                  stage.code,
+                ),
+            ],
+            canPrepare: () =>
+                mounted &&
+                (_seg == null || !_loading) &&
+                TickerMode.valuesOf(context).enabled &&
+                (ModalRoute.of(context)?.isCurrent ?? true),
+          );
+    }
     ref.onPageResume(location, () async {
       await _load(background: true);
       // _load owns its visible error; let the scheduler keep failed data dirty.

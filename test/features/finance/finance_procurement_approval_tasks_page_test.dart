@@ -804,10 +804,29 @@ void main() {
     expect(tester.getRect(approve).bottom, lessThanOrEqualTo(812));
     expect(tester.getRect(reject).bottom, lessThanOrEqualTo(812));
 
-    final search = find.descendant(
-      of: find.byKey(const Key('finance-approval-search')),
+    for (final scrollable
+        in tester
+            .stateList<ScrollableState>(find.byType(Scrollable))
+            .toList()) {
+      if (scrollable.position.axis == Axis.vertical) {
+        scrollable.position.jumpTo(0);
+      }
+    }
+    await tester.pumpAndSettle();
+    final searchControl = find.byKey(const Key('finance-approval-search'));
+    await tester.ensureVisible(searchControl);
+    await tester.pump();
+    var search = find.descendant(
+      of: searchControl,
       matching: find.byType(TextField),
     );
+    if (!tester.any(search)) {
+      await tester.tap(
+        find.descendant(of: searchControl, matching: find.byType(IconButton)),
+      );
+      await tester.pumpAndSettle();
+      search = find.byType(TextField).last;
+    }
     await tester.enterText(search, '供应商A');
     await tester.pump(const Duration(milliseconds: 350));
     await tester.pumpAndSettle();

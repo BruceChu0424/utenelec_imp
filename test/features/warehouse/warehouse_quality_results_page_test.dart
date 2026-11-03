@@ -45,6 +45,18 @@ Future<void> _showStatusChoices(WidgetTester tester) async {
   }
 }
 
+void _expectRequestedStatus(
+  _QualityGateway gateway,
+  MasterDataTableView<WarehouseQualityResultTask> table,
+  WarehouseQualityWorkStatus? status,
+) {
+  // A prepared page may be adopted without another HTTP call. Inspect its
+  // foreground query and the exact issued request instead of the last
+  // speculative request for a sibling phase.
+  expect(gateway.listWorkStatuses, contains(status));
+  expect(table.filters['workStatus'], status?.apiValue);
+}
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
@@ -428,7 +440,7 @@ void main() {
       // 2026-09-04 修复回归锁：子类徽章与列表加载解耦——计数不依赖选中。
       // 来源与作业都默认全部；计数与列表并发，仅发一次计数请求。
       expect(gateway.statusCountsCalls, 1);
-      expect(gateway.listReceiptTypes, [null]);
+      expect(gateway.listReceiptTypes.toSet(), {null});
 
       final table = tester
           .widget<MasterDataTableView<WarehouseQualityResultTask>>(
@@ -501,18 +513,22 @@ void main() {
     await tester.pumpAndSettle();
     MasterDataTableView<WarehouseQualityResultTask> table() =>
         tester.widget(find.byKey(const Key('warehouse-quality-result-table')));
-    expect(gateway.lastWorkStatus, isNull);
+    _expectRequestedStatus(gateway, table(), null);
     expect(table().items.map((row) => row.receiptId), [
       'receipt-1',
       'receipt-2',
     ]);
     await selectFilterSegment(tester, '不合格退回');
     await tester.pumpAndSettle();
-    expect(gateway.lastWorkStatus, WarehouseQualityWorkStatus.returnRequired);
+    _expectRequestedStatus(
+      gateway,
+      table(),
+      WarehouseQualityWorkStatus.returnRequired,
+    );
     expect(table().items.map((row) => row.receiptId), ['receipt-2']);
     await selectFilterSegment(tester, '进行中');
     await tester.pumpAndSettle();
-    expect(gateway.lastWorkStatus, isNull);
+    _expectRequestedStatus(gateway, table(), null);
     expect(table().items.map((row) => row.receiptId), [
       'receipt-1',
       'receipt-2',
@@ -620,7 +636,7 @@ void main() {
         find.byKey(const Key('warehouse-quality-result-type')),
         findsNothing,
       );
-      expect(gateway.listReceiptTypes, [null]);
+      expect(gateway.listReceiptTypes.toSet(), {null});
       MasterDataTableView<WarehouseQualityResultTask> table() =>
           tester.widget<MasterDataTableView<WarehouseQualityResultTask>>(
             find.byKey(const Key('warehouse-quality-result-table')),
@@ -687,21 +703,22 @@ void main() {
     await tester.pumpAndSettle();
     table().onFilterChanged('workStatus', 'WAITING_INSPECTION');
     await tester.pumpAndSettle();
-    expect(
-      gateway.lastWorkStatus,
+    _expectRequestedStatus(
+      gateway,
+      table(),
       WarehouseQualityWorkStatus.waitingInspection,
     );
     expect(table().items.single.receiptId, 'waiting');
     expect(table().selectedIds, isEmpty);
     table().onFilterChanged('workStatus', null);
     await tester.pumpAndSettle();
-    expect(gateway.lastWorkStatus, isNull);
+    _expectRequestedStatus(gateway, table(), null);
     expect(table().items, hasLength(2));
     table().onFilterChanged('workStatus', 'ALL_PASSED');
     await tester.pumpAndSettle();
     table().onFilterChanged('workStatus', 'OLD_UNKNOWN_STATUS');
     await tester.pumpAndSettle();
-    expect(gateway.lastWorkStatus, isNull);
+    _expectRequestedStatus(gateway, table(), null);
     expect(table().filters['workStatus'], isNull);
     expect(tester.takeException(), isNull);
   });
@@ -735,11 +752,15 @@ void main() {
         tester.widget(find.byKey(const Key('warehouse-quality-result-table')));
     table().onFilterChanged('workStatus', 'COMPLETED');
     await tester.pumpAndSettle();
-    expect(gateway.lastWorkStatus, WarehouseQualityWorkStatus.completed);
+    _expectRequestedStatus(
+      gateway,
+      table(),
+      WarehouseQualityWorkStatus.completed,
+    );
     expect(gateway.lastView, WarehouseTaskView.history);
     table().onFilterChanged('workStatus', null);
     await tester.pumpAndSettle();
-    expect(gateway.lastWorkStatus, isNull);
+    _expectRequestedStatus(gateway, table(), null);
     expect(gateway.lastView, WarehouseTaskView.history);
     expect(gateway.lastDateFrom, '2026-10-01');
     expect(gateway.lastDateTo, '2026-10-07');
@@ -780,7 +801,7 @@ void main() {
     table().onFilterChanged('workStatus', 'WAITING_INSPECTION');
     await tester.pumpAndSettle();
     expect(gateway.lastView, WarehouseTaskView.history);
-    expect(gateway.lastWorkStatus, isNull);
+    _expectRequestedStatus(gateway, table(), null);
     table().onFilterChanged('workStatus', 'COMPLETED');
     await tester.pumpAndSettle();
     table().onFilterChanged('workStatus', null);
@@ -794,7 +815,7 @@ void main() {
     table().onFilterChanged('workStatus', 'COMPLETED');
     await tester.pumpAndSettle();
     expect(gateway.lastView, WarehouseTaskView.active);
-    expect(gateway.lastWorkStatus, isNull);
+    _expectRequestedStatus(gateway, table(), null);
     expect(tester.takeException(), isNull);
   });
 
@@ -1176,6 +1197,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
   bool failNextBatch = false;
   int statusCountsCalls = 0;
   WarehouseQualityWorkStatus? lastWorkStatus;
+  final listWorkStatuses = <WarehouseQualityWorkStatus?>[];
   WarehouseTaskView? lastView;
   String? lastDateFrom;
   String? lastDateTo;
@@ -1234,6 +1256,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     listReceiptTypes.add(receiptType);
     lastView = view;
     lastWorkStatus = workStatus;
+    listWorkStatuses.add(workStatus);
     lastDateFrom = dateFrom;
     lastDateTo = dateTo;
     final filtered = tasks

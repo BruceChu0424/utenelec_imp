@@ -86,6 +86,7 @@ import '../models/production_material_usage_source.dart';
 import '../models/workshop_task_drafts.dart';
 import '../providers/production_department_provider.dart';
 import '../providers/production_workshop_task_count_provider.dart';
+import '../providers/production_page_preparation.dart';
 import '../repositories/production_execution_workbench_repository.dart';
 import 'production_material_discovery_request_page.dart';
 import '../repositories/production_material_discovery_request_repository.dart';
@@ -1220,10 +1221,13 @@ class _ProductionWorkshopTasksPageState
     }
   }
 
-  Future<void> _load({bool useCache = false}) async {
+  Future<void> _load({
+    bool useCache = false,
+    bool preferPrepared = false,
+  }) async {
     final generation = ++_loadGeneration;
-    // 分类默认不选（ADR-066 同范式）：未选分类不请求列表、不显示数据，
-    // 只刷新顶部分类徽章计数；点了分类才加载对应内容。历史任务段同理：
+    // 分类默认不选（ADR-066 同范式）：未选分类不发布表格数据；有界准备的
+    // 活动首屏在选择后交接，分类徽章仍与全站同源。历史任务段同理：
     // 未选时间段/全部不发请求（时间门控占位）。
     if (_status == null || (_isHistory && _historyTime.isNone)) {
       setState(() {
@@ -1272,7 +1276,8 @@ class _ProductionWorkshopTasksPageState
         query: query,
         currentQuery: () => _taskReadQuery,
         useCache: useCache,
-        fetchPage: (page) => repo.workshopTasks(
+        fetchPage: (page) => repo.readWorkshopTasks(
+          preparedRead: ref.read(productionWorkshopPreparedPageProvider),
           page: page,
           keyword: requestedKeyword,
           status: requestedStatus,
@@ -1285,6 +1290,7 @@ class _ProductionWorkshopTasksPageState
           segmentCode: requestedSegmentCode,
           sort: requestedSort,
           order: requestedOrder,
+          preferPrepared: preferPrepared,
         ),
       );
       // 单号 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。
@@ -2838,6 +2844,15 @@ class _ProductionWorkshopTasksPageState
     // 顶部分类徽章：与列表/服务端分段计数同源（互斥口径，加总=总数）；
     // 「历史任务」是终态，按全站口径不挂徽章。
     final counts = ref.watch(productionWorkshopTaskCountProvider);
+    if (!_isHistory) {
+      prepareProductionWorkshopPages(
+        ref,
+        context,
+        keyword: _keyword,
+        workshopDepartmentId: _workshopDepartmentId,
+        canPrepare: () => !_loading && _busy == null && !_navigating,
+      );
+    }
     final workshops =
         ref.watch(productionWorkshopTreeProvider).value ?? const [];
     // 顶栏「车间内料仓」与路由守卫同一份契约(不在页面里拼权限码)。
@@ -2965,7 +2980,7 @@ class _ProductionWorkshopTasksPageState
                           ? UtenHistoryTimeValue.lastThreeMonths()
                           : const UtenHistoryTimeValue.all();
                     });
-                    _load();
+                    _load(preferPrepared: !_isHistory);
                   },
                   searchHint: '搜索订单 / 工单 / 产品 / 车间',
                   onSearchChanged: (value) {

@@ -36,6 +36,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/performance/ui_work_budget.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/paging/prepared_page_read.dart';
 import '../../../shared/models/employee_reference.dart';
 import '../../../shared/models/progress_ratio.dart';
 import '../../basic_data/models/master_facet.dart';
@@ -2454,3 +2455,49 @@ final productionDailyReportRepositoryProvider =
 /// 沿用 purchase 的错误文案策略（ApiException 取 message，其余给中性提示）。
 String productionErrorMessage(Object e, {String fallback = '操作失败，请稍后重试'}) =>
     e is ApiException ? e.message : fallback;
+
+extension ProductionSchedulePreparedRead on ProductionPlanRepository {
+  Future<PagedResult<SchedulePendingRow>> readSchedulePending({
+    int page = 1,
+    int size = 20,
+    String keyword = '',
+    String? sort,
+    String? order,
+    String? status,
+    String? billNo,
+    bool preferPrepared = false,
+    PreparedPageRead<SchedulePendingRow>? preparedRead,
+  }) {
+    Future<PagedResult<SchedulePendingRow>> fetch() => schedulePending(
+      page: page,
+      size: size,
+      keyword: keyword,
+      sort: sort,
+      order: order,
+      status: status,
+      billNo: billNo,
+    );
+    final prepared = preparedRead;
+    if (page != 1 || prepared == null) return fetch();
+    return prepared.read(
+      [this, size, keyword.trim(), sort, order, status, billNo],
+      fetch,
+      preferPrepared: preferPrepared,
+    );
+  }
+
+  Future<void> prepareSchedulePending({
+    String keyword = '',
+    PreparedPageRead<SchedulePendingRow>? preparedRead,
+  }) =>
+      (preparedRead)?.prepare([
+        this,
+        100,
+        keyword.trim(),
+        null,
+        null,
+        null,
+        null,
+      ], () => schedulePending(size: 100, keyword: keyword)) ??
+      Future.value();
+}

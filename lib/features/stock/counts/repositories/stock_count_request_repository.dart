@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/network/api_client.dart';
 import '../../../../shared/models/paged_result.dart';
+import '../../../../shared/paging/prepared_page_read.dart';
 import '../../../../shared/search/table_column_query.dart';
 import '../../../basic_data/models/product_category_node.dart';
 import '../models/stock_count_request.dart';
@@ -175,3 +176,79 @@ final stockCountRequestRepositoryProvider =
     Provider<StockCountRequestRepository>(
       (ref) => StockCountRequestRepository(ref.watch(apiClientProvider)),
     );
+
+extension StockCountPreparedRead on StockCountRequestRepository {
+  Future<PagedResult<StockCountRequest>> readList({
+    String? reviewRoute,
+    String? status,
+    String? warehouseId,
+    String? scopeWarehouseId,
+    String? keyword,
+    int page = 1,
+    int size = 50,
+    Map<String, String?> columns = const {},
+    String? sort,
+    bool ascending = true,
+    bool preferPrepared = false,
+    PreparedPageRead<StockCountRequest>? preparedRead,
+  }) {
+    Future<PagedResult<StockCountRequest>> fetch() => list(
+      reviewRoute: reviewRoute,
+      status: status,
+      warehouseId: warehouseId,
+      scopeWarehouseId: scopeWarehouseId,
+      keyword: keyword,
+      page: page,
+      size: size,
+      columns: columns,
+      sort: sort,
+      ascending: ascending,
+    );
+    final prepared = preparedRead;
+    if (page != 1 || status != 'PENDING' || prepared == null) return fetch();
+    return prepared.read(
+      [
+        this,
+        reviewRoute,
+        status,
+        warehouseId,
+        scopeWarehouseId,
+        keyword?.trim() ?? '',
+        size,
+        columns,
+        sort,
+        ascending,
+      ],
+      fetch,
+      preferPrepared: preferPrepared,
+    );
+  }
+
+  Future<void> prepareReviewList({
+    required String reviewRoute,
+    String? scopeWarehouseId,
+    String? keyword,
+    PreparedPageRead<StockCountRequest>? preparedRead,
+  }) =>
+      (preparedRead)?.prepare(
+        [
+          this,
+          reviewRoute,
+          'PENDING',
+          null,
+          scopeWarehouseId,
+          keyword?.trim() ?? '',
+          50,
+          const <String, String?>{},
+          null,
+          true,
+        ],
+        () => list(
+          reviewRoute: reviewRoute,
+          status: 'PENDING',
+          scopeWarehouseId: scopeWarehouseId,
+          keyword: keyword,
+        ),
+      ) ??
+      Future.value();
+}

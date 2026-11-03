@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "branch": "uimp/category-prefetch-sweep-20261103",
+  "baseCommit": "54475dc63",
+  "batchCountsOverlap": true,
+  "checks": [
+    {
+      "scope": "shared budget/cache and sales callers",
+      "result": "73 passed",
+      "log": "tmp/category-prefetch-root-final-verified.log"
+    },
+    {
+      "scope": "other existing category/list callers",
+      "result": "38 passed",
+      "log": "tmp/category-prefetch-existing-lists.log"
+    },
+    {
+      "scope": "warehouse/quality/production/materialbin/stock review, 15 test files",
+      "result": "220 passed, 0 failed",
+      "log": "tmp/category-warehouse-production-final-clean.log"
+    },
+    {
+      "scope": "finance/operations/HR, 13 test files",
+      "result": "179 distinct cases passed across the full batch and documented corrective/owner reruns; overlapping 82/38/19/8 case runs are not added",
+      "review": "finance-operations-hr-review.json"
+    },
+    {
+      "scope": "purchase/subcontract",
+      "result": "7 final targeted cases passed; 60 other cases passed in the completed related run, two fixture selector failures corrected and verified",
+      "review": "purchase-subcontract-review.json"
+    },
+    {
+      "scope": "Dart analysis",
+      "targets": 54,
+      "result": "No issues found",
+      "log": "tmp/category-prefetch-all-verified-analyze.log"
+    },
+    {
+      "scope": "source inventory and work registry",
+      "result": "business_inventory write; progress_tracker sync/check; current category inventory write/check; source path validation; diff check passed"
+    },
+    {
+      "scope": "native registry invariants",
+      "packages": 362,
+      "unchangedFields": [
+        "status",
+        "owner",
+        "definitionOfDone",
+        "dependencies"
+      ],
+      "result": "passed"
+    }
+  ],
+  "closedImplementationFindings": [
+    "Source-only replacement now changes queue/cache identity and retires old waiting jobs.",
+    "Mixed history grants do not cause speculative active ALL reads for history-only sources.",
+    "Fresh refreshes register before background preparation; current query is not refetched by the tail.",
+    "Repository virtual interfaces and existing Provider dependencies are preserved by static extension readers with explicit typed leases.",
+    "Scope revision retires accepted materialbin rows and old reads/errors.",
+    "Old jobs retire immediately; view notifications are coalesced after the build to avoid lifecycle assertions.",
+    "Prepared memory is bounded and owner-fenced; module-specific persistent leases avoid idle Timer leaks without extending adoption freshness."
+  ],
+  "limits": {
+    "fakeApiWidgetVm": true,
+    "targetPcAccepted": false,
+    "webPageUatCompleted": false,
+    "win7Accepted": false,
+    "productionLatencyMeasured": false,
+    "fullCiRun": false,
+    "productionDeployment": false,
+    "formalPackages": false
+  }
+}

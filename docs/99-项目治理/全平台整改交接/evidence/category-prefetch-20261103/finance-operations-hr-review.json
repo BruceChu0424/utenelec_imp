@@ -1,0 +1,346 @@
+{
+  "id": "E-CATEGORY-PREFETCH-FINANCE-OPERATIONS-HR-20261103",
+  "branch": "uimp/category-prefetch-sweep-20261103",
+  "base": "54475dc63",
+  "classification": [
+    "frontend-read-preparation",
+    "shared-read-contract-consumer"
+  ],
+  "commonEntrypoints": [
+    "lib/shared/paging/page_preparation_coordinator.dart",
+    "lib/shared/paging/page_preparation_budget_provider.dart",
+    "lib/shared/paging/prepared_page_read.dart",
+    "lib/shared/paging/scoped_category_read.dart"
+  ],
+  "sourceReview": [
+    {
+      "source": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "result": "preserved-business-scope",
+      "reason": "canLoad与账户选择/偏好恢复控制查询；账户范围具有业务含义，本轮不预读全部账户或改账户余额链。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
+      "result": "already-parallel",
+      "reason": "分类树与报表在post-frame并行启动，统一搜索独立代次；保留AR/AP、分类、期间与币种口径，不预读其他账类。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_ar_ap_page.dart",
+      "result": "already-parallel",
+      "reason": "名称服务与列表在post-frame分别启动，单号facets unawaited；原ScopedPagedRead保留完整query/owner与分页缓冲，无父徽章后另等相同子统计链。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_asset_workbench_page.dart",
+      "result": "preserved-business-scope",
+      "reason": "overview与当前ledger独立读取；ledger草稿数unawaited不阻塞表格；隐藏账类刷新仅标dirty等待激活，保留资产/期间/修订等独立生命周期。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_assets_page.dart",
+      "result": "already-shared",
+      "reason": "仅为FinanceAssetWorkbenchPage稳定路由别名，不另造列表读取。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_audit_center_page.dart",
+      "result": "fixed",
+      "reason": "父徽章沿用 badgeSummary；当前/首个授权大类用公共两槽预算准备非历史首屏；显式刷新期间停止准备并退休旧lease；jobs随具体repository身份变化。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_doc_batch_entry.dart",
+      "result": "reviewed-preserved",
+      "reason": "保留当前明确查询/记录职责；未发现本轮父分类后重复等待同口径子统计的链。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_doc_detail_page.dart",
+      "result": "record-detail-or-edit",
+      "reason": "按明确单据ID进入详情/编辑/审核，包含权限、认领、版本和草稿/未知提交状态；不做投机业务读取或写入。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_doc_edit_page.dart",
+      "result": "record-detail-or-edit",
+      "reason": "按明确单据ID进入详情/编辑/审核，包含权限、认领、版本和草稿/未知提交状态；不做投机业务读取或写入。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_doc_list_page.dart",
+      "result": "already-shared-gated",
+      "reason": "effectiveDocumentStatusCounts与行读取解耦，facets unawaited；明确选草稿/工作状态后取行，历史依日期门控；原列表公共分页机制保留，本轮未猜测五类钱流单据的未选业务参数。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_hub_page.dart",
+      "result": "already-shared",
+      "reason": "父入口统一badgeRegistry；无本页子表串行统计，浏览类报表不挂徽章，不在hub扩展任意资金账户/历史报表预读。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_procurement_approval_review_page.dart",
+      "result": "record-detail-or-edit",
+      "reason": "按明确单据ID进入详情/编辑/审核，包含权限、认领、版本和草稿/未知提交状态；不做投机业务读取或写入。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "result": "fixed",
+      "reason": "仅PENDING/CLOSURE_PENDING及全部/采购/委外筛选准备首屏；历史状态不准备，刷新/搜索/排序/列筛选独立fresh读取。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_quote_review_list_page.dart",
+      "result": "fixed",
+      "reason": "待核价/已退回准备首屏，已退回size=1统计同scope复用；历史已核价不准备，显式刷新强制重取统计，loading期间不发新准备。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_quote_review_page.dart",
+      "result": "record-detail-or-edit",
+      "reason": "按明确单据ID进入详情/编辑/审核，包含权限、认领、版本和草稿/未知提交状态；不做投机业务读取或写入。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_reconciliation_page.dart",
+      "result": "preserved-business-scope",
+      "reason": "对账操作按明确账户/期间/查询输入执行，不是父徽章+同口径子计数重复链。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_report_table_page.dart",
+      "result": "already-shared",
+      "reason": "已有ReportRead metadata/邻页缓冲与完整endpoint/query/API/epoch栅栏；报表变体、日期、客户、列筛选及偏好属于查询事实，不猜测跨变体首屏。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+      "result": "fixed",
+      "reason": "默认/首次/修改待确认首屏复用完整查询准备结果；已驳回统计与父准备共用ScopedCategoryRead，无过滤已驳回表直接用total；确认/驳回/认领/未知提交仍走原服务端合同。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_sales_order_review_page.dart",
+      "result": "record-detail-or-edit",
+      "reason": "按明确单据ID进入详情/编辑/审核，包含权限、认领、版本和草稿/未知提交状态；不做投机业务读取或写入。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_sales_shipment_audit_page.dart",
+      "result": "shared-caller-root-owned",
+      "reason": "路由包装共用SalesShipmentTaskWorkbench；本轮root接入精准financeShipment过滤与PreparedPageRead，本分工仅通过finance父计划调度其公开准备入口。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart",
+      "result": "record-detail-or-edit",
+      "reason": "按明确单据ID进入详情/编辑/审核，包含权限、认领、版本和草稿/未知提交状态；不做投机业务读取或写入。"
+    },
+    {
+      "source": "lib/features/finance/pages/finance_statement_page.dart",
+      "result": "preserved-business-scope",
+      "reason": "按AR/AP、往来单位、日期/年度及视图查询并复用ReportRead；不把不同往来单位、期间和币种合并成父分类预读。"
+    },
+    {
+      "source": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "result": "preserved-business-scope",
+      "reason": "应付/结算/损失索赔是不同业务工作区与权限，原ScopedPagedRead/原生facets按明确筛选查询；不串行等待父徽章，不扩大并行账户余额任务。"
+    },
+    {
+      "source": "lib/features/hr_task/pages/hr_workbench_page.dart",
+      "result": "already-shared",
+      "reason": "工作台和五种子任务表共用hrTaskSummaryProvider一次性完整summary，含计数与任务行。"
+    },
+    {
+      "source": "lib/features/hr_task/pages/hr_task_list_page.dart",
+      "result": "already-shared",
+      "reason": "直接消费相同summary，不另取子计数/行；筛选为全量summary的客户端投影，保留认领/草稿与身份隔离。"
+    },
+    {
+      "source": "lib/features/hr_task/pages/hr_reconcile_page.dart",
+      "result": "record-action-gate",
+      "reason": "明确核对计划ID/选中员工后加载计划；保留草稿、生成/应用/未知结果，不预热会创建计划的业务动作。"
+    },
+    {
+      "source": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "result": "fixed",
+      "reason": "实际网络repository对部门工作段准备50行首屏；overview仍独立；表格按完整query一次采用准备响应，snapshot保留summary/capabilities/facets；history/filter/refresh保持fresh。repository跨写修订稳定，避免因为lease轮换重置输入。兼容gateway无准备能力时维持原读合同。"
+    },
+    {
+      "source": "lib/features/warehouse/pages/finance_arrival_exception_pages.dart",
+      "result": "fixed",
+      "reason": "仅PENDING_FINANCE首屏与finance父共享准备；旧owner结果/错误不能发布，读取范围变化先清旧行。"
+    },
+    {
+      "source": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
+      "result": "fixed",
+      "reason": "ACTIVE/PENDING_RETURN/RETURN_RECORDED/FINANCE_EXCEPTION精准query准备并一次采用；counts按完整非status筛选复用ScopedCategoryRead；TERMINAL及已结案不准备。"
+    }
+  ],
+  "wpf": {
+    "finance": {
+      "status": "not-migrated",
+      "tasks": [
+        "W7-BIZ-057",
+        "W7-BIZ-058",
+        "W7-BIZ-059",
+        "W7-BIZ-060",
+        "W7-BIZ-061",
+        "W7-BIZ-062",
+        "W7-BIZ-063",
+        "W7-BIZ-064",
+        "W7-BIZ-065",
+        "W7-BIZ-066",
+        "W7-BIZ-067",
+        "W7-BIZ-068",
+        "W7-BIZ-069",
+        "W7-BIZ-070",
+        "W7-BIZ-071",
+        "W7-BIZ-072",
+        "W7-BIZ-073",
+        "W7-BIZ-074",
+        "W7-BIZ-075",
+        "W7-BIZ-076",
+        "W7-BIZ-077",
+        "W7-BIZ-078"
+      ],
+      "allTodoAndNoNativeTargets": true
+    },
+    "hr_task": {
+      "status": "not-migrated",
+      "tasks": [
+        "W7-BIZ-081",
+        "W7-BIZ-082",
+        "W7-BIZ-083"
+      ],
+      "allTodoAndNoNativeTargets": true
+    },
+    "operations_workbench": {
+      "status": "not-migrated",
+      "tasks": [
+        "W7-BIZ-087"
+      ],
+      "allTodoAndNoNativeTargets": true
+    },
+    "purchase": {
+      "status": "not-migrated",
+      "tasks": [
+        "W7-BIZ-121",
+        "W7-BIZ-122",
+        "W7-BIZ-123",
+        "W7-BIZ-124",
+        "W7-BIZ-125",
+        "W7-BIZ-126",
+        "W7-BIZ-127"
+      ],
+      "allTodoAndNoNativeTargets": true
+    },
+    "production": {
+      "status": "not-migrated",
+      "tasks": [
+        "W7-BIZ-094",
+        "W7-BIZ-095",
+        "W7-BIZ-096",
+        "W7-BIZ-097",
+        "W7-BIZ-098",
+        "W7-BIZ-099",
+        "W7-BIZ-100",
+        "W7-BIZ-101",
+        "W7-BIZ-102",
+        "W7-BIZ-103",
+        "W7-BIZ-104",
+        "W7-BIZ-105",
+        "W7-BIZ-106",
+        "W7-BIZ-107",
+        "W7-BIZ-108",
+        "W7-BIZ-109",
+        "W7-BIZ-218",
+        "W7-BIZ-219",
+        "W7-BIZ-220",
+        "W7-BIZ-110",
+        "W7-BIZ-111",
+        "W7-BIZ-112",
+        "W7-BIZ-113",
+        "W7-BIZ-114",
+        "W7-BIZ-115",
+        "W7-BIZ-116",
+        "W7-BIZ-117"
+      ],
+      "allTodoAndNoNativeTargets": true
+    },
+    "warehouse": {
+      "status": "not-migrated",
+      "tasks": [
+        "W7-BIZ-173",
+        "W7-BIZ-174",
+        "W7-BIZ-175",
+        "W7-BIZ-176",
+        "W7-BIZ-177",
+        "W7-BIZ-222",
+        "W7-BIZ-178",
+        "W7-BIZ-223",
+        "W7-BIZ-179",
+        "W7-BIZ-180",
+        "W7-BIZ-181",
+        "W7-BIZ-182",
+        "W7-BIZ-183",
+        "W7-BIZ-184",
+        "W7-BIZ-185",
+        "W7-BIZ-186",
+        "W7-BIZ-187",
+        "W7-BIZ-188",
+        "W7-BIZ-189",
+        "W7-BIZ-190",
+        "W7-BIZ-191",
+        "W7-BIZ-192",
+        "W7-BIZ-193",
+        "W7-BIZ-194",
+        "W7-BIZ-195",
+        "W7-BIZ-196",
+        "W7-BIZ-197",
+        "W7-BIZ-198",
+        "W7-BIZ-199",
+        "W7-BIZ-200",
+        "W7-BIZ-201",
+        "W7-BIZ-202",
+        "W7-BIZ-203",
+        "W7-BIZ-204",
+        "W7-BIZ-205",
+        "W7-BIZ-206",
+        "W7-BIZ-207",
+        "W7-BIZ-208",
+        "W7-BIZ-209",
+        "W7-BIZ-210",
+        "W7-BIZ-211"
+      ],
+      "allTodoAndNoNativeTargets": true
+    },
+    "quality": {
+      "status": "not-migrated",
+      "tasks": [
+        "W7-BIZ-128",
+        "W7-BIZ-129",
+        "W7-BIZ-130",
+        "W7-BIZ-131",
+        "W7-BIZ-132",
+        "W7-BIZ-133"
+      ],
+      "allTodoAndNoNativeTargets": true
+    },
+    "procurement_iqc_rejection": {
+      "status": "not-migrated",
+      "tasks": [
+        "W7-BIZ-092",
+        "W7-BIZ-093"
+      ],
+      "allTodoAndNoNativeTargets": true
+    }
+  },
+  "wpfSourceAudit": "Desktop/Features仅Columns、Downloads、Goods、Publish、Units；C#/XAML未发现上述任务API或同责列表，仅公共ReadScopeRevisionState的范围正则。未改原生实现或registry。",
+  "validation": {
+    "analysis": "14 changed source/test targets: No issues found! build-category-finance-analysis-final.log",
+    "primaryBatch": "13 suites, 179 cases: 178 passed; one pre-existing compact search fixture addressed below. build-category-finance-ops-hr-accepted.log",
+    "correctedCompactFixture": "Restored collapsed header before locating search; supports real inline field or compact search popup. Targeted case passed; full affected procurement suite 19/19 passed in build-category-finance-procurement-corrected.log.",
+    "newInteractionEvidence": [
+      "Unselected finance category prepares while placeholder remains; fast click adopts one in-flight default request.",
+      "Same-category repository replacement changes preparation scope; old rows never publish and new repository serves the visible table.",
+      "Operations work-stage click adopts the existing IN_PROGRESS request; no completed-history speculation.",
+      "Operations write invalidation retires prepared rows while preserving repository identity and caller inputs."
+    ],
+    "scope": "Local Flutter VM/widget/gateway regressions; no production latency, target Windows, browser engine or Win7 real-machine acceptance inferred.",
+    "currentCoverage": "179 distinct cases accepted across the 13-suite batch and the corrected affected suite; overlapping reruns are not added. The older combined batch retains its 178-pass/1-fixture-failure fact.",
+    "retirementCallback": "Finance and operations use pagePreparationRetirementCallback to retire immediately and coalesce notifications after lazy provider rebuilds. Post-change audit-center/operations lifecycle/repository 38/38 passed in build-category-finance-retirement-final.log.",
+    "retirementAnalysis": "3 final source/fixture targets: No issues found! build-category-finance-retirement-analysis.log; original 14-target analysis also passed.",
+    "providerDependencies": "Finance job providers watch the selected concrete repositories and prepared lease; parent preparation scope includes stable jobs identity. Repository replacement invalidates the queued plan. Operations repository declares its scoped prepared provider dependency but reads the current lease through a stable reader factory, preserving caller query input across writes. Other consumers of the new providers are WidgetRef, not undeclared nested providers.",
+    "finalOwnerRegression": "82/82 passed after the final owner-reload adjustment: audit-center, quote-review, sales-confirmation and procurement-approval suites in build-category-finance-owner-final.log. Automatic owner reloads may adopt only their current lease; explicit refresh still bypasses prepared rows. Arrival success and generic/error completion all use the current-owner publication guard.",
+    "quoteRetirementRegression": "8/8 passed in build-category-finance-quote-retirement-final.log, overlapping the final 82 and not added again.",
+    "diffCheck": "git diff --check passed; line-ending conversion notices from existing shared workspace files are not test failures.",
+    "finalState": "Code and this review JSON frozen for root final analysis, inventory/registry synchronization and integration; no native registry or generated inventory was changed by this subtask."
+  },
+  "fullErpEquivalent": false,
+  "win7Accepted": false,
+  "productionDeployment": false,
+  "formalPackages": false
+}

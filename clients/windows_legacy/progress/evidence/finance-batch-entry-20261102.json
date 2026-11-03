@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "task": "钱流五类单据多行新建与自动分单",
+  "recordedAt": "2026-11-03T04:01:53.701674+00:00",
+  "branch": "uimp/finance-multiline-entry-20261102",
+  "sourceBase": "c75d6e1e3",
+  "classification": "frontend+shared-contract+backend-command",
+  "entryPoints": [
+    "/finance/receipts/new",
+    "/finance/payments/new",
+    "/finance/expenses/new",
+    "/finance/incomes/new",
+    "/finance/bank-transfers/new"
+  ],
+  "commonEntrances": [
+    "lib/components/buttons/uten_import_button.dart",
+    "lib/features/finance/pages/finance_doc_edit_page.dart",
+    "lib/features/finance/pages/finance_doc_batch_entry.dart",
+    "lib/features/finance/widgets/finance_grid_columns.dart",
+    "lib/features/finance/widgets/finance_entry_columns.dart",
+    "lib/features/finance/models/finance_entry_terms.dart",
+    "lib/features/finance/models/finance_entry_request.dart",
+    "lib/features/finance/repositories/finance_repository.dart"
+  ],
+  "groupingContract": "contracts/finance-entry-grouping-v1.json",
+  "preservedDifferences": [
+    "应收/应付真实来源与往来单位",
+    "订单预收的订单归属",
+    "原币与账户币种及结汇实际金额",
+    "费用/收入项目与部门按行保留",
+    "转账不同转入账户",
+    "旧记录和旧草稿保留原始数量单价金额",
+    "权限、审核、红冲及服务端账本权威"
+  ],
+  "clients": {
+    "web": "JavaScript Debug编译通过（本地测试端点）；现有依赖的Wasm dry-run警告保留，未宣称支持Wasm",
+    "flutterDesktop": "Windows x64 Flutter Debug LocalTest编译通过；未制作Setup或更新ZIP，未发布",
+    "wpfLegacy": {
+      "taskId": "W7-BIZ-064",
+      "status": "todo",
+      "nativeTargets": [],
+      "note": "未迁移；C#中没有五类钱流编辑调用方。未开放写入口，未执行Win7真机UAT；后续接入必须遵守多行分组、精确原文、账号隔离幂等、整批回滚、未知提交和附件补传合同。"
+    }
+  },
+  "checks": {
+    "flutterTargeted": {
+      "tests": 64,
+      "failures": 0,
+      "log": "finance-final-tests.log",
+      "logs": [
+        "finance-final-tests.log",
+        "finance-new-final-tests.log"
+      ]
+    },
+    "javaTargeted": {
+      "tests": 67,
+      "failures": 0,
+      "postgresTests": 5,
+      "logs": [
+        "finance-backend-tests.log",
+        "finance-full-migration-tests.log",
+        "finance-grouping-contract-tests.log"
+      ]
+    },
+    "freshFlyway": {
+      "database": "独立Testcontainers PostgreSQL16合成数据库",
+      "version": "992",
+      "appliedMigrations": 918
+    },
+    "analyze": "No issues found",
+    "stress": "1000行连续编辑、多个供应商与币种、精确金额、选择及完整本机草稿保存；桌面/窄屏/150%截图检查。本机控件与模拟API验收，非现网UAT。",
+    "screenshots": [
+      "build/ui-audit/finance-entry-1600.png",
+      "build/ui-audit/finance-entry-390.png",
+      "build/ui-audit/finance-entry-1600-zoom150.png"
+    ],
+    "webCompile": {
+      "result": "passed",
+      "runtime": "JavaScript",
+      "build": "Debug LocalTest",
+      "log": "finance-web-compile.log",
+      "wasmDryRun": "现有dart:html、dart:js_util、package:js依赖不支持Wasm；非本次新增，未改变Wasm支持状态"
+    },
+    "windowsCompile": {
+      "result": "passed",
+      "runtimeFamily": "flutter",
+      "architecture": "x64",
+      "build": "Debug LocalTest",
+      "apiBaseUrl": "http://127.0.0.1:18081/api",
+      "cloudApiBaseUrl": "http://127.0.0.1:18081/api",
+      "log": "finance-windows-compile-retry.log",
+      "environmentRecovery": "首次NuGet下载等待已中止；复用本机既有NuGet缓存后重跑通过，未改SDK或插件源码"
+    }
+  },
+  "authorizationBoundary": "未合入main、未推送、未部署、未正式打包或上传；候选WPF状态不变",
+  "sourceSha256": {
+    "lib/components/buttons/uten_import_button.dart": "92e59e14ed18ff8da4cfe2b3c947d9bd8eca9b39e4e748902d587cb63782a24d",
+    "lib/features/finance/pages/finance_doc_edit_page.dart": "0676746076b1dcb8e371ecd7e5034e293abdbc379efa9a15e45f7346a8daa466",
+    "lib/features/finance/pages/finance_doc_batch_entry.dart": "664630ed9a0773c71b4ff3f46148ba1e5f43f092c82e292c7625252562cbf78b",
+    "lib/features/finance/widgets/finance_grid_columns.dart": "86bd653e68ade6a02c89d3f05fce8e94ad5245b8836e3ebd59f57aeaf698be3e",
+    "lib/features/finance/widgets/finance_entry_columns.dart": "2134f770e525e2cdeb76244040b6779f9190c39b24ece2d39e276934076e5b89",
+    "lib/features/finance/models/finance_entry_terms.dart": "6117612b19258164f9febd80f7685106c861707c3f25a559b7b0f87ff949b79b",
+    "lib/features/finance/models/finance_entry_request.dart": "ab2d2182c2d36ff80830901f675d61eece19f499b48e3678278f191835367d62",
+    "lib/features/finance/repositories/finance_repository.dart": "6d2746b49d0485054ef9859665562720944939a3044e69e58479533d9af5a19e",
+    "server/src/main/java/com/uten/imp/features/finance/FinanceBatchEntryController.java": "428afa77a0ed9b590702adcd69f2b4db288516e29e67a5f2c0f5d25a3bece5f3",
+    "server/src/main/java/com/uten/imp/features/finance/FinanceBatchEntryService.java": "99e63d3cee46b6e24fc88809d615bf4cc5877f3797494c3a021e571cb9abc4fe",
+    "server/src/main/java/com/uten/imp/features/finance/FinanceEntryGrouping.java": "7faa7a8747c3175d9d332ac2052743b9a2bbb7b79d6c1c7704a2c5f3896f5a23",
+    "server/src/main/java/com/uten/imp/features/finance/payment/FinancePaymentService.java": "413f39984486a98d17de39eb4e5c5d330ade64ee22bfd89db3aae7092f3885f0",
+    "server/src/main/java/com/uten/imp/features/finance/receipt/FinanceReceiptService.java": "8b68e67991cccd95ae8a687e130245dba977cc985e50965432cb1753648ea218",
+    "server/src/main/java/com/uten/imp/features/finance/receipt/dto/FinanceReceiptSaveRequest.java": "f29feac88d1ce5cc43d627359e332a8ef657c741529ec3055dc868b3b2f28ac4",
+    "server/src/main/resources/db/migration/V991__finance_batch_entry_commands.sql": "bbe2e4a8d02778a62d53c3b0090c398ae464a13a2cc25f4ce9a6cb20bf33e4ea",
+    "server/src/main/resources/db/migration/V992__finance_bank_reference_optional.sql": "df10be36cdd90f17f2c1fd5abe57ab826e06cc5077c8ee23eb1cd9bf0fdf69f7",
+    "contracts/finance-entry-grouping-v1.json": "9a660b06ac026c844ee73e7558679f1195c43d7ed99e828ef50a6c0ae007cbbb"
+  }
+}

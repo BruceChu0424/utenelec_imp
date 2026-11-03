@@ -1086,9 +1086,9 @@ public class FinancePaymentService {
 
     private void finalizeBankAuthority(FinancePayment payment,boolean lockAccount) {
         if(payment.getAccountId()==null||payment.getCurrencyId()==null
-                ||payment.getBankBookedAt()==null||payment.getBankReference()==null
-                ||payment.getBankReference().isBlank()||payment.getBankReference().length()>128)
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,"付款账户、原币、银行实际扣款时间和流水号必须完整");
+                ||payment.getBankBookedAt()==null
+                ||(payment.getBankReference()!=null&&payment.getBankReference().length()>128))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"付款账户、原币和银行实际扣款时间必须完整，流水号不超过128字");
         BigDecimal bankDebit=positiveMoney(payment.getAccountAmount(),"银行实际扣款");
         BigDecimal original=positiveMoney(payment.getAmountOriginal(),"本次付款原币");
         BigDecimal fee=com.uten.imp.common.util.FinancialExactAmount.require(nz(payment.getBankFeeAccountAmount()),"银行实际手续费");

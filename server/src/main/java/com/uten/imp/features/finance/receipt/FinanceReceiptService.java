@@ -1115,10 +1115,6 @@ public class FinanceReceiptService {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
                     "必须填写汇率生效时间和银行实际入账时间");
         }
-        if (NativeValueConverters.trimToNull(receipt.getBankReference()) == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "必须填写真实银行入账流水号");
-        }
         if ("TRADE_AGENT_CONVERSION".equals(channel)
                 && !"TRADE_AGENT_STATEMENT".equals(rateSource)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,

@@ -196,6 +196,17 @@ class FinancePaymentSettlementTest {
     }
 
     @Test
+    void missingBankReferenceIsOptionalAndDoesNotPostADraft() {
+        ArApLedger payable = payable("100", "700", "7");
+        FinancePaymentSaveRequest request = request(payable, CURRENCY_ID, "7.2", "30");
+        request.setBankReference(null);
+        FinancePaymentDetail detail = service.create(request);
+        assertThat(detail.getBankReference()).isNull();
+        verify(accountUpdate, never()).executeUpdate();
+        verify(reconciliationInsert, never()).executeUpdate();
+    }
+
+    @Test
     void draftDerivesLocalAmountsAndUsesThePayableBookRate() {
         ArApLedger payable = payable("100.0000", "700.0000", "7.000000");
 

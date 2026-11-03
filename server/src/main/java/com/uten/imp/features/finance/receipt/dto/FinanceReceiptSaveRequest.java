@@ -47,7 +47,6 @@ public class FinanceReceiptSaveRequest implements ServerDerivedAmounts {
     private String exchangeRateSource;
     private OffsetDateTime exchangeRateEffectiveAt;
     private OffsetDateTime bankBookedAt;
-    @NotBlank
     @Size(max = 128)
     private String bankReference;
     @Size(max = 128)

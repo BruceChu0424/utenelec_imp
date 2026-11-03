@@ -3,7 +3,7 @@
 // FinanceGridRow：统一承载 3 种模式的字段（settle 核销 / allocate 分摊 / transfer 转入）。
 // 模式由 [ItemMode] 标记（行构造时绑定，不可切换）——与 FinanceDocConfig.itemMode 一致：
 // - 三种模式：amount 列均为 TextField 直接录入 → amountNotifier 同步（驱动表尾合计）；
-//   allocate 的数量/单价为可选明细字段，不强制驱动金额（与老页面一致：金额独立可编辑）。
+//   新建 allocate 行启用公共 LinePricingController；已有记录/旧草稿保留独立原文。
 // 金额控制器原文是输入来源；amountNotifier 仅供短显示，不能回写会计事实。
 //
 // financeGridColumns(mode, ...)：按模式返回不同列集，每列 cellBuilder 编辑对应行字段。
@@ -22,6 +22,8 @@ import '../../../core/theme/uten_tokens.dart';
 import '../config/finance_doc_config.dart';
 import '../models/finance_decimal.dart';
 import '../models/finance_doc.dart';
+import '../models/finance_entry_terms.dart';
+import '../../../shared/pricing/line_pricing_controller.dart';
 import '../providers/finance_name_provider.dart';
 import 'ar_ap_picker_dialog.dart';
 import 'finance_entry_l10n.dart';
@@ -31,7 +33,7 @@ import '../../../shared/widgets/uten_department_picker.dart';
 class FinanceGridRow extends EditableGridRow with AmountRowMixin {
   FinanceGridRow({required this.mode}) {
     // 三种模式均：金额列直接录入 → 同步 amountNotifier（驱动合计）。
-    // allocate 的数量/单价为可选明细字段，不强制驱动金额（与老页面一致：金额独立可编辑）。
+    // 新建数量/单价联动由 enableEntryPricing 显式启用。
     amount.addListener(_syncFromAmountField);
     exchangeRate.addListener(_syncFromAmountField);
     writeOff.addListener(_syncFromAmountField);
@@ -40,6 +42,38 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
 
   /// 该行的明细模式（构造时绑定，决定金额的来源）。
   final ItemMode mode;
+  final entry = FinanceEntryTerms();
+  LinePricingController? pricing;
+  bool _syncingPricing = false;
+
+  /// Existing recorded documents keep their historical independent inputs.
+  /// New allocation rows share procurement's exact two-of-three calculator.
+  void enableEntryPricing() {
+    if (mode != ItemMode.allocate || pricing != null) return;
+    final calculator = LinePricingController(
+      qty: qty,
+      price: price,
+      supportsTotalInput: true,
+    );
+    pricing = calculator;
+    calculator.totalAmount.addListener(_copyPricingAmount);
+    amount.addListener(_copyEnteredAmount);
+    if (amount.text.isNotEmpty) _copyEnteredAmount();
+  }
+
+  void _copyPricingAmount() {
+    if (_syncingPricing) return;
+    _syncingPricing = true;
+    amount.text = pricing!.totalAmount.text;
+    _syncingPricing = false;
+  }
+
+  void _copyEnteredAmount() {
+    if (_syncingPricing) return;
+    _syncingPricing = true;
+    pricing!.totalAmount.text = amount.text;
+    _syncingPricing = false;
+  }
 
   // ---- settle（核销 receipt/payment）----
   String? appliedLedgerId;
@@ -189,11 +223,18 @@ class FinanceGridRow extends EditableGridRow with AmountRowMixin {
     c.writeOff.text = writeOff.text;
     c.remark.text = remark.text;
     c.summarySnapshot = summarySnapshot;
+    c.entry.restore(entry.toJson());
+    if (pricing != null) {
+      c.enableEntryPricing();
+      c.pricing!.restoreState(pricing!.exportState());
+    }
     return c;
   }
 
   @override
   void dispose() {
+    pricing?.dispose();
+    entry.dispose();
     qty.dispose();
     price.dispose();
     amount.dispose();
@@ -546,7 +587,6 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
         key: 'bankReference',
         label: financeEntryText(context, 'bankReferenceColumn'),
         width: 220,
-        required: true,
         headerInfo: financeEntryText(context, 'batchBankReferenceHint'),
         // The document owns this controller. Each row edits the same bank
         // transaction reference; removing a row must not dispose it.

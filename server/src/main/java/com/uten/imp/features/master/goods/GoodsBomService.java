@@ -636,14 +636,18 @@ public class GoodsBomService {
         }
         BigDecimal qty = r.getQty();
         // 单价（goods:price:view，V570）：显式传入优先；null = 不可查看者的脱敏产物
-        // （前端隐藏单价，不提交）——新建或换件取当前组件货品价；同件编辑保留行原价。
+        // （前端隐藏单价，不提交）——新建或换件只默认可供本位币流程使用的货品价；同件编辑保留行原价。
+        // 明确外币不按本位币偷用、不用参考汇率换算；历史未登记沿用旧语义。
         // 换件不沿用旧组件价格，金额随当前落库单价重算兜底。
         BigDecimal price = req.getPrice();
         if (price == null) {
             boolean componentChanged = previousComponent != null
                     && !previousComponent.getId().equals(component.getId());
-            price = componentChanged ? component.getPrice()
-                    : r.getPrice() != null ? r.getPrice() : component.getPrice();
+            BigDecimal defaultPrice = com.uten.imp.common.finance.SellingPriceCurrency.forBaseCurrency(
+                    component.getPrice(), component.getCurrency() == null ? null : component.getCurrency().getId(),
+                    component.getCurrency() != null && component.getCurrency().isBaseCurrency());
+            price = componentChanged ? defaultPrice
+                    : r.getPrice() != null ? r.getPrice() : defaultPrice;
         }
         r.setPrice(price);
         // 金额：显式传入优先，否则 qty*price 兜底（无单价则 null）

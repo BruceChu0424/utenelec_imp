@@ -19,6 +19,14 @@ namespace Uten.Legacy.Tests
         {
             try
             {
+                if (args.Length == 1 && args[0] == "--goods-currency-contracts")
+                {
+                    int currencyGoods = GoodsReadContractChecks.Run();
+                    RunUi(UiContractChecks.RunGoodsCurrency);
+                    Console.WriteLine("PASS goods currency model/shared fixture/native UI contracts; assertions=" + currencyGoods
+                        + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
+                    return 0;
+                }
                 if (args.Length == 1 && args[0] == "--permission-readonly-contracts")
                 {
                     var readChecks = typeof(SessionCoordinator).Assembly.GetTypes().Single(type => type.Name == "ReadScopeRevisionChecks");

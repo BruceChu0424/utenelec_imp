@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "cases": [
+    {"name":"人民币","code":"001","label":"人民币","role":"Cny"},
+    {"name":null,"code":"RMB","label":"人民币","role":"Cny"},
+    {"name":"美元","code":"002","label":"美元","role":"Usd"},
+    {"name":null,"code":"USD","label":"美金","role":"Usd"},
+    {"name":"港币","code":"003","label":"港币","role":"Hkd"},
+    {"name":"Hong Kong Dollar","code":null,"label":"港币","role":"Hkd"},
+    {"name":null,"code":"EUR","label":"欧元","role":"Eur"},
+    {"name":null,"code":"JPY","label":"日元","role":"Jpy"},
+    {"name":null,"code":"GBP","label":"英镑","role":"Gbp"},
+    {"name":null,"code":"SGD","label":"新加坡元","role":"Sgd"},
+    {"name":null,"code":"AUD","label":"澳元","role":"Aud"},
+    {"name":null,"code":"CAD","label":"加元","role":"Cad"},
+    {"name":null,"code":"KRW","label":"韩元","role":"Krw"},
+    {"name":null,"code":"RUB","label":"卢布","role":"Rub"},
+    {"name":null,"code":"CHF","label":"瑞士法郎","role":"Chf"},
+    {"name":"自定义币种","code":"999","label":"自定义币种","role":"Other"},
+    {"name":null,"code":"001","label":null,"role":"Other"},
+    {"name":null,"code":null,"label":null,"role":"Other"}
+  ]
+}

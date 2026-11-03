@@ -104,6 +104,14 @@ public class GoodsListItem {
 
     @lombok.Setter
     private String clientGoodsName;
+    @lombok.Setter
+    private UUID currencyId;
+    @lombok.Setter
+    private String currencyCode;
+    @lombok.Setter
+    private String currencyName;
+    @lombok.Setter
+    private Boolean currencyIsBase;
 
     /** Existing projections can keep constructing the summary without search-only metadata. */
     public GoodsListItem(
@@ -126,6 +134,7 @@ public class GoodsListItem {
                 rearInsertCode, paper, colorId, unitId, colorLegacyId, unitLegacyId, colorName,
                 unitName, sourceType, categoryId, autoCreated, stockQty, stockPlace, minOrderQty,
                 orderMultipleQty, owningWarehouseId, owningWarehouseName, owningWorkshopId, owningWorkshopName, version, issueMethod,
-                periodicCostBasis, bulkPackageQty, recycledMaterial, nameEn, nameEnSource, null, null, null, false, false, null);
+                periodicCostBasis, bulkPackageQty, recycledMaterial, nameEn, nameEnSource, null, null, null, false, false, null,
+                null, null, null, null);
     }
 }

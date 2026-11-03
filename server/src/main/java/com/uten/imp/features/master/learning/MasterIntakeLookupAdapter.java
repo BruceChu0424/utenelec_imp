@@ -67,12 +67,12 @@ public class MasterIntakeLookupAdapter implements MasterIntakeLookupPort {
 
     private static final String GOODS_COLUMNS = """
             SELECT g.id, g.code, g.name, g.model, g.series, g.spec, g.color_id, col.name AS color_name,
-                   g.unit_id, u.name AS unit_name, g.name_en, g.name_en_source, g.price, g.status
+                   g.unit_id, u.name AS unit_name, g.name_en, g.name_en_source, %s, g.status
             FROM goods g
             LEFT JOIN colors col ON col.id = g.color_id
             LEFT JOIN units u ON u.id = g.unit_id
             WHERE NOT g.is_deleted AND g.status = '使用' AND NOT g.auto_created
-            """;
+            """.formatted(com.uten.imp.common.finance.SellingPriceCurrency.forBaseCurrencySql("g"));
 
     /** 客户基础过滤: 未删除、启用、非旧库财务占位客户。 */
     private static final String CLIENT_ACTIVE = """

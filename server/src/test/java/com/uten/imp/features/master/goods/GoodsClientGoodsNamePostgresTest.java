@@ -108,6 +108,27 @@ class GoodsClientGoodsNamePostgresTest {
         assertEquals(0, number("SELECT count(*) FROM goods_operation_history_events WHERE operation_id=?", operation));
     }
 
+    @Test void legacyMissingSellingCurrencyCanReplayButCannotHideALaterCurrencyWithoutAVersionBump() throws SQLException {
+        UUID id=goods("currency legacy name"); db.commit();
+        UUID operation=edit(id,"UPDATE goods SET name='currency edited name',version=version+1 WHERE id=?");
+        stripHistoryKey(operation,"goods","currency_id"); db.commit();
+        String before=text("SELECT before_row::text FROM goods_operation_history_rows WHERE operation_id=? AND table_name='goods'",operation);
+        String after=text("SELECT after_row::text FROM goods_operation_history_rows WHERE operation_id=? AND table_name='goods'",operation);
+        replay(operation,true); assertEquals("currency legacy name",text("SELECT name FROM goods WHERE id=?",id));
+        replay(operation,false); assertEquals("currency edited name",text("SELECT name FROM goods WHERE id=?",id));
+        assertEquals(before,text("SELECT before_row::text FROM goods_operation_history_rows WHERE operation_id=? AND table_name='goods'",operation));
+        assertEquals(after,text("SELECT after_row::text FROM goods_operation_history_rows WHERE operation_id=? AND table_name='goods'",operation));
+        UUID currency=UUID.randomUUID();
+        execute("INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES(?,?,'currency later',1,'使用')",currency,"CUR-"+currency);
+        long version=number("SELECT version FROM goods WHERE id=?",id);
+        execute("UPDATE goods SET currency_id=? WHERE id=?",currency,id); db.commit();
+        assertEquals(version,number("SELECT version FROM goods WHERE id=?",id));
+        SQLException failure=assertThrows(SQLException.class,()->replay(operation,true));
+        assertEquals("P0001",failure.getSQLState()); db.rollback();
+        assertEquals(currency.toString(),text("SELECT currency_id::text FROM goods WHERE id=?",id));
+        assertEquals("currency edited name",text("SELECT name FROM goods WHERE id=?",id));
+    }
+
     @Test void extendingGoodsHistoryRetainsLegacyBomRetirementCompatibilityAndActualReplay() throws SQLException {
         UUID parent = goods("BOM产品"), component = goods("BOM材料"), edge = UUID.randomUUID();
         execute("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty) VALUES(?,?,?,1)", edge, parent, component);

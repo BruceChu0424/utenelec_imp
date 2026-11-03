@@ -204,7 +204,8 @@ public interface MasterIntakeLookupPort {
     }
 
     /**
-     * 货品候选行(可见、使用中、未删除、非占位)。{@code price} 是货品资料售价(本位币), 可能为空或 0;
+     * 货品候选行(可见、使用中、未删除、非占位)。{@code price} 是可供既有本位币流程默认的货品售价,
+     * 明确登记外币的主价返回空且不换汇；未登记历史币种保留旧默认语义。可能为空或 0;
      * 调用方按读者价格权限决定是否外露。
      *
      * @param nameEnSource 英文名称来源 {@code MANUAL}/{@code LEARNED}; 名称为空时为空

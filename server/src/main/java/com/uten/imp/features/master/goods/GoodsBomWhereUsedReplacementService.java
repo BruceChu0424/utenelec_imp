@@ -217,7 +217,7 @@ public class GoodsBomWhereUsedReplacementService {
                 ), involved AS (
                     SELECT id,version,updated_at,code,name,status,is_deleted,auto_created,owner_employee_id,
                            unit_id,unit_legacy_id,color_id,color_legacy_id,issue_method,periodic_cost_basis,
-                           price,source_type,m_weight,m_weight_unit_id,m_weight_unit_legacy_id
+                           price,currency_id,source_type,m_weight,m_weight_unit_id,m_weight_unit_legacy_id
                     FROM goods WHERE id IN (:scope) OR id IN (SELECT component_goods_id FROM edges)
                 )
                 SELECT md5(CAST(jsonb_build_object(

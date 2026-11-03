@@ -38,7 +38,7 @@ public final class GoodsFieldEditPolicy {
                 case "subcontractAllowedLossPct" -> CurrentAuthorityGuard.requireAll(PURCHASE,"goods:cost:view");
                 case "clientGoodsName", "cNumber", "clientId" -> CurrentAuthorityGuard.requireAll(SALES);
                 case "nameEn" -> requireEnglishName();
-                case "price" -> CurrentAuthorityGuard.requireAll("goods:price:edit");
+                case "price", "currencyId", "currencyName" -> CurrentAuthorityGuard.requireAll("goods:price:edit");
                 case "discount" -> CurrentAuthorityGuard.requireAll("goods:price:edit", "goods:discount:view");
                 case "status" -> CurrentAuthorityGuard.requireAll("goods:status");
                 default -> CurrentAuthorityGuard.requireAll("goods:edit");
@@ -126,7 +126,7 @@ public final class GoodsFieldEditPolicy {
         if(snapshotChanged(before,after,SALES_SNAPSHOT_FIELDS)) required.add(SALES);
         if(snapshotChanged(before,after,ENGLISH_SNAPSHOT_FIELDS) && !held.contains("goods:name_en:edit")) required.add(SALES);
         if(snapshotChanged(before,after,Set.of("status"))) required.add("goods:status");
-        if(snapshotChanged(before,after,Set.of("price","zk"))) required.add("goods:price:edit");
+        if(snapshotChanged(before,after,Set.of("price","zk","currency_id"))) required.add("goods:price:edit");
         if(snapshotChanged(before,after,Set.of("zk"))) required.add("goods:discount:view");
         if(snapshotChanged(before,after,Set.of("subcontract_allowed_loss_pct"))) required.add("goods:cost:view");
         if(directCosts && snapshotChanged(before,after,COST_SNAPSHOT_FIELDS)) {
@@ -137,7 +137,7 @@ public final class GoodsFieldEditPolicy {
     public static Set<String> snapshotClassifiedFields() {
         Set<String> fields=new LinkedHashSet<>();
         for(Set<String> group:java.util.List.of(BASE_SNAPSHOT_FIELDS,PURCHASE_SNAPSHOT_FIELDS,SALES_SNAPSHOT_FIELDS,
-                ENGLISH_SNAPSHOT_FIELDS,COST_SNAPSHOT_FIELDS,LIFECYCLE_SNAPSHOT_FIELDS,Set.of("status","price","zk"))) fields.addAll(group);
+                ENGLISH_SNAPSHOT_FIELDS,COST_SNAPSHOT_FIELDS,LIFECYCLE_SNAPSHOT_FIELDS,Set.of("status","price","zk","currency_id"))) fields.addAll(group);
         return Set.copyOf(fields);
     }
     private static boolean snapshotChanged(JsonNode before,JsonNode after,Set<String> fields) {
@@ -153,6 +153,8 @@ public final class GoodsFieldEditPolicy {
         if(req.hasStatus()) com.uten.imp.common.domain.MasterStatuses.requireValid(req.getStatus());
     }
     public static void requirePriceIfTouched(Goods old, GoodsSaveRequest req, boolean priceVisible, boolean discountVisible) {
+        if(req.hasCurrencyId() && different(old==null || old.getCurrency()==null?null:old.getCurrency().getId(),req.getCurrencyId()))
+            CurrentAuthorityGuard.requireAll("goods:price:edit");
         if(req.hasPrice() && priceVisible && different(old==null?null:old.getPrice(),req.getPrice())) CurrentAuthorityGuard.requireAll("goods:price:edit");
         if(req.hasDiscount() && discountVisible && different(old==null?null:old.getDiscount(),req.getDiscount())) CurrentAuthorityGuard.requireAll("goods:price:edit","goods:discount:view");
     }

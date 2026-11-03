@@ -35,7 +35,7 @@ abstract final class GoodsFieldEditPolicy {
     if (salesFields.contains(key)) {
       return permissions.contains(Perm.goodsSalesEdit);
     }
-    if (key == 'price' || key == 'discount') {
+    if (key == 'price' || key == 'currencyId' || key == 'discount') {
       return permissions.contains(Perm.goodsPriceEdit);
     }
     if (key == 'status') return permissions.contains(Perm.goodsStatus);

@@ -690,7 +690,11 @@ class _FormDraftCategoryTableState<T>
             },
       onClearSelection: () {
         setState(_localSelected.clear);
-        table.onClearSelection?.call();
+        if (table.onClearSelection case final clear?) {
+          clear();
+        } else {
+          table.onSelectedIdsChanged?.call(<String>{});
+        }
       },
       selectionSummaryCount: table.selectionSummaryCount == null
           ? null

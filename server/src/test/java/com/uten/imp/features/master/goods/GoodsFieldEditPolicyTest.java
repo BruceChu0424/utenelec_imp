@@ -56,6 +56,24 @@ class GoodsFieldEditPolicyTest {
         request.setMinOrderQty(null); request.setCNumber("客户型号");
         assertThrows(ApiException.class, () -> GoodsFieldEditPolicy.requireChanged(current,request));
     }
+
+    @Test void currencySharesPriceEditForNewReferencesClearsAndHistoryReplay() throws Exception {
+        var currency = new com.uten.imp.features.master.currency.Currency();
+        current.setCurrency(currency);
+        request.setCurrencyId(null);
+        grant("goods:edit");
+        assertThrows(ApiException.class, () -> GoodsFieldEditPolicy.requireChanged(current,request));
+        grant("goods:price:view");
+        assertThrows(ApiException.class, () -> GoodsFieldEditPolicy.requireChanged(current,request));
+        grant("goods:price:edit");
+        assertDoesNotThrow(() -> GoodsFieldEditPolicy.requireChanged(current,request));
+        var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var before = json.readTree("{\"currency_id\":null}");
+        var after = json.createObjectNode().put("currency_id",currency.getId().toString());
+        assertEquals(java.util.Set.of("goods:price:edit"),GoodsFieldEditPolicy.snapshotPermissions(before,after,false,java.util.Set.of()));
+        assertTrue(GoodsFieldEditPolicy.snapshotClassifiedFields().contains("currency_id"));
+        assertThrows(ApiException.class, () -> { grant("goods:edit"); GoodsFieldEditPolicy.requireFields(java.util.List.of("currencyId")); });
+    }
     @Test void purchaseCanEditPolicyButCannotRenameGoodsOrCustomerModel() {
         grant("goods:purchase:edit");
         request.setMinOrderQty(BigDecimal.TEN);

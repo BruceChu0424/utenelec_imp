@@ -463,6 +463,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
           ModalRoute.of(context)?.isCurrent != true) {
         return;
       }
+      _clearColorSelection();
       await showMasterDetailSheet(
         context: context,
         title: detail.name?.isNotEmpty == true
@@ -510,6 +511,12 @@ class _ColorPageState extends ConsumerState<ColorPage>
     } finally {
       owner.closeRoute(loadingRoute);
       _releaseOwner(owner);
+    }
+  }
+
+  void _clearColorSelection() {
+    if (!_rowOpBusy && _selectedColorIds.isNotEmpty) {
+      setState(() => _selectedColorIds = {});
     }
   }
 
@@ -991,6 +998,7 @@ class _ColorPageState extends ConsumerState<ColorPage>
                             selectable: true,
                             idOf: (c) => c.id,
                             selectedIds: _selectedColorIds,
+                            onClearSelection: _clearColorSelection,
                             onSelectedIdsChanged: (s) =>
                                 setState(() => _selectedColorIds = s),
                             batchActionsBuilder: _colorFloatingActions,

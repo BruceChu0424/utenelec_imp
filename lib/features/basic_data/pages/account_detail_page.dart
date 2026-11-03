@@ -93,6 +93,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
       setState(() {
         _detail = null;
         _statement = null;
+        _selectedFlowRow = null;
         _currencies = const {};
         _styleOptions = const [];
         _styleLoadError = null;
@@ -126,6 +127,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
   String? _error;
 
   AccountStatementPage? _statement;
+  AccountStatementRow? _selectedFlowRow;
   final _flowRequests = LatestRequestGuard();
   bool _flowLoading = false;
   String? _flowError;
@@ -932,6 +934,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
   ];
 
   void _showFlowDetail(AccountStatementRow row) {
+    _clearFlowSelection();
     showMasterDetailSheet(
       context: context,
       title: row.billNo?.isNotEmpty == true ? row.billNo! : '流水详情',
@@ -949,6 +952,12 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
         MasterDetailRow('核销日期', _statementDateText(row.settledDate)),
       ],
     );
+  }
+
+  void _clearFlowSelection() {
+    if (_selectedFlowRow != null) {
+      setState(() => _selectedFlowRow = null);
+    }
   }
 
   String _flowSourceLabel(String? value) =>
@@ -1135,6 +1144,9 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
               }
             },
             onRowTap: _showFlowDetail,
+            isSelected: (row) => identical(row, _selectedFlowRow),
+            onSelectionChanged: (row) => setState(() => _selectedFlowRow = row),
+            onSelectionCleared: _clearFlowSelection,
             isLoading: _flowLoading && _statement == null,
             loadingMore: _flowLoading && _statement != null,
             error: _flowError,

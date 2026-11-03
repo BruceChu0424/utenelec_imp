@@ -6,6 +6,7 @@
 // 服务端计算和落库不经过二进制浮点，也不对金额做破坏聚合/约束的字段级随机加密。
 
 import 'master_facet.dart';
+import '../../../core/utils/currency_display.dart';
 import '../../../shared/stock_inventory/measurement_hold.dart';
 
 /// Where goods.name_en came from (ADR-134): typed by a person, or learned when
@@ -31,6 +32,10 @@ class GoodsListItem {
     this.spec,
     this.model,
     this.price,
+    this.currencyId,
+    this.currencyCode,
+    this.currencyName,
+    this.currencyIsBase,
     this.discount,
     this.priceDisplayText,
     this.discountDisplayText,
@@ -90,6 +95,19 @@ class GoodsListItem {
   final String? spec;
   final String? model;
   final double? price;
+  final String? currencyId;
+  final String? currencyCode;
+  final String? currencyName;
+  final bool? currencyIsBase;
+
+  /// Safe default for base-currency documents and BOM rows; [price] retains
+  /// its original currency for the goods master itself.
+  double? get baseCurrencyPrice => baseCurrencyPricePreview(
+    price: price,
+    currencyId: currencyId,
+    currencyIsBase: currencyIsBase,
+  );
+
   final double? discount; // 折扣倍率 1.0=原价 0.9=9折（复用老库 B_Goods.zk）
   final String? priceDisplayText;
   final String? discountDisplayText;
@@ -168,6 +186,10 @@ class GoodsListItem {
     spec: json['spec'] as String?,
     model: json['model'] as String?,
     price: (json['price'] as num?)?.toDouble(),
+    currencyId: json['currencyId'] as String?,
+    currencyCode: json['currencyCode'] as String?,
+    currencyName: json['currencyName'] as String?,
+    currencyIsBase: json['currencyIsBase'] as bool?,
     discount: (json['discount'] as num?)?.toDouble(),
     priceDisplayText: json['priceDisplayText'] as String?,
     discountDisplayText: json['discountDisplayText'] as String?,
@@ -312,6 +334,10 @@ class GoodsDetail {
     this.model,
     this.cNumber,
     this.price,
+    this.currencyId,
+    this.currencyCode,
+    this.currencyName,
+    this.currencyIsBase,
     this.discount,
     this.status,
     this.legacyId,
@@ -423,6 +449,10 @@ class GoodsDetail {
   final String? model;
   final String? cNumber;
   final double? price;
+  final String? currencyId;
+  final String? currencyCode;
+  final String? currencyName;
+  final bool? currencyIsBase;
   final double? discount; // 折扣倍率 1.0=原价 0.9=9折（复用老库 B_Goods.zk）
   final String? status;
   final int? legacyId;
@@ -582,6 +612,10 @@ class GoodsDetail {
     model: json['model'] as String?,
     cNumber: (json['cNumber'] ?? json['cnumber']) as String?,
     price: (json['price'] as num?)?.toDouble(),
+    currencyId: json['currencyId'] as String?,
+    currencyCode: json['currencyCode'] as String?,
+    currencyName: json['currencyName'] as String?,
+    currencyIsBase: json['currencyIsBase'] as bool?,
     discount: (json['discount'] as num?)?.toDouble(),
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),

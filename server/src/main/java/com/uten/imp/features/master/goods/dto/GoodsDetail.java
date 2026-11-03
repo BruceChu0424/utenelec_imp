@@ -165,6 +165,10 @@ public class GoodsDetail {
     private String cNumber;
 
     private String clientGoodsName;
+    private UUID currencyId;
+    private String currencyCode;
+    private String currencyName;
+    private Boolean currencyIsBase;
 
     @JsonProperty("cNumber")
     public String getCNumber() { return cNumber; }

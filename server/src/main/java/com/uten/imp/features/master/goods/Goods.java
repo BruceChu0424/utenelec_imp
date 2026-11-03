@@ -185,6 +185,10 @@ public class Goods extends SoftDeletableEntity {
     // ===== 价格 / 数量 =====
     @Column(precision = 18, scale = 4)
     private BigDecimal price;           // Price
+    /** Currency of the master selling price; null means historically unregistered. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "currency_id")
+    private com.uten.imp.features.master.currency.Currency currency;
     @Column(name = "a_price")
     private BigDecimal aPrice;          // APrice
     private BigDecimal price2;          // Price2

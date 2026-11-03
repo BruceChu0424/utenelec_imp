@@ -526,6 +526,11 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
                     r.place == _selectedPlace &&
                     r.warehouseId == _selectedPlaceWarehouseId,
                 onSelectionChanged: _onRowSelected,
+                onSelectionCleared: () => setState(() {
+                  _selectedPlace = null;
+                  _selectedPlaceWarehouseId = null;
+                  _placeFilterActive = false;
+                }),
                 toolbarActions: [
                   UtenButton(
                     size: UtenButtonSize.large,

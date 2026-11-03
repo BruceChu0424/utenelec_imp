@@ -108,6 +108,7 @@ class MasterFieldDef {
     this.readOnly = false,
     this.onAddNew,
     this.customBuilder,
+    this.readOnlyBuilder,
     this.legacyDraftKeys = const [],
     this.identifierDomain,
     this.identifierId,
@@ -158,6 +159,9 @@ class MasterFieldDef {
   /// [required] 仍参与 buildBody 非空校验。widget 经 [MasterFieldContext.onChanged] 回写提交值。
   /// 闭包不可 const，故含此字段的字段表须从 `static const` 改 `static` 或实例 getter。
   final Widget Function(MasterFieldContext ctx)? customBuilder;
+
+  /// Canonical read-only presentation for reference/custom fields.
+  final Widget Function(MasterFieldContext ctx)? readOnlyBuilder;
 }
 
 typedef MasterSubmit = Future<bool> Function(Map<String, dynamic> body);
@@ -727,6 +731,15 @@ class MasterEditFormState extends State<MasterEditForm> {
   /// 只读字段：禁用展示。文本类显控制器现值；下拉类显当前选项文案(此前锁定的
   /// 下拉字段会显成空)；新建时空值显 [MasterFieldDef.hint]。
   Widget _readOnlyField(MasterFieldDef f) {
+    if (f.readOnlyBuilder case final builder?) {
+      return builder(
+        MasterFieldContext(
+          initialValue: _controller.recoveredCustomInitialValue(f.key),
+          currentValue: _controller.customValues[f.key],
+          onChanged: (_) {},
+        ),
+      );
+    }
     final ctl = _controller.controllers[f.key];
     if (ctl != null) {
       return TextField(

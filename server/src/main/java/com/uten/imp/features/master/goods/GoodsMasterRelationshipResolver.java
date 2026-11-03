@@ -45,6 +45,17 @@ public class GoodsMasterRelationshipResolver {
     private final WarehouseMasterRules warehouseRules;
     private final com.uten.imp.features.org.department.DepartmentRepository departmentRepo;
     private final MasterReferenceValidationPort references;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.master.currency.CurrencyRepository currencyRepo;
+
+    /** Existing inactive currency references may be echoed; replacements must be live. */
+    public com.uten.imp.features.master.currency.Currency currency(UUID id,
+            com.uten.imp.features.master.currency.Currency existing) {
+        if (existing != null && existing.getId().equals(id)) return existing;
+        var target = currencyRepo.findById(requiredUuid(id)).orElseThrow(() -> notFound("币种不存在"));
+        requireActive(target.isDeleted(), target.getStatus(), "币种已删除或停用，不能新选");
+        return target;
+    }
 
     public Unit unit(UUID id) {
         Unit target = unitRepo.findById(requiredUuid(id))

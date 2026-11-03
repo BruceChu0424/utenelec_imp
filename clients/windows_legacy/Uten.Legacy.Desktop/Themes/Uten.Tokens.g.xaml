@@ -58,6 +58,32 @@
   <SolidColorBrush x:Key="Uten.Error" Color="#FFB91C1C"/>
   <SolidColorBrush x:Key="Uten.Caption.Minimize" Color="#FFF59E0B"/>
   <SolidColorBrush x:Key="Uten.Caption.Close" Color="#FFEF4444"/>
+  <SolidColorBrush x:Key="Uten.Currency.Cny" Color="#FF9B2015"/>
+  <SolidColorBrush x:Key="Uten.Currency.CnyOnDark" Color="#FFFDA29B"/>
+  <SolidColorBrush x:Key="Uten.Currency.Usd" Color="#FF174EA6"/>
+  <SolidColorBrush x:Key="Uten.Currency.UsdOnDark" Color="#FF9ABDFF"/>
+  <SolidColorBrush x:Key="Uten.Currency.Hkd" Color="#FF7A1FA2"/>
+  <SolidColorBrush x:Key="Uten.Currency.HkdOnDark" Color="#FFD6BBFB"/>
+  <SolidColorBrush x:Key="Uten.Currency.Eur" Color="#FF00673A"/>
+  <SolidColorBrush x:Key="Uten.Currency.EurOnDark" Color="#FF75E0A7"/>
+  <SolidColorBrush x:Key="Uten.Currency.Jpy" Color="#FF844900"/>
+  <SolidColorBrush x:Key="Uten.Currency.JpyOnDark" Color="#FFFEC84B"/>
+  <SolidColorBrush x:Key="Uten.Currency.Gbp" Color="#FF9D126B"/>
+  <SolidColorBrush x:Key="Uten.Currency.GbpOnDark" Color="#FFFAA7E0"/>
+  <SolidColorBrush x:Key="Uten.Currency.Sgd" Color="#FF006266"/>
+  <SolidColorBrush x:Key="Uten.Currency.SgdOnDark" Color="#FF5EEAD4"/>
+  <SolidColorBrush x:Key="Uten.Currency.Aud" Color="#FF075985"/>
+  <SolidColorBrush x:Key="Uten.Currency.AudOnDark" Color="#FF7DD3FC"/>
+  <SolidColorBrush x:Key="Uten.Currency.Cad" Color="#FF8A3414"/>
+  <SolidColorBrush x:Key="Uten.Currency.CadOnDark" Color="#FFFDBA74"/>
+  <SolidColorBrush x:Key="Uten.Currency.Krw" Color="#FF3730A3"/>
+  <SolidColorBrush x:Key="Uten.Currency.KrwOnDark" Color="#FFA5B4FC"/>
+  <SolidColorBrush x:Key="Uten.Currency.Rub" Color="#FF5C5130"/>
+  <SolidColorBrush x:Key="Uten.Currency.RubOnDark" Color="#FFD9D681"/>
+  <SolidColorBrush x:Key="Uten.Currency.Chf" Color="#FF9F2447"/>
+  <SolidColorBrush x:Key="Uten.Currency.ChfOnDark" Color="#FFFDA4AF"/>
+  <SolidColorBrush x:Key="Uten.Currency.Other" Color="#FF475467"/>
+  <SolidColorBrush x:Key="Uten.Currency.OtherOnDark" Color="#FFCBD5E1"/>
   <sys:Double x:Key="Uten.FontSize.Body">14</sys:Double>
   <sys:Double x:Key="Uten.FontSize.Value">14</sys:Double>
   <sys:Double x:Key="Uten.FontSize.Caption">13</sys:Double>

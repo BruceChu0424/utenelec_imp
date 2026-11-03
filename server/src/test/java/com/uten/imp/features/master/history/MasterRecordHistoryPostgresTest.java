@@ -1295,6 +1295,30 @@ class MasterRecordHistoryPostgresTest {
   }
 
   @Test
+  void sellingCurrencyHistorySharesPriceMaskAndRestoresTheReferenceWithoutCurrencyManagement() {
+    UUID item=goods("currency protected history"), currency=UUID.randomUUID();
+    inTx(()->{
+      em.createNativeQuery("INSERT INTO currencies(id,code,name,exchange_rate,status) VALUES(:id,:code,'Currency history master',1,'使用')")
+          .setParameter("id",currency).setParameter("code","CUR-"+currency).executeUpdate();
+      em.createNativeQuery("UPDATE goods SET currency_id=:currency WHERE id=:id")
+          .setParameter("currency",currency).setParameter("id",item).executeUpdate(); return null;
+    });
+    var revision=service.list("goods",item,null,null).entries().getFirst();
+    login(Set.of("goods:view"),false);
+    assertThrows(ApiException.class,()->service.detail("goods",historyNumber(revision.id())));
+    login(Set.of("goods:view","goods:price:view"),false);
+    var readable=service.detail("goods",historyNumber(revision.id()));
+    assertTrue(readable.changes().stream().anyMatch(c->c.field().equals("currency_id")&&c.afterValue().contains("Currency history master")));
+    assertFalse(readable.canRestoreBefore());
+    login(Set.of("goods:view","goods:edit","goods:price:view","goods:price:edit"),false);
+    var editable=service.detail("goods",historyNumber(revision.id()));
+    assertTrue(editable.canRestoreBefore(),editable.blockedReason());
+    inTx(()->{ service.restore("goods",historyNumber(revision.id()),editable.expectedHead(),true); return null; });
+    assertNull(value("SELECT currency_id::text FROM goods WHERE id=:id",item));
+    assertThrows(ApiException.class,()->service.list("currencies",null,null,null));
+  }
+
+  @Test
   void mixedPublicAndPrivateHistoryShowsOnlyPublicFieldsAndCannotRestoreHiddenValues() {
     UUID item=goods("mixed private history");
     inTx(()->{ em.createNativeQuery("UPDATE goods SET price=99,name='public renamed' WHERE id=:id").setParameter("id",item).executeUpdate(); return null; });

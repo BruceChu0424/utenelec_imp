@@ -31,6 +31,14 @@ class DesignTokenTests(unittest.TestCase):
             self.assertNotIn("Uten.Height." + role + expected, values)
         self.assertIn("not a table row", values["Uten.Height.Cell"]["note"])
 
+    def test_currency_roles_follow_dart_owner_without_native_palette(self):
+        values = self.values()
+        for role in ("Cny", "Usd", "Hkd", "Eur", "Jpy", "Gbp", "Sgd", "Aud", "Cad", "Krw", "Rub", "Chf", "Other"):
+            for suffix in ("", "OnDark"):
+                entry = values["Uten.Currency." + role + suffix]
+                self.assertEqual(entry["sourceRole"], "UtenColors.currency" + role + suffix)
+                self.assertEqual(entry["type"], "SolidColorBrush")
+
     def test_private_caption_owner_is_supported_without_public_file(self):
         texts = self.texts()
         texts.pop(sync.PUBLIC_WINDOW_CONTROLS, None)

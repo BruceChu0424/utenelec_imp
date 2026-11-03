@@ -16,12 +16,23 @@ using Uten.Legacy.Core;
 using Uten.Legacy.Desktop;
 using Uten.Legacy.Desktop.Controls;
 using Uten.Legacy.Desktop.Features.Units;
+using Uten.Legacy.Desktop.Features.Goods;
 using Uten.Legacy.Core.Tests;
 
 namespace Uten.Legacy.Tests
 {
     internal static class UiContractChecks
     {
+        internal static void RunGoodsCurrency()
+        {
+            if (Application.Current == null)
+            {
+                var application = new App(); application.InitializeComponent();
+                application.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            }
+            GoodsCurrencyUi(new ClientConfiguration(new[] {
+                new ServerEndpoint("first", "第一测试服务器", "https://first.company.test/api") }, "first"));
+        }
         internal static void Run()
         {
             var application = new App();
@@ -116,6 +127,90 @@ namespace Uten.Legacy.Tests
             }
             UnitDraftAndMutationUi(configuration);
             OwnerCloseWaitsForDraft(configuration);
+            GoodsCurrencyUi(configuration);
+        }
+
+        private static void GoodsCurrencyUi(ClientConfiguration configuration)
+        {
+            foreach (var permission in new[] { "", "goods:price:view", "goods:price:edit" })
+            using (var session = new SessionCoordinator(configuration, new GoodsCurrencyUiHandler(permission), new MemoryStore()))
+            {
+                session.LoginAsync("fixture", "fixture-password", CancellationToken.None).GetAwaiter().GetResult();
+                var view = new GoodsWorkspaceView(session);
+                var window = new Window { Content = view, Width = 1400, Height = 850, Opacity = 0, ShowActivated = false, ShowInTaskbar = false };
+                try
+                {
+                    window.Show();
+                    var table = FindVisual<DataGrid>(view, item => true);
+                    PumpUntil(() => table.Items.Count == 20 && table.IsEnabled, "Goods must load its complete server page through the native caller.");
+                    int price = table.Columns.ToList().FindIndex(column => Equals(column.Header, "售价"));
+                    int currency = table.Columns.ToList().FindIndex(column => Equals(column.Header, "币种"));
+                    if (permission.Length == 0)
+                    {
+                        if (price >= 0 || currency >= 0) throw new InvalidOperationException("Goods currency must share the price visibility permission.");
+                        table.SelectedItem = table.Items[0];
+                        PumpUntil(() => FindVisual<TextBlock>(view, item => item.Text == "编码：HP0") != null,
+                            "Goods detail must finish loading for a price-hidden account.");
+                        if (FindVisual<TextBlock>(view, item => item.Text.StartsWith("币种：", StringComparison.Ordinal)
+                            || item.Text.StartsWith("售价：", StringComparison.Ordinal)) != null)
+                            throw new InvalidOperationException("Price-hidden goods detail must not leak currency or price.");
+                        continue;
+                    }
+                    if (price < 0 || currency != price + 1) throw new InvalidOperationException("Currency must appear immediately after price for price viewers and editors.");
+                    table.SelectedItem = table.Items[0];
+                    PumpUntil(() => FindVisual<TextBlock>(view, item => item.Text == "币种：人民币") != null,
+                        "Native goods detail must show its saved master currency.");
+                    var currencyText = FindVisual<TextBlock>(view, item => item.Text == "币种：人民币");
+                    var expected = (SolidColorBrush)Application.Current.FindResource("Uten.Currency.Cny");
+                    if (!(currencyText.Foreground is SolidColorBrush shown) || shown.Color != expected.Color)
+                        throw new InvalidOperationException("Native goods detail currency must consume the generated Dart-owned color.");
+                    // Repeated real selection interrupts prior detail requests. Only the last
+                    // row's complete detail may publish, and leaving clears transient intent.
+                    for (int iteration = 0; iteration < 60; iteration++) table.SelectedItem = table.Items[iteration % 20];
+                    table.SelectedItem = table.Items[1];
+                    PumpUntil(() => FindVisual<TextBlock>(view, item => item.Text == "币种：美金") != null,
+                        "Rapid native goods selection must publish the final row's currency.");
+                    if (permission == "goods:price:view")
+                    {
+                        window.Content = null; Pump(window);
+                        if (table.SelectedItems.Count != 0 || table.CurrentCell.IsValid)
+                            throw new InvalidOperationException("Leaving goods must clear both row and current-cell selection.");
+                        window.Content = view;
+                        PumpUntil(() => table.Items.Count == 20 && table.IsEnabled, "Returning to goods must reload after retiring prior reads.");
+                        if (table.SelectedItems.Count != 0) throw new InvalidOperationException("Returning to goods must not restore the old selected row.");
+                        LayoutElement(view, 1400, 800); Snapshot(view, "goods-currency-workspace-fixture.png");
+                    }
+                }
+                finally { window.Close(); }
+            }
+        }
+
+        private sealed class GoodsCurrencyUiHandler : HttpMessageHandler
+        {
+            private readonly string pricePermission;
+            internal GoodsCurrencyUiHandler(string pricePermission) { this.pricePermission = pricePermission; }
+            private string Record(int index)
+            {
+                string name = index % 3 == 0 ? "人民币" : index % 3 == 1 ? "美金" : "港币";
+                return "{\"id\":\"00000000-0000-0000-0000-" + (index + 1).ToString("D12") + "\",\"code\":\"HP" + index
+                    + "\",\"name\":\"币种读取样例 " + index + "\",\"price\":12.3400,\"currencyCode\":\"00" + (index % 3 + 1)
+                    + "\",\"currencyName\":\"" + name + "\",\"unitName\":\"个\"}";
+            }
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                string path = request.RequestUri.AbsolutePath, body;
+                if (path.EndsWith("/auth/login") || path.EndsWith("/auth/refresh"))
+                    body = "{\"accessToken\":\"access.fixture\",\"refreshToken\":\"refresh.fixture\",\"expiresIn\":900,\"user\":{\"id\":\"fixture-goods-user\","
+                        + "\"loginAccount\":\"fixture\",\"superAdmin\":false,\"mustChangePassword\":false,\"permissions\":[\"goods:view\""
+                        + (pricePermission.Length == 0 ? "" : ",\"" + pricePermission + "\"") + "],\"businessResetGeneration\":0,"
+                        + "\"businessDatasetId\":\"00000000-0000-0000-0000-000000000001\"}}";
+                else if (path == "/api/master/goods") body = "{\"items\":[" + string.Join(",", Enumerable.Range(0, 20).Select(Record))
+                    + "],\"page\":1,\"size\":20,\"total\":9704,\"totalPages\":486}";
+                else if (path.StartsWith("/api/master/goods/", StringComparison.Ordinal))
+                    body = Record(int.Parse(path.Substring(path.Length - 12), System.Globalization.CultureInfo.InvariantCulture) - 1);
+                else throw new InvalidOperationException("Unexpected private goods currency UI fixture request.");
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
+            }
         }
 
         private static void OwnerCloseWaitsForDraft(ClientConfiguration configuration)
@@ -306,6 +401,29 @@ namespace Uten.Legacy.Tests
                             throw new InvalidOperationException("Unit daily table must keep its three owning columns and server ordering.");
                         if (!(table.ItemContainerGenerator.ContainerFromIndex(0) is DataGridRow row) || row.ActualHeight < 30)
                             throw new InvalidOperationException("Native body cells must actually apply owning 12x8 padding, not collapse to a bare text line.");
+                        table.SelectedItem = table.Items[0];
+                        var closeDetail = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(10) };
+                        bool sawDetail = false, detailClearedSelection = false;
+                        Console.WriteLine("CHECK native unit detail selection");
+                        closeDetail.Tick += (sender, args) =>
+                        {
+                            var detailWindow = Application.Current.Windows.OfType<UnitDetailWindow>().FirstOrDefault();
+                            if (detailWindow == null) return;
+                            sawDetail = true;
+                            detailClearedSelection = table.SelectedItems.Count == 0;
+                            detailWindow.Close();
+                        };
+                        closeDetail.Start();
+                        try
+                        {
+                            var open = (Task)typeof(UnitsWorkspaceView).GetMethod("OpenDetailAsync", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(view, null);
+                            PumpUntil(() => open.IsCompleted, "Unit detail must open and return through its actual native caller.");
+                            open.GetAwaiter().GetResult();
+                        }
+                        finally { closeDetail.Stop(); }
+                        if (!sawDetail || !detailClearedSelection || table.SelectedItems.Count != 0)
+                            throw new InvalidOperationException("Returning from unit detail must leave no remembered row selection.");
+                        Console.WriteLine("PASS native unit detail selection");
                         var queryInput = FindVisual<TextBox>(view, item => System.Windows.Automation.AutomationProperties.GetName(item) == "按单位编号或名称搜索");
                         queryInput.Text = "续期保留筛选";
                         handler.RefreshOnce = true;
@@ -397,6 +515,8 @@ namespace Uten.Legacy.Tests
                 }
                 else if (path == "/api/master/units" && request.Method == HttpMethod.Get)
                     body = "{\"items\":[{\"id\":\"ffda6731-4bce-4fa1-a5a5-2acf55fd6d01\",\"code\":\"U001\",\"name\":\"确认保存单位\",\"status\":\"使用\"}],\"page\":1,\"size\":20,\"total\":1,\"totalPages\":1,\"readScopeVersion\":\"" + Proof + "\"}";
+                else if (path == "/api/master/units/ffda6731-4bce-4fa1-a5a5-2acf55fd6d01" && request.Method == HttpMethod.Get)
+                    body = "{\"id\":\"ffda6731-4bce-4fa1-a5a5-2acf55fd6d01\",\"code\":\"U001\",\"name\":\"确认保存单位\",\"status\":\"使用\"}";
                 else if (path == "/api/master/units/facets" && FailFacets)
                     return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
                     { Content = new StringContent("{\"code\":\"SERVICE_UNAVAILABLE\",\"message\":\"fixture facets offline\"}", Encoding.UTF8, "application/json") };

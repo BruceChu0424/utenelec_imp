@@ -14,5 +14,7 @@ public final class SalesClientTermsAccess {
     public static final String READ = "hasAuthority('sales_order:view') or " + FORM;
     private static final String BUSINESS_TERMS = " or @businessMasterReferenceAccess.canRead('terms')";
     public static final String SETTLEMENT_OPTIONS = "hasAnyAuthority('payment_style:view','client:finance') or " + FORM + BUSINESS_TERMS;
-    public static final String CURRENCY_OPTIONS = "hasAnyAuthority('currency:view','client:finance') or " + FORM + BUSINESS_TERMS;
+    // Selling-price maintainers need the same currency choices without gaining
+    // currency list/detail/create/edit/delete management capabilities.
+    public static final String CURRENCY_OPTIONS = "hasAnyAuthority('currency:view','client:finance','goods:price:edit') or " + FORM + BUSINESS_TERMS;
 }

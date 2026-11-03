@@ -109,6 +109,7 @@ Future<void> _openAddDialog(
   WidgetTester tester,
   _RecordingBomRepo repo, {
   bool pick = true,
+  List<GoodsListItem> picked = _picked,
   Size size = const Size(1600, 900),
   double textScale = 1,
 }) async {
@@ -135,7 +136,7 @@ Future<void> _openAddDialog(
         ),
         goodsBomRepositoryProvider.overrideWithValue(repo),
         bomComponentPickerProvider.overrideWithValue(
-          (context, ref) async => _picked,
+          (context, ref) async => picked,
         ),
         currentPermissionsProvider.overrideWithValue({
           Perm.goodsView,
@@ -179,6 +180,42 @@ Future<void> _openAddDialog(
 }
 
 void main() {
+  testWidgets(
+    'adding components never sends an explicit foreign master price as a BOM base price',
+    (tester) async {
+      final repo = _RecordingBomRepo(rejectFirst: false);
+      await _openAddDialog(
+        tester,
+        repo,
+        picked: const [
+          GoodsListItem(
+            id: 'goods-x',
+            code: 'K01',
+            name: '外壳',
+            price: 3,
+            currencyId: 'usd',
+            currencyIsBase: false,
+          ),
+          GoodsListItem(
+            id: 'goods-y',
+            code: 'S01',
+            name: '螺丝',
+            price: .2,
+            currencyId: 'cny',
+            currencyIsBase: true,
+          ),
+        ],
+      );
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+      await saveBomEdit(tester);
+      expect(repo.pasteCalls.single.items.map((item) => item['price']), [
+        null,
+        .2,
+      ]);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('add component window ends immediately below the save actions', (
     tester,
   ) async {

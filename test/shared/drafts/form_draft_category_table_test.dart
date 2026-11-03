@@ -31,6 +31,7 @@ class _Drafts extends FormDraftsNotifier {
   _Drafts(this.initial);
   final List<FormDraft> initial;
   final deleted = <String>[];
+  List<FormDraft> get current => state;
   @override
   List<FormDraft> build() => initial;
   @override
@@ -74,6 +75,65 @@ typedef _Union = FormDraftCategoryRow<_Record>;
 const _scope = FormDraftCategoryScope(kind: 'salesOrder');
 
 void main() {
+  testWidgets(
+    'clear forwards both local and formal selections without a custom owner clear',
+    (tester) async {
+      Set<String> formalSelected = {'server'};
+      final drafts = _Drafts([_draft('local')]);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiClientProvider.overrideWithValue(_ReferenceApi()),
+            formDraftsProvider.overrideWith(() => drafts),
+          ],
+          child: MaterialApp(
+            home: Scaffold(
+              body: StatefulBuilder(
+                builder: (_, setState) => FormDraftCategoryTable<_Record>(
+                  scope: _scope,
+                  table: MasterDataTableView<_Record>(
+                    columns: [
+                      MasterColumnDef(
+                        key: 'billNo',
+                        label: '单号',
+                        width: 200,
+                        value: (row) => row.number,
+                      ),
+                    ],
+                    items: const [_Record('server', 'XD-1')],
+                    facets: const {},
+                    nullCounts: const {},
+                    filters: const {},
+                    onFilterChanged: (_, _) {},
+                    selectable: true,
+                    idOf: (row) => row.id,
+                    selectedIds: formalSelected,
+                    onSelectedIdsChanged: (next) =>
+                        setState(() => formalSelected = next),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      MasterDataTableView<_Union> table() =>
+          tester.widget(find.byType(MasterDataTableView<_Union>));
+      table().onSelectedIdsChanged!({'server', 'form-draft:local'});
+      await tester.pumpAndSettle();
+      expect(table().selectedIds.length, 2);
+      table().onClearSelection!();
+      await tester.pumpAndSettle();
+      expect(formalSelected, isEmpty);
+      expect(table().selectedIds, isEmpty);
+      expect(drafts.deleted, isEmpty);
+      final text = drafts.current.single.data['text'] as Map<String, dynamic>;
+      expect(text['remark'], '半途保存');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'wrapper retains complete header contracts without invoking formal model accessors for a local draft',
     (tester) async {

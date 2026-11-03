@@ -284,6 +284,29 @@ Future<void> _submit(WidgetTester tester) async {
 
 void main() {
   testWidgets(
+    'shared BOM preview never sends a foreign master price as a base price',
+    (tester) async {
+      final repository = _Repository();
+      await _open(
+        tester,
+        repository,
+        picked: const [
+          GoodsListItem(
+            id: 'foreign-part',
+            name: '外币组件',
+            price: 19,
+            currencyId: 'usd',
+            currencyIsBase: false,
+          ),
+        ],
+      );
+      await _pick(tester);
+      await _submit(tester);
+      expect(repository.previews.single.items.single['price'], isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'REMOVE supports 500 top-level cleanup identities and rejects 501 before preview',
     (tester) async {
       final repository = _Repository();

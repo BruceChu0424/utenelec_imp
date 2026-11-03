@@ -455,6 +455,7 @@ class _UnitPageState extends ConsumerState<UnitPage>
           ModalRoute.of(context)?.isCurrent != true) {
         return;
       }
+      _clearUnitSelection();
       await showMasterDetailSheet(
         context: context,
         title: detail.name?.isNotEmpty == true
@@ -502,6 +503,12 @@ class _UnitPageState extends ConsumerState<UnitPage>
     } finally {
       owner.closeRoute(loadingRoute);
       _releaseOwner(owner);
+    }
+  }
+
+  void _clearUnitSelection() {
+    if (!_rowOpBusy && _selectedUnitIds.isNotEmpty) {
+      setState(() => _selectedUnitIds = {});
     }
   }
 
@@ -923,6 +930,7 @@ class _UnitPageState extends ConsumerState<UnitPage>
                             selectable: true,
                             idOf: (unit) => unit.id,
                             selectedIds: _selectedUnitIds,
+                            onClearSelection: _clearUnitSelection,
                             onSelectedIdsChanged: (ids) {
                               if (!_rowOpBusy) {
                                 setState(() => _selectedUnitIds = ids);

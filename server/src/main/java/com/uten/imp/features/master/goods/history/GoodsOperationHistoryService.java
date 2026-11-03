@@ -391,7 +391,7 @@ public class GoodsOperationHistoryService {
             if("BOM_PASTE".equals(op.type())&&row.before()!=null&&row.after()!=null&&row.after().path("is_deleted").asBoolean())needed.add("goods:bom:delete");
             if("GOODS_CREATE".equals(op.type())&&"goods".equals(row.table())&&row.after()!=null) {
                 if(row.after().hasNonNull("status")&&!"使用".equals(row.after().path("status").asText()))needed.add("goods:status");
-                if(row.after().hasNonNull("price")||row.after().hasNonNull("zk"))needed.add("goods:price:edit");
+                if(row.after().hasNonNull("price")||row.after().hasNonNull("zk")||row.after().hasNonNull("currency_id"))needed.add("goods:price:edit");
                 if(GOODS_COSTS.stream().anyMatch(row.after()::hasNonNull))needed.add("goods:cost:view");
             }
         }
@@ -472,6 +472,7 @@ public class GoodsOperationHistoryService {
                     addReference(references,"colors",optionalUuid(target,"color_id"));
                     for(String field:List.of("unit_id","thickness_unit_id","m_weight_unit_id"))addReference(references,"units",optionalUuid(target,field));
                     addReference(references,"moulds",optionalUuid(target,"mould_id"));
+                    addReference(references,"currencies",optionalUuid(target,"currency_id"));
                     addReference(references,"clients",optionalUuid(target,"client_id"));
                     for(String field:List.of("default_supplier_id","secondary_supplier_id"))addReference(references,"suppliers",optionalUuid(target,field));
                     addReference(references,"warehouses",optionalUuid(target,"owning_warehouse_id"));
@@ -481,7 +482,7 @@ public class GoodsOperationHistoryService {
                     for(String field:List.of("default_purchase_price_unit_id","default_subcontract_price_unit_id"))addReference(references,"units",optionalUuid(target,field));
                     for(var fields:Map.of("colors",List.of("color_id"),"units",List.of("unit_id","thickness_unit_id","m_weight_unit_id"),
                             "moulds",List.of("mould_id"),"clients",List.of("client_id"),"suppliers",List.of("default_supplier_id","secondary_supplier_id"),
-                            "warehouses",List.of("owning_warehouse_id")).entrySet())for(String field:fields.getValue())
+                            "warehouses",List.of("owning_warehouse_id"),"currencies",List.of("currency_id")).entrySet())for(String field:fields.getValue())
                         if(newReference(row,target,field))addReference(newReferences,fields.getKey(),optionalUuid(target,field));
                 }
                 case "material_categories"->addReference(references,"material_categories",optionalUuid(target,"parent_id"));

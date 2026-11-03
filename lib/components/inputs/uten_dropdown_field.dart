@@ -50,6 +50,7 @@ class UtenDropdownItem {
     this.visible = true,
     this.error = false,
     this.tooltip,
+    this.foregroundColor,
   });
   final String? value;
   final String label;
@@ -60,6 +61,9 @@ class UtenDropdownItem {
   /// Optional full context for a shorter visible label, such as an exact work
   /// order and receiving limit. Omitting it keeps the original label tooltip.
   final String? tooltip;
+
+  /// Optional category color, shared by the selected label and menu choice.
+  final Color? foregroundColor;
 
   /// A historical value can retain its label without appearing in new choices.
   final bool visible;
@@ -336,6 +340,11 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
 
   String get _selectedDisplay =>
       widget.value == null ? '' : widget.selectedLabel ?? _display;
+
+  Color? get _selectedForeground => widget.items
+      .where((item) => item.value == widget.value)
+      .firstOrNull
+      ?.foregroundColor;
 
   String get _menuSearchHint {
     final label = utenFieldPlaceholder(label: widget.label);
@@ -758,7 +767,8 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                               : theme.textTheme.bodyLarge)
                           ?.copyWith(
                             color: hasValue
-                                ? theme.colorScheme.onSurface
+                                ? _selectedForeground ??
+                                      theme.colorScheme.onSurface
                                 : theme.colorScheme.onSurfaceVariant,
                           ),
                 )
@@ -811,7 +821,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                           ? theme.colorScheme.onSurfaceVariant
                           : autofillHint
                           ? UtenColors.warning
-                          : null,
+                          : _selectedForeground,
                     ),
                   ),
                 ),
@@ -1236,6 +1246,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                             )),
                             label: it.label,
                             tooltip: it.tooltip,
+                            foregroundColor: it.foregroundColor,
                             selected: it.value == widget.value,
                             onTap: it.enabled ? () => select(it.value) : null,
                             theme: theme,
@@ -1309,6 +1320,7 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
     double indent = 0,
     bool error = false,
     String? tooltip,
+    Color? foregroundColor,
   }) {
     final disabled = onTap == null;
     final item = InkWell(
@@ -1350,7 +1362,9 @@ class _UtenDropdownFieldState extends State<UtenDropdownField>
                         fontWeight: FontWeight.w600,
                         color: theme.colorScheme.onSurfaceVariant,
                       )
-                    : theme.textTheme.bodyMedium,
+                    : theme.textTheme.bodyMedium?.copyWith(
+                        color: foregroundColor,
+                      ),
               ),
             ),
           ],

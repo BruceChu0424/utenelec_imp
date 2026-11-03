@@ -498,6 +498,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
           ModalRoute.of(context)?.isCurrent != true) {
         return;
       }
+      _clearCurrencySelection();
       await showMasterDetailSheet(
         context: context,
         title: detail.name?.isNotEmpty == true
@@ -545,6 +546,12 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
     } finally {
       owner.closeRoute(loadingRoute);
       _releaseOwner(owner);
+    }
+  }
+
+  void _clearCurrencySelection() {
+    if (!_rowOpBusy && _selectedCurrencyIds.isNotEmpty) {
+      setState(() => _selectedCurrencyIds = {});
     }
   }
 
@@ -1026,6 +1033,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
                             idOf: (currency) =>
                                 currency.baseCurrency ? null : currency.id,
                             selectedIds: _selectedCurrencyIds,
+                            onClearSelection: _clearCurrencySelection,
                             onSelectedIdsChanged: (ids) {
                               if (!_rowOpBusy) {
                                 setState(() => _selectedCurrencyIds = ids);

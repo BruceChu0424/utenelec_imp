@@ -168,7 +168,7 @@ public class MasterRecordHistoryService {
           "balance_adjustments_total",
           "balance_current",
           "balance_floor");
-  private static final Set<String> GOODS_PRICES = Set.of("price", "zk");
+  private static final Set<String> GOODS_PRICES = Set.of("price", "zk", "currency_id");
   private static final Set<String> GOODS_COSTS = com.uten.imp.features.master.goods.GoodsFieldEditPolicy.COST_SNAPSHOT_FIELDS;
   private static final Set<String> GOODS_EDITABLE =
       Set.of(
@@ -187,6 +187,7 @@ public class MasterRecordHistoryService {
           "stock_place",
           "c_number",
           "price",
+          "currency_id",
           "zk",
           "material",
           "thickness",
@@ -1411,10 +1412,7 @@ public class MasterRecordHistoryService {
         if (fact.table().equals("party_addresses") || fact.table().equals("client_ship_addresses"))
           fieldLabel = "地址 · " + fieldLabel;
         String reference = referenceTable(fact.entity(), key);
-        boolean ownAccountReference =
-            fact.entity().equals("accounts")
-                && Set.of("currencies", "payment_styles")
-                    .contains(reference == null ? "" : reference);
+        boolean ownAccountReference = contextReferenceVisible(user,fact,key,reference);
         changes.add(
             new Change(
                 fact.table(),
@@ -1751,8 +1749,7 @@ public class MasterRecordHistoryService {
       for (String key : keys) {
         String table = referenceTable(fact.entity(), key);
         if (table == null) continue;
-        boolean ownAccount = fact.entity().equals("accounts")
-            && Set.of("currencies", "payment_styles").contains(table);
+        boolean ownAccount = contextReferenceVisible(user,fact,key,table);
         requestReference(requests, table, fact.before() == null ? null : fact.before().get(key), ownAccount);
         requestReference(requests, table, fact.after() == null ? null : fact.after().get(key), ownAccount);
       }
@@ -1810,6 +1807,13 @@ public class MasterRecordHistoryService {
     if (value == null || value.isNull()) return;
     try { requests.add(new ReferenceRequest(table, UUID.fromString(value.asText()), ownAccount)); }
     catch (IllegalArgumentException invalid) { /* The display path preserves the original unresolved-identity message. */ }
+  }
+
+  /** A visible business value may name its own reference without exposing that directory. */
+  private static boolean contextReferenceVisible(AuthUser user,Fact fact,String key,String table) {
+    return fact.entity().equals("accounts") && Set.of("currencies","payment_styles").contains(table == null ? "" : table)
+        || fact.entity().equals("goods") && fact.table().equals("goods") && key.equals("currency_id")
+            && "currencies".equals(table) && has(user,"goods:price:view");
   }
 
   private static String referenceKey(String table, String id, boolean ownAccount) {

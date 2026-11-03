@@ -55,6 +55,21 @@ class GoodsMasterRelationshipResolverTest {
         verify(unitRepo, never()).findByLegacyId(anyInt());
     }
 
+    @Test void currencyUsesUuidAndPreservesInactiveExistingReferenceButRejectsNewSelection() {
+        var currencies = mock(com.uten.imp.features.master.currency.CurrencyRepository.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(resolver,"currencyRepo",currencies);
+        var value = new com.uten.imp.features.master.currency.Currency();
+        value.setName("港币"); value.setStatus("禁用");
+        when(currencies.findById(value.getId())).thenReturn(Optional.of(value));
+        assertSame(value, resolver.currency(value.getId(),value));
+        verifyNoInteractions(currencies);
+        assertThrows(ApiException.class, () -> resolver.currency(value.getId(),null));
+        value.setStatus("使用");
+        assertSame(value, resolver.currency(value.getId(),null));
+        value.setDeleted(true);
+        assertThrows(ApiException.class, () -> resolver.currency(value.getId(),null));
+    }
+
     @Test
     void legacyOnlyRelationshipIsRejectedWithoutLookup() {
         ApiException error = assertThrows(ApiException.class,

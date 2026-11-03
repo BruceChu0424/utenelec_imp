@@ -296,6 +296,50 @@ void main() {
     },
   );
 
+  testWidgets('账户流水业务详情返回清高亮，保留流水原金额和查询结果', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const row = AccountStatementRow(
+      entryId: 'entry-1',
+      billNo: 'FLOW-001',
+      summary: '原始流水',
+      inAmountText: '123456789012345.6789',
+      balanceText: '987654321.1234',
+    );
+    final repository = _AccountRepositoryFake()..statementRows = [row];
+    await _pumpDetail(tester, repository, {
+      Perm.accountView,
+      Perm.accountBalanceView,
+      Perm.accountFlowView,
+    });
+    MasterDataTableView<AccountStatementRow> table() =>
+        tester.widget(find.byType(MasterDataTableView<AccountStatementRow>));
+    final state = tester.state(
+      find.byType(MasterDataTableView<AccountStatementRow>),
+    );
+    table().onSelectionChanged!(row);
+    await tester.pump();
+    expect(table().isSelected!(row), isTrue);
+    table().onRowTap!(row);
+    await tester.pumpAndSettle();
+    expect(find.text('滚动余额'), findsOneWidget);
+    expect(table().isSelected!(row), isFalse);
+    Navigator.of(
+      tester.element(find.byType(AccountDetailPage)),
+      rootNavigator: true,
+    ).pop();
+    await tester.pumpAndSettle();
+    expect(table().isSelected!(row), isFalse);
+    expect(table().items.single, same(row));
+    expect(table().items.single.inAmountText, '123456789012345.6789');
+    expect(
+      tester.state(find.byType(MasterDataTableView<AccountStatementRow>)),
+      same(state),
+    );
+    expect(repository.statementCalls, 1);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('edit lazily loads references and uses PUT response in place', (
     tester,
   ) async {
@@ -468,6 +512,7 @@ Future<void> _pumpDetail(
 }
 
 class _AccountRepositoryFake implements AccountRepository {
+  List<AccountStatementRow> statementRows = const [];
   final statementColumnQueries = <Map<String, String?>>[];
   final statementPages = <int>[];
   _AccountRepositoryFake({this.styleDeleted = false});
@@ -540,7 +585,7 @@ class _AccountRepositoryFake implements AccountRepository {
     statementPages.add(page);
     if (pendingStatement case final pending?) return pending.future;
     return AccountStatementPage(
-      rows: const [],
+      rows: statementRows,
       page: page,
       size: size,
       total: 0,

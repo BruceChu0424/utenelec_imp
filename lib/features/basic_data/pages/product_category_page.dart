@@ -29,6 +29,8 @@ import '../../../core/theme/uten_colors.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/ui/action_feedback.dart';
+import '../../../core/utils/currency_display.dart';
+import '../../../shared/widgets/currency_text.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/models/paged_result.dart';
@@ -54,6 +56,7 @@ import '../widgets/goods_related_search_control.dart';
 import '../widgets/goods_operation_history_panel.dart';
 import '../widgets/master_record_history_panel.dart';
 import '../widgets/goods_inline_edit.dart';
+import '../widgets/goods_currency_field.dart';
 import '../widgets/master_inline_edit.dart';
 import '../widgets/master_inline_create_fields.dart';
 import '../widgets/master_edit_dialog.dart';
@@ -554,7 +557,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     return [
       for (final c in _goodsColumns)
         if ((c.key != 'discount' || canViewDiscount) &&
-            (c.key != 'price' || canViewPrice)) ...[
+            (!{'price', 'currencyId'}.contains(c.key) || canViewPrice)) ...[
           c,
           // Keep the goods and customer names together before other metadata.
           if (c.key == 'clientGoodsName') nameEnColumn,
@@ -644,6 +647,17 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
                 key: 'price',
                 label: '价格',
                 type: MasterFieldType.money,
+              ),
+            if (_canEditPrice)
+              MasterFieldDef(
+                key: 'currencyId',
+                label: '币种',
+                type: MasterFieldType.custom,
+                customBuilder: (field) => GoodsCurrencyField(
+                  value: field.initialValue,
+                  onChanged: field.onChanged,
+                  dense: true,
+                ),
               ),
             if (_canStatusMaster)
               const MasterFieldDef(
@@ -996,6 +1010,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
     }
     if (!copyMode || _canEditPrice) {
       body['price'] = d.price;
+      if (_canEditPrice) body['currencyId'] = d.currencyId;
       body['discount'] = d.discount;
     }
     return normalizeGoodsUuidFirstBody(body);
@@ -1746,6 +1761,20 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       info: '按本列显示的两位价格检索，可输入精确值、比较或范围。',
       exactValueOf: (g) => g.priceDisplayText ?? g.price?.toStringAsFixed(2),
       value: (g) => g.priceDisplayText ?? g.price?.toStringAsFixed(2),
+    ),
+    MasterColumnDef(
+      key: 'currencyId',
+      label: '币种',
+      width: 100,
+      columnSearchEnabled: false,
+      value: (g) =>
+          financeCurrencyDisplayLabel(
+            name: g.currencyName,
+            code: g.currencyCode,
+          ) ??
+          '未登记',
+      cellBuilder: (context, g) =>
+          CurrencyText(name: g.currencyName, code: g.currencyCode),
     ),
     MasterColumnDef(
       key: 'discount',

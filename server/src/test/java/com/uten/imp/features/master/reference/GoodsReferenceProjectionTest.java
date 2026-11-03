@@ -27,6 +27,11 @@ class GoodsReferenceProjectionTest {
             var item = mock(GoodsListItem.class);
             // The owning service masks price and discount independently before projection.
             when(item.getPrice()).thenReturn(fixture.path("priceVisible").asBoolean() ? source.path("price").decimalValue() : null);
+            if (fixture.path("priceVisible").asBoolean()) {
+                when(item.getCurrencyId()).thenReturn(java.util.UUID.fromString("28b14f75-c08c-4867-9dbf-55a650a0fc13"));
+                when(item.getCurrencyCode()).thenReturn("002"); when(item.getCurrencyName()).thenReturn("美金");
+                when(item.getCurrencyIsBase()).thenReturn(false);
+            }
             when(item.getDiscount()).thenReturn(fixture.path("discountVisible").asBoolean() ? source.path("discount").decimalValue() : null);
             when(item.getStockQty()).thenReturn(source.path("stockQty").decimalValue());
             when(item.getStockPlace()).thenReturn(source.path("stockPlace").asText());
@@ -39,6 +44,8 @@ class GoodsReferenceProjectionTest {
             when(item.isWritable()).thenReturn(true);
             var row = GoodsReferenceProjection.of(item, access.canReadMasterGoods());
             assertThat(row.containsKey("price")).as(fixture.path("name").asText()).isEqualTo(fixture.path("priceVisible").asBoolean());
+            for(String key : Set.of("currencyId","currencyCode","currencyName","currencyIsBase"))
+                assertThat(row.containsKey(key)).as(key).isEqualTo(fixture.path("priceVisible").asBoolean());
             assertThat(row.containsKey("discount")).isEqualTo(fixture.path("discountVisible").asBoolean());
             assertThat(row.containsKey("stockQty")).isEqualTo(fixture.path("stockVisible").asBoolean());
             if (row.containsKey("price")) assertThat((BigDecimal) row.get("price")).isEqualByComparingTo("39.13");

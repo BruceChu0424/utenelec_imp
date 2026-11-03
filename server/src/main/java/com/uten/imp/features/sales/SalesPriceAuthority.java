@@ -50,7 +50,8 @@ public class SalesPriceAuthority {
 
     /**
      * 一次批量读取货品当前售价并加共享锁, 避免保存事务内被并发调价撕裂。只返回启用(使用)且未删除的货品;
-     * 售价可能为空(未维护), 返回的 Map 允许空值, 调用方据单据类型决定是否放行。
+     * 售价可能为空(未维护/明确外币不能默认本位币), 返回的 Map 允许空值,
+     * 调用方据单据类型决定是否放行。历史未登记币种保留既有默认语义, 不推断或换汇。
      */
     public Map<UUID, BigDecimal> loadMasterPrices(Collection<UUID> goodsIds) {
         if (goodsIds == null || goodsIds.isEmpty()) return Map.of();
@@ -61,14 +62,14 @@ public class SalesPriceAuthority {
         if (ids.isEmpty()) return Map.of();
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
-                        SELECT goods.id, goods.price
+                        SELECT goods.id, %s
                         FROM goods
                         WHERE goods.id IN (:ids)
                           AND COALESCE(goods.is_deleted, FALSE) = FALSE
                           AND goods.status = '使用'
                         ORDER BY goods.id
                         FOR SHARE
-                        """)
+                        """.formatted(com.uten.imp.common.finance.SellingPriceCurrency.forBaseCurrencySql("goods")))
                 .setParameter("ids", List.copyOf(ids))
                 .getResultList();
         Map<UUID, BigDecimal> result = new HashMap<>();

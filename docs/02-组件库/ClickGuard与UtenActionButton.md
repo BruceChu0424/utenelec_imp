@@ -1,8 +1,10 @@
 # ClickGuard & UtenActionButton（防连点 / 等待回执）
 
 > **本项目自建组件**。这一对组合的目的只有一个：
-> **任何按钮只要触发了"点击 → 等待后端回执"流程，在回执到达之前，禁止再点、禁止重入、视觉上有 loading 反馈。**
+> **任何按钮只要触发加载等待流程，在执行结束前禁止再点、禁止重入，并显示项目自有加载弹窗 `UtenBusyOverlay`；按钮内 loading 不能代替加载弹窗。**
 > 用于彻底防住"快速点击 → 多次提交 / 多次扣费 / 多次发送"这类线上必踩坑。
+
+所有需要等待的按钮均适用，包含文字、图标、菜单和弹窗内按钮，以及网络请求、数据加载、导入导出和异步计算，不以耗时长短豁免。`UtenActionButton` 自带的只有按钮 busy 和转圈，调用方须配合 `UtenBusyOverlay`；同一动作已有公共加载入口时复用，不重复叠加。本文按钮示例只演示按钮层 API，实际接入仍须遵循[界面提示与按钮加载](../00-项目准则/09-组件库使用规范.md#界面提示与按钮加载)。
 
 ---
 
@@ -27,7 +29,7 @@ FilledButton(
 
 ### 解决思路
 
-核心模式 **"点击 → 置忙 → 等回执 → 解锁"**：
+核心模式 **"点击 → 置忙并显示项目加载弹窗 → 等回执 → 撤下弹窗并解锁"**：
 
 ```text
 Time →
@@ -127,7 +129,7 @@ UtenActionButton(
 | 组件 | 适用场景 | 何时用 |
 |---|---|---|
 | `UtenButton(isLoading: ..., onPressed: ...)` | 业务侧自己管 `_submitting`/`_acting` flag；动作复杂（多阶段）；状态要在多处复用 | 页面级状态 + 多个按钮共享同一个 loading 状态；动作里要做其他 setState |
-| **`UtenActionButton(onAction: ...)`** | 按钮点一下单次动作；loading 状态是按钮自己的事 | **多数场景首选**——dev 写不出 bug |
+| **`UtenActionButton(onAction: ...)`** | 单次异步动作的按钮置忙由组件管理，加载弹窗由调用方配合 | 多数单次异步动作首选 |
 | `ClickGuard.run(...)` | Switch/Slider/SegmentedButton 等非按钮控件；同一组控件共享一个 guard | 联动控件（一个动作影响多个 UI） |
 
 原则：**业务侧拿不准时，无脑 `UtenActionButton`**。
@@ -152,12 +154,14 @@ UtenActionButton(
 - ✅ 任何 SegmentedButton 触发后端操作
 - ✅ 任何确认/删除对话框里的"确定"按钮
 - ✅ Mock 阶段为了 UX 一致性，模拟 600ms 延时也要套 guard
+- ✅ 所有需加载等待的任务，包括几秒以上的长任务，均保留按钮防重入并配合 `UtenBusyOverlay`；有真实进度时可在统一加载交互中补充，不以单独进度条替代加载弹窗。
 
 ### 不用（用更合适的方式）
 
 - ❌ 纯本地导航：`Navigator.push` / `context.go`，**无需**等待回执
 - ❌ 纯 UI 状态切换（如展开/折叠 Drawer）：`UtenButton` 不带 onAction 也行
-- ❌ 长时间任务（几秒以上）：建议用全局 `PageLoader` 或进度条，**不要**让用户靠按钮等
+
+加载弹窗只跟随实际异步执行阶段；成功、失败、取消和中断均须收尾。等待用户确认、再认证或展示结果弹层时及时撤下或让位，保留草稿和未知提交，取消等待不得触发业务写入重放。
 
 ---
 
@@ -375,6 +379,8 @@ UtenActionButton(
 ## 十、自检清单（每次写按钮过一遍）
 
 - [ ] 只要按钮会触发网络请求 / 异步操作 → 包 `UtenActionButton` 或 `UtenButton(isLoading: ...)`
+- [ ] 所有需加载等待的按钮已配合项目自有 `UtenBusyOverlay`，包含图标、菜单及弹窗按钮；未只用按钮内转圈、禁用、改文案或进度条代替
+- [ ] 同一动作只有一个加载弹窗；成功、失败、取消和中断收尾完整，确认/再认证/结果弹层能交互，草稿和未知提交保全
 - [ ] 异步回调里使用 `context` 前做了 `context.mounted` 守卫
 - [ ] 不在 `onAction` 里抛同步异常（统一用 try/catch + appError）
 - [ ] 联动控件（Switch/Slider/SegmentedButton）共享 `ClickGuard` 实例

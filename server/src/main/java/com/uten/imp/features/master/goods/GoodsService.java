@@ -175,6 +175,7 @@ public class GoodsService {
                 root.fetch("color", jakarta.persistence.criteria.JoinType.LEFT);
                 root.fetch("unit", jakarta.persistence.criteria.JoinType.LEFT);
                 root.fetch("mould", jakarta.persistence.criteria.JoinType.LEFT);
+                root.fetch("currency", jakarta.persistence.criteria.JoinType.LEFT);
             }
             Predicate predicate = goodsPredicate(f, subtreeIds, scope, root, cb, keyword);
             predicate = cb.and(predicate, com.uten.imp.features.master.search.MasterColumnSearch.predicate(
@@ -741,7 +742,10 @@ public class GoodsService {
         cols.add(new ExportColumn("unitName", "单位", ExportColumn.TEXT));
         cols.add(new ExportColumn("material", "材质", ExportColumn.TEXT));
         cols.add(new ExportColumn("sourceType", "来源", ExportColumn.TEXT));
-        if (showPrice) cols.add(new ExportColumn("price", "价格", ExportColumn.MONEY));
+        if (showPrice) {
+            cols.add(new ExportColumn("price", "价格", ExportColumn.MONEY));
+            cols.add(new ExportColumn("currencyId", "币种", ExportColumn.TEXT));
+        }
         if (showDiscount) cols.add(new ExportColumn("discount", "折扣", ExportColumn.TEXT));
         cols.add(new ExportColumn("stockQty", "库存量", ExportColumn.NUMBER));
         // 采购批量口径（V575）：供应商 MOQ / 整箱倍数，采购据此抬量、取整。
@@ -774,7 +778,10 @@ public class GoodsService {
                     row.put("unitName", g.getUnitName());
                     row.put("material", g.getMaterial());
                     row.put("sourceType", g.getSourceType());
-                    if (showPrice) row.put("price", g.getPrice());
+                    if (showPrice) {
+                        row.put("price", g.getPrice());
+                        row.put("currencyId", g.getCurrencyName());
+                    }
                     if (showDiscount) row.put("discount", g.getDiscount());
                     row.put("stockQty", g.getStockQty());
                     row.put("minOrderQty", g.getMinOrderQty());
@@ -1058,6 +1065,8 @@ public class GoodsService {
      */
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public UUID saveImported(GoodsSaveRequest req) {
+        if (req.hasCurrencyId() && req.getCurrencyId() != null)
+            com.uten.imp.security.CurrentAuthorityGuard.requireAll("goods:price:edit");
         GoodsFieldEditPolicy.validateStatus(req);
         GoodsCostValuePolicy.validateRequest(req);
         Goods g = new Goods();
@@ -1472,6 +1481,10 @@ public class GoodsService {
         if (canViewPrice() && req.hasPrice()) {
             g.setPrice(req.getPrice());
         }
+        if (canViewPrice() && req.hasCurrencyId()) {
+            g.setCurrency(req.getCurrencyId() == null ? null
+                    : relationships.currency(req.getCurrencyId(), g.getCurrency()));
+        }
         // 折扣（goods.zk）：仅可查看折扣者（goods:discount:view）提交的折扣才落库。
         // 不可查看者前端隐藏折扣字段不提交——保留原值，避免误清；亦防遗漏 setDiscount
         // 导致折扣任何人都存不进。
@@ -1652,7 +1665,13 @@ public class GoodsService {
                 // ADR-134 英文名称 + 当前用户能否单独改英文名称(功能权限 + 对象写范围)。
                 g.getNameEn(), g.getNameEnSource(), canEditNameEn(g),
                 // ADR-146 不良品仓数量另列, 不计入库存合计。
-                stock.getDefectiveQty(), g.getCNumber(), g.getClientGoodsName());
+                stock.getDefectiveQty(), g.getCNumber(), g.getClientGoodsName(), null, null, null, null);
+        if (canViewPrice() && g.getCurrency() != null) {
+            d.setCurrencyId(g.getCurrency().getId());
+            d.setCurrencyCode(g.getCurrency().getCode());
+            d.setCurrencyName(g.getCurrency().getName());
+            d.setCurrencyIsBase(g.getCurrency().isBaseCurrency());
+        }
         if (learnedPrices != null && costMasker.canView()) {
             var prices = learnedPrices.find(g.getId());
             d.setDefaultPurchasePriceInfo(prices.purchase());
@@ -1722,6 +1741,12 @@ public class GoodsService {
                 g.getNameEn(), g.getNameEnSource());
         item.setMouldId(g.getMould() == null ? null : g.getMould().getId());
         item.setClientGoodsName(g.getClientGoodsName());
+        if (canViewPrice() && g.getCurrency() != null) {
+            item.setCurrencyId(g.getCurrency().getId());
+            item.setCurrencyCode(g.getCurrency().getCode());
+            item.setCurrencyName(g.getCurrency().getName());
+            item.setCurrencyIsBase(g.getCurrency().isBaseCurrency());
+        }
         item.setWritable(canWrite(g, scope));
         return item;
     }

@@ -346,6 +346,10 @@ def build_resources(tokens: DartTokens):
         ("Caption.Close", "Caption.close.backgroundColor"),
     ):
         add("Uten." + key, "SolidColorBrush", symbol, "color")
+    for role in ("Cny", "Usd", "Hkd", "Eur", "Jpy", "Gbp", "Sgd", "Aud", "Cad", "Krw", "Rub", "Chf", "Other"):
+        for suffix in ("", "OnDark"):
+            add("Uten.Currency." + role + suffix, "SolidColorBrush",
+                "UtenColors.currency" + role + suffix, "color")
     for target, source in (("Body", "bodyMedium"), ("Value", "bodyMedium"), ("Caption", "bodySmall"),
                            ("Title", "titleLarge"), ("Subtitle", "titleMedium"), ("Heading", "headlineLarge"),
                            ("Input", "bodyLarge"), ("Compact", "bodyMedium")):

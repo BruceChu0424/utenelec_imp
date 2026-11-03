@@ -89,6 +89,27 @@ class GoodsInlineEditServiceTest {
         assertEquals(new BigDecimal("98765432109876.5432"), request.getValue().getPrice());
     }
 
+    @Test void currencyPatchUsesUuidAndAnExplicitClearWhileUnrelatedEditsOmitIt() {
+        UUID currency = UUID.randomUUID();
+        service.patch(id, Map.of("version", mapper.valueToTree(7)), Map.of("currencyId", mapper.valueToTree(currency)));
+        var request = ArgumentCaptor.forClass(GoodsSaveRequest.class);
+        verify(goods).update(eq(id), request.capture());
+        assertTrue(request.getValue().hasCurrencyId()); assertEquals(currency, request.getValue().getCurrencyId());
+        reset(goods); when(goods.detail(id)).thenReturn(detail);
+        service.patch(id, Map.of("version", mapper.valueToTree(7)), Map.of("currencyId", mapper.nullNode()));
+        verify(goods).update(eq(id), request.capture());
+        assertTrue(request.getValue().hasCurrencyId()); assertNull(request.getValue().getCurrencyId());
+    }
+
+    @Test void currencyPatchWithoutPriceEditIsRejectedBeforeReadingAnyGoods() {
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("actor", "",
+                List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("goods:view"),
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("goods:edit"))));
+        assertThrows(ApiException.class, () -> service.patch(id, Map.of("version", mapper.valueToTree(7)),
+                Map.of("currencyId", mapper.valueToTree(UUID.randomUUID()))));
+        verifyNoInteractions(goods); verifyNoInteractions(em);
+    }
+
     @Test void staleVersionDoesNotReachTheOriginalWriteCommand() {
         assertThrows(ApiException.class, () -> service.patch(id, Map.of("version", mapper.valueToTree(6)), Map.of("name", mapper.valueToTree("changed"))));
         verify(goods, never()).update(any(), any());

@@ -132,14 +132,16 @@ class MasterRecordHistoryReferenceBatchTest {
         verifyNoInteractions(em);
     }
 
-    @Test void revokedReferencePermissionsAndAccountCurrencyExceptionsAreOperationLocal() throws Exception {
+    @Test void protectedGoodsAndAccountCurrencyContextsAreOperationLocal() throws Exception {
         UUID currency = UUID.randomUUID(); Query query = mock(Query.class, RETURNS_SELF);
         when(em.createNativeQuery(anyString())).thenReturn(query);
         when(query.getResultList()).thenReturn(Collections.singletonList(new Object[]{currency, "USD", "美元", false, null, true}));
         Object goods = fact("goods", null, mapper.createObjectNode().put("currency_id", currency.toString()));
-        assertThat(changes(user(false, "currency:view"), List.of(goods)).getFirst().afterValue()).isEqualTo("USD 美元");
-        assertThat(changes(user(false), List.of(goods)).getFirst().afterValue()).isEqualTo("关联资料（无名称查看权限）");
-        assertThat(changes(user(false, "currency:view"), List.of(goods)).getFirst().afterValue()).isEqualTo("USD 美元");
+        assertThat(changes(user(false, "goods:price:view"), List.of(goods)).getFirst().afterValue()).isEqualTo("USD 美元");
+        assertThat(changes(user(false, "currency:view"), List.of(goods))).isEmpty();
+        assertThat(changes(user(false), List.of(goods))).isEmpty();
+        assertThat(changes(user(false, "goods:price:edit"), List.of(goods))).isEmpty();
+        assertThat(changes(user(false, "goods:price:view"), List.of(goods)).getFirst().afterValue()).isEqualTo("USD 美元");
         Object account = fact("accounts", null, mapper.createObjectNode().put("currency_id", currency.toString()));
         assertThat(changes(user(false, "account:view"), List.of(account)).getFirst().afterValue()).isEqualTo("USD 美元");
         verify(em, times(3)).createNativeQuery(anyString());

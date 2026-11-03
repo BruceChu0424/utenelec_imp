@@ -1260,7 +1260,19 @@ class _UtenEditableGridState<T extends EditableGridRow>
   final _platform = PlatformTableController<T>();
   late final _searchLifecycle = PageSearchLifecycle(
     onLeave: () => _headerQueryScope++,
-    onReturn: _platform.clearSessionQuery,
+    onReturn: () {
+      // Controller selection is only a temporary target for copy/delete/batch
+      // actions. External selectedOf/onRowSelect can be document input (which
+      // lines to receive/ship), and saving can freeze a submission snapshot.
+      // Keep those business-owned selections and all row values untouched.
+      if (widget.selectedOf == null &&
+          widget.onRowSelect == null &&
+          widget.selectionEnabled) {
+        widget.controller.clearSelection();
+      }
+      _textSelection.clear();
+      _platform.clearSessionQuery();
+    },
   );
   List<EditableGridColumn<T>>? _platformColumnCache;
   List<EditableGridColumn<T>>? _platformBaseCache;

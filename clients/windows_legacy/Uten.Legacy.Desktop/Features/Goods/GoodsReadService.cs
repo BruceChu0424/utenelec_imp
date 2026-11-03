@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using Uten.Legacy.Core;
+using Uten.Legacy.Desktop.Shared;
 
 namespace Uten.Legacy.Desktop.Features.Goods
 {
@@ -93,6 +94,11 @@ namespace Uten.Legacy.Desktop.Features.Goods
         public string SourceType { get { return Text("sourceType"); } }
         public string StockQuantity { get { return Text("stockQtyDisplayText", "stockQty"); } }
         public string Price { get { return Flag("priceMasked") ? "—" : Text("priceDisplayText", "price"); } }
+        public string CurrencyId { get { return Flag("priceMasked") ? null : OptionalUuid("currencyId"); } }
+        public string CurrencyCode { get { return Flag("priceMasked") ? null : OptionalText("currencyCode"); } }
+        public string CurrencyName { get { return Flag("priceMasked") ? null : OptionalText("currencyName"); } }
+        public string Currency { get { return Flag("priceMasked") ? "—" : CurrencyDisplay.Label(CurrencyName, CurrencyCode) ?? "未登记"; } }
+        public string CurrencyColorRole { get { return CurrencyDisplay.ColorRole(CurrencyName, CurrencyCode); } }
         public string Discount { get { return Flag("discountMasked") ? "—" : Text("discountDisplayText", "discount"); } }
         public string LegacyId { get { return Text("legacyId"); } }
         public bool Flag(string name)
@@ -110,9 +116,9 @@ namespace Uten.Legacy.Desktop.Features.Goods
         {
             object value;
             if (!values.TryGetValue(name, out value) || value == null) return null;
-            if (!(value is string)) throw new FormatException("服务端货品单位关系字段类型无效：" + name);
+            if (!(value is string)) throw new FormatException("服务端货品关系字段类型无效：" + name);
             Guid parsed;
-            if (!Guid.TryParse((string)value, out parsed)) throw new FormatException("服务端货品单位关系不是 UUID：" + name);
+            if (!Guid.TryParse((string)value, out parsed)) throw new FormatException("服务端货品关系不是 UUID：" + name);
             return (string)value;
         }
         private string OptionalText(string name) { return GoodsReadContract.OptionalText(values, name); }

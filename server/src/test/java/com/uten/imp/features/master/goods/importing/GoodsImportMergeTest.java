@@ -41,6 +41,30 @@ import static org.mockito.Mockito.*;
 class GoodsImportMergeTest {
     @AfterEach void clearSecurity() { SecurityContextHolder.clearContext(); }
 
+    @Test void currencyMasterReplacementBetweenDetectionAndCommitRequiresANewReview() throws Exception {
+        Fixture f=fixture();
+        authorities("goods:import","goods:edit","goods:price:view","goods:price:edit");
+        var user=(SecurityContextCurrentUser)ReflectionTestUtils.getField(f.service,"currentUser");
+        when(user.get()).thenReturn(Optional.of(new com.uten.imp.security.AuthUser(UUID.randomUUID(),UUID.randomUUID(),"currency-import",
+                Set.of("goods:import","goods:edit","goods:price:view","goods:price:edit"),false,true,false)));
+        var first=new com.uten.imp.features.master.currency.Currency(); first.setName("美金"); first.setCode("002"); first.setStatus("使用");
+        var replacement=new com.uten.imp.features.master.currency.Currency(); replacement.setName("美金"); replacement.setCode("002"); replacement.setStatus("使用");
+        var currencies=mock(com.uten.imp.features.master.currency.CurrencyRepository.class);
+        when(currencies.findAll()).thenReturn(List.of(first),List.of(replacement));
+        ReflectionTestUtils.setField(f.service,"currencyRepo",currencies);
+        byte[] file;
+        try(var book=new XSSFWorkbook(new java.io.ByteArrayInputStream(workbook("G1","现有货品","","","",f.goods.getId().toString())));
+            var output=new ByteArrayOutputStream()) {
+            book.getSheetAt(0).getRow(0).createCell(7).setCellValue("币种");
+            book.getSheetAt(0).getRow(1).createCell(7).setCellValue("美金");
+            book.write(output); file=output.toByteArray();
+        }
+        var report=f.service.detect(file);
+        assertNotNull(report.planId(),report.errors().toString());
+        assertThrows(ApiException.class,()->f.service.commit(report.planId(),file,"currency.xlsx",Set.of()));
+        verifyNoInteractions(f.goodsService);
+    }
+
     @Test void detectsFillAndConflictCellsWithoutWriting() throws Exception {
         Fixture f = fixture();
         f.goods.setCNumber("111");

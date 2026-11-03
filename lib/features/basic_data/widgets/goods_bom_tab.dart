@@ -2062,7 +2062,7 @@ class GoodsBomTabState extends ConsumerState<GoodsBomTab>
         componentUnitName: goods.unitName,
         componentColorName: goods.colorName,
         colorId: goods.colorId,
-        price: goods.price,
+        price: goods.baseCurrencyPrice,
         summary: original.summary,
         componentSourceType: goods.sourceType,
         componentIssueMethod: goods.issueMethod,
@@ -4516,7 +4516,7 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
         }
         final body = <String, dynamic>{
           ..._periodicEdgeBody(p.goods.id, entered, p.goods.unitName),
-          'price': p.goods.price,
+          'price': p.goods.baseCurrencyPrice,
         };
         bodies.add(body);
         periodicBodies.add(body);
@@ -4531,7 +4531,7 @@ class _BomItemAddDialogState extends ConsumerState<_BomItemAddDialog> {
       bodies.add({
         'componentGoodsId': p.goods.id,
         'qty': double.parse(p.qtyCtl.text.trim()),
-        'price': p.goods.price,
+        'price': p.goods.baseCurrencyPrice,
       });
     }
     // 单个重量异常 (小于 0.1 克或大于 5000 克) 二次确认；确认框弹出时不能有遮罩。

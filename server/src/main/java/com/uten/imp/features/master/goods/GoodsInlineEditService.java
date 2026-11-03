@@ -37,7 +37,7 @@ public class GoodsInlineEditService {
     private static final Set<String> EDITABLE = Set.of(
             "name", "clientGoodsName", "nameEn", "model", "spec", "series", "cNumber", "material", "paper",
             "rearInsertCode", "stockPlace", "sourceType", "colorId", "unitId", "mouldId",
-            "owningWarehouseId", "minOrderQty", "orderMultipleQty", "price", "discount", "status");
+            "owningWarehouseId", "minOrderQty", "orderMultipleQty", "price", "currencyId", "discount", "status");
     // Existing full-form apply() assigns these scalars unconditionally. All
     // references and nameEn are deliberately omitted unless explicitly changed.
     private static final Set<String> BASELINE = Set.of(
@@ -65,7 +65,7 @@ public class GoodsInlineEditService {
         // keys below only decide whether each permission is required.
         boolean priceEditAllowed = CurrentAuthorityGuard.hasAll("goods:price:edit");
         boolean discountViewAllowed = CurrentAuthorityGuard.hasAll("goods:discount:view");
-        if ((changes.containsKey("price") || changes.containsKey("discount")) && !priceEditAllowed)
+        if ((changes.containsKey("price") || changes.containsKey("currencyId") || changes.containsKey("discount")) && !priceEditAllowed)
             throw new ApiException(ErrorCode.FORBIDDEN, "缺少操作权限：goods:price:edit");
         if (changes.containsKey("discount") && !discountViewAllowed)
             throw new ApiException(ErrorCode.FORBIDDEN, "缺少操作权限：goods:discount:view");

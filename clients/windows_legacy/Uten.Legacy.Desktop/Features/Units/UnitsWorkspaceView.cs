@@ -350,7 +350,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         private void ClearSelection(bool all)
         {
             changingSelection = true;
-            try { rows.SelectedItems.Clear(); if (all) selection.Clear(); }
+            try { TableSelection.Clear(rows, all ? (Action)(() => selection.Clear()) : null); }
             finally { changingSelection = false; }
         }
         private void DisplayRows(IReadOnlyList<UnitRecord> items)
@@ -438,6 +438,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             {
                 UnitHistoryWindow window = records ? (UnitHistoryWindow)new UnitRecordHistoryWindow(Window.GetWindow(this), session, selectedId)
                     : new UnitOperationHistoryWindow(Window.GetWindow(this), session);
+                ClearSelection(true);
                 window.ShowDialog();
                 if (window.BusinessChanged && !disposed) { await LoadPageAsync(page); await LoadFacetsAsync(); }
             }
@@ -455,6 +456,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                 var detail = await service.DetailAsync(selected.Id, lifetime.Token);
                 if (disposed || originalSequence != sequence || !originalOwner.IsCurrent(session) || !detail.IsCurrent(session)) return;
                 var window = new UnitDetailWindow(Window.GetWindow(this), session, detail);
+                ClearSelection(true);
                 window.ShowDialog();
                 if (window.BusinessChanged && !disposed) { await LoadPageAsync(page); await LoadFacetsAsync(); }
             }
@@ -467,7 +469,11 @@ namespace Uten.Legacy.Desktop.Features.Units
         {
             if (!CanAct() || columnSnapshot?.IsCurrent(session) != true) return;
             openingEditor = true; UpdateActions();
-            try { new UnitPrintWindow(Window.GetWindow(this), session, new UnitQuery(1, 20, search.Text, filters), columnSnapshot).ShowDialog(); }
+            try
+            {
+                var window = new UnitPrintWindow(Window.GetWindow(this), session, new UnitQuery(1, 20, search.Text, filters), columnSnapshot);
+                ClearSelection(true); window.ShowDialog();
+            }
             catch (ApiException error) { if (!disposed) status.Text = error.UserMessage; }
             catch (Exception) { if (!disposed) status.Text = "暂时无法打开打印预览，请刷新后重试。"; }
             finally { openingEditor = false; if (!disposed) UpdateActions(); }
@@ -476,7 +482,11 @@ namespace Uten.Legacy.Desktop.Features.Units
         {
             if (!CanAct() || columnSnapshot?.IsCurrent(session) != true) return;
             openingEditor = true; UpdateActions();
-            try { new UnitExportWindow(Window.GetWindow(this), session, new UnitQuery(1, 20, search.Text, filters), columnSnapshot.Projection, loadedOwner).ShowDialog(); }
+            try
+            {
+                var window = new UnitExportWindow(Window.GetWindow(this), session, new UnitQuery(1, 20, search.Text, filters), columnSnapshot.Projection, loadedOwner);
+                ClearSelection(true); window.ShowDialog();
+            }
             catch (ApiException error) { if (!disposed) status.Text = error.UserMessage; }
             catch (Exception) { if (!disposed) status.Text = "暂时无法打开单位导出，请刷新表头后重试。"; }
             finally { openingEditor = false; if (!disposed) UpdateActions(); }
@@ -580,6 +590,7 @@ namespace Uten.Legacy.Desktop.Features.Units
                     if (disposed || operationSequence != sequence || !operationOwner.IsCurrent(session) || !baseline.IsCurrent(session)) return;
                 }
                 editor = new UnitEditorWindow(Window.GetWindow(this), session, service, baseline, action);
+                ClearSelection(true);
                 editor.ShowDialog();
                 bool changed = editor.BusinessChanged;
                 editor = null;
@@ -639,6 +650,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         {
             if (disposed) return;
             disposed = true; searchDelay.Stop(); sequence++; pageRead?.Cancel(); lifetime.Cancel();
+            ClearSelection(true);
             session.SessionChanged -= OnOwnerChanged; session.ReadScopeChanged -= OnOwnerChanged;
             editor?.RetireOwner(); inlineWorkspace?.RetireOwner();
             pageRead?.Dispose(); lifetime.Dispose();

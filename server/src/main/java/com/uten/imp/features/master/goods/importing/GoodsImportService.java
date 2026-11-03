@@ -127,6 +127,8 @@ public class GoodsImportService {
     private com.uten.imp.features.master.goods.GoodsBomPasteService bomPaste;
     @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.features.master.lifecycle.MasterObjectAccess bomAccess;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.features.master.currency.CurrencyRepository currencyRepo;
 
     /**
      * detect -> commit is deliberately a short-lived, single-node capability.
@@ -144,7 +146,7 @@ public class GoodsImportService {
     private static final int MAX_CORRECTED_CELLS = 10_000;
     private static final Set<String> CORRECTABLE_FIELDS = Set.of("code", "name", "categoryPath", "clientGoodsName",
             "cNumber", "series", "model", "spec", "material", "rearInsertCode", "paper", "nameEn",
-            "colorName", "unitName", "sourceType", "status", "price", "minOrderQty", "orderMultipleQty");
+            "colorName", "unitName", "sourceType", "status", "price", "currencyName", "minOrderQty", "orderMultipleQty");
     private static final Set<String> NUMERIC_IMPORT_FIELDS = Set.of("price", "minOrderQty", "orderMultipleQty");
     /** Recognized source columns shown in preview without allowing relationship/identity edits. */
     private static final Set<String> READ_ONLY_FIELDS = Set.of("goodsId", "bomRef", "owningWarehouseName",
@@ -176,6 +178,7 @@ public class GoodsImportService {
         for (String a : new String[]{"单位", "基本单位"}) putAlias(a, "unitName");
         putAlias("来源", "sourceType");
         for (String a : new String[]{"价格", "单价"}) putAlias(a, "price");
+        for (String a : new String[]{"币种", "售价币种", "currencyName"}) putAlias(a, "currencyName");
         // 采购批量口径（V575）：供应商报价单/整箱表常用这几种叫法，一并认。
         // normKey 不做大小写归一，MOQ/moq 两种写法都登记。
         for (String a : new String[]{"最小起订量", "起订量", "最小订量", "MOQ", "moq"}) {
@@ -453,6 +456,13 @@ public class GoodsImportService {
             // new row with an allocated code. Names, colors and materials are
             // descriptive: a same-name row must never silently update a variant.
             if (existingGoods != null) writeAccess.requireWritable(existingGoods.getId());
+            if (r.currencyId != null) {
+                Goods currencyOwner = existingGoods != null ? existingGoods : restoreGoodsId == null ? null : byId;
+                boolean unchangedCurrency = currencyOwner != null && currencyOwner.getCurrency() != null
+                        && Objects.equals(currencyOwner.getCurrency().getId(), r.currencyId);
+                if (!unchangedCurrency && ("禁用".equals(r.currencyStatus) || "报废".equals(r.currencyStatus)))
+                    errors.add(new GoodsImportError(r.rowNum, "币种", "币种已停用，不能新选"));
+            }
             boolean preserveLegacyColor = existingGoods != null && existingGoods.getColor() == null
                     && existingGoods.getColorLegacyId() != null
                     && legacyNameUnchanged(masters.colors(), existingGoods.getColorLegacyId(), r.colorName,
@@ -494,7 +504,7 @@ public class GoodsImportService {
             UUID bomSourceGoodsId = planBomCopy(r, existingGoods, restoreGoodsId, bomSourceByCode,
                     bomSourceRows, bomRefTargetsWithRows, bomCreateAllowed, bomDeleteAllowed, errors);
             plannedRows.add(new PlannedRow(r.rowNum, category, color, unit, restoreGoodsId,
-                    existingGoods == null ? null : existingGoods.getId(), goodsFingerprint, changes, bomSourceGoodsId));
+                    existingGoods == null ? null : existingGoods.getId(), goodsFingerprint, changes, bomSourceGoodsId, r.currencyId));
             } catch (ApiException failure) {
                 String message = failure.getCode() == ErrorCode.FORBIDDEN || failure.getCode() == ErrorCode.NOT_FOUND
                         ? "该行货品当前不可查看或编辑，请联系管理员核对权限后重新检测"
@@ -683,6 +693,10 @@ public class GoodsImportService {
         // color or unit. New records still use the independent import capability.
         for (int authorizationIndex=0;authorizationIndex<plan.rows().size();authorizationIndex++) {
             PlannedRow planned=plan.rows().get(authorizationIndex);
+            if (!Objects.equals(planned.currencyId(),parsed.rows.get(authorizationIndex).currencyId))
+                throw stalePlan("币种资料对应的标识已变化，请重新检测并核对币种");
+            if (parsed.rows.get(authorizationIndex).currencyId != null && planned.existingGoodsId() == null && planned.restoreGoodsId() == null)
+                com.uten.imp.features.master.goods.GoodsFieldEditPolicy.requireFields(List.of("currencyId"));
             if(planned.existingGoodsId()!=null) {
                 boolean replacing=replacements.contains(rowKey(planned.rowNum()));
                 com.uten.imp.features.master.goods.GoodsFieldEditPolicy.requireFields(
@@ -774,6 +788,7 @@ public class GoodsImportService {
             if (r.nameEn != null) req.setNameEn(r.nameEn);
             req.setSourceType(emptyToNull(r.sourceType));
             if (r.price != null) req.setPrice(r.price);
+            if (r.currencyId != null) req.setCurrencyId(r.currencyId);
             req.setMinOrderQty(r.minOrderQty);
             req.setOrderMultipleQty(r.orderMultipleQty);
             if (emptyToNull(r.status) != null) req.setStatus(emptyToNull(r.status));
@@ -1086,6 +1101,10 @@ public class GoodsImportService {
             if (!headerErrors.isEmpty()) {
                 return new Parsed(rows, headerErrors, 0);
             }
+            // Resolve once for the whole workbook, including corrections; never
+            // synthesize a currency master or issue one lookup per goods row.
+            var currencies = col.containsKey("currencyName") || corrections.values().stream().anyMatch(c -> c.containsKey("currencyName"))
+                    ? currencyRepo.findAll() : List.<com.uten.imp.features.master.currency.Currency>of();
             int totalRows = 0;
             for (int ri = 1; ri <= sheet.getLastRowNum(); ri++) {
                 Row row = sheet.getRow(ri);
@@ -1150,6 +1169,18 @@ public class GoodsImportService {
                 pr.sourceType = normKey(values.get("sourceType"));
                 pr.status = trim(values.get("status"));
                 pr.price = parsePrice(values.get("price"), pr.rowNum, headerErrors);
+                pr.currencyName = trim(values.get("currencyName"));
+                if (pr.currencyName != null && !pr.currencyName.isEmpty()) {
+                    var matches = currencies.stream().filter(currency -> !currency.isDeleted()
+                            && (Objects.equals(currency.getName(), pr.currencyName)
+                            || Objects.equals(currency.getCode(), pr.currencyName))).toList();
+                    if (matches.size() != 1) headerErrors.add(new GoodsImportError(pr.rowNum, "币种", "币种不存在或有歧义，请先核对币种资料"));
+                    else {
+                        pr.currencyId = matches.getFirst().getId();
+                        pr.currencyName = matches.getFirst().getName();
+                        pr.currencyStatus = matches.getFirst().getStatus();
+                    }
+                }
                 // 采购批量口径（V575）：负数按无效数字报错，不静默取绝对值。
                 pr.minOrderQty = parseQty(
                         values.get("minOrderQty"), "最小起订量", pr.rowNum, headerErrors);
@@ -1653,7 +1684,7 @@ public class GoodsImportService {
         change(result, "nameEn", "英文名称", old.getNameEn(), row.nameEn);
         change(result, "sourceType", "来源", old.getSourceType(), row.sourceType);
         change(result, "status", "状态", old.getStatus(), row.status);
-        if (row.price != null) {
+        if (row.price != null || row.currencyId != null) {
             boolean mayViewPrice = currentUser.get().map(user -> user.isSuperAdmin()
                     || user.getPermissions().contains("goods:price:view")
                     || user.getPermissions().contains("goods:price:edit")).orElse(false);
@@ -1661,6 +1692,8 @@ public class GoodsImportService {
                 throw new ApiException(ErrorCode.FORBIDDEN, "检测已有货品的售价差异需要查看货品售价权限，请删除价格列后重传或申请权限");
             }
             change(result, "price", "价格", old.getPrice(), row.price);
+            if (row.currencyId != null && !Objects.equals(old.getCurrency() == null ? null : old.getCurrency().getId(), row.currencyId))
+                change(result, "currencyId", "币种", old.getCurrency() == null ? null : old.getCurrency().getName(), row.currencyName);
         }
         change(result, "minOrderQty", "最小起订量", old.getMinOrderQty(), row.minOrderQty);
         if (!(old.getOrderMultipleQty() == null && row.orderMultipleQty != null
@@ -1730,6 +1763,7 @@ public class GoodsImportService {
                 case "sourceType" -> request.setSourceType(row.sourceType);
                 case "status" -> request.setStatus(row.status);
                 case "price" -> request.setPrice(row.price);
+                case "currencyId" -> request.setCurrencyId(row.currencyId);
                 case "minOrderQty" -> request.setMinOrderQty(row.minOrderQty);
                 case "orderMultipleQty" -> request.setOrderMultipleQty(row.orderMultipleQty);
                 case "categoryId" -> request.setCategoryId(categoryId);
@@ -1751,7 +1785,7 @@ public class GoodsImportService {
                 goods.getOwnerEmployeeId(), goods.getCode(), goods.getName(), goods.getClientGoodsName(),
                 goods.getCNumber(), goods.getSeries(), goods.getModel(), goods.getSpec(), goods.getMaterial(),
                 goods.getRearInsertCode(), goods.getPaper(), goods.getNameEn(), goods.getSourceType(),
-                goods.getStatus(), goods.getPrice(), goods.getMinOrderQty(), goods.getOrderMultipleQty(),
+                goods.getStatus(), goods.getPrice(), goods.getCurrency() == null ? null : goods.getCurrency().getId(), goods.getMinOrderQty(), goods.getOrderMultipleQty(),
                 goods.getCategory() == null ? null : goods.getCategory().getId(),
                 goods.getColor() == null ? null : goods.getColor().getId(),
                 goods.getUnit() == null ? null : goods.getUnit().getId());
@@ -1931,6 +1965,9 @@ public class GoodsImportService {
         String sourceType;
         String status;
         BigDecimal price;
+        UUID currencyId;
+        String currencyName;
+        String currencyStatus;
         BigDecimal minOrderQty;      // 最小起订量（V575）
         BigDecimal orderMultipleQty; // 订货倍数（V575）
         List<String> categorySegments;
@@ -1960,7 +1997,8 @@ public class GoodsImportService {
             UUID existingGoodsId,
             String goodsFingerprint,
             List<GoodsImportReviewRow.Change> changes,
-            UUID bomSourceGoodsId) {}
+            UUID bomSourceGoodsId,
+            UUID currencyId) {}
 
     /** New category segments inherit the last persisted ancestor's effective prefix. */
     private static UUID nearestExistingCategoryId(CategoryPathPlan category) {

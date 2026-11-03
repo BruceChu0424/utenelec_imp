@@ -76,6 +76,10 @@ public class GoodsSaveRequest {
     @JsonSetter("price") public void setPrice(BigDecimal value) { price=value; pricePresent=true; }
     @JsonSetter("discount") public void setDiscount(BigDecimal value) { discount=value; discountPresent=true; }
     public boolean hasPrice() { return pricePresent; }
+    private UUID currencyId;
+    @JsonIgnore private boolean currencyIdPresent;
+    @JsonSetter("currencyId") public void setCurrencyId(UUID value) { currencyId=value; currencyIdPresent=true; }
+    public boolean hasCurrencyId() { return currencyIdPresent; }
     public boolean hasDiscount() { return discountPresent; }
     private String material;     // Material 材质
     private BigDecimal thickness;

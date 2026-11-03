@@ -103,6 +103,9 @@ class GoodsDiscountVisibilityTest {
         g.setId(UUID.randomUUID());
         g.setDiscount(DISCOUNT);
         g.setPrice(PRICE);
+        var currency = new com.uten.imp.features.master.currency.Currency();
+        currency.setCode("002"); currency.setName("美金"); currency.setStatus("使用");
+        g.setCurrency(currency);
         g.setName("原品名");
         // V258 gives every migrated/custom (unmanaged) goods row a stable,
         // positive sequence before enforcing NOT NULL.  Keep this fixture valid
@@ -145,6 +148,7 @@ class GoodsDiscountVisibilityTest {
         assertTrue(d.isDiscountMasked());
         // V570（goods:price:view）：无售价查看权者价格一并脱敏。
         assertNull(d.getPrice());
+        assertNull(d.getCurrencyId()); assertNull(d.getCurrencyCode()); assertNull(d.getCurrencyName());
         assertTrue(d.isPriceMasked());
     }
 
@@ -172,6 +176,8 @@ class GoodsDiscountVisibilityTest {
         GoodsDetail d = service.detail(g.getId());
 
         assertEquals(PRICE, d.getPrice());
+        assertEquals(g.getCurrency().getId(), d.getCurrencyId());
+        assertEquals("002", d.getCurrencyCode()); assertEquals("美金", d.getCurrencyName());
         assertFalse(d.isPriceMasked());
     }
 
@@ -213,9 +219,58 @@ class GoodsDiscountVisibilityTest {
         assertNull(item.getDiscount());
         // V570：无 goods:price:view 者列表价格列同样置空。
         assertNull(item.getPrice());
+        assertNull(item.getCurrencyId()); assertNull(item.getCurrencyCode()); assertNull(item.getCurrencyName());
     }
 
     // ---- 写侧守卫 ----
+
+    @Test void currencyFollowsPriceVisibilityAndMissingLegacyCurrencyIsNeverGuessed() {
+        GoodsService service = serviceWith(Set.of("goods:view", "goods:price:edit"));
+        Goods g = goodsWithDiscount();
+        when(goodsRepo.findById(g.getId())).thenReturn(Optional.of(g));
+        assertEquals("美金", service.detail(g.getId()).getCurrencyName());
+        g.setCurrency(null);
+        var detail = service.detail(g.getId());
+        assertEquals(PRICE, detail.getPrice());
+        assertNull(detail.getCurrencyId()); assertNull(detail.getCurrencyName());
+    }
+
+    @Test void omittedCurrencySurvivesOldClientAndVisibleEditorCanExplicitlyClearIt() {
+        GoodsService service = serviceWith(Set.of("goods:view", "goods:edit", "goods:price:edit"));
+        Goods g = goodsWithDiscount();
+        UUID currencyId = g.getCurrency().getId();
+        when(goodsRepo.findById(g.getId())).thenReturn(Optional.of(g));
+        service.update(g.getId(), saveRequest());
+        assertEquals(currencyId, g.getCurrency().getId());
+        var request = saveRequest(); request.setCurrencyId(null);
+        service.update(g.getId(), request);
+        assertNull(g.getCurrency()); assertEquals(PRICE, g.getPrice());
+    }
+
+    @Test void selectingCurrencyKeepsTheExactPriceAndReturnsTheAuthoritativeMasterName() {
+        GoodsService service = serviceWith(Set.of("goods:view", "goods:edit", "goods:price:edit"));
+        Goods g = goodsWithDiscount();
+        g.setPrice(new BigDecimal("99999999999999.1234"));
+        when(goodsRepo.findById(g.getId())).thenReturn(Optional.of(g));
+        var next = new com.uten.imp.features.master.currency.Currency();
+        next.setName("港币"); next.setCode("003");
+        var relationships = (GoodsMasterRelationshipResolver)org.springframework.test.util.ReflectionTestUtils.getField(service,"relationships");
+        when(relationships.currency(next.getId(),g.getCurrency())).thenReturn(next);
+        var request = saveRequest(); request.setCurrencyId(next.getId());
+        var detail = service.update(g.getId(), request);
+        assertEquals(next.getId(), detail.getCurrencyId()); assertEquals("港币",detail.getCurrencyName());
+        assertEquals(new BigDecimal("99999999999999.1234"),detail.getPrice());
+    }
+
+    @Test void currencyChangeIsRejectedEvenWhenOtherGoodsFieldsAreEditableAndPriceIsHidden() {
+        GoodsService service = serviceWith(Set.of("goods:view", "goods:edit"));
+        Goods g = goodsWithDiscount();
+        UUID original = g.getCurrency().getId();
+        when(goodsRepo.findById(g.getId())).thenReturn(Optional.of(g));
+        var request = saveRequest(); request.setCurrencyId(null);
+        assertThrows(com.uten.imp.common.web.ApiException.class, () -> service.update(g.getId(), request));
+        assertEquals(original, g.getCurrency().getId());
+    }
 
     @Test
     void usedInactiveUnitStaysReadableAndUnchangedWhileOtherFieldsAreSaved() {

@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
   "generator": "clients/windows_legacy/tools/sync_design_tokens.py",
-  "generatorSha256": "7cbcafe726619daca23dd873749d02ed6dd58ab7ebf0f928ff0824cf6a1bd405",
+  "generatorSha256": "15142f57f9f01dbab91b366613fa80bdc26e751ffd93cf7858f095cd98e7bb66",
   "resource": "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Tokens.g.xaml",
-  "resourceSha256": "6b447d491fe2f99aa5fa8ea1b13d3dbb3f261a2e5e57ce5b4c37009948a64581",
+  "resourceSha256": "813e70284414fcc6a2b000029ce82284f8f9efa78890dcc7e391aeb0987b1b65",
   "scope": "Default Flutter light theme before platform branding or display zoom; WPF device-independent units.",
   "sourceHashFormat": "SHA-256 of exact owning source bytes",
   "sources": [
@@ -13,7 +13,7 @@
     },
     {
       "path": "lib/core/theme/uten_colors.dart",
-      "sha256": "a373d253b3852a48a368447f486bdad24c1436a26cd4cc01898e24ca626ce3e5"
+      "sha256": "32e4f983df834988cd8754caf87982d03a21b3795ff5c3f8c8458faa85d97d11"
     },
     {
       "path": "lib/core/theme/light_theme.dart",
@@ -860,7 +860,7 @@
         {
           "symbol": "UtenColors.tealSurface",
           "source": "lib/core/theme/uten_colors.dart",
-          "line": 134,
+          "line": 162,
           "expression": "teal50"
         },
         {
@@ -880,7 +880,7 @@
         {
           "symbol": "UtenColors.tableSelectedRow",
           "source": "lib/core/theme/uten_colors.dart",
-          "line": 143,
+          "line": 171,
           "expression": "Color(0xFFBEDAD7)"
         }
       ]
@@ -900,7 +900,7 @@
         {
           "symbol": "UtenColors.errorText",
           "source": "lib/core/theme/uten_colors.dart",
-          "line": 209,
+          "line": 237,
           "expression": "Color(0xFFB91C1C)"
         }
       ]
@@ -942,6 +942,370 @@
           "source": "lib/core/theme/uten_colors.dart",
           "line": 70,
           "expression": "Color(0xFFEF4444)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.Cny",
+      "type": "SolidColorBrush",
+      "value": "#FF9B2015",
+      "sourceRole": "UtenColors.currencyCny",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyCny",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 81,
+          "expression": "Color(0xFF9B2015)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.CnyOnDark",
+      "type": "SolidColorBrush",
+      "value": "#FFFDA29B",
+      "sourceRole": "UtenColors.currencyCnyOnDark",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyCnyOnDark",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 94,
+          "expression": "Color(0xFFFDA29B)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.Usd",
+      "type": "SolidColorBrush",
+      "value": "#FF174EA6",
+      "sourceRole": "UtenColors.currencyUsd",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyUsd",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 82,
+          "expression": "Color(0xFF174EA6)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.UsdOnDark",
+      "type": "SolidColorBrush",
+      "value": "#FF9ABDFF",
+      "sourceRole": "UtenColors.currencyUsdOnDark",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyUsdOnDark",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 95,
+          "expression": "Color(0xFF9ABDFF)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.Hkd",
+      "type": "SolidColorBrush",
+      "value": "#FF7A1FA2",
+      "sourceRole": "UtenColors.currencyHkd",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyHkd",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 83,
+          "expression": "Color(0xFF7A1FA2)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.HkdOnDark",
+      "type": "SolidColorBrush",
+      "value": "#FFD6BBFB",
+      "sourceRole": "UtenColors.currencyHkdOnDark",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyHkdOnDark",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 96,
+          "expression": "Color(0xFFD6BBFB)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.Eur",
+      "type": "SolidColorBrush",
+      "value": "#FF00673A",
+      "sourceRole": "UtenColors.currencyEur",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyEur",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 84,
+          "expression": "Color(0xFF00673A)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.EurOnDark",
+      "type": "SolidColorBrush",
+      "value": "#FF75E0A7",
+      "sourceRole": "UtenColors.currencyEurOnDark",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyEurOnDark",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 97,
+          "expression": "Color(0xFF75E0A7)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.Jpy",
+      "type": "SolidColorBrush",
+      "value": "#FF844900",
+      "sourceRole": "UtenColors.currencyJpy",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyJpy",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 85,
+          "expression": "Color(0xFF844900)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.JpyOnDark",
+      "type": "SolidColorBrush",
+      "value": "#FFFEC84B",
+      "sourceRole": "UtenColors.currencyJpyOnDark",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyJpyOnDark",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 98,
+          "expression": "Color(0xFFFEC84B)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.Gbp",
+      "type": "SolidColorBrush",
+      "value": "#FF9D126B",
+      "sourceRole": "UtenColors.currencyGbp",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyGbp",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 86,
+          "expression": "Color(0xFF9D126B)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.GbpOnDark",
+      "type": "SolidColorBrush",
+      "value": "#FFFAA7E0",
+      "sourceRole": "UtenColors.currencyGbpOnDark",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyGbpOnDark",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 99,
+          "expression": "Color(0xFFFAA7E0)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.Sgd",
+      "type": "SolidColorBrush",
+      "value": "#FF006266",
+      "sourceRole": "UtenColors.currencySgd",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencySgd",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 87,
+          "expression": "Color(0xFF006266)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.SgdOnDark",
+      "type": "SolidColorBrush",
+      "value": "#FF5EEAD4",
+      "sourceRole": "UtenColors.currencySgdOnDark",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencySgdOnDark",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 100,
+          "expression": "Color(0xFF5EEAD4)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.Aud",
+      "type": "SolidColorBrush",
+      "value": "#FF075985",
+      "sourceRole": "UtenColors.currencyAud",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyAud",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 88,
+          "expression": "Color(0xFF075985)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.AudOnDark",
+      "type": "SolidColorBrush",
+      "value": "#FF7DD3FC",
+      "sourceRole": "UtenColors.currencyAudOnDark",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyAudOnDark",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 101,
+          "expression": "Color(0xFF7DD3FC)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.Cad",
+      "type": "SolidColorBrush",
+      "value": "#FF8A3414",
+      "sourceRole": "UtenColors.currencyCad",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyCad",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 89,
+          "expression": "Color(0xFF8A3414)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.CadOnDark",
+      "type": "SolidColorBrush",
+      "value": "#FFFDBA74",
+      "sourceRole": "UtenColors.currencyCadOnDark",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyCadOnDark",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 102,
+          "expression": "Color(0xFFFDBA74)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.Krw",
+      "type": "SolidColorBrush",
+      "value": "#FF3730A3",
+      "sourceRole": "UtenColors.currencyKrw",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyKrw",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 90,
+          "expression": "Color(0xFF3730A3)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.KrwOnDark",
+      "type": "SolidColorBrush",
+      "value": "#FFA5B4FC",
+      "sourceRole": "UtenColors.currencyKrwOnDark",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyKrwOnDark",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 103,
+          "expression": "Color(0xFFA5B4FC)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.Rub",
+      "type": "SolidColorBrush",
+      "value": "#FF5C5130",
+      "sourceRole": "UtenColors.currencyRub",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyRub",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 91,
+          "expression": "Color(0xFF5C5130)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.RubOnDark",
+      "type": "SolidColorBrush",
+      "value": "#FFD9D681",
+      "sourceRole": "UtenColors.currencyRubOnDark",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyRubOnDark",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 104,
+          "expression": "Color(0xFFD9D681)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.Chf",
+      "type": "SolidColorBrush",
+      "value": "#FF9F2447",
+      "sourceRole": "UtenColors.currencyChf",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyChf",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 92,
+          "expression": "Color(0xFF9F2447)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.ChfOnDark",
+      "type": "SolidColorBrush",
+      "value": "#FFFDA4AF",
+      "sourceRole": "UtenColors.currencyChfOnDark",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyChfOnDark",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 105,
+          "expression": "Color(0xFFFDA4AF)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.Other",
+      "type": "SolidColorBrush",
+      "value": "#FF475467",
+      "sourceRole": "UtenColors.currencyOther",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyOther",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 93,
+          "expression": "Color(0xFF475467)"
+        }
+      ]
+    },
+    {
+      "key": "Uten.Currency.OtherOnDark",
+      "type": "SolidColorBrush",
+      "value": "#FFCBD5E1",
+      "sourceRole": "UtenColors.currencyOtherOnDark",
+      "resolution": [
+        {
+          "symbol": "UtenColors.currencyOtherOnDark",
+          "source": "lib/core/theme/uten_colors.dart",
+          "line": 106,
+          "expression": "Color(0xFFCBD5E1)"
         }
       ]
     },

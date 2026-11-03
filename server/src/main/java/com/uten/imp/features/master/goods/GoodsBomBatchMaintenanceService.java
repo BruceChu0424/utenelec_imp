@@ -321,7 +321,7 @@ public class GoodsBomBatchMaintenanceService {
         String state=db.queryForObject("""
                 WITH edges AS (SELECT * FROM goods_bom_items WHERE goods_id IN(:parents) AND NOT is_deleted),
                 involved AS (SELECT id,version,updated_at,code,name,status,is_deleted,auto_created,owner_employee_id,
-                    unit_id,unit_legacy_id,color_id,color_legacy_id,issue_method,periodic_cost_basis,price,source_type,
+                    unit_id,unit_legacy_id,color_id,color_legacy_id,issue_method,periodic_cost_basis,price,currency_id,source_type,
                     m_weight,m_weight_unit_id,m_weight_unit_legacy_id FROM goods
                     WHERE id IN(:parents) OR id IN(:components) OR id IN(SELECT component_goods_id FROM edges)),
                 relevant_units AS (SELECT * FROM units WHERE id IN(SELECT unit_id FROM involved UNION SELECT m_weight_unit_id FROM involved)

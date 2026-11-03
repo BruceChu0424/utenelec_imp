@@ -62,6 +62,7 @@ import '../../../shared/stock_ledger/goods_stock_ledger_panel.dart';
 import '../../../shared/stock_ledger/stock_ledger_models.dart';
 import '../../../shared/widgets/warehouse_picker_panel.dart';
 import '../../../shared/widgets/warehouse_selection.dart';
+import '../../../shared/widgets/currency_text.dart';
 import '../models/goods_bom_item.dart';
 import '../models/goods_node.dart';
 import '../models/goods_field_edit_policy.dart';
@@ -72,6 +73,7 @@ import 'basic_data_l10n.dart';
 import 'goods_bom_preview.dart';
 import 'goods_bom_tab.dart';
 import 'goods_cost_tab.dart';
+import 'goods_currency_field.dart';
 import 'goods_issue_method_dialog.dart';
 import 'goods_name_en_field.dart';
 import 'goods_operation_history_panel.dart';
@@ -144,6 +146,12 @@ class _GoodsPurchaseOverReceiptDetailRow extends MasterDetailRow {
 
 class _GoodsSystemIdDetailRow extends MasterDetailRow {
   const _GoodsSystemIdDetailRow(String id) : super('系统标识', id);
+}
+
+class _GoodsCurrencyDetailRow extends MasterDetailRow {
+  const _GoodsCurrencyDetailRow(this.name, this.code) : super('币种', name);
+  final String? name;
+  final String? code;
 }
 
 /// 查看态详情的一个分组（标题 + 字段行），用于把扁平字段切成带小标题的区块。
@@ -646,6 +654,26 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
           type: MasterFieldType.money,
           group: '商务',
         ),
+      if (canViewPrice)
+        MasterFieldDef(
+          key: 'currencyId',
+          label: '币种',
+          type: MasterFieldType.custom,
+          group: '商务',
+          customBuilder: (field) => GoodsCurrencyField(
+            value: field.initialValue,
+            currentName: _detail?.currencyName,
+            currentCode: _detail?.currencyCode,
+            onChanged: field.onChanged,
+          ),
+          readOnlyBuilder: (_) => GoodsCurrencyField(
+            value: _detail?.currencyId,
+            currentName: _detail?.currencyName,
+            currentCode: _detail?.currencyCode,
+            readOnly: true,
+            onChanged: (_) {},
+          ),
+        ),
       if (canViewDiscount)
         const MasterFieldDef(
           key: 'discount',
@@ -832,6 +860,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       'mouldId': d.mouldId ?? '',
       'rearInsertCode': d.rearInsertCode ?? '',
       'price': s(d.price),
+      'currencyId': d.currencyId ?? '',
       'discount': s(d.discount),
       'pack': d.pack ?? '',
       'unitId': d.unitId ?? '',
@@ -1390,6 +1419,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
             field.key,
       // 价格字段仅可查看者才在表里；可见但无编辑权 → 锁定。
       if (!canEditPrice && canViewPrice) 'price',
+      if (!canEditPrice && canViewPrice) 'currencyId',
       if (!canEditPrice && canViewDiscount) 'discount',
       if (!widget.canStatus || !_writable) 'status',
     };
@@ -1653,6 +1683,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       ]),
       _DetailSection('商务', [
         if (canViewPrice) MasterDetailRow('价格', s(d.price)),
+        if (canViewPrice)
+          _GoodsCurrencyDetailRow(d.currencyName, d.currencyCode),
         if (canViewDiscount)
           MasterDetailRow('折扣', d.discount == null ? '' : '${d.discount}'),
         MasterDetailRow('包装', d.pack),
@@ -1840,6 +1872,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
                 ),
               ],
             )
+          else if (r is _GoodsCurrencyDetailRow)
+            CurrencyText(name: r.name, code: r.code)
           else
             MasterDetailValue(value: r.value),
         ],

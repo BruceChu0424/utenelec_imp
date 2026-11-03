@@ -11,6 +11,7 @@ using System.Windows.Threading;
 using Uten.Legacy.Core;
 using Uten.Legacy.Desktop.Controls;
 using Uten.Legacy.Desktop.Features.Units;
+using Uten.Legacy.Desktop.Shared;
 
 namespace Uten.Legacy.Desktop.Features.Goods
 {
@@ -184,7 +185,16 @@ namespace Uten.Legacy.Desktop.Features.Goods
             AddColumn("编码", "Code", 120); AddColumn("名称", "Name", 190); AddColumn("规格", "Spec", 140);
             AddColumn("颜色", "ColorName", 90); AddColumn("单位", "UnitName", 70);
             AddColumn("来源", "SourceType", 90); AddColumn("库存数量", "StockQuantity", 100);
-            if (Allowed("goods:price:view")) AddColumn("售价", "Price", 100);
+            if (CanViewPrice)
+            {
+                AddColumn("售价", "Price", 100);
+                var currencyStyle = new Style(typeof(TextBlock));
+                currencyStyle.Setters.Add(new Setter(TextBlock.FontWeightProperty, FontWeights.SemiBold));
+                currencyStyle.Setters.Add(new Setter(TextBlock.ForegroundProperty,
+                    new Binding("CurrencyColorRole") { Converter = new CurrencyBrushConverter() }));
+                rows.Columns.Add(new DataGridTextColumn { Header = "币种", Binding = new Binding("Currency"),
+                    Width = 100, ElementStyle = currencyStyle, CanUserSort = false, IsReadOnly = true });
+            }
             if (Allowed("goods:discount:view")) AddColumn("折扣倍率", "Discount", 100);
         }
         private void AddColumn(string header, string binding, double width)
@@ -196,6 +206,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
         {
             return session.CurrentUser != null && session.CurrentUser.HasPermission(permission);
         }
+        private bool CanViewPrice { get { return Allowed("goods:price:view") || Allowed("goods:price:edit"); } }
         private async void OnLoaded(object sender, RoutedEventArgs args)
         {
             if (subscribed) return;
@@ -209,6 +220,8 @@ namespace Uten.Legacy.Desktop.Features.Goods
         {
             if (subscribed) { session.SessionChanged -= OnSessionChanged; session.ReadScopeChanged -= OnSessionChanged; }
             subscribed = false; searchDelay.Stop(); Cancel(lifetime); CancelReads();
+            TableSelection.Clear(rows);
+            detail.Visibility = Visibility.Collapsed;
         }
         private void OnSessionChanged(object sender, EventArgs args)
         {
@@ -360,7 +373,11 @@ namespace Uten.Legacy.Desktop.Features.Goods
                 Field("归属车间", result.Text("owningWorkshopName")); Field("发料方式", result.Text("issueMethod"));
                 Field("英文名称", result.Text("nameEn")); Field("英文名称来源", result.Text("nameEnSource"));
                 Field("历史迁移编号", result.LegacyId); Field("备注", result.Text("paper"));
-                if (Allowed("goods:price:view") && !result.Flag("priceMasked")) Field("售价", result.Price);
+                if (CanViewPrice && !result.Flag("priceMasked"))
+                {
+                    Field("售价", result.Price);
+                    Field("币种", result.Currency, "Uten.Currency." + result.CurrencyColorRole);
+                }
                 if (Allowed("goods:discount:view") && !result.Flag("discountMasked")) Field("折扣倍率", result.Discount);
                 // Only a real unit UUID may navigate; the legacy snapshot fallback keeps
                 // its display fact without inventing a relationship key.
@@ -384,10 +401,15 @@ namespace Uten.Legacy.Desktop.Features.Goods
                 }
             }
         }
-        private void Field(string name, string value)
+        private void Field(string name, string value, string foregroundResource = null)
         {
             var text = Label(name + "：" + value);
             text.Margin = Spacing(top: "S8", right: "S24"); text.MinWidth = 170; text.TextWrapping = TextWrapping.Wrap;
+            if (foregroundResource != null)
+            {
+                text.SetResourceReference(TextBlock.ForegroundProperty, foregroundResource);
+                text.FontWeight = FontWeights.SemiBold;
+            }
             detailFields.Children.Add(text);
         }
         // 单位→货品 FLOW: navigate to the owning unit master by the authoritative UUID.
@@ -401,6 +423,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
                 var snapshot = await new UnitService(session).DetailAsync(target, lifetime.Token);
                 if (lifetime.Token.IsCancellationRequested || !IsLoaded || !snapshot.IsCurrent(session)) return;
                 var window = new UnitDetailWindow(Window.GetWindow(this), session, snapshot);
+                TableSelection.Clear(rows);
                 window.ShowDialog();
                 if (window.BusinessChanged) status.Text = "单位资料已更新，货品列表重新读取后同步。";
             }

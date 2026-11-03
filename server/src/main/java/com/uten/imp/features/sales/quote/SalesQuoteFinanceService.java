@@ -233,7 +233,7 @@ public class SalesQuoteFinanceService {
                                COALESCE(i.goods_name_snapshot, g.name, ''),
                                COALESCE(col.name, ''), COALESCE(u.name, ''),
                                i.qty, i.price, i.price_source, COALESCE(fp.full_name, ''), COALESCE(i.manager_price_at, i.finance_price_at),
-                               CASE WHEN g.status = '使用' AND NOT COALESCE(g.is_deleted, FALSE) THEN g.price END,
+                               CASE WHEN g.status = '使用' AND NOT COALESCE(g.is_deleted, FALSE) THEN (%s) END,
                                i.client_price, i.discount, i.amount_original,
                                i.client_model, i.client_goods_name, i.remark, i.unit_id, CAST(i.extra_columns AS text),
                                i.goods_name_en_snapshot
@@ -244,7 +244,7 @@ public class SalesQuoteFinanceService {
                         LEFT JOIN employees fp ON fp.id = COALESCE(i.manager_price_by, i.finance_price_by)
                         WHERE i.quote_id = :id
                         ORDER BY i.line_no NULLS LAST, i.id
-                        """)
+                        """.formatted(com.uten.imp.common.finance.SellingPriceCurrency.forBaseCurrencySql("g")))
                 .setParameter("id", id)
                 .getResultList();
         SalesPriceAuthority.FileCurrency fileCurrency = priceAuthority.resolveFileCurrency(q.getClientFileCurrency());

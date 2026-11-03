@@ -865,6 +865,7 @@ class _MouldCategoryPageState extends ConsumerState<MouldCategoryPage>
     }
     final detail = d;
     final perms = ref.read(currentPermissionsProvider);
+    pane.clearSelection();
     await showMasterDetailSheet(
       context: context,
       title: detail.name?.isNotEmpty == true

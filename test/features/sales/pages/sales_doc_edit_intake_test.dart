@@ -1471,6 +1471,49 @@ void main() {
     expect('没找到对应货品'.allMatches(remark), hasLength(1));
   });
 
+  for (final baseProof in [false, null, true]) {
+    testWidgets(
+      'registered goods currency uses only proven base price (proof=$baseProof)',
+      (tester) async {
+        await _pump(
+          tester,
+          docType: SalesDocType.quote,
+          pickedGoods: [
+            GoodsListItem(
+              id: 'goods-with-currency',
+              code: 'G-FX',
+              name: '有币种的货品',
+              price: 21,
+              currencyId: 'registered-currency',
+              currencyIsBase: baseProof,
+              unitId: 'unit-pcs',
+            ),
+          ],
+        );
+        final grid = tester
+            .widget<UtenEditableGrid<SalesGridRow>>(
+              find.byType(UtenEditableGrid<SalesGridRow>),
+            )
+            .controller;
+        final row = grid.rows.single;
+        row
+          ..clientPrice = '10.5'
+          ..clientGoodsName.text = '客户文件原文'
+          ..price.text = '999'
+          ..discount.text = '0.8';
+        await tester.tap(_goodsCell(row));
+        await tester.pumpAndSettle();
+        expect(row.goods?.id, 'goods-with-currency');
+        expect(row.price.text, baseProof == true ? '21' : '');
+        expect(row.discount.text, baseProof == true ? '0.5' : '');
+        expect(row.clientPrice, '10.5');
+        expect(row.clientGoodsName.text, '客户文件原文');
+        expect(row.aiReview, baseProof == true ? isNull : isNotNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('识别行在明细里换货品: 按文件单价重算折扣, 文件品名保留; 空行选货品只在基础英文列显示名称', (
     tester,
   ) async {

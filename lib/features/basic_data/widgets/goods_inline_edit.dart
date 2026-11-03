@@ -15,6 +15,7 @@ import '../providers/color_unit_dict.dart';
 import '../repositories/goods_repository.dart';
 import 'master_edit_dialog.dart';
 import 'master_inline_edit.dart';
+import 'goods_currency_field.dart';
 import 'mould_picker_field.dart';
 
 /// Column keys describe presentation; field keys always carry UUID/API values.
@@ -130,6 +131,18 @@ Map<String, MasterInlineField<GoodsListItem>> goodsInlineFields(
     'orderMultipleQty': number('orderMultipleQty', (g) => g.orderMultipleQty),
     if (permissions.contains(Perm.goodsPriceEdit)) ...{
       'price': number('price', (g) => g.price),
+      'currencyId': MasterInlineField(
+        key: 'currencyId',
+        read: (g) => g.currencyId,
+        type: MasterFieldType.custom,
+        cellBuilder: (context, row, field) => GoodsCurrencyField(
+          value: field.initialValue,
+          currentName: row.currencyName,
+          currentCode: row.currencyCode,
+          onChanged: field.onChanged,
+          dense: true,
+        ),
+      ),
       'discount': number('discount', (g) => g.discount),
     },
   };

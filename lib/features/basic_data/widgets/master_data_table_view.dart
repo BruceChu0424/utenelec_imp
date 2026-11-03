@@ -695,8 +695,9 @@ class MasterDataTableView<T> extends StatefulWidget {
   /// "添加组件"默认父级）；embedded 表在选中后继续调用 [onRowTap]。
   final void Function(T item)? onSelectionChanged;
 
-  /// 行菜单中的可用动作执行完毕后，表格会清除内部单选高亮，并调用本回调让页面
-  /// 同步清理依赖选中行的外部动作状态。仅关闭菜单、不执行条目时不会调用。
+  /// 行菜单中的可用动作执行完毕或离开页面后返回时，表格会清除内部单选高亮，
+  /// 并调用本回调让页面同步清理依赖选中行的外部动作状态。
+  /// 仅关闭菜单、不执行条目时不会调用。
   final VoidCallback? onSelectionCleared;
 
   /// 外部受控选中判定：非空时优先用它判定高亮（按业务键比较，不受 item 引用变化影响），
@@ -782,7 +783,8 @@ class MasterDataTableView<T> extends StatefulWidget {
   final bool? Function(T item)? selectionStateOf;
 
   /// 多选选中集合（调用方拥有，单一真值源）。组件只读它判定勾选/高亮、只通过
-  /// [onSelectedIdsChanged] 把"新集合"回交调用方，从不自行清空——故跨页天然保留。
+  /// [onSelectedIdsChanged] 把"新集合"回交调用方。翻页、筛选保留选择；离开页面
+  /// 后返回时，通过 [onClearSelection] 或空集合回调清除临时操作对象。
   final Set<String> selectedIds;
 
   /// 选中集合变化回调：行勾选与表头三态全选共用这一个（传入新的 Set）。
@@ -2527,11 +2529,42 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       _removeFullscreenPresentation();
     },
     onReturn: () {
+      _clearSelectionOnPageReturn();
       if (!widget.preserveQueryOnReturn) {
         _platform.clearSessionQuery();
       }
     },
   );
+
+  /// A kept-alive page starts its next visit without the previous visit's
+  /// operation targets. Use the owner's clear contract so hierarchical/hidden
+  /// selections clear together, and owner-provided busy guards remain in force.
+  /// PageSearchLifecycle ignores query changes and temporary Navigator popups.
+  void _clearSelectionOnPageReturn() {
+    if (!mounted) return;
+    _lastTapRowKey = null;
+    _textSelection.clear();
+    if (widget.selectable) {
+      if (widget.selectedIds.isEmpty &&
+          (widget.selectionSummaryCount ?? 0) == 0) {
+        return;
+      }
+      _clearMultiSelection();
+    } else {
+      if (_selectedItem != null) setState(() => _selectedItem = null);
+      widget.onSelectionCleared?.call();
+    }
+    _fsTick.value++;
+  }
+
+  void _clearMultiSelection() {
+    if (widget.onClearSelection case final clear?) {
+      clear();
+    } else {
+      widget.onSelectedIdsChanged?.call(<String>{});
+    }
+  }
+
   List<MasterColumnDef<T>>? _platformColumnCache;
   List<MasterColumnDef<T>>? _platformBaseCache;
   TableColumnProjectionController? _projection;
@@ -7914,11 +7947,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       clearKey: const Key('master-table-clear-selection'),
       onClear: hasSelection
           ? () {
-              if (widget.onClearSelection != null) {
-                widget.onClearSelection!();
-              } else {
-                widget.onSelectedIdsChanged?.call(<String>{});
-              }
+              _clearMultiSelection();
               _fsTick.value++;
             }
           : null,
@@ -8849,7 +8878,7 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       if (!mounted) return;
       if (widget.selectable) {
         if (widget.preserveSelectionOnContextMenu) return;
-        widget.onSelectedIdsChanged?.call(const <String>{});
+        _clearMultiSelection();
         _fsTick.value++;
         return;
       }
@@ -8858,9 +8887,10 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
       widget.onSelectionCleared?.call();
     }
 
-    /// 打开前保证多选行仍保持勾选。手动双击窗会让第一次点击立即执行
-    /// “切换选择”；若用户原本已选中该行，第一次点击会先取消，第二击识别为
-    /// 双击时必须补回选择，避免打开详情后右下/批量主操作意外变灰。
+    /// 准备读取详情时保留目标行。手动双击窗会让第一次点击立即执行
+    /// “切换选择”；若用户原本已选中该行，第二击识别为双击时补回选择，
+    /// 避免读取失败也丢失原操作对象。成功打开真实业务详情后，按页面或详情
+    /// 弹窗的返回生命周期清除本次选择。
     void openRow() {
       if (widget.selectable) {
         final id = widget.idOf?.call(item);

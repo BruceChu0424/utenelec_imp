@@ -146,7 +146,7 @@ class _GoodsImportDialogState extends ConsumerState<_GoodsImportDialog> {
                           '${basicDataL10n(context).importFilesTransactionNote}\n\n'
                           '选择 .xlsx 文件，核对全部货品后再导入。\n\n'
                           '${basicDataL10n(context).goodsImportTemplateHint}\n'
-                          '可导入列：客户货品名称、客户型号、系列、型号、规格、材质、主颜色、单位、来源、价格、'
+                          '可导入列：客户货品名称、客户型号、系列、型号、规格、材质、主颜色、单位、来源、价格、币种、'
                           '最小起订量、订货倍数、状态、后模镶件编号、备注。\n'
                           '${basicDataL10n(context).goodsNameEnImportHint}\n'
                           '模具编号、模具名称、所属仓库、生产车间仅识别不导入。\n'

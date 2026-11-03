@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Web.Script.Serialization;
+using Uten.Legacy.Desktop.Shared;
 
 namespace Uten.Legacy.Desktop.Features.Goods
 {
@@ -58,6 +62,16 @@ namespace Uten.Legacy.Desktop.Features.Goods
             check(masked.Price == "—" && masked.Discount == "—" && masked.Flag("costMasked"), "financial masks retained");
             GoodsRecord unknown = GoodsReadContract.ParseDetail("{\"id\":\"" + id + "\",\"price\":null,\"stockQty\":null}");
             check(unknown.Price == "—" && unknown.StockQuantity == "—", "unknown is not zero");
+            check(unknown.CurrencyId == null && unknown.Currency == "未登记" && unknown.CurrencyColorRole == "Other",
+                "historical missing currency is not silently replaced with CNY");
+            GoodsRecord currency = GoodsReadContract.ParseDetail("{\"id\":\"" + id + "\",\"currencyId\":\"" + childId
+                + "\",\"currencyCode\":\"002\",\"currencyName\":\"美元\"}");
+            check(currency.CurrencyId == childId && currency.CurrencyCode == "002" && currency.Currency == "美元"
+                && currency.CurrencyColorRole == "Usd", "currency UUID, legacy code, master name and contrasting role retained");
+            GoodsRecord hiddenCurrency = GoodsReadContract.ParseDetail("{\"id\":\"" + id + "\",\"priceMasked\":true,"
+                + "\"currencyId\":\"" + childId + "\",\"currencyCode\":\"USD\",\"currencyName\":\"美元\"}");
+            check(hiddenCurrency.CurrencyId == null && hiddenCurrency.CurrencyCode == null && hiddenCurrency.CurrencyName == null
+                && hiddenCurrency.Currency == "—" && hiddenCurrency.CurrencyColorRole == "Other", "price mask covers every currency field");
             GoodsPage empty = GoodsReadContract.ParsePage("{\"items\":[],\"page\":1,\"size\":20,\"total\":0,\"totalPages\":0}");
             check(empty.Items.Count == 0 && empty.TotalPages == 0, "empty server page is valid");
 
@@ -73,6 +87,17 @@ namespace Uten.Legacy.Desktop.Features.Goods
                 check, "malformed numeric token rejected");
             ExpectFailure(() => GoodsReadContract.ParsePage("{\"items\":[],\"page\":1,\"size\":20,\"total\":9223372036854775808,\"totalPages\":1}"),
                 check, "overflowing pagination is rejected rather than truncated");
+            using (var input = typeof(GoodsReadContractChecks).Assembly.GetManifestResourceStream("Uten.CurrencyDisplayFixture.json"))
+            using (var reader = new StreamReader(input))
+            {
+                var fixture = (Dictionary<string, object>)new JavaScriptSerializer().DeserializeObject(reader.ReadToEnd());
+                foreach (Dictionary<string, object> sample in (object[])fixture["cases"])
+                {
+                    string name = sample["name"] as string, code = sample["code"] as string;
+                    check(CurrencyDisplay.Label(name, code) == sample["label"] as string, "shared currency display fixture label parity");
+                    check(CurrencyDisplay.ColorRole(name, code) == sample["role"] as string, "shared currency display fixture role parity");
+                }
+            }
             return assertions;
         }
 

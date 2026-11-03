@@ -1355,8 +1355,10 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         ..unitRate = 1
         ..stockPlaceNotifier.value = g.stockPlace;
       // 订单/报价/出货：单价由货品主档自动带入、锁定(出货亦可由来源订货单引入)。
+      // 明确登记外币或缺少本位币证明的主价不能直接当成本位币，服务端负责核价。
+      final basePricePreview = g.baseCurrencyPrice;
       if (_hasClientPricing || widget.docType == SalesDocType.shipment) {
-        target.applyLockedPricePreview(g.price);
+        target.applyLockedPricePreview(basePricePreview);
       }
       // 订单/报价折扣：货品 zk 倍率仅作建议初值(1=原价；空/0→1)，销售可逐行调整；
       // 看不到价格的账号留空(保存时服务端按文件单价计算)。
@@ -1371,11 +1373,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           // 外币文件但不知道识别时的参考汇率(重新打开的单据没有识别会话)时不猜，
           // 留空并黄标请销售核对；选择器没给标价时同样留空(不当成「没有标价」)。
           final rateUnknown = _clientFileCurrency != null && _aiIntake == null;
-          final preview = g.price == null || rateUnknown
+          final preview = basePricePreview == null || rateUnknown
               ? null
               : salesIntakeDiscountPreview(
                   customerUnitPrice: target.clientPrice,
-                  listPrice: financeExactTrimmed(g.price?.toString()),
+                  listPrice: financeExactTrimmed(basePricePreview.toString()),
                   fileCurrency: _clientFileCurrency,
                   financeRate: _aiIntake?.financeRate,
                   rateMissing: _aiIntake?.rateMissing ?? false,

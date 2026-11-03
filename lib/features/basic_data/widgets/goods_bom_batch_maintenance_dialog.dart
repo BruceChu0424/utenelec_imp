@@ -234,7 +234,7 @@ class _BatchMaintenanceDialogState
     }
     final copied = component.copied;
     final body = copied == null
-        ? <String, dynamic>{'price': goods.price}
+        ? <String, dynamic>{'price': goods.baseCurrencyPrice}
         : bomComponentCopyBody(copied);
     if (copied != null &&
         component.quantity.text.trim() ==

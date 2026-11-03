@@ -33,6 +33,37 @@ const _releasedDefault = <String>[
 
 void main() {
   final notifier = PlatformTableLayoutNotifier(goodsMasterTableKey);
+  test(
+    'v1 personal layout inserts the new currency beside its moved price column',
+    () {
+      const personal = PlatformTableLayout(
+        layoutVersion: 1,
+        order: ['spec', 'price', 'name', 'code', 'discount'],
+        hidden: {'spec'},
+        pinned: {'code'},
+        widths: {'price': 143, 'name': 300},
+      );
+      final controller = PlatformTableController<Object>()
+        ..layout = notifier.decode(personal.toJson())!;
+      addTearDown(controller.dispose);
+      final local = controller.localLayout(
+        ['code', 'name', 'spec', 'price', 'currencyId', 'discount'],
+        defaultHidden: const {},
+        insertNewColumnsAtDeclaredPosition: true,
+      );
+      expect(local.order, [
+        'spec',
+        'price',
+        'currencyId',
+        'name',
+        'code',
+        'discount',
+      ]);
+      expect(local.hidden, personal.hidden);
+      expect(local.pinned, personal.pinned);
+      expect(local.widths, personal.widths);
+    },
+  );
   for (final price in [false, true]) {
     for (final discount in [false, true]) {
       test(

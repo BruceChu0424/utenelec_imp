@@ -540,8 +540,8 @@ SalesIntakeReviewActions salesIntakeReviewActions(
       colorName: goods.colorName,
       unitId: goods.unitId,
       unitName: goods.unitName,
-      // 没有货品价格查看权限时选择器不给标价(null): 面板按「标价未知」处理, 不拦截。
-      price: financeExactTrimmed(goods.price?.toString()),
+      // 无权限或主价不具备本位币证明时，面板按「标价未知」处理，服务端权威核价。
+      price: financeExactTrimmed(goods.baseCurrencyPrice?.toString()),
     );
   },
   createClient: (context, proposal) async {

@@ -57,6 +57,12 @@ public final class GoodsReferenceProjection {
         // Do not read the entity again or infer field authority from a business action.
         // GoodsService independently applies goods:price:view|edit and goods:discount:view.
         if (item.getPrice() != null) row.put("price", item.getPrice());
+        if (item.getCurrencyId() != null) {
+            row.put("currencyId", item.getCurrencyId());
+            row.put("currencyCode", item.getCurrencyCode());
+            row.put("currencyName", item.getCurrencyName());
+            row.put("currencyIsBase", item.getCurrencyIsBase());
+        }
         if (item.getDiscount() != null) row.put("discount", item.getDiscount());
         // BOM replacement previews used the original master list's stock quantity.
         // Business-only selectors must not gain this aggregate from a document grant.

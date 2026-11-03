@@ -69,6 +69,28 @@ class GoodsBomControlFieldsTest {
         assertTrue(view.isHardGate());
     }
 
+    @Test void explicitForeignMasterPriceCannotBecomeABaseCurrencyBomDefaultOrOverwriteSavedPrice() {
+        component.setPrice(new BigDecimal("12.3456"));
+        var currency=new com.uten.imp.features.master.currency.Currency();
+        currency.setName("美金"); component.setCurrency(currency);
+        var created=new GoodsBomItem();
+        service.apply(request(),created,component);
+        org.junit.jupiter.api.Assertions.assertNull(created.getPrice());
+        org.junit.jupiter.api.Assertions.assertNull(created.getTotal());
+        created.setPrice(new BigDecimal("77.1234"));
+        service.apply(request(),created,component);
+        assertEquals(new BigDecimal("77.1234"),created.getPrice(),"Existing BOM prices remain frozen");
+        var replaced=new GoodsBomItem(); replaced.setComponent(goods("OLD","旧组件")); replaced.setPrice(BigDecimal.TEN);
+        service.apply(request(),replaced,component);
+        org.junit.jupiter.api.Assertions.assertNull(replaced.getPrice());
+        org.springframework.test.util.ReflectionTestUtils.setField(currency,"baseCurrency",true);
+        var base=new GoodsBomItem(); service.apply(request(),base,component);
+        assertEquals(new BigDecimal("12.3456"),base.getPrice());
+        component.setCurrency(null);
+        var historical=new GoodsBomItem(); service.apply(request(),historical,component);
+        assertEquals(new BigDecimal("12.3456"),historical.getPrice());
+    }
+
     @Test
     void createNormalizesAndReturnsPackagingControls() {
         BomItemSaveRequest request = request();

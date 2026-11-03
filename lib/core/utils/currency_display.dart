@@ -50,3 +50,36 @@ String? financeCurrencyDisplayLabel({String? name, String? code}) {
       masterName ??
       currencyCode;
 }
+
+/// Stable category roles, independent of UUIDs and legacy numeric codes.
+String currencyColorRole({String? name, String? code}) {
+  final label = financeCurrencyDisplayLabel(name: name, code: code);
+  return switch (label) {
+    '人民币' => 'Cny',
+    '美金' || '美元' => 'Usd',
+    '港币' || '港元' => 'Hkd',
+    '欧元' => 'Eur',
+    '日元' || '日圆' => 'Jpy',
+    '英镑' => 'Gbp',
+    '新加坡元' || '新币' => 'Sgd',
+    '澳元' || '澳币' => 'Aud',
+    '加元' || '加拿大元' => 'Cad',
+    '韩元' || '韩币' => 'Krw',
+    '卢布' => 'Rub',
+    '瑞士法郎' => 'Chf',
+    _ => 'Other',
+  };
+}
+
+/// Returns an original master price only when it can represent base currency.
+///
+/// A null currency retains the legacy default-price contract without assigning
+/// a currency to the master. Once a currency is registered, only the server's
+/// explicit base-currency proof makes that original amount usable as a default.
+/// Foreign/unknown currencies stay blank for authoritative server pricing.
+/// This function never converts amounts or changes stored document prices.
+double? baseCurrencyPricePreview({
+  required double? price,
+  required String? currencyId,
+  required bool? currencyIsBase,
+}) => currencyId == null || currencyIsBase == true ? price : null;

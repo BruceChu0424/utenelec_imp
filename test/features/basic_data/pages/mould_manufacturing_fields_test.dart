@@ -13,6 +13,7 @@ import 'package:uten_imp/features/basic_data/repositories/mould_category_reposit
 import 'package:uten_imp/features/basic_data/repositories/mould_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_inline_edit.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/basic_data/widgets/mould_manufacturer_field.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
@@ -20,6 +21,36 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('模具业务详情成功打开清选中，读取失败保留来源选择', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1440, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final repository = _Moulds()..failDetail = true;
+    await _pumpPage(tester, repository, await SharedPreferences.getInstance());
+    await _selectHistoricalMould(tester);
+    await tester.pumpAndSettle();
+    MasterDataTableView<MouldListItem> table() =>
+        tester.widget(find.byType(MasterDataTableView<MouldListItem>));
+    table().onSelectedIdsChanged!({'mould'});
+    await tester.pump();
+    table().onRowTap!(table().items.single);
+    await tester.pumpAndSettle();
+    expect(table().selectedIds, {'mould'});
+    repository.failDetail = false;
+    table().onRowTap!(table().items.single);
+    await tester.pumpAndSettle();
+    expect(find.text('备用编号'), findsOneWidget);
+    expect(table().selectedIds, isEmpty);
+    Navigator.of(
+      tester.element(find.byType(MouldCategoryPage)),
+      rootNavigator: true,
+    ).pop();
+    await tester.pumpAndSettle();
+    expect(table().selectedIds, isEmpty);
+    expect(table().items.single.id, 'mould');
+    expect(repository.saved, isNull);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('全部模具历史不携带虚拟分类，真实分类历史保留 UUID', (tester) async {
     await tester.binding.setSurfaceSize(const Size(1440, 1000));
@@ -446,6 +477,7 @@ class _Categories implements MouldCategoryRepository {
 class _Moulds implements MouldRepository {
   _Moulds({this.detailOverride});
   final MouldDetail? detailOverride;
+  bool failDetail = false;
   Map<String, dynamic>? saved;
   Map<String, dynamic>? created;
   int globalListCalls = 0;
@@ -514,7 +546,11 @@ class _Moulds implements MouldRepository {
   }
 
   @override
-  Future<MouldDetail> detail(String id) async => record;
+  Future<MouldDetail> detail(String id) async {
+    if (failDetail) throw StateError('private detail fixture unavailable');
+    return record;
+  }
+
   @override
   Future<void> update(String id, Map<String, dynamic> body) async {
     saved = Map.of(body);

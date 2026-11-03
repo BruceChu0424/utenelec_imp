@@ -77,6 +77,34 @@ abstract final class UtenColors {
   static const Color errorOnDark = Color(0xFFF87171);
   static const Color infoOnDark = Color(0xFF60A5FA);
 
+  // 币种是分类信息，固定色相便于跨页面辨认；文字名称始终同时显示。
+  static const Color currencyCny = Color(0xFF9B2015);
+  static const Color currencyUsd = Color(0xFF174EA6);
+  static const Color currencyHkd = Color(0xFF7A1FA2);
+  static const Color currencyEur = Color(0xFF00673A);
+  static const Color currencyJpy = Color(0xFF844900);
+  static const Color currencyGbp = Color(0xFF9D126B);
+  static const Color currencySgd = Color(0xFF006266);
+  static const Color currencyAud = Color(0xFF075985);
+  static const Color currencyCad = Color(0xFF8A3414);
+  static const Color currencyKrw = Color(0xFF3730A3);
+  static const Color currencyRub = Color(0xFF5C5130);
+  static const Color currencyChf = Color(0xFF9F2447);
+  static const Color currencyOther = Color(0xFF475467);
+  static const Color currencyCnyOnDark = Color(0xFFFDA29B);
+  static const Color currencyUsdOnDark = Color(0xFF9ABDFF);
+  static const Color currencyHkdOnDark = Color(0xFFD6BBFB);
+  static const Color currencyEurOnDark = Color(0xFF75E0A7);
+  static const Color currencyJpyOnDark = Color(0xFFFEC84B);
+  static const Color currencyGbpOnDark = Color(0xFFFAA7E0);
+  static const Color currencySgdOnDark = Color(0xFF5EEAD4);
+  static const Color currencyAudOnDark = Color(0xFF7DD3FC);
+  static const Color currencyCadOnDark = Color(0xFFFDBA74);
+  static const Color currencyKrwOnDark = Color(0xFFA5B4FC);
+  static const Color currencyRubOnDark = Color(0xFFD9D681);
+  static const Color currencyChfOnDark = Color(0xFFFDA4AF);
+  static const Color currencyOtherOnDark = Color(0xFFCBD5E1);
+
   /// 品红（分类强调色，非语义状态色）：生产路线「持续生产」的类别色
   /// （2026-09-18 用户口径「路线颜色取差别大的」——与齐套绿、分批蓝拉开色相）。
   static const Color fuchsia = Color(0xFFD946EF);

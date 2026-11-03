@@ -256,6 +256,18 @@ class SalesClientTermsAccessTest {
         assertThat(currencyRule.value()).isEqualTo(SalesClientTermsAccess.CURRENCY_OPTIONS);
     }
 
+    @Test void goodsPriceEditorCanChooseCurrencyWithoutCurrencyManagementOrSettlementAccess() {
+        signIn("goods:price:edit");
+        assertCurrencyOptionsReadable();
+        org.mockito.Mockito.clearInvocations(currencyService);
+        assertThatThrownBy(() -> currencyController.detail(UUID.randomUUID())).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> currencyController.create(new CurrencySaveRequest())).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> currencyController.update(UUID.randomUUID(),new CurrencySaveRequest())).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> currencyController.delete(UUID.randomUUID())).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(() -> referenceController.settlement()).isInstanceOf(AccessDeniedException.class);
+        verifyNoInteractions(currencyService,referenceService);
+    }
+
     private void assertClientDefaultsReadableWithOnly(String permission) {
         signIn(permission);
         UUID clientId = UUID.randomUUID();

@@ -1,0 +1,87 @@
+{
+  "id": "E-GOODS-CURRENCY-SELECTION-20261103",
+  "date": "2026-11-03",
+  "branch": "uimp/goods-currency-selection-20261103",
+  "baseCommit": "dfe3f3b67",
+  "classification": [
+    "frontend",
+    "shared-contract-consumer"
+  ],
+  "nativeWpf": {
+    "partialReadAndNavigationImplemented": true,
+    "fullGoodsModuleMigrated": false,
+    "targetWin7Accepted": false,
+    "tasks": {
+      "W7-BIZ-025": "Existing read-only inline goods detail now displays currency beside price with the same visibility permission and server price mask. Full goods detail/new/edit/BOM/import/history is still unported; no write entry is exposed.",
+      "W7-BIZ-034": "Existing native goods workspace now places currency immediately after price. Leaving the workspace or navigating to a unit detail clears transient table selection; category/query data are separate from table selection.",
+      "W7-BIZ-037": "Existing unit detail/edit/history/print/export callers clear remembered rows and table cells only after the destination is prepared. Context menus, column settings, batch confirmation and pending mutation/draft state keep their existing semantics. Module status and complete DoD remain open."
+    }
+  },
+  "publicEntrypoints": {
+    "currencyIdentityAndDisplay": "API currencyId/currencyCode/currencyName; Shared/CurrencyDisplay.cs follows contracts/currency-display/v1.json and lib/core/utils/currency_display.dart. Nullable historical currency displays 未登记; numeric legacy codes never imply CNY.",
+    "currencyColors": "tools/sync_design_tokens.py generates 26 Uten.Currency.* resources from the owning UtenColors.currency* constants, with provenance and drift checks. No independent C# palette.",
+    "selection": "Shared/TableSelection.cs clears row and cell intent. Unit callers also clear their cross-page selection index. Drafts, inputs, source records, business operations and receipts are not modified."
+  },
+  "permissions": {
+    "visibility": "goods:price:view OR goods:price:edit OR superAdmin, matching the price field",
+    "serverMask": "priceMasked hides currency identity, code, name, displayed text and currency color role",
+    "writes": "goods create/edit is not migrated in WPF and remains unavailable"
+  },
+  "validation": {
+    "host": "Modern Windows developer host; isolated Debug native fixtures, no production server",
+    "compiler": "MSBuild .NET Framework 4.8, C# 7.3, /warnaserror; x86 and x64",
+    "build": "PASS both architectures with UtenBuildScope=goods-currency-selection and private per-architecture output",
+    "currencyContracts": {
+      "command": "build/windows-wpf/goods-currency-selection/<arch>/Uten.Legacy.Tests.exe --goods-currency-contracts",
+      "x86": "PASS goods currency model/shared fixture/native UI contracts; assertions=66; process=x86",
+      "x64": "PASS goods currency model/shared fixture/native UI contracts; assertions=66; process=x64"
+    },
+    "nativeUi": {
+      "command": "build/windows-wpf/goods-currency-selection/<arch>/Uten.Legacy.Tests.exe --ui-contracts-only",
+      "x64": "PASS native UI contracts only; history=7; print=21; common drafts=16; exports=16; inline=70; column UI=9; process=x64",
+      "x86": "PASS native UI contracts only; history=7; print=21; common drafts=16; exports=16; inline=70; column UI=9; process=x86"
+    },
+    "tokenGeneratorTests": "15 passed; generated token/provenance drift check passed",
+    "actualInteraction": [
+      "Actual WPF goods view and SessionCoordinator consume a private HTTP fixture with server total 9704, 486 pages and a complete 20-row page.",
+      "Accounts without price permission see neither price nor currency in list or loaded detail; price-view-only and price-edit-only accounts see both.",
+      "Currency column is immediately after price; selected-row detail uses the generated currency color.",
+      "60 rapid row selections interrupt earlier detail reads; only the final selected currency publishes.",
+      "Unloading and returning to the real native goods view clears row/cell selection and retires old reads.",
+      "Actual UnitsWorkspaceView opens UnitDetailWindow, clears its originating selection, and returns without restoring remembered rows.",
+      "Existing native draft/unknown submission, history/print/export, inline preservation and custom-column UI fixtures remain passing."
+    ],
+    "screenshots": [
+      "build/windows-wpf/goods-currency-selection/x86/goods-currency-workspace-fixture.png",
+      "build/windows-wpf/goods-currency-selection/x64/goods-currency-workspace-fixture.png"
+    ],
+    "visualReview": "Inspected actual rendered x64 workspace: RMB red, USD blue and HKD purple are readily distinct; currency label remains readable and immediately follows price.",
+    "notRun": [
+      "Win7 SP1 target-PC UAT",
+      "full WPF goods ERP migration",
+      "formal package/installer/update distribution",
+      "production data writes"
+    ]
+  },
+  "companyDatabaseWritten": false,
+  "formalPackagesBuilt": false,
+  "deployed": false,
+  "workingSourceSha256": {
+    "lib/core/theme/uten_colors.dart": "32e4f983df834988cd8754caf87982d03a21b3795ff5c3f8c8458faa85d97d11",
+    "lib/core/utils/currency_display.dart": "ca6ce015ca4d8e664fd14fec249d532b2e9b0a0412b2a37534f267e8f52274cf",
+    "contracts/currency-display/v1.json": "f2f585c742e4452334ca9aad72b7fcde4f28fee7c94d35c8536122ece5d08268",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadContractChecks.cs": "2f33fec069133c19bc94cc3dd7dc5aaf1c52aecdb71e23d32b0d017ffd8d00e7",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsReadService.cs": "4d30ddaaf8939dd30d9a1b9716978e3514132b02a44c63ee837110eaabb35b88",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Features/Goods/GoodsWorkspaceView.cs": "fe6428b5356072498a6bbb0d4e412eb2b76ec2a5532cf58ddb0f1de8e6b7886e",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitsWorkspaceView.cs": "c7144b6b74e9c680eec1bc9587782586dd0f995a990967aa5133eaaa84a992b2",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Shared/CurrencyDisplay.cs": "7cf5c71deadb8aa1dc91b7dd3192351587770121c80787a16bdd8213fe8a7fda",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Shared/TableSelection.cs": "e61d5e3f987650830e83106704f0fd08ae8929689bafcd43ba3cd93dde6f7f60",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Themes/Uten.Tokens.g.xaml": "813e70284414fcc6a2b000029ce82284f8f9efa78890dcc7e391aeb0987b1b65",
+    "clients/windows_legacy/Uten.Legacy.Desktop/Uten.Legacy.Desktop.csproj": "881ddde69172af5f8f80e38d5ec4135a0b13f836c576e9f56fdae7c26a44148f",
+    "clients/windows_legacy/Uten.Legacy.Tests/Program.cs": "8b7a7262d071a2fc40001845ddac5a9d1055bfe81b26e3025b12ac446c55bac2",
+    "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs": "0236893253018c20bbc2e9b4e8ed090b4144f03bd75be2422d012c92ce744981",
+    "clients/windows_legacy/tools/sync_design_tokens.py": "15142f57f9f01dbab91b366613fa80bdc26e751ffd93cf7858f095cd98e7bb66",
+    "clients/windows_legacy/tools/test_design_tokens.py": "0383626eb99312f61452725d5c4c6e91e800d1bafaf0281f336e7216e9a070e2",
+    "clients/windows_legacy/design-token-provenance.json": "e9f5e193460415c5bb274b871adaf58d6bb2b08d1e570d3997b94d31ce6c93fc"
+  }
+}

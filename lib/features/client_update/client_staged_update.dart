@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/network/server_config.dart';
@@ -118,13 +119,28 @@ class ClientStagedUpdateStore extends ChangeNotifier {
               installed.lastUpdateFailed)) {
         return false;
       }
-      await verifyClientPackage(entry.path, entry.release);
+      try {
+        await verifyClientPackage(entry.path, entry.release);
+      } catch (_) {
+        // A damaged/deleted staged file must not trap every retry on the same
+        // bytes. The next explicit update downloads and verifies a fresh copy.
+        reconcile(null);
+        rethrow;
+      }
       await verifySession?.call();
       if (_disposed || !identical(update, entry) || !isSafe()) return false;
       await bridge.install(entry.path, entry.release);
       installerOpened = true;
       return !_disposed;
     } catch (failure) {
+      if (failure is PlatformException &&
+          const {
+            'UPDATE_HASH_MISMATCH',
+            'INVALID_UPDATE_SIZE',
+            'UNSAFE_UPDATE_PATH',
+          }.contains(failure.code)) {
+        reconcile(null);
+      }
       error = failure;
       if (automatic) _failedAutomaticReleases.add(entry.release.id);
       rethrow;

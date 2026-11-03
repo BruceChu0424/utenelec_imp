@@ -454,7 +454,7 @@ void main() {
 
   for (final brightness in Brightness.values) {
     testWidgets(
-      '1920 ${brightness.name} current status stays centered within 760 without empty notes',
+      '1920 ${brightness.name} uses the wide workspace without empty notes',
       (tester) async {
         final harness = _Harness(_Api());
         await harness.mount(
@@ -469,18 +469,48 @@ void main() {
         expect(find.byIcon(Icons.system_update_alt_rounded), findsOneWidget);
         expect(AppInfo.displayName, '优腾综合管理平台');
         expect(find.text(AppInfo.displayName), findsOneWidget);
-        final bounded = find.ancestor(
-          of: find.byKey(const ValueKey('client-update-status')),
-          matching: find.byWidgetPredicate(
-            (widget) =>
-                widget is ConstrainedBox && widget.constraints.maxWidth == 760,
-          ),
-        );
+        final bounded = find.byKey(const ValueKey('client-update-workspace'));
         expect(bounded, findsOneWidget);
         final rect = tester.getRect(bounded);
-        expect(rect.width, lessThanOrEqualTo(760));
+        expect(rect.width, lessThanOrEqualTo(1200));
         expect((rect.center.dx - 960).abs(), lessThanOrEqualTo(16));
+        final main = tester.getRect(
+          find.byKey(const ValueKey('client-update-main-panel')),
+        );
+        final supporting = tester.getRect(
+          find.byKey(const ValueKey('client-update-supporting')),
+        );
+        expect(supporting.left, greaterThan(main.right));
+        expect(main.top, lessThan(250));
         await harness.capture(tester, 'current-1920-${brightness.name}');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final size in [
+    const Size(1440, 900),
+    const Size(1920, 1080),
+    const Size(2560, 1440),
+  ]) {
+    testWidgets(
+      'available release uses both columns and visible actions at $size',
+      (tester) async {
+        final harness = _Harness(_Api()..available = true);
+        await harness.mount(tester, size: size);
+        await harness.open(tester);
+        await tester.pumpAndSettle();
+        final main = tester.getRect(
+          find.byKey(const ValueKey('client-update-main-panel')),
+        );
+        final notes = tester.getRect(
+          find.byKey(const ValueKey('client-update-notes')),
+        );
+        expect(notes.left, greaterThan(main.right));
+        expect(_update.hitTestable(), findsOneWidget);
+        expect(_check.hitTestable(), findsOneWidget);
+        expect(find.text(_notes).hitTestable(), findsOneWidget);
+        await harness.capture(tester, 'available-${size.width.toInt()}-light');
         expect(tester.takeException(), isNull);
       },
     );

@@ -72,7 +72,9 @@ class _ClientUpdateHostState extends ConsumerState<ClientUpdateHost> {
   bool _safeAndIdle() {
     if (!mounted ||
         !widget.enabled ||
+        ClientRuntimeProfile.isLocalTest ||
         kIsWeb ||
+        !ref.read(appVisibilityProvider) ||
         !ref.read(clientAutoUpdateEnabledProvider) ||
         !webUpdateSafety.safeToReload) {
       return false;
@@ -94,6 +96,14 @@ class _ClientUpdateHostState extends ConsumerState<ClientUpdateHost> {
     final store = ref.read(clientStagedUpdateStoreProvider);
     final staged = store.update;
     if (staged == null || !store.mayApplyAutomatically(staged)) return;
+    if (widget.authenticated) {
+      final controller = ref.read(clientUpdateControllerProvider);
+      if (controller.busy ||
+          controller.blocksNavigation ||
+          controller.stage == ClientUpdateStage.installerOpened) {
+        return;
+      }
+    }
     if (!_safeAndIdle()) return;
     if (_dialogOpen) {
       // Replace only our availability offer. Never pop a business dialog or
@@ -220,6 +230,10 @@ class _ClientUpdateHostState extends ConsumerState<ClientUpdateHost> {
         }
         opportunity.dispose();
         _closeOfferForCountdown = null;
+        // This flag describes the availability modal only. Holding it for the
+        // whole details-page visit silently prevented idle installation there.
+        // The countdown can overlay the owned page without closing it.
+        _dialogOpen = false;
         if (details == true &&
             _active &&
             context.mounted &&

@@ -5369,9 +5369,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/windows-update-page-20261102.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。2026-11-02 Flutter Windows 更新页改为宽屏双栏，并补齐缓存损坏后重下、安装重试错误清除、并发交接互斥和详情页空闲倒计时。WPF 本页仍未迁移，后续须接入运行时隔离、保存工作与未知提交保护、下载/安装反馈及相同重试语义；保持 todo，不开放占位入口，不推定 Win7 已验收。见 E-WINDOWS-UPDATE-PAGE-20261102。",
+      "lastUpdated": "2026-11-03T00:12:34.882120+00:00"
     },
     {
       "id": "W7-BIZ-040",

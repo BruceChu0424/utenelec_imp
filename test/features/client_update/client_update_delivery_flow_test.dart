@@ -307,7 +307,12 @@ void main() {
       throwsFormatException,
     );
     expect(installCalls, isEmpty);
-    expect(store.mayApplyAutomatically(store.update!), isFalse);
+    expect(store.update, isNull);
+    await controller.update();
+    expect(server.downloads, 2);
+    expect(installCalls, hasLength(1));
+    expect(controller.error, isNull);
+    expect(controller.stage, ClientUpdateStage.installerOpened);
   });
 
   test('an automatic installer failure is latched for that release', () async {
@@ -509,6 +514,54 @@ void main() {
     },
   );
 
+  testWidgets(
+    'a downloaded update survives re-entry and rapid install requests hand off once',
+    (tester) async {
+      await pumpSettings(tester);
+      await tester.runAsync(controller.prepareUpdate);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('client-update-package-ready')),
+        findsOneWidget,
+      );
+      await tester.tap(find.byType(UtenBackButton));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(ClientUpdateTile));
+      await tester.pumpAndSettle();
+      expect(controller.hasStagedUpdate, isTrue);
+      final requests = List.generate(50, (_) => controller.installPrepared());
+      await flushInstallChain(tester);
+      await Future.wait(requests);
+      expect(server.downloads, 1);
+      expect(installCalls, hasLength(1));
+      expect(controller.error, isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'installer failure stays actionable and retry clears the error without redownloading',
+    (tester) async {
+      await pumpSettings(tester);
+      failInstall = true;
+      await tester.tap(find.byKey(const ValueKey('client-update-now')));
+      await flushInstallChain(tester);
+      expect(controller.stage, ClientUpdateStage.failed);
+      expect(find.text('更新未完成'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
+      expect(controller.hasStagedUpdate, isTrue);
+      failInstall = false;
+      await tester.tap(find.byKey(const ValueKey('client-update-now')));
+      await flushInstallChain(tester);
+      expect(server.downloads, 1);
+      expect(installCalls, hasLength(2));
+      expect(controller.error, isNull);
+      expect(controller.stage, ClientUpdateStage.installerOpened);
+      expect(find.text('更新未完成'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   testWidgets('settings update returns through the root above a nested shell', (
     tester,
   ) async {
@@ -688,6 +741,29 @@ void main() {
       expect(find.byType(AlertDialog), findsNothing);
       expect(installCalls, hasLength(1));
       expect(server.requests.length, requests);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'viewing update details does not suppress clean idle installation',
+    (tester) async {
+      UserActivity.reset();
+      UserActivity.clock = () => tester.binding.clock.now();
+      addTearDown(UserActivity.reset);
+      await pumpSettings(tester, host: true, openUpdate: false);
+      await tester.pump(const Duration(seconds: 2));
+      await flushInstallChain(tester);
+      await tester.tap(find.text('查看详情'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ClientUpdatePage), findsOneWidget);
+      expect(controller.hasStagedUpdate, isTrue);
+      await tester.pump(const Duration(minutes: 5));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.textContaining(RegExp('立即更新（\\d+）')), findsOneWidget);
+      await tester.pump(const Duration(seconds: 12));
+      await flushInstallChain(tester);
+      expect(installCalls, hasLength(1));
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );

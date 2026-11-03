@@ -308,11 +308,14 @@ class ClientUpdateController extends ChangeNotifier {
       _notify();
       return false;
     }
+    // Claim the handoff before the first await so manual and idle-countdown
+    // requests cannot both enter it. A retry also retires its previous error.
+    stage = ClientUpdateStage.installing;
+    error = null;
+    waitingForSafeInstall = false;
+    _notify();
     try {
       final scope = await api.captureRequestScope(isCurrent: () => !_disposed);
-      stage = ClientUpdateStage.installing;
-      waitingForSafeInstall = false;
-      _notify();
       final applied = await stagedUpdates.apply(
         bridge: bridge,
         isSafe: safe,

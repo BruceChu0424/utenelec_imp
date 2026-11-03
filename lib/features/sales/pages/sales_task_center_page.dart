@@ -24,7 +24,7 @@
 //   · 各大类内的小类行计数与独立列表页完全同源（嵌入的是同一份页面代码）。
 //
 // 旧路由 /sales/progress 与 /sales/:seg 列表页保留（通知深链、新建页「草稿(N)」
-// 按钮、行级跳转直达）。进页面不预选大类（未选显示引导空态，不发请求）。
+// 按钮、行级跳转直达）。不预选大类；后台只准备当前/首个授权大类的工作首屏。
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -48,6 +48,7 @@ import '../models/sales_doc.dart';
 import '../pages/sales_doc_list_page.dart';
 import '../pages/sales_order_progress_page.dart';
 import '../config/sales_doc_config.dart';
+import '../providers/sales_task_preload_provider.dart';
 
 /// 一个大类分段（含待办/在办计数与可见性）。
 class _GroupSpec {
@@ -117,6 +118,16 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
           ),
         )
         .value;
+    // This slice has its own read permission and status scope. Warm it beside
+    // the parent counts rather than waiting for its embedded page to mount.
+    ref.watch(
+      effectiveDocumentStatusCountsProvider(
+        const DocumentStatusScope(
+          DraftDocKind.salesShipment,
+          shipmentKind: 'DIRECT_CUSTOMER',
+        ),
+      ),
+    );
     final quoteToConvert = ref.watch(
       badgeEntryTodoProvider(BadgeEntry.salesQuoteAwaitingConversion),
     );
@@ -214,6 +225,19 @@ class _SalesTaskCenterPageState extends ConsumerState<SalesTaskCenterPage> {
         ),
       );
     }
+
+    final prepareGroup = groups.any((group) => group.value == _group)
+        ? _group!
+        : groups.first.value;
+    ref
+        .watch(salesTaskPreloaderProvider)
+        .prepare(
+          prepareGroup,
+          canPrepare: () =>
+              mounted &&
+              TickerMode.valuesOf(context).enabled &&
+              (ModalRoute.of(context)?.isCurrent ?? true),
+        );
 
     // 大类行（2026-09-24 用户口径「表格滑到顶」）：选中大类后它随正文一起进
     // 折叠头滚走——滑到头后只剩表格自身工具条；未选大类时仍钉在占位区上方。

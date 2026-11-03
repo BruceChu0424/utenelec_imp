@@ -21,6 +21,7 @@ import 'package:uten_imp/shared/documents/imported_document_policy.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import '../../../support/page_resume_test_bridge.dart';
+import '../../../helpers/badge_summary_fixture.dart';
 
 /// 页面 build 期捕获本页路径（onPageResume 返回即刷新用），需包一层 GoRouter。
 Widget _host() {
@@ -132,6 +133,19 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            fixedBadgeSummaryOverride(
+              badgeSummaryFixture(
+                facts: const {
+                  'salesStage.DRAFT': 2,
+                  'salesStage.REJECTED': 1,
+                  'salesStage.PENDING': 0,
+                  'salesStage.PRODUCING': 3,
+                  'salesStage.SHIPPABLE': 0,
+                  'salesStage.SHIPMENT_PENDING': 0,
+                  'salesStage.WAREHOUSE_PENDING': 0,
+                },
+              ),
+            ),
             apiClientProvider.overrideWithValue(api),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.salesOrderView,
@@ -149,7 +163,7 @@ void main() {
       // 大类行四段：草稿置顶(红) + 三个链路大类，六个阶段不再一字排开。
       expect(segment('草稿'), findsOneWidget);
       final draftSeg = tester.widget<UtenSegmentBadgeLabel>(segment('草稿'));
-      expect(draftSeg.count, 2, reason: '草稿红数 = stage-counts 的 DRAFT 桶');
+      expect(draftSeg.count, 2, reason: '草稿红数 = 同源汇总的 salesStage.DRAFT 桶');
       expect(draftSeg.countForm, UtenSegmentCountForm.actionable);
       expect(
         find.descendant(
@@ -264,6 +278,19 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            fixedBadgeSummaryOverride(
+              badgeSummaryFixture(
+                facts: const {
+                  'salesStage.DRAFT': 2,
+                  'salesStage.REJECTED': 1,
+                  'salesStage.PENDING': 0,
+                  'salesStage.PRODUCING': 3,
+                  'salesStage.SHIPPABLE': 0,
+                  'salesStage.SHIPMENT_PENDING': 0,
+                  'salesStage.WAREHOUSE_PENDING': 0,
+                },
+              ),
+            ),
             apiClientProvider.overrideWithValue(api),
             currentPermissionsProvider.overrideWithValue(const {
               Perm.salesOrderView,

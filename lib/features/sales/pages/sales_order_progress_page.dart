@@ -34,7 +34,6 @@ import '../../../shared/auth/read_owner_fence.dart';
 // 闸门先判会把取消单错显成「等待财务审核」。
 // 打开本页即把完工通知标记已读 → 完工徽章归零（已读语义）。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
-import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../../../shared/drafts/form_draft_master_names.dart';
@@ -60,6 +59,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/auth/permissions.dart';
+import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/drafts/form_draft_category.dart';
 import '../../../shared/drafts/form_draft_category_table.dart';
 import '../../../shared/documents/imported_document_policy.dart';
@@ -182,16 +182,12 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
 
   String _keyword = '';
   int _requestVersion = 0;
-  int _stageCountsVersion = 0;
   int _page = 1;
   bool _loading = false;
   bool _cancelBusy = false;
   String? _error;
   PagedResult<SalesOrderProgressRow>? _result;
   final _tableRows = MasterDataTableRowsController<SalesOrderProgressRow>();
-
-  /// 阶段计数（后端全量口径）；null = 尚未返回，徽章不显示。
-  Map<String, int>? _stageCounts;
 
   // 2026-09-25 单号列统一：订单号列排序 + 表头值筛选 + 桶 + 防串台代数
   // （共享状态，见 MasterServerColumnFilters）。
@@ -246,9 +242,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
       ref,
       () => setState(() {
         ++_requestVersion;
-        ++_stageCountsVersion;
         _result = null;
-        _stageCounts = null;
         _loading = false;
         _error = null;
         _page = 1;
@@ -258,29 +252,17 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         clearDraftSelection();
       }),
     );
-    // 打开即清完工徽章（已读语义）；并拉阶段计数（徽章，全量口径）。
+    // 打开即清完工徽章（已读语义）；分类数直接复用全站已加载的同源事实。
     WidgetsBinding.instance.addPostFrameCallback((_) {
       markSalesCompletionSeen(context);
-      _loadStageCounts();
     });
   }
 
-  Future<void> _loadStageCounts() async {
-    final generation = ++_stageCountsVersion;
-    final current = captureReadOwner(ref);
-    try {
-      final counts = await ref
-          .read(salesRepositoryProvider(SalesDocType.order))
-          .progressStageCounts();
-      if (current() && generation == _stageCountsVersion) {
-        setState(() => _stageCounts = counts);
-      }
-    } catch (_) {
-      // 计数失败静默：徽章不显示，不影响列表。
-    }
-  }
-
-  Future<void> _load(int page, {bool useCache = false}) async {
+  Future<void> _load(
+    int page, {
+    bool useCache = false,
+    bool preferPrepared = false,
+  }) async {
     if (!_shouldLoad) return;
     final version = ++_requestVersion;
     final seg = _seg!;
@@ -346,6 +328,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
         ],
         useCache: useCache,
         fetchPage: (target) => pageRepository.progress(
+          preferPrepared: preferPrepared,
           page: target,
           size: pageSize,
           origin: pageOrigin,
@@ -401,7 +384,9 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
           ? UtenHistoryTimeValue.lastThreeMonths()
           : const UtenHistoryTimeValue.all();
     });
-    if (!seg.history || !_historyTime.isNone) _load(1);
+    if (!seg.history || !_historyTime.isNone) {
+      _load(1, preferPrepared: true);
+    }
   }
 
   void _onHistoryTime(UtenHistoryTimeValue value) {
@@ -466,8 +451,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
       if (!mounted) return;
       context.appSuccess('订单已取消');
       bumpListRefresh(ref, SalesDocConfig.by(SalesDocType.order).refreshKey);
-      await _load(_refreshPage);
-      _loadStageCounts();
+      await Future.wait([_load(_refreshPage), refreshBadges(ref)]);
     } on ApiException catch (e) {
       if (mounted) {
         context.appError(e.message);
@@ -565,12 +549,18 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   /// 2026-09-21 之前它们是中性括号, 与「已结束」的历史记录混成一种形态。
   /// 某个大类下、满足 [where] 的那些阶段的计数之和；计数还没回来时返回 null
   /// （不把「未知」伪装成 0，与全站徽章口径一致）。
-  int? _groupCount(String group, bool Function(String stage) where) {
-    final counts = _stageCounts;
-    if (counts == null) return null;
+  int? _groupCount(
+    BadgeSummary summary,
+    String group,
+    bool Function(String stage) where,
+  ) {
+    if (!summary.loaded || !summary.hasSource('salesStage')) return null;
     var total = 0;
     for (final stage in _stageGroups[group]!) {
-      if (where(stage)) total += counts['TASK_$stage'] ?? 0;
+      if (!where(stage)) continue;
+      final count = summary.facts[BadgeFact.salesStage(stage)];
+      if (count == null) return null;
+      total += count;
     }
     return total;
   }
@@ -630,6 +620,13 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final seg = _seg;
+    // salesStage.* is the server's TASK_* projection used by the parent badge.
+    // The shared notifier fences reader epochs and retains a known prior value
+    // on transient source failures; absent facts stay unknown instead of zero.
+    final summary = ref.watch(badgeSummaryProvider);
+    final draftCount = summary.loaded && summary.hasSource('salesStage')
+        ? summary.facts[BadgeFact.salesStage(_kDraftStage)]
+        : null;
     final localDraftCount = ref.watch(
       formDraftCategoryCountProvider(
         const FormDraftCategoryScope(kind: 'salesOrder'),
@@ -639,7 +636,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
     // 嵌入态（任务中心「订货进度」大类）无独立路由落点时回退到进度页路径。
     _myLocation ??= currentLocationOr(context, RouteName.salesOrderProgress);
     ref.onPageResume(_myLocation!, () async {
-      await Future.wait([_load(_refreshPage), _loadStageCounts()]);
+      await Future.wait([_load(_refreshPage), refreshBadges(ref)]);
     });
     // 主阶段 + 表格：独立页与任务中心嵌入态共用一份。
     // 嵌入态由宿主页提供容器，避免双重边距；头部空行程只在独立页留。
@@ -677,19 +674,19 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
                     UtenFilterSegment(
                       value: const _ProgressSeg.stage(_kDraftStage),
                       label: '草稿',
-                      count: _stageCounts == null && localDraftCount == 0
+                      count: draftCount == null && localDraftCount == 0
                           ? null
-                          : (_stageCounts?['TASK_$_kDraftStage'] ?? 0) +
-                                localDraftCount,
+                          : (draftCount ?? 0) + localDraftCount,
                       countForm: UtenSegmentCountForm.actionable,
                     ),
                     for (final group in _stageGroups.keys)
                       UtenFilterSegment(
                         value: _ProgressSeg.stage(group),
                         label: _groupLabels[group]!,
-                        count: _groupCount(group, _stageNeedsSales),
+                        count: _groupCount(summary, group, _stageNeedsSales),
                         countForm: UtenSegmentCountForm.actionable,
                         inProgressCount: _groupCount(
+                          summary,
                           group,
                           (stage) => !_stageNeedsSales(stage),
                         ),
@@ -741,7 +738,7 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
             // 整页刷新：列表回第 1 页 + 阶段徽章计数（与 initState 同口径）。
             busy: _loading,
             onRefresh: () async {
-              await Future.wait([_loadStageCounts(), _load(1)]);
+              await Future.wait([refreshBadges(ref), _load(1)]);
             },
           ),
         ],
@@ -777,8 +774,10 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
                   delete: _deleteDraft,
                   reload: () async {
                     bumpListRefresh(ref, SalesDocConfig.order.refreshKey);
-                    await _load(_refreshPage);
-                    await _loadStageCounts();
+                    await Future.wait([
+                      _load(_refreshPage),
+                      refreshBadges(ref),
+                    ]);
                   },
                 ),
               ]

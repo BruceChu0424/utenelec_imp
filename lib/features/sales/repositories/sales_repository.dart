@@ -18,6 +18,8 @@ import '../../../shared/models/paged_result.dart';
 import '../../../shared/models/progress_timeline_event.dart';
 import '../models/sales_doc.dart';
 import '../models/sales_order_progress.dart';
+import '../../../shared/paging/prepared_page_read.dart';
+import '../providers/sales_prepared_page_provider.dart';
 
 class SalesDocFilter {
   const SalesDocFilter({
@@ -75,21 +77,28 @@ class SalesDocFilter {
 }
 
 class SalesRepository {
-  SalesRepository(this.api, this.type);
+  SalesRepository(
+    this.api,
+    this.type, {
+    this.preparedLists,
+    this.preparedProgress,
+  });
   final ApiClient api;
   final SalesDocType type;
+  final PreparedPageRead<SalesDocListItem>? preparedLists;
+  final PreparedPageRead<SalesOrderProgressRow>? preparedProgress;
 
   String get _base =>
       '/sales/${type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}';
   String _doc(String id) => '$_base/$id';
 
-  Future<PagedResult<SalesDocListItem>> list({
+  Map<String, dynamic> _listQuery({
     int page = 1,
     int size = 20,
     SalesDocFilter filter = const SalesDocFilter(),
     String? sort,
     String? order,
-  }) async {
+  }) {
     final query = <String, dynamic>{
       ...filter.columnSearchQuery,
       'page': page,
@@ -125,8 +134,45 @@ class SalesRepository {
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (order != null && order.isNotEmpty) 'order': order,
     };
+    return query;
+  }
+
+  Future<PagedResult<SalesDocListItem>> _fetchList(
+    Map<String, dynamic> query,
+  ) async {
     final json = await api.get(_base, query: query);
     return PagedResult.fromJsonResponsive(json, SalesDocListItem.fromJson);
+  }
+
+  Future<void> prepareList({required SalesDocFilter filter}) async {
+    final query = _listQuery(filter: filter);
+    await preparedLists?.prepare([api, _base, query], () => _fetchList(query));
+  }
+
+  Future<PagedResult<SalesDocListItem>> list({
+    int page = 1,
+    int size = 20,
+    SalesDocFilter filter = const SalesDocFilter(),
+    String? sort,
+    String? order,
+    bool preferPrepared = false,
+  }) {
+    final query = _listQuery(
+      page: page,
+      size: size,
+      filter: filter,
+      sort: sort,
+      order: order,
+    );
+    final prepared = preparedLists;
+    if (page == 1 && prepared != null) {
+      return prepared.read(
+        [api, _base, query],
+        () => _fetchList(query),
+        preferPrepared: preferPrepared,
+      );
+    }
+    return _fetchList(query);
   }
 
   /// 单据号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径（按 docType
@@ -213,6 +259,37 @@ class SalesRepository {
   /// 历史记录时间门控引入）。
   /// [sort]/[order]/[billNo]（2026-09-25 单号列统一）：订单号/交货日排序白名单 +
   /// 订单号表头值筛选（服务端精确匹配）。
+  Map<String, dynamic> _progressQuery({
+    int page = 1,
+    int size = 20,
+    BusinessDocumentOrigin origin = BusinessDocumentOrigin.current,
+    String stage = '',
+    String keyword = '',
+    String? dateFrom,
+    String? dateTo,
+    String? sort,
+    String? order,
+    String? billNo,
+  }) => <String, dynamic>{
+    'originScope': origin.apiValue,
+    'page': page,
+    'size': size,
+    if (stage.isNotEmpty) 'stage': stage,
+    if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
+    'dateFrom': ?dateFrom,
+    'dateTo': ?dateTo,
+    if (sort != null && sort.isNotEmpty) 'sort': sort,
+    if (order != null && order.isNotEmpty) 'order': order,
+    if (billNo != null && billNo.trim().isNotEmpty) 'billNo': billNo.trim(),
+  };
+
+  Future<PagedResult<SalesOrderProgressRow>> _fetchProgress(
+    Map<String, dynamic> query,
+  ) async {
+    final json = await api.get('/sales/orders/progress', query: query);
+    return PagedResult.fromJsonResponsive(json, SalesOrderProgressRow.fromJson);
+  }
+
   Future<PagedResult<SalesOrderProgressRow>> progress({
     int page = 1,
     int size = 20,
@@ -224,23 +301,38 @@ class SalesRepository {
     String? sort,
     String? order,
     String? billNo,
-  }) async {
-    final json = await api.get(
-      '/sales/orders/progress',
-      query: {
-        'originScope': origin.apiValue,
-        'page': page,
-        'size': size,
-        if (stage.isNotEmpty) 'stage': stage,
-        if (keyword.trim().isNotEmpty) 'keyword': keyword.trim(),
-        'dateFrom': ?dateFrom,
-        'dateTo': ?dateTo,
-        if (sort != null && sort.isNotEmpty) 'sort': sort,
-        if (order != null && order.isNotEmpty) 'order': order,
-        if (billNo != null && billNo.trim().isNotEmpty) 'billNo': billNo.trim(),
-      },
+    bool preferPrepared = false,
+  }) {
+    final query = _progressQuery(
+      page: page,
+      size: size,
+      origin: origin,
+      stage: stage,
+      keyword: keyword,
+      dateFrom: dateFrom,
+      dateTo: dateTo,
+      sort: sort,
+      order: order,
+      billNo: billNo,
     );
-    return PagedResult.fromJsonResponsive(json, SalesOrderProgressRow.fromJson);
+    final prepared = preparedProgress;
+    if (page == 1 && prepared != null) {
+      return prepared.read(
+        [api, query],
+        () => _fetchProgress(query),
+        preferPrepared: preferPrepared,
+      );
+    }
+    return _fetchProgress(query);
+  }
+
+  Future<void> prepareProgress(String stage) async {
+    final prepared = preparedProgress;
+    if (prepared == null) return;
+    // Match the visible page's complete default query. Preparation never asks
+    // for history, all rows, facets or the pagination look-ahead window.
+    final query = _progressQuery(size: 50, stage: stage);
+    await prepared.prepare([api, query], () => _fetchProgress(query));
   }
 
   /// 订单进度订单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。
@@ -262,15 +354,6 @@ class SalesRepository {
       },
     );
     return parseFacetBuckets(json, 'billNo');
-  }
-
-  /// 订单进度各阶段计数（顶部筛选卡的全量口径）：{PENDING: n, PRODUCING: n, ...}。
-  Future<Map<String, int>> progressStageCounts() async {
-    final json = await api.get('/sales/orders/progress/stage-counts');
-    return {
-      for (final entry in (json as Map).entries)
-        entry.key.toString(): (entry.value as num).toInt(),
-    };
   }
 
   Future<SalesDocDetail> create(Map<String, dynamic> body) async {
@@ -654,7 +737,17 @@ class SalesRepository {
 
 /// 按 docType 的仓库 family。
 final salesRepositoryProvider = Provider.family<SalesRepository, SalesDocType>(
-  (ref, type) => SalesRepository(ref.watch(apiClientProvider), type),
+  (ref, type) => SalesRepository(
+    ref.watch(apiClientProvider),
+    type,
+    preparedLists: ref.watch(salesPreparedListProvider),
+    preparedProgress: ref.watch(salesPreparedProgressProvider),
+  ),
+  dependencies: [
+    apiClientProvider,
+    salesPreparedListProvider,
+    salesPreparedProgressProvider,
+  ],
 );
 
 /// 客户主档默认销售条款 (/sales/orders/last-terms 预填返回体)。

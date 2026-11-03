@@ -8,7 +8,7 @@
     "mergeMainAllowed": false,
     "productionDeploymentAllowed": false
   },
-  "inventorySha256": "6cfca699e0d32b296b1fb868bd1ad1426a380a39713a55a2cf969509c8743f7e",
+  "inventorySha256": "e83538dc5b562899dfe047baf7d4347929a556e178b33a0708a2de789160091f",
   "baselineCounts": {
     "businessPagePackages": 220,
     "retainedBusinessPagePackages": 3,
@@ -6885,7 +6885,7 @@
       "feature": "finance",
       "businessSource": "lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart",
       "sourceSha256": "b388b23102fbeac1dec9a27f319dc3403139c08942cf7cb8f1a9b6a7c34a2bb6",
-      "sourceProofSha256": "748bf6a3c4ed207bd624ae2440e5173730c76e6359c117e5d0907d6077576430",
+      "sourceProofSha256": "53bd5b8093ff77d4f8df88a69589a5c80c4767e1b958a0b4d63956380043a65f",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9471,7 +9471,7 @@
       "feature": "sales",
       "businessSource": "lib/features/sales/pages/sales_doc_detail_page.dart",
       "sourceSha256": "f9c364664655015ff10439a683460a6063b61cc26fd520c13603a3d1888ee811",
-      "sourceProofSha256": "9e2ac40563ac04fdc80d526c9ba9c350127ac4a13333428478728387288e57da",
+      "sourceProofSha256": "7b464b5eecfb86c5763d6512d65fa45f509d3e97749fb0011856957c0cc88e87",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9515,7 +9515,7 @@
       "feature": "sales",
       "businessSource": "lib/features/sales/pages/sales_doc_edit_page.dart",
       "sourceSha256": "adf7d4efcd331fd6008b748fc02f595a5fda36dc04b3d67964fbd8ce6f06522d",
-      "sourceProofSha256": "02e4ec555f27bf776186d1ddcd158579b39600582917e0410c4e1fb433215854",
+      "sourceProofSha256": "f538ccced73ded4eb5968d008dc3482380a73d95d9cce5d2c9827c60dadd606c",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9560,8 +9560,8 @@
       "phase": "D",
       "feature": "sales",
       "businessSource": "lib/features/sales/pages/sales_doc_list_page.dart",
-      "sourceSha256": "16f33f816d8353691339423c186262b184bcf1383446f7b80e838a0a69283933",
-      "sourceProofSha256": "a8a52d70ba8ddacb900486dc1da219ee15968ba40a5613761cbddce8d2c3fc02",
+      "sourceSha256": "1a458fd811473dd72d86112458055d5b2fb5eb4854e0eb09beb0cfe7e218400e",
+      "sourceProofSha256": "8d70e45d8bf16b2388c6e59934c36ba45981d851afe45e5fdcc58c2c2c246678",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9589,9 +9589,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/sales-task-prefetch-20261103.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 销售任务中心内嵌出货、客户零星发货、退货、报价及历史其它出货共用本列表。后续原生迁移须按权限有界预热非历史工作段首屏，点击复用完整同查询的在途/已完成读取，并按身份、权限、读取范围、API 实例及写修订隔离；显式刷新绕过预热，历史时间门控/筛选/排序/分页保持 owning 条件。WPF 本页尚未迁移，保持 todo；详见 E-SALES-TASK-PREFETCH-20261103。",
+      "lastUpdated": "2026-11-03T17:04:10.866074+00:00"
     },
     {
       "id": "W7-BIZ-138",
@@ -9686,8 +9688,8 @@
       "phase": "D",
       "feature": "sales",
       "businessSource": "lib/features/sales/pages/sales_order_progress_page.dart",
-      "sourceSha256": "d277ed284707f6a2f691ad7705c267c7f4fb8556b9e186eefa3a804e1edb797c",
-      "sourceProofSha256": "96a1199e071298206e348beb40ed6ac8c827c47b1c6a328770cb377d84544a52",
+      "sourceSha256": "43db75f5967bc9e6fc9392eb5a2be06caa4432dbacc05de5548adf64a85bac3d",
+      "sourceProofSha256": "c7810441a255ccf6b855552227bb4aa86ccde8beabec2897148519b179781ed3",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9716,10 +9718,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json"
+        "clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json",
+        "clients/windows_legacy/progress/evidence/sales-task-prefetch-20261103.json"
       ],
-      "notes": "2026-10-31 订单进度新增 managerReviewState/managerRejectReason，区分等待负责人、负责人驳回和财务状态。WPF 进度入口未迁移；不能把负责人批准解释为财务已通过。\n2026-11-01 审核未完成的有库存订货单统一归进行中/PENDING，状态明确等待销售负责人审核；不能因预留量将新单提前放入可发货。WPF 本页仍未迁移。",
-      "lastUpdated": "2026-11-01"
+      "notes": "2026-10-31 订单进度新增 managerReviewState/managerRejectReason，区分等待负责人、负责人驳回和财务状态。WPF 进度入口未迁移；不能把负责人批准解释为财务已通过。\n2026-11-01 审核未完成的有库存订货单统一归进行中/PENDING，状态明确等待销售负责人审核；不能因预留量将新单提前放入可发货。WPF 本页仍未迁移。\n2026-11-03 订单进度子分类徽章同源消费 TASK_*（badge-summary salesStage.*）口径，避免另发重复阶段统计；非历史工作段首屏可有界预热并完整匹配查询复用，按身份/权限/读取范围/API 实例/本端写修订隔离，显式刷新绕过缓存。WPF 本页尚未迁移，保持 todo，不开放占位入口；详见 E-SALES-TASK-PREFETCH-20261103。",
+      "lastUpdated": "2026-11-03T17:04:13.775057+00:00"
     },
     {
       "id": "W7-BIZ-140",
@@ -9771,7 +9774,7 @@
       "feature": "sales",
       "businessSource": "lib/features/sales/pages/sales_scarcity_page.dart",
       "sourceSha256": "ccf843f3920337e799b0e058321ff0f55dc86241891d5eacb1e2614421743172",
-      "sourceProofSha256": "3c99b13f7d9d0d10926f147e6ad02df17f36dc00a346b8bd71e3950dd4582824",
+      "sourceProofSha256": "83a622f302c7687c3a3ee3948413f1c0d86f459d2409811e0238eebf197d1a89",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9811,8 +9814,8 @@
       "phase": "D",
       "feature": "sales",
       "businessSource": "lib/features/sales/pages/sales_task_center_page.dart",
-      "sourceSha256": "4ad6bd48826ac472ba2fff220f4faa771dc4b9fe10aac513629bd1d43968b1c2",
-      "sourceProofSha256": "237d698e885389036040f3287c8324b9cbf820ffcce5d7b8bfb90ad6dd03a8ef",
+      "sourceSha256": "722fc69d10eab75ba0594d65c4c387249db46ae496bdd5b7be814bb052a01f29",
+      "sourceProofSha256": "fa8f3725d699029bdc8e1001893c6a5ce6a24220658647677e40ef5f9f6df97d",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9839,9 +9842,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/sales-task-prefetch-20261103.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 销售任务中心需与订单进度和单据列表共用权威子类计数及有界首屏预热，保留不同徽章口径、权限、历史时间门控与旧结果退休。WPF 本页尚未迁移，nativeTargets 为空；本轮只登记后续消费者合同，状态保持 todo，完整 ERP/Win7 真机及正式交付未验收。详见 E-SALES-TASK-PREFETCH-20261103。",
+      "lastUpdated": "2026-11-03T17:04:16.485607+00:00"
     },
     {
       "id": "W7-BIZ-143",

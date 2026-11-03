@@ -70,9 +70,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/sales-task-prefetch-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 销售任务中心内嵌出货、客户零星发货、退货、报价及历史其它出货共用本列表。后续原生迁移须按权限有界预热非历史工作段首屏，点击复用完整同查询的在途/已完成读取，并按身份、权限、读取范围、API 实例及写修订隔离；显式刷新绕过预热，历史时间门控/筛选/排序/分页保持 owning 条件。WPF 本页尚未迁移，保持 todo；详见 E-SALES-TASK-PREFETCH-20261103。。
 
 ## W7-BIZ-138
 
@@ -142,9 +142,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json`；`clients/windows_legacy/progress/evidence/sales-task-prefetch-20261103.json`。
 
-接续/限制：2026-10-31 订单进度新增 managerReviewState/managerRejectReason，区分等待负责人、负责人驳回和财务状态。WPF 进度入口未迁移；不能把负责人批准解释为财务已通过。；2026-11-01 审核未完成的有库存订货单统一归进行中/PENDING，状态明确等待销售负责人审核；不能因预留量将新单提前放入可发货。WPF 本页仍未迁移。。
+接续/限制：2026-10-31 订单进度新增 managerReviewState/managerRejectReason，区分等待负责人、负责人驳回和财务状态。WPF 进度入口未迁移；不能把负责人批准解释为财务已通过。；2026-11-01 审核未完成的有库存订货单统一归进行中/PENDING，状态明确等待销售负责人审核；不能因预留量将新单提前放入可发货。WPF 本页仍未迁移。；2026-11-03 订单进度子分类徽章同源消费 TASK_*（badge-summary salesStage.*）口径，避免另发重复阶段统计；非历史工作段首屏可有界预热并完整匹配查询复用，按身份/权限/读取范围/API 实例/本端写修订隔离，显式刷新绕过缓存。WPF 本页尚未迁移，保持 todo，不开放占位入口；详见 E-SALES-TASK-PREFETCH-20261103。。
 
 ## W7-BIZ-140
 
@@ -213,6 +213,6 @@
 7. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 8. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/sales-task-prefetch-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 销售任务中心需与订单进度和单据列表共用权威子类计数及有界首屏预热，保留不同徽章口径、权限、历史时间门控与旧结果退休。WPF 本页尚未迁移，nativeTargets 为空；本轮只登记后续消费者合同，状态保持 todo，完整 ERP/Win7 真机及正式交付未验收。详见 E-SALES-TASK-PREFETCH-20261103。。

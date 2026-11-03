@@ -82883,7 +82883,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4427325171ecccf2b09304b6e4a281cd4191fc504cd6d9cd82400ab3a26acd83"
+          "targetSha256": "867d3bd3a44cab229e495beeb8058a16a9320447cf35b2adce3e42ff7537f76b"
         },
         {
           "directive": "import",
@@ -83073,89 +83073,82 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/sales/repositories/sales_repository.dart",
-          "sha256": "4427325171ecccf2b09304b6e4a281cd4191fc504cd6d9cd82400ab3a26acd83",
-          "lineCount": 684,
+          "sha256": "867d3bd3a44cab229e495beeb8058a16a9320447cf35b2adce3e42ff7537f76b",
+          "lineCount": 777,
           "apiEndpointReferences": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "symbol": null,
-              "basis": "repository path literal; verify actual request call"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 484,
+              "line": 567,
               "template": "/warehouse/sales-outbound/{id}/warehouse-work",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 641,
+              "line": 724,
               "template": "/sales/shipments/batch",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
@@ -83579,13 +83572,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             }
@@ -83650,7 +83643,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/manager-review"
             }
@@ -83663,13 +83656,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             }
@@ -83682,61 +83675,55 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "controllerBase": "/api/sales/orders"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "controllerBase": "/api/sales/orders"
             }
@@ -83749,61 +83736,55 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "controllerBase": "/api/sales/orders"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "controllerBase": "/api/sales/orders"
             }
@@ -83816,7 +83797,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/other-shipments"
             }
@@ -83829,7 +83810,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/quotes"
             }
@@ -83842,7 +83823,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/quotes"
             }
@@ -83855,7 +83836,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/reports"
             }
@@ -83868,7 +83849,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/returns"
             }
@@ -83881,13 +83862,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/shipments"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 641,
+              "line": 724,
               "template": "/sales/shipments/batch",
               "controllerBase": "/api/sales/shipments"
             }
@@ -83900,7 +83881,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 484,
+              "line": 567,
               "template": "/warehouse/sales-outbound/{id}/warehouse-work",
               "controllerBase": "/api/warehouse/sales-outbound"
             }
@@ -153393,7 +153374,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4427325171ecccf2b09304b6e4a281cd4191fc504cd6d9cd82400ab3a26acd83"
+          "targetSha256": "867d3bd3a44cab229e495beeb8058a16a9320447cf35b2adce3e42ff7537f76b"
         },
         {
           "directive": "import",
@@ -153723,89 +153704,82 @@
         },
         {
           "source": "lib/features/sales/repositories/sales_repository.dart",
-          "sha256": "4427325171ecccf2b09304b6e4a281cd4191fc504cd6d9cd82400ab3a26acd83",
-          "lineCount": 684,
+          "sha256": "867d3bd3a44cab229e495beeb8058a16a9320447cf35b2adce3e42ff7537f76b",
+          "lineCount": 777,
           "apiEndpointReferences": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "symbol": null,
-              "basis": "repository path literal; verify actual request call"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 484,
+              "line": 567,
               "template": "/warehouse/sales-outbound/{id}/warehouse-work",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 641,
+              "line": 724,
               "template": "/sales/shipments/batch",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
@@ -154445,13 +154419,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             }
@@ -154513,7 +154487,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/manager-review"
             }
@@ -154526,13 +154500,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             }
@@ -154545,61 +154519,55 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "controllerBase": "/api/sales/orders"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "controllerBase": "/api/sales/orders"
             }
@@ -154612,61 +154580,55 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "controllerBase": "/api/sales/orders"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "controllerBase": "/api/sales/orders"
             }
@@ -154679,7 +154641,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/other-shipments"
             }
@@ -154692,7 +154654,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/quotes"
             }
@@ -154705,7 +154667,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/quotes"
             }
@@ -154718,7 +154680,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/reports"
             }
@@ -154731,7 +154693,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/returns"
             }
@@ -154744,13 +154706,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/shipments"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 641,
+              "line": 724,
               "template": "/sales/shipments/batch",
               "controllerBase": "/api/sales/shipments"
             }
@@ -154763,7 +154725,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 484,
+              "line": 567,
               "template": "/warehouse/sales-outbound/{id}/warehouse-work",
               "controllerBase": "/api/warehouse/sales-outbound"
             }
@@ -155938,7 +155900,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4427325171ecccf2b09304b6e4a281cd4191fc504cd6d9cd82400ab3a26acd83"
+          "targetSha256": "867d3bd3a44cab229e495beeb8058a16a9320447cf35b2adce3e42ff7537f76b"
         },
         {
           "directive": "import",
@@ -156345,89 +156307,82 @@
         },
         {
           "source": "lib/features/sales/repositories/sales_repository.dart",
-          "sha256": "4427325171ecccf2b09304b6e4a281cd4191fc504cd6d9cd82400ab3a26acd83",
-          "lineCount": 684,
+          "sha256": "867d3bd3a44cab229e495beeb8058a16a9320447cf35b2adce3e42ff7537f76b",
+          "lineCount": 777,
           "apiEndpointReferences": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "symbol": null,
-              "basis": "repository path literal; verify actual request call"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 484,
+              "line": 567,
               "template": "/warehouse/sales-outbound/{id}/warehouse-work",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 641,
+              "line": 724,
               "template": "/sales/shipments/batch",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
@@ -157316,13 +157271,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             }
@@ -157988,7 +157943,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/manager-review"
             }
@@ -158001,13 +157956,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             }
@@ -158020,61 +157975,55 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "controllerBase": "/api/sales/orders"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "controllerBase": "/api/sales/orders"
             }
@@ -158087,61 +158036,55 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "controllerBase": "/api/sales/orders"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "controllerBase": "/api/sales/orders"
             }
@@ -158154,7 +158097,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/other-shipments"
             }
@@ -158167,7 +158110,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/quotes"
             }
@@ -158180,7 +158123,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/quotes"
             }
@@ -158193,7 +158136,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/reports"
             }
@@ -158206,7 +158149,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/returns"
             }
@@ -158219,13 +158162,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/shipments"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 641,
+              "line": 724,
               "template": "/sales/shipments/batch",
               "controllerBase": "/api/sales/shipments"
             }
@@ -158238,7 +158181,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 484,
+              "line": 567,
               "template": "/warehouse/sales-outbound/{id}/warehouse-work",
               "controllerBase": "/api/warehouse/sales-outbound"
             }
@@ -158254,8 +158197,8 @@
       "id": "page:sales/pages/sales_doc_list_page.dart",
       "feature": "sales",
       "source": "lib/features/sales/pages/sales_doc_list_page.dart",
-      "sha256": "16f33f816d8353691339423c186262b184bcf1383446f7b80e838a0a69283933",
-      "lineCount": 1604,
+      "sha256": "1a458fd811473dd72d86112458055d5b2fb5eb4854e0eb09beb0cfe7e218400e",
+      "lineCount": 1610,
       "classes": [
         {
           "name": "_SalesDocSeg",
@@ -158875,7 +158818,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4427325171ecccf2b09304b6e4a281cd4191fc504cd6d9cd82400ab3a26acd83"
+          "targetSha256": "867d3bd3a44cab229e495beeb8058a16a9320447cf35b2adce3e42ff7537f76b"
         },
         {
           "directive": "import",
@@ -158977,89 +158920,82 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/sales/repositories/sales_repository.dart",
-          "sha256": "4427325171ecccf2b09304b6e4a281cd4191fc504cd6d9cd82400ab3a26acd83",
-          "lineCount": 684,
+          "sha256": "867d3bd3a44cab229e495beeb8058a16a9320447cf35b2adce3e42ff7537f76b",
+          "lineCount": 777,
           "apiEndpointReferences": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "symbol": null,
-              "basis": "repository path literal; verify actual request call"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 484,
+              "line": 567,
               "template": "/warehouse/sales-outbound/{id}/warehouse-work",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 641,
+              "line": 724,
               "template": "/sales/shipments/batch",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
@@ -159161,7 +159097,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 691,
+          "line": 697,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -159171,7 +159107,7 @@
         {
           "symbol": "salesShipmentFinanceAuditLabel",
           "receiver": null,
-          "line": 870,
+          "line": 876,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "audit"
@@ -159180,7 +159116,7 @@
         },
         {
           "symbol": "_batchShip",
-          "line": 991,
+          "line": 997,
           "kind": "callback-reference",
           "callback": "onPressed",
           "actionNameHints": [
@@ -159189,7 +159125,7 @@
         },
         {
           "symbol": "_importFromQuote",
-          "line": 999,
+          "line": 1005,
           "kind": "callback-reference",
           "callback": "onPressed",
           "actionNameHints": [
@@ -159198,7 +159134,7 @@
         },
         {
           "symbol": "draftDeleteBusy",
-          "line": 1288,
+          "line": 1294,
           "kind": "callback-reference",
           "callback": "onSelectedIdsChanged",
           "actionNameHints": [
@@ -159228,13 +159164,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             }
@@ -159247,7 +159183,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/manager-review"
             }
@@ -159260,13 +159196,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             }
@@ -159279,61 +159215,55 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "controllerBase": "/api/sales/orders"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "controllerBase": "/api/sales/orders"
             }
@@ -159346,61 +159276,55 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "controllerBase": "/api/sales/orders"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "controllerBase": "/api/sales/orders"
             }
@@ -159413,7 +159337,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/other-shipments"
             }
@@ -159426,7 +159350,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/quotes"
             }
@@ -159439,7 +159363,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/quotes"
             }
@@ -159452,7 +159376,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/reports"
             }
@@ -159465,7 +159389,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/returns"
             }
@@ -159478,13 +159402,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/shipments"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 641,
+              "line": 724,
               "template": "/sales/shipments/batch",
               "controllerBase": "/api/sales/shipments"
             }
@@ -159497,7 +159421,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 484,
+              "line": 567,
               "template": "/warehouse/sales-outbound/{id}/warehouse-work",
               "controllerBase": "/api/warehouse/sales-outbound"
             }
@@ -160720,8 +160644,8 @@
       "id": "page:sales/pages/sales_order_progress_page.dart",
       "feature": "sales",
       "source": "lib/features/sales/pages/sales_order_progress_page.dart",
-      "sha256": "d277ed284707f6a2f691ad7705c267c7f4fb8556b9e186eefa3a804e1edb797c",
-      "lineCount": 1036,
+      "sha256": "43db75f5967bc9e6fc9392eb5a2be06caa4432dbacc05de5548adf64a85bac3d",
+      "lineCount": 1035,
       "classes": [
         {
           "name": "_ProgressSeg",
@@ -160805,21 +160729,9 @@
         },
         {
           "directive": "import",
-          "uri": "dart:async",
-          "source": null,
-          "line": 37,
-          "role": "other",
-          "importAlias": null,
-          "showSymbols": [],
-          "hideSymbols": [],
-          "existsInRepository": false,
-          "targetSha256": null
-        },
-        {
-          "directive": "import",
           "uri": "package:flutter/material.dart",
           "source": null,
-          "line": 39,
+          "line": 38,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -160831,7 +160743,7 @@
           "directive": "import",
           "uri": "../../../shared/drafts/form_draft_master_names.dart",
           "source": "lib/shared/drafts/form_draft_master_names.dart",
-          "line": 40,
+          "line": 39,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -160843,7 +160755,7 @@
           "directive": "import",
           "uri": "package:flutter_riverpod/flutter_riverpod.dart",
           "source": null,
-          "line": 41,
+          "line": 40,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -160855,7 +160767,7 @@
           "directive": "import",
           "uri": "package:go_router/go_router.dart",
           "source": null,
-          "line": 42,
+          "line": 41,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -160867,7 +160779,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_back_button.dart",
           "source": "lib/components/buttons/uten_back_button.dart",
-          "line": 44,
+          "line": 43,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -160879,7 +160791,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_refresh_button.dart",
           "source": "lib/components/buttons/uten_refresh_button.dart",
-          "line": 45,
+          "line": 44,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -160891,7 +160803,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_status_badge.dart",
           "source": "lib/components/data_display/uten_status_badge.dart",
-          "line": 46,
+          "line": 45,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -160903,7 +160815,7 @@
           "directive": "import",
           "uri": "../../../components/data_display/uten_status_cell_color.dart",
           "source": "lib/components/data_display/uten_status_cell_color.dart",
-          "line": 47,
+          "line": 46,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -160915,7 +160827,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_context_menu.dart",
           "source": "lib/components/feedback/uten_context_menu.dart",
-          "line": 48,
+          "line": 47,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -160927,7 +160839,7 @@
           "directive": "import",
           "uri": "../../../components/feedback/uten_segment_badge_label.dart",
           "source": "lib/components/feedback/uten_segment_badge_label.dart",
-          "line": 49,
+          "line": 48,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -160939,7 +160851,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_app_bar.dart",
           "source": "lib/components/layout/uten_app_bar.dart",
-          "line": 50,
+          "line": 49,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -160951,7 +160863,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_collapsing_header_scroll_view.dart",
           "source": "lib/components/layout/uten_collapsing_header_scroll_view.dart",
-          "line": 51,
+          "line": 50,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -160963,7 +160875,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_content_container.dart",
           "source": "lib/components/layout/uten_content_container.dart",
-          "line": 52,
+          "line": 51,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -160975,7 +160887,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_filter_toolbar.dart",
           "source": "lib/components/layout/uten_filter_toolbar.dart",
-          "line": 53,
+          "line": 52,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -160987,7 +160899,7 @@
           "directive": "import",
           "uri": "../../../components/layout/uten_history_time_filter.dart",
           "source": "lib/components/layout/uten_history_time_filter.dart",
-          "line": 54,
+          "line": 53,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -160999,7 +160911,7 @@
           "directive": "import",
           "uri": "../../../core/network/api_exception.dart",
           "source": "lib/core/network/api_exception.dart",
-          "line": 55,
+          "line": 54,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -161011,7 +160923,7 @@
           "directive": "import",
           "uri": "../../../core/router/nav_helpers.dart",
           "source": "lib/core/router/nav_helpers.dart",
-          "line": 56,
+          "line": 55,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -161023,7 +160935,7 @@
           "directive": "import",
           "uri": "../../../core/router/page_resume_provider.dart",
           "source": "lib/core/router/page_resume_provider.dart",
-          "line": 57,
+          "line": 56,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -161035,7 +160947,7 @@
           "directive": "import",
           "uri": "../../../core/router/route_names.dart",
           "source": "lib/core/router/route_names.dart",
-          "line": 58,
+          "line": 57,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -161047,7 +160959,7 @@
           "directive": "import",
           "uri": "../../../core/theme/uten_tokens.dart",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 59,
+          "line": 58,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -161059,7 +160971,7 @@
           "directive": "import",
           "uri": "../../../core/ui/action_feedback.dart",
           "source": "lib/core/ui/action_feedback.dart",
-          "line": 60,
+          "line": 59,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -161071,7 +160983,7 @@
           "directive": "import",
           "uri": "../../../core/utils/china_datetime.dart",
           "source": "lib/core/utils/china_datetime.dart",
-          "line": 61,
+          "line": 60,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -161083,13 +160995,25 @@
           "directive": "import",
           "uri": "../../../shared/auth/permissions.dart",
           "source": "lib/shared/auth/permissions.dart",
-          "line": 62,
+          "line": 61,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
           "targetSha256": "231276b11fb77888b55d538ace412d6df4bfd36d62f1a80037fecd905de5da1e"
+        },
+        {
+          "directive": "import",
+          "uri": "../../../shared/badges/badge_registry.dart",
+          "source": "lib/shared/badges/badge_registry.dart",
+          "line": 62,
+          "role": "sharedComponents",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "c9ed449fdae9df2eb403e8cdec452ee24872079191c1b6bd1f7a205372f0074c"
         },
         {
           "directive": "import",
@@ -161281,7 +161205,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4427325171ecccf2b09304b6e4a281cd4191fc504cd6d9cd82400ab3a26acd83"
+          "targetSha256": "867d3bd3a44cab229e495beeb8058a16a9320447cf35b2adce3e42ff7537f76b"
         },
         {
           "directive": "import",
@@ -161301,28 +161225,28 @@
         {
           "symbol": "Perm.salesOrderDelete",
           "literal": "sales_order:delete",
-          "line": 205,
+          "line": 201,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 596
         },
         {
           "symbol": "Perm.salesOrderCancel",
           "literal": "sales_order:cancel",
-          "line": 432,
+          "line": 417,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 601
         },
         {
           "symbol": "Perm.salesOrderEdit",
           "literal": "sales_order:edit",
-          "line": 506,
+          "line": 490,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 309
         },
         {
           "symbol": "Perm.salesShipmentCreate",
           "literal": "sales_shipment:create",
-          "line": 514,
+          "line": 498,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 602
         }
@@ -161331,89 +161255,82 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/sales/repositories/sales_repository.dart",
-          "sha256": "4427325171ecccf2b09304b6e4a281cd4191fc504cd6d9cd82400ab3a26acd83",
-          "lineCount": 684,
+          "sha256": "867d3bd3a44cab229e495beeb8058a16a9320447cf35b2adce3e42ff7537f76b",
+          "lineCount": 777,
           "apiEndpointReferences": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "symbol": null,
-              "basis": "repository path literal; verify actual request call"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 484,
+              "line": 567,
               "template": "/warehouse/sales-outbound/{id}/warehouse-work",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 641,
+              "line": 724,
               "template": "/sales/shipments/batch",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
@@ -161435,7 +161352,7 @@
         {
           "symbol": "_deleteDraft",
           "receiver": null,
-          "line": 214,
+          "line": 210,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "delete"
@@ -161445,7 +161362,7 @@
         {
           "symbol": "deleteSalesDraft",
           "receiver": null,
-          "line": 223,
+          "line": 219,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "delete"
@@ -161455,7 +161372,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 262,
+          "line": 256,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -161465,7 +161382,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 362,
+          "line": 345,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -161475,7 +161392,7 @@
         {
           "symbol": "_canCancelRejected",
           "receiver": null,
-          "line": 427,
+          "line": 412,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "cancel"
@@ -161485,7 +161402,7 @@
         {
           "symbol": "_cancelRejectedOrder",
           "receiver": null,
-          "line": 437,
+          "line": 422,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "cancel"
@@ -161495,7 +161412,7 @@
         {
           "symbol": "cancel",
           "receiver": null,
-          "line": 465,
+          "line": 450,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "cancel"
@@ -161505,12 +161422,22 @@
         {
           "symbol": "_ship",
           "receiver": null,
-          "line": 486,
+          "line": 470,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "ship"
           ],
           "evidenceLine": "Future<void> _ship(SalesOrderProgressRow row) async {"
+        },
+        {
+          "symbol": "salesDocEdit",
+          "receiver": "RoutePath",
+          "line": 506,
+          "kind": "action-like-invocation",
+          "actionNameHints": [
+            "edit"
+          ],
+          "evidenceLine": "context.push(RoutePath.salesDocEdit('orders', r.orderId)),"
         },
         {
           "symbol": "salesDocEdit",
@@ -161523,19 +161450,9 @@
           "evidenceLine": "context.push(RoutePath.salesDocEdit('orders', r.orderId)),"
         },
         {
-          "symbol": "salesDocEdit",
-          "receiver": "RoutePath",
-          "line": 538,
-          "kind": "action-like-invocation",
-          "actionNameHints": [
-            "edit"
-          ],
-          "evidenceLine": "context.push(RoutePath.salesDocEdit('orders', r.orderId)),"
-        },
-        {
           "symbol": "_canCancelRejected",
           "receiver": null,
-          "line": 544,
+          "line": 528,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "cancel"
@@ -161545,7 +161462,7 @@
         {
           "symbol": "_cancelRejectedOrder",
           "receiver": null,
-          "line": 545,
+          "line": 529,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "cancel"
@@ -161555,7 +161472,7 @@
         {
           "symbol": "_ship",
           "receiver": null,
-          "line": 553,
+          "line": 537,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "ship"
@@ -161564,7 +161481,7 @@
         },
         {
           "symbol": "draftDeleteBusy",
-          "line": 770,
+          "line": 767,
           "kind": "callback-reference",
           "callback": "onSelectedIdsChanged",
           "actionNameHints": [
@@ -161594,13 +161511,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             }
@@ -161613,7 +161530,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/manager-review"
             }
@@ -161626,13 +161543,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             }
@@ -161645,61 +161562,55 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "controllerBase": "/api/sales/orders"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "controllerBase": "/api/sales/orders"
             }
@@ -161712,61 +161623,55 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "controllerBase": "/api/sales/orders"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "controllerBase": "/api/sales/orders"
             }
@@ -161779,7 +161684,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/other-shipments"
             }
@@ -161792,7 +161697,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/quotes"
             }
@@ -161805,7 +161710,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/quotes"
             }
@@ -161818,7 +161723,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/reports"
             }
@@ -161831,7 +161736,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/returns"
             }
@@ -161844,13 +161749,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/shipments"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 641,
+              "line": 724,
               "template": "/sales/shipments/batch",
               "controllerBase": "/api/sales/shipments"
             }
@@ -161863,7 +161768,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 484,
+              "line": 567,
               "template": "/warehouse/sales-outbound/{id}/warehouse-work",
               "controllerBase": "/api/warehouse/sales-outbound"
             }
@@ -162877,7 +162782,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4427325171ecccf2b09304b6e4a281cd4191fc504cd6d9cd82400ab3a26acd83"
+          "targetSha256": "867d3bd3a44cab229e495beeb8058a16a9320447cf35b2adce3e42ff7537f76b"
         },
         {
           "directive": "import",
@@ -162898,89 +162803,82 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/sales/repositories/sales_repository.dart",
-          "sha256": "4427325171ecccf2b09304b6e4a281cd4191fc504cd6d9cd82400ab3a26acd83",
-          "lineCount": 684,
+          "sha256": "867d3bd3a44cab229e495beeb8058a16a9320447cf35b2adce3e42ff7537f76b",
+          "lineCount": 777,
           "apiEndpointReferences": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "symbol": null,
-              "basis": "repository path literal; verify actual request call"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 484,
+              "line": 567,
               "template": "/warehouse/sales-outbound/{id}/warehouse-work",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 641,
+              "line": 724,
               "template": "/sales/shipments/batch",
               "symbol": null,
               "basis": "repository path literal; verify actual request call"
@@ -163022,13 +162920,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/{documentKind}/{docId}/input-originals"
             }
@@ -163041,7 +162939,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/manager-review"
             }
@@ -163054,13 +162952,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/{documentKind}/{docId}/learning"
             }
@@ -163073,61 +162971,55 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "controllerBase": "/api/sales/orders"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "controllerBase": "/api/sales/orders"
             }
@@ -163140,61 +163032,55 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 187,
+              "line": 233,
               "template": "/sales/orders/last-terms",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 229,
+              "line": 289,
               "template": "/sales/orders/progress",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 255,
+              "line": 347,
               "template": "/sales/orders/progress/facets",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 269,
-              "template": "/sales/orders/progress/stage-counts",
-              "controllerBase": "/api/sales/orders"
-            },
-            {
-              "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 502,
+              "line": 585,
               "template": "/sales/orders/items/{orderItemId}/priority",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 517,
+              "line": 600,
               "template": "/sales/orders/items/{orderItemId}/yield-reservation",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 529,
+              "line": 612,
               "template": "/sales/orders/reservations/scarce",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 604,
+              "line": 687,
               "template": "/sales/orders/shippable-lines/page",
               "controllerBase": "/api/sales/orders"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 622,
+              "line": 705,
               "template": "/sales/orders/shippable-lines/selection",
               "controllerBase": "/api/sales/orders"
             }
@@ -163207,7 +163093,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/other-shipments"
             }
@@ -163220,7 +163106,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/quotes"
             }
@@ -163233,7 +163119,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/quotes"
             }
@@ -163246,7 +163132,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/reports"
             }
@@ -163259,7 +163145,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/returns"
             }
@@ -163272,13 +163158,13 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 83,
+              "line": 92,
               "template": "/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}",
               "controllerBase": "/api/sales/shipments"
             },
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 641,
+              "line": 724,
               "template": "/sales/shipments/batch",
               "controllerBase": "/api/sales/shipments"
             }
@@ -163291,7 +163177,7 @@
           "endpointEvidence": [
             {
               "source": "lib/features/sales/repositories/sales_repository.dart",
-              "line": 484,
+              "line": 567,
               "template": "/warehouse/sales-outbound/{id}/warehouse-work",
               "controllerBase": "/api/warehouse/sales-outbound"
             }
@@ -163306,30 +163192,30 @@
       "id": "page:sales/pages/sales_task_center_page.dart",
       "feature": "sales",
       "source": "lib/features/sales/pages/sales_task_center_page.dart",
-      "sha256": "4ad6bd48826ac472ba2fff220f4faa771dc4b9fe10aac513629bd1d43968b1c2",
-      "lineCount": 330,
+      "sha256": "722fc69d10eab75ba0594d65c4c387249db46ae496bdd5b7be814bb052a01f29",
+      "lineCount": 354,
       "classes": [
         {
           "name": "_GroupSpec",
-          "line": 53,
+          "line": 54,
           "role": "supporting-class",
           "extends": null
         },
         {
           "name": "SalesTaskCenterPage",
-          "line": 67,
+          "line": 68,
           "role": "page-class",
           "extends": "ConsumerStatefulWidget"
         },
         {
           "name": "_SalesTaskCenterPageState",
-          "line": 78,
+          "line": 79,
           "role": "state-class",
           "extends": "ConsumerState<SalesTaskCenterPage>"
         },
         {
           "name": "_GroupPlaceholder",
-          "line": 320,
+          "line": 344,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         }
@@ -163573,7 +163459,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "16f33f816d8353691339423c186262b184bcf1383446f7b80e838a0a69283933"
+          "targetSha256": "1a458fd811473dd72d86112458055d5b2fb5eb4854e0eb09beb0cfe7e218400e"
         },
         {
           "directive": "import",
@@ -163585,7 +163471,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "d277ed284707f6a2f691ad7705c267c7f4fb8556b9e186eefa3a804e1edb797c"
+          "targetSha256": "43db75f5967bc9e6fc9392eb5a2be06caa4432dbacc05de5548adf64a85bac3d"
         },
         {
           "directive": "import",
@@ -163598,6 +163484,18 @@
           "hideSymbols": [],
           "existsInRepository": true,
           "targetSha256": "6cc1814d23ae109cf7bfcd1231eb5c8daead4a48eb6d7d3b457266cf28d1711f"
+        },
+        {
+          "directive": "import",
+          "uri": "../providers/sales_task_preload_provider.dart",
+          "source": "lib/features/sales/providers/sales_task_preload_provider.dart",
+          "line": 51,
+          "role": "providers",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "f1eb2e63cd671e6e59c442c991ba8c5da04396412f5065a683eb8cc021a42e5e"
         }
       ],
       "partUnits": [],
@@ -163608,7 +163506,7 @@
         {
           "symbol": "UtenCloseButton",
           "receiver": null,
-          "line": 209,
+          "line": 220,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "close"
@@ -256028,8 +255926,8 @@
     },
     {
       "source": "lib/features/sales/pages/sales_doc_list_page.dart",
-      "sha256": "16f33f816d8353691339423c186262b184bcf1383446f7b80e838a0a69283933",
-      "lineCount": 1604
+      "sha256": "1a458fd811473dd72d86112458055d5b2fb5eb4854e0eb09beb0cfe7e218400e",
+      "lineCount": 1610
     },
     {
       "source": "lib/features/sales/pages/sales_hub_page.dart",
@@ -256043,8 +255941,8 @@
     },
     {
       "source": "lib/features/sales/pages/sales_order_progress_page.dart",
-      "sha256": "d277ed284707f6a2f691ad7705c267c7f4fb8556b9e186eefa3a804e1edb797c",
-      "lineCount": 1036
+      "sha256": "43db75f5967bc9e6fc9392eb5a2be06caa4432dbacc05de5548adf64a85bac3d",
+      "lineCount": 1035
     },
     {
       "source": "lib/features/sales/pages/sales_report_page.dart",
@@ -256058,8 +255956,8 @@
     },
     {
       "source": "lib/features/sales/pages/sales_task_center_page.dart",
-      "sha256": "4ad6bd48826ac472ba2fff220f4faa771dc4b9fe10aac513629bd1d43968b1c2",
-      "lineCount": 330
+      "sha256": "722fc69d10eab75ba0594d65c4c387249db46ae496bdd5b7be814bb052a01f29",
+      "lineCount": 354
     },
     {
       "source": "lib/features/sales/providers/master_name_provider.dart",
@@ -256072,9 +255970,14 @@
       "lineCount": 25
     },
     {
+      "source": "lib/features/sales/providers/sales_task_preload_provider.dart",
+      "sha256": "f1eb2e63cd671e6e59c442c991ba8c5da04396412f5065a683eb8cc021a42e5e",
+      "lineCount": 122
+    },
+    {
       "source": "lib/features/sales/repositories/sales_repository.dart",
-      "sha256": "4427325171ecccf2b09304b6e4a281cd4191fc504cd6d9cd82400ab3a26acd83",
-      "lineCount": 684
+      "sha256": "867d3bd3a44cab229e495beeb8058a16a9320447cf35b2adce3e42ff7537f76b",
+      "lineCount": 777
     },
     {
       "source": "lib/features/sales/services/sales_draft_delete.dart",

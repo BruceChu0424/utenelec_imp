@@ -198,6 +198,26 @@ class StorageTest(unittest.TestCase):
             self.assertEqual(error.exception.code, 'BUSY')
         self.assertIn('previewId', self.preview('LOGS'))
 
+    @unittest.skipUnless(os.name == 'posix', 'requires Linux process inspection')
+    def test_unknown_process_descriptors_still_block_cleanup_before_any_delete(self):
+        target = self.log()
+        original_iterdir = Path.iterdir
+
+        def denied_process(path):
+            if path == Path('/proc'):
+                return iter([Path('/proc/123')])
+            if path == Path('/proc/123/fd'):
+                raise PermissionError('process inspection denied')
+            return original_iterdir(path)
+
+        with patch.object(Path, 'iterdir', denied_process):
+            with self.assertRaises(storage.StorageError) as failure:
+                self.preview('LOGS')
+        self.assertEqual('UNAVAILABLE', failure.exception.code)
+        self.assertTrue(target.is_file())
+        self.assertEqual([], list(self.state.glob('storage-preview-*.json')))
+        self.assertEqual([], list(self.state.glob('storage-result-*.json')))
+
     @unittest.skipUnless(os.name == 'posix', 'requires Linux safe-delete primitives')
     def test_actor_expiry_and_content_changes_reject_before_delete(self):
         path = self.stage()

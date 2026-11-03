@@ -68,6 +68,27 @@ class StockReportCostVisibilityTest {
     }
 
     @Test
+    void defaultExportOrderMatchesTheSharedInventoryColumnContract() throws Exception {
+        try (var input = getClass().getResourceAsStream("/contracts/instant-inventory-column-order.json")) {
+            assertThat(input).isNotNull();
+            var contract = new com.fasterxml.jackson.databind.ObjectMapper().readTree(input);
+            var expected = java.util.stream.StreamSupport.stream(contract.path("columns").spliterator(), false)
+                    .map(com.fasterxml.jackson.databind.JsonNode::asText).toList();
+            var costs = java.util.stream.StreamSupport.stream(contract.path("costColumns").spliterator(), false)
+                    .map(com.fasterxml.jackson.databind.JsonNode::asText).toList();
+            var exportOnly = java.util.stream.StreamSupport.stream(contract.path("exportOnlyColumns").spliterator(), false)
+                    .map(com.fasterxml.jackson.databind.JsonNode::asText).toList();
+            for (boolean allowed : List.of(false, true)) {
+                var keys = StockReportService.instantExportColumns(com.uten.imp.common.measure.WeightUnit.KG, allowed)
+                        .stream().map(ReportColumn::key).toList();
+                assertThat(keys.stream().filter(key -> !exportOnly.contains(key)).toList())
+                        .containsExactlyElementsOf(expected.stream().filter(key -> allowed || !costs.contains(key)).toList());
+                assertThat(keys.indexOf("weightStatus")).isEqualTo(keys.indexOf("weight") + 1);
+            }
+        }
+    }
+
+    @Test
     void forgedOrSavedCostProjectionCannotRestoreSensitiveExportColumns() throws Exception {
         when(costMasker.canView()).thenReturn(false);
         ExportPayload payload = service.export("instant-inventory", Map.of(), null, null);

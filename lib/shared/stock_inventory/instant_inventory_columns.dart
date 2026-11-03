@@ -41,8 +41,8 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
   }
 
   return <MasterColumnDef<InstantInventoryRow>>[
-    // 先辨认货品和颜色，再看现存数量/重量及待处理量；
-    // 库位和主档属性放在库存事实后面，备注收尾。
+    // 识别货品 → 当前数量/重量 → 期间进出与结存 → 成本 → 待处理量；
+    // 库位与主档资料随后，分类及备注收尾。成本授权不拆散数量流转列。
     MasterColumnDef(
       columnSearchEnabled: columnSearchEnabled,
       key: 'name',
@@ -129,28 +129,31 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
         );
       },
     ),
-    if (canViewCost) ...[
-      MasterColumnDef(
-        key: 'costPrice',
-        label: '成本价',
-        width: 165,
-        type: 'money',
-        sortable: periodSelected,
-        columnSearchEnabled: false,
-        info: '截止日的库存台账金额 ÷ 结存数量；结存为零时不计算单价。单位：本币元/基本单位。',
-        value: (r) => periodValue(r, r.costPrice, money: true, price: true),
+    // 库存重量：千克按用户显示单位换算，估算「≈」、没称「未称」。
+    MasterColumnDef(
+      columnSearchEnabled: columnSearchEnabled,
+      key: 'weight',
+      label: '库存重量',
+      width: 120,
+      type: 'weight',
+      sortable: true,
+      value: (r) => formatWeightValue(
+        r.weight,
+        display: weightDisplay,
+        estimated: r.weightEstimated,
+        unknownText: r.weightUnknown || (r.qty ?? 0) != 0
+            ? weightUnknownText
+            : '—',
       ),
-      MasterColumnDef(
-        key: 'periodCostAmount',
-        label: '成本金额',
-        width: 170,
-        type: 'money',
-        sortable: periodSelected,
-        columnSearchEnabled: false,
-        info: '所选截止日的库存台账本币金额，与上方仓库范围一致。',
-        value: (r) => periodValue(r, r.periodCostAmount, money: true),
+      cellBuilder: (_, r) => WeightText(
+        kg: r.weight,
+        estimated: r.weightEstimated,
+        display: weightDisplay,
+        unknownText: r.weightUnknown || (r.qty ?? 0) != 0
+            ? weightUnknownText
+            : '—',
       ),
-    ],
+    ),
     MasterColumnDef(
       key: 'periodInQty',
       label: '进仓数量',
@@ -181,31 +184,28 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
       info: '所选截止日结束时的结存；库存数量列仍显示当前实时库存。',
       value: (r) => periodValue(r, r.closingQty),
     ),
-    // 库存重量：千克按用户显示单位换算，估算「≈」、没称「未称」。
-    MasterColumnDef(
-      columnSearchEnabled: columnSearchEnabled,
-      key: 'weight',
-      label: '库存重量',
-      width: 120,
-      type: 'weight',
-      sortable: true,
-      value: (r) => formatWeightValue(
-        r.weight,
-        display: weightDisplay,
-        estimated: r.weightEstimated,
-        unknownText: r.weightUnknown || (r.qty ?? 0) != 0
-            ? weightUnknownText
-            : '—',
+    if (canViewCost) ...[
+      MasterColumnDef(
+        key: 'costPrice',
+        label: '成本价',
+        width: 165,
+        type: 'money',
+        sortable: periodSelected,
+        columnSearchEnabled: false,
+        info: '截止日的库存台账金额 ÷ 结存数量；结存为零时不计算单价。单位：本币元/基本单位。',
+        value: (r) => periodValue(r, r.costPrice, money: true, price: true),
       ),
-      cellBuilder: (_, r) => WeightText(
-        kg: r.weight,
-        estimated: r.weightEstimated,
-        display: weightDisplay,
-        unknownText: r.weightUnknown || (r.qty ?? 0) != 0
-            ? weightUnknownText
-            : '—',
+      MasterColumnDef(
+        key: 'periodCostAmount',
+        label: '成本金额',
+        width: 170,
+        type: 'money',
+        sortable: periodSelected,
+        columnSearchEnabled: false,
+        info: '所选截止日的库存台账本币金额，与上方仓库范围一致。',
+        value: (r) => periodValue(r, r.periodCostAmount, money: true),
       ),
-    ),
+    ],
     MasterColumnDef(
       columnSearchEnabled: columnSearchEnabled,
       key: 'pendingQty',
@@ -252,13 +252,6 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
     ),
     MasterColumnDef(
       columnSearchEnabled: columnSearchEnabled,
-      key: 'category',
-      label: '所属类型',
-      width: 120,
-      value: (r) => r.categoryName ?? '—',
-    ),
-    MasterColumnDef(
-      columnSearchEnabled: columnSearchEnabled,
       key: 'model',
       label: '型号',
       width: 110,
@@ -284,6 +277,13 @@ List<MasterColumnDef<InstantInventoryRow>> instantInventoryColumns(
       label: '物料系列',
       width: 90,
       value: (r) => r.series ?? '',
+    ),
+    MasterColumnDef(
+      columnSearchEnabled: columnSearchEnabled,
+      key: 'category',
+      label: '所属类型',
+      width: 120,
+      value: (r) => r.categoryName ?? '—',
     ),
     MasterColumnDef(
       columnSearchEnabled: columnSearchEnabled,

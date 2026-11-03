@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "columns": [
+    "name", "goodsCode", "color",
+    "qty", "weight",
+    "periodInQty", "periodOutQty", "closingQty",
+    "costPrice", "periodCostAmount",
+    "pendingQty", "pendingStockInQty",
+    "stockPlace", "owningWarehouse",
+    "model", "spec", "cNumber", "series", "category", "remark"
+  ],
+  "costColumns": ["costPrice", "periodCostAmount"],
+  "exportOnlyColumns": ["weightStatus", "unit"],
+  "previousStockDefault": [
+    "name", "goodsCode", "color", "qty", "weight", "pendingQty", "pendingStockInQty", "moreQty",
+    "stockPlace", "owningWarehouse", "category", "model", "spec", "cNumber", "series", "remark"
+  ],
+  "previousPeriodDefault": [
+    "name", "goodsCode", "color", "qty", "costPrice", "periodCostAmount",
+    "periodInQty", "periodOutQty", "closingQty", "weight", "pendingQty", "pendingStockInQty",
+    "stockPlace", "owningWarehouse", "category", "model", "spec", "cNumber", "series", "remark"
+  ]
+}

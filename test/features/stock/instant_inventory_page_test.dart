@@ -593,7 +593,7 @@ void main() {
         table().columns.firstWhere((c) => c.key == 'weight');
 
     final keys = [for (final c in table().columns) c.key];
-    expect(keys.indexOf('weight'), keys.indexOf('closingQty') + 1);
+    expect(keys.indexOf('weight'), keys.indexOf('qty') + 1);
     expect(weightColumn().type, 'weight');
     expect(weightColumn().value(rows[0]), '≈11.55 kg');
     expect(weightColumn().value(rows[1]), '未称');

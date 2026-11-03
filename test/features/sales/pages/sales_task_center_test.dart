@@ -276,7 +276,7 @@ void main() {
     await tester.tap(find.text('历史其它出货'));
     await tester.pump();
     await tester.pump();
-    // 历史段已预选：时间行按默认近三个月即选即载（2026-10-24 口径）。
+    // 历史段已预选：时间行按默认近一个月即选即载（2026-11-03 口径）。
     expect(
       find.byKey(const Key('sales-doc-history-time-other-shipments')),
       findsOneWidget,

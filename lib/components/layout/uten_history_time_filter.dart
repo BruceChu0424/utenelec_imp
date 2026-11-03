@@ -5,8 +5,8 @@
 //
 // - 两个矩形分段：「时间段」（点开居中的紧凑日期范围弹窗，选中后显示起止日期，
 //   可反复点按调整范围）与「全部」（不限时间全量加载）；
-// - 默认近三个月（2026-10-24 用户口径；2026-10-04 曾改为默认「全部」，更早为
-//   默认不选）：页面进入历史段时以 [UtenHistoryTimeValue.lastThreeMonths()]
+// - 默认近一个月（2026-11-03 用户口径；2026-10-04 曾改为默认「全部」，更早为
+//   默认不选）：页面进入历史段时以 [UtenHistoryTimeValue.lastMonth()]
 //   作为初始值，历史数据较多的页面不再一进来就全量加载；none 保留为值形态
 //   （[UtenHistoryTimeValue.isNone] 的不发请求护栏仍在），但不是页面默认；
 // - 单选互斥：选「时间段」即取消「全部」，选「全部」即清空时间段；
@@ -18,6 +18,7 @@
 
 import 'package:flutter/material.dart';
 import '../inputs/uten_field_hint_icon.dart';
+import '../../core/utils/date_range_defaults.dart';
 import 'uten_app_bar_action_scope.dart';
 import 'uten_segment_row.dart';
 
@@ -46,16 +47,10 @@ class UtenHistoryTimeValue {
   /// 尚未选择（页面不得请求，显示引导占位）。
   bool get isNone => !all && range == null;
 
-  /// 近三个月（今天往前推三个自然月，含今天）：历史段的默认值
-  /// （2026-10-24 用户口径）。需要更早的数据时用户再选「时间段」或「全部」。
-  static UtenHistoryTimeValue lastThreeMonths() {
-    final today = ChinaDateTime.today();
-    return UtenHistoryTimeValue.range(
-      DateTimeRange(
-        start: DateTime.utc(today.year, today.month - 3, today.day),
-        end: today,
-      ),
-    );
+  /// 近一个月（今天往前推一个自然月，含今天）：历史段的默认值
+  /// （2026-11-03 用户口径）。需要更早的数据时用户再选「时间段」或「全部」。
+  static UtenHistoryTimeValue lastMonth() {
+    return UtenHistoryTimeValue.range(recentMonthDateRange());
   }
 
   @override
@@ -76,7 +71,7 @@ class UtenHistoryTimeFilter extends StatelessWidget {
     required this.onChanged,
     this.enabled = true,
     this.helpText = '选择日期范围',
-    this.rangeLabel = '时间段',
+    this.rangeLabel = '选择日期',
     this.allLabel = '全部',
   });
 

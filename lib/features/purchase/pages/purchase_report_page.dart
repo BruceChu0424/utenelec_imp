@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/inputs/uten_date_range_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
@@ -249,51 +250,21 @@ class _PurchaseReportPageState extends ConsumerState<PurchaseReportPage> {
                                   padding: const EdgeInsets.only(
                                     top: UtenSpacing.s8,
                                   ),
-                                  child: Wrap(
-                                    spacing: 12,
-                                    crossAxisAlignment:
-                                        WrapCrossAlignment.center,
-                                    children: [
-                                      TextButton.icon(
-                                        onPressed: () async {
-                                          final picked = await showDatePicker(
-                                            context: context,
-                                            initialDate: _from,
-                                            firstDate: DateTime(2010),
-                                            lastDate: DateTime(2100),
-                                          );
-                                          // 撤掉「查询」按钮后，选完日期即刻重查。
-                                          if (picked != null) {
-                                            setState(() => _from = picked);
-                                            _load();
-                                          }
-                                        },
-                                        icon: const Icon(
-                                          Icons.event_outlined,
-                                          size: 18,
-                                        ),
-                                        label: Text('起 ${_fmt(_from)}'),
-                                      ),
-                                      TextButton.icon(
-                                        onPressed: () async {
-                                          final picked = await showDatePicker(
-                                            context: context,
-                                            initialDate: _to,
-                                            firstDate: DateTime(2010),
-                                            lastDate: DateTime(2100),
-                                          );
-                                          if (picked != null) {
-                                            setState(() => _to = picked);
-                                            _load();
-                                          }
-                                        },
-                                        icon: const Icon(
-                                          Icons.event_outlined,
-                                          size: 18,
-                                        ),
-                                        label: Text('止 ${_fmt(_to)}'),
-                                      ),
-                                    ],
+                                  child: UtenDateRangeButton(
+                                    range: DateTimeRange(
+                                      start: _from,
+                                      end: _to,
+                                    ),
+                                    firstDate: DateTime(2010),
+                                    lastDate: DateTime(2100),
+                                    onChanged: (range) async {
+                                      if (!mounted) return;
+                                      setState(() {
+                                        _from = range.start;
+                                        _to = range.end;
+                                      });
+                                      await _load();
+                                    },
                                   ),
                                 );
                               case _RowKind.monthlyHeader:

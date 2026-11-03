@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 // 报销单发票登记区（V608）：结构化发票要素表格 + 登记/编辑弹窗（图片识别回填 +
 // 查重即时提示）。DRAFT/REJECTED 且本人可维护（编辑/删除走行菜单）；审批/打款
 // 侧与只读访客仅浏览。防重复报销（财会〔2020〕6 号）由「代码+号码」库级唯一
@@ -694,7 +695,7 @@ class _ExpenseInvoiceFormDialogState
   }
 
   Future<void> _pickIssueDate() async {
-    final picked = await showDatePicker(
+    final picked = await showUtenDatePicker(
       context: context,
       initialDate: _issueDate ?? ChinaDateTime.today(),
       firstDate: DateTime.utc(2000),

@@ -1,0 +1,907 @@
+{
+  "schemaVersion": 1,
+  "scope": "Flutter Web / desktop / mobile shared source",
+  "base": "929efd37812eac24e8cd052ff65e73d06d40164b",
+  "entries": [
+    {
+      "file": "lib/components/buttons/uten_date_range_selection_button.dart",
+      "line": 18,
+      "symbol": "UtenDateRangeSelectionButton"
+    },
+    {
+      "file": "lib/components/buttons/uten_date_range_selection_button.dart",
+      "line": 107,
+      "symbol": "showUtenDateRangeSelectionPicker"
+    },
+    {
+      "file": "lib/components/feedback/uten_date_range_picker.dart",
+      "line": 46,
+      "symbol": "showUtenDateRangePicker"
+    },
+    {
+      "file": "lib/components/feedback/uten_date_range_picker.dart",
+      "line": 65,
+      "symbol": "showUtenDateRangeSelectionPicker"
+    },
+    {
+      "file": "lib/components/feedback/uten_date_range_picker.dart",
+      "line": 95,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/components/feedback/uten_date_range_picker.dart",
+      "line": 117,
+      "symbol": "showUtenMonthPicker"
+    },
+    {
+      "file": "lib/components/inputs/uten_date_field.dart",
+      "line": 29,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/components/inputs/uten_date_field.dart",
+      "line": 176,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/components/inputs/uten_date_range_button.dart",
+      "line": 9,
+      "symbol": "UtenDateRangeButton"
+    },
+    {
+      "file": "lib/components/inputs/uten_date_range_button.dart",
+      "line": 33,
+      "symbol": "UtenDateRangeSelectionButton"
+    },
+    {
+      "file": "lib/components/inputs/uten_month_field.dart",
+      "line": 14,
+      "symbol": "UtenMonthField"
+    },
+    {
+      "file": "lib/components/inputs/uten_month_field.dart",
+      "line": 155,
+      "symbol": "showUtenMonthPicker"
+    },
+    {
+      "file": "lib/components/layout/uten_document_lifecycle_filter.dart",
+      "line": 90,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/components/layout/uten_history_time_filter.dart",
+      "line": 52,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/components/layout/uten_history_time_filter.dart",
+      "line": 68,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/components/layout/uten_history_time_filter.dart",
+      "line": 100,
+      "symbol": "showUtenDateRangePicker"
+    },
+    {
+      "file": "lib/features/admin/pages/admin_audit_log_page.dart",
+      "line": 1351,
+      "symbol": "showUtenDateRangePicker"
+    },
+    {
+      "file": "lib/features/admin/widgets/admin_data_handover_panel.dart",
+      "line": 532,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/admin/widgets/audit_query_scope.dart",
+      "line": 292,
+      "symbol": "UtenDateRangeButton"
+    },
+    {
+      "file": "lib/features/admin/widgets/server_update_schedule_dialog.dart",
+      "line": 106,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/basic_data/pages/account_detail_page.dart",
+      "line": 1226,
+      "symbol": "UtenDateRangeSelectionButton"
+    },
+    {
+      "file": "lib/features/basic_data/pages/mould_category_page.dart",
+      "line": 407,
+      "symbol": "UtenMonthField"
+    },
+    {
+      "file": "lib/features/basic_data/pages/mould_category_page.dart",
+      "line": 538,
+      "symbol": "UtenMonthField"
+    },
+    {
+      "file": "lib/features/basic_data/pages/mould_category_page.dart",
+      "line": 626,
+      "symbol": "UtenMonthField"
+    },
+    {
+      "file": "lib/features/basic_data/widgets/goods_cost_actual_panel.dart",
+      "line": 735,
+      "symbol": "UtenDateRangeSelectionButton"
+    },
+    {
+      "file": "lib/features/basic_data/widgets/goods_cost_editor.dart",
+      "line": 754,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/basic_data/widgets/warehouse_inventory_panel.dart",
+      "line": 495,
+      "symbol": "InstantInventoryPeriodButton"
+    },
+    {
+      "file": "lib/features/employee/pages/employee_detail_page.dart",
+      "line": 1147,
+      "symbol": "UtenDateRangeSelectionButton"
+    },
+    {
+      "file": "lib/features/employee/pages/employee_detail_page.dart",
+      "line": 1858,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/employee/pages/employee_edit_page.dart",
+      "line": 296,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/employee/pages/employee_edit_page.dart",
+      "line": 626,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/employee/pages/employee_offboarding_workflow_page.dart",
+      "line": 565,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/employee/pages/employee_onboarding_page.dart",
+      "line": 864,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/employee/pages/employee_onboarding_page.dart",
+      "line": 940,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/employee/pages/employee_onboarding_page.dart",
+      "line": 996,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/employee/pages/employee_onboarding_page.dart",
+      "line": 1155,
+      "symbol": "UtenDateRangeSelectionButton"
+    },
+    {
+      "file": "lib/features/employee/widgets/employee_transfer_dialog.dart",
+      "line": 70,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/expense/pages/expense_approval_detail_page.dart",
+      "line": 586,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/expense/pages/expense_item_dialog.dart",
+      "line": 277,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/expense/widgets/expense_invoice_section.dart",
+      "line": 698,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "line": 475,
+      "symbol": "FinanceDateRangeFilter"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
+      "line": 786,
+      "symbol": "FinanceDateRangeFilter"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_doc_batch_entry.dart",
+      "line": 898,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_doc_edit_page.dart",
+      "line": 2130,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_doc_edit_page.dart",
+      "line": 2507,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_doc_list_page.dart",
+      "line": 85,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_doc_list_page.dart",
+      "line": 155,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_quote_review_page.dart",
+      "line": 1304,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_report_table_page.dart",
+      "line": 633,
+      "symbol": "FinanceDateRangeFilter"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_statement_page.dart",
+      "line": 526,
+      "symbol": "FinanceDateRangeFilter"
+    },
+    {
+      "file": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "line": 1130,
+      "symbol": "FinanceDateRangeFilter"
+    },
+    {
+      "file": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "line": 1141,
+      "symbol": "FinanceDateRangeFilter"
+    },
+    {
+      "file": "lib/features/finance/payables/widgets/subcontract_loss_claim_actions.dart",
+      "line": 202,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/finance/payables/widgets/subcontract_loss_claim_actions.dart",
+      "line": 821,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/finance/payables/widgets/supplier_credit_apply_panel.dart",
+      "line": 225,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/finance/payables/widgets/supplier_settlement_actions.dart",
+      "line": 199,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_asset_detail.dart",
+      "line": 1126,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+      "line": 810,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+      "line": 899,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+      "line": 1058,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+      "line": 1068,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+      "line": 1080,
+      "symbol": "UtenDateRangeSelectionButton"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+      "line": 1149,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_date_range_filter.dart",
+      "line": 10,
+      "symbol": "FinanceDateRangeFilter"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_date_range_filter.dart",
+      "line": 30,
+      "symbol": "UtenDateRangeSelectionButton"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_grid_columns.dart",
+      "line": 900,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/finance/widgets/inventory_cost_posting_dialog.dart",
+      "line": 234,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/finance/widgets/inventory_cost_posting_dialog.dart",
+      "line": 591,
+      "symbol": "UtenDateRangeSelectionButton"
+    },
+    {
+      "file": "lib/features/hr_task/pages/hr_task_list_page.dart",
+      "line": 930,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/hr_task/widgets/hr_task_widgets.dart",
+      "line": 602,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/notice/pages/notice_publish_page.dart",
+      "line": 663,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "line": 172,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "line": 425,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "line": 723,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "line": 1403,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/features/procurement_iqc_rejection/widgets/procurement_iqc_actual_credit_dialog.dart",
+      "line": 338,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/procurement_iqc_rejection/widgets/procurement_iqc_rejection_action_dialog.dart",
+      "line": 90,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/production/pages/material_analysis_candidates.dart",
+      "line": 663,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/production/pages/material_analysis_candidates.dart",
+      "line": 675,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/production/pages/production_board_page.dart",
+      "line": 129,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/production/pages/production_board_page.dart",
+      "line": 254,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/production/pages/production_board_page.dart",
+      "line": 263,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/features/production/pages/production_board_page.dart",
+      "line": 1747,
+      "symbol": "UtenDateRangeSelectionButton"
+    },
+    {
+      "file": "lib/features/production/pages/production_daily_report_edit_page.dart",
+      "line": 4117,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/production/pages/production_daily_report_list_page.dart",
+      "line": 78,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/production/pages/production_plan_edit_page.dart",
+      "line": 781,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/production/pages/production_plan_edit_page.dart",
+      "line": 788,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/production/pages/production_plan_list_page.dart",
+      "line": 77,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/production/pages/production_report_page.dart",
+      "line": 490,
+      "symbol": "UtenDateRangeButton"
+    },
+    {
+      "file": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "line": 416,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "line": 2980,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "line": 2996,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/features/production/pages/where_used_report_page.dart",
+      "line": 1184,
+      "symbol": "UtenDateRangeButton"
+    },
+    {
+      "file": "lib/features/production/widgets/material_manual_demand_editor.dart",
+      "line": 589,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/production/widgets/material_manual_demand_editor.dart",
+      "line": 867,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/production/widgets/production_execution_segments_card.dart",
+      "line": 540,
+      "symbol": "UtenDateRangeSelectionButton"
+    },
+    {
+      "file": "lib/features/production/widgets/segment_material_change_dialog.dart",
+      "line": 372,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_doc_edit_page.dart",
+      "line": 1096,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_doc_edit_page.dart",
+      "line": 1274,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_doc_edit_page.dart",
+      "line": 1281,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "line": 131,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "line": 321,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "line": 598,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "line": 956,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_order_edit_page.dart",
+      "line": 1860,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_order_edit_page.dart",
+      "line": 1875,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_report_page.dart",
+      "line": 253,
+      "symbol": "UtenDateRangeButton"
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "line": 458,
+      "symbol": "UtenDateRangeButton"
+    },
+    {
+      "file": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "line": 407,
+      "symbol": "showUtenDateRangePicker"
+    },
+    {
+      "file": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "line": 573,
+      "symbol": "UtenDateRangeButton"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_doc_edit_page.dart",
+      "line": 3845,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_doc_edit_page.dart",
+      "line": 4187,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_doc_edit_page.dart",
+      "line": 4227,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "line": 150,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "line": 329,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "line": 730,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "line": 746,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "line": 1219,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "line": 181,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "line": 384,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "line": 715,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_report_page.dart",
+      "line": 519,
+      "symbol": "UtenDateRangeButton"
+    },
+    {
+      "file": "lib/features/stock/pages/instant_inventory_page.dart",
+      "line": 985,
+      "symbol": "InstantInventoryPeriodButton"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "line": 360,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "line": 480,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "line": 531,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "line": 746,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "line": 1081,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "line": 209,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "line": 562,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "line": 1213,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "line": 1983,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
+      "line": 1281,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
+      "line": 1420,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
+      "line": 1426,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_order_edit_page.dart",
+      "line": 1752,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_order_edit_page.dart",
+      "line": 1766,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "line": 484,
+      "symbol": "UtenDateRangeButton"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "line": 111,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "line": 323,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "line": 525,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/features/subcontract/widgets/subcontract_short_delivery_decision_dialogs.dart",
+      "line": 59,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/visitor/pages/visitor_apply_page.dart",
+      "line": 79,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/warehouse/materialbin/widgets/workshop_material_enable_panel.dart",
+      "line": 538,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/warehouse/pages/inbound_arrival_registration_page.dart",
+      "line": 1310,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
+      "line": 76,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
+      "line": 422,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
+      "line": 440,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/features/warehouse/pages/stock_doc_edit_page.dart",
+      "line": 1284,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "line": 108,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "line": 195,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "line": 391,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "line": 669,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_quality_result_detail_page.dart",
+      "line": 1304,
+      "symbol": "showUtenDatePicker"
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "line": 147,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "line": 302,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "line": 1000,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "line": 460,
+      "symbol": "UtenDateRangeButton"
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_subcontract_outbound_batch_page.dart",
+      "line": 1664,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_subcontract_outbound_batch_page.dart",
+      "line": 1690,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart",
+      "line": 1115,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart",
+      "line": 1152,
+      "symbol": "UtenDateField"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_history_gate.dart",
+      "line": 36,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_history_gate.dart",
+      "line": 49,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart",
+      "line": 154,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart",
+      "line": 345,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart",
+      "line": 490,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+      "line": 175,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+      "line": 239,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+      "line": 505,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+      "line": 741,
+      "symbol": "UtenHistoryTimeFilter"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+      "line": 1372,
+      "symbol": "UtenDateRangeButton"
+    },
+    {
+      "file": "lib/shared/history/record_history_page.dart",
+      "line": 82,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/shared/history/record_history_page.dart",
+      "line": 193,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/shared/history/record_history_page.dart",
+      "line": 405,
+      "symbol": "showUtenDateRangePicker"
+    },
+    {
+      "file": "lib/shared/history/record_history_page.dart",
+      "line": 508,
+      "symbol": "lastMonth"
+    },
+    {
+      "file": "lib/shared/stock_inventory/instant_inventory_period_button.dart",
+      "line": 12,
+      "symbol": "InstantInventoryPeriodButton"
+    },
+    {
+      "file": "lib/shared/stock_inventory/instant_inventory_period_button.dart",
+      "line": 24,
+      "symbol": "UtenDateRangeButton"
+    },
+    {
+      "file": "lib/shared/stock_ledger/widgets/goods_stock_ledger_view.dart",
+      "line": 277,
+      "symbol": "showUtenDateRangePicker"
+    },
+    {
+      "file": "lib/shared/stock_ledger/widgets/goods_stock_ledger_view.dart",
+      "line": 385,
+      "symbol": "UtenDateRangeButton"
+    }
+  ]
+}

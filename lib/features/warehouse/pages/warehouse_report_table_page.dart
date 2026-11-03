@@ -28,6 +28,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_date_range_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/print/uten_print_preview.dart';
@@ -456,44 +457,20 @@ class _WarehouseReportTablePageState
           ),
           const SizedBox(height: UtenSpacing.s12),
           _filterLabel('日期范围'),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              TextButton.icon(
-                onPressed: () async {
-                  final p = await showDatePicker(
-                    context: context,
-                    initialDate: _from,
-                    firstDate: DateTime(2010),
-                    lastDate: DateTime(2100),
-                  );
-                  if (p != null) {
-                    setState(() => _from = p);
-                    _persistAndReload();
-                  }
-                },
-                icon: const Icon(Icons.event_outlined, size: 18),
-                label: Text('起 ${_fmt(_from)}'),
-              ),
-              TextButton.icon(
-                onPressed: () async {
-                  final p = await showDatePicker(
-                    context: context,
-                    initialDate: _to,
-                    firstDate: DateTime(2010),
-                    lastDate: DateTime(2100),
-                  );
-                  if (p != null) {
-                    setState(() => _to = p);
-                    _persistAndReload();
-                  }
-                },
-                icon: const Icon(Icons.event_outlined, size: 18),
-                label: Text('止 ${_fmt(_to)}'),
-              ),
-            ],
+          UtenDateRangeButton(
+            range: DateTimeRange(start: _from, end: _to),
+            firstDate: DateTime(2010),
+            lastDate: DateTime(2100),
+            onChanged: (range) async {
+              if (!mounted) return;
+              setState(() {
+                _from = range.start;
+                _to = range.end;
+              });
+              _persistPrefs();
+              _page = 1;
+              await _load();
+            },
           ),
           // DRAW：领料车间筛选（各车间领料单独统计）
           // 间距放在各选填区块的开头：搜索并入工具条后，尾随间距会在区块缺席时

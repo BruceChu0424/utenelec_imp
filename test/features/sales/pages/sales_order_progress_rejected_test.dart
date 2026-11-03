@@ -308,7 +308,7 @@ void main() {
 
       await tester.tap(find.text('历史记录'));
       await tester.pumpAndSettle();
-      // 历史门默认近三个月（2026-10-24 口径）：选中即按最近三个月加载，
+      // 历史门默认近一个月（2026-11-03 口径）：选中即按最近一个月加载，
       // 时间胶囊仍可切「全部」或具体时间段。
       expect(api.progressQueries, hasLength(2));
       // 历史记录不带 stage 参数（repo 空串省略）= 后端默认全部订单。
@@ -322,7 +322,7 @@ void main() {
             .facetPageLoaders['billNo']!('', 1),
       );
       expect(api.facetQueries.last['originScope'], 'ALL');
-      final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
+      final defaultRange = UtenHistoryTimeValue.lastMonth().range!;
       expect(
         api.progressQueries.last['dateFrom'],
         ChinaDateTime.formatDate(defaultRange.start),

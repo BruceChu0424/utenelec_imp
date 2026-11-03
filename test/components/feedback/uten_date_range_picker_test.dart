@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/utils/date_range_defaults.dart';
 // 全站日期范围选择弹窗的形态与选择契约。
 //
 // 2026-10-24 重设计后的口径：UtenRadius.dialog 圆角、右上角关闭、右下角
@@ -43,12 +44,15 @@ Widget _harness({
 }
 
 Future<void> _openDialog(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(1000, 900));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.tap(find.text('打开'));
   await tester.pumpAndSettle();
   expect(find.byType(UtenDateRangePickerDialog), findsOneWidget);
 }
 
 Future<void> _tapDay(WidgetTester tester, int day) async {
+  await tester.ensureVisible(find.text('$day'));
   await tester.tap(find.text('$day'));
   await tester.pump();
 }
@@ -86,11 +90,11 @@ void main() {
     expect(find.byIcon(Icons.edit), findsNothing);
     expect(find.text('应用'), findsNothing);
 
-    // 未选择时「确定」保持禁用。
+    // 默认最近一个月已选，但打开弹窗不会发布结果。
     final confirmButton = tester.widget<UtenButton>(
       find.ancestor(of: find.text('确定'), matching: find.byType(UtenButton)),
     );
-    expect(confirmButton.onPressed, isNull);
+    expect(confirmButton.onPressed, isNotNull);
     expect(picked, isNull);
   });
 
@@ -98,7 +102,7 @@ void main() {
     DateTimeRange? picked;
     await tester.pumpWidget(_harness(onPicked: (value) => picked = value));
     await _openDialog(tester);
-    final now = DateTime.now();
+    final now = recentMonthStart();
 
     await _tapDay(tester, 15);
     await _tapDay(tester, 20);
@@ -114,7 +118,7 @@ void main() {
     DateTimeRange? picked;
     await tester.pumpWidget(_harness(onPicked: (value) => picked = value));
     await _openDialog(tester);
-    final now = DateTime.now();
+    final now = recentMonthStart();
 
     await _tapDay(tester, 15);
     await _confirm(tester);
@@ -127,7 +131,7 @@ void main() {
     DateTimeRange? picked;
     await tester.pumpWidget(_harness(onPicked: (value) => picked = value));
     await _openDialog(tester);
-    final now = DateTime.now();
+    final now = recentMonthStart();
 
     await _tapDay(tester, 20);
     await _tapDay(tester, 10);
@@ -141,7 +145,7 @@ void main() {
     DateTimeRange? picked;
     await tester.pumpWidget(_harness(onPicked: (value) => picked = value));
     await _openDialog(tester);
-    final now = DateTime.now();
+    final now = recentMonthStart();
 
     final from = tester.getCenter(find.text('15'));
     final to = tester.getCenter(find.text('20'));
@@ -219,5 +223,210 @@ void main() {
     );
     expect(prevButton(const Icon(Icons.chevron_left)).onPressed, isNull);
     expect(prevButton(const Icon(Icons.chevron_right)).onPressed, isNull);
+  });
+  testWidgets('年月标题跨几十年跳选，不改草稿直到选择日期', (tester) async {
+    DateTimeRange? picked;
+    await tester.pumpWidget(
+      _harness(
+        firstDate: DateTime(1900),
+        lastDate: DateTime(2100),
+        initialDateRange: DateTimeRange(
+          start: DateTime(2025, 3, 2),
+          end: DateTime(2025, 3, 18),
+        ),
+        onPicked: (value) => picked = value,
+      ),
+    );
+    await _openDialog(tester);
+    await tester.tap(find.byKey(const Key('uten-calendar-month-year')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('uten-calendar-years')), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.byKey(const ValueKey<int>(1950)),
+      -400,
+      scrollable: find.descendant(
+        of: find.byKey(const Key('uten-calendar-years')),
+        matching: find.byType(Scrollable),
+      ),
+      maxScrolls: 30,
+    );
+    await tester.tap(find.byKey(const ValueKey<int>(1950)));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('uten-calendar-month-12')),
+    );
+    await tester.tap(find.byKey(const ValueKey('uten-calendar-month-12')));
+    await tester.pumpAndSettle();
+    expect(find.text('1950年12月'), findsOneWidget);
+    // Browsing a different century does not replace the selected interval.
+    await _confirm(tester);
+    expect(
+      picked,
+      DateTimeRange(start: DateTime(2025, 3, 2), end: DateTime(2025, 3, 18)),
+    );
+  });
+
+  testWidgets('跨年跳选后接续结束日期', (tester) async {
+    DateTimeRange? picked;
+    await tester.pumpWidget(
+      _harness(
+        initialDateRange: DateTimeRange(
+          start: DateTime(2025, 12),
+          end: DateTime(2025, 12, 2),
+        ),
+        onPicked: (value) => picked = value,
+      ),
+    );
+    await _openDialog(tester);
+    await _tapDay(tester, 25);
+    await tester.tap(find.byKey(const Key('uten-calendar-month-year')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<int>(2026)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('uten-calendar-month-2')));
+    await tester.pumpAndSettle();
+    await _tapDay(tester, 3);
+    await _confirm(tester);
+    expect(
+      picked,
+      DateTimeRange(start: DateTime(2025, 12, 25), end: DateTime(2026, 2, 3)),
+    );
+  });
+
+  testWidgets('跳选年月仍严格遵守可选年月和日期界限', (tester) async {
+    await tester.pumpWidget(
+      _harness(
+        firstDate: DateTime(2025, 3, 10),
+        lastDate: DateTime(2025, 5, 20),
+        onPicked: (_) {},
+      ),
+    );
+    await _openDialog(tester);
+    await tester.tap(find.byKey(const Key('uten-calendar-month-year')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<int>(2025)));
+    await tester.pumpAndSettle();
+    TextButton month(int n) =>
+        tester.widget(find.byKey(ValueKey('uten-calendar-month-$n')));
+    expect(month(2).onPressed, isNull);
+    expect(month(6).onPressed, isNull);
+    expect(month(3).onPressed, isNotNull);
+    await tester.tap(find.byKey(const ValueKey('uten-calendar-month-3')));
+    await tester.pumpAndSettle();
+    final before = tester
+        .widget<Text>(find.byKey(const Key('uten-date-selection')))
+        .data;
+    await _tapDay(tester, 1);
+    expect(
+      tester.widget<Text>(find.byKey(const Key('uten-date-selection'))).data,
+      before,
+    );
+  });
+
+  testWidgets('反复开关与切换年月，取消不发布选择', (tester) async {
+    var applied = 0;
+    await tester.pumpWidget(
+      _harness(
+        onPicked: (value) {
+          if (value != null) applied++;
+        },
+      ),
+    );
+    for (var i = 0; i < 20; i++) {
+      await _openDialog(tester);
+      await tester.tap(find.byKey(const Key('uten-calendar-month-year')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('uten-calendar-month-year')));
+      await tester.pump();
+      await _tapDay(tester, 15);
+      await tester.ensureVisible(find.byTooltip('关闭'));
+      await tester.tap(find.byTooltip('关闭'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    }
+    expect(applied, 0);
+  });
+
+  for (final openStart in [true, false]) {
+    testWidgets('开放端切回有限端不会发布隐藏逆序值 start=$openStart', (tester) async {
+      UtenDateRangeSelection? result;
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: const Locale('zh'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: FilledButton(
+                onPressed: () async {
+                  result = await showUtenDateRangeSelectionPicker(
+                    context: context,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2030),
+                    initialStart: DateTime(2026, 2),
+                    initialEnd: DateTime(2026, 2, 28),
+                    allowOpenRange: true,
+                  );
+                },
+                child: const Text('打开'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await _openDialog(tester);
+      final chip = find.widgetWithText(FilterChip, openStart ? '不限开始' : '不限结束');
+      await tester.tap(chip);
+      await tester.pump();
+      await tester.tap(
+        find.byIcon(openStart ? Icons.chevron_left : Icons.chevron_right),
+      );
+      await tester.pump();
+      await _tapDay(tester, 15);
+      await tester.tap(chip);
+      await tester.pump();
+      await _confirm(tester);
+      expect(result, isNotNull);
+      expect(result!.end!.isBefore(result!.start!), isFalse);
+    });
+  }
+
+  testWidgets('单日字段也从年月标题跳选并只返回一天', (tester) async {
+    DateTime? result;
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: FilledButton(
+              onPressed: () async {
+                result = await showUtenDatePicker(
+                  context: context,
+                  firstDate: DateTime(2000),
+                  lastDate: DateTime(2100),
+                  initialDate: DateTime(2026, 3, 15),
+                );
+              },
+              child: const Text('打开'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await _openDialog(tester);
+    await tester.tap(find.byKey(const Key('uten-calendar-month-year')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<int>(2025)));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('uten-calendar-month-12')),
+    );
+    await tester.tap(find.byKey(const ValueKey('uten-calendar-month-12')));
+    await tester.pumpAndSettle();
+    await _tapDay(tester, 31);
+    await _confirm(tester);
+    expect(result, DateTime(2025, 12, 31));
   });
 }

@@ -355,9 +355,9 @@ class _SubcontractBusinessListPageState
   /// 当前选中分段；null = 未选择引导态（不发请求）。
   _BizSeg? _seg;
 
-  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
-  /// 最近三个月加载），none 仅为值形态护栏。
-  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+  /// 历史记录段的时间门控值；默认近一个月（2026-11-03 用户口径，进段即按
+  /// 最近一个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastMonth();
 
   /// 待处理段计数（中性括号 `(N)`）；null = 加载中（不渲染）。
   int? _actionableCount;
@@ -477,7 +477,7 @@ class _SubcontractBusinessListPageState
     super.initState();
     if (widget.archiveOnly) {
       _seg = const _BizSeg.history();
-      _historyTime = const UtenHistoryTimeValue.all();
+      _historyTime = UtenHistoryTimeValue.lastMonth();
     }
     listenReadOwner(ref, _readerChanged);
     // 深链 ?status=draft：直接落在「草稿」段（新建页「草稿(N)」按钮的落点）。
@@ -528,7 +528,7 @@ class _SubcontractBusinessListPageState
     _supplierIdFilter = null;
     _warehouseIdFilter = null;
     _apPostedFilter = null;
-    _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+    _historyTime = UtenHistoryTimeValue.lastMonth();
   }
 
   void _readerChanged() {
@@ -740,10 +740,10 @@ class _SubcontractBusinessListPageState
     clearDraftSelection();
     setState(() {
       _seg = seg;
-      // 进历史段重新按默认近三个月加载；历史内换状态段保留已选时间
+      // 进历史段重新按默认近一个月加载；历史内换状态段保留已选时间
       // （ADR-180 历史保留原时间范围）；非历史段回 all() 占位。
       if (seg.history) {
-        if (!wasHistory) _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+        if (!wasHistory) _historyTime = UtenHistoryTimeValue.lastMonth();
       } else {
         _historyTime = const UtenHistoryTimeValue.all();
       }

@@ -411,9 +411,9 @@ class _ProductionWorkshopTasksPageState
     _isHistory ? _historyTime.range?.end : null,
   ];
 
-  /// 历史任务段的时间门控值（ADR-066 §1.3）：默认近三个月（2026-10-24 用户
-  /// 口径，进段即按最近三个月加载），none 仅为值形态护栏。
-  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+  /// 历史任务段的时间门控值（ADR-066 §1.3）：默认近一个月（2026-10-24 用户
+  /// 口径，进段即按最近一个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastMonth();
 
   /// 当前分类是否「历史任务」（终态段：已完工/已取消/已红冲）。
   bool get _isHistory => _status == 'COMPLETED';
@@ -2975,9 +2975,9 @@ class _ProductionWorkshopTasksPageState
                       _sortAscending = true;
                       _page = 1;
                       _selected.clear();
-                      // 进历史段重新按默认近三个月加载；非历史段回 all() 占位。
+                      // 进历史段重新按默认近一个月加载；非历史段回 all() 占位。
                       _historyTime = _isHistory
-                          ? UtenHistoryTimeValue.lastThreeMonths()
+                          ? UtenHistoryTimeValue.lastMonth()
                           : const UtenHistoryTimeValue.all();
                     });
                     _load(preferPrepared: !_isHistory);
@@ -2990,7 +2990,7 @@ class _ProductionWorkshopTasksPageState
                   },
                 ),
                 if (_isHistory) ...[
-                  // 历史任务时间门控（ADR-066 §1.3，2026-10-24 起默认近三个月）。
+                  // 历史任务时间门控（ADR-066 §1.3，2026-10-24 起默认近一个月）。
                   Padding(
                     padding: const EdgeInsets.only(top: UtenSpacing.s8),
                     child: UtenHistoryTimeFilter(

@@ -12,6 +12,8 @@ import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/feedback/uten_date_range_picker.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../../../components/inputs/uten_date_range_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_adaptive_panel.dart';
@@ -23,6 +25,7 @@ import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/date_range_defaults.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart'
@@ -90,6 +93,7 @@ class _QualityInspectionRecordsPageState
       _headers = const TableColumnQuery();
       _acceptedQuery = null;
       _loading = false;
+      _dateHeaderApplying = false;
       _error = scopedPagedReadRejection?.message;
       _readingRows.update(const []);
     });
@@ -108,6 +112,8 @@ class _QualityInspectionRecordsPageState
   bool _loading = true;
   String? _error;
   int _requestVersion = 0;
+  bool _dateHeaderPicking = false;
+  bool _dateHeaderApplying = false;
 
   // 2026-09-25 单号列统一：来源/关联/检查单号表头排序 + 值筛选（服务端白名单/facets）。
   String? _sortColumn;
@@ -121,6 +127,8 @@ class _QualityInspectionRecordsPageState
   void initState() {
     super.initState();
     _domain = _resolveInitialDomain();
+    final dates = recentMonthDateRange();
+    _dateRange = QualityInspectionDateRange(start: dates.start, end: dates.end);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load(page: 1));
   }
 
@@ -391,18 +399,30 @@ class _QualityInspectionRecordsPageState
   }
 
   Future<void> _pickDateRange() async {
-    final today = ChinaDateTime.today();
-    final current = _dateRange;
-    final picked = await showUtenDateRangePicker(
-      context: context,
-      firstDate: DateTime.utc(2020),
-      lastDate: today,
-      initialDateRange: current == null
-          ? null
-          : DateTimeRange(start: current.start, end: current.end),
-      helpText: '选择检验决定日期范围',
-    );
-    if (picked == null || !mounted) return;
+    if (_dateHeaderPicking) return;
+    _dateHeaderPicking = true;
+    final ownerIsCurrent = captureReadOwner(ref);
+    try {
+      final current = _dateRange;
+      final picked = await showUtenDateRangePicker(
+        context: context,
+        firstDate: DateTime.utc(2020),
+        lastDate: ChinaDateTime.today(),
+        initialDateRange: current == null
+            ? null
+            : DateTimeRange(start: current.start, end: current.end),
+        helpText: '选择检验决定日期范围',
+      );
+      if (picked == null || !ownerIsCurrent()) return;
+      setState(() => _dateHeaderApplying = true);
+      await _applyDateRange(picked);
+    } finally {
+      _dateHeaderPicking = false;
+      if (mounted) setState(() => _dateHeaderApplying = false);
+    }
+  }
+
+  Future<void> _applyDateRange(DateTimeRange picked) async {
     setState(() {
       _dateRange = QualityInspectionDateRange(
         start: ChinaDateTime.asWallTime(picked.start),
@@ -450,13 +470,20 @@ class _QualityInspectionRecordsPageState
         ],
       ),
       body: SafeArea(
-        child: _domain == null || allowedDomains.isEmpty
-            ? const UtenEmpty(
-                icon: Icons.lock_outline_rounded,
-                message: '您暂无检测记录查看权限',
-                description: '请联系品质主管开通来料检验或生产成品质检查看权限。',
-              )
-            : _buildContent(allowedDomains),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            _domain == null || allowedDomains.isEmpty
+                ? const UtenEmpty(
+                    icon: Icons.lock_outline_rounded,
+                    message: '您暂无检测记录查看权限',
+                    description: '请联系品质主管开通来料检验或生产成品质检查看权限。',
+                  )
+                : _buildContent(allowedDomains),
+            if (_dateHeaderApplying)
+              const UtenBusyOverlay(title: '正在应用日期', showDoNotLeaveHint: false),
+          ],
+        ),
       ),
     );
   }
@@ -520,10 +547,6 @@ class _QualityInspectionRecordsPageState
     // 决定日期筛选保留在工具条下一行。
     final theme = Theme.of(context);
     final range = _dateRange;
-    final dateLabel = range == null
-        ? '决定日期'
-        : '${ChinaDateTime.formatDate(range.start)} 至 '
-              '${ChinaDateTime.formatDate(range.end)}';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -547,47 +570,16 @@ class _QualityInspectionRecordsPageState
           ),
         ),
         const SizedBox(height: UtenFilterRow.rowGap),
-        Wrap(
-          spacing: UtenFilterRow.rowGap,
-          runSpacing: UtenFilterRow.rowGap,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: UtenFilterRow.heightOf(context),
-              ),
-              child: OutlinedButton.icon(
-                key: const Key('quality-inspection-record-date-filter'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: Size(0, UtenFilterRow.heightOf(context)),
-                  padding: UtenFilterRow.contentPadding,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: UtenFilterRow.borderRadius,
-                  ),
-                ),
-                onPressed: _pickDateRange,
-                icon: const Icon(Icons.date_range_outlined),
-                label: Text(dateLabel),
-              ),
-            ),
-            if (range != null)
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: UtenFilterRow.heightOf(context),
-                ),
-                child: TextButton.icon(
-                  style: TextButton.styleFrom(
-                    minimumSize: Size(0, UtenFilterRow.heightOf(context)),
-                    padding: UtenFilterRow.contentPadding,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  onPressed: _clearDateRange,
-                  icon: const Icon(Icons.close_rounded),
-                  label: const Text('清除日期'),
-                ),
-              ),
-          ],
+        UtenDateRangeButton(
+          key: const Key('quality-inspection-record-date-filter'),
+          range: range == null
+              ? null
+              : DateTimeRange(start: range.start, end: range.end),
+          firstDate: DateTime.utc(2020),
+          lastDate: ChinaDateTime.today(),
+          helpText: '选择检验决定日期范围',
+          onChanged: _applyDateRange,
+          onClear: _clearDateRange,
         ),
       ],
     );

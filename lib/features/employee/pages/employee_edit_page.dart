@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 // 员工编辑页（真实后端）：部分更新——仅发送"已变更"字段，契合后端 UpdateEmployeeRequest 语义。
 // 敏感 PII/薪资字段仅当变更且非空才回写（避免把脱敏占位误重新加密）。HR 角色拿明文，可正常编辑。
 // 表单页全断点套 UtenContentContainer.narrow（无固定最大宽度），分组为 UtenSectionHeader + UtenCard。
@@ -292,7 +293,7 @@ class _EmployeeEditPageState extends ConsumerState<EmployeeEditPage> {
 
   Future<void> _pickBirthDate() async {
     final now = ChinaDateTime.today();
-    final d = await showDatePicker(
+    final d = await showUtenDatePicker(
       context: context,
       initialDate: _birthDate.text.isEmpty
           ? now.subtract(const Duration(days: 365 * 30))

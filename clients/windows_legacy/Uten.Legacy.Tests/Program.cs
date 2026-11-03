@@ -19,6 +19,13 @@ namespace Uten.Legacy.Tests
         {
             try
             {
+                if (args.Length == 1 && args[0] == "--date-range-contracts")
+                {
+                    int dates = RunUi(DateRangeDialogChecks.Run);
+                    int historyDates = RunUi(UnitHistoryContractChecks.RunReadUi);
+                    Console.WriteLine("PASS date range contracts; dates=" + dates + "; history UI=" + historyDates + "; process=" + (Environment.Is64BitProcess ? "x64" : "x86"));
+                    return 0;
+                }
                 if (args.Length == 1 && args[0] == "--goods-currency-contracts")
                 {
                     int currencyGoods = GoodsReadContractChecks.Run();
@@ -70,6 +77,7 @@ namespace Uten.Legacy.Tests
                 int outcomes = UpdateOutcomeContractChecks.Run();
                 Console.WriteLine("PASS goods/downloads/publish/units/updater contracts");
                 RunUi(UiContractChecks.Run);
+                RunUi(DateRangeDialogChecks.Run);
                 int historyUiAssertions = RunUi(UnitHistoryContractChecks.RunUi);
                 int printAssertions = RunUi(NativePrintContractChecks.Run);
                 int draftAssertions = RunUi(DurableDraftDialogChecks.Run);

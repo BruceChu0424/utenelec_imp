@@ -171,8 +171,8 @@ class _WarehouseStockDocSegmentState
     _seg?.history == true ? null : _seg?.status,
   );
 
-  /// 历史单据段的时间门控值；默认近三个月（2026-10-24 用户口径）。
-  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+  /// 历史单据段的时间门控值；默认近一个月（2026-11-03 用户口径）。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastMonth();
 
   /// 2026-09-25 单号列统一：单据号表头值筛选 + 服务端桶（共享状态，见
   /// MasterServerColumnFilters）。
@@ -236,7 +236,7 @@ class _WarehouseStockDocSegmentState
         _list.keyword = widget.keyword;
         _seg = null;
         _issueStatus = null;
-        _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+        _historyTime = UtenHistoryTimeValue.lastMonth();
         // 2026-09-25 单号列统一：换单据类型时单号筛选/桶随旧命名空间一并重置。
         _columnFilters.reset();
         _statusHeader = null;
@@ -500,9 +500,9 @@ class _WarehouseStockDocSegmentState
       _seg = seg;
       _statusHeader = null;
       _issueStatus = null;
-      // 进历史段重新按默认近三个月加载；非历史段回 all() 占位。
+      // 进历史段重新按默认近一个月加载；非历史段回 all() 占位。
       _historyTime = seg.history
-          ? UtenHistoryTimeValue.lastThreeMonths()
+          ? UtenHistoryTimeValue.lastMonth()
           : const UtenHistoryTimeValue.all();
     });
     _reload(1);

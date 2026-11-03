@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_date_range_selection_button.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -36,6 +37,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/date_range_defaults.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/widgets/master_detail_card.dart';
@@ -177,7 +179,7 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
 
   void _resetDates() {
     _to = ChinaDateTime.today();
-    _from = ChinaDateTime.startOfMonth(_to);
+    _from = recentMonthStart(today: _to);
   }
 
   String _date(DateTime value) =>
@@ -1221,8 +1223,21 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
             runSpacing: UtenSpacing.s8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              _dateButton(label: '起', value: _from, start: true),
-              _dateButton(label: '止', value: _to, start: false),
+              UtenDateRangeSelectionButton(
+                from: _from,
+                to: _to,
+                firstDate: DateTime(2000),
+                lastDate: DateTime(2100),
+                enabled: !_flowLoading,
+                helpText: '选择账户流水日期范围',
+                onChanged: (start, end) {
+                  setState(() {
+                    _from = ChinaDateTime.dateOnly(start!);
+                    _to = ChinaDateTime.dateOnly(end!);
+                  });
+                  return _loadFlow(1);
+                },
+              ),
               UtenButton(
                 type: UtenButtonType.secondary,
                 icon: Icons.filter_alt_off_outlined,
@@ -1275,40 +1290,6 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
             ],
           );
         },
-      ),
-    );
-  }
-
-  Widget _dateButton({
-    required String label,
-    required DateTime value,
-    required bool start,
-  }) {
-    return SizedBox(
-      height: 48,
-      child: OutlinedButton.icon(
-        icon: const Icon(Icons.event_outlined, size: 18),
-        label: Text('$label ${_date(value)}'),
-        onPressed: _flowLoading
-            ? null
-            : () async {
-                final picked = await showDatePicker(
-                  context: context,
-                  initialDate: value,
-                  firstDate: DateTime(2000),
-                  lastDate: DateTime(2100),
-                );
-                if (picked == null || !mounted) return;
-                setState(() {
-                  if (start) {
-                    _from = ChinaDateTime.asWallTime(picked);
-                  } else {
-                    _to = ChinaDateTime.asWallTime(picked);
-                  }
-                });
-                // 撤掉「查询」按钮后，选完日期即刻重查（2026-09-11）。
-                _loadFlow(1);
-              },
       ),
     );
   }

@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 // 报销审批详情页（审批人/财务视角）
 // 文档：docs/03-页面/报销审批详情页.md · 审批流见 docs/05-架构/全局机制.md §3.3
 //
@@ -582,7 +583,7 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
   }
 
   Future<void> _pickPaymentDate() async {
-    final picked = await showDatePicker(
+    final picked = await showUtenDatePicker(
       context: context,
       initialDate: _paymentDate,
       firstDate: DateTime(2000),

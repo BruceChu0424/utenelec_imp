@@ -16,6 +16,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_date_range_button.dart';
 import '../../../components/buttons/uten_close_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -145,7 +146,7 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
   int _traceReloadTick = 0;
   final _refreshController = UtenRefreshController();
   _WhereUsedSource _source = _WhereUsedSource.all;
-  bool _limitHistoryDates = false;
+  bool _limitHistoryDates = true;
   DateTime _from = defaultReportFrom();
   DateTime _to = ChinaDateTime.today();
   int _page = 1;
@@ -1151,7 +1152,12 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
           ),
           const SizedBox(height: UtenSpacing.s16),
         ],
-        _filterLabel(_mode == _TraceResultMode.actual ? '凭证日期范围' : '历史日期范围'),
+        _filterLabel(
+          _mode == _TraceResultMode.actual ? '凭证日期范围' : '历史日期范围',
+          info: _mode == _TraceResultMode.relationships
+              ? '日期只过滤生产/委外历史，当前 BOM 不受影响'
+              : null,
+        ),
         UtenSegmentRow<bool>(
           key: const Key('where-used-history-range'),
           segments: const [
@@ -1173,69 +1179,23 @@ class _WhereUsedReportPageState extends ConsumerState<WhereUsedReportPage> {
           )),
         ),
         const SizedBox(height: UtenSpacing.s4),
-        if (_mode == _TraceResultMode.relationships)
-          Text(
-            '日期只过滤生产/委外历史，当前 BOM 不受影响',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
         if (filters.limitHistoryDates) ...[
           const SizedBox(height: UtenSpacing.s8),
-          _dateButton(
-            key: const Key('where-used-date-from'),
-            label: '起 ${_formatDate(filters.from)}',
-            initialDate: filters.from,
-            onPicked: (value) => onChanged((
+          UtenDateRangeButton(
+            key: const Key('where-used-select-dates'),
+            range: DateTimeRange(start: filters.from, end: filters.to),
+            firstDate: DateTime(2010),
+            lastDate: DateTime(2100),
+            onChanged: (range) => onChanged((
               source: filters.source,
               limitHistoryDates: filters.limitHistoryDates,
-              from: value,
-              to: filters.to,
-            )),
-          ),
-          const SizedBox(height: UtenSpacing.s4),
-          _dateButton(
-            key: const Key('where-used-date-to'),
-            label: '止 ${_formatDate(filters.to)}',
-            initialDate: filters.to,
-            onPicked: (value) => onChanged((
-              source: filters.source,
-              limitHistoryDates: filters.limitHistoryDates,
-              from: filters.from,
-              to: value,
+              from: ChinaDateTime.dateOnly(range.start),
+              to: ChinaDateTime.dateOnly(range.end),
             )),
           ),
         ],
         const SizedBox(height: UtenSpacing.s12),
       ],
-    );
-  }
-
-  Widget _dateButton({
-    required Key key,
-    required String label,
-    required DateTime initialDate,
-    required ValueChanged<DateTime> onPicked,
-  }) {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        key: key,
-        onPressed: () async {
-          final picked = await showDatePicker(
-            context: context,
-            initialDate: initialDate,
-            firstDate: DateTime(2010),
-            lastDate: DateTime(2100),
-          );
-          if (picked != null) {
-            final date = ChinaDateTime.dateOnly(picked);
-            if (date != ChinaDateTime.dateOnly(initialDate)) onPicked(date);
-          }
-        },
-        icon: const Icon(Icons.event_outlined, size: 18),
-        label: Align(alignment: Alignment.centerLeft, child: Text(label)),
-      ),
     );
   }
 

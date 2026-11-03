@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 // 员工调岗对话框（真实后端）
 // 提交：POST /api/org/employees/{id}/transfer；后端写 transfer 任职记录并更新部门/岗位。
 // 成功返回 true（调用方负责刷新详情）。
@@ -66,7 +67,7 @@ class _EmployeeTransferDialogState
   }
 
   Future<void> _pickDate() async {
-    final d = await showDatePicker(
+    final d = await showUtenDatePicker(
       context: context,
       initialDate: _date,
       firstDate: DateTime(2020),

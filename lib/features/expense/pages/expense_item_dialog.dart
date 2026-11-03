@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 // 报销明细添加/编辑对话框（V608 从新建页内嵌对话框升位为共享组件：新建与编辑共用，
 // initial 非空 = 修改现有明细行）。
 
@@ -273,7 +274,7 @@ class _ExpenseItemDialogState extends State<ExpenseItemDialog> {
 
   Future<void> _pickDate() async {
     final today = ChinaDateTime.today();
-    final picked = await showDatePicker(
+    final picked = await showUtenDatePicker(
       context: context,
       initialDate: _date,
       firstDate: DateTime.utc(2000),

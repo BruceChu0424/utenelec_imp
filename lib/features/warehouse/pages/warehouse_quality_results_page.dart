@@ -142,9 +142,9 @@ class _WarehouseQualityResultsPageState
   WarehouseIqcStockInReceiptType? _receiptType;
   _QStatusSeg? _statusSeg = const _QStatusSeg.all();
 
-  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
-  /// 最近三个月加载），none 仅为值形态护栏。
-  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+  /// 历史记录段的时间门控值；默认近一个月（2026-11-03 用户口径，进段即按
+  /// 最近一个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastMonth();
   String _keyword = '';
 
   /// 状态分段计数（后端全量口径）；null = 尚未返回，分段显示 '—'。
@@ -296,10 +296,10 @@ class _WarehouseQualityResultsPageState
       _selectedIds = {};
       _result = null;
       ++_requestVersion;
-      // 进历史段重新按默认近三个月加载；历史内换状态筛选保留已选时间
+      // 进历史段重新按默认近一个月加载；历史内换状态筛选保留已选时间
       // （ADR-180 历史保留原时间范围）；离开历史回 all() 占位。
       if (seg.history) {
-        if (!wasHistory) _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+        if (!wasHistory) _historyTime = UtenHistoryTimeValue.lastMonth();
       } else {
         _historyTime = const UtenHistoryTimeValue.all();
       }

@@ -223,8 +223,8 @@ void main() {
       expect(find.text('已结案'), findsOneWidget);
       expect(find.text('已反审'), findsOneWidget);
       expect(find.text('执行中'), findsNothing);
-      // 2026-10-24 起历史门默认近三个月：选中历史记录即按最近三个月查询（无状态）。
-      final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
+      // 2026-10-24 起历史门默认近一个月：选中历史记录即按最近一个月查询（无状态）。
+      final defaultRange = UtenHistoryTimeValue.lastMonth().range!;
       // The accepted first page prepares only its immediate successor. Both
       // physical reads must carry the same history range; prefetch is not the
       // reader's selected page.
@@ -329,9 +329,9 @@ void main() {
         ]);
         expect(find.text('已审'), findsOneWidget);
         expect(find.text('已反审'), findsOneWidget);
-        // 2026-10-24 起历史门默认近三个月：选中历史记录即按最近三个月查询
+        // 2026-10-24 起历史门默认近一个月：选中历史记录即按最近一个月查询
         //（无状态）。
-        final defaultRange = UtenHistoryTimeValue.lastThreeMonths().range!;
+        final defaultRange = UtenHistoryTimeValue.lastMonth().range!;
         expect(_acceptedQuery(tester, api), {
           'page': 1,
           'size': 20,

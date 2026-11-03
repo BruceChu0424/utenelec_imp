@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'dart:async';
 
@@ -528,7 +529,7 @@ class _AdminDataHandoverPanelState
           label: '选择交接生效日期',
           child: InkWell(
             onTap: () async {
-              final selected = await showDatePicker(
+              final selected = await showUtenDatePicker(
                 context: context,
                 initialDate: _effectiveDate,
                 firstDate: DateTime(2020),

@@ -25,6 +25,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../components/buttons/uten_back_button.dart';
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/inputs/uten_date_range_button.dart';
 import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/print/uten_print_preview.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -486,44 +487,20 @@ class _ProductionReportPageState extends ConsumerState<ProductionReportPage> {
           ),
           const SizedBox(height: UtenSpacing.s12),
           _filterLabel('日期范围'),
-          Wrap(
-            spacing: 8,
-            runSpacing: 4,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              TextButton.icon(
-                onPressed: () async {
-                  final p = await showDatePicker(
-                    context: context,
-                    initialDate: _from,
-                    firstDate: DateTime(2010),
-                    lastDate: DateTime(2100),
-                  );
-                  if (p != null) {
-                    setState(() => _from = p);
-                    _persistAndReload();
-                  }
-                },
-                icon: const Icon(Icons.event_outlined, size: 18),
-                label: Text('起 ${_fmt(_from)}'),
-              ),
-              TextButton.icon(
-                onPressed: () async {
-                  final p = await showDatePicker(
-                    context: context,
-                    initialDate: _to,
-                    firstDate: DateTime(2010),
-                    lastDate: DateTime(2100),
-                  );
-                  if (p != null) {
-                    setState(() => _to = p);
-                    _persistAndReload();
-                  }
-                },
-                icon: const Icon(Icons.event_outlined, size: 18),
-                label: Text('止 ${_fmt(_to)}'),
-              ),
-            ],
+          UtenDateRangeButton(
+            range: DateTimeRange(start: _from, end: _to),
+            firstDate: DateTime(2010),
+            lastDate: DateTime(2100),
+            onChanged: (range) async {
+              if (!mounted) return;
+              setState(() {
+                _from = range.start;
+                _to = range.end;
+              });
+              _persistPrefs();
+              _page = 1;
+              await _load();
+            },
           ),
           if (_filters.isNotEmpty) ...[
             const SizedBox(height: UtenSpacing.s12),

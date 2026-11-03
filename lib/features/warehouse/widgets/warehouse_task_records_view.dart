@@ -14,7 +14,7 @@ import '../../../components/buttons/uten_export_button.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/feedback/uten_context_menu.dart';
-import '../../../components/feedback/uten_date_range_picker.dart';
+import '../../../components/inputs/uten_date_range_button.dart';
 import '../../../components/inputs/uten_multi_value_cell.dart';
 import '../../../components/inputs/uten_table_cell_action.dart';
 import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
@@ -29,6 +29,7 @@ import '../../../core/router/page_navigation_session.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
+import '../../../core/utils/date_range_defaults.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/search/keyword_search.dart';
 import '../../../shared/search/numeric_column_query.dart';
@@ -110,7 +111,7 @@ class _WarehouseTaskRecordsViewState
   static const _defaultAscending = false;
   String? _sort = _defaultSort;
   bool _ascending = _defaultAscending;
-  DateTimeRange? _dates;
+  DateTimeRange? _dates = recentMonthDateRange();
   String? _error;
   bool _loading = false;
   bool _busy = false;
@@ -171,7 +172,7 @@ class _WarehouseTaskRecordsViewState
       _status = null;
       _billNo = null;
       _headerColumns.clear();
-      _dates = null;
+      _dates = recentMonthDateRange();
       _invalidate(reset: true);
     } else if (oldWidget.initialStatus != widget.initialStatus) {
       _status = widget.initialStatus;
@@ -190,7 +191,7 @@ class _WarehouseTaskRecordsViewState
   /// [reset]=true 表示换了视图/身份（不同单据族，旧行不串台）；关键词/筛选/刷新
   /// 变化保留旧行到新数据落地（keepPreviousData）——此前一律清空，任务中心每
   /// 次搜索停顿 300ms 就整表闪一次全屏骨架（2026-10-18 口径统一）。
-  void _invalidate({bool reset = false}) {
+  void _invalidate({bool reset = false, bool reload = true}) {
     final revision = ++_requestVersion;
     if (!mounted) return;
     setState(() {
@@ -205,9 +206,11 @@ class _WarehouseTaskRecordsViewState
       _decisionFingerprint = null;
       _decisionKey = null;
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && revision == _requestVersion) _load(1);
-    });
+    if (reload) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && revision == _requestVersion) _load(1);
+      });
+    }
   }
 
   String get _effectiveSource => _status?.startsWith('source:') == true
@@ -910,16 +913,11 @@ class _WarehouseTaskRecordsViewState
     ];
   }
 
-  Future<void> _pickDates() async {
-    final range = await showUtenDateRangePicker(
-      context: context,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-      initialDateRange: _dates,
-    );
-    if (!mounted || range == null) return;
-    _dates = range;
-    _invalidate();
+  Future<void> _applyDates(DateTimeRange? dates) async {
+    if (!mounted) return;
+    _dates = dates;
+    _invalidate(reload: false);
+    await _load(1);
   }
 
   /// 表格列定义（打印预览与导出白名单共用同一口径）。
@@ -1371,26 +1369,14 @@ class _WarehouseTaskRecordsViewState
                         ),
                   child: Text('新建${widget.sources[source]}'),
                 ),
-          TextButton.icon(
-            onPressed: _busy ? null : _pickDates,
-            icon: const Icon(Icons.date_range_outlined),
-            label: Text(
-              _dates == null
-                  ? '全部日期'
-                  : '${ChinaDateTime.formatDate(_dates!.start)} 至 ${ChinaDateTime.formatDate(_dates!.end)}',
-            ),
+          UtenDateRangeButton(
+            range: _dates,
+            firstDate: DateTime(2000),
+            lastDate: DateTime(2100),
+            enabled: !_busy,
+            onChanged: _applyDates,
+            onClear: () => _applyDates(null),
           ),
-          if (_dates != null)
-            IconButton(
-              tooltip: '清除日期范围',
-              onPressed: _busy
-                  ? null
-                  : () {
-                      _dates = null;
-                      _invalidate();
-                    },
-              icon: const Icon(Icons.clear_rounded),
-            ),
           Text('共 ${result?.total ?? 0} 条'),
         ],
         isLoading: _loading,

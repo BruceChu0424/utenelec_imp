@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/core/ui/human_error_message.dart';
 // 访客来访预约表单：姓名/身份证/单位/事由/开车+车牌/接待部门+接待人/到访时间。
 //
@@ -75,7 +76,7 @@ class _VisitorApplyPageState extends ConsumerState<VisitorApplyPage> {
     if (initialDate.isBefore(firstDate)) initialDate = firstDate;
     if (initialDate.isAfter(lastDate)) initialDate = lastDate;
 
-    final d = await showDatePicker(
+    final d = await showUtenDatePicker(
       context: context,
       initialDate: initialDate,
       firstDate: firstDate,

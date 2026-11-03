@@ -17,6 +17,7 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_date_field.dart';
+import '../../../components/buttons/uten_date_range_selection_button.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_input.dart';
@@ -711,7 +712,7 @@ class _FinanceAssetFormSurfaceState
                               ),
                               const SizedBox(height: UtenSpacing.s16),
                               _dateFields(),
-                              if (_dateError != null) ...[
+                              if (_dateError != null && _fixed) ...[
                                 const SizedBox(height: UtenSpacing.s8),
                                 Text(
                                   _dateError!,
@@ -1076,22 +1077,15 @@ class _FinanceAssetFormSurfaceState
               ),
             ]
           : [
-              UtenDateField(
-                label: '受益开始日期',
+              UtenDateRangeSelectionButton(
+                label: '受益期间',
                 required: true,
-                value: _benefitStartDate,
-                onChanged: (date) => setState(() {
-                  _benefitStartDate = date;
-                  _dateError = null;
-                  _dirty = true;
-                }),
-              ),
-              UtenDateField(
-                label: '受益结束日期',
-                required: true,
-                value: _benefitEndDate,
-                onChanged: (date) => setState(() {
-                  _benefitEndDate = date;
+                from: _benefitStartDate,
+                to: _benefitEndDate,
+                errorMessage: _dateError,
+                onChanged: (start, end) => setState(() {
+                  _benefitStartDate = start;
+                  _benefitEndDate = end;
                   _dateError = null;
                   _dirty = true;
                 }),

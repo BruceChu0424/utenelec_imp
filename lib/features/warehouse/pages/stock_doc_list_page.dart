@@ -103,9 +103,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
   /// DRAW「已审」下的出库进度表头筛选；null = 不附加过滤。
   int? _issueStatus;
 
-  /// 历史单据段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
-  /// 最近三个月加载），none 仅为值形态护栏。
-  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+  /// 历史单据段的时间门控值；默认近一个月（2026-11-03 用户口径，进段即按
+  /// 最近一个月加载），none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastMonth();
 
   /// 表头列筛选：仓库（warehouses/dict 桶）+ 领料车间（departments/tree 展平桶，
   /// 仅 DRAW 有该列）+ 调入仓（warehouses/dict 桶，仅 TRANSFER 有该列）；
@@ -192,7 +192,7 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
         ? const _StockDocSeg.stage(0)
         : null;
     _issueStatus = null;
-    _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+    _historyTime = UtenHistoryTimeValue.lastMonth();
     _warehouseIdFilter = null;
     _departmentIdFilter = null;
     _toWarehouseIdFilter = null;
@@ -386,9 +386,9 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
       _seg = seg;
       _statusHeader = null;
       _issueStatus = null;
-      // 进历史段重新按默认近三个月加载；非历史段回 all() 占位。
+      // 进历史段重新按默认近一个月加载；非历史段回 all() 占位。
       _historyTime = seg.history
-          ? UtenHistoryTimeValue.lastThreeMonths()
+          ? UtenHistoryTimeValue.lastMonth()
           : const UtenHistoryTimeValue.all();
     });
     _reload(1);

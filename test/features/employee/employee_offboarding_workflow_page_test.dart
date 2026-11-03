@@ -1,3 +1,5 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:dio/dio.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -257,8 +259,8 @@ Future<void> _fillDepartureAndContinue(WidgetTester tester) async {
   await tester.tap(
     find
         .descendant(
-          of: find.byType(DatePickerDialog),
-          matching: find.byType(TextButton),
+          of: find.byType(UtenDateRangePickerDialog),
+          matching: find.byType(UtenButton),
         )
         .last,
   );

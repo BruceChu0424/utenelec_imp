@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/inputs/uten_date_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
-import 'package:uten_imp/core/utils/china_datetime.dart';
 import 'package:uten_imp/features/finance/widgets/finance_date_range_filter.dart';
-import 'package:uten_imp/features/report/shared/report_date_range.dart';
 
 void main() {
   Widget app({
@@ -37,40 +36,36 @@ void main() {
     ),
   );
 
-  testWidgets('quick ranges preserve calendar boundaries and apply once', (
+  Future<void> openPicker(WidgetTester tester) async {
+    await tester.tap(find.widgetWithText(UtenButton, '选择日期'));
+    await tester.pumpAndSettle();
+    expect(find.byType(UtenDateRangePickerDialog), findsOneWidget);
+    expect(find.byType(UtenDateField), findsNothing);
+    expect(find.byType(MenuAnchor), findsNothing);
+  }
+
+  testWidgets('single entry directly applies a calendar range as wall dates', (
     tester,
   ) async {
     final values = <(DateTime?, DateTime?)>[];
-    final today = ChinaDateTime.today();
     await tester.pumpWidget(
       app(
-        from: defaultReportFrom(),
-        to: today,
+        from: DateTime.utc(2026, 9),
+        to: DateTime.utc(2026, 9, 30),
         changed: (from, to) => values.add((from, to)),
       ),
     );
-    await tester.tap(find.byType(UtenButton));
+    await openPicker(tester);
+    await tester.tap(find.text('10'));
+    await tester.tap(find.text('20'));
+    await tester.tap(find.text('确定'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('上月'));
-    await tester.pumpAndSettle();
-    expect(values, [
-      (
-        DateTime.utc(today.year, today.month - 1),
-        DateTime.utc(today.year, today.month, 0),
-      ),
-    ]);
-
-    await tester.tap(find.byType(UtenButton));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('最近一月'));
-    await tester.pumpAndSettle();
-    expect(values.last, (defaultReportFrom(), today));
-    expect(values, hasLength(2));
+    expect(values, [(DateTime.utc(2026, 9, 10), DateTime.utc(2026, 9, 20))]);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-    'custom range cancel discards draft and invalid interval cannot apply',
+    'cancel discards a draft and repeated opening keeps applied range',
     (tester) async {
       final values = <(DateTime?, DateTime?)>[];
       await tester.pumpWidget(
@@ -80,28 +75,23 @@ void main() {
           changed: (from, to) => values.add((from, to)),
         ),
       );
-      await tester.tap(find.byType(UtenButton));
+      for (var i = 0; i < 8; i++) {
+        await openPicker(tester);
+        await tester.tap(find.text('10'));
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+        expect(values, isEmpty);
+      }
+      await openPicker(tester);
+      await tester.tap(find.text('确定'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('自定义'));
-      await tester.pumpAndSettle();
-      tester
-          .widget<UtenDateField>(find.byType(UtenDateField).first)
-          .onChanged(DateTime(2026, 10));
-      await tester.pumpAndSettle();
-      expect(find.text('结束日期不能早于开始日期'), findsOneWidget);
-      final apply = tester.widget<UtenButton>(
-        find.widgetWithText(UtenButton, '应用'),
-      );
-      expect(apply.onPressed, isNull);
-      await tester.tap(find.text('取消'));
-      await tester.pumpAndSettle();
-      expect(values, isEmpty);
-      expect(find.textContaining('2026-09-01'), findsOneWidget);
+      expect(values.single, (DateTime.utc(2026, 9), DateTime.utc(2026, 9, 30)));
+      expect(tester.takeException(), isNull);
     },
   );
 
   testWidgets(
-    'open-ended ranges keep independent endpoints and clear explicitly',
+    'open ranges retain one bound and explicitly support clearing both',
     (tester) async {
       final values = <(DateTime?, DateTime?)>[];
       await tester.pumpWidget(
@@ -112,24 +102,21 @@ void main() {
           changed: (from, to) => values.add((from, to)),
         ),
       );
-      await tester.tap(find.byType(UtenButton));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('自定义'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('清除日期').first);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('应用'));
+      await openPicker(tester);
+      await tester.tap(find.widgetWithText(FilterChip, '不限开始'));
+      await tester.tap(find.text('确定'));
       await tester.pumpAndSettle();
       expect(values.single, (null, DateTime.utc(2026, 9, 30)));
-      await tester.tap(find.byType(UtenButton));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('清除日期'));
+      await openPicker(tester);
+      await tester.tap(find.widgetWithText(FilterChip, '不限开始'));
+      await tester.tap(find.widgetWithText(FilterChip, '不限结束'));
+      await tester.tap(find.text('确定'));
       await tester.pumpAndSettle();
       expect(values.last, (null, null));
     },
   );
 
-  testWidgets('range entry and custom editor fit compact large text', (
+  testWidgets('entry and calendar fit narrow screens with large text', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(360, 800));
@@ -143,11 +130,8 @@ void main() {
       ),
     );
     expect(tester.takeException(), isNull);
-    await tester.tap(find.byType(UtenButton));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('自定义'));
-    await tester.pumpAndSettle();
+    await openPicker(tester);
     expect(tester.takeException(), isNull);
-    expect(find.text('应用').hitTestable(), findsOneWidget);
+    expect(find.text('确定').hitTestable(), findsOneWidget);
   });
 }

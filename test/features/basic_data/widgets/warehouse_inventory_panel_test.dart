@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/utils/date_range_defaults.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -190,6 +191,15 @@ void main() {
       );
       harness.api.respond = (q) =>
           Future.value({..._result(q), 'total': 1, 'totalPages': 1});
+      final defaults = recentMonthDateRange();
+      expect(
+        harness.api.queries.last['dateFrom'],
+        inventoryPeriodDate(defaults.start),
+      );
+      expect(
+        harness.api.queries.last['dateTo'],
+        inventoryPeriodDate(defaults.end),
+      );
       final before = harness.api.queries.length;
       await tester.tap(
         find.byKey(const Key('instant-inventory-select-period')),
@@ -209,7 +219,7 @@ void main() {
       await tester.pumpAndSettle();
       Navigator.of(
         tester.element(find.byType(UtenDateRangePickerDialog)),
-      ).pop<DateTimeRange>(range);
+      ).pop<UtenDateRangeSelection>((start: range.start, end: range.end));
       await tester.pumpAndSettle();
       expect(harness.api.queries.last['dateFrom'], '2026-10-01');
       expect(harness.api.queries.last['dateTo'], '2026-10-31');
@@ -349,6 +359,7 @@ void main() {
     tester,
   ) async {
     final harness = await _pump(tester);
+    final defaults = recentMonthDateRange();
     expect(harness.api.queries, [
       for (final page in [1, 2, 3])
         {
@@ -358,6 +369,8 @@ void main() {
           'includeDefective': true,
           'includeLineSide': true,
           'warehouseRelatedOnly': true,
+          'dateFrom': inventoryPeriodDate(defaults.start),
+          'dateTo': inventoryPeriodDate(defaults.end),
         },
     ]);
     expect(_table(tester).items.single.goodsCode, 'M3-001');
@@ -644,7 +657,7 @@ void main() {
       expect(values['owningWarehouse'], '成品仓');
       expect(values['weight'], '未称');
       expect(values['pendingStockInQty'], '3 个');
-      expect(values['periodInQty'], '请选择时间范围');
+      expect(values['periodInQty'], '期间统计不可用，请刷新');
       expect(values, isNot(contains('moreQty')));
       expect(
         table.columns.every((column) => !column.supportsKeywordSearch),
@@ -679,6 +692,7 @@ void main() {
         api: api,
         permissions: {Perm.stockView, Perm.stockReportExport},
       );
+      final defaults = recentMonthDateRange();
       expect(_table(tester).facets['color']!.single.label, '红色');
       expect(_table(tester).nullCounts['owningWarehouse'], 2);
       _table(tester).onFilterChanged('color', 'red');
@@ -707,6 +721,8 @@ void main() {
         'colorId': 'red',
         'series': '金属',
         'owningWarehouseNull': true,
+        'dateFrom': inventoryPeriodDate(defaults.start),
+        'dateTo': inventoryPeriodDate(defaults.end),
         'sort': 'weight',
         'order': 'asc',
       });
@@ -723,6 +739,8 @@ void main() {
         'colorId': 'red',
         'series': '金属',
         'owningWarehouseNull': true,
+        'dateFrom': inventoryPeriodDate(defaults.start),
+        'dateTo': inventoryPeriodDate(defaults.end),
         'sort': 'weight',
         'order': 'asc',
         'weightUnit': 'KG',

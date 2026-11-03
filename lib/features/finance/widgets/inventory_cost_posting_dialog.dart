@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_button.dart';
+import '../../../components/buttons/uten_date_range_selection_button.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -587,29 +588,18 @@ class _InventoryCostPostingDialogState
                 runSpacing: UtenSpacing.s8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  SizedBox(
-                    width: 170,
-                    child: UtenDateField(
-                      label: l10n.inventoryCostFrom,
-                      value: _from,
-                      enabled: !_busy,
-                      onChanged: (value) {
-                        setState(() => _from = ChinaDateTime.dateOnly(value));
-                        _load();
-                      },
-                    ),
-                  ),
-                  SizedBox(
-                    width: 170,
-                    child: UtenDateField(
-                      label: l10n.inventoryCostTo,
-                      value: _to,
-                      enabled: !_busy,
-                      onChanged: (value) {
-                        setState(() => _to = ChinaDateTime.dateOnly(value));
-                        _load();
-                      },
-                    ),
+                  UtenDateRangeSelectionButton(
+                    from: _from,
+                    to: _to,
+                    enabled: !_busy,
+                    helpText: '选择成本来源日期范围',
+                    onChanged: (start, end) {
+                      setState(() {
+                        _from = ChinaDateTime.dateOnly(start!);
+                        _to = ChinaDateTime.dateOnly(end!);
+                      });
+                      return _load();
+                    },
                   ),
                   UtenButton(
                     type: UtenButtonType.secondary,

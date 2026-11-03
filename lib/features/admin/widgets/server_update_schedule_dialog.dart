@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import '../../../components/inputs/uten_dropdown_scroll_scope.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -102,7 +103,7 @@ class _ScheduleState extends ConsumerState<ServerUpdateScheduleDialog> {
               onPressed: _loading
                   ? null
                   : () async {
-                      final date = await showDatePicker(
+                      final date = await showUtenDatePicker(
                         context: context,
                         initialDate: _date,
                         currentDate: _firstDate,

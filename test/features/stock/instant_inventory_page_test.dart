@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/utils/date_range_defaults.dart';
 // 即时库存复用货品资料的分类分栏；点分类立即应用，窄屏选后返回正文。
 // 搜索默认跨分类平铺，清空后恢复原浏览分类。
 import 'package:dio/dio.dart';
@@ -110,6 +111,21 @@ void main() {
       await expandInventoryRoot(tester);
     }
   }
+
+  testWidgets('默认近一个月且卡片内红色关闭按钮清除当前范围', (tester) async {
+    final stock = _RecordingStockRepository();
+    await pumpPage(tester, stock: stock);
+    final defaults = recentMonthDateRange();
+    expect(stock.lastDateFrom, inventoryPeriodDate(defaults.start));
+    expect(stock.lastDateTo, inventoryPeriodDate(defaults.end));
+    await tapInventoryHeader(
+      tester,
+      const Key('instant-inventory-clear-period'),
+    );
+    await tester.pumpAndSettle();
+    expect(stock.lastDateFrom, isNull);
+    expect(stock.lastDateTo, isNull);
+  });
 
   testWidgets(
     'persistent measurement hold keeps book values and ignores a later master unit',
@@ -774,6 +790,8 @@ class _RecordingStockRepository extends StockQueryRepository {
   String? lastColorId;
   String? lastSeries;
   String? lastUnitId;
+  String? lastDateFrom;
+  String? lastDateTo;
   bool? lastIncludeDefective;
   bool? lastIncludeLineSide;
 
@@ -809,6 +827,8 @@ class _RecordingStockRepository extends StockQueryRepository {
     lastColorId = colorId;
     lastSeries = series;
     lastUnitId = unitId;
+    lastDateFrom = dateFrom;
+    lastDateTo = dateTo;
     return Future.value(
       PagedResult<InstantInventoryRow>(
         items: rows,

@@ -20,6 +20,7 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_date_field.dart';
+import '../../../components/buttons/uten_date_range_selection_button.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
@@ -1151,16 +1152,21 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
                   l10n.employeeOnboardMajor,
                   l10n.employeeOnboardEmailOptional,
                 ),
-                UtenDateField(
-                  label: l10n.employeeOnboardEduStart,
-                  value: e.startDate,
-                  firstDate: DateTime(1950),
-                  lastDate: ChinaDateTime.today(),
-                  onChanged: (d) => setState(() => e.startDate = d),
-                ),
-                UtenDateField(
-                  label: l10n.employeeOnboardEduEnd,
-                  value: e.endDate,
+                UtenDateRangeSelectionButton(
+                  label: Localizations.localeOf(context).languageCode == 'en'
+                      ? 'Education dates'
+                      : '就读期间',
+                  from: e.startDate,
+                  to: e.endDate,
+                  allowOpenRange: true,
+                  openStartLabel:
+                      Localizations.localeOf(context).languageCode == 'en'
+                      ? 'Start not entered'
+                      : '未填写开始',
+                  openEndLabel:
+                      Localizations.localeOf(context).languageCode == 'en'
+                      ? 'End not entered'
+                      : '未填写结束',
                   firstDate: DateTime(1950),
                   lastDate: ChinaDateTime.today(),
                   errorMessage:
@@ -1170,7 +1176,10 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
                           e.endDate!.isBefore(e.startDate!)
                       ? l10n.employeeOnboardEduDateOrder
                       : null,
-                  onChanged: (d) => setState(() => e.endDate = d),
+                  onChanged: (start, end) => setState(() {
+                    e.startDate = start;
+                    e.endDate = end;
+                  }),
                 ),
               ],
             ),

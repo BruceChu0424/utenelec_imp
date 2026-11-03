@@ -285,9 +285,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史.md`。
+证据：`docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史.md`；`clients/windows_legacy/progress/evidence/date-range-entry-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 资料库与权限设置共用修改历史：Flutter共享实现迁入lib/shared/history，服务端V988复用永久历史。新公司历史必须复用当前对象/祖先ACL及会话密码，移动历史保护旧/新目录，访问设置另需manage_permissions；权限历史须superAdmin+authorization:manage。本项WPF仍未迁移，状态不变，不开放入口。原单位master历史JSON及恢复合同不变。见docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史.md。；2026-11-01追加：货品历史按当前价格/成本/折扣及扩展字段查看权，在服务端分页前隐藏无可读差异的记录；详情直读及恢复同样限制。物料反查使用共用货品主档/BOM入口，成功实际变更由同一数据库触发器纳入货品历史。原生全局历史/物料反查仍未迁移；见docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史.md。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 资料库与权限设置共用修改历史：Flutter共享实现迁入lib/shared/history，服务端V988复用永久历史。新公司历史必须复用当前对象/祖先ACL及会话密码，移动历史保护旧/新目录，访问设置另需manage_permissions；权限历史须superAdmin+authorization:manage。本项WPF仍未迁移，状态不变，不开放入口。原单位master历史JSON及恢复合同不变。见docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史.md。；2026-11-01追加：货品历史按当前价格/成本/折扣及扩展字段查看权，在服务端分页前隐藏无可读差异的记录；详情直读及恢复同样限制。物料反查使用共用货品主档/BOM入口，成功实际变更由同一数据库触发器纳入货品历史。原生全局历史/物料反查仍未迁移；见docs/99-项目治理/2026-11-01-资料库与权限设置共用修改历史.md。；2026-11-03：日期范围UI合同增量：外部单一选择日期入口，卡内最右Uten红圆白X清除，默认中国壁钟最近一个日历月，年月标题直接跳年/月。该业务WPF宿主仍未迁移；后续接入公共UtenDateRangeDialog，并保留本业务日期/时区/开放边界及服务端权威，不开放占位写入口。见 E-DATE-RANGE-ENTRY-20261103。。
 
 ## W7-BIZ-030
 
@@ -477,9 +477,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md`；`docs/99-项目治理/Win7兼容版/09-本机草稿与单位首批写入接续.md`；`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`；`clients/windows_legacy/progress/evidence/biz037-flow001-upd009-20261030.json`；`clients/windows_legacy/progress/evidence/goods-currency-selection-20261103.json`。
+证据：`docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md`；`docs/99-项目治理/Win7兼容版/09-本机草稿与单位首批写入接续.md`；`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`；`clients/windows_legacy/progress/evidence/biz037-flow001-upd009-20261030.json`；`clients/windows_legacy/progress/evidence/goods-currency-selection-20261103.json`；`clients/windows_legacy/progress/evidence/date-range-entry-20261103.json`。
 
-接续/限制：本轮>32种persisted平台列已修复：ProjectBounded有界投影(添加列优先+UUID稳定顺序)+OverflowedDefinitionIds显式溢出，读取验证只覆盖可见预算、全部持久化cells/定义/整行写保全保留，表尾与表头设置显式提示修复入口，输出不再暂停；单行>32字段仍按服务端合同拒绝。columns 46→55双架构runner绿；28动作Win7目标机终验仍待。；2026-11-03：单位详情/编辑/历史/打印/导出在目的窗口准备成功后，通过公共TableSelection清除行、单元格和跨页已选索引，返回不恢复旧选中；菜单、表头工具及批量写确认保留既有语义，草稿/未知提交不变。实际打开并关闭UnitDetailWindow验证通过，x86/x64全部native UI fixtures通过；完整模块DoD及Win7真机状态不变。见 E-GOODS-CURRENCY-SELECTION-20261103。。
+接续/限制：本轮>32种persisted平台列已修复：ProjectBounded有界投影(添加列优先+UUID稳定顺序)+OverflowedDefinitionIds显式溢出，读取验证只覆盖可见预算、全部持久化cells/定义/整行写保全保留，表尾与表头设置显式提示修复入口，输出不再暂停；单行>32字段仍按服务端合同拒绝。columns 46→55双架构runner绿；28动作Win7目标机终验仍待。；2026-11-03：单位详情/编辑/历史/打印/导出在目的窗口准备成功后，通过公共TableSelection清除行、单元格和跨页已选索引，返回不恢复旧选中；菜单、表头工具及批量写确认保留既有语义，草稿/未知提交不变。实际打开并关闭UnitDetailWindow验证通过，x86/x64全部native UI fixtures通过；完整模块DoD及Win7真机状态不变。见 E-GOODS-CURRENCY-SELECTION-20261103。；2026-11-03：单位修改历史开始/结束文本框改为单一选择日期卡片，卡内最右红圆白X可清除；默认中国壁钟最近一个日历月（月末clamp），保留开放区间和服务端dateFrom/dateTo权威。选择/清除作废旧读取且保留其他筛选；x86/x64各37公共日期与10历史UI检查通过。完整单位模块DoD及Win7真机状态不变。见 E-DATE-RANGE-ENTRY-20261103。。
 
 ## W7-BIZ-038
 

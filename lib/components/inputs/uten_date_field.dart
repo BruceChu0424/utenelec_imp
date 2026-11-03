@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 // UtenDateField - 编辑/详情页日期字段（outlined，与下拉/文本框同款）。
 //
 // 背景：原编辑页日期（单据日期/交货日期）用 ListTile 渲染（无边框、标题大字、值小字），
@@ -65,6 +66,7 @@ class _UtenDateFieldState extends State<UtenDateField> {
   // yellow ("AI filled, please review") until the user picks a date.
   final _aiSlot = AiPageSlot();
   DateTime? _aiFilledDate;
+  bool _picking = false;
 
   bool get _aiFilledNow =>
       _aiFilledDate != null &&
@@ -157,26 +159,32 @@ class _UtenDateFieldState extends State<UtenDateField> {
   }
 
   Future<void> _pick() async {
-    final now = ChinaDateTime.today();
-    final firstDate = DateUtils.dateOnly(widget.firstDate ?? DateTime(2010));
-    final lastDate = DateUtils.dateOnly(widget.lastDate ?? DateTime(2100));
-    final value = DateUtils.dateOnly(widget.value ?? now);
-    // 已有历史日期或动态边界可能落在可选区间之外。保留字段原值，
-    // 仅把日历打开位置限制到可选区间，避免整张编辑表单抛断言。
-    final initialDate = value.isBefore(firstDate)
-        ? firstDate
-        : value.isAfter(lastDate)
-        ? lastDate
-        : value;
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: firstDate,
-      lastDate: lastDate,
-    );
-    if (picked != null && mounted) {
-      _aiFilledDate = null;
-      widget.onChanged(picked);
+    if (!widget.enabled || _picking) return;
+    _picking = true;
+    try {
+      final now = ChinaDateTime.today();
+      final firstDate = DateUtils.dateOnly(widget.firstDate ?? DateTime(2010));
+      final lastDate = DateUtils.dateOnly(widget.lastDate ?? DateTime(2100));
+      final value = DateUtils.dateOnly(widget.value ?? now);
+      // 已有历史日期或动态边界可能落在可选区间之外。保留字段原值，
+      // 仅把日历打开位置限制到可选区间，避免整张编辑表单抛断言。
+      final initialDate = value.isBefore(firstDate)
+          ? firstDate
+          : value.isAfter(lastDate)
+          ? lastDate
+          : value;
+      final picked = await showUtenDatePicker(
+        context: context,
+        initialDate: initialDate,
+        firstDate: firstDate,
+        lastDate: lastDate,
+      );
+      if (picked != null && mounted && widget.enabled) {
+        _aiFilledDate = null;
+        widget.onChanged(picked);
+      }
+    } finally {
+      _picking = false;
     }
   }
 

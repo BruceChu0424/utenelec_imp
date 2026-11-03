@@ -167,9 +167,9 @@ class _OperationsWorkbenchPageState
   /// 异常表头的专用过滤参数；null = 当前主阶段全部异常与正常任务。
   String? _exception;
 
-  /// 历史记录段的时间门控值；默认近三个月（2026-10-24 用户口径，进段即按
-  /// 最近三个月加载），用户可选「时间段」或「全部」。none 仅为值形态护栏。
-  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+  /// 历史记录段的时间门控值；默认近一个月（2026-11-03 用户口径，进段即按
+  /// 最近一个月加载），用户可选「时间段」或「全部」。none 仅为值形态护栏。
+  UtenHistoryTimeValue _historyTime = UtenHistoryTimeValue.lastMonth();
 
   /// 表头列筛选（服务端 facet key → 值）；repository 以 `f.{key}` 前缀回传。
   final Map<String, String?> _columnFilters = {};
@@ -422,7 +422,7 @@ class _OperationsWorkbenchPageState
     _sortAscending = true;
     _selectedIds.clear();
     _masterNames = null;
-    _historyTime = UtenHistoryTimeValue.lastThreeMonths();
+    _historyTime = UtenHistoryTimeValue.lastMonth();
   }
 
   void _readerChanged() {
@@ -718,9 +718,9 @@ class _OperationsWorkbenchPageState
       _seg = seg;
       _exception = null;
       _page = 1;
-      // 进入历史段重新按默认近三个月加载；非历史段不消费时间门控，回 all() 占位。
+      // 进入历史段重新按默认近一个月加载；非历史段不消费时间门控，回 all() 占位。
       _historyTime = seg.history
-          ? UtenHistoryTimeValue.lastThreeMonths()
+          ? UtenHistoryTimeValue.lastMonth()
           : const UtenHistoryTimeValue.all();
       _selectedIds.clear();
       // 各阶段的 facet 集合不同（与委外任务中心同口径）：切段时清表头筛选。

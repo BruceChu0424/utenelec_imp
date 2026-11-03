@@ -6,6 +6,9 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
+import 'package:uten_imp/components/buttons/uten_date_range_selection_button.dart';
+import 'package:uten_imp/core/utils/china_datetime.dart';
+import 'package:uten_imp/core/utils/date_range_defaults.dart';
 import 'package:uten_imp/features/basic_data/repositories/master_status_repository.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'dart:async';
@@ -291,8 +294,17 @@ void main() {
       // 2026-09-11 撤掉「查询」按钮（全站同改）：改日期即查、搜索防抖/回车即查。
       expect(find.text('查询'), findsNothing);
       expect(find.text('清除'), findsOneWidget);
-      expect(find.textContaining('起 20'), findsOneWidget);
-      expect(find.textContaining('止 20'), findsOneWidget);
+      expect(find.byType(UtenDateRangeSelectionButton), findsOneWidget);
+      expect(find.text('选择日期'), findsOneWidget);
+      final expected = recentMonthDateRange();
+      expect(
+        repository.statementDateFrom,
+        ChinaDateTime.formatDate(expected.start),
+      );
+      expect(
+        repository.statementDateTo,
+        ChinaDateTime.formatDate(expected.end),
+      );
     },
   );
 
@@ -526,6 +538,8 @@ class _AccountRepositoryFake implements AccountRepository {
   }) async => const []; // 2026-09-25 单号列统一：页面 facets 静默降级。
   int detailCalls = 0;
   int statementCalls = 0;
+  String? statementDateFrom;
+  String? statementDateTo;
   int updateCalls = 0;
   int deleteCalls = 0;
   Completer<void>? pendingDelete;
@@ -581,6 +595,8 @@ class _AccountRepositoryFake implements AccountRepository {
     Map<String, String?> columnQuery = const {},
   }) async {
     statementCalls++;
+    statementDateFrom = dateFrom;
+    statementDateTo = dateTo;
     statementColumnQueries.add(Map.of(columnQuery));
     statementPages.add(page);
     if (pendingStatement case final pending?) return pending.future;

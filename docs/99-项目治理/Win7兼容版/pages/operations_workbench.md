@@ -4,7 +4,7 @@
 
 ## W7-BIZ-087 · lib/features/operations_workbench/pages/operations_workbench_page.dart
 
-模块 `operations_workbench`；1989 行；SHA256 `364cce5a88b7f2607b0c3e1ee40ad5c894b8063635f587624be78668895a2d72`。
+模块 `operations_workbench`；1989 行；SHA256 `10ed66e9363ac32641f4a5f06194c75dcf8cd1f146e8919a714b09317e4cf16f`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

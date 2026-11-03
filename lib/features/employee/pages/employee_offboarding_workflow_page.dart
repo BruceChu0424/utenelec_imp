@@ -1,3 +1,4 @@
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'dart:async';
 
@@ -561,7 +562,7 @@ class _EmployeeOffboardingWorkflowPageState
           label: '选择离职日期',
           child: InkWell(
             onTap: () async {
-              final selected = await showDatePicker(
+              final selected = await showUtenDatePicker(
                 context: context,
                 initialDate: _effectiveDate ?? ChinaDateTime.today(),
                 firstDate: DateTime(2020),

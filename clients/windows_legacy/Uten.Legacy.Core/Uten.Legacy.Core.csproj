@@ -75,6 +75,9 @@
     <Compile Include="Tests\ClientPackageDownloadChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
     <Compile Include="ReadScopeRevisionState.cs" />
     <Compile Include="Tests\ReadScopeRevisionChecks.cs" Condition=" '$(Configuration)' == 'Debug' " />
+    <EmbeddedResource Include="..\..\..\contracts\read-scope-domains\goods-cost-v1.json" Condition=" '$(Configuration)' == 'Debug' ">
+      <LogicalName>Uten.Legacy.Core.GoodsCostReadScopeFixture.json</LogicalName>
+    </EmbeddedResource>
     <Compile Include="ManagedCertificateValidator.cs" />
     <Compile Include="ManagedTlsHttpHandler.cs" />
     <Compile Include="PageReadPriorityGate.cs" />

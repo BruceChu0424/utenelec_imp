@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "id": "E-GOODS-COST-READ-SCOPE-20261102",
+  "baseCommit": "c75d6e1e3",
+  "branch": "uimp/cost-read-scope-fix-20261102",
+  "completedAtUtc": "2026-11-03T04:52:40.9104634Z",
+  "sourceFiles": [
+    {
+      "path": "lib/core/network/interceptors/read_scope_revision_interceptor.dart",
+      "sha256": "01770e9ddce231455f99a3898d89b499c3825d1184744dc2eb38b25a9f1fc0d6"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/ReadScopeRevisionState.cs",
+      "sha256": "80e67830ca46b514aee8e7a66f9d699322e1f51665d1d27af781d8ec15fd7191"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/Tests/ReadScopeRevisionChecks.cs",
+      "sha256": "a44e0bebc2a325c295f18c208a7efceef2d23cfbe1e7972d84177b792f97744d"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj",
+      "sha256": "f3452d36787c12ca3a49ac14d28d7ccb536117f55163dfd4d44066665f4b2d82"
+    },
+    {
+      "path": "contracts/read-scope-domains/goods-cost-v1.json",
+      "sha256": "6ff071f1ff779e2aebdc4fea1e11c6b7481ee593218002d9e9d20f6392d4b912"
+    },
+    {
+      "path": "test/core/network/read_scope_revision_test.dart",
+      "sha256": "beee8e4f9bc410cea6a91c3637104922f0b6cf5003492bf3de88180076c8f911"
+    },
+    {
+      "path": "test/features/basic_data/widgets/goods_cost_startup_test.dart",
+      "sha256": "6890bfc243d9ca981a6ed5f7b2fa3640a15fec7a32fc440f2b7bd2ce0c0e0c9f"
+    },
+    {
+      "path": "integration_test/goods_cost_scope_test.dart",
+      "sha256": "8689230d896633fbdc6fcd7a54413aac98e6c209845907edbe278482c133cc86"
+    },
+    {
+      "path": "server/src/test/java/com/uten/imp/common/report/ReadScopePublicationTest.java",
+      "sha256": "7cc01232f42b814ce1d982892a4811ae6746aa1b3f3cd9d5808b141177cf1062"
+    }
+  ],
+  "sharedRoutes": 12,
+  "readRoundsPerRuntime": 25,
+  "flutterRegressionTests": 93,
+  "flutterWindowsX64IntegrationTests": 8,
+  "javaTests": 33,
+  "finalFailures": 0,
+  "finalSkipped": 0,
+  "dartAnalyzeIssues": 0,
+  "native": {
+    "verificationReport": "build/windows-wpf/verification/085f4ed0-fa00-4448-a6c4-e8d6024ab97f/verification.json",
+    "verificationReportSha256": "3d302071118573f6980b6d4d1042e37f6ddb2e9bf6b18e61ee36e0e63ee0e18f",
+    "succeeded": true,
+    "architectures": [
+      "x86",
+      "x64"
+    ],
+    "completeRunnerPassed": [
+      "x86",
+      "x64"
+    ],
+    "targetPcAcceptance": false
+  },
+  "productionRequestsExecuted": false,
+  "formalPackageCreated": false,
+  "deployed": false,
+  "wpfCostWorkbenchMigrated": false,
+  "fullErpEquivalent": false
+}

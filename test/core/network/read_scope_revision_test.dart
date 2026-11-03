@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -69,10 +70,15 @@ void main() {
   Future<Response<dynamic>> request(
     String id, {
     String path = '/sales/reports/ORDER/detail',
+    String method = 'GET',
   }) {
     adapter.replies[id] = Completer<ResponseBody>();
     adapter.started[id] = Completer<void>();
-    return dio.get<dynamic>(path, queryParameters: {'request': id});
+    return dio.request<dynamic>(
+      path,
+      queryParameters: {'request': id},
+      options: Options(method: method),
+    );
   }
 
   void reply(String id, String version, {int status = 200, String? domain}) =>
@@ -93,6 +99,68 @@ void main() {
   Future<void> sent() async {
     await Future.wait(adapter.started.values.map((start) => start.future));
   }
+
+  test(
+    'goods and cost proofs stay independent across all shared routes and repeated reads',
+    () async {
+      final fixture =
+          jsonDecode(
+                File(
+                  'contracts/read-scope-domains/goods-cost-v1.json',
+                ).readAsStringSync(),
+              )
+              as Map;
+      expect(fixture['schemaVersion'], 1);
+      final cases = (fixture['cases'] as List).cast<Map<String, dynamic>>();
+      for (var round = 0; round < 25; round++) {
+        for (var index = 0; index < cases.length; index++) {
+          final entry = cases[index];
+          final id = 'round-$round-$index';
+          final pending = request(
+            id,
+            path: '${round.isEven ? '' : '/api'}${entry['path']}',
+            method: entry['method'] as String,
+          );
+          await sent();
+          reply(id, entry['domain'] as String);
+          await pending;
+        }
+      }
+      expect(revision, 0);
+
+      final old = request(
+        'old-cost',
+        path: '/master/goods/cost-sheets/versions',
+      );
+      final changed = request(
+        'new-cost',
+        path: '/api/master/goods/cost-sheets/templates',
+      );
+      await sent();
+      final changedCheck = expectLater(changed, throwsA(isA<DioException>()));
+      reply('new-cost', 'changed-cost-client-visibility');
+      await changedCheck;
+      expect(revision, 1);
+      final oldCheck = expectLater(old, throwsA(isA<DioException>()));
+      reply('old-cost', 'master_goods_cost');
+      await oldCheck;
+      final current = request(
+        'current-cost',
+        path: '/master/goods/cost-sheets/versions',
+      );
+      await sent();
+      reply('current-cost', 'changed-cost-client-visibility');
+      await current;
+      final goods = request(
+        'goods-again',
+        path: '/master/goods/cost-sheets/actual',
+      );
+      await sent();
+      reply('goods-again', 'master_goods');
+      await goods;
+      expect(revision, 1);
+    },
+  );
 
   test('报销查看范围撤销会使旧读请求失效且不借用财务单据范围', () async {
     final firstExpense = request('expenseA', path: '/expense-claims/browse');

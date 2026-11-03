@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Collections;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Web.Script.Serialization;
 
 namespace Uten.Legacy.Core.Tests
 {
@@ -21,6 +24,7 @@ namespace Uten.Legacy.Core.Tests
             HeaderBodyMismatchRetiresReaders().GetAwaiter().GetResult();
             NativeDomainsAreIndependent().GetAwaiter().GetResult();
             MasterAndReportDomainsAreIndependent().GetAwaiter().GetResult();
+            GoodsCostDomainsAreIndependent().GetAwaiter().GetResult();
             IdentityChangesForgetProofsAndRejectOldResponses().GetAwaiter().GetResult();
             ReaderRetirementDoesNotCancelSharedRefresh().GetAwaiter().GetResult();
             ConcurrentScopeErrorsRetireOnce().GetAwaiter().GetResult();
@@ -202,6 +206,33 @@ namespace Uten.Legacy.Core.Tests
                     Equal(revision + retired, fixture.Session.ReadScopeRevision, "aliases observe the same domain without contaminating independent domains");
                 }
                 Equal(3, events, "master/report/settlement changes each retire once");
+                NoAutomaticAuthenticationOrWrite(fixture);
+            }
+        }
+
+        private static async Task GoodsCostDomainsAreIndependent()
+        {
+            Dictionary<string, object> contract;
+            using (var stream = typeof(SessionCoordinator).Assembly.GetManifestResourceStream("Uten.Legacy.Core.GoodsCostReadScopeFixture.json"))
+            using (var reader = new StreamReader(stream, Encoding.UTF8))
+                contract = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(reader.ReadToEnd());
+            Equal(1, Convert.ToInt32(contract["schemaVersion"]), "shared goods/cost scope contract version");
+            var cases = ((IEnumerable)contract["cases"]).Cast<Dictionary<string, object>>().ToArray();
+            var proofs = cases.ToDictionary(item => "/api" + (string)item["path"], item => (string)item["domain"]);
+            using (var fixture = new Fixture((request, token) => Ready(ProofBody(proofs[request.RequestUri.AbsolutePath]))))
+            {
+                await fixture.Login();
+                var revision = fixture.Session.ReadScopeRevision;
+                for (var round = 0; round < 25; round++)
+                    foreach (var item in cases)
+                        await fixture.Session.GetAsync(((string)item["path"]).TrimStart('/'), CancellationToken.None);
+                Equal(revision, fixture.Session.ReadScopeRevision, "goods/cost/actual/export routes never replace another authority");
+                proofs["/api/master/goods/cost-sheets/templates"] = "cost-client-changed";
+                proofs["/api/master/goods/cost-sheets/versions"] = "cost-client-changed";
+                await Changed(() => fixture.Session.GetAsync("master/goods/cost-sheets/templates", CancellationToken.None));
+                await fixture.Session.GetAsync("master/goods/cost-sheets/versions", CancellationToken.None);
+                await fixture.Session.GetAsync("master/goods/cost-sheets/actual", CancellationToken.None);
+                Equal(revision + 1, fixture.Session.ReadScopeRevision, "real cost visibility change still retires reads once");
                 NoAutomaticAuthenticationOrWrite(fixture);
             }
         }

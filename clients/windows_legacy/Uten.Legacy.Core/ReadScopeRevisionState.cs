@@ -75,6 +75,7 @@ namespace Uten.Legacy.Core
         private static readonly Regex ReportPath = new Regex("^/(?:api/)?(sales|purchase|subcontract|production|stock|finance)/reports(?:/|$)", RegexOptions.CultureInvariant);
         private static readonly Regex MasterPath = new Regex("^/(?:api/)?master/(clients|suppliers|goods|accounts|currencies|colors|units|moulds|warehouses)(?:/|$)", RegexOptions.CultureInvariant);
         private static readonly Regex SettlementPath = new Regex("^/(?:api/)?master/reference-methods/settlement-admin(?:/page)?$", RegexOptions.CultureInvariant);
+        private static readonly Regex GoodsCostPath = new Regex("^/(?:api/)?master/goods/cost-sheets(?:/versions|/[0-9a-fA-F-]{36}(?:/snapshots)?|/snapshots/[0-9a-fA-F-]{36}|/templates|/export)?$", RegexOptions.CultureInvariant);
         private static readonly Dictionary<string, string> MasterDomains = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             { "clients", "client" }, { "suppliers", "supplier" }, { "goods", "master_goods" },
@@ -122,6 +123,9 @@ namespace Uten.Legacy.Core
         { return !String.IsNullOrEmpty(value) && value.Length <= 256 && !value.Any(Char.IsControl); }
         private static string DomainFromPath(string path)
         {
+            // Cost versions also belong to their frozen customer. Actual costs
+            // retain master_goods, matching the owning server interceptors.
+            if (GoodsCostPath.IsMatch(path)) return "master_goods_cost";
             if (path.StartsWith("/api/platform-columns/master_unit/", StringComparison.Ordinal)
                 || path.StartsWith("/platform-columns/master_unit/", StringComparison.Ordinal)) return "master_unit";
             if (SettlementPath.IsMatch(path)) return "master_settlement_method";

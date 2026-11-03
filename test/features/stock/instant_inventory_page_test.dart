@@ -18,6 +18,7 @@ import 'package:uten_imp/features/stock/models/stock_query.dart';
 import 'package:uten_imp/features/stock/pages/instant_inventory_page.dart';
 import 'package:uten_imp/features/stock/repositories/stock_query_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/stock_inventory/instant_inventory_period_button.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
@@ -159,7 +160,7 @@ void main() {
       final table = tester.widget<MasterDataTableView<InstantInventoryRow>>(
         find.byType(MasterDataTableView<InstantInventoryRow>),
       );
-      for (final key in ['qty', 'pendingQty', 'pendingStockInQty', 'moreQty']) {
+      for (final key in ['qty', 'pendingQty', 'pendingStockInQty']) {
         expect(
           table.columns.singleWhere((c) => c.key == key).value(row),
           '0.0001 个',
@@ -188,7 +189,7 @@ void main() {
       expect(_categoryText('原材料'), findsOneWidget);
       expect(
         find.byKey(const Key('instant-inventory-all-categories')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const Key('instant-inventory-open-categories')),
@@ -217,9 +218,7 @@ void main() {
       expect(stock.lastCategoryId, 'finished');
       expect(find.text('确定'), findsNothing);
       expect(find.text('取消'), findsNothing);
-      await tester.tap(
-        find.byKey(const Key('instant-inventory-all-categories')),
-      );
+      await tester.tap(_categoryText('成品'));
       await tester.pumpAndSettle();
       expect(stock.lastCategoryId, isNull);
     },
@@ -405,11 +404,9 @@ void main() {
         tester,
         const Key('instant-inventory-open-categories'),
       );
-      await tester.tap(
-        find.byKey(const Key('instant-inventory-all-categories')),
-      );
+      await tester.tap(_categoryText('原材料'));
       await tester.pumpAndSettle();
-      expect(stock.lastCategoryId, isNull);
+      expect(stock.lastCategoryId, 'raw');
       expect(find.byKey(const Key('instant-inventory-search')), findsOneWidget);
       tester.view.physicalSize = const Size(812, 375);
       await tester.pumpAndSettle();
@@ -480,7 +477,9 @@ void main() {
     );
   }
 
-  testWidgets('cost column is removed for every account', (tester) async {
+  testWidgets('cost columns require the independent cost permission', (
+    tester,
+  ) async {
     final stock = _RecordingStockRepository();
     await pumpPage(
       tester,
@@ -492,12 +491,22 @@ void main() {
       find.byType(MasterDataTableView<InstantInventoryRow>),
     );
     final keys = table.columns.map((column) => column.key).toSet();
-    // 数量/重量等运营事实列保留；台账金额即使持权也不出现在页面/打印。
+    // 成本权限独立控制；旧的多排列不再展示。
     expect(
       keys,
-      containsAll(<String>{'weight', 'qty', 'pendingQty', 'moreQty'}),
+      containsAll(<String>{
+        'weight',
+        'qty',
+        'pendingQty',
+        'costPrice',
+        'periodCostAmount',
+        'periodInQty',
+        'periodOutQty',
+        'closingQty',
+      }),
     );
     expect(keys, isNot(contains('costAmount')));
+    expect(keys, isNot(contains('moreQty')));
   });
 
   testWidgets('warehouse field, defective toggle and count share the toolbar', (
@@ -630,6 +639,12 @@ void main() {
                 weight: 11.55,
                 weightEstimated: true,
                 pendingQty: 200,
+                periodSelected: true,
+                periodInQty: 850,
+                periodOutQty: 320,
+                closingQty: 4800,
+                costPrice: 0.25,
+                periodCostAmount: 1200,
               ),
               InstantInventoryRow(
                 goodsId: 'g2',
@@ -638,18 +653,47 @@ void main() {
                 unitName: '个',
                 colorName: '灰色',
                 qty: 320,
+                periodSelected: true,
+                periodInQty: 80,
+                periodOutQty: 50,
+                closingQty: 300,
+                costPrice: 1.5,
+                periodCostAmount: 450,
               ),
             ],
           ),
           size: compact ? const Size(390, 900) : const Size(1600, 1000),
           textScale: compact ? 2 : 1,
           capture: true,
+          permissions: {
+            Perm.stockView,
+            Perm.materialCategoryView,
+            Perm.goodsCostView,
+            Perm.stockReportExport,
+          },
         );
         expect(tester.takeException(), isNull);
         await saveAuditScreenshot(
           tester,
           _captureKey,
           'instant-inventory-split-${compact ? 'compact' : 'desktop'}',
+        );
+        tester
+            .widget<InstantInventoryPeriodButton>(
+              find.byType(InstantInventoryPeriodButton),
+            )
+            .onChanged(
+              DateTimeRange(
+                start: DateTime(2026, 10),
+                end: DateTime(2026, 10, 31),
+              ),
+            );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await saveAuditScreenshot(
+          tester,
+          _captureKey,
+          'instant-inventory-period-${compact ? 'compact' : 'desktop'}',
         );
         if (compact) {
           await tapInventoryHeader(
@@ -700,7 +744,9 @@ class _InventoryApi extends ApiClient {
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) async => path.contains('warehouses/dict')
+  }) async =>
+      (path.contains('warehouses/dict') ||
+          path.contains('business-references/warehouses'))
       ? const <Map<String, dynamic>>[
           {'id': 'w1', 'name': '成品仓库', 'code': 'C04'},
           {
@@ -749,6 +795,8 @@ class _RecordingStockRepository extends StockQueryRepository {
     String? sort,
     String? order,
     String? attention,
+    String? dateFrom,
+    String? dateTo,
     bool includeRelated = false,
   }) {
     calls++;

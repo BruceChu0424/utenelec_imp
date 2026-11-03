@@ -36,6 +36,8 @@ class InstantInventoryRepository {
     String? series,
     String? unitId,
     String? attention,
+    String? dateFrom,
+    String? dateTo,
     String? sort,
     String? order,
   }) async {
@@ -63,6 +65,8 @@ class InstantInventoryRepository {
         'series': ?series,
         'unitId': ?unitId,
         'attention': ?attention,
+        'dateFrom': ?dateFrom,
+        'dateTo': ?dateTo,
         if (sort != null && sort.isNotEmpty) 'sort': sort,
         if (order != null && order.isNotEmpty) 'order': order,
       },

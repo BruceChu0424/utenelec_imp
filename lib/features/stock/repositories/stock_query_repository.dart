@@ -107,6 +107,8 @@ class StockQueryRepository {
     String? series,
     String? unitId,
     String? attention,
+    String? dateFrom,
+    String? dateTo,
     String? sort,
     String? order,
   }) => _instantInventory.instantInventory(
@@ -125,6 +127,8 @@ class StockQueryRepository {
     series: series,
     unitId: unitId,
     attention: attention,
+    dateFrom: dateFrom,
+    dateTo: dateTo,
     sort: sort,
     order: order,
   );

@@ -459,31 +459,34 @@ public class StockReportService {
      */
     static List<ReportColumn> instantExportColumns(WeightUnit weightUnit, boolean canViewCost) {
         List<ReportColumn> columns = new ArrayList<>(List.of(
-                ReportColumn.text("category", "所属类型", 120),
                 // 2026-09-14 用户口径(全站表格统一)：名称 → 编号 → 颜色 紧邻排布(与即时库存页列序一致)。
                 ReportColumn.text("name", "货品名称", 220),
                 ReportColumn.text("goodsCode", "物料编码", 120),
                 ReportColumn.text("color", "颜色", 90),
-                ReportColumn.text("owningWarehouse", "归属仓库", 140),
-                ReportColumn.text("series", "物料系列", 90),
-                ReportColumn.text("stockPlace", "库位号", 90),
-                ReportColumn.text("model", "型号", 110),
-                ReportColumn.text("cNumber", "客户型号", 120),
-                ReportColumn.text("spec", "规格", 120),
-                ReportColumn.text("unit", "单位", 70),
-                ReportColumn.text("remark", "备注", 90),
                 ReportColumn.number("qty", "库存数量").withUnitKey("unit"),
                 // 文件里不混单位：整列按一个导出单位(默认千克)写数值，估算/未称另列说明。
                 ReportColumn.number("weight", "库存重量(" + weightUnit.label() + ")"),
                 ReportColumn.text("weightStatus", "重量状态", 80),
-                ReportColumn.number("pendingQty", "待检量").withUnitKey("unit"),
-                // 合格待入库(2026-10-20)：页面同名列早已上线，导出列集漏了它——
-                // 带该列的表格投影导出会被「列不存在或不在可导出范围」整单拒绝。
-                ReportColumn.number("pendingStockInQty", "合格待入库").withUnitKey("unit")));
+                ReportColumn.number("periodInQty", "进仓数量").withUnitKey("unit"),
+                ReportColumn.number("periodOutQty", "发货数量").withUnitKey("unit"),
+                ReportColumn.number("closingQty", "结存数量").withUnitKey("unit")));
         if (canViewCost) {
-            columns.add(ReportColumn.money("costAmount", "库存台账金额").withUnitLabel("元"));
+            columns.add(ReportColumn.money("costPrice", "成本价").withUnitLabel("元"));
+            columns.add(ReportColumn.money("periodCostAmount", "成本金额").withUnitLabel("元"));
         }
-        columns.add(ReportColumn.number("moreQty", "多排数量").withUnitKey("unit"));
+        columns.addAll(List.of(
+                ReportColumn.number("pendingQty", "待检量").withUnitKey("unit"),
+                ReportColumn.number("pendingStockInQty", "合格待入库").withUnitKey("unit"),
+                ReportColumn.text("stockPlace", "库位号", 90),
+                ReportColumn.text("owningWarehouse", "归属仓库", 140),
+                ReportColumn.text("model", "型号", 110),
+                ReportColumn.text("spec", "规格", 120),
+                ReportColumn.text("cNumber", "客户型号", 120),
+                ReportColumn.text("series", "物料系列", 90),
+                ReportColumn.text("category", "所属类型", 120),
+                // Compatibility metadata for raw Excel exports; screen quantities already carry their unit.
+                ReportColumn.text("unit", "单位", 70),
+                ReportColumn.text("remark", "备注", 90)));
         return List.copyOf(columns);
     }
 
@@ -510,7 +513,8 @@ public class StockReportService {
                 params.get("series"),
                 ReportQueryKit.parseUuid(params.get("unitId")),
                 params.get("attention"), null, false, true, "true".equalsIgnoreCase(params.get("includeRelated")),
-                "true".equalsIgnoreCase(params.get("warehouseRelatedOnly")));
+                "true".equalsIgnoreCase(params.get("warehouseRelatedOnly")),
+                ReportQueryKit.parseDate(params.get("dateFrom")), ReportQueryKit.parseDate(params.get("dateTo")));
         WeightUnit weightUnit = exportWeightUnit(params.get("weightUnit"));
         boolean canViewCost = costMasker.canView();
         List<ReportColumn> columns = instantExportColumns(weightUnit, canViewCost);
@@ -538,9 +542,12 @@ public class StockReportService {
                 m.put("pendingQty", it.getPendingQty());
                 m.put("pendingStockInQty", it.getPendingStockInQty());
                 if (canViewCost) {
-                    m.put("costAmount", it.getCostAmount());
+                    m.put("costPrice", it.isPeriodSelected() ? it.getCostPrice() : "请选择时间范围");
+                    m.put("periodCostAmount", it.isPeriodSelected() ? it.getPeriodCostAmount() : "请选择时间范围");
                 }
-                m.put("moreQty", it.getMoreQty());
+                m.put("periodInQty", it.isPeriodSelected() ? it.getPeriodInQty() : "请选择时间范围");
+                m.put("periodOutQty", it.isPeriodSelected() ? it.getPeriodOutQty() : "请选择时间范围");
+                m.put("closingQty", it.isPeriodSelected() ? it.getClosingQty() : "请选择时间范围");
                 rows.add(m);
             }
             return new ReportTableResponse(columns, rows, Map.of(),

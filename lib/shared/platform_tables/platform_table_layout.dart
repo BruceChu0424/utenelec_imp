@@ -177,6 +177,7 @@ class PlatformTableLayoutNotifier
         order: migrateInstantInventoryColumnOrder(
           order: decoded.order,
           pinned: decoded.pinned,
+          fromVersion: decoded.layoutVersion,
         ),
         layoutVersion: instantInventoryColumnLayoutVersion,
       );

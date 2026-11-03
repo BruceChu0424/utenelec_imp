@@ -88,6 +88,13 @@ public class InstantInventoryRow {
     @Setter private boolean measurementPending;
     @Setter private String measurementHoldReason;
     @Setter private boolean availableKnown = true;
+    /** Optional period projection, calculated on the server using business dates. */
+    @Setter private boolean periodSelected;
+    @Setter private BigDecimal periodInQty;
+    @Setter private BigDecimal periodOutQty;
+    @Setter private BigDecimal closingQty;
+    @Setter private BigDecimal periodCostAmount;
+    @Setter private BigDecimal costPrice;
 
     public InstantInventoryRow(UUID goodsId, UUID colorId, String categoryName, String model, String cNumber,
                                String name, String spec, String colorName, String unitName, String remark,
@@ -99,7 +106,8 @@ public class InstantInventoryRow {
         this(goodsId, colorId, categoryName, model, cNumber, name, spec, colorName, unitName, remark,
                 weight, qty, costAmount, moreQty, goodsCode, series, stockPlace, pendingQty, pendingStockInQty,
                 weightEstimated, weightUnknown, unitWeightKg, weightTier, costMasked,
-                owningWarehouseId, owningWarehouseName, defectiveQty, null, null, false, null, true);
+                owningWarehouseId, owningWarehouseName, defectiveQty, null, null, false, null, true,
+                false, null, null, null, null, null);
     }
 
     /** Preserve the existing constructor used by stock clients and read-side tests. */

@@ -43961,7 +43961,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "fac220dc02acf0060b30f88144ecad6765881007395779f488779f35a0c290e5"
+          "targetSha256": "741f4ddce9aa261736bd641f677d00ad1dd4becc921913e3dea2e751bbc846ec"
         }
       ],
       "partUnits": [],
@@ -167250,7 +167250,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ae1ddb641314f72579e8ff62e213fb65c3708777127faf7976ddf4c9b5c21e69"
+          "targetSha256": "85c0b6db019b35a9652aef36b31f9eca43fe4842456a71650da179c061d5ffc5"
         },
         {
           "directive": "import",
@@ -167279,8 +167279,8 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/stock/repositories/stock_query_repository.dart",
-          "sha256": "ae1ddb641314f72579e8ff62e213fb65c3708777127faf7976ddf4c9b5c21e69",
-          "lineCount": 289,
+          "sha256": "85c0b6db019b35a9652aef36b31f9eca43fe4842456a71650da179c061d5ffc5",
+          "lineCount": 293,
           "apiEndpointReferences": [
             {
               "symbol": "ApiEndpoints.stockBalances",
@@ -167302,7 +167302,7 @@
             },
             {
               "symbol": "ApiEndpoints.stockShelfLabels",
-              "line": 146,
+              "line": 150,
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
               "template": "/stock/shelf-labels",
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -167311,7 +167311,7 @@
             },
             {
               "symbol": "ApiEndpoints.stockShelfLabelRacks",
-              "line": 163,
+              "line": 167,
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
               "template": "/stock/shelf-labels/racks",
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -167320,7 +167320,7 @@
             },
             {
               "symbol": "ApiEndpoints.stockShelfLabelLayout",
-              "line": 175,
+              "line": 179,
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
               "template": "/stock/shelf-labels/layout",
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -167422,19 +167422,19 @@
             },
             {
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
-              "line": 146,
+              "line": 150,
               "template": "/stock/shelf-labels",
               "controllerBase": "/api/stock"
             },
             {
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
-              "line": 163,
+              "line": 167,
               "template": "/stock/shelf-labels/racks",
               "controllerBase": "/api/stock"
             },
             {
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
-              "line": 175,
+              "line": 179,
               "template": "/stock/shelf-labels/layout",
               "controllerBase": "/api/stock"
             },
@@ -167481,8 +167481,8 @@
       "id": "page:stock/pages/instant_inventory_page.dart",
       "feature": "stock",
       "source": "lib/features/stock/pages/instant_inventory_page.dart",
-      "sha256": "1b2e1e6a29db05d9bf7ceb7670bca2a0d0de24e8ebb2f83da9b7f4faa4e7efcf",
-      "lineCount": 1197,
+      "sha256": "f9b47d9c2c103de259b4f86394301e2acfa584388ffe9590cc300ff61535d9e0",
+      "lineCount": 1231,
       "classes": [
         {
           "name": "InstantInventoryPage",
@@ -167494,7 +167494,7 @@
           "name": "_InstantInventoryPageState",
           "line": 97,
           "role": "state-class",
-          "extends": "ConsumerState<InstantInventoryPage>\n    with\n        MasterInlinePageMixin<InstantInventoryPage, InstantInventoryRow>,\n        ScopedPagedReadViewMixin<InstantInventoryPage>"
+          "extends": "ConsumerState<InstantInventoryPage>\r\n    with\r\n        MasterInlinePageMixin<InstantInventoryPage, InstantInventoryRow>,\r\n        ScopedPagedReadViewMixin<InstantInventoryPage>"
         }
       ],
       "directImports": [
@@ -167524,9 +167524,21 @@
         },
         {
           "directive": "import",
+          "uri": "../../../shared/stock_inventory/instant_inventory_period_button.dart",
+          "source": "lib/shared/stock_inventory/instant_inventory_period_button.dart",
+          "line": 22,
+          "role": "sharedComponents",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "363ead61c41c7b19be0dd98b5cdd434eacbee5c7d988df29a25883a60ba9b66d"
+        },
+        {
+          "directive": "import",
           "uri": "package:flutter/material.dart",
           "source": null,
-          "line": 23,
+          "line": 24,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -167538,7 +167550,7 @@
           "directive": "import",
           "uri": "../../../components/inputs/uten_filter_chip.dart",
           "source": "lib/components/inputs/uten_filter_chip.dart",
-          "line": 24,
+          "line": 25,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -167550,7 +167562,7 @@
           "directive": "import",
           "uri": "package:flutter_riverpod/flutter_riverpod.dart",
           "source": null,
-          "line": 25,
+          "line": 26,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -167562,7 +167574,7 @@
           "directive": "import",
           "uri": "package:go_router/go_router.dart",
           "source": null,
-          "line": 26,
+          "line": 27,
           "role": "other",
           "importAlias": null,
           "showSymbols": [],
@@ -167574,7 +167586,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_back_button.dart",
           "source": "lib/components/buttons/uten_back_button.dart",
-          "line": 28,
+          "line": 29,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -167586,7 +167598,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_refresh_button.dart",
           "source": "lib/components/buttons/uten_refresh_button.dart",
-          "line": 29,
+          "line": 30,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -167598,7 +167610,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_app_bar_action_button.dart",
           "source": "lib/components/buttons/uten_app_bar_action_button.dart",
-          "line": 30,
+          "line": 31,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -167610,7 +167622,7 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_button.dart",
           "source": "lib/components/buttons/uten_button.dart",
-          "line": 31,
+          "line": 32,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -167622,25 +167634,13 @@
           "directive": "import",
           "uri": "../../../components/buttons/uten_export_button.dart",
           "source": "lib/components/buttons/uten_export_button.dart",
-          "line": 32,
-          "role": "sharedComponents",
-          "importAlias": null,
-          "showSymbols": [],
-          "hideSymbols": [],
-          "existsInRepository": true,
-          "targetSha256": "df15eb3941b3048a802e20de8c70064a13f901d0c4e5f2d557edf0504145cc05"
-        },
-        {
-          "directive": "import",
-          "uri": "../../../components/layout/uten_adaptive_hierarchy_pane.dart",
-          "source": "lib/components/layout/uten_adaptive_hierarchy_pane.dart",
           "line": 33,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "bb8a8adbe122ff666551af2394ede9e1e8d04d9ee4aecf101fa4b3da4c49d157"
+          "targetSha256": "df15eb3941b3048a802e20de8c70064a13f901d0c4e5f2d557edf0504145cc05"
         },
         {
           "directive": "import",
@@ -168168,7 +168168,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ae1ddb641314f72579e8ff62e213fb65c3708777127faf7976ddf4c9b5c21e69"
+          "targetSha256": "85c0b6db019b35a9652aef36b31f9eca43fe4842456a71650da179c061d5ffc5"
         },
         {
           "directive": "import",
@@ -168229,37 +168229,44 @@
           "definitionLine": 135
         },
         {
+          "symbol": "Perm.goodsCostView",
+          "literal": "goods:cost:view",
+          "line": 173,
+          "definitionSource": "lib/shared/auth/permissions.dart",
+          "definitionLine": 159
+        },
+        {
           "symbol": "Perm.stockView",
           "literal": "stock:view",
-          "line": 177,
+          "line": 185,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 222
         },
         {
           "symbol": "Perm.goodsView",
           "literal": "goods:view",
-          "line": 178,
+          "line": 186,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 139
         },
         {
           "symbol": "Perm.goodsEdit",
           "literal": "goods:edit",
-          "line": 179,
+          "line": 187,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 140
         },
         {
           "symbol": "Perm.stockReportExport",
           "literal": "stock_report:export",
-          "line": 978,
+          "line": 1010,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 246
         },
         {
           "symbol": "Perm.stockReportExport",
           "literal": "stock_report:export",
-          "line": 996,
+          "line": 1028,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 246
         }
@@ -168386,8 +168393,8 @@
         },
         {
           "source": "lib/features/stock/repositories/stock_query_repository.dart",
-          "sha256": "ae1ddb641314f72579e8ff62e213fb65c3708777127faf7976ddf4c9b5c21e69",
-          "lineCount": 289,
+          "sha256": "85c0b6db019b35a9652aef36b31f9eca43fe4842456a71650da179c061d5ffc5",
+          "lineCount": 293,
           "apiEndpointReferences": [
             {
               "symbol": "ApiEndpoints.stockBalances",
@@ -168409,7 +168416,7 @@
             },
             {
               "symbol": "ApiEndpoints.stockShelfLabels",
-              "line": 146,
+              "line": 150,
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
               "template": "/stock/shelf-labels",
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -168418,7 +168425,7 @@
             },
             {
               "symbol": "ApiEndpoints.stockShelfLabelRacks",
-              "line": 163,
+              "line": 167,
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
               "template": "/stock/shelf-labels/racks",
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -168427,7 +168434,7 @@
             },
             {
               "symbol": "ApiEndpoints.stockShelfLabelLayout",
-              "line": 175,
+              "line": 179,
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
               "template": "/stock/shelf-labels/layout",
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -168448,7 +168455,7 @@
         {
           "symbol": "cancel",
           "receiver": null,
-          "line": 200,
+          "line": 208,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "cancel"
@@ -168458,7 +168465,7 @@
         {
           "symbol": "saveInline",
           "receiver": null,
-          "line": 212,
+          "line": 220,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "save"
@@ -168468,7 +168475,7 @@
         {
           "symbol": "save",
           "receiver": null,
-          "line": 230,
+          "line": 238,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -168478,7 +168485,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 275,
+          "line": 283,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -168488,7 +168495,7 @@
         {
           "symbol": "cancel",
           "receiver": null,
-          "line": 281,
+          "line": 289,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "cancel"
@@ -168498,7 +168505,7 @@
         {
           "symbol": "cancel",
           "receiver": null,
-          "line": 302,
+          "line": 310,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "cancel"
@@ -168508,7 +168515,7 @@
         {
           "symbol": "remove",
           "receiver": "next",
-          "line": 539,
+          "line": 554,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -168518,7 +168525,7 @@
         {
           "symbol": "_printLoader",
           "receiver": null,
-          "line": 573,
+          "line": 590,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "print"
@@ -168528,27 +168535,7 @@
         {
           "symbol": "cancel",
           "receiver": null,
-          "line": 647,
-          "kind": "action-like-invocation",
-          "actionNameHints": [
-            "cancel"
-          ],
-          "evidenceLine": "_searchDebounce?.cancel();"
-        },
-        {
-          "symbol": "cancel",
-          "receiver": null,
-          "line": 679,
-          "kind": "action-like-invocation",
-          "actionNameHints": [
-            "cancel"
-          ],
-          "evidenceLine": "_searchDebounce?.cancel();"
-        },
-        {
-          "symbol": "cancel",
-          "receiver": null,
-          "line": 697,
+          "line": 676,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "cancel"
@@ -168566,9 +168553,29 @@
           "evidenceLine": "_searchDebounce?.cancel();"
         },
         {
+          "symbol": "cancel",
+          "receiver": null,
+          "line": 726,
+          "kind": "action-like-invocation",
+          "actionNameHints": [
+            "cancel"
+          ],
+          "evidenceLine": "_searchDebounce?.cancel();"
+        },
+        {
+          "symbol": "cancel",
+          "receiver": null,
+          "line": 737,
+          "kind": "action-like-invocation",
+          "actionNameHints": [
+            "cancel"
+          ],
+          "evidenceLine": "_searchDebounce?.cancel();"
+        },
+        {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 916,
+          "line": 943,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -168578,7 +168585,7 @@
         {
           "symbol": "UtenPrintPreviewButton",
           "receiver": null,
-          "line": 972,
+          "line": 1004,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "print"
@@ -168588,7 +168595,7 @@
         {
           "symbol": "UtenExportButton",
           "receiver": null,
-          "line": 985,
+          "line": 1017,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -168598,7 +168605,7 @@
         {
           "symbol": "UtenExportSelection",
           "receiver": null,
-          "line": 989,
+          "line": 1021,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -168607,7 +168614,7 @@
         },
         {
           "symbol": "inlineEdit",
-          "line": 1012,
+          "line": 1044,
           "kind": "callback-reference",
           "callback": "onSortChange",
           "actionNameHints": [
@@ -168616,7 +168623,7 @@
         },
         {
           "symbol": "inlineEdit",
-          "line": 1014,
+          "line": 1046,
           "kind": "callback-reference",
           "callback": "onRowTap",
           "actionNameHints": [
@@ -169040,19 +169047,19 @@
             },
             {
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
-              "line": 146,
+              "line": 150,
               "template": "/stock/shelf-labels",
               "controllerBase": "/api/stock"
             },
             {
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
-              "line": 163,
+              "line": 167,
               "template": "/stock/shelf-labels/racks",
               "controllerBase": "/api/stock"
             },
             {
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
-              "line": 175,
+              "line": 179,
               "template": "/stock/shelf-labels/layout",
               "controllerBase": "/api/stock"
             },
@@ -206910,7 +206917,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ae1ddb641314f72579e8ff62e213fb65c3708777127faf7976ddf4c9b5c21e69"
+          "targetSha256": "85c0b6db019b35a9652aef36b31f9eca43fe4842456a71650da179c061d5ffc5"
         }
       ],
       "partUnits": [],
@@ -206934,8 +206941,8 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/stock/repositories/stock_query_repository.dart",
-          "sha256": "ae1ddb641314f72579e8ff62e213fb65c3708777127faf7976ddf4c9b5c21e69",
-          "lineCount": 289,
+          "sha256": "85c0b6db019b35a9652aef36b31f9eca43fe4842456a71650da179c061d5ffc5",
+          "lineCount": 293,
           "apiEndpointReferences": [
             {
               "symbol": "ApiEndpoints.stockBalances",
@@ -206957,7 +206964,7 @@
             },
             {
               "symbol": "ApiEndpoints.stockShelfLabels",
-              "line": 146,
+              "line": 150,
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
               "template": "/stock/shelf-labels",
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -206966,7 +206973,7 @@
             },
             {
               "symbol": "ApiEndpoints.stockShelfLabelRacks",
-              "line": 163,
+              "line": 167,
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
               "template": "/stock/shelf-labels/racks",
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -206975,7 +206982,7 @@
             },
             {
               "symbol": "ApiEndpoints.stockShelfLabelLayout",
-              "line": 175,
+              "line": 179,
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
               "template": "/stock/shelf-labels/layout",
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -207197,19 +207204,19 @@
             },
             {
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
-              "line": 146,
+              "line": 150,
               "template": "/stock/shelf-labels",
               "controllerBase": "/api/stock"
             },
             {
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
-              "line": 163,
+              "line": 167,
               "template": "/stock/shelf-labels/racks",
               "controllerBase": "/api/stock"
             },
             {
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
-              "line": 175,
+              "line": 179,
               "template": "/stock/shelf-labels/layout",
               "controllerBase": "/api/stock"
             },
@@ -209738,7 +209745,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ae1ddb641314f72579e8ff62e213fb65c3708777127faf7976ddf4c9b5c21e69"
+          "targetSha256": "85c0b6db019b35a9652aef36b31f9eca43fe4842456a71650da179c061d5ffc5"
         },
         {
           "directive": "import",
@@ -209913,8 +209920,8 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/stock/repositories/stock_query_repository.dart",
-          "sha256": "ae1ddb641314f72579e8ff62e213fb65c3708777127faf7976ddf4c9b5c21e69",
-          "lineCount": 289,
+          "sha256": "85c0b6db019b35a9652aef36b31f9eca43fe4842456a71650da179c061d5ffc5",
+          "lineCount": 293,
           "apiEndpointReferences": [
             {
               "symbol": "ApiEndpoints.stockBalances",
@@ -209936,7 +209943,7 @@
             },
             {
               "symbol": "ApiEndpoints.stockShelfLabels",
-              "line": 146,
+              "line": 150,
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
               "template": "/stock/shelf-labels",
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -209945,7 +209952,7 @@
             },
             {
               "symbol": "ApiEndpoints.stockShelfLabelRacks",
-              "line": 163,
+              "line": 167,
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
               "template": "/stock/shelf-labels/racks",
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -209954,7 +209961,7 @@
             },
             {
               "symbol": "ApiEndpoints.stockShelfLabelLayout",
-              "line": 175,
+              "line": 179,
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
               "template": "/stock/shelf-labels/layout",
               "definitionSource": "lib/core/network/api_endpoints.dart",
@@ -210621,19 +210628,19 @@
             },
             {
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
-              "line": 146,
+              "line": 150,
               "template": "/stock/shelf-labels",
               "controllerBase": "/api/stock"
             },
             {
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
-              "line": 163,
+              "line": 167,
               "template": "/stock/shelf-labels/racks",
               "controllerBase": "/api/stock"
             },
             {
               "source": "lib/features/stock/repositories/stock_query_repository.dart",
-              "line": 175,
+              "line": 179,
               "template": "/stock/shelf-labels/layout",
               "controllerBase": "/api/stock"
             },
@@ -247135,8 +247142,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/stock/StockQueryController.java",
-      "sha256": "dcf7773923216719e1b91b63e218c97be15d288d0e36acbc3222e02e0824048a",
-      "lineCount": 171,
+      "sha256": "048e9fd9dd8b906e5e29a91b535fb78788cc5df07e90ff3d2bba8a6bf950cf89",
+      "lineCount": 179,
       "class": "StockQueryController",
       "declaredBasePaths": [
         "/api/stock"
@@ -247145,7 +247152,7 @@
       "declaredMethodMappings": [
         {
           "httpMethod": "GET",
-          "line": 31,
+          "line": 33,
           "declaredPathLiterals": [
             "/balances"
           ],
@@ -247155,7 +247162,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 51,
+          "line": 53,
           "declaredPathLiterals": [
             "/goods/{goodsId}/inventory-context"
           ],
@@ -247165,7 +247172,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 73,
+          "line": 75,
           "declaredPathLiterals": [
             "/instant-inventory"
           ],
@@ -247175,7 +247182,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 107,
+          "line": 112,
           "declaredPathLiterals": [
             "/instant-inventory/attention"
           ],
@@ -247185,7 +247192,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 146,
+          "line": 154,
           "declaredPathLiterals": [
             "/shelf-labels"
           ],
@@ -247195,7 +247202,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 156,
+          "line": 164,
           "declaredPathLiterals": [
             "/shelf-labels/racks"
           ],
@@ -247205,7 +247212,7 @@
         },
         {
           "httpMethod": "GET",
-          "line": 164,
+          "line": 172,
           "declaredPathLiterals": [
             "/shelf-labels/layout"
           ],
@@ -252592,8 +252599,8 @@
     },
     {
       "source": "lib/features/basic_data/widgets/warehouse_inventory_panel.dart",
-      "sha256": "fac220dc02acf0060b30f88144ecad6765881007395779f488779f35a0c290e5",
-      "lineCount": 588
+      "sha256": "741f4ddce9aa261736bd641f677d00ad1dd4becc921913e3dea2e751bbc846ec",
+      "lineCount": 640
     },
     {
       "source": "lib/features/client_update/client_auto_update_preferences.dart",
@@ -254932,8 +254939,8 @@
     },
     {
       "source": "lib/features/stock/pages/instant_inventory_page.dart",
-      "sha256": "1b2e1e6a29db05d9bf7ceb7670bca2a0d0de24e8ebb2f83da9b7f4faa4e7efcf",
-      "lineCount": 1197
+      "sha256": "f9b47d9c2c103de259b4f86394301e2acfa584388ffe9590cc300ff61535d9e0",
+      "lineCount": 1231
     },
     {
       "source": "lib/features/stock/pages/stock_item_detail_page.dart",
@@ -254947,8 +254954,8 @@
     },
     {
       "source": "lib/features/stock/repositories/stock_query_repository.dart",
-      "sha256": "ae1ddb641314f72579e8ff62e213fb65c3708777127faf7976ddf4c9b5c21e69",
-      "lineCount": 289
+      "sha256": "85c0b6db019b35a9652aef36b31f9eca43fe4842456a71650da179c061d5ffc5",
+      "lineCount": 293
     },
     {
       "source": "lib/features/stock/widgets/instant_inventory_columns.dart",
@@ -256781,6 +256788,11 @@
       "lineCount": 46
     },
     {
+      "source": "lib/shared/stock_inventory/instant_inventory_period_button.dart",
+      "sha256": "363ead61c41c7b19be0dd98b5cdd434eacbee5c7d988df29a25883a60ba9b66d",
+      "lineCount": 66
+    },
+    {
       "source": "lib/shared/stock_ledger/goods_stock_ledger_panel.dart",
       "sha256": "b664725111508779eb0e8afabd2b4d4b479fce9f23a69e201de2a481dd3e70f8",
       "lineCount": 448
@@ -257992,8 +258004,8 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/stock/StockQueryController.java",
-      "sha256": "dcf7773923216719e1b91b63e218c97be15d288d0e36acbc3222e02e0824048a",
-      "lineCount": 171
+      "sha256": "048e9fd9dd8b906e5e29a91b535fb78788cc5df07e90ff3d2bba8a6bf950cf89",
+      "lineCount": 179
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/stock/StockReconciliationController.java",

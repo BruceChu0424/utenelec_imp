@@ -1,0 +1,110 @@
+{
+  "id": "E-INVENTORY-COLUMN-ORDER-20261102",
+  "baseCommit": "a8c2eac33aded03648ec00f59e1a54d60dc4e897",
+  "branch": "uimp/instant-stock-period-20261102",
+  "classification": "frontend presentation + export column contract",
+  "defaultOrder": [
+    "name",
+    "goodsCode",
+    "color",
+    "qty",
+    "weight",
+    "periodInQty",
+    "periodOutQty",
+    "closingQty",
+    "costPrice",
+    "periodCostAmount",
+    "pendingQty",
+    "pendingStockInQty",
+    "stockPlace",
+    "owningWarehouse",
+    "model",
+    "spec",
+    "cNumber",
+    "series",
+    "category",
+    "remark"
+  ],
+  "rationale": "Identify goods; current quantity/weight; contiguous period receipts/issues/closing; derived cost; pending work; location and master metadata.",
+  "costPermission": "goods:cost:view; authorized cost columns stay together after closingQty; no permission expands or derives monetary values.",
+  "hosts": {
+    "flutter_web": "shared columns and personal-layout migration",
+    "flutter_windows": "shared columns and personal-layout migration",
+    "warehouse_detail_inventory": "same shared entry",
+    "print": "same table column order",
+    "server_default_export": "same business order, retains export-only weightStatus and unit metadata",
+    "wpf_legacy": "W7-BIZ-152 and W7-BIZ-038 remain todo; no native inventory hosts"
+  },
+  "migration": {
+    "version": 2,
+    "autoAdopt": "Only exact known stock-first and period-first defaults; original v0 category-first default also retained in the original v0 migration",
+    "preserve": [
+      "custom order",
+      "pinned layout",
+      "partial order",
+      "extended order",
+      "hidden columns",
+      "column widths",
+      "added columns",
+      "row sort",
+      "a category-first order deliberately restored under v1"
+    ],
+    "repeatSafe": true
+  },
+  "checks": [
+    {
+      "suite": "Flutter shared contract/layout migration + instant page + warehouse panel",
+      "passed": 54,
+      "failed": 0,
+      "skipped": 1,
+      "log": "build/inventory-column-order-tests.log"
+    },
+    {
+      "suite": "Targeted Flutter analysis",
+      "issues": 0,
+      "log": "build/inventory-column-order-analyze.log"
+    },
+    {
+      "suite": "Desktop and 390px 2x screenshot capture",
+      "passed": 1,
+      "log": "build/inventory-column-order-capture.log",
+      "reviewed": true
+    },
+    {
+      "suite": "Business inventory and native progress consistency",
+      "passed": true,
+      "nativeTasksClosed": 0
+    },
+    {
+      "suite": "Server export shared order, cost visibility, warehouse scope and report totals",
+      "passed": 15,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "log": "build/inventory-column-order-backend.log"
+    }
+  ],
+  "notClaimed": [
+    "Production deployment or release",
+    "Full repository CI",
+    "Win7 native migration/UAT",
+    "Company live-data acceptance"
+  ],
+  "sourceSha256": {
+    "lib/shared/stock_inventory/instant_inventory_columns.dart": "35f777b94b2cc387f4ae56ff8b19fce555394fa11d2bc4583f9e9c618073ae9f",
+    "lib/shared/stock_inventory/instant_inventory_column_layout.dart": "b4b8355bbae8fb75b926d2c30f2386a86567716d5c0f7d9a0e2acb24a49503a7",
+    "lib/shared/platform_tables/platform_table_layout.dart": "14ac411abc178b79d98e10886df31278f0ab3c2854a9da7b35274ed7f3fabe8f",
+    "server/src/main/java/com/uten/imp/features/stock/report/StockReportService.java": "daa2bff6a00ad0f1a58980705c708cd39c0d7033f2c2a71df6e1daadcc1477a8",
+    "server/src/test/resources/contracts/instant-inventory-column-order.json": "6f66bdb58fc2db37a41fcd9f79183e25c0022d19c3924b7c1903dd27296f4b15",
+    "server/src/test/java/com/uten/imp/features/stock/report/StockReportCostVisibilityTest.java": "28ed7f58bbcbfd75aba4ff381456ee282853fae3c587905c0cca2e7925780481",
+    "test/shared/stock_inventory/instant_inventory_column_layout_test.dart": "1c55a8bce6e24b4b8673d7c7bb404cbec7165334dbb7123cf30db0231baf82b5",
+    "test/features/stock/instant_inventory_page_test.dart": "574dfc558c77054df3e8c233c79bea0f038a5f9e0da8e99910c92457c7bec2e4",
+    "test/features/basic_data/widgets/warehouse_inventory_panel_test.dart": "eca8b47fc8de5c50f94782e124e6f4734595f7fc62a78b27dcb7af7e79e242a4"
+  },
+  "retainedExportDifferences": [
+    "weightStatus immediately after weight",
+    "standalone unit metadata before remark",
+    "legacy raw-export labels such as 物料编码 and 归属仓库"
+  ],
+  "knownBaselineFailures": "The two existing compact2x stock-count navigation failures from the parent period task remain recorded in instant-inventory-period-20261102.json; this change does not alter those actions."
+}

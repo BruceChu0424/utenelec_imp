@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/shared/measurement/weight_unit.dart';
@@ -27,6 +30,19 @@ const _oldDefaultOrder = <String>[
 ];
 
 void main() {
+  final contract =
+      jsonDecode(
+            File(
+              'server/src/test/resources/contracts/instant-inventory-column-order.json',
+            ).readAsStringSync(),
+          )
+          as Map<String, dynamic>;
+  final expectedOrder = (contract['columns'] as List).cast<String>();
+  final costColumns = (contract['costColumns'] as List).cast<String>().toSet();
+  final previousStock = (contract['previousStockDefault'] as List)
+      .cast<String>();
+  final previousPeriod = (contract['previousPeriodDefault'] as List)
+      .cast<String>();
   for (final key in instantInventoryTableKeys) {
     final notifier = PlatformTableLayoutNotifier(key);
 
@@ -80,20 +96,116 @@ void main() {
     });
 
     test('$key honors a deliberate old order after the migration version', () {
-      for (final version in [instantInventoryColumnLayoutVersion, 2]) {
+      for (final version in [1, instantInventoryColumnLayoutVersion, 3]) {
         final restored = notifier.decode({
           'order': _oldDefaultOrder,
           'layoutVersion': version,
         })!;
         expect(restored.order, _oldDefaultOrder);
-        expect(restored.layoutVersion, version);
+        expect(
+          restored.layoutVersion,
+          version < instantInventoryColumnLayoutVersion
+              ? instantInventoryColumnLayoutVersion
+              : version,
+        );
         expect(
           notifier.decode(notifier.encode(restored))!.order,
           _oldDefaultOrder,
         );
       }
     });
+
+    test(
+      '$key upgrades known v1 defaults without resetting other preferences',
+      () {
+        for (final order in [
+          previousStock,
+          previousPeriod,
+          previousPeriod.where((key) => !costColumns.contains(key)).toList(),
+        ]) {
+          final seed = PlatformTableLayout(
+            order: order,
+            layoutVersion: 1,
+            hidden: const {'remark'},
+            widths: const {'name': 280},
+            added: const [
+              PlatformColumnDefinition(id: 'note', scope: '', name: '说明'),
+            ],
+            sortColumn: 'qty',
+            sortAscending: false,
+          );
+          final migrated = notifier.decode(seed.toJson())!;
+          expect(migrated.order, isEmpty);
+          expect(migrated.hidden, seed.hidden);
+          expect(migrated.widths, seed.widths);
+          expect(migrated.added.single.toJson(), seed.added.single.toJson());
+          expect(migrated.sortColumn, seed.sortColumn);
+          expect(migrated.sortAscending, isFalse);
+          expect(migrated.layoutVersion, 2);
+        }
+      },
+    );
+
+    test(
+      '$key preserves v1 custom, pinned, partial and extended period orders',
+      () {
+        final custom = List.of(previousPeriod)
+          ..remove('qty')
+          ..insert(0, 'qty');
+        for (final order in [
+          custom,
+          previousPeriod.sublist(1),
+          [...previousPeriod, 'extra:note'],
+        ]) {
+          expect(
+            notifier.decode({'layoutVersion': 1, 'order': order})!.order,
+            order,
+          );
+        }
+        expect(
+          notifier.decode({
+            'layoutVersion': 1,
+            'order': previousPeriod,
+            'pinned': ['name'],
+          })!.order,
+          previousPeriod,
+        );
+        expect(
+          notifier.decode({'layoutVersion': 2, 'order': previousPeriod})!.order,
+          previousPeriod,
+        );
+      },
+    );
   }
+
+  testWidgets(
+    'permission-dependent columns keep the shared business sequence',
+    (tester) async {
+      for (final allowed in [false, true]) {
+        late List<String> keys;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Builder(
+              builder: (context) {
+                keys = instantInventoryColumns(
+                  context,
+                  weightDisplay: WeightDisplay.auto,
+                  canViewCost: allowed,
+                ).map((c) => c.key).toList();
+                return const SizedBox.shrink();
+              },
+            ),
+          ),
+        );
+        expect(
+          keys,
+          expectedOrder
+              .where((key) => allowed || !costColumns.contains(key))
+              .toList(),
+        );
+      }
+    },
+  );
 
   test('other tables retain the same order and layout version', () {
     final restored = PlatformTableLayoutNotifier(
@@ -139,9 +251,9 @@ void main() {
         'color',
         'qty',
         'weight',
-        'pendingQty',
-        'pendingStockInQty',
-        'moreQty',
+        'periodInQty',
+        'periodOutQty',
+        'closingQty',
       ]);
       expect(effective.order.last, 'remark');
       expect(effective.hidden, {'remark'});

@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.UUID;
+import java.time.LocalDate;
+import org.springframework.format.annotation.DateTimeFormat;
 
 /**
  * 库存查询 API（库存管理，stock:view）：
@@ -89,15 +91,18 @@ public class StockQueryController {
             @RequestParam(required = false) UUID unitId,
             // 风险/跟进行动清单，白名单校验在共享查询入口执行。
             @RequestParam(required = false) String attention,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "false") boolean includeRelated,
             @RequestParam(defaultValue = "false") boolean warehouseRelatedOnly,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.instantInventory(categoryId, warehouseId, includeDefective, includeLineSide, keyword,
-                owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention, page, size, sort, order,
-                includeRelated, warehouseRelatedOnly);
+        return service.instantInventory(new StockQueryService.InstantInventoryFilter(categoryId, warehouseId,
+                includeDefective, includeLineSide, keyword, owningWarehouse, owningWarehouseNull, colorId,
+                series, unitId, attention, null, false, true, includeRelated, warehouseRelatedOnly, dateFrom, dateTo),
+                page, size, sort, order);
     }
 
     /**
@@ -118,15 +123,18 @@ public class StockQueryController {
             @RequestParam(required = false) String series,
             @RequestParam(required = false) UUID unitId,
             @RequestParam String attention,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateFrom,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "false") boolean includeRelated,
             @RequestParam(defaultValue = "false") boolean warehouseRelatedOnly,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String sort,
             @RequestParam(required = false) String order) {
-        return service.instantInventory(categoryId, warehouseId, includeDefective, includeLineSide, keyword,
-                owningWarehouse, owningWarehouseNull, colorId, series, unitId, attention, page, size, sort, order,
-                includeRelated, warehouseRelatedOnly);
+        return service.instantInventory(new StockQueryService.InstantInventoryFilter(categoryId, warehouseId,
+                includeDefective, includeLineSide, keyword, owningWarehouse, owningWarehouseNull, colorId,
+                series, unitId, attention, null, false, true, includeRelated, warehouseRelatedOnly, dateFrom, dateTo),
+                page, size, sort, order);
     }
 
     /**

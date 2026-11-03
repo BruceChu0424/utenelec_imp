@@ -11,8 +11,6 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
  * 更新的行里有未知重量 (NULL) 则本行结存重量未知。类型/方向/截止日期只在窗口之后筛行。
  */
 final class StockLedgerSql {
-
-    /** 调拨两腿: 7 调拨入 / 8 调拨出, 对应腿类型 = 15 - 本腿类型、方向相反。 */
     private static final String TRANSFER_TYPES = "(7, 8)";
 
     private StockLedgerSql() {
@@ -137,7 +135,7 @@ final class StockLedgerSql {
     static String summary(StockLedgerQuery q) {
         String period = q.toExclusive() == null ? "" : " AND r.transaction_date < :toExcl";
         String flow = flow(q);
-        String natIn = "(r.movement_type IN (:inTypes) OR (r.movement_type = 23 AND r.direction = 1))";
+        String natIn = StockMovementFlowSql.naturalIn("r", ":inTypes");
         String internal = internal(q);
         String inFlow = flow + " AND " + natIn + " AND NOT " + internal;
         String outFlow = flow + " AND NOT " + natIn + " AND NOT " + internal;
@@ -293,13 +291,9 @@ final class StockLedgerSql {
     static String internal(StockLedgerQuery q) {
         if (q.warehouseScope() != null && q.warehouseScope().isEmpty()) return "FALSE";
         if (q.warehouseScope() == null) {
-            return "(r.movement_type IN " + TRANSFER_TYPES + ")";
+            return "(r.movement_type IN (7, 8))";
         }
-        return "(r.movement_type IN " + TRANSFER_TYPES + " AND EXISTS (SELECT 1 FROM stock_movements peer"
-                + " WHERE peer.goods_id = :goods AND peer.source_doc_type = r.source_doc_type"
-                + " AND peer.source_doc_id = r.source_doc_id AND peer.source_item_id = r.source_item_id"
-                + " AND peer.movement_type = 15 - r.movement_type AND peer.direction = -r.direction"
-                + " AND peer.warehouse_id IN (:scope)))";
+        return StockMovementFlowSql.internalTransfer("r", "peer.warehouse_id IN (:scope)", ":goods");
     }
 
     private static String warehouseOk(String alias, StockLedgerQuery q) {

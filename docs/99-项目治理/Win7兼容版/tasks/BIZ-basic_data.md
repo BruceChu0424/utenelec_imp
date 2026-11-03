@@ -501,9 +501,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/instant-inventory-period-20261102.json`；`clients/windows_legacy/progress/evidence/inventory-column-order-20261102.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：2026-11-02：仓库资料内嵌库存共享日期、成本权限及默认列序/个人布局 v2，打印导出同业务顺序。WPF 仓库资料与内嵌库存宿主仍未迁移，保持 todo；后续原生接入按 W7-BIZ-152 同一统计、排序合同及成本门禁验收。。
 
 ## W7-BIZ-026
 

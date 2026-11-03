@@ -18,6 +18,8 @@ import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart
 import 'package:uten_imp/features/basic_data/widgets/warehouse_inventory_panel.dart';
 import 'package:uten_imp/shared/stock_inventory/instant_inventory_row.dart';
 import 'package:uten_imp/shared/stock_inventory/instant_inventory_repository.dart';
+import 'package:uten_imp/shared/stock_inventory/instant_inventory_period_button.dart';
+import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 
@@ -175,6 +177,133 @@ MasterDataTableView<InstantInventoryRow> _table(WidgetTester tester) =>
     );
 
 void main() {
+  testWidgets(
+    'period picker cancels without a query and dates follow print and export',
+    (tester) async {
+      final harness = await _pump(
+        tester,
+        permissions: {
+          Perm.stockView,
+          Perm.stockReportExport,
+          Perm.goodsCostView,
+        },
+      );
+      harness.api.respond = (q) =>
+          Future.value({..._result(q), 'total': 1, 'totalPages': 1});
+      final before = harness.api.queries.length;
+      await tester.tap(
+        find.byKey(const Key('instant-inventory-select-period')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenDateRangePickerDialog), findsOneWidget);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(harness.api.queries.length, before);
+      final range = DateTimeRange(
+        start: DateTime(2026, 10),
+        end: DateTime(2026, 10, 31),
+      );
+      await tester.tap(
+        find.byKey(const Key('instant-inventory-select-period')),
+      );
+      await tester.pumpAndSettle();
+      Navigator.of(
+        tester.element(find.byType(UtenDateRangePickerDialog)),
+      ).pop<DateTimeRange>(range);
+      await tester.pumpAndSettle();
+      expect(harness.api.queries.last['dateFrom'], '2026-10-01');
+      expect(harness.api.queries.last['dateTo'], '2026-10-31');
+      final export = tester.widget<UtenExportButton>(
+        find.byType(UtenExportButton),
+      );
+      expect(export.queryParams['dateFrom'], '2026-10-01');
+      expect(export.queryParams['dateTo'], '2026-10-31');
+      // Printing must preserve the same dates across its complete multi-page read.
+      final print = tester.widget<UtenPrintPreviewButton>(
+        find.byType(UtenPrintPreviewButton),
+      );
+      await tester.runAsync(() => print.loader());
+      expect(
+        harness.api.queries
+            .skip(before)
+            .every(
+              (q) =>
+                  q['dateFrom'] == '2026-10-01' && q['dateTo'] == '2026-10-31',
+            ),
+        isTrue,
+      );
+      await tester.tap(find.byKey(const Key('instant-inventory-clear-period')));
+      await tester.pumpAndSettle();
+      expect(harness.api.queries.last, isNot(contains('dateFrom')));
+      expect(
+        _table(tester).columns
+            .firstWhere((c) => c.key == 'closingQty')
+            .value(_table(tester).items.single),
+        '请选择时间范围',
+      );
+    },
+  );
+
+  testWidgets(
+    'rapid period changes reject late responses and cost revocation removes sensitive columns',
+    (tester) async {
+      final api = _InventoryApi();
+      final harness = await _pump(
+        tester,
+        api: api,
+        permissions: {Perm.stockView, Perm.goodsCostView},
+      );
+      final pending = <String, Completer<Map<String, dynamic>>>{};
+      api.respond = (query) {
+        final date = query['dateFrom'] as String?;
+        if (date == null) return Future.value(_result(query));
+        return (pending[date] = Completer<Map<String, dynamic>>()).future;
+      };
+      for (var day = 1; day <= 12; day++) {
+        tester
+            .widget<InstantInventoryPeriodButton>(
+              find.byType(InstantInventoryPeriodButton),
+            )
+            .onChanged(
+              DateTimeRange(
+                start: DateTime(2026, 10, day),
+                end: DateTime(2026, 10, 31),
+              ),
+            );
+        await tester.pump();
+      }
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(_table(tester).items, isEmpty);
+      // Retired reads remain harmless when their responses arrive in reverse order.
+      for (final entry in pending.entries.toList().reversed) {
+        final result = _result({'dateFrom': entry.key}, name: entry.key);
+        ((result['items'] as List).single as Map<String, dynamic>).addAll({
+          'periodSelected': true,
+          'periodInQty': 12,
+          'periodOutQty': 2,
+          'closingQty': 10,
+          'costPrice': 5,
+          'periodCostAmount': 50,
+        });
+        entry.value.complete(result);
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      expect(_table(tester).items.single.name, '2026-10-12');
+      expect(
+        _table(tester).columns.map((c) => c.key),
+        containsAll(['costPrice', 'periodCostAmount']),
+      );
+      api.respond = (q) => Future.value(_result(q));
+      harness.container.read(_permissions.notifier).replace({Perm.stockView});
+      await tester.pumpAndSettle();
+      expect(
+        _table(tester).columns.map((c) => c.key),
+        isNot(anyOf(contains('costPrice'), contains('periodCostAmount'))),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
   for (final navigation in ['go', 'platform']) {
     testWidgets('$navigation return releases warehouse ledger navigation', (
       tester,
@@ -493,16 +622,18 @@ void main() {
         'color',
         'qty',
         'weight',
+        'periodInQty',
+        'periodOutQty',
+        'closingQty',
         'pendingQty',
         'pendingStockInQty',
-        'moreQty',
         'stockPlace',
         'owningWarehouse',
-        'category',
         'model',
         'spec',
         'cNumber',
         'series',
+        'category',
         'remark',
       ]);
       final values = {
@@ -513,7 +644,8 @@ void main() {
       expect(values['owningWarehouse'], '成品仓');
       expect(values['weight'], '未称');
       expect(values['pendingStockInQty'], '3 个');
-      expect(values['moreQty'], '4 个');
+      expect(values['periodInQty'], '请选择时间范围');
+      expect(values, isNot(contains('moreQty')));
       expect(
         table.columns.every((column) => !column.supportsKeywordSearch),
         isTrue,

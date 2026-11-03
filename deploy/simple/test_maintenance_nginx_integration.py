@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -13,6 +14,20 @@ ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location('maintenance_nginx_fixture', ROOT / 'deploy/client/nginx_client_updates_integration.py')
 fixture = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fixture)
+
+
+class NginxFixtureImportTest(unittest.TestCase):
+    def test_dynamic_fixture_import_resolves_its_generator_without_changing_module_search_path(self):
+        original_path = list(sys.path)
+        loaded_spec = importlib.util.spec_from_file_location(
+            'isolated_maintenance_nginx_fixture', ROOT / 'deploy/client/nginx_client_updates_integration.py')
+        loaded = importlib.util.module_from_spec(loaded_spec)
+        loaded_spec.loader.exec_module(loaded)
+        self.assertEqual(original_path, sys.path)
+        self.assertEqual(5, len(loaded.TARGETS))
+        for name in loaded.TARGETS:
+            source = (ROOT / name).read_text(encoding='utf-8')
+            self.assertEqual(source, loaded.synchronize(source), name)
 
 
 @unittest.skipUnless(os.name == 'posix' and Path('/.dockerenv').exists(), 'Requires disposable Linux Docker nginx')

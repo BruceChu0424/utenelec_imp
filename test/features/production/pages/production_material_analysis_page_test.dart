@@ -107,7 +107,7 @@ void main() {
     final cell = find.byKey(
       const ValueKey('material-route-readonly-AGGREGATE|bulk-goods||个'),
     );
-      await Scrollable.ensureVisible(tester.element(cell), alignment: 0.75);
+    await Scrollable.ensureVisible(tester.element(cell), alignment: 0.75);
     await tester.pumpAndSettle();
     expect(tester.widget<Text>(cell).data, '采购');
     for (var i = 0; i < 12; i++) {

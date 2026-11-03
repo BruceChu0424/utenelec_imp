@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import http.client
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import importlib.util
 import json
 from pathlib import Path
 import re
@@ -22,7 +23,15 @@ import subprocess
 import tempfile
 import threading
 import time
-from sync_client_publish_nginx import TARGETS, synchronize
+
+# This fixture is both a standalone CLI and dynamically loaded by deployment
+# tests. Resolve its one owning generator by file, without changing sys.path
+# or depending on the caller's working directory/module search path.
+_generator_spec = importlib.util.spec_from_file_location(
+    "uten_client_publish_nginx", Path(__file__).with_name("sync_client_publish_nginx.py"))
+_generator = importlib.util.module_from_spec(_generator_spec)
+_generator_spec.loader.exec_module(_generator)
+TARGETS, synchronize = _generator.TARGETS, _generator.synchronize
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE_ID = "6a4dc49d-7aad-4d31-94df-fdcf81bdde35"

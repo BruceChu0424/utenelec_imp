@@ -84,8 +84,9 @@ void main() {
         const draft = '基本户盘点名称草稿';
         await tester.enterText(nameEditor, draft);
         await tester.pumpAndSettle();
-        final state = tester.state(find.byType(AccountPage))
-            as MasterInlinePageMixin<AccountPage, AccountListItem>;
+        final state =
+            tester.state(find.byType(AccountPage))
+                as MasterInlinePageMixin<AccountPage, AccountListItem>;
         expect(state.inlineEdit.patchFor('account-1'), {'name': draft});
         if (saveBalance) {
           final editBalance = find.byKey(

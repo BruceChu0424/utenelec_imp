@@ -10,9 +10,39 @@ $stagingRoot = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 
 $jobRoot = Join-Path $stagingRoot "integration-$taskId"
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $updater = Join-Path $repositoryRoot 'windows\runner\client_updater.ps1'
-$packager = Join-Path $PSScriptRoot 'package_windows.py'
+$fixturePackager = Join-Path $testRoot 'package-fixture.py'
 [IO.Directory]::CreateDirectory($testRoot) | Out-Null
 [IO.Directory]::CreateDirectory($jobRoot) | Out-Null
+# Admit only the shared non-executable runtime stub inside this test process.
+# Separate CLI processes cannot inherit runtime_fixtures' in-memory admission.
+# The production policy is unchanged; real inventory/package validation runs.
+[IO.File]::WriteAllText($fixturePackager, @'
+import io
+from pathlib import Path
+import sys
+from unittest import mock
+import os
+
+sys.path.insert(0, sys.argv[1])
+import package_windows as package
+import windows_authenticode as signatures
+import windows_payload_binding as binding
+from test_package_windows import fixture_executable
+
+bundle, output, build, kind = Path(sys.argv[2]), Path(sys.argv[3]), int(sys.argv[4]), sys.argv[5]
+engine = (bundle / 'flutter_windows.dll').read_bytes()
+expected = fixture_executable(architecture='x64', imports=('KERNEL32.dll',))
+if engine != expected:
+    raise ValueError('Updater fixture engine differs from the exact shared synthetic stub')
+package.APPROVED_ENGINE_IMAGES[package.pe_image_sha256(io.BytesIO(engine), len(engine))] = {'testFixture': True}
+sources, _, _ = package.collect_runtime_sources(bundle, architecture='x64', kind=kind)
+metadata = {'runtimeFamily': 'flutter', 'version': '1.0.0', 'buildNumber': build,
+            'architecture': 'x64', 'executable': 'uten_imp.exe'}
+binding.write(bundle / 'uten_imp.exe', binding.inventory(metadata, binding.file_records(sources)))
+with mock.patch.dict(os.environ, {key: '' for key in
+        (signatures.PIN_ENV, signatures.KEY_ENV, signatures.TIMESTAMP_ENV, signatures.REQUIRE_ENV)}):
+    package.package_release(bundle, output, build_number=build, architecture='x64', version='1.0.0', kind=kind)
+'@)
 $ownedProcesses = [Collections.Generic.List[Diagnostics.Process]]::new()
 $priorUpdateState = @{}
 foreach ($name in @('last-update.log', 'last-update-result.json')) {
@@ -90,7 +120,7 @@ function Run-Case([string]$Name, [bool]$Crash, [bool]$AddTraversal = $false, [bo
         $obsoleteHash = (Get-FileHash -LiteralPath $obsoleteLibrary -Algorithm SHA256).Hash
         $oldPackage = Join-Path $testRoot "$Name\previous-release.zip"
         $oldKind = if ($WithInstallerManifest) { 'installer' } else { 'update' }
-        & $Python $packager --bundle $install --output $oldPackage --build-number 1 --architecture x64 --kind $oldKind | Out-Null
+        & $Python $fixturePackager $PSScriptRoot $install $oldPackage 1 $oldKind | Out-Null
         if ($LASTEXITCODE -ne 0) { throw 'Previous release fixture packaging failed.' }
         Add-Type -AssemblyName System.IO.Compression
         $oldStream = [IO.File]::OpenRead($oldPackage)
@@ -105,7 +135,7 @@ function Run-Case([string]$Name, [bool]$Crash, [bool]$AddTraversal = $false, [bo
     $settings = Join-Path $install 'existing-personal-settings.keep'
     [IO.File]::WriteAllText($settings, 'preserve-me')
     $package = Join-Path $job 'release.zip'
-    & $Python $packager --bundle $bundle --output $package --build-number 2 --architecture x64 | Out-Null
+    & $Python $fixturePackager $PSScriptRoot $bundle $package 2 'update' | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Fixture packaging failed.' }
     if ($AddTraversal) {
         Add-Type -AssemblyName System.IO.Compression

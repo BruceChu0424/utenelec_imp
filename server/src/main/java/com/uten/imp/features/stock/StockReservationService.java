@@ -206,7 +206,7 @@ public class StockReservationService {
         List<StockReservation> rs = em.createNativeQuery(
                         "SELECT * FROM stock_reservations"
                                 + " WHERE order_item_id = :oid AND is_deleted = FALSE AND status = 0"
-                                + " AND (warehouse_id IS NULL OR warehouse_id = :wid)"
+                                + " AND (fn_stock_claim_open_at(id, :wid)>0)"
                                 + " ORDER BY created_at, id FOR UPDATE", StockReservation.class)
                 .setParameter("oid", orderItemId)
                 .setParameter("wid", warehouseId)
@@ -216,7 +216,11 @@ public class StockReservationService {
             if (remaining.signum() <= 0) break;
             BigDecimal eff = r.effectiveQty();
             if (eff.signum() <= 0) continue;
-            BigDecimal c = eff.min(remaining);
+            BigDecimal location = (BigDecimal) em.createNativeQuery("SELECT fn_stock_claim_open_at(:id,:warehouse)")
+                    .setParameter("id",r.getId()).setParameter("warehouse",warehouseId).getSingleResult();
+            BigDecimal c = eff.min(remaining).min(location);
+            em.createNativeQuery("SELECT fn_stock_claim_consume(:id,:warehouse,:qty,NULL,NULL)")
+                    .setParameter("id",r.getId()).setParameter("warehouse",warehouseId).setParameter("qty",c).getSingleResult();
             BigDecimal consumedBefore = nullSafe(r.getConsumedQty());
             BigDecimal releasedBefore = nullSafe(r.getReleasedQty());
             boolean splitGlobal = r.getWarehouseId() == null

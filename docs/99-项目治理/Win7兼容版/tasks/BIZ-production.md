@@ -358,9 +358,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/storage-claim-role-20261102.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-02 仓库调拨保留原预留身份及数量、以不可变流转凭证投影实际锁定仓位；排产供应方式只读，计划接口不能改写货品主档。Web/Flutter 已修改，WPF 本入口仍未迁移、保持 todo，不开放写入。完整生产/委外取料及 Win7 真机验收未完成；见 E-STORAGE-CLAIM-ROLE-20261102。。
 
 ## W7-BIZ-109
 

@@ -41,7 +41,7 @@ class MaterialAnalysisBlankSourceRoutePostgresTest {
     private FullChainEndToEndTest fixture;
     @BeforeEach void prepare(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
 
-    @Test void blankSourceParentWithBomSuggestsMakeAndKeepsManualRouteUntilTheMasterReallyChanges(){
+    @Test void blankMasterUsesTheExistingBomDefaultButPlanningCannotOverrideOrFillTheRole(){
         String tag="blank-source";
         var w=fixture.seedWorld(tag);
         UUID root=UUID.randomUUID(),parent=UUID.randomUUID(),leaf=UUID.randomUUID();
@@ -65,39 +65,18 @@ class MaterialAnalysisBlankSourceRoutePostgresTest {
         qty("200",child.requiredQty());assertEquals("ACTIVE",child.requirementState());assertTrue(child.actionable());
         assertEquals(0,view.routeResetCount());
 
-        analyses.saveRoutes(analysis,new RouteRequest(view.version(),view.fingerprint(),"routes-"+tag,List.of(
-                new RouteDecision(parentRow.materialLineId(),parentRow.actionGroupKey(),"SUBCONTRACT","来源为空，计划部按委外处理"))));
-        assertEquals("SUBCONTRACT",byGoods(analyses.detail(analysis),parent).sourceConfirmed());
-        // V598(2026-09-16)：确认即回写主档——委外确认后 goods.source_type 变「委外」，
-        // 主档从此是建议路线的单一事实源（last-routes 记忆已退役）。
-        assertEquals("委外",db.queryForObject("SELECT source_type FROM goods WHERE id=?",String.class,parent));
+        assertThrows(com.uten.imp.common.web.ApiException.class,()->analyses.saveRoutes(analysis,
+            new RouteRequest(view.version(),view.fingerprint(),"routes-"+tag,
+                List.of(new RouteDecision(parentRow.materialLineId(),parentRow.actionGroupKey(),"SUBCONTRACT",null)))));
+        assertEquals("",db.queryForObject("SELECT source_type FROM goods WHERE id=?",String.class,parent));
+        assertEquals("MAKE",byGoods(analyses.detail(analysis),parent).sourceConfirmed());
+        assertNull(byGoods(analyses.detail(analysis),leaf).sourceConfirmed());
+        AnalysisView refreshed=refresh(analysis,w.warehouseId(),source,"blank-master-refresh");
+        assertEquals("MAKE",byGoods(refreshed,parent).sourceConfirmed());
+        assertEquals("REVIEW",byGoods(refreshed,leaf).sourceSuggestion());
+        assertEquals("",db.queryForObject("SELECT source_type FROM goods WHERE id=?",String.class,leaf));
+        qty("200",byGoods(refreshed,w.goodsC()).requiredQty());
 
-        // 旧快照的 REVIEW 建议（部署前生成）按主档重算=委外，不算事实变更：人工确认保留，重置数为 0。
-        db.update("UPDATE production_material_analysis_materials SET source_suggestion='REVIEW' WHERE analysis_id=? AND goods_id=?",analysis,parent);
-        AnalysisView upgraded=refresh(analysis,w.warehouseId(),source,"refresh-legacy-review");
-        assertEquals("SUBCONTRACT",byGoods(upgraded,parent).sourceSuggestion());
-        assertEquals("SUBCONTRACT",byGoods(upgraded,parent).sourceConfirmed());
-        assertEquals(0,upgraded.routeResetCount());
-
-        // 主档从空补齐为「自制」：建议值随主档变 MAKE，不清人工确认。
-        db.update("UPDATE goods SET source_type='自制' WHERE id=?",parent);
-        AnalysisView filled=refresh(analysis,w.warehouseId(),source,"refresh-fill");
-        assertEquals("MAKE",byGoods(filled,parent).sourceSuggestion());
-        assertEquals("SUBCONTRACT",byGoods(filled,parent).sourceConfirmed());
-        assertEquals(0,filled.routeResetCount());
-        qty("200",byGoods(filled,w.goodsC()).requiredQty());
-
-        // 2026-09-16 起主档来源变化整项移出「BOM 事实变更」条件：确认会回写主档，两者是
-        // 同一件事，系统不替人作废——主档再改成采购也只换建议值(BUY)，人工确认保留、
-        // 重置数为 0，子层仍按已确认的委外路线展开。要改路线就在分析里重新确认。
-        db.update("UPDATE goods SET source_type='采购' WHERE id=?",parent);
-        AnalysisView changed=refresh(analysis,w.warehouseId(),source,"refresh-buy");
-        assertEquals("BUY",byGoods(changed,parent).sourceSuggestion());
-        assertEquals("SUBCONTRACT",byGoods(changed,parent).sourceConfirmed());
-        assertEquals(0,changed.routeResetCount());
-        MaterialView childAfter=byGoods(changed,w.goodsC());
-        qty("200",childAfter.requiredQty());assertEquals("ACTIVE",childAfter.requirementState());assertTrue(childAfter.actionable());
-        assertEquals(0,analyses.detail(analysis).routeResetCount(),"详情响应恒为 0，只有刷新响应带重置数");
     }
 
     private AnalysisView refresh(UUID analysis,UUID warehouse,PreviewItem source,String key){

@@ -8,7 +8,7 @@
     "mergeMainAllowed": false,
     "productionDeploymentAllowed": false
   },
-  "inventorySha256": "31884fd3d4801d82aa07e64d3a1865a28c840cfef9484c504d93252c06010848",
+  "inventorySha256": "1df399297eae2c011f6dd9d4f61b9542bee734e4be9fcf8f3d2b45f6102215ef",
   "baselineCounts": {
     "businessPagePackages": 220,
     "retainedBusinessPagePackages": 3,
@@ -7606,8 +7606,8 @@
       "phase": "D",
       "feature": "production",
       "businessSource": "lib/features/production/pages/material_analysis_child_shortage_page.dart",
-      "sourceSha256": "a8c0e435d8bd7f634423ee8f3fdd414b004ddf6ff2589597c0459506465bc57b",
-      "sourceProofSha256": "506e825fb7cb5a534a6422959ae0fffa7227c58b78171dd56b6fc2ec8235f871",
+      "sourceSha256": "bec3a44193f35f350f175e596a73f95304d254c6452d88573423f21906b80b52",
+      "sourceProofSha256": "c7b399a0344c70a6ba453297ca98f6ed3dd7c6b5c2d34365e05be90a117718ff",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7689,7 +7689,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_actual_output_supplement_page.dart",
       "sourceSha256": "93338b375fe00fe70f2a90aea9ca1b5c4f6f96b565aa604560d28d3ff3c4c1ea",
-      "sourceProofSha256": "164ae752505a9519bfcaf0b68e496fa391d079df2cfe71469294c6275415bfd2",
+      "sourceProofSha256": "e8155588699988a5ae25c41d9ef55e3477f886e7109481c743cc692294c1854c",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7730,7 +7730,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_analysis_sales_order_page.dart",
       "sourceSha256": "23fecd11f4a9c27cd425f9214a2aa82693be2bf3c05ac59eaa13b469be58c00a",
-      "sourceProofSha256": "500f27342ada355b318c8cb7bafbbb19f90afc82b17644fc43214be7effe3b35",
+      "sourceProofSha256": "dd912236114837e7ab0ad4db00f456567baef9de88657913c01c22ab9eedb7a6",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7771,7 +7771,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_board_page.dart",
       "sourceSha256": "b16f41d67f3f8715565c62de78c9b07b3f95bdbbc0a9ec84297aaba31f5f1126",
-      "sourceProofSha256": "f0512c3d35fe87048b6bfecbc7e1eecfded9df66d507ffc5ef6dedc92cb6982d",
+      "sourceProofSha256": "b50ba2b1a32b93652b7edc2f9b979b1e83fd4f9e95ae7e27d56cf108e7a348d4",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7853,7 +7853,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_daily_report_create_recovery_page.dart",
       "sourceSha256": "f8a7bb6c43ec500f0bfe0955af85be82da9e09876e6d930a69f4b976f0564bcd",
-      "sourceProofSha256": "99eedf93314b32f7ad6d1248763c6b55076cd6818e42e49b22787592f6c236af",
+      "sourceProofSha256": "e5a8b663a01c87f19c621a5e379298c7538e3a21962834c7ce0ce42be6d54cf1",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7894,7 +7894,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_daily_report_detail_page.dart",
       "sourceSha256": "9f03a1c581e35d6b5a4e19759af2ee74f5144146a28a40660db3b0c60988b4c8",
-      "sourceProofSha256": "f5ccc6eafa4244d290c271858c278d05f36eca867d9278027fb448d7f0d2ef5c",
+      "sourceProofSha256": "c293c504294ae01b4779f40bd4b874d11f594153ea8f3228c6d32a2227d5325b",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7935,7 +7935,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_daily_report_edit_page.dart",
       "sourceSha256": "1699b7f722570ba9a6994a1dac061b2c668bf0b4f9f1a6bba1178f78695c175c",
-      "sourceProofSha256": "d6ff5dce2662e43666e07c620d483125b4d1a22b8d4b6dfe081d9641689f894c",
+      "sourceProofSha256": "fc4d859ffa986baa8cf2a0aeea3e431e5639196763384eec97f0c0ecc4aa7641",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7978,7 +7978,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_daily_report_list_page.dart",
       "sourceSha256": "5c72e2c6bd1fdaa5abcc466c23aa1402e9883f8a275ae848d636b8c85ade834c",
-      "sourceProofSha256": "8326f1664c877cba702d7f41ba060d9c0807d2811ed6dceb3dc41e1efb0d0baf",
+      "sourceProofSha256": "475f71af4a0563b45e52f5c8dc63bcdfb32b2cc6603e4f9b3cc75ed34ddd89ea",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8142,7 +8142,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_material_analysis_history_page.dart",
       "sourceSha256": "763d0c5d870a4318991f4721ad75c9eb8c2d096d1cff552773f3995337e66779",
-      "sourceProofSha256": "7504b5e68039ee6cf612e982d1654d884a6a07aaea6726c990519334446a78d6",
+      "sourceProofSha256": "4ba917b4a5f909227b42fc72492c229a2316009adea44b29b17cb8fefbd7eb44",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8183,7 +8183,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_material_analysis_page.dart",
       "sourceSha256": "84e5eccf82c1b8ca7585bc9db8071dc9fc033bddcf6621969610ce91cd71283f",
-      "sourceProofSha256": "caf8937e0a91659c1ac412266c757fefbee92eaceacdecae6dfc2f755dcda21c",
+      "sourceProofSha256": "4997d162ed0028c4fc3b175986a101bb8a8e2a65e1d0310f9b77e32819035bbf",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8212,10 +8212,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json"
+        "clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json",
+        "clients/windows_legacy/progress/evidence/storage-claim-role-20261102.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。",
-      "lastUpdated": "2026-11-02T04:23:12.006055+00:00"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。\n2026-11-02 仓库调拨保留原预留身份及数量、以不可变流转凭证投影实际锁定仓位；排产供应方式只读，计划接口不能改写货品主档。Web/Flutter 已修改，WPF 本入口仍未迁移、保持 todo，不开放写入。完整生产/委外取料及 Win7 真机验收未完成；见 E-STORAGE-CLAIM-ROLE-20261102。",
+      "lastUpdated": "2026-11-03T02:51:27.110490+00:00"
     },
     {
       "id": "W7-BIZ-109",
@@ -8399,7 +8400,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_plan_detail_page.dart",
       "sourceSha256": "d8b5a9eb4c718a7095bc59ff367a8ecd466919e0e48364afa46cd145086332c9",
-      "sourceProofSha256": "bca1ae9384d6b84aa72e8e71a51f19f95eefacfc974c9345f3497f2fe545066f",
+      "sourceProofSha256": "8f4650e1e7ffb58cc39cace24bcedf29fa64bebaa1b56a02d185a9bf1447c347",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8440,7 +8441,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_plan_edit_page.dart",
       "sourceSha256": "776fd41aa955a3f81f1f9606f377d02904e4588eeec9f11871a7ff1b920ecd4d",
-      "sourceProofSha256": "ed4c6c756c512fbca9f607bc765a632ba7a4203d90229245efe74e5d27216f22",
+      "sourceProofSha256": "b93904b4266b2de351ff46128ce54140b691be58c744d4f6256b317b00ebc792",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8483,7 +8484,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_plan_list_page.dart",
       "sourceSha256": "44bb6bd56d1e5f52518a0a61c45bbecb4e202581328de0ac4345fc23e686ed7d",
-      "sourceProofSha256": "0833722e35ad07bf06fc606c0d155e334047531a8b56823058dd721e0aa09fe6",
+      "sourceProofSha256": "61ab56a6e1e2752672f6f85b8e3ea1f924246288a038c588554155e9130e232b",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8524,7 +8525,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_plan_summary_sheet_page.dart",
       "sourceSha256": "518d724e27d97c40c5e58869dfc0cdcb2abefcedbe7cc767aeeec90c5f35109a",
-      "sourceProofSha256": "b8688f593ff471a03dedbf35ab0a081e1ed6f04bb83e5614ab0a74f7d305e215",
+      "sourceProofSha256": "0d801026cb17c8a218611e9ed9c55a90783bcff9bedfc088cae4968a806aa5e9",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8606,7 +8607,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_workshop_tasks_page.dart",
       "sourceSha256": "30a74f2e316bad1358b14a9d5e1750687490617e6ae7b6bca202e611bcf7ecd4",
-      "sourceProofSha256": "af1171c8c2b706ec3b8caae37d02878d95be41da160b8578bda270f66fa88d6c",
+      "sourceProofSha256": "e7c56098ae220766b3df10a6d9c315465df96179e7a88efdfae10b35212ff891",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -11708,8 +11709,8 @@
       "phase": "D",
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/stock_doc_detail_page.dart",
-      "sourceSha256": "8bc70e919eddc1de50ab39248fc07f6b287c437c33fbc4ad7d2cf19fb788f1b1",
-      "sourceProofSha256": "9d310b2989512a8aa6c312db2d85201d6c48d7d9a3da49415d4c3e65ef341cba",
+      "sourceSha256": "5f42572475fc1c653c8a41d131f4ec63e6d2029fd41a235e7aba4e33bcdfd07e",
+      "sourceProofSha256": "1ca9796eb0e0de3dd3fcedd38a9a99e701f8bc6ffbf1622c8b1111f3fb45cc6e",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -11737,9 +11738,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/storage-claim-role-20261102.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-02 仓库调拨保留原预留身份及数量、以不可变流转凭证投影实际锁定仓位；排产供应方式只读，计划接口不能改写货品主档。Web/Flutter 已修改，WPF 本入口仍未迁移、保持 todo，不开放写入。完整生产/委外取料及 Win7 真机验收未完成；见 E-STORAGE-CLAIM-ROLE-20261102。",
+      "lastUpdated": "2026-11-03T02:51:27.110940+00:00"
     },
     {
       "id": "W7-BIZ-186",
@@ -11749,8 +11752,8 @@
       "phase": "D",
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/stock_doc_edit_page.dart",
-      "sourceSha256": "fb385d268feeff0a24239d8c9d9f9f8e6435781030ef8e9a1ab8c061a007ed8d",
-      "sourceProofSha256": "989d68a6f2d95fae2ddcfd8c2a6f7ada6713b5557e91b3bb25b5cf1a813ab1c7",
+      "sourceSha256": "9b5790ccd856d78e7f34542ba688992f3f9dc2a537f8cdbb862703714743b0b9",
+      "sourceProofSha256": "9acd7a96335d35aa2ed14a492ada5c909b0dfe4472f0d86ba12d110821632753",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -11778,9 +11781,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/storage-claim-role-20261102.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-02 仓库调拨保留原预留身份及数量、以不可变流转凭证投影实际锁定仓位；排产供应方式只读，计划接口不能改写货品主档。Web/Flutter 已修改，WPF 本入口仍未迁移、保持 todo，不开放写入。完整生产/委外取料及 Win7 真机验收未完成；见 E-STORAGE-CLAIM-ROLE-20261102。",
+      "lastUpdated": "2026-11-03T02:51:27.111318+00:00"
     },
     {
       "id": "W7-BIZ-187",
@@ -11819,9 +11824,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/storage-claim-role-20261102.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-02 仓库调拨保留原预留身份及数量、以不可变流转凭证投影实际锁定仓位；排产供应方式只读，计划接口不能改写货品主档。Web/Flutter 已修改，WPF 本入口仍未迁移、保持 todo，不开放写入。完整生产/委外取料及 Win7 真机验收未完成；见 E-STORAGE-CLAIM-ROLE-20261102。",
+      "lastUpdated": "2026-11-03T02:51:27.111672+00:00"
     },
     {
       "id": "W7-BIZ-188",
@@ -11994,8 +12001,8 @@
       "phase": "D",
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/warehouse_hub_page.dart",
-      "sourceSha256": "69a924d69a3cf31689b242ca0f94810e5f5b84c5c033ffb145b77aa9d9691ecf",
-      "sourceProofSha256": "7801996cb7513655eeb0e46f798be97930cbf7bc7843c0fb7bfe967590757a2a",
+      "sourceSha256": "be1a844b1b7b8468dd10e5b60abf7eeaa055c4acf2cdc6d168cbb3a1c9e392ad",
+      "sourceProofSha256": "389fb17d4b86ebda3d967902c3821165778ebfbc874eb1cdd0ca6269a4f769ca",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",

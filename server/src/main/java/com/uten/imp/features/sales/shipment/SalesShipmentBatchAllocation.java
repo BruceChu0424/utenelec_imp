@@ -27,8 +27,8 @@ final class SalesShipmentBatchAllocation {
                     FROM sales_order_items WHERE id IN (:ids) AND NOT is_deleted
                 ), reservations AS (
                     SELECT r.order_item_id,r.warehouse_id,r.goods_id,r.color_id,
-                           SUM(GREATEST(r.qty-r.consumed_qty-r.released_qty,0)) qty
-                    FROM stock_reservations r WHERE NOT r.is_deleted AND r.status=0
+                           SUM(r.open_qty) qty
+                    FROM v_stock_reservation_storage_locations r WHERE TRUE
                       AND EXISTS(SELECT 1 FROM selected i WHERE i.goods_id=r.goods_id
                           AND i.color_id IS NOT DISTINCT FROM r.color_id)
                     GROUP BY r.order_item_id,r.warehouse_id,r.goods_id,r.color_id

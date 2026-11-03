@@ -507,11 +507,11 @@ public class ProductionMaterialAllocationFacade {
                        fn_warehouse_main_id(balance.warehouse_id)
                 FROM stock_balances balance JOIN goods ON goods.id=balance.goods_id AND NOT goods.is_deleted
                 LEFT JOIN LATERAL (
-                    SELECT SUM(reservation.qty-reservation.consumed_qty-reservation.released_qty) AS qty
+                    SELECT SUM(fn_stock_claim_open_at(reservation.id,balance.warehouse_id)) AS qty
                     FROM stock_reservations reservation
                     WHERE reservation.goods_id=balance.goods_id
                       AND reservation.color_id IS NOT DISTINCT FROM balance.color_id
-                      AND (reservation.warehouse_id IS NULL OR reservation.warehouse_id=balance.warehouse_id)
+
                       AND NOT reservation.is_deleted AND reservation.status=0
                 ) reserved ON TRUE
                 WHERE balance.warehouse_id IN (:warehouses) AND balance.goods_id IN (:goods)

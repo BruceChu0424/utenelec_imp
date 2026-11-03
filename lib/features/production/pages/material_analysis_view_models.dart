@@ -20,17 +20,6 @@ final class _PendingMakeCandidate {
   final int unconfirmedPathCount;
 }
 
-final class _PendingRouteDecision {
-  const _PendingRouteDecision({required this.groupKey, required this.decision});
-
-  final String groupKey;
-  final MaterialRouteDecision decision;
-
-  String get identity =>
-      '${decision.actionGroupKey ?? decision.materialLineId}|'
-      '${decision.route.wireName}|${decision.reason ?? ''}';
-}
-
 final class _SupplyNotificationTarget {
   const _SupplyNotificationTarget({this.actionGroupKey, this.materialLineId})
     : assert(actionGroupKey != null || materialLineId != null);

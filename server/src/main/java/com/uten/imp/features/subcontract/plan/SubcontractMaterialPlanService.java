@@ -591,10 +591,10 @@ public class SubcontractMaterialPlanService {
             UUID planItemId = (UUID) line[1];
             BigDecimal remaining = decimal(line[2]);
             List<Object[]> reservations = rows("""
-                    SELECT reservation.id, reservation.qty - reservation.consumed_qty - reservation.released_qty
+                    SELECT reservation.id, fn_stock_claim_open_at(reservation.id,:warehouseId)
                     FROM stock_reservations reservation
                     WHERE reservation.owner_type = 'SUBCONTRACT_OUTBOUND'
-                      AND reservation.owner_id = :planItemId AND reservation.warehouse_id = :warehouseId
+                      AND reservation.owner_id = :planItemId AND fn_stock_claim_open_at(reservation.id,:warehouseId)>0
                       AND reservation.source_doc_type = 'SUBCONTRACT_OUTBOUND_DRAFT'
                       AND reservation.source_doc_id = :issueId
                       AND reservation.status = 0 AND NOT reservation.is_deleted
@@ -613,6 +613,9 @@ public class SubcontractMaterialPlanService {
                     continue;
                 }
                 UUID reservationId = (UUID) reservation[0];
+                em.createNativeQuery("SELECT fn_stock_claim_consume(:id,:warehouse,:qty,:doc,:item)")
+                        .setParameter("id",reservationId).setParameter("warehouse",warehouseId).setParameter("qty",take)
+                        .setParameter("doc",issueId).setParameter("item",issueItemId).getSingleResult();
                 int updated = em.createNativeQuery("""
                         UPDATE stock_reservations
                         SET consumed_qty = consumed_qty + :qty,

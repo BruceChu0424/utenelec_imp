@@ -482,11 +482,10 @@ public class ProductionMaterialStockLedgerService {
         List<Object[]> reservations = NativeQueryResults.objectArrayRows(
                 em.createNativeQuery("""
                                 SELECT r.id, r.demand_id,
-                                       r.qty - r.consumed_qty
-                                             - r.released_qty
+                                       LEAST(r.qty-r.consumed_qty-r.released_qty,fn_stock_claim_open_at(r.id,:warehouseId))
                                 FROM stock_reservations r
                                 WHERE r.demand_id = :demandId
-                                  AND r.warehouse_id = :warehouseId
+                                  AND fn_stock_claim_open_at(r.id,:warehouseId)>0
                                   AND r.owner_type =
                                       'PRODUCTION_MATERIAL_DEMAND'
                                   AND r.status = :effective
@@ -506,6 +505,9 @@ public class ProductionMaterialStockLedgerService {
             UUID reservationId = (UUID) row[0];
             UUID demandId = (UUID) row[1];
             BigDecimal chunk = remaining.min(decimal(row[2]));
+            em.createNativeQuery("SELECT fn_stock_claim_consume(:id,:warehouse,:qty,:doc,:item)")
+                    .setParameter("id",reservationId).setParameter("warehouse",line.warehouseId()).setParameter("qty",chunk)
+                    .setParameter("doc",line.documentId()).setParameter("item",line.documentItemId()).getSingleResult();
             int updated = em.createNativeQuery("""
                             UPDATE stock_reservations
                             SET consumed_qty = consumed_qty + :qty,
@@ -653,6 +655,9 @@ public class ProductionMaterialStockLedgerService {
             lockReservation(reservationId);
             // Cross-warehouse receipt exchanges original C for R atomically in
             // the custody prepare step; a temporary free balance in TECH is invalid.
+            if(!changesWarehouse) em.createNativeQuery("SELECT fn_stock_claim_restore(:id,:warehouse,:qty,:doc,:item)")
+                    .setParameter("id",reservationId).setParameter("warehouse",line.warehouseId()).setParameter("qty",chunk)
+                    .setParameter("doc",line.documentId()).setParameter("item",line.documentItemId()).getSingleResult();
             int updated = changesWarehouse ? 1 : em.createNativeQuery("""
                             UPDATE stock_reservations
                             SET consumed_qty = consumed_qty - :qty,

@@ -1455,63 +1455,14 @@ public class SalesShipmentService {
         for (Map.Entry<InventoryKey, BigDecimal> entry : requested.entrySet()) {
             InventoryKey key = entry.getKey();
             Set<UUID> ownIds = ownOrderItems.getOrDefault(key, Set.of());
-            BigDecimal onHand = scalarDecimal(em.createNativeQuery("""
-                    SELECT COALESCE((
-                        SELECT qty FROM v_stock_operable_balances
-                        WHERE warehouse_id = :wid
-                          AND goods_id = :gid
-                          AND color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
-                    ), 0)
-                    """).setParameter("wid", warehouseId)
-                    .setParameter("gid", key.goodsId())
-                    .setParameter("cid", key.colorId()));
-            BigDecimal safety = scalarDecimal(em.createNativeQuery("""
-                    SELECT GREATEST(COALESCE(CAST(min_qty AS NUMERIC),0),0)
-                    FROM goods WHERE id = :gid
-                    """).setParameter("gid", key.goodsId()));
-
-            String reservationExclusion = ownIds.isEmpty()
-                    ? "" : " AND (order_item_id IS NULL OR order_item_id NOT IN (:ownIds))";
-            jakarta.persistence.Query otherReservationQuery =
-                    em.createNativeQuery("""
-                            SELECT COALESCE(SUM(
-                                qty - consumed_qty - released_qty),0)
-                            FROM stock_reservations
-                            WHERE is_deleted = FALSE
-                              AND status = 0
-                              AND goods_id = :gid
-                              AND color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
-                              -- Global reservations are protected by global ATP
-                              -- and are allocated by the warehouse tasks that
-                              -- own them. Counting every other global promise
-                              -- in every warehouse would deadlock valid
-                              -- multi-warehouse fulfilment.
-                              AND warehouse_id = :wid
-                            """ + reservationExclusion)
-                            .setParameter("gid", key.goodsId())
-                            .setParameter("cid", key.colorId())
-                            .setParameter("wid", warehouseId);
-            if (!ownIds.isEmpty()) {
-                otherReservationQuery.setParameter("ownIds", ownIds);
-            }
-            BigDecimal otherReservations =
-                    scalarDecimal(otherReservationQuery);
-
-            // V582：一步式没有"已开拣但未出账"的中间态——其它草稿要么还在待出库
-            // （不占库存，由上面的硬预留覆盖），要么已确认出库（stock_balances 已扣）。
-            // 原来减去 warehouse_work_status IN ('PICKING','PICKED') 的在途量已随三态删除。
-            BigDecimal movable = onHand
-                    .subtract(safety)
-                    .subtract(otherReservations)
-                    .max(BigDecimal.ZERO);
+            // Reuse the inventory kernel budget: sibling moves preserve all claims and one safety buffer.
             List<UUID> globalOwners=ownIds.isEmpty()?List.of(new UUID(0,0)):List.copyOf(ownIds);
-            // ADR-146 全局可用量单一口径(本单自己的预留不扣)。
-            BigDecimal globalBudget=scalarDecimal(em.createNativeQuery("""
-                    SELECT fn_stock_global_usable(:gid, CAST(:cid AS uuid), CAST(string_to_array(:ownIds, ',') AS uuid[]))
-                    """).setParameter("gid",key.goodsId()).setParameter("cid",key.colorId())
+            BigDecimal movable=scalarDecimal(em.createNativeQuery("""
+                    SELECT fn_stock_storage_movable(:wid,:gid,CAST(:cid AS uuid),
+                        CAST(string_to_array(:ownIds, ',') AS uuid[]),TRUE)
+                    """).setParameter("wid",warehouseId).setParameter("gid",key.goodsId()).setParameter("cid",key.colorId())
                     .setParameter("ownIds",globalOwners.stream().map(UUID::toString)
                             .collect(java.util.stream.Collectors.joining(","))));
-            movable=movable.min(globalBudget);
             if (entry.getValue().compareTo(movable) > 0) {
                 throw new ApiException(
                         ErrorCode.CONFLICT,
@@ -1524,7 +1475,7 @@ public class SalesShipmentService {
             for (UUID ownOrderItem:ownIds) {
                 BigDecimal eligible = scalarDecimal(em.createNativeQuery("""
                         SELECT COALESCE(SUM(
-                            qty - consumed_qty - released_qty),0)
+                            fn_stock_claim_open_at(id,:wid)),0)
                         FROM stock_reservations
                         WHERE is_deleted = FALSE
                           AND status = 0
@@ -1535,7 +1486,7 @@ public class SalesShipmentService {
                               -- and allocated by their own warehouse tasks.
                               -- Counting every global promise in every
                               -- warehouse would deadlock valid split delivery.
-                              AND (warehouse_id IS NULL OR warehouse_id = :wid)
+                              AND fn_stock_claim_open_at(id,:wid)>0
                         """).setParameter("ownIds", List.of(ownOrderItem))
                         .setParameter("gid", key.goodsId())
                         .setParameter("cid", key.colorId())

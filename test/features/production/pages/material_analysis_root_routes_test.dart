@@ -19,7 +19,6 @@ import 'package:uten_imp/features/production/repositories/production_repository.
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/master_name_provider.dart';
 import 'package:uten_imp/shared/providers/session_provider.dart';
-import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 
 void main() {
   testWidgets('pending finance blocks only its own product route selections', (
@@ -352,7 +351,10 @@ void main() {
         (2, 'buy'),
         (3, 'make'),
       ]) {
-        expect(tester.widget<UtenDropdownField>(_route(index)).value, route);
+        expect(
+          tester.widget<Text>(_route(index)).data,
+          {'make': '自制', 'buy': '采购', 'subcontract': '委外'}[route] ?? route,
+        );
       }
       expect(
         harness.requests.where((request) => request.path.endsWith('/notify')),
@@ -573,35 +575,24 @@ void main() {
     },
   );
 
-  testWidgets(
-    'a root without a BOM still exposes a real selectable supply route',
-    (tester) async {
-      final harness = await _pump(
-        tester,
-        _analysis(routes: [null], withChildren: false),
-      );
-      expect(_root(1), findsOneWidget);
-      final dropdown = tester.widget<UtenDropdownField>(_route(1));
-      // 2026-09-25 确认路线退役：主档来源为空的根显示空选（不再兜底委外），
-      // 红框指路；选好即自动保存。
-      expect(dropdown.value, isNull);
-      expect(dropdown.enabled, isTrue);
-      expect(
-        find.byKey(const ValueKey('material-route-pending-root-1')),
-        findsOneWidget,
-      );
-      expect(harness.writes, isEmpty, reason: 'REVIEW 根不自动确认');
-      await tester.ensureVisible(_route(1));
-      await tester.tap(_route(1));
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.tap(find.text('采购').last);
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.pumpAndSettle();
-      expect(_decisions(harness.writes.single), [
-        {'actionGroupKey': 'root-action-1', 'route': 'BUY'},
-      ]);
-    },
-  );
+  testWidgets('planning cannot edit a role even when master data is missing', (
+    tester,
+  ) async {
+    final harness = await _pump(
+      tester,
+      _analysis(routes: [null], withChildren: false),
+    );
+    expect(_root(1), findsOneWidget);
+    expect(_route(1), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('material-route-dropdown-root-1')),
+      findsNothing,
+    );
+    await tester.tap(_route(1));
+    await tester.pumpAndSettle();
+    expect(find.text('自制'), findsNothing);
+    expect(harness.writes, isEmpty);
+  });
 
   testWidgets(
     '120 children render on one page without a pager and confirm once',
@@ -658,7 +649,7 @@ void main() {
 
 Finder _root(int index) => find.byKey(ValueKey('material-bom-product-p$index'));
 Finder _route(int index) =>
-    find.byKey(ValueKey('material-route-dropdown-root-$index'));
+    find.byKey(ValueKey('material-route-readonly-root-$index'));
 Future<void> _openBucket(WidgetTester tester, String route) async {
   final entry = find.byKey(Key('material-analysis-entry-$route'));
   await tester.ensureVisible(entry);

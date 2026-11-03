@@ -77,6 +77,11 @@ public interface StockBalanceRepository
     Boolean measurementUsable(@Param("warehouse") UUID warehouseId,@Param("goods") UUID goodsId,
             @Param("color") UUID colorId);
 
+    @Query(value="SELECT fn_stock_storage_transfer_authorized(:doc,:item,:warehouse,:goods,CAST(:color AS uuid),:qty,:type)", nativeQuery=true)
+    Boolean storageTransferAuthorized(@Param("doc") UUID documentId,@Param("item") UUID itemId,
+            @Param("warehouse") UUID warehouseId,@Param("goods") UUID goodsId,@Param("color") UUID colorId,
+            @Param("qty") BigDecimal qty,@Param("type") short movementType);
+
     /** Native scalar projection deliberately bypasses cached entities after same-transaction upserts. */
     @Query(value="""
             SELECT qty,weight,weight_estimated AS weightEstimated FROM stock_balances
@@ -86,40 +91,8 @@ public interface StockBalanceRepository
     java.util.List<PhysicalSnapshot> readPhysicalSnapshot(@Param("warehouse") UUID warehouseId,
             @Param("goods") UUID goodsId,@Param("color") UUID colorId);
 
-    /**
-     * Operationally movable quantity in one warehouse, in base units.
-     *
-     * <p>Global reservations are conservatively protected in every warehouse;
-     * warehouse-bound reservations are protected only in their warehouse.
-     * Safety stock is a goods-level policy and is therefore applied to each
-     * warehouse, matching the existing ATP/readiness convention.
-     */
-    @Query(value = """
-            SELECT GREATEST(
-                COALESCE((
-                    SELECT b.qty
-                    FROM stock_balances b
-                    WHERE b.warehouse_id = :wid
-                      AND b.goods_id = :gid
-                      AND b.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
-                      AND fn_stock_measurement_usable(b.warehouse_id,b.goods_id,b.color_id)
-                ), 0)
-                - COALESCE((
-                    SELECT SUM(r.qty - r.consumed_qty - r.released_qty)
-                    FROM stock_reservations r
-                    WHERE r.is_deleted = FALSE
-                      AND r.status = 0
-                      AND r.goods_id = :gid
-                      AND r.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
-                      AND (r.warehouse_id IS NULL OR r.warehouse_id = :wid)
-                ), 0)
-                - COALESCE((
-                    SELECT GREATEST(COALESCE(CAST(g.min_qty AS NUMERIC), 0), 0)
-                    FROM goods g
-                    WHERE g.id = :gid
-                ), 0),
-                0)
-            """, nativeQuery = true)
+    /** Public stock is shared by normal storage locations; physical quantity stays local. */
+    @Query(value = "SELECT fn_stock_storage_movable(:wid,:gid,CAST(:cid AS uuid),NULL,TRUE)", nativeQuery = true)
     BigDecimal warehouseAvailableBase(@Param("wid") UUID warehouseId,
                                       @Param("gid") UUID goodsId,
                                       @Param("cid") UUID colorId);
@@ -133,7 +106,7 @@ public interface StockBalanceRepository
                     AND reservation.is_deleted = FALSE
                     AND reservation.owner_type = 'PRODUCTION_MATERIAL_DEMAND'
                     AND reservation.demand_id = posting.demand_id
-                    AND reservation.warehouse_id = :wid
+                    AND fn_stock_storage_same_pool(reservation.warehouse_id, :wid)
                     AND reservation.goods_id = :gid
                     AND reservation.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
                     AND reservation.consumed_qty >= posting.qty_base
@@ -167,18 +140,7 @@ public interface StockBalanceRepository
             @Param("unitId") UUID unitId, @Param("unitRate") BigDecimal unitRate);
 
     /** A proven allocation already kept its main-warehouse buffer; remaining hard claims still apply. */
-    @Query(value = """
-            SELECT GREATEST(COALESCE((SELECT balance.qty FROM stock_balances balance
-                WHERE balance.warehouse_id = :wid AND balance.goods_id = :gid
-                  AND balance.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
-                  AND fn_stock_measurement_usable(balance.warehouse_id,balance.goods_id,balance.color_id)), 0)
-                - COALESCE((SELECT SUM(reservation.qty - reservation.consumed_qty - reservation.released_qty)
-                    FROM stock_reservations reservation
-                    WHERE reservation.is_deleted = FALSE AND reservation.status = 0
-                      AND reservation.goods_id = :gid
-                      AND reservation.color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)
-                      AND (reservation.warehouse_id IS NULL OR reservation.warehouse_id = :wid)), 0), 0)
-            """, nativeQuery = true)
+    @Query(value = "SELECT fn_stock_storage_movable(:wid,:gid,CAST(:cid AS uuid),NULL,FALSE)", nativeQuery = true)
     BigDecimal warehouseUnreservedBase(@Param("wid") UUID warehouseId,
             @Param("gid") UUID goodsId, @Param("cid") UUID colorId);
 

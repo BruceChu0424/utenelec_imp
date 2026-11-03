@@ -396,7 +396,7 @@ class _MaterialAnalysisBucketPageState
         : _host._analysisIndexes(analysis).groupsByLine[root.materialLineId];
   }
 
-  /// 供应方式列（2026-09-14）：三个入口都能就地改，确认后本行自动换到对应
+  /// 供应方式列：主表与三个分桶入口共同只读，按默认来源归入对应
   /// 入口；已下达 / 已有下游行动的行只读显示。
   MasterColumnDef<_BucketRow> _routeColumn() => MasterColumnDef<_BucketRow>(
     key: 'route',
@@ -445,53 +445,16 @@ class _MaterialAnalysisBucketPageState
     final group = _rowRouteGroup(row);
     if (group == null) return const Text('—');
     final current = _host._draftRoute(group);
-    final editable =
-        !_actionsLocked &&
-        _host._canRoute &&
-        _host._canEditMaterialRoute(group);
-    if (!editable) {
-      return Text(
-        current?.label ?? '—',
+    return UtenEditorTooltip(
+      message: '供应方式沿用货品资料默认来源，排产内不能修改产品角色。',
+      child: Text(
+        current?.label ?? '待维护货品来源',
+        key: ValueKey('material-bucket-route-readonly-${row.id}'),
         style: theme.textTheme.bodyMedium?.copyWith(
           color: theme.colorScheme.onSurfaceVariant,
         ),
-      );
-    }
-    // 2026-09-16 用户口径：表格内下拉统一用自家 UtenDropdownField（统一弹层/
-    // 单行省略号/描边与同行格一致），不再用原生 DropdownButton。
-    // 2026-10-06 行高统一口径：本表没有其它输入控件（读表），下拉走 flat——
-    // 高度与单行文本格一致，不再用编辑表的 dense 控件高。
-    return UtenDropdownField(
-      key: ValueKey('material-bucket-route-${row.id}'),
-      flat: true,
-      value: current?.name,
-      label: '供应方式',
-      hintText: '供应方式',
-      items: [
-        for (final option in MaterialSupplyRoute.values)
-          UtenDropdownItem(value: option.name, label: option.label),
-      ],
-      onChanged: (next) {
-        if (next == null) return;
-        _changeRoute(row, group, MaterialSupplyRoute.values.byName(next));
-      },
+      ),
     );
-  }
-
-  Future<void> _changeRoute(
-    _BucketRow row,
-    _MaterialGroup group,
-    MaterialSupplyRoute? next,
-  ) async {
-    if (next == null || next == _host._draftRoute(group)) return;
-    await _host._confirmRouteChange(group, next);
-    if (!mounted) return;
-    // 换桶后本页行集要跟着变：桶投影按 confirmed_route 算，宿主 setState
-    // 不会重建本页。
-    setState(() {
-      _selectedIds.remove(row.id);
-      _pageNo = 1;
-    });
   }
 
   bool get _hasWriteAction => _canAct;

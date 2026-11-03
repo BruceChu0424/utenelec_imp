@@ -511,20 +511,7 @@ public class MaterialAnalysisService {
         return new PageResponse<>(items, safePage, safeSize, total, totalPages);
     }
 
-    /**
-     * 保存物料供给路线（按操作组）：幂等重放 + 乐观版本校验。操作组已有不同路线的下游任务时禁止改路线（须先撤回）；
-     * 原因可选；确认人和确认时间始终保留，已有下游的路线仍须先撤回。
-     *
-     * <p>2026-09-16 供应方式单一事实源 = 货品主档 goods.source_type：确认路线同事务回写主档
-     * (BUY→采购、MAKE→自制、SUBCONTRACT→委外，含 ROOT_SUPPLY 根行——根确认为 MAKE 即产品是自制件)，
-     * 新分析的建议路线从主档来，用户在分析里改的供应方式下次进来就是新值；按历史分析推导的
-     * /last-routes 记忆整套退役。同一条 UPDATE 把本行 source_suggestion 对齐成确认值：否则
-     * 主档回写后下一次刷新算出的建议 = 刚确认的值，与旧建议不同，会被
-     * {@code NODE_FACT_CHANGED_CONDITION} 当成「主档事实变更」把确认清掉(反馈环)。
-     * 主档回写必须先于 {@link #refreshLocked}，刷新按新主档算建议才与本行对齐。
-     * 同批同货品的节点选用了不同路线时，各节点决定独立保存，保留原主档默认与建议，
-     * 不以请求顺序挑选主档路线，也不在刷新时清掉合法的混合路线决定。
-     */
+    /** Legacy clients may confirm the master default, but planning never changes the product role. */
     public AnalysisView saveRoutes(UUID analysisId, RouteRequest request) {
         // V830: 详情读回移出写事务(同 {@link #preview}); 幂等重放只读不加 routeOutcome。
         MaterialAnalysisService writer = selfProxy == null ? this : selfProxy.getObject();
@@ -570,8 +557,7 @@ public class MaterialAnalysisService {
                         material.goodsId(), route, reason));
             }
         }
-        // All request/source validation precedes writes. Mixed per-node routes
-        // remain legitimate, but cannot choose a last-wins default for the goods.
+        // Validate the full batch before writing; the writer also checks the locked goods-master defaults.
         var routeLinks=issuedRouteSourceLinks(analysisId,hasAggregateSources(routeSources));
         var identities=currentMaterials.stream().filter(row->row.depth()>0)
                 .map(row->new MaterialAnalysisIssuedRoutePreservation.Identity(row.id(),row.analysisItemId(),row.nodeKey(),row.goodsId(),row.colorId(),row.unitId(),row.confirmedRoute())).toList();

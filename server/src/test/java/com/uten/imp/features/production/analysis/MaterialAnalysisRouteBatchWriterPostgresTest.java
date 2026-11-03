@@ -174,15 +174,15 @@ class MaterialAnalysisRouteBatchWriterPostgresTest {
         before=snapshot();conflict(()->writer.applyAutomatic(analysis,actor,changes));assertEquals(before,snapshot());
     }
 
-    @Test void mixedGoodsRetainSuggestionAndManualNoopCanStillRepairMasterSource()throws Exception {
-        seed(4);var first=changes.getFirst();var mixed=List.of(new MaterialAnalysisRouteBatchWriter.Change(
-                first.materialId(),first.groupKey(),goods,"MAKE","保留采购主档建议"),changes.getLast());
-        compareWriters(mixed,mixed);writer(false).applyAutomatic(analysis,actor,mixed);
-        assertEquals("BUY",db.queryForObject("SELECT source_suggestion FROM production_material_analysis_materials WHERE id=?",String.class,first.materialId()));
+    @Test void planningRejectsMixedRolesAndNeverRepairsOrFillsTheMaster()throws Exception {
+        seed(4);var first=changes.getFirst();
+        var mixed=List.of(new MaterialAnalysisRouteBatchWriter.Change(first.materialId(),first.groupKey(),goods,"MAKE",null),changes.getLast());
+        List<String> before=snapshot();conflict(()->writer(false).apply(analysis,actor,mixed,mixed));assertEquals(before,snapshot());
+        writer(false).applyAutomatic(analysis,actor,mixed);
         assertEquals("采购",db.queryForObject("SELECT source_type FROM goods WHERE id=?",String.class,goods));
-        var selected=List.of(changes.getLast());db.update("UPDATE goods SET source_type='自制' WHERE id=?",goods);
-        compareWriters(selected,selected);
-        assertEquals(new MaterialAnalysisRouteBatchWriter.Result(0,1),writer(false).apply(analysis,actor,selected,selected));
+        db.update("UPDATE goods SET source_type=NULL WHERE id=?",goods);
+        writer(false).applyAutomatic(analysis,actor,changes);
+        assertNull(db.queryForObject("SELECT source_type FROM goods WHERE id=?",String.class,goods));
     }
 
     @Test void fullSizeRouteInputsHaveInspectablePlansAndEquivalentCompleteWrites()throws Exception {

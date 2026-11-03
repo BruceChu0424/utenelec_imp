@@ -18,12 +18,11 @@ public interface StockReservationRepository extends JpaRepository<StockReservati
 
     /** Same effective claims as the warehouse issue gate, before its zero clamp or safety buffer. */
     @Query(value = """
-            SELECT COALESCE(SUM(r.qty - r.consumed_qty - r.released_qty), 0)
+            SELECT COALESCE(SUM(fn_stock_claim_open_at(r.id,:warehouse)), 0)
             FROM stock_reservations r
             WHERE r.is_deleted = FALSE AND r.status = 0
               AND r.goods_id = :goods
               AND r.color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
-              AND (r.warehouse_id IS NULL OR r.warehouse_id = :warehouse)
             """, nativeQuery = true)
     BigDecimal warehouseEffectiveReservedBase(@Param("warehouse") UUID warehouseId,
             @Param("goods") UUID goodsId, @Param("color") UUID colorId);
@@ -38,7 +37,7 @@ public interface StockReservationRepository extends JpaRepository<StockReservati
 
     /**
      * 销售可预留的全局可用量(基本单位) = 数据库 fn_stock_global_usable(ADR-146 可用量单一口径):
-     * 计入可用量的仓(未删、记账、非不良品仓、非车间内料仓、作业叶仓)各扣安全库存后的可动量合计
+     * 计入可用量的仓(未删、记账、非不良品仓、非车间内料仓、作业叶仓)按主仓扣一次安全库存后的可动量合计
      * - 全部生效预留(全局预留只扣一次), 最小 0。下单审核占用、退货重预留都读它。
      */
     @Query(value = "SELECT fn_stock_global_usable(:gid, CAST(:cid AS uuid))", nativeQuery = true)

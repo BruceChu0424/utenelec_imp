@@ -34,6 +34,81 @@ class StockTransferCostConservationEndToEndTest {
  @BeforeEach void prepare(){harness=new FullChainEndToEndTest();beans.autowireBean(harness);}
  @AfterEach void clear(){SecurityContextHolder.clearContext();}
 
+ @Test void movingFullyReservedStockPreservesEveryClaimAndTheGlobalBudget(){
+  var w=world();UUID b=warehouse();sameMain(w,b);db.update("UPDATE goods SET min_qty=0 WHERE id=?",w.goodsD());
+  stock.approve(create(w,"OTHER_IN","20","200").getId());
+  UUID order=harness.createApprovedOrder(w,w.goodsD(),"20","100");
+  db.update("UPDATE stock_reservations SET warehouse_id=? WHERE order_item_id IN (SELECT id FROM sales_order_items WHERE order_id=?)",w.warehouseId(),order);
+  String before=claims(w);assertThat(before).doesNotContain("[]");
+  db.update("UPDATE goods SET min_qty=100 WHERE id=?",w.goodsD());
+  BigDecimal budget=number("SELECT fn_stock_global_usable(?,NULL)",w.goodsD());
+  var doc=transfer(w,b,"20");stock.approve(doc.getId());
+  balances(w,b,"0","0","20","200");assertThat(claims(w)).isEqualTo(before);
+  assertThat(number("SELECT fn_stock_global_usable(?,NULL)",w.goodsD())).isEqualByComparingTo(budget);
+  assertThat(number("SELECT fn_stock_storage_movable(?,?,NULL,NULL,FALSE)",b,w.goodsD())).isZero();
+  assertThatThrownBy(()->stock.approve(doc.getId())).isInstanceOf(ApiException.class);
+  balances(w,b,"0","0","20","200");assertThat(claims(w)).isEqualTo(before);
+  unapproval.unapprove("stockDocument",doc.getId(),new DocumentUnapprovalService.UnapproveRequest("locked-transfer-"+doc.getId(),"保留锁定调回原仓"));
+  balances(w,b,"20","200","0","0");assertThat(claims(w)).isEqualTo(before);
+ }
+
+ @Test void partialMovesKeepSafetyOnceAndInsufficientPhysicalStockRollsBackBothLegs(){
+  var w=world();UUID b=warehouse();sameMain(w,b);db.update("UPDATE goods SET min_qty=10 WHERE id=?",w.goodsD());
+  stock.approve(create(w,"OTHER_IN","20","200").getId());
+  assertThat(number("SELECT fn_stock_global_usable(?,NULL)",w.goodsD())).isEqualByComparingTo("10");
+  stock.approve(transfer(w,b,"10").getId());balances(w,b,"10","100","10","100");
+  assertThat(number("SELECT fn_stock_global_usable(?,NULL)",w.goodsD())).isEqualByComparingTo("10");
+  var tooMuch=transfer(w,b,"11");
+  assertThatThrownBy(()->stock.approve(tooMuch.getId())).isInstanceOf(ApiException.class);
+  balances(w,b,"10","100","10","100");
+  assertThat(number("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",tooMuch.getId())).isZero();
+ }
+
+ private String claims(FullChainEndToEndTest.World w){return db.queryForObject("SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY id),'[]'::jsonb)::text FROM stock_reservations r WHERE goods_id=?",String.class,w.goodsD());}
+
+ @Test void relocatedOrderKeepsItsClaimAndShipsFromTheDestinationWarehouse(){
+  var w=world();UUID b=warehouse();sameMain(w,b);db.update("UPDATE goods SET min_qty=0 WHERE id=?",w.goodsD());
+  stock.approve(create(w,"OTHER_IN","20","200").getId());
+  UUID order=harness.createApprovedOrder(w,w.goodsD(),"20","100");
+  UUID orderItem=db.queryForObject("SELECT id FROM sales_order_items WHERE order_id=?",UUID.class,order);
+  db.update("UPDATE stock_reservations SET warehouse_id=? WHERE order_item_id=?",w.warehouseId(),orderItem);
+  String before=claims(w);stock.approve(transfer(w,b,"20").getId());assertThat(claims(w)).isEqualTo(before);
+  UUID claim=db.queryForObject("SELECT id FROM stock_reservations WHERE order_item_id=?",UUID.class,orderItem);
+  assertThat(number("SELECT fn_stock_claim_open_at(?,?)",claim,w.warehouseId())).isZero();
+  assertThat(number("SELECT fn_stock_claim_open_at(?,?)",claim,b)).isEqualByComparingTo("20");
+  var shipments=beans.getBean(com.uten.imp.features.sales.shipment.SalesShipmentService.class);
+  var warehouse=beans.getBean(com.uten.imp.features.sales.shipment.warehouse.WarehouseSalesOutboundProjectionService.class);
+  com.uten.imp.features.sales.shipment.dto.ShipmentSaveRequest request=org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"shipmentRequest",w,orderItem,w.goodsD(),"20");
+  request.setWarehouseId(null);var shipment=shipments.create(request);
+  org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"confirmShipmentFinance",shipment.getId());
+  assertThat(warehouse.detail(shipment.getId()).lines().getFirst().warehouseChoices()).anyMatch(choice->choice.warehouseId().equals(b)&&choice.canFulfill());
+  var outbound=new com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest();outbound.setTargetStatus("SHIPPED");outbound.setWarehouseId(b);
+  outbound.setStockPlaces(List.of(new com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest.StockPlace(shipment.getItems().getFirst().getId(),"B-01")));
+  warehouse.transition(shipment.getId(),outbound);
+  assertThat(number("SELECT consumed_qty FROM stock_reservations WHERE id=?",claim)).isEqualByComparingTo("20");
+  assertThat(number("SELECT qty FROM stock_balances WHERE warehouse_id=? AND goods_id=?",b,w.goodsD())).isZero();
+  assertThat(number("SELECT fn_stock_claim_open_at(?,?)",claim,b)).isZero();
+  assertThatThrownBy(()->warehouse.transition(shipment.getId(),outbound)).isInstanceOf(ApiException.class);
+ }
+
+ private void sameMain(FullChainEndToEndTest.World w,UUID b){UUID root=UUID.randomUUID();db.update("INSERT INTO warehouses(id,code,name,status,is_accountable) VALUES(?,?,?,'使用',FALSE)",root,"ROOT-"+root,"移仓共同主仓");db.update("UPDATE warehouses SET parent_id=? WHERE id IN (?,?)",root,w.warehouseId(),b);}
+
+ @Test void concurrentDuplicateApprovalMovesPhysicalStockAndClaimsOnlyOnce()throws Exception{
+  var w=world();UUID b=warehouse();sameMain(w,b);db.update("UPDATE goods SET min_qty=0 WHERE id=?",w.goodsD());
+  stock.approve(create(w,"OTHER_IN","20","200").getId());UUID order=harness.createApprovedOrder(w,w.goodsD(),"20","100");
+  db.update("UPDATE stock_reservations SET warehouse_id=? WHERE order_item_id IN(SELECT id FROM sales_order_items WHERE order_id=?)",w.warehouseId(),order);
+  String before=claims(w);UUID document=transfer(w,b,"20").getId();
+  try(var pool=java.util.concurrent.Executors.newFixedThreadPool(2)){
+   var start=new java.util.concurrent.CountDownLatch(1);List<java.util.concurrent.Future<Boolean>> results=new ArrayList<>();
+   for(int i=0;i<2;i++)results.add(pool.submit(()->{start.await();harness.loginAs(w.superAdminUserId());try{stock.approve(document);return true;}catch(ApiException rejected){return false;}finally{SecurityContextHolder.clearContext();}}));
+   start.countDown();int successes=0;for(var result:results)if(result.get(30,java.util.concurrent.TimeUnit.SECONDS))successes++;
+   assertThat(successes).isEqualTo(1);
+  }
+  balances(w,b,"0","0","20","200");assertThat(claims(w)).isEqualTo(before);
+  assertThat(number("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",document)).isEqualByComparingTo("2");
+  assertThat(number("SELECT SUM(qty) FROM stock_reservation_storage_events WHERE document_id=? AND event_type='TRANSFER'",document)).isEqualByComparingTo("20");
+ }
+
  @Test void untouchedTransferReversesOriginalFiftyAcrossWarehousesAndReplayAndNewApprovalAreOnceOnly(){
   var w=world();UUID b=warehouse();stock.approve(create(w,"OTHER_IN","10","100").getId());
   var transfer=transfer(w,b,"5");stock.approve(transfer.getId());balances(w,b,"5","50","5","50");

@@ -1287,8 +1287,11 @@ public class SalesOrderService {
 
     private OrderDetail createInternal(
             OrderSaveRequest req, UUID sourceQuoteId, UUID expectedQuoteOwner) {
+        if (req == null) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "订货请求不能为空");
+        }
         // 普通新建、AI 开单与报价转单共用默认；旧客户端仍可显式传入齐套策略。
-        requireSelectableShipmentPolicy(req == null ? null : req.getShipmentPolicy());
+        requireSelectableShipmentPolicy(req.getShipmentPolicy());
         tx.bind();
         if (expectedQuoteOwner != null && req.getCurrencyId() == null) {
             // 报价单本身没有币种字段；一键转订单只能使用唯一、明确的启用人民币主档，禁止按汇率猜测。
@@ -2756,7 +2759,7 @@ public class SalesOrderService {
             return existing == null || existing.isBlank()
                     ? SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL : existing;
         }
-        String policy = raw == null ? "" : raw.trim().toUpperCase(java.util.Locale.ROOT);
+        String policy = raw.trim().toUpperCase(java.util.Locale.ROOT);
         return switch (policy) {
             case SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL,
                     SalesOrder.SHIPMENT_POLICY_REQUIRE_COMPLETE,
@@ -2770,7 +2773,7 @@ public class SalesOrderService {
     /** 空值采用默认分批；保留旧客户端显式齐套值，历史客户确认值不得用于新单。 */
     private void requireSelectableShipmentPolicy(String raw) {
         if (raw == null || raw.isBlank()) return;
-        String policy = raw == null ? "" : raw.trim().toUpperCase(java.util.Locale.ROOT);
+        String policy = raw.trim().toUpperCase(java.util.Locale.ROOT);
         if (!SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL.equals(policy)
                 && !SalesOrder.SHIPMENT_POLICY_REQUIRE_COMPLETE.equals(policy)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,

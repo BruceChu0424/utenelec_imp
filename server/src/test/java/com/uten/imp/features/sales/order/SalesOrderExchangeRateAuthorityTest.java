@@ -48,6 +48,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -106,7 +107,8 @@ class SalesOrderExchangeRateAuthorityTest {
                 .toList());
         Query priceQuery = mock(Query.class);
         AtomicReference<List<UUID>> priceIds = new AtomicReference<>(List.of());
-        lenient().when(em.createNativeQuery(contains("SELECT goods.id, goods.price")))
+        lenient().when(em.createNativeQuery(contains("SELECT goods.id, "
+                + com.uten.imp.common.finance.SellingPriceCurrency.forBaseCurrencySql("goods"))))
                 .thenReturn(priceQuery);
         lenient().when(priceQuery.setParameter(eq("ids"), any())).thenAnswer(invocation -> {
             @SuppressWarnings("unchecked")
@@ -126,6 +128,24 @@ class SalesOrderExchangeRateAuthorityTest {
                 org.mockito.ArgumentMatchers.any()))
                 .thenReturn(shipmentsQuery);
         lenient().when(shipmentsQuery.getResultList()).thenReturn(List.of());
+    }
+
+    @Test
+    void nullCreateRequestIsRejectedBeforeTransactionsOrBusinessWrites() {
+        assertThatThrownBy(() -> service.create(null))
+                .isInstanceOfSatisfying(ApiException.class, error ->
+                        assertThat(error.getCode()).isEqualTo(
+                                com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED));
+        verifyNoInteractions(tx, orderRepo, itemRepo, quoteRepo, referenceValidator, em);
+    }
+
+    @Test
+    void nullQuoteConversionRequestIsRejectedBeforeSourceOrCurrencyDefaults() {
+        assertThatThrownBy(() -> service.createFromQuote(null, UUID.randomUUID(), UUID.randomUUID()))
+                .isInstanceOfSatisfying(ApiException.class, error ->
+                        assertThat(error.getCode()).isEqualTo(
+                                com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED));
+        verifyNoInteractions(tx, orderRepo, itemRepo, quoteRepo, referenceValidator, em);
     }
 
     @ParameterizedTest

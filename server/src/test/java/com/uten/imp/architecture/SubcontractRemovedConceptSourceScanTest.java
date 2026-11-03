@@ -17,6 +17,9 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -131,7 +134,12 @@ class SubcontractRemovedConceptSourceScanTest {
                             + "与已删除的委外计划行准备态无关"),
             new Allowed("com/uten/imp/features/production/execution/ProductionExecutionWorkbenchService.java",
                     "preparation_status", "task.preparation_status",
-                    "生产执行工作台的备料状态(PREPARED / 未备齐), 与已删除的委外计划行准备态无关"));
+                    "生产执行工作台的备料状态(PREPARED / 未备齐), 与已删除的委外计划行准备态无关"),
+            new Allowed("com/uten/imp/features/sales/order/dto/PlanProgressLine.java",
+                    "preparedQty", "BigDecimal preparedQty,",
+                    "唯一 PreparationProgress DTO 分量：销售订单单位的净发货加物理库存，按履约目标封顶；"
+                            + "由 sales-preparation-progress/v1.json 的 Java/Dart 共用样例验证，"
+                            + "不是已退役的委外计划 prepared_qty 或前置自制流向"));
 
     private record Hit(String file, int line, String literal, String text) {
         @Override
@@ -171,6 +179,25 @@ class SubcontractRemovedConceptSourceScanTest {
                 "白名单条目已不再命中, 请删掉它(不要让白名单比现实宽):\n  "
                         + String.join("\n  ", stale.stream()
                         .map(allowed -> allowed.file() + " [" + allowed.literal() + "] " + allowed.reason()).toList()));
+    }
+
+    @Test
+    void salesPreparedQuantityAllowanceIsOnlyThePhysicalFulfillmentDtoComponent() throws IOException {
+        String file = "com/uten/imp/features/sales/order/dto/PlanProgressLine.java";
+        List<Hit> declarations = scan(MAIN_JAVA.resolve(file)).stream()
+                .filter(hit -> hit.literal().equals("preparedQty")).toList();
+        assertEquals(1, declarations.size(), "Only the reviewed sales DTO declaration may use this name");
+        assertNotNull(allowanceFor(declarations.getFirst()));
+        var components = com.uten.imp.features.sales.order.dto.PlanProgressLine.PreparationProgress.class
+                .getRecordComponents();
+        assertEquals(List.of("targetQty", "preparedQty", "stockQty", "netShippedQty", "sources"),
+                java.util.Arrays.stream(components).map(java.lang.reflect.RecordComponent::getName).toList());
+        assertEquals(java.math.BigDecimal.class, components[1].getType());
+        assertNull(allowanceFor(new Hit(file, 1, "preparedQty", "return preparedQty;")));
+        assertNull(allowanceFor(new Hit(file, 1, "prepared_qty", "BigDecimal preparedQty,")));
+        assertNull(allowanceFor(new Hit("com/uten/imp/features/subcontract/Retired.java", 1,
+                "preparedQty", "BigDecimal preparedQty,")));
+        assertTrue(matches("SELECT prepared_qty FROM subcontract_order_items").contains("prepared_qty"));
     }
 
     @Test

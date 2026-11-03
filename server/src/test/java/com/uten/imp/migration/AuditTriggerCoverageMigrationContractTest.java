@@ -357,6 +357,12 @@ class AuditTriggerCoverageMigrationContractTest {
 
     /** NONE: 不挂行级审计。分组即理由。 */
     static final List<NoneGroup> NONE = List.of(
+            new NoneGroup("finance_batch_entry_receipts",
+                    "V991 按账号和幂等键保存原子钱流批次的请求摘要与既定回执；实际单据和钱流仍按各自业务审计，重试只读取原回执，不把协调结果复制成第二份行审计",
+                    Set.of("finance_batch_entry_commands")),
+            new NoneGroup("stock_claim_storage_projection",
+                    "V993 预留在实际仓位的剩余量由不可变流转事件维护，可按原预留与事件重建；不是人工主档或第二份库存归属，调拨单和预留决定继续保留 FULL 审计",
+                    Set.of("stock_reservation_storage_positions")),
             new NoneGroup("read_authorization_version_lineage",
                     "V939 服务端固定域与读取范围版本谱系；原授权及归属变更仍按权威源表审计，附属事务版本事件和域字典由不可变触发器永久保留，不复制为第二份通用行审计",
                     Set.of("read_scope_domains", "read_scope_change_events")),
@@ -501,6 +507,9 @@ class AuditTriggerCoverageMigrationContractTest {
             new NoneGroup("ledger",
                     "只追加的事件/流水/批次账: 行内带操作人与时间(子行经父行追溯), 行本身就是留痕",
                     Set.of(
+                        // V993: immutable event rows retain reservation/document/transaction lineage;
+                        // the source reservation and stock document retain their FULL business audit.
+                        "stock_reservation_storage_events",
                         "website_inquiry_events",
                         "document_malware_scans",
                         "account_balance_adjustment_batches", "account_balance_adjustment_items",
@@ -725,6 +734,37 @@ class AuditTriggerCoverageMigrationContractTest {
         Set<String> stale = new TreeSet<>(classified);
         stale.removeAll(live);
         assertEquals(Set.of(), stale, "Listed tables must exist in the migrated schema");
+    }
+
+    @Test
+    void storageClaimAuditCorrectionIsForwardOnlyAndKeepsBusinessHistory() throws Exception {
+        Path originalPath = MIGRATION_ROOT.resolve("V993__storage_transfer_preserves_inventory_claims.sql");
+        assertEquals("048e369d416ec1bc4c6bb28aaa0a616dcced9057e7ce430876d7cffcb0d059ce",
+                HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                        .digest(Files.readAllBytes(originalPath))),
+                "Previously committed V993 source bytes must not change on existing databases");
+        String original = Files.readString(originalPath, StandardCharsets.UTF_8);
+        assertTrue(original.contains("fn_audit_track_table('stock_reservation_storage_events','FULL'"));
+        assertTrue(original.contains("trg_stock_storage_history_immutable"));
+        assertTrue(original.contains("trg_stock_storage_position_no_delete"));
+
+        String forward = stripSqlComments(Files.readString(
+                MIGRATION_ROOT.resolve("V997__stock_storage_audit_policy_forward.sql"), StandardCharsets.UTF_8));
+        Map<String, String> policies = new LinkedHashMap<>();
+        Matcher registration = REGISTRATION.matcher(forward);
+        while (registration.find()) {
+            assertNull(policies.put(registration.group(1), registration.group(2)),
+                    "Each reviewed storage policy must be registered exactly once");
+        }
+        assertEquals(Map.of("stock_reservation_storage_events", "NONE",
+                "stock_reservation_storage_positions", "NONE"), policies);
+        assertFalse(Pattern.compile("(?i)\\b(?:CREATE|ALTER|DROP|INSERT|UPDATE|DELETE|TRUNCATE)\\b")
+                .matcher(forward).find(), "The forward correction must not rewrite schema, facts or business guards");
+        assertTrue(NONE.stream().filter(group -> group.key().equals("ledger"))
+                .findFirst().orElseThrow().tables().contains("stock_reservation_storage_events"));
+        assertTrue(NONE.stream().filter(group -> group.key().equals("stock_claim_storage_projection"))
+                .findFirst().orElseThrow().tables().contains("stock_reservation_storage_positions"));
+        assertTrue(noneTables().contains("finance_batch_entry_commands"));
     }
 
     @Test

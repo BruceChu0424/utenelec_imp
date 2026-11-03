@@ -3,8 +3,9 @@ package com.uten.imp.features.stock;
 import com.uten.imp.security.TxSessionVars;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.Query;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -29,8 +30,9 @@ class StockReservationWarehouseSplitTest {
     @Mock private EntityManager entityManager;
     @Mock private InventoryMutationLock inventoryLock;
 
-    @Test
-    void partialConsumptionKeepsTheRemainderGloballyAvailable() {
+    @ParameterizedTest
+    @CsvSource({"4,6", "4.1234,5.8766"})
+    void partialConsumptionKeepsTheRemainderGloballyAvailable(String consumedQty, String remainderQty) {
         UUID orderItemId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
         UUID warehouseId = UUID.randomUUID();
@@ -61,15 +63,30 @@ class StockReservationWarehouseSplitTest {
         when(entityManager.createNativeQuery(
                 anyString(), eq(StockReservation.class)))
                 .thenReturn(reservationQuery);
+        Query locationQuery = org.mockito.Mockito.mock(Query.class);
+        when(locationQuery.setParameter(anyString(), any())).thenReturn(locationQuery);
+        when(locationQuery.getSingleResult()).thenReturn(new BigDecimal("10"));
+        when(entityManager.createNativeQuery("SELECT fn_stock_claim_open_at(:id,:warehouse)"))
+                .thenReturn(locationQuery);
+        Query consumeQuery = org.mockito.Mockito.mock(Query.class);
+        when(consumeQuery.setParameter(anyString(), any())).thenReturn(consumeQuery);
+        when(entityManager.createNativeQuery("SELECT fn_stock_claim_consume(:id,:warehouse,:qty,NULL,NULL)"))
+                .thenReturn(consumeQuery);
 
         StockReservationService service = new StockReservationService(
                 repository, tx, entityManager, inventoryLock,
                 org.mockito.Mockito.mock(com.uten.imp.features.admin.systemsetting.SystemSettingsService.class));
 
         BigDecimal consumed = service.consumeForOrderItem(
-                orderItemId, warehouseId, new BigDecimal("4"));
+                orderItemId, warehouseId, new BigDecimal(consumedQty));
 
-        assertThat(consumed).isEqualByComparingTo("4");
+        assertThat(consumed).isEqualByComparingTo(consumedQty);
+        verify(locationQuery).setParameter("id", source.getId());
+        verify(locationQuery).setParameter("warehouse", warehouseId);
+        verify(consumeQuery).setParameter("id", source.getId());
+        verify(consumeQuery).setParameter("warehouse", warehouseId);
+        verify(consumeQuery).setParameter("qty", new BigDecimal(consumedQty));
+        verify(consumeQuery).getSingleResult();
         ArgumentCaptor<StockReservation> saved =
                 ArgumentCaptor.forClass(StockReservation.class);
         verify(repository, org.mockito.Mockito.times(2))
@@ -77,13 +94,16 @@ class StockReservationWarehouseSplitTest {
         StockReservation consumedRow = saved.getAllValues().get(0);
         StockReservation remainder = saved.getAllValues().get(1);
         assertThat(consumedRow.getWarehouseId()).isEqualTo(warehouseId);
-        assertThat(consumedRow.getQty()).isEqualByComparingTo("4");
+        assertThat(consumedRow.getQty()).isEqualByComparingTo(consumedQty);
         assertThat(consumedRow.getConsumedQty())
-                .isEqualByComparingTo("4");
+                .isEqualByComparingTo(consumedQty);
         assertThat(consumedRow.getStatus())
                 .isEqualTo(StockReservation.STATUS_DONE);
         assertThat(remainder.getWarehouseId()).isNull();
-        assertThat(remainder.getQty()).isEqualByComparingTo("6");
-        assertThat(remainder.effectiveQty()).isEqualByComparingTo("6");
+        assertThat(remainder.getQty()).isEqualByComparingTo(remainderQty);
+        assertThat(remainder.effectiveQty()).isEqualByComparingTo(remainderQty);
+        assertThat(remainder.getOrderItemId()).isEqualTo(orderItemId);
+        assertThat(remainder.getGoodsId()).isEqualTo(goodsId);
+        assertThat(remainder.getSourceDocId()).isEqualTo(source.getSourceDocId());
     }
 }

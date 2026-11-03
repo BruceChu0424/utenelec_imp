@@ -27,8 +27,16 @@ class SalesShipmentWarehouseReservationSqlContractTest {
 
         assertThat(eligibleStart).isGreaterThanOrEqualTo(0);
         assertThat(nextQuery).isGreaterThan(eligibleStart);
+        // Relocated claims are read from their actual remaining storage position;
+        // the reservation's original warehouse column is not that authority.
         assertThat(source.substring(eligibleStart, nextQuery))
-                .contains("AND (warehouse_id IS NULL OR warehouse_id = :wid)");
+                .contains("fn_stock_claim_open_at(id,:wid)")
+                .contains("AND fn_stock_claim_open_at(id,:wid)>0")
+                .contains("AND order_item_id IN (:ownIds)")
+                .contains("AND goods_id = :gid")
+                .contains("AND color_id IS NOT DISTINCT FROM CAST(:cid AS uuid)")
+                .contains(".setParameter(\"wid\", warehouseId)")
+                .doesNotContain("AND (warehouse_id IS NULL OR warehouse_id = :wid)");
     }
 
     /**

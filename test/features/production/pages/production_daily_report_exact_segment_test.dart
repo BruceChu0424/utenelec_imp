@@ -14,12 +14,14 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_employee_multi_picker.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/shared/models/department_node.dart';
+import 'package:uten_imp/shared/models/employee_reference.dart';
 import 'package:uten_imp/shared/models/workforce_overview.dart';
 import 'package:uten_imp/shared/repositories/department_repository.dart';
 import 'package:uten_imp/features/employee/models/employee_api_models.dart';
@@ -1494,6 +1496,7 @@ void main() {
     () async {
       final container = ProviderContainer(
         overrides: [
+          apiClientProvider.overrideWithValue(_api()),
           departmentRepositoryProvider.overrideWithValue(
             _FakeDepartmentRepository(),
           ),
@@ -1521,14 +1524,60 @@ void main() {
     (tester) async {
       await setUtenTestSurfaceSize(tester, const Size(1200, 900));
       addTearDown(() => setUtenTestSurfaceSize(tester, null));
-      final api = _api();
-      final employees = _FakeEmployeeRepository();
+      final workerRequests = <RequestOptions>[];
+      final api = _api(
+        responseOverride: (request) {
+          if (request.path == ApiEndpoints.employeeReferenceDepartments) {
+            return [
+              {
+                'id': 'workshop',
+                'code': 'WS_ASSEMBLY',
+                'name': '装配第一车间',
+                'level': '二级班组',
+                'parentId': 'production',
+                'children': <Object>[],
+              },
+            ];
+          }
+          if (request.path == ApiEndpoints.employeeReferences) {
+            workerRequests.add(request);
+            return {
+              'items': [
+                {
+                  'id': 'employee-1',
+                  'code': 'UT001',
+                  'fullName': '张三',
+                  'departmentId': 'workshop',
+                  'departmentName': '装配第一车间',
+                  'status': 'active',
+                  'accountStatus': 'active',
+                },
+                {
+                  'id': 'employee-2',
+                  'code': 'UT002',
+                  'fullName': '李四',
+                  'departmentId': 'workshop',
+                  'departmentName': '装配第一车间',
+                  'status': 'probation',
+                  'accountStatus': 'active',
+                },
+              ],
+              'page': 1,
+              'size': 100,
+              'total': 2,
+              'totalPages': 1,
+            };
+          }
+          return null;
+        },
+      );
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
 
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            apiClientProvider.overrideWithValue(api),
             departmentRepositoryProvider.overrideWithValue(
               _FakeDepartmentRepository(),
             ),
@@ -1539,7 +1588,6 @@ void main() {
             productionDailyReportRepositoryProvider.overrideWithValue(
               ProductionDailyReportRepository(api),
             ),
-            employeeRepositoryProvider.overrideWithValue(employees),
             sharedPreferencesProvider.overrideWithValue(preferences),
             currentPermissionsProvider.overrideWithValue({
               Perm.productionDailyReportCreate,
@@ -1583,8 +1631,15 @@ void main() {
 
       expect(find.text('张三(UT001)'), findsOneWidget);
       expect(find.text('李四(UT002)'), findsOneWidget);
-      expect(employees.lastDepartmentId, 'workshop');
-      expect(employees.lastStatuses, {'active', 'probation'});
+      expect(workerRequests, hasLength(1));
+      final query = workerRequests.single.queryParameters;
+      expect(
+        query['purpose'],
+        EmployeeReferencePurpose.productionReportWorker.apiValue,
+      );
+      expect(query['departmentId'], 'workshop');
+      expect((query['statuses'] as List).toSet(), {'active', 'probation'});
+      expect(query['includeSubtree'], isTrue);
       expect(tester.takeException(), isNull);
     },
   );
@@ -2096,6 +2151,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          apiClientProvider.overrideWithValue(api),
           departmentRepositoryProvider.overrideWithValue(
             _FakeDepartmentRepository(),
           ),
@@ -3213,7 +3269,18 @@ ApiClient _api({
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
   dio.interceptors.add(
     InterceptorsWrapper(
-      onRequest: (request, handler) {
+      onRequest: (request, handler) async {
+        if (request.path.endsWith(ApiEndpoints.businessReferenceDepartments)) {
+          final tree = await _FakeDepartmentRepository().tree();
+          handler.resolve(
+            Response(
+              requestOptions: request,
+              statusCode: 200,
+              data: [for (final node in tree) _departmentReferenceJson(node)],
+            ),
+          );
+          return;
+        }
         if (request.path.endsWith('/preview-report')) {
           handler.resolve(
             Response(
@@ -3302,6 +3369,17 @@ ApiClient _api({
   );
   return ApiClient(dio);
 }
+
+Map<String, dynamic> _departmentReferenceJson(DepartmentNode node) => {
+  'id': node.id,
+  'code': node.code,
+  'name': node.name,
+  'level': node.level,
+  'parentId': node.parentId,
+  'children': [
+    for (final child in node.children) _departmentReferenceJson(child),
+  ],
+};
 
 class _FakeDepartmentRepository implements DepartmentRepository {
   @override

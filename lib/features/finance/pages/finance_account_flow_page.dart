@@ -342,11 +342,12 @@ class _FinanceAccountFlowPageState
   bool get _canReadAccounts {
     final permissions = ref.watch(currentPermissionsProvider);
     return const {
-      Perm.accountView,
-      Perm.accountBalanceView,
-      Perm.accountFlowView,
-      Perm.financeViewAll,
-    }.every(permissions.contains);
+          Perm.accountView,
+          Perm.accountBalanceView,
+          Perm.accountFlowView,
+        }.every(permissions.contains) &&
+        (_view == _FlowView.statement ||
+            permissions.contains(Perm.financeViewAll));
   }
 
   String get _exportReport => _endpoint.replaceFirst('/finance/reports/', '');

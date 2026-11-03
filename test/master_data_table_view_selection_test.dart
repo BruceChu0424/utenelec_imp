@@ -9,6 +9,7 @@
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/data_display/uten_selection_summary_pill.dart';
@@ -19,6 +20,7 @@ import 'package:uten_imp/core/ui/capsule_nav_metrics.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
 import 'support/audit_screenshot_support.dart';
+import 'support/uten_test_actions.dart';
 
 class _Row {
   const _Row(this.id);
@@ -143,7 +145,24 @@ void main() {
           matching: find.byType(Scrollable),
         );
         final height = tester.getRect(action).height;
-        expect(height, greaterThan(200));
+        final captionFinder = find.descendant(
+          of: action,
+          matching: find.text(caption),
+        );
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.descendant(of: captionFinder, matching: find.byType(RichText)),
+        );
+        expect(paragraph.didExceedMaxLines, isFalse);
+        final captionRect = tester.getRect(captionFinder);
+        expect(captionRect.height, greaterThan(48));
+        expect(
+          tester.getRect(action).inflate(0.5).contains(captionRect.topLeft),
+          isTrue,
+        );
+        expect(
+          tester.getRect(action).inflate(0.5).contains(captionRect.bottomRight),
+          isTrue,
+        );
         expect(
           tester.getRect(scroll).height,
           greaterThanOrEqualTo(height),
@@ -360,6 +379,7 @@ void main() {
           }
         });
         final calls = <int>[];
+        const longCaption = '确认更正 128 人 256 处员工证件信息并提交';
         await tester.pumpWidget(
           MaterialApp(
             theme: auditScreenshotTheme(
@@ -408,9 +428,7 @@ void main() {
                             size: UtenButtonSize.large,
                             icon: i == 2 ? Icons.fact_check_outlined : null,
                             onPressed: () => calls.add(i),
-                            child: Text(
-                              i == 2 ? '确认更正 128 人 256 处员工证件信息并提交' : '办理操作 $i',
-                            ),
+                            child: Text(i == 2 ? longCaption : '办理操作 $i'),
                           ),
                       ],
                     ),
@@ -447,67 +465,72 @@ void main() {
         await tester.tap(field);
         await tester.pumpAndSettle();
         expect(focus['c']!.hasFocus, isTrue);
+        await tester.enterText(field, '保留草稿c');
         focus['c']!.unfocus();
         await tester.pumpAndSettle();
-        final actionScroll = find.descendant(
-          of: find.byType(UtenFloatingActionGroup),
-          matching: find.byType(Scrollable),
-        );
-        expect(actionScroll, findsOneWidget);
-        final scrollbar = tester.widget<Scrollbar>(
-          find.descendant(
-            of: find.byType(UtenFloatingActionGroup),
-            matching: find.byType(Scrollbar),
-          ),
-        );
-        expect(scrollbar.thumbVisibility, isTrue);
-        expect(
-          tester.state<ScrollableState>(actionScroll).position.maxScrollExtent,
-          greaterThan(0),
-        );
-        var drags = 0;
+        expect(find.byTooltip('其他操作'), findsOneWidget);
         for (var i = 0; i < 6; i++) {
           final action = find.byKey(ValueKey('short-action-$i'));
-          for (var attempt = 0; attempt < 4; attempt++) {
-            final viewport = tester.getRect(actionScroll);
-            final target = tester.getRect(action);
-            if (action.hitTestable().evaluate().isNotEmpty &&
-                target.top >= viewport.top - 0.5 &&
-                target.bottom <= viewport.bottom + 0.5) {
+          expect(
+            await showOptionalUtenTestAction(tester, action, menuLabel: '其他操作'),
+            isTrue,
+          );
+          final popup = find.byKey(const ValueKey('uten-anchored-popup'));
+          // OverlayPortal content retains the table's element ancestry.
+          // ensureVisible would scroll that underlying table as well as the
+          // menu. Use the user's ordinary gesture inside the actual popup.
+          for (var attempt = 0; attempt < 8; attempt++) {
+            if (popup.evaluate().isEmpty) {
               break;
             }
-            final direction = target.center.dy > viewport.center.dy
-                ? -1.0
-                : 1.0;
-            final gesture = await tester.startGesture(viewport.center);
-            await gesture.moveBy(Offset(0, direction * 24));
-            await tester.pump();
-            await gesture.moveBy(
-              Offset(0, viewport.center.dy - tester.getRect(action).center.dy),
+            final visible = tester.getRect(popup).deflate(12);
+            final button = tester.getRect(action);
+            if (button.top >= visible.top &&
+                button.bottom <= visible.bottom &&
+                action.hitTestable().evaluate().isNotEmpty) {
+              break;
+            }
+            expect(visible.height, greaterThanOrEqualTo(button.height));
+            final delta = button.top < visible.top
+                ? visible.top - button.top
+                : visible.bottom - button.bottom;
+            final distance = delta.abs().clamp(28.0, visible.height * 0.8);
+            await tester.dragFrom(
+              visible.center,
+              Offset(0, delta.sign * distance),
             );
-            await tester.pump(const Duration(milliseconds: 200));
-            await gesture.up();
             await tester.pumpAndSettle();
-            drags++;
           }
           expect(action.hitTestable(), findsOneWidget);
           final rect = tester.getRect(action);
-          if (i == 2 && scenario.scale > 1) {
-            expect(rect.height, greaterThan(48 * scenario.scale + 8));
+          if (popup.evaluate().isNotEmpty) {
+            final visible = tester.getRect(popup).deflate(12);
+            expect(rect.top, greaterThanOrEqualTo(visible.top - 0.5));
+            expect(rect.bottom, lessThanOrEqualTo(visible.bottom + 0.5));
           }
-          final actionViewport = tester.getRect(actionScroll);
-          expect(rect.top, greaterThanOrEqualTo(actionViewport.top - 0.5));
-          expect(rect.bottom, lessThanOrEqualTo(actionViewport.bottom + 0.5));
-          expect(rect.top, greaterThanOrEqualTo(stage.top));
-          expect(
-            rect.bottom,
-            lessThanOrEqualTo(stage.bottom - scenario.occlusion),
-          );
+          if (i == 2 && scenario.scale > 1) {
+            final caption = find.descendant(
+              of: action,
+              matching: find.text(longCaption),
+            );
+            expect(caption, findsOneWidget);
+            final paragraph = tester.renderObject<RenderParagraph>(
+              find.descendant(of: caption, matching: find.byType(RichText)),
+            );
+            expect(paragraph.text.toPlainText(), longCaption);
+            expect(paragraph.didExceedMaxLines, isFalse);
+            expect(
+              paragraph.textScaler.scale(10),
+              closeTo(10 * scenario.scale, 0.01),
+            );
+          }
+          expect(rect.top, greaterThanOrEqualTo(0));
+          expect(rect.bottom, lessThanOrEqualTo(480 - scenario.occlusion));
           await tester.tap(action);
           await tester.pumpAndSettle();
+          expect(controllers['c']!.text, '保留草稿c');
           expectRowClear();
         }
-        expect(drags, greaterThan(0));
         expect(calls, [0, 1, 2, 3, 4, 5]);
         expect(tester.takeException(), isNull);
       },

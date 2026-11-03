@@ -11,6 +11,7 @@ import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/product_category_repository.dart';
+import 'package:uten_imp/features/basic_data/repositories/business_reference_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
 import 'package:uten_imp/features/sales/pages/sales_scarcity_page.dart';
@@ -141,8 +142,12 @@ void main() {
               SalesMasterNameService(api),
             ),
             salesRepositoryProvider.overrideWith((ref, type) => repository),
-            productCategoryRepositoryProvider.overrideWithValue(_Categories()),
-            goodsRepositoryProvider.overrideWithValue(_Goods()),
+            businessGoodsCategoryRepositoryProvider.overrideWithValue(
+              _Categories(),
+            ),
+            businessGoodsReferenceRepositoryProvider.overrideWithValue(
+              _Goods(),
+            ),
           ],
           child: const MaterialApp(
             localizationsDelegates: AppLocalizations.localizationsDelegates,

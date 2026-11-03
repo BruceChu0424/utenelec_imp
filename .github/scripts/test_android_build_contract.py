@@ -2,6 +2,7 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 import unittest
 import xml.etree.ElementTree as ET
 
@@ -12,6 +13,28 @@ TOOLS = "{http://schemas.android.com/tools}"
 
 
 class AndroidBuildContractTest(unittest.TestCase):
+    def test_ci_uses_in_process_kotlin_without_changing_local_defaults_or_diagnostics(self):
+        workflow = (ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
+        job = re.search(r"(?ms)^  native-android:\n(.*?)(?=^  [\w-]+:\n|\Z)", workflow)
+        self.assertIsNotNone(job)
+        compile_step = re.search(
+            r"(?ms)^      - name: Compile Android application and native package installer bridge\n"
+            r"(.*?)(?=^      - |\Z)", job.group(1)
+        )
+        self.assertIsNotNone(compile_step)
+        property_name = "kotlin.compiler.execution.strategy"
+        transport = f"ORG_GRADLE_PROJECT_{property_name}: in-process"
+        self.assertEqual(1, workflow.count(transport))
+        self.assertIn("          " + transport, compile_step.group(1))
+        for relative in (
+            "android/gradle.properties", "android/settings.gradle.kts",
+            "android/build.gradle.kts", "android/app/build.gradle.kts",
+        ):
+            self.assertNotIn(property_name, (ROOT / relative).read_text(encoding="utf-8"))
+        self.assertIn("set -euo pipefail", compile_step.group(1))
+        self.assertIn('python3 deploy/client/check_android_build_log.py "$RUNNER_TEMP/android-build.log"', compile_step.group(1))
+        self.assertNotIn("continue-on-error:", job.group(1))
+
     def test_development_overlays_explicitly_override_cleartext_without_weakening_release(self):
         base = ET.parse(ROOT / "android/app/src/main/AndroidManifest.xml").getroot().find("application")
         self.assertEqual("false", base.get(ANDROID + "usesCleartextTraffic"))

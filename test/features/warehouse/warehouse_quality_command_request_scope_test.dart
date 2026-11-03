@@ -398,6 +398,19 @@ class _Wire implements HttpClientAdapter {
           },
         ],
       };
+    } else if (path == '/org/employee-references/by-ids') {
+      value = [
+        {
+          'id': 'employee',
+          'code': 'E1',
+          'fullName': '仓管',
+          'departmentId': 'warehouse-department',
+          'departmentName': '仓库',
+          'positionName': '仓管员',
+          'status': 'active',
+          'accountStatus': 'active',
+        },
+      ];
     } else if (path.endsWith('/employee')) {
       value = {'id': 'employee', 'name': '仓管', 'code': 'E1'};
     }
@@ -739,7 +752,11 @@ void main() {
             ),
           );
           if (change) {
-            expect(env.wire.reads, hasLength(readCount));
+            expect(
+              env.wire.reads,
+              hasLength(readCount),
+              reason: env.wire.reads.map((request) => request.path).join('\n'),
+            );
           } else if (action != _Action.sales && action != _Action.salesBatch) {
             expect(jsonEncode(env.wire.mutations.last.data), originalBody);
             expect(

@@ -199,6 +199,8 @@ class StepUpPromptHost extends ConsumerStatefulWidget {
 class _StepUpPromptHostState extends ConsumerState<StepUpPromptHost> {
   void Function()? _unregister;
   Timer? _activityTimer;
+  ProviderSubscription<ApiClient>? _apiGuard;
+  int _pendingPrompts = 0;
 
   @override
   void initState() {
@@ -206,10 +208,10 @@ class _StepUpPromptHostState extends ConsumerState<StepUpPromptHost> {
     _unregister = StepUpCoordinator.instance.register(_prompt);
     UserActivity.addListener(_recordActivity);
     ref.listenManual(authenticatedScopeProvider, (previous, next) {
-      if (previous != next) StepUpCoordinator.instance.clear();
-    });
-    ref.listenManual(apiClientProvider, (previous, next) {
-      if (!identical(previous, next)) StepUpCoordinator.instance.clear();
+      if (previous != next) {
+        StepUpCoordinator.instance.clear();
+        _releaseIdleApiGuard();
+      }
     });
     _activityTimer = Timer.periodic(
       const Duration(seconds: 15),
@@ -220,14 +222,39 @@ class _StepUpPromptHostState extends ConsumerState<StepUpPromptHost> {
   @override
   void dispose() {
     _activityTimer?.cancel();
+    _apiGuard?.close();
     UserActivity.removeListener(_recordActivity);
     _unregister?.call();
     super.dispose();
   }
 
-  void _recordActivity() => StepUpCoordinator.instance.recordActivity();
+  void _recordActivity() {
+    StepUpCoordinator.instance.recordActivity();
+    _releaseIdleApiGuard();
+  }
+
+  void _ensureApiGuard() {
+    _apiGuard ??= ref.listenManual(apiClientProvider, (previous, next) {
+      if (!identical(previous, next)) StepUpCoordinator.instance.clear();
+    });
+  }
+
+  void _releaseIdleApiGuard() {
+    if (_pendingPrompts != 0 ||
+        StepUpCoordinator.instance.cachedToken != null) {
+      return;
+    }
+    _apiGuard?.close();
+    _apiGuard = null;
+  }
 
   Future<void> _keepAlive() async {
+    // An offline/login host must not construct the business API just to find
+    // out that no server-confirmed step-up credential needs activity renewal.
+    if (StepUpCoordinator.instance.cachedToken == null) {
+      _releaseIdleApiGuard();
+      return;
+    }
     final scope = ref.read(authenticatedScopeProvider);
     if (scope == null || scope.actorId != null) return;
     final repository = ref.read(stepUpRepositoryProvider);
@@ -247,21 +274,36 @@ class _StepUpPromptHostState extends ConsumerState<StepUpPromptHost> {
     final hostContext =
         (widget.navigatorContext ?? () => appNavigatorKey.currentContext)();
     if (hostContext == null || !hostContext.mounted) return null;
-    final scope = ref.read(authenticatedScopeProvider);
-    final api = ref.read(apiClientProvider);
-    final repository = ref.read(stepUpRepositoryProvider);
-    return showReauthDialog(
-      hostContext,
-      verify: (password) async {
-        final token = await repository.verify(password);
-        if (!mounted ||
-            ref.read(authenticatedScopeProvider) != scope ||
-            !identical(ref.read(apiClientProvider), api)) {
-          throw ApiException('SESSION_CHANGED', '登录身份或服务器已变化，请重新确认');
-        }
-        return token;
-      },
-    );
+    _pendingPrompts++;
+    String? result;
+    try {
+      // Watch API replacement only while a prompt or reusable credential owns
+      // it. Cold recovery windows have their own independent control plane.
+      _ensureApiGuard();
+      final scope = ref.read(authenticatedScopeProvider);
+      final api = ref.read(apiClientProvider);
+      final repository = ref.read(stepUpRepositoryProvider);
+      result = await showReauthDialog(
+        hostContext,
+        verify: (password) async {
+          final token = await repository.verify(password);
+          if (!mounted ||
+              ref.read(authenticatedScopeProvider) != scope ||
+              !identical(ref.read(apiClientProvider), api)) {
+            throw ApiException('SESSION_CHANGED', '登录身份或服务器已变化，请重新确认');
+          }
+          return token;
+        },
+      );
+      return result;
+    } finally {
+      _pendingPrompts--;
+      // A successful result is accepted by the coordinator after this future
+      // completes; retain its guard until cancellation, invalidation or expiry.
+      if (mounted && (result == null || result.isEmpty)) {
+        _releaseIdleApiGuard();
+      }
+    }
   }
 
   @override

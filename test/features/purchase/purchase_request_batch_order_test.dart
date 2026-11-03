@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/purchase/models/purchase_doc.dart';
 import 'package:uten_imp/features/purchase/pages/purchase_doc_detail_page.dart';
@@ -378,7 +379,7 @@ class _RequestApi extends ApiClient {
         {'id': 'piece', 'name': '件'},
       ];
     }
-    if (path.endsWith('/warehouses/dict')) {
+    if (path == ApiEndpoints.businessReferenceWarehouses) {
       return [
         {'id': 'main', 'name': '主仓库'},
         {

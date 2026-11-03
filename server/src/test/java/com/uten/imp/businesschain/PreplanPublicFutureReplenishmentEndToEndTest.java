@@ -50,7 +50,7 @@ class PreplanPublicFutureReplenishmentEndToEndTest {
         fixture.insertBom(productA,goods,"1");fixture.insertBom(productB,goods,"1");
         db.update("UPDATE goods SET default_supplier_id=? WHERE id=?",w.supplierId(),goods);
         LocalDate need=BusinessTime.today().plusDays(10),eta=BusinessTime.today().plusDays(late?20:5);
-        AnalysisView a=preview(w,w.warehouseId(),productA,goods,"A","100",need);
+        AnalysisView a=preview(w,w.warehouseId(),productA,"A","100",need);
         MaterialView am=material(a,goods);
         commands.notifySupply(a.analysisId(),new NotifyRequest(a.version(),a.fingerprint(),"public-source-"+a.analysisId(),
                 "BUY",List.of(am.materialLineId()),List.of(),List.of(new SupplyQuantityInput(null,am.materialLineId(),new BigDecimal("100"),BigDecimal.ZERO))));
@@ -60,7 +60,7 @@ class PreplanPublicFutureReplenishmentEndToEndTest {
         PendingReceipt pending=claimAfterReceipt?receiveToInspection(w,sourceOrder,goods):null;
         qty("100",db.queryForObject("SELECT requested_qty FROM preplan_supply_actions WHERE id=?",BigDecimal.class,sourceAction));
         qty("900",db.queryForObject("SELECT available_to_claim_qty FROM v_preplan_public_surplus_source_state WHERE source_action_id=?",BigDecimal.class,sourceAction));
-        AnalysisView b=preview(w,main,productB,goods,"B","1000",need);MaterialView bm=material(b,goods);
+        AnalysisView b=preview(w,main,productB,"B","1000",need);MaterialView bm=material(b,goods);
         qty(late?"0":"900",bm.publicSurplusRemainingQty());qty(late?"900":"0",bm.lateSharedFutureAvailableQty());
         final UUID beforeReceiver=b.analysisId();
         var excessive=new ClaimSharedFutureRequest(b.version(),b.fingerprint(),"claim-public-too-large-"+beforeReceiver,
@@ -132,13 +132,13 @@ class PreplanPublicFutureReplenishmentEndToEndTest {
         qty("100",material(b,goods).additionalSupplyRecommendedQty());qty("1000",material(b,goods).shortageQty());
         qty("0",db.queryForObject("SELECT available_to_claim_qty FROM v_preplan_public_surplus_source_state WHERE source_action_id=?",BigDecimal.class,sourceAction));
         assertEquals(need,db.queryForObject("SELECT delivery_date FROM production_material_analysis_items WHERE id=?",LocalDate.class,b.products().getFirst().analysisLineId()));
-        var c=preview(w,main,productB,goods,"C","10",need);var cm=material(c,goods);
+        var c=preview(w,main,productB,"C","10",need);var cm=material(c,goods);
         assertThrows(ApiException.class,()->commands.claimSharedFuture(c.analysisId(),new ClaimSharedFutureRequest(c.version(),c.fingerprint(),"claim-public-unavailable-"+c.analysisId(),
                 List.of(cm.actionGroupKey()),List.of(new SharedFutureClaimQuantity(cm.actionGroupKey(),BigDecimal.TEN,sourceAction)),late)));
         if(claimAfterReceipt) {
             // A later claim on a different source must not lose its own public
             // interval to the earlier 400+500 claims on the first source.
-            var d=preview(w,w.warehouseId(),productA,goods,"D","10",need);var dm=material(d,goods);
+            var d=preview(w,w.warehouseId(),productA,"D","10",need);var dm=material(d,goods);
             commands.notifySupply(d.analysisId(),new NotifyRequest(d.version(),d.fingerprint(),"independent-public-source-"+d.analysisId(),
                     "BUY",List.of(dm.materialLineId()),List.of(),List.of(new SupplyQuantityInput(null,dm.materialLineId(),BigDecimal.TEN,BigDecimal.ZERO))));
             var ds=db.queryForMap("SELECT action.id,allocation.external_item_id FROM preplan_supply_actions action JOIN preplan_supply_action_allocations allocation ON allocation.action_id=action.id WHERE action.analysis_id=?",d.analysisId());
@@ -213,7 +213,7 @@ class PreplanPublicFutureReplenishmentEndToEndTest {
                 WHERE goods_id=? AND NOT is_deleted AND status=0
                 """, BigDecimal.class, goods));
     }
-    private AnalysisView preview(FullChainEndToEndTest.World w,UUID warehouse,UUID product,UUID goods,String label,String amount,LocalDate need) {
+    private AnalysisView preview(FullChainEndToEndTest.World w,UUID warehouse,UUID product,String label,String amount,LocalDate need) {
         fixture.loginAs(w.superAdminUserId());
         var view=analyses.preview(new PreviewRequest(null,null,null,warehouse,"public-preview-"+product+label,
                 List.of(new PreviewItem("OTHER",null,product,null,w.unitId(),"public-source-"+product+label,"公共在途认领",need,new BigDecimal(amount)))));

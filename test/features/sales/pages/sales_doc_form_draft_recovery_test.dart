@@ -28,6 +28,7 @@ import 'package:uten_imp/shared/attachments/attachment.dart';
 import 'package:uten_imp/shared/attachments/attachment_service.dart';
 import 'package:uten_imp/shared/widgets/saved_document_fields.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
 import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
 import 'package:uten_imp/shared/drafts/form_draft_store.dart';
@@ -38,6 +39,9 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../../shared/drafts/memory_form_draft_storage.dart';
 import '../../../support/uten_test_actions.dart';
+import '../../../support/owned_provider_widget_tests.dart';
+
+final _providerTests = OwnedProviderWidgetTests();
 
 final _canViewPricesProvider = StateProvider<bool>((ref) => true);
 
@@ -52,7 +56,7 @@ Finder _orderDraftStageSegment() => find.descendant(
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
-  testWidgets(
+  _providerTests.testWidgets(
     'sales selection performs no quantity scans while real edits still update totals',
     (tester) async {
       final env = await _pump(tester, MemoryFormDraftStorage());
@@ -79,11 +83,11 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       env.router.dispose();
-      env.container.dispose();
+      _providerTests.disposeContainer(env.container);
     },
   );
 
-  testWidgets('价格撤权立即遮住已恢复的价格、固定列和合计，保留完整草稿', (tester) async {
+  _providerTests.testWidgets('价格撤权立即遮住已恢复的价格、固定列和合计，保留完整草稿', (tester) async {
     final storage = MemoryFormDraftStorage();
     final env = await _pump(tester, storage);
     await _seedPartialOrder(tester, qty: '2');
@@ -125,7 +129,7 @@ void main() {
     expect(env.api.writes, 0);
     await tester.pumpWidget(const SizedBox());
     env.router.dispose();
-    env.container.dispose();
+    _providerTests.disposeContainer(env.container);
     final reopened = await _pump(
       tester,
       storage,
@@ -154,10 +158,10 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     reopened.router.dispose();
-    reopened.container.dispose();
+    _providerTests.disposeContainer(reopened.container);
   });
 
-  testWidgets('销售草稿重开显现已填可选列并向既有API保留精确业务字段', (tester) async {
+  _providerTests.testWidgets('销售草稿重开显现已填可选列并向既有API保留精确业务字段', (tester) async {
     final storage = MemoryFormDraftStorage();
     var env = await _pump(tester, storage);
     await _seedPartialOrder(tester, qty: '2.5000');
@@ -191,7 +195,7 @@ void main() {
     final draft = env.container.read(formDraftsProvider).single;
     await tester.pumpWidget(const SizedBox());
     env.router.dispose();
-    env.container.dispose();
+    _providerTests.disposeContainer(env.container);
     final api = _Api(allowCreate: true);
     env = await _pump(
       tester,
@@ -252,9 +256,9 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     env.router.dispose();
-    env.container.dispose();
+    _providerTests.disposeContainer(env.container);
   });
-  testWidgets(
+  _providerTests.testWidgets(
     'sales progress draft category remains usable when formal list is offline',
     (tester) async {
       final storage = MemoryFormDraftStorage();
@@ -263,7 +267,7 @@ void main() {
       final draft = env.container.read(formDraftsProvider).single;
       await tester.pumpWidget(const SizedBox());
       env.router.dispose();
-      env.container.dispose();
+      _providerTests.disposeContainer(env.container);
       final api = _Api(allowCreate: true, formalDrafts: 2, failProgress: true);
       env = await _pump(
         tester,
@@ -298,7 +302,11 @@ void main() {
       );
       // The paginated source retains its failure for retry while unpaged
       // local rows remain rendered and recoverable above it.
-      expect(table.error, contains('simulated offline formal list'));
+      expect(table.error, '销售进度加载失败，请稍后重试');
+      expect(
+        find.textContaining('simulated offline formal list'),
+        findsNothing,
+      );
       expect(table.isLoading, false);
       table.onRowTap!(local);
       await tester.pumpAndSettle();
@@ -307,11 +315,11 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       env.router.dispose();
-      env.container.dispose();
+      _providerTests.disposeContainer(env.container);
     },
   );
   for (final deleteLocal in [false, true]) {
-    testWidgets(
+    _providerTests.testWidgets(
       'task center order draft category merges local row; delete=$deleteLocal',
       (tester) async {
         final storage = MemoryFormDraftStorage();
@@ -320,7 +328,7 @@ void main() {
         final draft = env.container.read(formDraftsProvider).single;
         await tester.pumpWidget(const SizedBox());
         env.router.dispose();
-        env.container.dispose();
+        _providerTests.disposeContainer(env.container);
         final api = _Api(allowCreate: true, formalDrafts: 2);
         env = await _pump(
           tester,
@@ -388,12 +396,12 @@ void main() {
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
         env.router.dispose();
-        env.container.dispose();
+        _providerTests.disposeContainer(env.container);
       },
     );
   }
   for (final rejectCreatedCheckpoint in [false, true]) {
-    testWidgets(
+    _providerTests.testWidgets(
       'restored partial order saves after editing; local checkpoint failure=$rejectCreatedCheckpoint',
       (tester) async {
         final storage = _CreatedCheckpointStorage();
@@ -402,7 +410,7 @@ void main() {
         final draft = env.container.read(formDraftsProvider).single;
         await tester.pumpWidget(const SizedBox());
         env.router.dispose();
-        env.container.dispose();
+        _providerTests.disposeContainer(env.container);
         final api = _Api(allowCreate: true);
         env = await _pump(
           tester,
@@ -434,12 +442,12 @@ void main() {
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
         env.router.dispose();
-        env.container.dispose();
+        _providerTests.disposeContainer(env.container);
       },
     );
   }
 
-  testWidgets(
+  _providerTests.testWidgets(
     'known-created recovered order with no files continues without upload warning or duplicate create',
     (tester) async {
       final storage = MemoryFormDraftStorage();
@@ -448,7 +456,7 @@ void main() {
       final draft = env.container.read(formDraftsProvider).single;
       await tester.pumpWidget(const SizedBox());
       env.router.dispose();
-      env.container.dispose();
+      _providerTests.disposeContainer(env.container);
       final api = _Api(allowCreate: true);
       env = await _pump(
         tester,
@@ -473,11 +481,11 @@ void main() {
       expect(env.container.read(formDraftsProvider), isEmpty);
       await tester.pumpWidget(const SizedBox());
       env.router.dispose();
-      env.container.dispose();
+      _providerTests.disposeContainer(env.container);
     },
   );
 
-  testWidgets(
+  _providerTests.testWidgets(
     'real attachment failure restores and retries upload without creating a second order',
     (tester) async {
       final storage = MemoryFormDraftStorage();
@@ -512,7 +520,7 @@ void main() {
       expect(draft.data['createdDocId'], 'created-order');
       await tester.pumpWidget(const SizedBox());
       env.router.dispose();
-      env.container.dispose();
+      _providerTests.disposeContainer(env.container);
       env = await _pump(
         tester,
         storage,
@@ -529,11 +537,11 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       env.router.dispose();
-      env.container.dispose();
+      _providerTests.disposeContainer(env.container);
     },
   );
 
-  testWidgets(
+  _providerTests.testWidgets(
     'new sales order restores incomplete rows, selection and file bytes after hard close',
     (tester) async {
       await setUtenTestSurfaceSize(tester, const Size(1600, 1400));
@@ -584,7 +592,7 @@ void main() {
 
       await tester.pumpWidget(const SizedBox());
       env.router.dispose();
-      env.container.dispose();
+      _providerTests.disposeContainer(env.container);
       env = await _pump(tester, storage, location: draft.resumeLocation);
       final recovered = tester
           .widget<UtenEditableGrid<SalesGridRow>>(
@@ -616,7 +624,7 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       env.router.dispose();
-      env.container.dispose();
+      _providerTests.disposeContainer(env.container);
     },
   );
 }
@@ -660,6 +668,7 @@ Future<({ProviderContainer container, GoRouter router, _Api api})> _pump(
       sessionProvider.overrideWith(_Session.new),
     ],
   );
+  _providerTests.own(container);
   final router = GoRouter(
     initialLocation: location,
     routes: [
@@ -720,14 +729,12 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path == '/sales/orders/progress/stage-counts') {
-      return {'TASK_DRAFT': formalDrafts, 'DRAFT': formalDrafts};
-    }
     if (path == '/sales/orders/progress') {
       if (failProgress) throw StateError('simulated offline formal list');
+      final stageCount = query?['stage'] == 'DRAFT' ? formalDrafts : 0;
       return {
         'items': [
-          for (var index = 1; index <= formalDrafts; index++)
+          for (var index = 1; index <= stageCount; index++)
             {
               'orderId': 'formal-$index',
               'billNo': 'SO-$index',
@@ -736,13 +743,16 @@ class _Api extends ApiClient {
         ],
         'page': 1,
         'size': 40,
-        'total': formalDrafts,
-        'totalPages': 1,
+        'total': stageCount,
+        'totalPages': stageCount > 0 ? 1 : 0,
       };
     }
     if (path == '/workbench/badges') {
       return {
-        'facts': {'drafts.salesOrder': formalDrafts},
+        'facts': {
+          'drafts.salesOrder': formalDrafts,
+          BadgeFact.salesStage('DRAFT'): formalDrafts,
+        },
       };
     }
     return const {

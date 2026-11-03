@@ -30,8 +30,12 @@ void main() {
       greaterThan(tester.getTopLeft(parent).dy),
     );
     expect(
-      find.byKey(const ValueKey('material-route-dropdown-child-material')),
+      find.byKey(const ValueKey('material-route-readonly-child-material')),
       findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey('material-route-dropdown-child-material')),
+      findsNothing,
     );
 
     final search = find.descendant(

@@ -563,7 +563,7 @@ void main() {
     expect(repository.decideBatchCalls, hasLength(1));
     expect(find.byKey(const Key('iqc-item-table-receipt-1')), findsOneWidget);
     expect(find.text('测试物料B'), findsOneWidget);
-    expect(find.text('CJ20260822000001'), findsOneWidget);
+    expect(find.text('检验处置 · CJ20260822000001'), findsOneWidget);
   });
 
   testWidgets(

@@ -300,6 +300,7 @@ class _InboundArrivalRegistrationPageState
   InboundRoute _activeRoute = InboundRoute.inspectFirst;
 
   bool get _canRegisterNow {
+    if (!formDraftIdentityIsCurrent) return false;
     final override = widget.canRegister;
     if (override != null) return override;
     if (ref.read(isSuperAdminProvider)) return true;
@@ -805,7 +806,7 @@ class _InboundArrivalRegistrationPageState
   );
 
   Future<void> _save(InboundRoute route) async {
-    if (_saving || _preparingSubmission) return;
+    if (_saving || _preparingSubmission || !formDraftIdentityIsCurrent) return;
     final selectedLines = List<_BatchArrivalLine>.of(_lineGrid.selectedRows);
     final scopeFuture = captureFormDraftRequestScope();
     setState(() => _preparingSubmission = true);
@@ -814,7 +815,11 @@ class _InboundArrivalRegistrationPageState
       await requestScope.run(
         () => _saveWithScope(route, requestScope, selectedLines),
       );
+      requestScope.checkCurrent();
     } catch (error) {
+      if (error is ApiException && error.code == 'SESSION_CHANGED') {
+        invalidateFormDraftIdentity();
+      }
       if (mounted) context.appError(arrivalRegistrationFailureReason(error));
     } finally {
       if (mounted) setState(() => _preparingSubmission = false);
@@ -1210,7 +1215,7 @@ class _InboundArrivalRegistrationPageState
     ref.watch(authenticatedScopeProvider);
     ref.watch(isSuperAdminProvider);
     final theme = Theme.of(context);
-    final canRegister = widget.canRegister ?? _canRegisterNow;
+    final canRegister = _canRegisterNow;
     return withFormDraft(
       Scaffold(
         appBar: UtenAppBar(

@@ -63,6 +63,7 @@ void prepareProductionWorkshopPages(
   BuildContext context, {
   String keyword = '',
   String? workshopDepartmentId,
+  String? activeStatus,
   bool Function()? canPrepare,
 }) {
   if (!ref
@@ -74,19 +75,28 @@ void prepareProductionWorkshopPages(
   ref
       .watch(_productionPagePreparationProvider)
       .prepare(
-        ['workshop', repository, keyword.trim(), workshopDepartmentId],
+        [
+          'workshop',
+          repository,
+          keyword.trim(),
+          workshopDepartmentId,
+          activeStatus,
+        ],
         [
           for (final status in const [
             'PREPARING',
             'IN_PROGRESS',
             'REPORT_INSPECTION',
           ])
-            () => repository.prepareWorkshopTasks(
-              status: status,
-              keyword: keyword,
-              workshopDepartmentId: workshopDepartmentId,
-              preparedRead: ref.read(productionWorkshopPreparedPageProvider),
-            ),
+            // The visible queue owns its authoritative refresh, including a
+            // return after a write. Preparing it first would issue two reads.
+            if (status != activeStatus)
+              () => repository.prepareWorkshopTasks(
+                status: status,
+                keyword: keyword,
+                workshopDepartmentId: workshopDepartmentId,
+                preparedRead: ref.read(productionWorkshopPreparedPageProvider),
+              ),
         ],
         canPrepare: () => _active(context) && (canPrepare?.call() ?? true),
       );

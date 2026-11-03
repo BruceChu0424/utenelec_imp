@@ -166,10 +166,19 @@ void main() {
         table.items.single.workStatus,
         WarehouseQualityWorkStatus.waitingInspection,
       );
-      expect(gateway.lastReceiptType, WarehouseIqcStockInReceiptType.purchase);
       expect(
-        gateway.lastWorkStatus,
-        WarehouseQualityWorkStatus.waitingInspection,
+        gateway.queries
+            .where(
+              (query) =>
+                  query.receiptType ==
+                      WarehouseIqcStockInReceiptType.purchase &&
+                  query.workStatus ==
+                      WarehouseQualityWorkStatus.waitingInspection,
+            )
+            .map((query) => query.page),
+        [1],
+        reason:
+            'The visible receipt/status query is independent of authorized status preloads.',
       );
       expect(find.text('采购 · 等待检查结果'), findsWidgets);
       expect(find.text('等待结果'), findsWidgets);
@@ -204,8 +213,14 @@ Widget _qualityApp(
 }
 
 class _QualityGateway implements WarehouseQualityResultGateway {
-  WarehouseIqcStockInReceiptType? lastReceiptType;
-  WarehouseQualityWorkStatus? lastWorkStatus;
+  final queries =
+      <
+        ({
+          WarehouseIqcStockInReceiptType? receiptType,
+          WarehouseQualityWorkStatus? workStatus,
+          int page,
+        })
+      >[];
   @override
   Future<List<MasterFacetBucket>> billNoFacets({
     WarehouseTaskView view = WarehouseTaskView.active,
@@ -231,8 +246,7 @@ class _QualityGateway implements WarehouseQualityResultGateway {
     String? billNo,
     String? scopeWarehouseId,
   }) async {
-    lastReceiptType = receiptType;
-    lastWorkStatus = workStatus;
+    queries.add((receiptType: receiptType, workStatus: workStatus, page: page));
     return PagedResult(
       items: [WarehouseQualityResultTask.fromJson(_qualitySummaryJson)],
       page: page,

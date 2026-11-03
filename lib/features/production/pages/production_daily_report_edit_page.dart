@@ -3944,6 +3944,12 @@ class _ProductionDailyReportEditPageState
       columnEditingEnabled: editable && (_isCreate || _detailLoaded),
       tableKey: 'production.daily.items',
       controller: _grid,
+      // New-report checkboxes choose which document lines will be saved.
+      // Editing retains the normal temporary copy/delete selection contract.
+      selectedOf: _isCreate ? _grid.isSelected : null,
+      onRowSelect: _isCreate
+          ? (row, selected) => _grid.setSelected([row], selected)
+          : null,
       stickyHeaderPinned: _gridPinned,
       defaultColumnOrderAnchors: const {'destination': 'qty'},
       forceVisibleColumnKeys: {if (showDestinationColumn) 'destination'},

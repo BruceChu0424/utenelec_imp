@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
@@ -36,49 +37,71 @@ void main() {
     tester,
   ) async {
     final repository = _Repository();
+    final router = GoRouter(
+      initialLocation: RouteName.productionWorkshopTasks,
+      routes: [
+        GoRoute(
+          path: RouteName.productionWorkshopTasks,
+          builder: (_, _) => const ProductionWorkshopTasksPage(),
+        ),
+        GoRoute(
+          path: '/other',
+          builder: (_, _) =>
+              const Scaffold(body: Text('another business page')),
+        ),
+      ],
+    );
+    addTearDown(router.dispose);
     final container = await _pump(
       tester,
       repository,
       const ProductionWorkshopTasksPage(),
+      router: router,
     );
-    // 分类默认不选：初始不发列表请求，点分类才加载。
-    expect(repository.taskLoads, 0);
+    // Working queues may be prepared without publishing an unselected category.
+    expect(repository.taskLoads, 3);
+    expect(repository.statuses.toSet(), {
+      'PREPARING',
+      'IN_PROGRESS',
+      'REPORT_INSPECTION',
+    });
+    expect(find.text('车间任务 1'), findsNothing);
     // 2026-09-06 改版：「可报工」分类退役，报工归「生产中」。
     await tester.tap(find.text('生产中'));
     await tester.pumpAndSettle();
-    expect(repository.taskLoads, 1);
-    expect(repository.statuses, ['IN_PROGRESS']);
+    expect(
+      repository.taskLoads,
+      3,
+      reason: 'Selecting the prepared queue reuses its first page',
+    );
+    expect(repository.inProgressLoads, 1);
     expect(find.text('车间任务 1'), findsOneWidget);
     container
         .read(listRefreshTickProvider(productionExecutionRefreshKey).notifier)
         .state++;
     await tester.pumpAndSettle();
-    expect(repository.taskLoads, 2);
+    expect(repository.inProgressLoads, 2);
     expect(find.text('车间任务 2'), findsOneWidget);
     // 无本机写入的真实返回也必须重验证，并展示服务器的新一轮结果。
-    container.read(pageResumeProvider.notifier).state = (
-      location: '/other',
-      tick: 1,
-    );
-    container.read(pageResumeProvider.notifier).state = (
-      location: RouteName.productionWorkshopTasks,
-      tick: 2,
-    );
+    unawaited(router.push<void>('/other'));
     await tester.pumpAndSettle();
-    expect(repository.taskLoads, 3);
+    router.pop();
+    await tester.pumpAndSettle();
+    expect(repository.inProgressLoads, 3);
     expect(find.text('车间任务 3'), findsOneWidget);
     // 离开期间有过写操作再返回，也只重拉一次。
-    container.read(pageResumeProvider.notifier).state = (
-      location: '/other',
-      tick: 3,
-    );
-    container.read(dataWriteRevisionProvider.notifier).state++;
-    container.read(pageResumeProvider.notifier).state = (
-      location: RouteName.productionWorkshopTasks,
-      tick: 4,
-    );
+    unawaited(router.push<void>('/other'));
     await tester.pumpAndSettle();
-    expect(repository.taskLoads, 4);
+    container.read(dataWriteRevisionProvider.notifier).state++;
+    await tester.pumpAndSettle();
+    expect(
+      repository.inProgressLoads,
+      3,
+      reason: 'A covered queue cannot prepare a new read',
+    );
+    router.pop();
+    await tester.pumpAndSettle();
+    expect(repository.inProgressLoads, 4);
     expect(find.text('车间任务 4'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -155,8 +178,9 @@ void main() {
 Future<ProviderContainer> _pump(
   WidgetTester tester,
   _Repository repository,
-  Widget home,
-) async {
+  Widget home, {
+  GoRouter? router,
+}) async {
   tester.view.physicalSize = const Size(1400, 900);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -179,15 +203,27 @@ Future<ProviderContainer> _pump(
       productionWorkshopTreeProvider.overrideWith((ref) async => []),
     ],
   );
+  if (router != null) {
+    addTearDown(
+      attachPageResume(router, container.read(pageResumeProvider.notifier)),
+    );
+  }
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp(
-        locale: const Locale('zh'),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: home,
-      ),
+      child: router != null
+          ? MaterialApp.router(
+              locale: const Locale('zh'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              routerConfig: router,
+            )
+          : MaterialApp(
+              locale: const Locale('zh'),
+              localizationsDelegates: AppLocalizations.localizationsDelegates,
+              supportedLocales: AppLocalizations.supportedLocales,
+              home: home,
+            ),
     ),
   );
   await tester.pumpAndSettle();
@@ -205,6 +241,8 @@ class _Repository extends ProductionExecutionWorkbenchRepository {
   int groupLoads = 0;
   Future<void>? groupGate;
   final List<String?> statuses = [];
+  int get inProgressLoads =>
+      statuses.where((status) => status == 'IN_PROGRESS').length;
 
   @override
   Future<PagedResult<ProductionExecutionWorkbenchSegment>> workshopTasks({
@@ -224,13 +262,14 @@ class _Repository extends ProductionExecutionWorkbenchRepository {
   }) async {
     statuses.add(status);
     taskLoads++;
+    final queueRead = statuses.where((value) => value == status).length;
     return PagedResult(
       items: [
         ProductionExecutionWorkbenchSegment.fromJson({
           'segmentId': 'segment',
           'planId': 'plan',
           'planNo': 'SJ-1',
-          'productName': '车间任务 $taskLoads',
+          'productName': '车间任务 $queueRead',
           'segmentStatus': 'WAITING',
           'preparationStatus': 'PREPARING',
           'materialStatus': 'SHORTAGE',

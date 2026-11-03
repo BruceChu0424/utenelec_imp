@@ -293,8 +293,7 @@ class _StripMetric extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (guidance != null &&
-                        !UtenCompactPresentation.of(context))
+                    if (guidance != null)
                       UtenFieldHintIcon(info: guidance, dense: true),
                     if (metric.sensitive) ...[
                       const SizedBox(width: 6),

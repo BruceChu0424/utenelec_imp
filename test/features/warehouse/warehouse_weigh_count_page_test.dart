@@ -14,6 +14,7 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
+import 'package:uten_imp/features/basic_data/repositories/business_reference_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/product_category_repository.dart';
 import 'package:uten_imp/features/warehouse/pages/warehouse_weigh_count_page.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -153,10 +154,12 @@ Future<_FakeApi> _open(WidgetTester tester, Set<String> permissions) async {
         warehouseWeightUnitsPrefsProvider.overrideWith(
           _MemoryWeightUnitsPrefs.new,
         ),
-        productCategoryRepositoryProvider.overrideWithValue(
+        businessGoodsCategoryRepositoryProvider.overrideWithValue(
           _FakeCategoryRepository(),
         ),
-        goodsRepositoryProvider.overrideWithValue(_FakeGoodsRepository()),
+        businessGoodsReferenceRepositoryProvider.overrideWithValue(
+          _FakeGoodsRepository(),
+        ),
       ],
       child: const MaterialApp(home: WarehouseWeighCountPage()),
     ),
@@ -168,6 +171,11 @@ Future<_FakeApi> _open(WidgetTester tester, Set<String> permissions) async {
 Future<void> _pickWasher(WidgetTester tester) async {
   await tester.tap(find.byKey(const Key('weigh-count-pick-goods')));
   await tester.pumpAndSettle();
+  expect(find.byKey(const Key('goods-picker-sheet')), findsOneWidget);
+  if (find.text('五金').evaluate().isEmpty) {
+    await tester.tap(find.byIcon(Icons.account_tree_rounded));
+    await tester.pumpAndSettle();
+  }
   await tester.tap(find.text('五金'));
   await tester.pumpAndSettle();
   // 2026-09-29 货品选择器选项=名称主行，点名称行。

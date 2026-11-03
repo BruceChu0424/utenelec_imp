@@ -10,6 +10,13 @@ class OwnedProviderWidgetTests {
 
   void own(ProviderContainer container) => _containers.add(container);
 
+  void disposeContainer(ProviderContainer container) {
+    if (!_containers.remove(container)) {
+      throw StateError('Provider container is not owned by this fixture');
+    }
+    container.dispose();
+  }
+
   void testWidgets(
     String description,
     Future<void> Function(testing.WidgetTester) callback,

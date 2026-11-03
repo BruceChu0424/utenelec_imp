@@ -119,7 +119,7 @@ void main() {
     expect(find.text('领料任务 a / 7'), findsOneWidget);
     await tester.tap(find.text('领料返回'));
     await tester.pumpAndSettle();
-    expect(server.taskLoads, 2);
+    _expectVisibleTaskRefresh(server, 'PREPARING');
     expect(tester.takeException(), isNull);
   });
 
@@ -157,7 +157,7 @@ void main() {
     expect(item['segmentId'], 'a');
     expect(item['expectedVersion'], 7);
     expect(item['idempotencyKey'], isNotEmpty);
-    expect(server.taskLoads, 2);
+    _expectVisibleTaskRefresh(server, 'PREPARING');
     expect(tester.takeException(), isNull);
   });
 
@@ -240,7 +240,7 @@ void main() {
     expect(server.reviewOrigin, 'workshop-tasks');
     await tester.tap(find.text('审核返回'));
     await tester.pumpAndSettle();
-    expect(server.taskLoads, 2);
+    _expectVisibleTaskRefresh(server, 'IN_PROGRESS');
     await _openDetail(tester, '产品 A');
     await tester.tap(_action('report', 'a'));
     await tester.pumpAndSettle();
@@ -342,6 +342,20 @@ void main() {
 
 Finder _action(String action, String segmentId) =>
     find.byKey(ValueKey('workshop-detail-$action-$segmentId'));
+
+void _expectVisibleTaskRefresh(_DetailServer server, String currentStatus) {
+  expect(server.taskQueries, hasLength(4));
+  for (final status in ['PREPARING', 'IN_PROGRESS', 'REPORT_INSPECTION']) {
+    final queries = server.taskQueries
+        .where((query) => query['status'] == status)
+        .toList();
+    expect(queries, hasLength(status == currentStatus ? 2 : 1));
+    for (final query in queries) {
+      expect(query['page'], 1);
+      expect(query['size'], 50);
+    }
+  }
+}
 
 Future<void> _openDetail(WidgetTester tester, String product) async {
   await tester.tap(find.text(product).first);
@@ -534,6 +548,7 @@ class _DetailServer {
             data = <String, dynamic>{};
           } else if (request.path == '/production/workshop-tasks') {
             taskLoads++;
+            taskQueries.add({...request.queryParameters});
             data = _page(tasks);
           } else if (request.path.endsWith('/materials')) {
             data = materials;
@@ -580,6 +595,7 @@ class _DetailServer {
   int previewLoads = 0;
   String? reviewOrigin;
   int taskLoads = 0;
+  final taskQueries = <Map<String, dynamic>>[];
   double claimedQty = 0;
   Completer<void>? draftGate;
 

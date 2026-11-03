@@ -409,6 +409,9 @@ jobs:
         id: android_build
         env:
           ORG_GRADLE_PROJECT_utenFlutterGradleTools: ${{ runner.temp }}/uten-flutter-gradle
+          # Avoid a separate Kotlin daemon startup/fallback on this CI runner.
+          # Gradle project properties also reach included Flutter/plugin builds.
+          ORG_GRADLE_PROJECT_kotlin.compiler.execution.strategy: in-process
         run: |
           set -euo pipefail
           python3 -m unittest discover -s deploy/client -p test_check_android_build_log.py -v 2>&1 | tee "$RUNNER_TEMP/android-build.log"

@@ -142,9 +142,8 @@ void main() {
 /// A responsive repository may yield even for one row when its first decode
 /// exceeds the time slice. Force that real timer turn without CPU contention.
 class _YieldingClientRepository extends DioClientRepository {
-  _YieldingClientRepository(ApiClient api)
+  _YieldingClientRepository(super.api)
     : super(
-        api,
         queryBasePath: ApiEndpoints.businessReferenceClients,
         selectionFlagsInBody: true,
       );

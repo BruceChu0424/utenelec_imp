@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 
+import 'support/uten_test_actions.dart';
+
 void main() {
   testWidgets(
     'short table keeps rows and every toolbar action without pagination side effects',
@@ -49,8 +51,7 @@ void main() {
       final row = find.text('物料 A');
       expect(tester.getSize(row).height, greaterThan(0));
       expect(tester.getRect(row).bottom, lessThanOrEqualTo(200));
-      await tester.ensureVisible(find.text('工具栏操作 7'));
-      await tester.pumpAndSettle();
+      await showUtenTestAction(tester, find.text('工具栏操作 7'));
       await tester.tap(find.text('工具栏操作 7'));
       expect(actions, 1);
       expect(

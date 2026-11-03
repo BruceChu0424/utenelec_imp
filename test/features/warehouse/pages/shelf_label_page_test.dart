@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/data_display/uten_rack_grid.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_endpoints.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/stock/repositories/stock_query_repository.dart';
 import 'package:uten_imp/features/warehouse/pages/shelf_label_page.dart';
@@ -220,7 +221,7 @@ ApiClient _dictApi() {
         Response<dynamic>(
           requestOptions: request,
           statusCode: 200,
-          data: request.path.contains('warehouses/dict')
+          data: request.path == ApiEndpoints.businessReferenceWarehouses
               ? const [
                   {
                     'id': 'w1',

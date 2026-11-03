@@ -18,6 +18,7 @@ import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 import '../../helpers/badge_summary_fixture.dart';
 import '../../shared/drafts/memory_form_draft_storage.dart';
+import '../../support/uten_test_actions.dart';
 
 class _Session extends SessionNotifier {
   _Session(this.admin);
@@ -102,6 +103,11 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await showUtenTestAction(
+          tester,
+          find.byKey(const ValueKey('dashboard-software-downloads')),
+          menuLabel: '更多操作',
+        );
         expect(find.text('软件下载'), findsOneWidget);
         expect(tester.takeException(), isNull);
         await tester.tap(

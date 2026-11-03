@@ -168,7 +168,10 @@ void main() {
       );
       expect(find.text('已选 0 项'), findsOneWidget);
       final disabled = tester.widget<UtenButton>(
-        find.descendant(of: group, matching: find.byType(UtenButton)),
+        find.descendant(
+          of: group,
+          matching: find.widgetWithText(UtenButton, '删除填写草稿 (0)'),
+        ),
       );
       expect(disabled.onPressed, isNull);
       expect(find.text('删除填写草稿 (0)'), findsOneWidget);
@@ -182,7 +185,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('已选 1 项'), findsOneWidget);
       final enabled = tester.widget<UtenButton>(
-        find.descendant(of: group, matching: find.byType(UtenButton)),
+        find.descendant(
+          of: group,
+          matching: find.widgetWithText(UtenButton, '删除填写草稿 (1)'),
+        ),
       );
       expect(enabled.onPressed, isNotNull);
       expect(find.text('删除填写草稿 (1)'), findsOneWidget);

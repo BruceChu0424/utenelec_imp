@@ -177,7 +177,7 @@ void main() {
     expect(query.containsKey('status'), isFalse);
     expect(query.containsKey('supplierId'), isFalse);
     final menu = table.rowMenuBuilder!(table.items.first);
-    expect((menu.single as UtenMenuItem).label, '查看原单');
+    expect((menu.single as UtenMenuItem).label, '查看详情与处理进度');
     expect(find.text('共 3 条'), findsOneWidget);
     expect(find.byType(Checkbox), findsNothing);
 
@@ -195,7 +195,16 @@ void main() {
 
     await tester.tap(find.byKey(const Key('complete-outbound-task')));
     await tester.pumpAndSettle();
-    expect(api.listRequests, 2);
+    expect(
+      api.taskQueries.where((query) => query['source'] == 'SUBCONTRACT'),
+      hasLength(2),
+      reason: 'The visible source is re-read exactly once after returning.',
+    );
+    expect(
+      api.taskQueries.where((query) => query['source'] == 'ALL'),
+      hasLength(1),
+    );
+    expect(api.listRequests, 3);
     expect(find.text('仓库任务中心'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

@@ -483,3 +483,5 @@ a667078dfe9639b730d54e7283ad9b9e66e535b2:docs/99-项目治理/全平台整改交
 64ba238fad40f421a840e50cd25e13e71ed232e2:clients/windows_legacy/progress/evidence/goods-currency-selection-20261103.json:generic-api-key:84
 64ba238fad40f421a840e50cd25e13e71ed232e2:clients/windows_legacy/progress/evidence/goods-currency-selection-20261103.json:generic-api-key:85
 2023707486680b9282abdef4ad1067b531d34239:clients/windows_legacy/progress/evidence/shared-picker-field-regression-20261102.json:generic-api-key:11
+# PDF generator receipt: LF SHA-256 verified against the owning committed Dart source.
+32ef71ef73d2265ed8c3ae9de8bd36f7dc018b6b:assets/workers/uten_pdf_worker.build.json:generic-api-key:22

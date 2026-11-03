@@ -28,7 +28,13 @@ import '../../support/uten_test_actions.dart';
 class _Api extends ApiClient {
   _Api(this.endpoint) : super(Dio());
   final String endpoint;
-  final reads = <int>[];
+  final readQueries = <Map<String, dynamic>>[];
+  List<int> get reads => [
+    for (final query in readQueries)
+      if (endpoint != ApiEndpoints.salesQuoteFinanceReviewList ||
+          query['state'] == 'pending')
+        (query['page'] as num?)?.toInt() ?? 1,
+  ];
   int pages = 3;
   @override
   Future<Map<String, dynamic>> get(
@@ -38,7 +44,9 @@ class _Api extends ApiClient {
     if (path != endpoint) return {};
     final page = (query?['page'] as num?)?.toInt() ?? 1;
     final size = (query?['size'] as num?)?.toInt() ?? 20;
-    if (size > 1) reads.add(page);
+    if (size > 1) {
+      readQueries.add({...?query});
+    }
     return {
       'page': page,
       'size': size,
@@ -203,7 +211,16 @@ void main() {
         );
         MasterDataTableView<dynamic> table() => tester.widget(finder.first);
         expect(table().error, isNull);
-        expect(api.reads, [1, 2, 3]);
+        expect(api.reads, [1, 2, 3], reason: api.readQueries.toString());
+        if (scenario.endpoint == ApiEndpoints.salesQuoteFinanceReviewList) {
+          final prepared = api.readQueries
+              .where((query) => query['state'] != 'pending')
+              .toList();
+          expect(prepared, hasLength(1));
+          expect(prepared.single['state'], 'returned');
+          expect(prepared.single['page'], 1);
+          expect(prepared.single['size'], 20);
+        }
         expect(table().currentPage, 1);
         expect(table().expensiveRowMounts, isFalse);
         await table().onPageChange!(2);

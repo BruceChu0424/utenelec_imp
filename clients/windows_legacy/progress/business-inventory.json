@@ -807,7 +807,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -2287,7 +2287,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -2913,48 +2913,48 @@
       "id": "page:admin/pages/admin_ai_usage_person_page.dart",
       "feature": "admin",
       "source": "lib/features/admin/pages/admin_ai_usage_person_page.dart",
-      "sha256": "48fa89ee813775f7a8c83693f21bf9bb47b2d95a8e0d7677ea90018b16b2e9f1",
-      "lineCount": 709,
+      "sha256": "af58bcf3b8b938e4d878678e651d63bec69dabc6bbf018789f10ea0bb8e86bd4",
+      "lineCount": 724,
       "classes": [
         {
           "name": "AdminAiUsagePersonPage",
-          "line": 72,
+          "line": 73,
           "role": "page-class",
           "extends": "ConsumerWidget"
         },
         {
           "name": "_AdminAiUsagePersonSession",
-          "line": 100,
+          "line": 101,
           "role": "supporting-class",
           "extends": "ConsumerStatefulWidget"
         },
         {
           "name": "_AdminAiUsagePersonPageState",
-          "line": 110,
+          "line": 111,
           "role": "state-class",
           "extends": "ConsumerState<_AdminAiUsagePersonSession>"
         },
         {
           "name": "_InfoLine",
-          "line": 441,
+          "line": 456,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         },
         {
           "name": "_DistributionCard",
-          "line": 480,
+          "line": 495,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         },
         {
           "name": "_RecentUsesCard",
-          "line": 576,
+          "line": 591,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         },
         {
           "name": "_LoadingSkeleton",
-          "line": 680,
+          "line": 695,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         }
@@ -3114,7 +3114,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -3166,9 +3166,21 @@
         },
         {
           "directive": "import",
+          "uri": "../../../core/network/api_error_message.dart",
+          "source": "lib/core/network/api_error_message.dart",
+          "line": 27,
+          "role": "core",
+          "importAlias": null,
+          "showSymbols": [],
+          "hideSymbols": [],
+          "existsInRepository": true,
+          "targetSha256": "d7804713932d6c85e25f9abdcecafc7d159dccacc8a250f1ff1ec485518c5f3b"
+        },
+        {
+          "directive": "import",
           "uri": "../../../core/network/api_exception.dart",
           "source": "lib/core/network/api_exception.dart",
-          "line": 27,
+          "line": 28,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -3180,7 +3192,7 @@
           "directive": "import",
           "uri": "../../../core/network/server_config.dart",
           "source": "lib/core/network/server_config.dart",
-          "line": 28,
+          "line": 29,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -3192,7 +3204,7 @@
           "directive": "import",
           "uri": "../../../core/router/nav_helpers.dart",
           "source": "lib/core/router/nav_helpers.dart",
-          "line": 29,
+          "line": 30,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -3204,7 +3216,7 @@
           "directive": "import",
           "uri": "../../../core/router/route_names.dart",
           "source": "lib/core/router/route_names.dart",
-          "line": 30,
+          "line": 31,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -3216,7 +3228,7 @@
           "directive": "import",
           "uri": "../../../core/theme/uten_tokens.dart",
           "source": "lib/core/theme/uten_tokens.dart",
-          "line": 31,
+          "line": 32,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -3228,7 +3240,7 @@
           "directive": "import",
           "uri": "../../../core/utils/display_datetime.dart",
           "source": "lib/core/utils/display_datetime.dart",
-          "line": 32,
+          "line": 33,
           "role": "core",
           "importAlias": null,
           "showSymbols": [],
@@ -3240,7 +3252,7 @@
           "directive": "import",
           "uri": "../../../shared/auth/permissions.dart",
           "source": "lib/shared/auth/permissions.dart",
-          "line": 33,
+          "line": 34,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -3252,7 +3264,7 @@
           "directive": "import",
           "uri": "../../../shared/auth/session_snapshot_provider.dart",
           "source": "lib/shared/auth/session_snapshot_provider.dart",
-          "line": 34,
+          "line": 35,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -3264,7 +3276,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/authenticated_scope_provider.dart",
           "source": "lib/shared/providers/authenticated_scope_provider.dart",
-          "line": 35,
+          "line": 36,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -3276,7 +3288,7 @@
           "directive": "import",
           "uri": "../../../shared/providers/session_provider.dart",
           "source": "lib/shared/providers/session_provider.dart",
-          "line": 36,
+          "line": 37,
           "role": "sharedComponents",
           "importAlias": null,
           "showSymbols": [],
@@ -3288,7 +3300,7 @@
           "directive": "import",
           "uri": "../models/ai_usage_dashboard_models.dart",
           "source": "lib/features/admin/models/ai_usage_dashboard_models.dart",
-          "line": 37,
+          "line": 38,
           "role": "models",
           "importAlias": null,
           "showSymbols": [],
@@ -3300,7 +3312,7 @@
           "directive": "import",
           "uri": "../repositories/ai_usage_dashboard_repository.dart",
           "source": "lib/features/admin/repositories/ai_usage_dashboard_repository.dart",
-          "line": 38,
+          "line": 39,
           "role": "repositories",
           "importAlias": null,
           "showSymbols": [],
@@ -3312,7 +3324,7 @@
           "directive": "import",
           "uri": "../widgets/ai_usage_limit_editor.dart",
           "source": "lib/features/admin/widgets/ai_usage_limit_editor.dart",
-          "line": 39,
+          "line": 40,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -3324,7 +3336,7 @@
           "directive": "import",
           "uri": "../widgets/ai_usage_trend_card.dart",
           "source": "lib/features/admin/widgets/ai_usage_trend_card.dart",
-          "line": 40,
+          "line": 41,
           "role": "featureWidgets",
           "importAlias": null,
           "showSymbols": [],
@@ -3338,7 +3350,7 @@
         {
           "symbol": "Perm.authorizationManage",
           "literal": "authorization:manage",
-          "line": 66,
+          "line": 67,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 22
         }
@@ -3404,7 +3416,7 @@
         {
           "symbol": "_editLimits",
           "receiver": null,
-          "line": 200,
+          "line": 217,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "edit"
@@ -3414,7 +3426,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 459,
+          "line": 474,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -3424,7 +3436,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 467,
+          "line": 482,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -3434,7 +3446,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 513,
+          "line": 528,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -3444,7 +3456,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 524,
+          "line": 539,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -3454,7 +3466,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 543,
+          "line": 558,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -3464,7 +3476,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 551,
+          "line": 566,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -3474,7 +3486,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 602,
+          "line": 617,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -3484,7 +3496,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 613,
+          "line": 628,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -3494,7 +3506,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 646,
+          "line": 661,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -3913,7 +3925,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -5542,7 +5554,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -9700,7 +9712,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -10442,7 +10454,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -11973,7 +11985,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -12795,7 +12807,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -13253,7 +13265,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -14011,7 +14023,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -14888,7 +14900,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -15678,7 +15690,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -16090,7 +16102,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -17197,7 +17209,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -18574,7 +18586,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -20077,7 +20089,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -22952,7 +22964,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -24370,7 +24382,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -26774,7 +26786,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -27649,7 +27661,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -28831,7 +28843,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -31271,7 +31283,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -34311,7 +34323,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -39279,7 +39291,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -42276,7 +42288,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -43832,7 +43844,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -45933,7 +45945,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -47280,7 +47292,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -48017,7 +48029,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -49489,7 +49501,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -50869,7 +50881,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -51358,7 +51370,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -51763,7 +51775,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -53279,7 +53291,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -54205,7 +54217,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -55143,7 +55155,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -56262,7 +56274,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -57553,7 +57565,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -58317,7 +58329,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -58967,7 +58979,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -59811,7 +59823,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -60474,7 +60486,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -61039,7 +61051,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -61213,8 +61225,8 @@
       "id": "page:finance/pages/finance_account_flow_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_account_flow_page.dart",
-      "sha256": "12c24aa39e2487956649424697a292b86766219cd8443300b4ce9d2c05717444",
-      "lineCount": 675,
+      "sha256": "b6fb629e6ba2322db679345747b547ad20332febdfa275389b0cb1bb9dc98f3d",
+      "lineCount": 676,
       "classes": [
         {
           "name": "FinanceAccountFlowPage",
@@ -61398,7 +61410,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -61739,21 +61751,21 @@
         {
           "symbol": "Perm.financeViewAll",
           "literal": "finance:view:all",
-          "line": 348,
+          "line": 350,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 505
         },
         {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
-          "line": 570,
+          "line": 571,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 446
         },
         {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
-          "line": 580,
+          "line": 581,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 446
         }
@@ -61784,7 +61796,7 @@
         {
           "symbol": "remove",
           "receiver": null,
-          "line": 355,
+          "line": 356,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -61794,7 +61806,7 @@
         {
           "symbol": "_printLoader",
           "receiver": null,
-          "line": 358,
+          "line": 359,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "print"
@@ -61804,7 +61816,7 @@
         {
           "symbol": "loadBoundedReportPrintPreview",
           "receiver": null,
-          "line": 362,
+          "line": 363,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "print"
@@ -61814,7 +61826,7 @@
         {
           "symbol": "UtenPrintPreviewButton",
           "receiver": null,
-          "line": 564,
+          "line": 565,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "print"
@@ -61824,7 +61836,7 @@
         {
           "symbol": "UtenExportButton",
           "receiver": null,
-          "line": 577,
+          "line": 578,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -61834,7 +61846,7 @@
         {
           "symbol": "remove",
           "receiver": "_columnQuery",
-          "line": 628,
+          "line": 629,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -61844,7 +61856,7 @@
         {
           "symbol": "remove",
           "receiver": "_columnQuery",
-          "line": 635,
+          "line": 636,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -62072,7 +62084,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -63367,7 +63379,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -64777,7 +64789,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -65454,7 +65466,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -66086,7 +66098,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -67982,7 +67994,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -71185,7 +71197,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -72722,7 +72734,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -73187,7 +73199,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -74653,7 +74665,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -75686,7 +75698,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -76738,7 +76750,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -78101,7 +78113,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -79477,7 +79489,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -80488,7 +80500,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -81672,7 +81684,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -83004,7 +83016,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -84550,7 +84562,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -85254,7 +85266,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -86283,7 +86295,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -86933,7 +86945,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -87610,7 +87622,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -88829,7 +88841,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -90026,7 +90038,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -90543,7 +90555,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -91544,7 +91556,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -92126,7 +92138,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -93015,7 +93027,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -93588,7 +93600,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -94073,7 +94085,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -94408,7 +94420,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -94742,7 +94754,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -95341,7 +95353,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -96171,7 +96183,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -97525,7 +97537,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -98905,7 +98917,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -99229,7 +99241,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ef1045e388abffbf1b44cfa8e159021a699e9020a3dfc153d7857448c5eca8e4"
+          "targetSha256": "c5b38489e8e27ae6c3d16a580795988f14da500b95c8e391342652e7b6c92f45"
         },
         {
           "directive": "import",
@@ -100780,7 +100792,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -101066,7 +101078,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -102596,7 +102608,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -104211,8 +104223,8 @@
       "id": "page:production/pages/production_daily_report_edit_page.dart",
       "feature": "production",
       "source": "lib/features/production/pages/production_daily_report_edit_page.dart",
-      "sha256": "1699b7f722570ba9a6994a1dac061b2c668bf0b4f9f1a6bba1178f78695c175c",
-      "lineCount": 4398,
+      "sha256": "c1acc801ee4db443eba85cd8e95c42996f8a9b50b57e47d03c9c41a370ed14a2",
+      "lineCount": 4404,
       "classes": [
         {
           "name": "ProductionDailyReportEditPage",
@@ -104529,7 +104541,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -105237,14 +105249,14 @@
         {
           "symbol": "Perm.attachmentView",
           "literal": "attachment:view",
-          "line": 4234,
+          "line": 4240,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 91
         },
         {
           "symbol": "Perm.productionDailyReportCreate",
           "literal": "production_daily_report:create",
-          "line": 4269,
+          "line": 4275,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 647
         },
@@ -106665,7 +106677,7 @@
         {
           "symbol": "utenMakerAuditCells",
           "receiver": null,
-          "line": 4112,
+          "line": 4118,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "audit"
@@ -106675,7 +106687,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 4213,
+          "line": 4219,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -106685,7 +106697,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 4333,
+          "line": 4339,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -106695,7 +106707,7 @@
         {
           "symbol": "UtenEditFloatingActions",
           "receiver": null,
-          "line": 4382,
+          "line": 4388,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "edit"
@@ -106712,8 +106724,17 @@
           ]
         },
         {
+          "symbol": "_isCreate",
+          "line": 3950,
+          "kind": "callback-reference",
+          "callback": "onRowSelect",
+          "actionNameHints": [
+            "create"
+          ]
+        },
+        {
           "symbol": "_deleteProductRow",
-          "line": 4017,
+          "line": 4023,
           "kind": "callback-reference",
           "callback": "onDeleteRow",
           "actionNameHints": [
@@ -106722,7 +106743,7 @@
         },
         {
           "symbol": "_openCreateRecovery",
-          "line": 4252,
+          "line": 4258,
           "kind": "callback-reference",
           "callback": "onPressed",
           "actionNameHints": [
@@ -107760,7 +107781,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -109271,7 +109292,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -109884,7 +109905,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -110576,7 +110597,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -110970,7 +110991,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -112668,7 +112689,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -121442,7 +121463,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -122368,7 +122389,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -122910,7 +122931,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -123435,7 +123456,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -124038,7 +124059,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -126223,7 +126244,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -128070,7 +128091,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -129525,7 +129546,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -130907,7 +130928,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -131418,8 +131439,8 @@
       "id": "page:production/pages/production_workshop_tasks_page.dart",
       "feature": "production",
       "source": "lib/features/production/pages/production_workshop_tasks_page.dart",
-      "sha256": "8be502bcd507fca17960bf3152b17b430cb42cacf0985397db35528e3c069814",
-      "lineCount": 3765,
+      "sha256": "7f7b1d6d7f9f7826d5372c8b137dcad0c063ed8f00275d94c6e5e7489f359834",
+      "lineCount": 3766,
       "classes": [
         {
           "name": "ProductionWorkshopTasksPage",
@@ -131745,7 +131766,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -132129,7 +132150,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "ef1045e388abffbf1b44cfa8e159021a699e9020a3dfc153d7857448c5eca8e4"
+          "targetSha256": "c5b38489e8e27ae6c3d16a580795988f14da500b95c8e391342652e7b6c92f45"
         },
         {
           "directive": "import",
@@ -132416,7 +132437,7 @@
         {
           "symbol": "Perm.productionReportExport",
           "literal": "production_report:export",
-          "line": 2876,
+          "line": 2877,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 427
         }
@@ -133406,7 +133427,7 @@
         {
           "symbol": "UtenExportButton",
           "receiver": null,
-          "line": 2871,
+          "line": 2872,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -133416,7 +133437,7 @@
         {
           "symbol": "_selectedStartTasks",
           "receiver": null,
-          "line": 3297,
+          "line": 3298,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -133426,7 +133447,7 @@
         {
           "symbol": "_startTasks",
           "receiver": null,
-          "line": 3300,
+          "line": 3301,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -133436,7 +133457,7 @@
         {
           "symbol": "_selectedStartTasks",
           "receiver": null,
-          "line": 3300,
+          "line": 3301,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -133446,7 +133467,7 @@
         {
           "symbol": "_canEnterStart",
           "receiver": null,
-          "line": 3457,
+          "line": 3458,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -133456,7 +133477,7 @@
         {
           "symbol": "_startTasks",
           "receiver": null,
-          "line": 3462,
+          "line": 3463,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -134628,7 +134649,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -135774,7 +135795,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -137198,7 +137219,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -137710,7 +137731,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -139130,7 +139151,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -141035,7 +141056,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -142633,7 +142654,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -143514,7 +143535,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -144171,7 +144192,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -146127,7 +146148,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -146569,7 +146590,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -147393,7 +147414,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -148403,7 +148424,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -149236,7 +149257,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -150285,7 +150306,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -151179,7 +151200,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -152298,7 +152319,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -152768,7 +152789,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -153681,7 +153702,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -156048,7 +156069,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -159197,7 +159218,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -160280,7 +160301,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -160729,7 +160750,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -161596,7 +161617,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -162719,7 +162740,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -163365,7 +163386,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -164042,7 +164063,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -164387,7 +164408,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -164873,7 +164894,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -165152,7 +165173,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -165725,7 +165746,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -167186,7 +167207,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -168210,7 +168231,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -168865,7 +168886,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -169483,7 +169504,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -171012,7 +171033,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -171442,7 +171463,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -172502,7 +172523,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -173770,7 +173791,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -175563,7 +175584,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -177132,7 +177153,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -177550,7 +177571,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -178207,7 +178228,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -180038,7 +180059,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -180676,7 +180697,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -181244,7 +181265,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -181671,7 +181692,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -181997,7 +182018,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -182360,7 +182381,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -182712,7 +182733,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -183277,7 +183298,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -184015,7 +184036,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -184417,7 +184438,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -185104,7 +185125,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -185704,7 +185725,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -186502,7 +186523,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -189500,7 +189521,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -192510,7 +192531,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -195488,7 +195509,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -198365,7 +198386,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -200906,7 +200927,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -201742,8 +201763,8 @@
       "id": "page:warehouse/pages/inbound_arrival_registration_page.dart",
       "feature": "warehouse",
       "source": "lib/features/warehouse/pages/inbound_arrival_registration_page.dart",
-      "sha256": "8fb9e4018e61c76f6c106f31311129c7b55044d16010d823964db158725a4a3f",
-      "lineCount": 1835,
+      "sha256": "3eb2accbb996a305e0dce235b67a5e03a79d1ef9e0915d3906e357d52caf9ef0",
+      "lineCount": 1840,
       "classes": [
         {
           "name": "InboundArrivalRegistrationPage",
@@ -201759,7 +201780,7 @@
         },
         {
           "name": "_BatchArrivalLine",
-          "line": 1763,
+          "line": 1768,
           "role": "supporting-class",
           "extends": "InboundRegistrationLine"
         }
@@ -202207,7 +202228,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -202719,21 +202740,21 @@
         {
           "symbol": "Perm.warehouseInboundView",
           "literal": "warehouse_inbound:view",
-          "line": 311,
+          "line": 312,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 249
         },
         {
           "symbol": "Perm.warehouseInboundStockIn",
           "literal": "warehouse_inbound:stock_in",
-          "line": 312,
+          "line": 313,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 780
         },
         {
           "symbol": "Perm.warehouseIqcStockInBeforeInspection",
           "literal": "warehouse_iqc_stock_in:before_inspection",
-          "line": 321,
+          "line": 322,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 267
         }
@@ -202992,7 +203013,7 @@
         {
           "symbol": "startFormDraftIdentityGuard",
           "receiver": null,
-          "line": 424,
+          "line": 425,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -203002,7 +203023,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 437,
+          "line": 438,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -203012,7 +203033,7 @@
         {
           "symbol": "describeSubmitError",
           "receiver": null,
-          "line": 510,
+          "line": 511,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -203022,7 +203043,7 @@
         {
           "symbol": "_removeFromThisRegistration",
           "receiver": null,
-          "line": 566,
+          "line": 567,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "remove"
@@ -203032,7 +203053,7 @@
         {
           "symbol": "removeRows",
           "receiver": "_lineGrid",
-          "line": 568,
+          "line": 569,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -203042,7 +203063,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 791,
+          "line": 792,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -203052,7 +203073,7 @@
         {
           "symbol": "_save",
           "receiver": null,
-          "line": 807,
+          "line": 808,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "save"
@@ -203062,7 +203083,7 @@
         {
           "symbol": "_saveWithScope",
           "receiver": null,
-          "line": 815,
+          "line": 816,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -203072,7 +203093,7 @@
         {
           "symbol": "_saveWithScope",
           "receiver": null,
-          "line": 824,
+          "line": 829,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "save"
@@ -203082,7 +203103,7 @@
         {
           "symbol": "inboundRowIssueMessage",
           "receiver": null,
-          "line": 902,
+          "line": 907,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "issue"
@@ -203092,7 +203113,7 @@
         {
           "symbol": "inboundRowIssueMessage",
           "receiver": null,
-          "line": 908,
+          "line": 913,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "issue"
@@ -203102,7 +203123,7 @@
         {
           "symbol": "inboundRowIssueMessage",
           "receiver": null,
-          "line": 910,
+          "line": 915,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "issue"
@@ -203112,7 +203133,7 @@
         {
           "symbol": "showWarehouseInboundAllocationConfirmDialog",
           "receiver": null,
-          "line": 956,
+          "line": 961,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -203122,7 +203143,7 @@
         {
           "symbol": "saveFormDraftNow",
           "receiver": null,
-          "line": 1045,
+          "line": 1050,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -203132,7 +203153,7 @@
         {
           "symbol": "completeFormDraft",
           "receiver": null,
-          "line": 1114,
+          "line": 1119,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "complete"
@@ -203142,7 +203163,7 @@
         {
           "symbol": "InboundRouteSubmitButton",
           "receiver": null,
-          "line": 1722,
+          "line": 1727,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -203152,7 +203173,7 @@
         {
           "symbol": "_save",
           "receiver": null,
-          "line": 1725,
+          "line": 1730,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -203162,7 +203183,7 @@
         {
           "symbol": "removeListener",
           "receiver": "qty",
-          "line": 1827,
+          "line": 1832,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -203172,7 +203193,7 @@
         {
           "symbol": "removeListener",
           "receiver": "giftQty",
-          "line": 1828,
+          "line": 1833,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -203182,7 +203203,7 @@
         {
           "symbol": "removeListener",
           "receiver": "weight",
-          "line": 1830,
+          "line": 1835,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -203191,7 +203212,7 @@
         },
         {
           "symbol": "canSubmit",
-          "line": 1725,
+          "line": 1730,
           "kind": "callback-reference",
           "callback": "onPressed",
           "actionNameHints": [
@@ -203677,7 +203698,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -204602,7 +204623,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -206003,7 +206024,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -207146,7 +207167,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -207940,7 +207961,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -208585,7 +208606,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -209530,7 +209551,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -211413,7 +211434,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -212968,7 +212989,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -213804,7 +213825,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -214054,7 +214075,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -214374,7 +214395,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -214664,7 +214685,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -215380,7 +215401,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -216135,7 +216156,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -217350,7 +217371,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -218148,7 +218169,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -218981,7 +219002,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -219961,7 +219982,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -220699,7 +220720,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -221379,7 +221400,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -222189,7 +222210,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -222887,7 +222908,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -223807,7 +223828,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -225459,7 +225480,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -226784,7 +226805,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -227451,7 +227472,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -227835,7 +227856,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -228306,7 +228327,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -228717,7 +228738,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057"
+          "targetSha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5"
         },
         {
           "directive": "import",
@@ -253190,8 +253211,8 @@
     },
     {
       "source": "lib/components/layout/uten_app_bar.dart",
-      "sha256": "6a4ede30162a6240a6fe6ee0616a6830661c1025c47ef5a190e8dd72ea4fd057",
-      "lineCount": 811
+      "sha256": "c199f9d49f1c8db77948afe073df1f31768004edf51914d571f5ec3e934b1fb5",
+      "lineCount": 813
     },
     {
       "source": "lib/components/layout/uten_collapsible_content.dart",
@@ -253452,6 +253473,11 @@
       "source": "lib/core/network/api_error.dart",
       "sha256": "8e6b70c6da0cffacfb3f464ae4175e605b6220a95f5eb199f093b8de01368d30",
       "lineCount": 38
+    },
+    {
+      "source": "lib/core/network/api_error_message.dart",
+      "sha256": "d7804713932d6c85e25f9abdcecafc7d159dccacc8a250f1ff1ec485518c5f3b",
+      "lineCount": 76
     },
     {
       "source": "lib/core/network/api_exception.dart",
@@ -253800,8 +253826,8 @@
     },
     {
       "source": "lib/features/admin/pages/admin_ai_usage_person_page.dart",
-      "sha256": "48fa89ee813775f7a8c83693f21bf9bb47b2d95a8e0d7677ea90018b16b2e9f1",
-      "lineCount": 709
+      "sha256": "af58bcf3b8b938e4d878678e651d63bec69dabc6bbf018789f10ea0bb8e86bd4",
+      "lineCount": 724
     },
     {
       "source": "lib/features/admin/pages/admin_ai_usage_records_page.dart",
@@ -255290,8 +255316,8 @@
     },
     {
       "source": "lib/features/finance/pages/finance_account_flow_page.dart",
-      "sha256": "12c24aa39e2487956649424697a292b86766219cd8443300b4ce9d2c05717444",
-      "lineCount": 675
+      "sha256": "b6fb629e6ba2322db679345747b547ad20332febdfa275389b0cb1bb9dc98f3d",
+      "lineCount": 676
     },
     {
       "source": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
@@ -256125,8 +256151,8 @@
     },
     {
       "source": "lib/features/production/pages/production_daily_report_edit_page.dart",
-      "sha256": "1699b7f722570ba9a6994a1dac061b2c668bf0b4f9f1a6bba1178f78695c175c",
-      "lineCount": 4398
+      "sha256": "c1acc801ee4db443eba85cd8e95c42996f8a9b50b57e47d03c9c41a370ed14a2",
+      "lineCount": 4404
     },
     {
       "source": "lib/features/production/pages/production_daily_report_list_page.dart",
@@ -256205,8 +256231,8 @@
     },
     {
       "source": "lib/features/production/pages/production_workshop_tasks_page.dart",
-      "sha256": "8be502bcd507fca17960bf3152b17b430cb42cacf0985397db35528e3c069814",
-      "lineCount": 3765
+      "sha256": "7f7b1d6d7f9f7826d5372c8b137dcad0c063ed8f00275d94c6e5e7489f359834",
+      "lineCount": 3766
     },
     {
       "source": "lib/features/production/pages/where_used_report_page.dart",
@@ -256250,8 +256276,8 @@
     },
     {
       "source": "lib/features/production/providers/production_page_preparation.dart",
-      "sha256": "ef1045e388abffbf1b44cfa8e159021a699e9020a3dfc153d7857448c5eca8e4",
-      "lineCount": 93
+      "sha256": "c5b38489e8e27ae6c3d16a580795988f14da500b95c8e391342652e7b6c92f45",
+      "lineCount": 103
     },
     {
       "source": "lib/features/production/providers/production_pending_provider.dart",
@@ -257730,8 +257756,8 @@
     },
     {
       "source": "lib/features/warehouse/pages/inbound_arrival_registration_page.dart",
-      "sha256": "8fb9e4018e61c76f6c106f31311129c7b55044d16010d823964db158725a4a3f",
-      "lineCount": 1835
+      "sha256": "3eb2accbb996a305e0dce235b67a5e03a79d1ef9e0915d3906e357d52caf9ef0",
+      "lineCount": 1840
     },
     {
       "source": "lib/features/warehouse/pages/procurement_return_task_pages.dart",

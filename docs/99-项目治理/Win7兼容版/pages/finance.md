@@ -4,17 +4,17 @@
 
 ## W7-BIZ-057 · lib/features/finance/pages/finance_account_flow_page.dart
 
-模块 `finance`；675 行；SHA256 `12c24aa39e2487956649424697a292b86766219cd8443300b4ce9d2c05717444`。
+模块 `finance`；676 行；SHA256 `b6fb629e6ba2322db679345747b547ad20332febdfa275389b0cb1bb9dc98f3d`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceAccountFlowPage @56 (page-class)<br>_FinanceAccountFlowPageState @64 (state-class) |
 | 真实路由绑定 | /finance/report/account-flow；router @2167；builder ['FinanceAccountFlowPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | account:view @345；定义 lib/shared/auth/permissions.dart:126<br>account:balance:view @346；定义 lib/shared/auth/permissions.dart:129<br>account:flow:view @347；定义 lib/shared/auth/permissions.dart:130<br>finance:view:all @348；定义 lib/shared/auth/permissions.dart:505<br>finance_report:export @570；定义 lib/shared/auth/permissions.dart:446<br>finance_report:export @580；定义 lib/shared/auth/permissions.dart:446 |
+| 权限 | account:view @345；定义 lib/shared/auth/permissions.dart:126<br>account:balance:view @346；定义 lib/shared/auth/permissions.dart:129<br>account:flow:view @347；定义 lib/shared/auth/permissions.dart:130<br>finance:view:all @350；定义 lib/shared/auth/permissions.dart:505<br>finance_report:export @571；定义 lib/shared/auth/permissions.dart:446<br>finance_report:export @581；定义 lib/shared/auth/permissions.dart:446 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | addPostFrameCallback @112 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @201 [action-like-invocation] 提示 ['update']；.update(_snapshot());<br>remove @355 [action-like-invocation] 提示 ['remove']；Map<String, dynamic> get _exportQuery => {..._readQuery}..remove('size');<br>_printLoader @358 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @362 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @564 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @577 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>remove @628 [action-like-invocation] 提示 ['remove']；_columnQuery.remove(key);<br>remove @635 [action-like-invocation] 提示 ['remove']；_columnQuery.remove('search.${column.key}'); |
+| 动作处理 | addPostFrameCallback @112 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @201 [action-like-invocation] 提示 ['update']；.update(_snapshot());<br>remove @356 [action-like-invocation] 提示 ['remove']；Map<String, dynamic> get _exportQuery => {..._readQuery}..remove('size');<br>_printLoader @359 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @363 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @565 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @578 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>remove @629 [action-like-invocation] 提示 ['remove']；_columnQuery.remove(key);<br>remove @636 [action-like-invocation] 提示 ['remove']；_columnQuery.remove('search.${column.key}'); |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 

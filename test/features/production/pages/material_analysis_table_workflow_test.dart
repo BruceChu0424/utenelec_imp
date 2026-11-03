@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -30,7 +29,7 @@ const _permissions = {
 
 void main() {
   testWidgets(
-    'preparation dropdown confirms and persists its chosen route immediately',
+    'preparation source is readonly and cannot override the master route',
     (tester) async {
       final harness = await _pump(tester);
       // 2026-09-14：编号 / 颜色 / 单位从身份格副行拆成独立列（8 → 11）。
@@ -60,20 +59,25 @@ void main() {
         findsOneWidget,
       );
       expect(harness.writes, isEmpty);
-      var dropdown = tester.widget<UtenDropdownField>(_route('m-1'));
-      expect(dropdown.value, 'subcontract');
+      final source = find.byKey(const ValueKey('material-route-readonly-m-1'));
+      expect(
+        tester.widget<Text>(source).data,
+        MaterialSupplyRoute.subcontract.label,
+      );
+      expect(_route('m-1'), findsNothing);
       final tree = tester.widget<UtenTreeTableCell>(
         find.byKey(const ValueKey('material-table-tree-MATERIAL|m-1')),
       );
       // 2026-09-13 起树格不再随选中/未选中强制字色（走主题默认）。
       expect(tree.foregroundColor, isNull);
-      // 直改即存：选好这一下就写，不再有「确认并换桶」中间确认。
-      await tester.tap(_route('m-1'));
+      // Repeated interaction with the source display cannot issue role writes.
+      await tester.tap(source);
+      await tester.tap(source);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('采购').last);
-      await tester.pumpAndSettle();
-      dropdown = tester.widget<UtenDropdownField>(_route('m-1'));
-      expect(dropdown.value, 'buy');
+      expect(
+        tester.widget<Text>(source).data,
+        MaterialSupplyRoute.subcontract.label,
+      );
       expect(find.text('确认并换桶'), findsNothing);
       // 2026-09-13 全站表格选中口径：选中行淡绿底+常态字色，树格不再切白字。
       expect(
@@ -85,11 +89,7 @@ void main() {
         isNull,
       );
       expect(find.byKey(const Key('material-route-reason')), findsNothing);
-      expect(harness.writes, hasLength(1));
-      final body = harness.writes.last.data! as Map<String, dynamic>;
-      expect(body['decisions'], [
-        {'actionGroupKey': 'a-1', 'route': 'BUY'},
-      ]);
+      expect(harness.writes, isEmpty);
       // 2026-09-16：供应方式的单一事实源改成货品主档，建议路线随分析快照下发，
       // 按历史分析推导的 /last-routes 预填请求整套退役——端点已删，发了就是 404。
       expect(
@@ -193,30 +193,26 @@ void main() {
   );
 
   testWidgets(
-    'saving keeps selected white text on selected rows and blocks duplicate writes',
+    'readonly sources keep normal row text and reject repeated role edits',
     (tester) async {
-      // 2026-09-25 确认路线退役：保存期防重复写由「直改」承担——手动直改挂在
-      // gate 上验证进行中不会重复提交(2026-09-27 起页面不再自动发 PUT)。
-      final complete = Completer<void>();
-      final harness = await _pump(
-        tester,
-        beforeRouteWrite: () => complete.future,
-      );
-      await tester.tap(_route('m-1'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('采购').last);
-      for (var attempt = 0; attempt < 10 && harness.writes.isEmpty; attempt++) {
-        await tester.pump(const Duration(milliseconds: 50));
+      final harness = await _pump(tester);
+      final source = find.byKey(const ValueKey('material-route-readonly-m-1'));
+      expect(_route('m-1'), findsNothing);
+      for (var attempt = 0; attempt < 5; attempt++) {
+        await tester.tap(source);
+        await tester.pump();
       }
-      expect(harness.writes, hasLength(1));
+      expect(harness.writes, isEmpty);
       final tree = tester.widget<UtenTreeTableCell>(
         find.byKey(const ValueKey('material-table-tree-MATERIAL|m-1')),
       );
       expect(tree.foregroundColor, isNull);
-      complete.complete();
       await tester.pumpAndSettle();
-      expect(harness.writes, hasLength(1));
-      expect(tester.widget<UtenDropdownField>(_route('m-1')).value, 'buy');
+      expect(harness.writes, isEmpty);
+      expect(
+        tester.widget<Text>(source).data,
+        MaterialSupplyRoute.subcontract.label,
+      );
     },
   );
 

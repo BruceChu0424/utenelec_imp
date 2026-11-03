@@ -426,7 +426,18 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(tasks.pages, hasLength(2));
+      expect(
+        tasks.queries
+            .where((query) => query.source == 'SALES')
+            .map((query) => query.page),
+        [1, 1],
+        reason:
+            'One visible source read on entry and one after the completed batch.',
+      );
+      expect(
+        tasks.queries.where((query) => query.source == 'ALL'),
+        hasLength(1),
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -651,15 +662,36 @@ void main() {
 
       table.onFilterChanged('status', 'CANCELLED');
       await tester.pumpAndSettle();
-      expect(tasks.statuses.last, 'CANCELLED');
-      expect(tasks.pages.last, 1);
+      expect(
+        tasks.queries
+            .where(
+              (query) => query.source == 'SALES' && query.status == 'CANCELLED',
+            )
+            .map((query) => query.page),
+        [1],
+      );
       // 切回「全部任务」段：表头状态桶被清，回分段口径。
       await tester.ensureVisible(find.text('全部任务', skipOffstage: false));
       await tester.pumpAndSettle();
       await tester.tap(find.text('全部任务'));
       await tester.pumpAndSettle();
-      expect(tasks.statuses.last, isNull);
-      expect(tasks.pages.last, 1);
+      final allTable = tester
+          .widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is MasterDataTableView<WarehouseTaskCenterRecord>,
+            ),
+          );
+      expect(allTable.filters['status'], isNull);
+      expect(allTable.items.map((row) => row.id), ['1']);
+      expect(
+        tasks.queries
+            .where((query) => query.source == 'ALL' && query.status == null)
+            .map((query) => query.page),
+        [1],
+        reason:
+            'Switching to the exact prepared ALL query reuses its first page.',
+      );
       expect(tester.takeException(), isNull);
     },
   );
@@ -809,8 +841,7 @@ class _TaskCenterGateway implements WarehouseTaskCenterGateway {
   _TaskCenterGateway(this.sales);
 
   final _Gateway sales;
-  final List<int> pages = [];
-  final List<String?> statuses = [];
+  final queries = <({String source, int page, String? status})>[];
 
   @override
   Future<WarehouseTaskCenterPageResult> list({
@@ -829,8 +860,7 @@ class _TaskCenterGateway implements WarehouseTaskCenterGateway {
     String? order,
     Map<String, String?> columns = const {},
   }) async {
-    pages.add(page);
-    statuses.add(status);
+    queries.add((source: source, page: page, status: status));
     final rows = [
       for (final detail in sales.values.values)
         if ((source == 'ALL' || source == 'SALES') &&

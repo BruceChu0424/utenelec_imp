@@ -242,9 +242,16 @@ void main() {
       await _pump(tester, repository);
       await tester.pumpAndSettle();
       // The retained return deep link now opens inbound physical task rows.
-      expect(repository.taskApi.taskQueries, isNotEmpty);
-      expect(repository.taskApi.taskQueries.last['source'], 'RETURN');
-      expect(repository.taskApi.taskQueries.last['view'], 'ACTIVE');
+      final visible = repository.taskApi.taskQueries.where(
+        (query) => query['source'] == 'RETURN',
+      );
+      expect(visible, hasLength(1));
+      expect(visible.single['view'], 'ACTIVE');
+      expect(visible.single['page'], 1);
+      expect(
+        repository.taskApi.taskQueries.map((query) => query['source']),
+        unorderedEquals(['RETURN', 'FINISHED', 'OTHER', 'ALL']),
+      );
       expect(find.text('待仓库收料'), findsWidgets);
       expect(find.text('未出库'), findsNothing);
       expect(find.text('TL001'), findsOneWidget);

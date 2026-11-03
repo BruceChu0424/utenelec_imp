@@ -380,7 +380,16 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(gateway.calls.last.source, 'ALL');
+      final expectedSources = scenario.$2 == 'inbound'
+          ? ['ALL', 'PURCHASE', 'SUBCONTRACT', 'FINISHED', 'OTHER', 'RETURN']
+          : ['ALL', 'SALES', 'SUBCONTRACT', 'DRAW', 'OTHER', 'FINISHED'];
+      expect(
+        gateway.calls.map((call) => call.source),
+        unorderedEquals(expectedSources),
+        reason:
+            'The visible ALL page and every authorized first-page preload are fetched once.',
+      );
+      expect(gateway.calls.every((call) => call.page == 1), isTrue);
       expect(find.text('委外损耗'), findsNothing);
       expect(find.textContaining('金额'), findsNothing);
       expect(

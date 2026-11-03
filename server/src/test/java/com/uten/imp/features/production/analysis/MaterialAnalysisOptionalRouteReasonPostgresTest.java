@@ -168,12 +168,14 @@ class MaterialAnalysisOptionalRouteReasonPostgresTest {
     @Test
     void actualConfirmationAndRefreshAcceptNullBlankSingleCharacterAndMaximumLength() {
         Fixture fixture = createFixture();
+        // The full forward chain learns this historical SUBCONTRACT default.
+        // Confirm that master source without rewriting it from planning.
         assertThat(jdbc.queryForObject("SELECT source_type FROM goods WHERE id=?", String.class, COMPONENT))
-                .isEqualTo("采购");
+                .isEqualTo("委外");
         for (String reason : new String[]{null, " \t\n", "1", "理".repeat(1000)}) {
-            confirm(fixture, "BUY", reason);
+            confirm(fixture, "SUBCONTRACT", reason);
             Map<String, Object> saved = confirmation(fixture.materialId());
-            assertThat(saved.get("confirmed_route")).isEqualTo("BUY");
+            assertThat(saved.get("confirmed_route")).isEqualTo("SUBCONTRACT");
             assertThat(saved.get("route_reason")).isEqualTo(MaterialAnalysisService.normalizeRouteReason(reason));
             assertThat(saved.get("route_confirmed_by")).isEqualTo(actor);
             assertThat(saved.get("route_confirmed_at")).isNotNull();
@@ -201,7 +203,9 @@ class MaterialAnalysisOptionalRouteReasonPostgresTest {
     void oversizedReasonFailsAtServiceAndDatabaseWithoutChangingTheSavedRoute() {
         Fixture fixture = createFixture();
         Map<String, Object> before = confirmation(fixture.materialId());
-        assertThrows(ApiException.class, () -> confirm(fixture, "MAKE", "理".repeat(1001)));
+        ApiException rejected = assertThrows(ApiException.class,
+                () -> confirm(fixture, "SUBCONTRACT", "理".repeat(1001)));
+        assertThat(rejected.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED);
         assertThat(confirmation(fixture.materialId())).isEqualTo(before);
         assertThatThrownBy(() -> jdbc.update("""
                 UPDATE production_material_analysis_materials SET route_reason = ? WHERE id = ?

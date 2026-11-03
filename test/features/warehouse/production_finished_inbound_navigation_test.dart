@@ -62,6 +62,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(api.taskRequestCount, 1);
+      expect(
+        api.preparationQueries.map((query) => query['source']),
+        unorderedEquals(['OTHER', 'RETURN', 'ALL']),
+        reason:
+            'Authorized source preloads are separate from the one visible FINISHED read.',
+      );
       // ADR-184：分段红数来自徽章汇总(挂载已固定), 不再单发 /count。
       expect(api.countRequestCount, 0);
       expect(find.text('产成品入库'), findsOneWidget);
@@ -205,7 +211,7 @@ void main() {
         for (final item in table.items)
           (table.rowMenuBuilder!(item).single as UtenMenuItem).label,
       ];
-      expect(actionLabels, ['查看原单', '查看原单']);
+      expect(actionLabels, ['查看详情与处理进度', '查看详情与处理进度']);
       expect(
         find.byKey(const Key('warehouse-task-record-batch')),
         findsNothing,
@@ -397,6 +403,7 @@ class _TrackingFinishedInboundApi extends ApiClient {
   int taskRequestCount = 0;
   int countRequestCount = 0;
   final List<String> taskKeywords = [];
+  final preparationQueries = <Map<String, dynamic>>[];
   Completer<Map<String, dynamic>>? _armedBlock;
   Completer<Map<String, dynamic>>? _issuedBlock;
 
@@ -427,6 +434,15 @@ class _TrackingFinishedInboundApi extends ApiClient {
     }
     if (path != '/warehouse/task-center/inbound') {
       throw StateError('Unexpected request: $path');
+    }
+    if (query?['source'] != 'FINISHED') {
+      expect(query?['source'], isIn(['OTHER', 'RETURN', 'ALL']));
+      expect(query?['page'], 1);
+      expect(query?['view'], 'ACTIVE');
+      preparationQueries.add(Map<String, dynamic>.of(query!));
+      return query['source'] == 'ALL'
+          ? _taskPayload()
+          : {..._taskPayload(total: 0), 'items': <Map<String, dynamic>>[]};
     }
     taskRequestCount++;
     taskKeywords.add(query?['keyword'] as String? ?? '');

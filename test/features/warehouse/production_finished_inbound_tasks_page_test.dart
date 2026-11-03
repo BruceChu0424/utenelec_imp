@@ -236,7 +236,11 @@ void main() {
       '货品编码',
       '颜色',
       '规格',
-      '数量',
+      '申报 / 单据数量',
+      '已入库',
+      '合格待入库',
+      '剩余待退回',
+      '下一步',
       '来源单据',
       '客户 / 供应商 / 委外商',
       '仓库',
@@ -342,7 +346,7 @@ void main() {
       for (final item in table.items)
         (table.rowMenuBuilder!(item).single as UtenMenuItem).label,
     ];
-    expect(actionLabels, ['查看原单', '查看原单']);
+    expect(actionLabels, ['查看详情与处理进度', '查看详情与处理进度']);
     expect(table.selectable, isFalse);
     expect(table.batchActionsBuilder, isNull);
     final container = ProviderScope.containerOf(

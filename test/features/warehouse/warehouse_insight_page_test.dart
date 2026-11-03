@@ -3,7 +3,7 @@
 //     (warehouseId / warehouseScope=MINE, 与服务端同名); 重量按显示单位换算, 估算带「≈」, 没称显示「未称」;
 //  2. KPI 卡点一下跳到对应分段并带上筛选 (呆滞品项 -> onlyDead);
 //  3. 盘点建议 (仓库 x 货品 x 颜色) 勾了多个仓: 先问盘哪个仓, 带 StockCheckPrefill (含颜色) 打开新建
-//     盘点单, 其余仓勾选保留;
+//     盘点单；离页返回清除临时选择，保留原数据供用户明确重新选择;
 //  4. 称重异常: 类别/折算/偏差用服务端算好的值, 可切「按往来方汇总」(服务端 WeightPartySummary);
 //  5. 单重学习批量称样: 抽样数量 + 抽样重量(g) -> POST samples, 行上立即换成新单重。
 // 假回包字段与服务端 DTO 一一对应。
@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
+import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/layout/uten_segment_row.dart';
 import '../../support/filter_segment_tap.dart';
 import 'package:uten_imp/core/network/api_client.dart';
@@ -580,8 +581,20 @@ void main() {
       );
       expect(find.text('新建盘点单页'), findsOneWidget);
 
-      // 回来后塑胶仓那一行的勾选还在, 直接再生成 (只剩一个仓就不再问)。
+      // A business-page return clears temporary targets; original remaining
+      // rows are retained and a new CHECK requires an explicit selection.
       GoRouter.of(tester.element(find.text('新建盘点单页'))).pop();
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<UtenButton>(find.byKey(const Key('insight-generate-check')))
+            .onPressed,
+        isNull,
+      );
+      for (final name in ['螺丝M3', '螺母M3', '胶粒ABS']) {
+        expect(find.text(name), findsOneWidget);
+      }
+      await tester.tap(find.text('胶粒ABS'));
       await tester.pumpAndSettle();
       expect(find.text('生成盘点单(1)'), findsOneWidget);
       await tester.tap(find.byKey(const Key('insight-generate-check')));

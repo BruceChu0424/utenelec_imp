@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_endpoints.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations_zh.dart';
 import 'package:uten_imp/features/warehouse/widgets/warehouse_inbound_expectations_view.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/procurement_inbound.dart';
@@ -74,7 +75,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('internal-table-diagnostic'), findsNothing);
     expect(
-      find.text('出错了，请稍后重试'),
+      find.text(AppLocalizationsZh().commonError),
       findsWidgets,
       reason:
           'Page feedback and table placeholder must both use the same sanitized message',

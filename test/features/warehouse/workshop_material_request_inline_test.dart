@@ -27,6 +27,7 @@ import 'package:uten_imp/shared/drafts/form_draft_navigation.dart';
 
 import 'workshop_material_test_support.dart';
 import '../../support/audit_screenshot_support.dart';
+import '../../support/uten_test_actions.dart';
 
 const _captureUi = bool.fromEnvironment('UI_CAPTURE');
 final _captureBoundary = GlobalKey();
@@ -120,7 +121,11 @@ WorkshopMaterialRequestInlineController _begin(
   );
 
 Future<void> _openPicker(WidgetTester tester) async {
-  await tester.tap(find.byKey(const Key('wm-request-inline-add')));
+  await tapUtenTestAction(
+    tester,
+    find.byKey(const Key('wm-request-inline-add')),
+    menuLabel: '其他操作',
+  );
   await tester.pumpAndSettle();
   expect(find.byKey(const Key('goods-picker-paged-list')), findsOneWidget);
   final tree = find.byType(UtenCategoryTreeView<ProductCategoryNode>);
@@ -585,6 +590,11 @@ void main() {
         );
         await tester.tap(find.byKey(const Key('wm-bin-request')));
         await tester.pumpAndSettle();
+        await showUtenTestAction(
+          tester,
+          find.byKey(const Key('wm-request-inline-add')),
+          menuLabel: '其他操作',
+        );
         expect(
           tester
               .getBottomRight(find.byKey(const Key('wm-request-inline-add')))

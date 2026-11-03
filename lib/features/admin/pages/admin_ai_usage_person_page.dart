@@ -24,6 +24,7 @@ import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_responsive_grid.dart';
 import '../../../components/layout/uten_segmented_filter.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/network/api_error_message.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/server_config.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -116,7 +117,6 @@ class _AdminAiUsagePersonPageState
   AiUsagePersonDetail? _detail;
   bool _loading = false;
   String? _error;
-  bool _noAccess = false;
   int _loadSeq = 0;
 
   AiUsageDashboardRepository get _repository =>
@@ -154,24 +154,41 @@ class _AdminAiUsagePersonPageState
         _detail = detail;
         _loading = false;
         _error = null;
-        _noAccess = false;
       });
     } on ApiException catch (error) {
-      if (!_current || seq != _loadSeq) return;
+      if (!mounted || !_current || seq != _loadSeq) return;
       final noAccess =
           error.httpStatus == 401 ||
           error.httpStatus == 403 ||
+          error.code == 'UNAUTHORIZED' ||
           error.code == 'FORBIDDEN';
       if (_detail != null) {
         setState(() => _loading = false);
         return;
       }
+      final l10n = AppLocalizations.of(context);
+      final message = error.message.trim();
+      final localDefault = apiErrorMessage(
+        error.code,
+        '',
+        httpStatus: error.httpStatus,
+      );
+      final defaultMessage = message.isEmpty || message == localDefault;
+      final missing =
+          error.code == 'NOT_FOUND' ||
+          (error.code == 'UNKNOWN' && error.httpStatus == 404);
       setState(() {
         _loading = false;
-        _error = noAccess
-            ? AppLocalizations.of(context).aiSettingsNoAccess
-            : error.message;
-        _noAccess = noAccess;
+        // ApiException normalizes empty/status-only errors. Localize those
+        // defaults here, while preserving a real server reason such as the
+        // usage endpoint's "账号不存在" and unrelated transport diagnostics.
+        _error = defaultMessage && noAccess
+            ? l10n.aiSettingsNoAccess
+            : defaultMessage && missing
+            ? l10n.aiUsagePersonMissing
+            : message.isNotEmpty
+            ? message
+            : l10n.aiUsageLoadFailed;
       });
     } catch (_) {
       if (!mounted || !_current || seq != _loadSeq) return;
@@ -230,9 +247,7 @@ class _AdminAiUsagePersonPageState
     } else if (_error != null && detail == null) {
       body = UtenEmpty.error(
         key: const ValueKey('ai-usage-person-error'),
-        message: _noAccess || _error!.isEmpty
-            ? l10n.aiUsagePersonMissing
-            : _error!,
+        message: _error!,
         actionLabel: l10n.aiSettingsRetry,
         onAction: _load,
       );

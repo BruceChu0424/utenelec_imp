@@ -807,7 +807,7 @@ void main() {
     await tester.tap(find.byKey(const Key('child-shortage-go')));
     await tester.pumpAndSettle();
 
-    expect(find.text('先选供应方式 1 种'), findsOneWidget);
+    expect(find.text('先维护货品来源 1 种'), findsOneWidget);
     final routeless = tester.widget<Checkbox>(
       find.byKey(ValueKey('child-shortage-check-${_groupKey('m-c4')}')),
     );

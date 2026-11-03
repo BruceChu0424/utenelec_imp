@@ -447,7 +447,9 @@ class _UtenAppBarState extends State<UtenAppBar> {
               ? UtenBackButton.slotWidth(context) + leadingInset
               : (pageLeading == null && !showBackButton ? 0 : null),
           titleSpacing: (showBackButton || pageLeading is UtenBackButton)
-              ? UtenBackButton.titleGap
+              // At the minimum window width, preserve the complete help target
+              // beside back/actions before spending space on title gutters.
+              ? (constraints.maxWidth < 240 ? 0 : UtenBackButton.titleGap)
               : null,
           actions: [
             if (presentedActions.isNotEmpty)

@@ -315,15 +315,26 @@ void main() {
         ..pages[1] = [_task('nav-draw')];
       await _pump(tester, repo, _approverIssuer);
       for (var visit = 0; visit < 2; visit++) {
-        if (visit == 0) {
-          await tester.tap(find.byType(Checkbox).first);
-          await tester.pumpAndSettle();
-        } else {
-          final table = tester.widget<MasterDataTableView<WarehouseDrawTask>>(
-            find.byType(MasterDataTableView<WarehouseDrawTask>),
-          );
-          expect(table.selectedIds, {'nav-draw'});
-        }
+        final table = tester.widget<MasterDataTableView<WarehouseDrawTask>>(
+          find.byType(MasterDataTableView<WarehouseDrawTask>),
+        );
+        expect(table.items.map((task) => task.actionDocId), ['nav-draw']);
+        expect(
+          table.selectedIds,
+          isEmpty,
+          reason:
+              'A returned page retains rows but clears temporary operation targets.',
+        );
+        await tester.tap(find.byType(Checkbox).first);
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<MasterDataTableView<WarehouseDrawTask>>(
+                find.byType(MasterDataTableView<WarehouseDrawTask>),
+              )
+              .selectedIds,
+          {'nav-draw'},
+        );
         await tester.tap(_batchButton());
         await tester.pumpAndSettle();
         expect(find.text('批量领料核对页'), findsOneWidget);

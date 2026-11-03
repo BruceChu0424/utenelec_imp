@@ -174,6 +174,7 @@ class _Repo implements AiUsageDashboardRepository {
   /// 非空时 saveLimits 抛它(模拟 409 冲突等)。
   Object? saveError;
   Object? dashboardError;
+  Object? personError;
   Completer<AiUserLimits>? pendingSave;
 
   final List<String> dashboardCalls = [];
@@ -193,6 +194,7 @@ class _Repo implements AiUsageDashboardRepository {
     AiUsageWindow window,
   ) async {
     personCalls.add('$userId:${window.wire}');
+    if (personError != null) throw personError!;
     final detail = personDetail;
     if (detail == null) {
       throw ApiException('NOT_FOUND', '', httpStatus: 404);
@@ -254,6 +256,7 @@ Future<ProviderContainer> _pump(
   bool withPermission = true,
   double width = 1400,
   double height = 1500,
+  Locale locale = const Locale('zh'),
 }) async {
   tester.view.physicalSize = Size(width, height);
   tester.view.devicePixelRatio = 1;
@@ -280,7 +283,7 @@ Future<ProviderContainer> _pump(
         sessionSnapshotProvider.overrideWith(_UsageSnapshot.new),
       ],
       child: MaterialApp(
-        locale: const Locale('zh'),
+        locale: locale,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         theme: buildLightTheme(),
@@ -755,6 +758,76 @@ void main() {
       findsNothing,
     );
   });
+
+  final en = lookupAppLocalizations(const Locale('en'));
+  for (final error in [
+    ApiException('NOT_FOUND', '', httpStatus: 404),
+    ApiException('UNKNOWN', '', httpStatus: 404),
+  ]) {
+    testWidgets(
+      'default ${error.code} person failure uses the current language',
+      (tester) async {
+        expect(error.message, isNotEmpty);
+        final repo = _Repo()..personError = error;
+        await _pump(
+          tester,
+          const AdminAiUsagePersonPage(userId: _goneId),
+          repo: repo,
+          locale: const Locale('en'),
+        );
+        expect(find.text(en.aiUsagePersonMissing), findsOneWidget);
+        expect(find.text(error.message), findsNothing);
+        expect(repo.saves, isEmpty);
+      },
+    );
+  }
+
+  for (final code in ['UNAUTHORIZED', 'FORBIDDEN']) {
+    testWidgets(
+      'default $code person failure stays a localized access refusal',
+      (tester) async {
+        final repo = _Repo()
+          ..personError = ApiException(
+            code,
+            '',
+            httpStatus: code == 'UNAUTHORIZED' ? 401 : 403,
+          );
+        await _pump(
+          tester,
+          const AdminAiUsagePersonPage(userId: _goneId),
+          repo: repo,
+          locale: const Locale('en'),
+        );
+        expect(find.text(en.aiSettingsNoAccess), findsOneWidget);
+        expect(find.text(en.aiUsagePersonMissing), findsNothing);
+        expect(repo.saves, isEmpty);
+      },
+    );
+  }
+
+  for (final error in [
+    // AiUsageDashboardService.person's actual account lookup rejection.
+    ApiException('NOT_FOUND', '账号不存在', httpStatus: 404, hasResponseCode: true),
+    ApiException('NOT_FOUND', '此人员的用量记录已归档，请联系管理员', httpStatus: 404),
+    ApiException('FORBIDDEN', '此账号的管理权限已撤回，请重新打开页面', httpStatus: 403),
+    NetworkException(),
+  ]) {
+    testWidgets(
+      'person failure preserves its specific reason: ${error.message}',
+      (tester) async {
+        final repo = _Repo()..personError = error;
+        await _pump(
+          tester,
+          const AdminAiUsagePersonPage(userId: _goneId),
+          repo: repo,
+          locale: const Locale('en'),
+        );
+        expect(find.text(error.message), findsOneWidget);
+        expect(find.text(en.aiUsagePersonMissing), findsNothing);
+        expect(repo.saves, isEmpty);
+      },
+    );
+  }
 }
 
 List<String> _messages(ProviderContainer container) => [

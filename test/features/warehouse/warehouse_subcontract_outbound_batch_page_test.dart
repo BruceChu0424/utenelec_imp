@@ -466,9 +466,19 @@ void main() {
       );
       expect(find.text('出库任务中心'), findsOneWidget);
       expect(find.byType(SubcontractOutboundDetailTable), findsNothing);
-      expect(api.listRequests, 1);
-      expect(api.taskQueries.single['source'], 'SUBCONTRACT');
-      expect(api.taskQueries.single['status'], 'SUBCONTRACT_PENDING');
+      final visibleQueries = api.taskQueries.where(
+        (query) => query['status'] == 'SUBCONTRACT_PENDING',
+      );
+      expect(visibleQueries, hasLength(1));
+      expect(visibleQueries.single['source'], 'SUBCONTRACT');
+      expect(visibleQueries.single['page'], 1);
+      expect(
+        api.taskQueries
+            .where((query) => query['status'] == null)
+            .map((query) => query['source']),
+        unorderedEquals(['SUBCONTRACT', 'ALL']),
+      );
+      expect(api.listRequests, 3);
       expect(router.routeInformationProvider.value.uri.queryParameters, {
         'section': 'subcontract',
         'view': 'tasks',

@@ -795,6 +795,135 @@ const _reviewedSourceGuards = <String, ({int legacyCount, Map<String, int> token
     legacyCount: 0,
     tokens: {'Perm.visitorApprove': 2},
   ),
+  // 2026-11-03: source audit against published 904ab3cd6 -> c75d6e1e3
+  // found 22 previously unregistered references below. c75d6e1e3 -> 929efd378
+  // adds another 12 (the separate instant-stock cost reference is registered
+  // above). Retired pricing/task sources stay removed; the cap stays 677.
+  // These entries lock the whole file's identities and multiplicities, while
+  // retaining the actual pre-change counts, rather than crediting the gap.
+  // GoodsBomEditService rechecks BOM edit plus each queued create/delete/master
+  // action, visibility, writable snapshots and actor ownership. The editor's
+  // open and cell checks are separate phases of that same shared draft owner.
+  'lib/features/basic_data/widgets/goods_bom_comparison_editor.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.goodsBomEdit': 2, 'Perm.goodsEdit': 2},
+  ),
+  // This pair only projects GoodsBomService.canViewPrice's existing OR mask;
+  // a BOM edit grant never reveals component selling prices.
+  'lib/features/basic_data/widgets/goods_bom_comparison_table.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.goodsPriceEdit': 1, 'Perm.goodsPriceView': 1},
+  ),
+  // Reads use the native boundary/request scope. Replacement preview requires
+  // the server's BOM edit plus the actual chosen create/delete operations.
+  'lib/features/basic_data/widgets/goods_bom_comparison_workspace.dart': (
+    legacyCount: 0,
+    tokens: {
+      'Perm.goodsBomCreate': 1,
+      'Perm.goodsBomDelete': 1,
+      'Perm.goodsBomEdit': 1,
+      'Perm.goodsView': 1,
+    },
+  ),
+  // Account statements keep the account view/balance/flow AND contract;
+  // bank reports additionally retain FinanceCompanyReportAccess's full scope.
+  // Export and print still require an accepted query and their own authority.
+  'lib/features/finance/pages/finance_account_flow_page.dart': (
+    legacyCount: 2,
+    tokens: {
+      'Perm.accountBalanceView': 1,
+      'Perm.accountFlowView': 1,
+      'Perm.accountView': 1,
+      'Perm.financeReportExport': 2,
+      'Perm.financeViewAll': 1,
+    },
+  ),
+  // All three pages already use BusinessEmployeePicker. These native candidate
+  // affordances exactly mirror BusinessEmployeeReferencePurpose's OR groups;
+  // the shared server access re-resolves current staff grants and eligibility.
+  // They do not give employee:view or bypass document owner capabilities.
+  'lib/features/production/pages/production_plan_edit_page.dart': (
+    legacyCount: 1,
+    tokens: {
+      'Perm.attachmentView': 1,
+      'Perm.productionMaterialAnalysisCreate': 1,
+      'Perm.productionPlanCreate': 1,
+      'Perm.productionPlanEdit': 1,
+    },
+  ),
+  'lib/features/purchase/pages/purchase_order_edit_page.dart': (
+    legacyCount: 3,
+    tokens: {
+      'Perm.attachmentView': 1,
+      'Perm.purchaseOrderCreate': 2,
+      'Perm.purchaseOrderEdit': 1,
+      'Perm.purchaseOrderSubmitFinance': 1,
+    },
+  ),
+  'lib/features/subcontract/pages/subcontract_order_edit_page.dart': (
+    legacyCount: 3,
+    tokens: {
+      'Perm.attachmentView': 1,
+      'Perm.subcontractOrderCreate': 2,
+      'Perm.subcontractOrderEdit': 1,
+      'Perm.subcontractOrderSubmitFinance': 1,
+    },
+  ),
+  // The retained task must also carry server canViewSupplierReturn. This only
+  // navigates to ProcurementArrivalExceptionController's existing view gate;
+  // return completion keeps its separate action grant and server owner check.
+  'lib/features/warehouse/widgets/warehouse_task_record_actions.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.supplierReturnTaskView': 1},
+  ),
+  // AccountBalanceAdjustmentController/Service require the same three grants.
+  // The dialog intersects them with current writable identity/read owner,
+  // preserves pending commands, and never writes a master-data balance field.
+  'lib/features/basic_data/widgets/account_balance_reconciliation_dialog.dart':
+      (
+        legacyCount: 0,
+        tokens: {
+          'Perm.accountBalanceAdjust': 1,
+          'Perm.accountBalanceView': 1,
+          'Perm.accountView': 1,
+        },
+      ),
+  // The shared MasterEditOwner is explicitly read-only here. Party view grants
+  // fence retained references; every destination also uses the public route
+  // access policy, and opening this dialog grants no delete or hide operation.
+  'lib/features/basic_data/widgets/master_reference_details.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.clientView': 1, 'Perm.supplierView': 1},
+  ),
+  // StockCostMasker owns the same goods-cost mask for inventory and export;
+  // the existing stock view/export checks remain in their original baseline.
+  'lib/features/basic_data/widgets/warehouse_inventory_panel.dart': (
+    legacyCount: 2,
+    tokens: {
+      'Perm.goodsCostView': 1,
+      'Perm.stockReportExport': 1,
+      'Perm.stockView': 1,
+    },
+  ),
+  // FinanceReceiptService.requirePrepaymentView enforces this AND pair even
+  // through FinanceBatchEntryService. One check retires a late order picker;
+  // the other fences each queued row before payload construction. They remain
+  // separate from the document's create grant, identity and unknown-result gate.
+  'lib/features/finance/pages/finance_doc_batch_entry.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.customerPrepaymentView': 2, 'Perm.financeViewAll': 2},
+  ),
+  // Preparation is read-only: the native provider owner and route gate remain
+  // in force. These are the exact GET grants of SalesQuoteFinanceController and
+  // FinanceProcurementArrivalExceptionController, never their decision grants.
+  'lib/features/finance/pages/finance_quote_review_list_page.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.salesQuoteFinanceView': 1},
+  ),
+  'lib/features/warehouse/pages/finance_arrival_exception_pages.dart': (
+    legacyCount: 0,
+    tokens: {'Perm.financeOrderApprovalView': 1},
+  ),
 };
 
 Map<String, int> _permissionTokens(String source) {
@@ -893,7 +1022,7 @@ bool get _canApprove => _has(Perm.salesShipmentFinanceApprove);
         (sum, entry) =>
             sum + _reviewedIncrementFor(entry.key, entry.value.tokens),
       ),
-      269, // +1 stock-cost, -17 delegated pricing, -5 retired task guards; cap 677.
+      303, // +34 exact source-reviewed references; retired guards stay removed.
     );
   });
 

@@ -2850,6 +2850,7 @@ class _ProductionWorkshopTasksPageState
         context,
         keyword: _keyword,
         workshopDepartmentId: _workshopDepartmentId,
+        activeStatus: _status,
         canPrepare: () => !_loading && _busy == null && !_navigating,
       );
     }

@@ -56,14 +56,17 @@ class CustomerPrepaymentReceiptFields extends ConsumerWidget {
                   label: requiredLabel('销售订单', theme, required: true),
                   suffixIcon: Padding(
                     padding: const EdgeInsets.only(right: UtenSpacing.s4),
-                    child: UtenButton(
-                      type: UtenButtonType.secondary,
-                      size: UtenButtonSize.small,
-                      icon: Icons.search_rounded,
-                      onPressed: enabled
-                          ? () => _pickOrder(context, ref)
-                          : null,
-                      child: Text(salesOrderId == null ? '选择' : '更换'),
+                    child: SizedBox(
+                      height: UtenPageField.heightOf(context),
+                      child: UtenButton(
+                        type: UtenButtonType.secondary,
+                        size: UtenButtonSize.small,
+                        icon: Icons.search_rounded,
+                        onPressed: enabled
+                            ? () => _pickOrder(context, ref)
+                            : null,
+                        child: Text(salesOrderId == null ? '选择' : '更换'),
+                      ),
                     ),
                   ),
                 ),

@@ -46776,7 +46776,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "2e4b5428c4a7a263689ef6a1860a7861f11c8f6f7cebeffe836ee0009972f6be"
+          "targetSha256": "3a2d0f68123202735f838cdbb56d592c69363a129a9de4787882731d5f9adb6f"
         },
         {
           "directive": "import",
@@ -68594,7 +68594,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c2a1299794fbf78a4e2c7e25b47696a631fb3d6e6153215360cab9493cd63c5e"
+          "targetSha256": "7095eb814d9f1dfdfb32c610ae0e33447957e0dc83a094d8da980b053996051e"
         },
         {
           "directive": "import",
@@ -253416,7 +253416,7 @@
     },
     {
       "source": "lib/core/constants/app_info.dart",
-      "sha256": "2e4b5428c4a7a263689ef6a1860a7861f11c8f6f7cebeffe836ee0009972f6be",
+      "sha256": "3a2d0f68123202735f838cdbb56d592c69363a129a9de4787882731d5f9adb6f",
       "lineCount": 19
     },
     {
@@ -255511,8 +255511,8 @@
     },
     {
       "source": "lib/features/finance/widgets/customer_prepayment_receipt_fields.dart",
-      "sha256": "c2a1299794fbf78a4e2c7e25b47696a631fb3d6e6153215360cab9493cd63c5e",
-      "lineCount": 127
+      "sha256": "7095eb814d9f1dfdfb32c610ae0e33447957e0dc83a094d8da980b053996051e",
+      "lineCount": 130
     },
     {
       "source": "lib/features/finance/widgets/finance_account_picker_panel.dart",

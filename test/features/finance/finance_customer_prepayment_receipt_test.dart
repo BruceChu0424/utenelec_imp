@@ -22,61 +22,68 @@ import 'package:uten_imp/shared/models/user.dart';
 
 import '../../support/document_scope_capability_overrides.dart';
 import '../../support/native_detail_reader_overrides.dart';
+import '../../support/uten_test_actions.dart';
 
 void main() {
-  testWidgets('桌面预收订单选择按钮位于后缀槽，与金额汇率输入框同为44高', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1200, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    final rate = TextEditingController(text: '7.123456');
-    final amount = TextEditingController(text: '88.1234');
-    addTearDown(rate.dispose);
-    addTearDown(amount.dispose);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          currentPermissionsProvider.overrideWithValue(const <String>{}),
-        ],
-        child: MaterialApp(
-          theme: buildLightTheme().copyWith(platform: TargetPlatform.windows),
-          locale: const Locale('zh'),
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: Scaffold(
-            body: UtenControlTheme(
-              child: CustomerPrepaymentReceiptFields(
-                salesOrderId: 'order-1',
-                salesOrderBillNo: 'XD-001',
-                clientLabel: '甲客户',
-                currencyLabel: '美元',
-                exchangeRateController: rate,
-                amountController: amount,
-                enabled: true,
-                onOrderSelected: (_) {},
+  for (final scenario in [
+    (width: 1200.0, height: 44.0, caption: '桌面预收订单选择按钮位于后缀槽，与金额汇率输入框同为44高'),
+    (width: 800.0, height: 44.0, caption: '800紧凑预收订单选择按钮位于后缀槽，与金额汇率输入框同为44高'),
+    (width: 375.0, height: 48.0, caption: '375紧凑预收订单选择按钮位于后缀槽，与金额汇率输入框同为48高'),
+  ]) {
+    testWidgets(scenario.caption, (tester) async {
+      await setUtenTestSurfaceSize(tester, Size(scenario.width, 900));
+      addTearDown(() => setUtenTestSurfaceSize(tester, null));
+      final rate = TextEditingController(text: '7.123456');
+      final amount = TextEditingController(text: '88.1234');
+      addTearDown(rate.dispose);
+      addTearDown(amount.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            currentPermissionsProvider.overrideWithValue(const <String>{}),
+          ],
+          child: MaterialApp(
+            theme: buildLightTheme().copyWith(platform: TargetPlatform.windows),
+            locale: const Locale('zh'),
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: Scaffold(
+              body: UtenControlTheme(
+                child: CustomerPrepaymentReceiptFields(
+                  salesOrderId: 'order-1',
+                  salesOrderBillNo: 'XD-001',
+                  clientLabel: '甲客户',
+                  currencyLabel: '美元',
+                  exchangeRateController: rate,
+                  amountController: amount,
+                  enabled: true,
+                  onOrderSelected: (_) {},
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    final order = find.byKey(
-      const ValueKey('customer-prepayment-receipt-order'),
-    );
-    final orderHeight = tester.getSize(order).height;
-    expect(orderHeight, 44);
-    for (final key in [
-      'customer-prepayment-receipt-rate',
-      'customer-prepayment-receipt-amount',
-    ]) {
-      expect(tester.getSize(find.byKey(ValueKey(key))).height, orderHeight);
-    }
-    expect(
-      find.descendant(of: order, matching: find.text('更换')),
-      findsOneWidget,
-    );
-    expect(tester.takeException(), isNull);
-  });
+      final order = find.byKey(
+        const ValueKey('customer-prepayment-receipt-order'),
+      );
+      final orderHeight = tester.getSize(order).height;
+      expect(orderHeight, scenario.height);
+      for (final key in [
+        'customer-prepayment-receipt-rate',
+        'customer-prepayment-receipt-amount',
+      ]) {
+        expect(tester.getSize(find.byKey(ValueKey(key))).height, orderHeight);
+      }
+      expect(
+        find.descendant(of: order, matching: find.text('更换')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   test('receipt models expose explicit kind and bound sales order', () {
     final list = FinanceDocListItem.fromJson(const {

@@ -8,7 +8,7 @@
     "mergeMainAllowed": false,
     "productionDeploymentAllowed": false
   },
-  "inventorySha256": "bac9e6c04e067b68663c5d0ed984aa0c755d6b68ef3d825ed6fa84832f6c8cb5",
+  "inventorySha256": "53192593294f854533705d3e2a4aa6df94178d509045d1c8765dd1acd0a961df",
   "baselineCounts": {
     "businessPagePackages": 220,
     "retainedBusinessPagePackages": 3,
@@ -5373,7 +5373,7 @@
       "feature": "client_update",
       "businessSource": "lib/features/client_update/client_update_page.dart",
       "sourceSha256": "ecc7a66bffa8f88a46e0e69622099a66d11ac8c40e9457fac1630204b5ec44d3",
-      "sourceProofSha256": "84a79d61ece134829683659c59b8943a1503bb8af5a7fa32cfddb830f1b06ff2",
+      "sourceProofSha256": "efa1b6d4f39c51ed5f20ee06211f14a054e4c82a87a95b693aa7c2649af55b77",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -6412,7 +6412,7 @@
       "feature": "finance",
       "businessSource": "lib/features/finance/pages/finance_doc_edit_page.dart",
       "sourceSha256": "e438425e3cc80a11b2bea652bc49af34a7272c22b5d5a007fa2587975c2f2a6f",
-      "sourceProofSha256": "ce640fc16e289e8637f1201302e1056f51eac8f65cea9e564ea5582fb136a4c8",
+      "sourceProofSha256": "8784386d23207af856d9b374309bc57364cab8379e21d4d71eb6ebc8f1619fe1",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",

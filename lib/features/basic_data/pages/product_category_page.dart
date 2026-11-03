@@ -772,6 +772,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       writableOf: (row) => row.writable,
       inlineFields: canInlineEdit ? goodsInlineFields(context, ref) : const {},
       inlineCancelLabel: AppLocalizations.of(context).bomEditDiscardAndExit,
+      inlineExitOnSave: true,
       inlineDiscardNote: AppLocalizations.of(
         context,
       ).masterEditDiscardRemainingNote,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/basic_data/pages/client_category_page.dart';
 import 'package:uten_imp/features/basic_data/pages/mould_category_page.dart';
@@ -33,6 +36,9 @@ class _Api extends ApiClient {
   final String domain;
   final writes = <Map<String, dynamic>>[];
   final writePaths = <String>[];
+  List<Map<String, dynamic>> rows = [];
+  Completer<void>? patchGate;
+  String? rejectedId;
 
   Map<String, dynamic> get category => {
     'id': _category,
@@ -78,6 +84,18 @@ class _Api extends ApiClient {
         'session': {'preferences': <String, Object>{}},
       };
     }
+    if (path == '/master/$domain') {
+      final items = query?['disabledOnly'] == true || query?['stubOnly'] == true
+          ? <Map<String, dynamic>>[]
+          : rows;
+      return {
+        'items': items,
+        'page': 1,
+        'size': 20,
+        'total': items.length,
+        'totalPages': items.isEmpty ? 0 : 1,
+      };
+    }
     return {
       'items': <Object>[],
       'page': 1,
@@ -85,6 +103,33 @@ class _Api extends ApiClient {
       'total': 0,
       'totalPages': 0,
     };
+  }
+
+  @override
+  Future<Map<String, dynamic>> patch(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async {
+    writePaths.add(path);
+    final values = Map<String, dynamic>.from(body as Map);
+    writes.add(values);
+    await patchGate?.future;
+    final id = path.split('/').last;
+    if (id == rejectedId) throw ApiException('CONFLICT', '资料已变化，请重新核对');
+    rows = [
+      for (final row in rows)
+        if (row['id'] == id)
+          {
+            ...row,
+            ...Map<String, dynamic>.from(values['changes'] as Map),
+            'version': (row['version'] as int) + 1,
+          }
+        else
+          row,
+    ];
+    return {};
   }
 
   @override
@@ -119,6 +164,7 @@ Future<void> _open(
   _PageCase entry,
   _Api api, {
   bool allowCreate = true,
+  bool allowEdit = false,
   Size size = const Size(1600, 1000),
   double textScale = 1,
 }) async {
@@ -146,6 +192,7 @@ Future<void> _open(
         currentPermissionsProvider.overrideWithValue({
           '${entry.permission}:view',
           if (allowCreate) '${entry.permission}:create',
+          if (allowEdit) '${entry.permission}:edit',
           entry.categoryPermission,
         }),
       ],
@@ -327,10 +374,138 @@ void main() {
         expect(api.writes.single['name'], '表格新资料');
         expect(api.writes.single.containsKey('id'), isFalse);
         if (entry.domain == 'goods') expect(api.writes.single['unitId'], _unit);
+        if (entry.domain == 'goods') {
+          expect(find.text('编辑模式'), findsOneWidget);
+          expect(find.text('不保存并退出'), findsNothing);
+          expect(_newName(), findsNothing);
+        }
         expect(tester.takeException(), isNull);
       },
     );
   }
+
+  for (final fullscreen in [false, true]) {
+    testWidgets(
+      'goods saves and exits editing with one request (fullscreen=$fullscreen)',
+      (tester) async {
+        final api = _Api('goods')
+          ..rows = [_goodsRow('g1', '原货品')]
+          ..patchGate = Completer<void>();
+        await _open(
+          tester,
+          cases.first,
+          api,
+          allowCreate: false,
+          allowEdit: true,
+        );
+        if (fullscreen) {
+          await tester.tap(find.text('全屏'));
+          await tester.pumpAndSettle();
+        }
+        await tester.tap(find.text('编辑模式'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('inline-activate-g1-name')));
+        await tester.pumpAndSettle();
+        final name = find.descendant(
+          of: find.byKey(const ValueKey('inline-g1-name')),
+          matching: find.byType(TextField),
+        );
+        await tester.enterText(name, '保存后的货品');
+        await tester.pumpAndSettle();
+        if (_capture) {
+          await saveAuditScreenshot(
+            tester,
+            _captureKey,
+            'goods-save-exit-before-$fullscreen',
+          );
+        }
+        await tester.tap(find.text('保存 1 行修改'));
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.tap(find.text('保存 1 行修改'));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(api.writes, hasLength(1));
+        expect(find.text('编辑模式'), findsNothing);
+        api.patchGate!.complete();
+        await tester.pumpAndSettle();
+        expect(api.writePaths, ['/master/inline-edit/goods/g1']);
+        expect(api.writes.single, {
+          'expected': {'version': 7},
+          'changes': {'name': '保存后的货品'},
+        });
+        expect(find.text('编辑模式'), findsOneWidget);
+        expect(find.text('不保存并退出'), findsNothing);
+        expect(find.text('保存后的货品'), findsOneWidget);
+        expect(name, findsNothing);
+        if (_capture) {
+          await saveAuditScreenshot(
+            tester,
+            _captureKey,
+            'goods-save-exit-after-$fullscreen',
+          );
+        }
+        await tester.tap(find.text('编辑模式'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('不保存并退出'));
+        await tester.pumpAndSettle();
+        expect(find.text('编辑模式'), findsOneWidget);
+        expect(api.writes, hasLength(1));
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'goods partial save retains failed drafts and exits after a successful retry',
+    (tester) async {
+      final api = _Api('goods')
+        ..rows = [_goodsRow('g1', '第一行'), _goodsRow('g2', '第二行')]
+        ..rejectedId = 'g2';
+      await _open(
+        tester,
+        cases.first,
+        api,
+        allowCreate: false,
+        allowEdit: true,
+      );
+      await tester.tap(find.text('编辑模式'));
+      await tester.pumpAndSettle();
+      for (final id in ['g1', 'g2']) {
+        await tester.tap(find.byKey(ValueKey('inline-activate-$id-name')));
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.descendant(
+            of: find.byKey(ValueKey('inline-$id-name')),
+            matching: find.byType(TextField),
+          ),
+          '修改$id',
+        );
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.text('保存 2 行修改'));
+      await tester.pumpAndSettle();
+      expect(find.text('保存 1 行修改'), findsOneWidget);
+      expect(find.text('编辑模式'), findsNothing);
+      expect(find.text('资料已变化，请重新核对'), findsOneWidget);
+      final failed = find.descendant(
+        of: find.byKey(const ValueKey('inline-g2-name')),
+        matching: find.byType(TextField),
+      );
+      expect(tester.widget<TextField>(failed).controller!.text, '修改g2');
+      api.rejectedId = null;
+      await tester.tap(find.text('保存 1 行修改'));
+      await tester.pumpAndSettle();
+      expect(api.writePaths, [
+        '/master/inline-edit/goods/g1',
+        '/master/inline-edit/goods/g2',
+        '/master/inline-edit/goods/g2',
+      ]);
+      expect(find.text('编辑模式'), findsOneWidget);
+      expect(find.text('修改g1'), findsOneWidget);
+      expect(find.text('修改g2'), findsOneWidget);
+      expect(find.text('不保存并退出'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('view-only category has no edit or draft-row creation entry', (
     tester,
@@ -367,3 +542,15 @@ void main() {
     }
   });
 }
+
+Map<String, dynamic> _goodsRow(String id, String name) => {
+  'id': id,
+  'code': id,
+  'name': name,
+  'version': 7,
+  'writable': true,
+  'status': '使用',
+  'categoryId': _category,
+  'unitId': _unit,
+  'sourceType': '采购',
+};

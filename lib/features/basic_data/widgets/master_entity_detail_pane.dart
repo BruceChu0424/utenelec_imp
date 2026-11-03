@@ -213,6 +213,7 @@ class MasterEntityPaneConfig<TItem, TDetail> {
     this.inlineCreation,
     this.inlineCancelLabel,
     this.inlineDiscardNote,
+    this.inlineExitOnSave = false,
     this.readStableWritePermission,
   });
 
@@ -228,6 +229,9 @@ class MasterEntityPaneConfig<TItem, TDetail> {
   inlineCreation;
   final String? inlineCancelLabel;
   final String? inlineDiscardNote;
+
+  /// Return to the reading view after the whole batch has been acknowledged.
+  final bool inlineExitOnSave;
   final String? readStableWritePermission;
   final Future<void> Function(
     String id,
@@ -1640,6 +1644,7 @@ class _MasterEntityDetailPaneState<TItem, TDetail>
         onSave: _saveInlineRow,
         cancelLabel: _c.inlineCancelLabel,
         discardNote: _c.inlineDiscardNote,
+        exitOnSuccess: _c.inlineExitOnSave,
         additionalActions: additional,
         embedded: true,
       ),

@@ -925,6 +925,72 @@ void main() {
   );
 
   test(
+    'save-and-exit retains partial failures and exits only after the last acknowledgement',
+    () async {
+      final controller = MasterInlineEditController<_Row>()..begin();
+      addTearDown(controller.dispose);
+      controller.setValue('1', _name, 'One', originalValue: 'Before');
+      controller.setValue('2', _name, 'Two', originalValue: 'Before');
+      final calls = <String>[];
+      expect(
+        await controller.save((id, patch) async {
+          calls.add(id);
+          if (id == '2') throw StateError('conflict');
+        }, exitOnSuccess: true),
+        isFalse,
+      );
+      expect(controller.active, isTrue);
+      expect(controller.patchFor('1'), isEmpty);
+      expect(controller.patchFor('2'), {'name': 'Two'});
+      final pending = Completer<void>();
+      final saving = controller.save((id, patch) {
+        calls.add(id);
+        return pending.future;
+      }, exitOnSuccess: true);
+      expect(controller.active, isTrue);
+      expect(controller.busy, isTrue);
+      expect(
+        await controller.save(
+          (id, patch) async => calls.add(id),
+          exitOnSuccess: true,
+        ),
+        isFalse,
+      );
+      pending.complete();
+      expect(await saving, isTrue);
+      expect(calls, ['1', '2', '2']);
+      expect(controller.active, isFalse);
+      expect(controller.busy, isFalse);
+      expect(controller.dirty, isFalse);
+      controller.begin();
+      expect(controller.active, isTrue);
+      expect(controller.error, isNull);
+      expect(controller.changedRows, 0);
+    },
+  );
+
+  test(
+    'a stale save-and-exit completion cannot close a replacement editing session',
+    () async {
+      final controller = MasterInlineEditController<_Row>()..begin();
+      addTearDown(controller.dispose);
+      controller.setValue('1', _name, 'Old draft', originalValue: 'Before');
+      final pending = Completer<void>();
+      final saving = controller.save(
+        (_, _) => pending.future,
+        exitOnSuccess: true,
+      );
+      controller.cancel();
+      controller.begin();
+      controller.setValue('1', _name, 'New draft', originalValue: 'Before');
+      pending.complete();
+      expect(await saving, isFalse);
+      expect(controller.active, isTrue);
+      expect(controller.patchFor('1'), {'name': 'New draft'});
+    },
+  );
+
+  test(
     'invalid integer blocks all writes and empty optional number clears with null',
     () async {
       final controller = MasterInlineEditController<_Row>()..begin();

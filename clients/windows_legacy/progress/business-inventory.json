@@ -18921,7 +18921,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "025ceaedf8cc61d2fa82c0a836489eb5a63c5b3ffb4f85e03f996ea86bb49c18"
+          "targetSha256": "96ad2fce7aa07e8717db8aefb310e3e6ad735e6efe8bef812e8c63619b3e41f7"
         },
         {
           "directive": "import",
@@ -20493,7 +20493,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "025ceaedf8cc61d2fa82c0a836489eb5a63c5b3ffb4f85e03f996ea86bb49c18"
+          "targetSha256": "96ad2fce7aa07e8717db8aefb310e3e6ad735e6efe8bef812e8c63619b3e41f7"
         },
         {
           "directive": "import",
@@ -20541,7 +20541,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1bb694530d5950c925c7ff0b6bbcaa6519ddb0d04e94fe942feb2482a867ca45"
+          "targetSha256": "2b48ff1aae0311901cab13a017b1a8c885ae2881cba5b38c91c207c7793a4901"
         }
       ],
       "partUnits": [],
@@ -23068,7 +23068,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "025ceaedf8cc61d2fa82c0a836489eb5a63c5b3ffb4f85e03f996ea86bb49c18"
+          "targetSha256": "96ad2fce7aa07e8717db8aefb310e3e6ad735e6efe8bef812e8c63619b3e41f7"
         },
         {
           "directive": "import",
@@ -24474,7 +24474,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "025ceaedf8cc61d2fa82c0a836489eb5a63c5b3ffb4f85e03f996ea86bb49c18"
+          "targetSha256": "96ad2fce7aa07e8717db8aefb310e3e6ad735e6efe8bef812e8c63619b3e41f7"
         },
         {
           "directive": "import",
@@ -29449,7 +29449,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "025ceaedf8cc61d2fa82c0a836489eb5a63c5b3ffb4f85e03f996ea86bb49c18"
+          "targetSha256": "96ad2fce7aa07e8717db8aefb310e3e6ad735e6efe8bef812e8c63619b3e41f7"
         },
         {
           "directive": "import",
@@ -29473,7 +29473,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1bb694530d5950c925c7ff0b6bbcaa6519ddb0d04e94fe942feb2482a867ca45"
+          "targetSha256": "2b48ff1aae0311901cab13a017b1a8c885ae2881cba5b38c91c207c7793a4901"
         },
         {
           "directive": "import",
@@ -34345,7 +34345,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "025ceaedf8cc61d2fa82c0a836489eb5a63c5b3ffb4f85e03f996ea86bb49c18"
+          "targetSha256": "96ad2fce7aa07e8717db8aefb310e3e6ad735e6efe8bef812e8c63619b3e41f7"
         },
         {
           "directive": "import",
@@ -35225,8 +35225,8 @@
       "id": "page:basic_data/pages/product_category_page.dart",
       "feature": "basic_data",
       "source": "lib/features/basic_data/pages/product_category_page.dart",
-      "sha256": "08aaa0dc2bb8f90072ca31228432774e7e293e090db3a00f1dd580f67ce40de1",
-      "lineCount": 1793,
+      "sha256": "2a2c3c557ba889adeaeda3c86abc9f757fdc6a9bb75ddbdf6172f1a1f84c1d8b",
+      "lineCount": 1794,
       "classes": [
         {
           "name": "ProductCategoryPage",
@@ -35780,7 +35780,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "025ceaedf8cc61d2fa82c0a836489eb5a63c5b3ffb4f85e03f996ea86bb49c18"
+          "targetSha256": "96ad2fce7aa07e8717db8aefb310e3e6ad735e6efe8bef812e8c63619b3e41f7"
         },
         {
           "directive": "import",
@@ -35840,7 +35840,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1bb694530d5950c925c7ff0b6bbcaa6519ddb0d04e94fe942feb2482a867ca45"
+          "targetSha256": "2b48ff1aae0311901cab13a017b1a8c885ae2881cba5b38c91c207c7793a4901"
         },
         {
           "directive": "import",
@@ -36079,21 +36079,21 @@
         {
           "symbol": "Perm.goodsExport",
           "literal": "goods:export",
-          "line": 792,
+          "line": 793,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 144
         },
         {
           "symbol": "Perm.goodsImport",
           "literal": "goods:import",
-          "line": 804,
+          "line": 805,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 147
         },
         {
           "symbol": "Perm.goodsCostView",
           "literal": "goods:cost:view",
-          "line": 987,
+          "line": 988,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 159
         }
@@ -36668,7 +36668,7 @@
         {
           "symbol": "save",
           "receiver": null,
-          "line": 784,
+          "line": 785,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -36678,7 +36678,7 @@
         {
           "symbol": "MasterPaneExport",
           "receiver": null,
-          "line": 789,
+          "line": 790,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -36688,7 +36688,7 @@
         {
           "symbol": "showGoodsImportWithModePicker",
           "receiver": null,
-          "line": 812,
+          "line": 813,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "import"
@@ -36698,7 +36698,7 @@
         {
           "symbol": "_goodsSaveBody",
           "receiver": null,
-          "line": 929,
+          "line": 930,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "save"
@@ -36708,7 +36708,7 @@
         {
           "symbol": "resolveGoodsSaveCategoryId",
           "receiver": null,
-          "line": 938,
+          "line": 939,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -36718,7 +36718,7 @@
         {
           "symbol": "_bomSaveBody",
           "receiver": null,
-          "line": 1007,
+          "line": 1008,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "save"
@@ -36728,7 +36728,7 @@
         {
           "symbol": "bomComponentCopyBody",
           "receiver": null,
-          "line": 1008,
+          "line": 1009,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -36738,7 +36738,7 @@
         {
           "symbol": "_copyGoods",
           "receiver": null,
-          "line": 1011,
+          "line": 1012,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "copy"
@@ -36748,7 +36748,7 @@
         {
           "symbol": "GoodsCopyClip",
           "receiver": null,
-          "line": 1040,
+          "line": 1041,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -36758,7 +36758,7 @@
         {
           "symbol": "copyGoods",
           "receiver": null,
-          "line": 1044,
+          "line": 1045,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -36768,7 +36768,7 @@
         {
           "symbol": "_pasteGoodsCopies",
           "receiver": null,
-          "line": 1056,
+          "line": 1057,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "paste"
@@ -36778,7 +36778,7 @@
         {
           "symbol": "_goodsSaveBody",
           "receiver": null,
-          "line": 1084,
+          "line": 1085,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -36788,7 +36788,7 @@
         {
           "symbol": "create",
           "receiver": "repo",
-          "line": 1097,
+          "line": 1098,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -36798,7 +36798,7 @@
         {
           "symbol": "paste",
           "receiver": "bomRepo",
-          "line": 1108,
+          "line": 1109,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "paste"
@@ -36808,7 +36808,7 @@
         {
           "symbol": "BomPasteTarget",
           "receiver": null,
-          "line": 1110,
+          "line": 1111,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "paste"
@@ -36818,7 +36818,7 @@
         {
           "symbol": "_bomSaveBody",
           "receiver": null,
-          "line": 1114,
+          "line": 1115,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -36828,7 +36828,7 @@
         {
           "symbol": "_batchPasteGoodsMulti",
           "receiver": null,
-          "line": 1179,
+          "line": 1180,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "paste"
@@ -36838,7 +36838,7 @@
         {
           "symbol": "showGoodsBatchPasteDialog",
           "receiver": null,
-          "line": 1185,
+          "line": 1186,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "paste"
@@ -36848,7 +36848,7 @@
         {
           "symbol": "_pasteGoodsCopies",
           "receiver": null,
-          "line": 1190,
+          "line": 1191,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "paste"
@@ -36858,7 +36858,7 @@
         {
           "symbol": "_batchCopyGoods",
           "receiver": null,
-          "line": 1195,
+          "line": 1196,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "copy"
@@ -36868,7 +36868,7 @@
         {
           "symbol": "GoodsCopyClip",
           "receiver": null,
-          "line": 1218,
+          "line": 1219,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -36878,7 +36878,7 @@
         {
           "symbol": "copyGoodsList",
           "receiver": null,
-          "line": 1234,
+          "line": 1235,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -36888,7 +36888,7 @@
         {
           "symbol": "_copyBom",
           "receiver": null,
-          "line": 1253,
+          "line": 1254,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "copy"
@@ -36898,7 +36898,7 @@
         {
           "symbol": "close",
           "receiver": "subscription",
-          "line": 1283,
+          "line": 1284,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "close"
@@ -36908,7 +36908,7 @@
         {
           "symbol": "copyBom",
           "receiver": null,
-          "line": 1290,
+          "line": 1291,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -36918,7 +36918,7 @@
         {
           "symbol": "_goodsPasteMenuItems",
           "receiver": null,
-          "line": 1429,
+          "line": 1430,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "paste"
@@ -36928,7 +36928,7 @@
         {
           "symbol": "_pasteGoodsCopies",
           "receiver": null,
-          "line": 1443,
+          "line": 1444,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "paste"
@@ -36938,7 +36938,7 @@
         {
           "symbol": "_batchPasteGoodsMulti",
           "receiver": null,
-          "line": 1450,
+          "line": 1451,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "paste"
@@ -36948,7 +36948,7 @@
         {
           "symbol": "_copyGoods",
           "receiver": null,
-          "line": 1478,
+          "line": 1479,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -36958,7 +36958,7 @@
         {
           "symbol": "_goodsPasteMenuItems",
           "receiver": null,
-          "line": 1480,
+          "line": 1481,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "paste"
@@ -36968,7 +36968,7 @@
         {
           "symbol": "batchDelete",
           "receiver": "pane",
-          "line": 1495,
+          "line": 1496,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "delete"
@@ -36978,7 +36978,7 @@
         {
           "symbol": "_copyBom",
           "receiver": null,
-          "line": 1501,
+          "line": 1502,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -36988,7 +36988,7 @@
         {
           "symbol": "_batchCopyGoods",
           "receiver": null,
-          "line": 1519,
+          "line": 1520,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -36998,7 +36998,7 @@
         {
           "symbol": "batchDelete",
           "receiver": "pane",
-          "line": 1539,
+          "line": 1540,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "delete"
@@ -37008,7 +37008,7 @@
         {
           "symbol": "_goodsPasteMenuItems",
           "receiver": null,
-          "line": 1542,
+          "line": 1543,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "paste"
@@ -39156,7 +39156,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "025ceaedf8cc61d2fa82c0a836489eb5a63c5b3ffb4f85e03f996ea86bb49c18"
+          "targetSha256": "96ad2fce7aa07e8717db8aefb310e3e6ad735e6efe8bef812e8c63619b3e41f7"
         },
         {
           "directive": "import",
@@ -39962,7 +39962,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "025ceaedf8cc61d2fa82c0a836489eb5a63c5b3ffb4f85e03f996ea86bb49c18"
+          "targetSha256": "96ad2fce7aa07e8717db8aefb310e3e6ad735e6efe8bef812e8c63619b3e41f7"
         },
         {
           "directive": "import",
@@ -40022,7 +40022,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1bb694530d5950c925c7ff0b6bbcaa6519ddb0d04e94fe942feb2482a867ca45"
+          "targetSha256": "2b48ff1aae0311901cab13a017b1a8c885ae2881cba5b38c91c207c7793a4901"
         },
         {
           "directive": "import",
@@ -42129,7 +42129,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "025ceaedf8cc61d2fa82c0a836489eb5a63c5b3ffb4f85e03f996ea86bb49c18"
+          "targetSha256": "96ad2fce7aa07e8717db8aefb310e3e6ad735e6efe8bef812e8c63619b3e41f7"
         },
         {
           "directive": "import",
@@ -43913,7 +43913,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "025ceaedf8cc61d2fa82c0a836489eb5a63c5b3ffb4f85e03f996ea86bb49c18"
+          "targetSha256": "96ad2fce7aa07e8717db8aefb310e3e6ad735e6efe8bef812e8c63619b3e41f7"
         },
         {
           "directive": "import",
@@ -168096,7 +168096,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "025ceaedf8cc61d2fa82c0a836489eb5a63c5b3ffb4f85e03f996ea86bb49c18"
+          "targetSha256": "96ad2fce7aa07e8717db8aefb310e3e6ad735e6efe8bef812e8c63619b3e41f7"
         },
         {
           "directive": "import",
@@ -252129,8 +252129,8 @@
     },
     {
       "source": "lib/features/basic_data/pages/product_category_page.dart",
-      "sha256": "08aaa0dc2bb8f90072ca31228432774e7e293e090db3a00f1dd580f67ce40de1",
-      "lineCount": 1793
+      "sha256": "2a2c3c557ba889adeaeda3c86abc9f757fdc6a9bb75ddbdf6172f1a1f84c1d8b",
+      "lineCount": 1794
     },
     {
       "source": "lib/features/basic_data/pages/settlement_method_page.dart",
@@ -252479,8 +252479,8 @@
     },
     {
       "source": "lib/features/basic_data/widgets/master_entity_detail_pane.dart",
-      "sha256": "1bb694530d5950c925c7ff0b6bbcaa6519ddb0d04e94fe942feb2482a867ca45",
-      "lineCount": 1914
+      "sha256": "2b48ff1aae0311901cab13a017b1a8c885ae2881cba5b38c91c207c7793a4901",
+      "lineCount": 1919
     },
     {
       "source": "lib/features/basic_data/widgets/master_inline_create_fields.dart",
@@ -252489,8 +252489,8 @@
     },
     {
       "source": "lib/features/basic_data/widgets/master_inline_edit.dart",
-      "sha256": "025ceaedf8cc61d2fa82c0a836489eb5a63c5b3ffb4f85e03f996ea86bb49c18",
-      "lineCount": 1464
+      "sha256": "96ad2fce7aa07e8717db8aefb310e3e6ad735e6efe8bef812e8c63619b3e41f7",
+      "lineCount": 1474
     },
     {
       "source": "lib/features/basic_data/widgets/master_inline_page_mixin.dart",

@@ -405,9 +405,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`；`clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/mould-bom-sync-20261031.json`；`clients/windows_legacy/progress/evidence/goods-bom-comparison-20261101.json`；`docs/99-项目治理/2026-11-02-货品表格保存后退出编辑.md`。
 
-接续/限制：2026-11-01 多窗口BOM交互补充未迁入原生：目标侧按钮、顶部非模态通知、联动勾选、草稿替换及最终确认保存、未保存离开和同请求结果恢复；Flutter已实现不代表WPF已支持，维持未迁移记录。。
+接续/限制：2026-11-01 多窗口BOM交互补充未迁入原生：目标侧按钮、顶部非模态通知、联动勾选、草稿替换及最终确认保存、未保存离开和同请求结果恢复；Flutter已实现不代表WPF已支持，维持未迁移记录。；2026-11-02：Web/Flutter 货品资料分类/搜索表格普通与全屏统一为整批保存确认成功后直接退出编辑；失败、未知新增及过期回执不清除草稿，公共 controller 参数维护同一入口。本机 74 项定向回归及静态检查通过。WPF GoodsWorkspaceView 仍为只读，货品编辑未迁移；后续接入须遵守此合同，当前状态及最终 DoD 不变。见 docs/99-项目治理/2026-11-02-货品表格保存后退出编辑.md。。
 
 ## W7-BIZ-035
 

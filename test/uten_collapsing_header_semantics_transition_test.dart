@@ -114,6 +114,13 @@ void main() {
         );
         tester.testTextInput.updateEditingValue(editing);
         await tester.pumpAndSettle();
+        final editable = find.byType(EditableText, skipOffstage: false);
+        final editableState = tester.state<EditableTextState>(editable);
+        final editableSemanticsId = tester.getSemantics(editable).id;
+        final retainedSemanticsParentId = tester
+            .getSemantics(editable)
+            .parent!
+            .id;
 
         for (final step in [
           (const Size(1600, 1600), 1200.0, false),
@@ -127,6 +134,10 @@ void main() {
           expect(tester.takeException(), isNull);
           expect(tester.state(headerFinder), same(header));
           expect(tester.state(bodyFinder), same(body));
+          expect(
+            tester.state<EditableTextState>(editable),
+            same(editableState),
+          );
           expect(body.input.value, editing);
           expect(body.focus.hasFocus, isTrue);
           expect(tester.testTextInput.isRegistered, isTrue);
@@ -138,8 +149,15 @@ void main() {
           await tester.ensureVisible(input);
           await tester.pumpAndSettle();
           expect(input.hitTestable(), findsOneWidget);
-          final editable = find.byType(EditableText, skipOffstage: false);
-          expect(tester.getSemantics(editable).value, editing.text);
+          final editableSemantics = tester.getSemantics(editable);
+          expect(editableSemantics.value, editing.text);
+          // Web reuses its DOM input by semantics ID. Replacing that ID while
+          // retaining EditableText's connection can publish an empty DOM value
+          // as a new edit even though the controller and composing text survive.
+          expect(editableSemantics.id, editableSemanticsId);
+          // The retained boundary must also keep the editor out of each
+          // viewport's changing sibling-merge group.
+          expect(editableSemantics.parent!.id, retainedSemanticsParentId);
           expect(tester.takeException(), isNull);
         }
       } finally {

@@ -1,0 +1,375 @@
+{
+  "schemaVersion": 1,
+  "task": "账户资料页设计与有权限的当前余额编辑",
+  "recordedDate": "2026-11-03",
+  "branch": "uimp/account-page-balance-20261103",
+  "sourceBase": "dfe3f3b67",
+  "classification": "frontend+shared-contract",
+  "governanceRecord": "docs/99-项目治理/2026-11-03-账户资料设计与余额编辑.md",
+  "commonEntrances": [
+    "lib/features/basic_data/pages/account_workspace_page.dart",
+    "lib/features/basic_data/pages/account_detail_page.dart",
+    "lib/features/basic_data/widgets/account_balance_reconciliation_dialog.dart",
+    "lib/features/basic_data/repositories/account_repository.dart",
+    "server/src/main/java/com/uten/imp/features/finance/accountbalance/AccountBalanceAdjustmentController.java",
+    "server/src/main/java/com/uten/imp/features/finance/accountbalance/AccountBalanceAdjustmentService.java"
+  ],
+  "balanceAuthority": {
+    "endpoint": "POST /api/finance/account-balance-adjustments/batch",
+    "permissions": [
+      "account:view",
+      "account:balance:view",
+      "account:balance:adjust"
+    ],
+    "request": [
+      "scope",
+      "effectiveDate",
+      "reason",
+      "idempotencyKey",
+      "items[].accountId",
+      "items[].expectedBalance",
+      "items[].targetBalance",
+      "items[].localDelta"
+    ],
+    "preservedRules": [
+      "普通主档更新不覆盖当前余额；调整保留不可变批次、原币差额、流水和总账投影",
+      "服务端校验业务日、活动账户、完整性及expectedBalance，整批原子提交",
+      "人民币本位币差额由服务端取原币差额；外币非零调整使用财务显式同号非零localDelta",
+      "同一请求幂等重放返回原结果，同键异内容拒绝，未知提交不能凭重试制造新事实",
+      "查看余额不等于调整权限，account:edit不授予余额调整能力",
+      "按币种汇总，不跨币种相加；历史期初和累计收付款保持原事实"
+    ]
+  },
+  "clients": {
+    "web": "与Flutter桌面共用AccountPage及共享核对入口；本次实际交互与定向回归由治理记录补充",
+    "flutterDesktop": "与Web共用Dart入口；本次实际交互与定向回归由治理记录补充",
+    "wpfLegacy": {
+      "runtimeFamily": "wpf_legacy",
+      "architectures": [
+        "x86",
+        "x64"
+      ],
+      "tasks": [
+        {
+          "id": "W7-BIZ-018",
+          "page": "account_detail_page.dart",
+          "status": "todo",
+          "nativeTargets": []
+        },
+        {
+          "id": "W7-BIZ-019",
+          "page": "account_page.dart",
+          "status": "todo",
+          "nativeTargets": []
+        },
+        {
+          "id": "W7-BIZ-020",
+          "page": "account_workspace_page.dart",
+          "status": "todo",
+          "nativeTargets": []
+        }
+      ],
+      "status": "未迁移",
+      "sourceEvidence": [
+        "clients/windows_legacy/migration-coverage.json 中账户三页均为not-migrated",
+        "Uten.Legacy.Desktop/Features只有Goods、Units、Downloads、Publish原生业务入口，没有账户页",
+        "Uten.Legacy.Desktop/MainWindow.xaml.cs未接账户导航或余额调整调用"
+      ],
+      "followup": "迁移时复用服务端余额调整合同及同组精确样例，按Uten同源token呈现编辑状态和权限；补完整列表/详情/历史/汇总与未知提交恢复，执行x86/x64及Win7目标机业务验收。",
+      "completionClaim": false,
+      "businessWritesOpened": false,
+      "targetPcAcceptance": false
+    }
+  },
+  "checks": {
+    "platformInventory": "已核查当前registry、migration-coverage、Desktop/Features及MainWindow；不把源码搜索当作真实交互验收",
+    "progressRegistry": "Final business_inventory.py --write, progress_tracker.py sync and progress_tracker.py check passed; logs: build/account-inventory-accepted-final-write.log, build/account-progress-accepted-final-sync.log, build/account-progress-accepted-final-check.log. All 362 task states are unchanged; W7-BIZ-018/019/020 remain todo with nativeTargets=[].",
+    "webAndFlutterRegression": "Final root-owned regression commands, counts and limits are in the governance record; DDC combined workflow passed with newErrors=[], and final artifact compiled with all 1814 source hashes unchanged. No production or target-Win7 acceptance is inferred.",
+    "harnessAnalyze": {
+      "result": "passed",
+      "command": "flutter analyze --no-pub tool/account_workspace_design_harness.dart",
+      "issues": 0
+    },
+    "webCompile": {
+      "result": "passed",
+      "command": "flutter build web --debug --no-pub --no-web-resources-cdn --no-wasm-dry-run --output build/account-design-final-web -t tool/account_workspace_design_harness.dart",
+      "log": "build/account-design-web-accepted-final-build.log",
+      "seconds": 84.5,
+      "kind": "Debug synthetic fixture; not a release artifact",
+      "url": "http://127.0.0.1:8381/",
+      "artifactRoot": "build/account-design-final-web",
+      "manifest": "build/account-design-web-final-manifest.json",
+      "frozenSourceFiles": 1814,
+      "sourceChangesDuringBuild": [],
+      "kernelIsNewerThanReviewedSources": true,
+      "jsSha256": "c8dae160f312373dac5d6f80aa80305e1b9f429998d0d272ba99dcc68c860efb",
+      "jsBytes": 18949521,
+      "sourceFreezeSha256": "fe7f53a61e0d118621202e3ce89ddea1a7e399fdfcb6bf848324786c8dae9174",
+      "artifactUiVerified": true
+    },
+    "actualBrowser": {
+      "result": "passed for the listed final DDC AccountPage workflows; the matching artifact also passed its separate smoke/screenshots in checks.artifactActualWeb",
+      "details": "build/account-design-ui/final-complete-result.json",
+      "businessNetwork": false,
+      "sourceFreeze": "build/account-design-artifact-final-source-freeze.json",
+      "tested": [
+        "pure name save and read model verification",
+        "name draft through 1280/390 resize",
+        "balance 1286400.50 to 1287000.50 and CNY summary 2799384.85 to 2799984.85",
+        "two further resize cycles and full name save",
+        "final read name and balance verification",
+        "zero new console errors since saveFocusQaStart"
+      ],
+      "screenshots": [
+        "build/account-design-ui/final-balance-editor.png",
+        "build/account-design-ui/final-balance-confirm.png",
+        "build/account-design-ui/final-saved-balance-draft.png",
+        "build/account-design-ui/final-complete-read.png"
+      ],
+      "previousSnapshotDetails": "build/account-design-ui/results.json",
+      "scopeBoundary": "Other shared component consumers are inventoried, not all target-device accepted. WPF account migration remains todo.",
+      "artifactVerification": "Passed separately in checks.artifactActualWeb; full balance/name/resize flow remains recorded against the identical frozen DDC source."
+    },
+    "sharedScrollOneLineAb": {
+      "build": "passed; build/account-design-web-shared-ab-build.log, 111.1 seconds",
+      "actualWeb": "failed; root agent observed semantics node map inconsistency after narrowing, then render mutation/controller/inactive-element errors after returning to wide viewport",
+      "sourceManifest": "build/account-design-web-shared-ab-manifest.json",
+      "accepted": false,
+      "note": "Removing clearSemantics alone is not accepted. No component-manual update or final inventory synchronization was made for this candidate."
+    },
+    "sharedScrollCandidate2": {
+      "sourceSha256": "47a5202451d35314728a6080e925db9c1a48a4bfeb902dde04bfc90e6f84046d",
+      "publicSuites": "25/25 passed, reported by owning agent; actual Web acceptance remains separate",
+      "devServer": "http://127.0.0.1:8380/",
+      "devCommand": "flutter run --no-pub --no-web-resources-cdn -d web-server --web-hostname=127.0.0.1 --web-port=8380 -t tool/account_workspace_design_harness.dart",
+      "initialCompileSeconds": 50.6,
+      "hotRestart": "R (per actual CLI), recompile complete in 288 ms before first browser client connected",
+      "actualWeb": "failed: 1280 to 390 retained text but produced semantics-node-map inconsistency and a multiple-ScrollController error; not accepted",
+      "accepted": false,
+      "record": "build/account-design-ddc-candidate2.json",
+      "failureEvidence": "build/account-design-ui/candidate2-semantics-errors.json"
+    },
+    "sharedScrollCandidate3": {
+      "sourceSha256": "4ca95602c0cb6f14dc2c946b474a359bb1918cc39bc88ba28744a6c4336ed891",
+      "workspaceSha256": "41f55e3925f7c2787a0faef77c8b1e494ade503b133da248cb0c651811c971c0",
+      "publicSuites": "25/25 passed as reported by owning agent; actual Web acceptance remains separate",
+      "devServer": "http://127.0.0.1:8380/",
+      "hotRestartMs": 2648,
+      "actualWeb": "passed by root: pure 1280 to 390 to 1280 resize retained the complete name; balance save and two further resize cycles retained the name and allowed name save; balance and summary matched; save count returned to zero; no new semantics/layout/multiple-controller errors",
+      "accepted": true,
+      "record": "build/account-design-ddc-candidate3.json",
+      "scopeBoundary": "Historical checkpoint: this candidate accepted only the shared scroll repair. The later modal-exit and shared-save focus fixes completed the full UI; checks.actualBrowser and checks.artifactActualWeb now both passed. Shared consumer inventory still does not imply all target-device acceptance."
+    },
+    "finalOwnerModalDev": {
+      "port": 8380,
+      "freeze": "build/account-design-ddc-final-owner-freeze.json",
+      "frozenFiles": 1814,
+      "hotRestartMs": 417,
+      "sharedSourceSha256": "4ca95602c0cb6f14dc2c946b474a359bb1918cc39bc88ba28744a6c4336ed891",
+      "dialogSourceSha256": "18f9ad2b07a773a5cc31610046e2dc00a037db2a66d3ef595cda984ae2eb7868",
+      "workspaceSourceSha256": "721ef2b5d91717ca366d83d98933d501035cb57b07da7c70c96cebfbd0952798",
+      "actualWeb": "passed by root; final complete result includes read AX and newErrors=[]",
+      "accepted": true
+    },
+    "sharedSaveFocusCandidate": {
+      "sourceSha256": "72f977a0812505887336ce13ad450f1fb2e7c6eb6b0458f93c48e5ad370317c8",
+      "devServer": "http://127.0.0.1:8380/",
+      "hotRestartMs": 1957,
+      "actualWeb": "passed by root: pure-name save reached save0 and updated read model; combined name-draft/resize/balance-save/two-resize/name-save chain ended with complete original text and the new balance, with zero new console errors",
+      "accepted": true,
+      "freeze": "build/account-design-ddc-save-focus-freeze.json"
+    },
+    "artifactActualWeb": {
+      "result": "passed",
+      "url": "http://127.0.0.1:8381/",
+      "sourceManifest": "build/account-design-web-final-manifest.json",
+      "actualScope": [
+        "default desktop page",
+        "single-account balance form with removed subtitles and constant explanation blocks",
+        "header hint icon popup with readable AX",
+        "390x844 dark theme at 150 percent text scale, adjust-only permissions",
+        "readonly permissions",
+        "zero new console errors since finalArtifactStart"
+      ],
+      "permissionEvidence": {
+        "adjustOnly": {
+          "masterEditButtons": 0,
+          "balanceButtons": 1,
+          "record": "build/account-design-ui/final-adjust-only-state.txt"
+        },
+        "readonly": {
+          "editModeButtons": 0,
+          "balanceEditButtons": 0,
+          "record": "build/account-design-ui/final-readonly-state.txt"
+        }
+      },
+      "screenshots": [
+        "build/account-design-ui/final-account-desktop.png",
+        "build/account-design-ui/final-artifact-balance-editor.png",
+        "build/account-design-ui/final-hint-popup.png",
+        "build/account-design-ui/final-mobile-dark-large.png"
+      ],
+      "newErrors": [],
+      "scopeBoundary": "Synthetic local browser validation; not production balance writes or Windows target-device acceptance. Unknown-command recovery after forced process termination is still not persisted."
+    },
+    "progressRegistryStateChanges": []
+  },
+  "authorizationBoundary": "独立任务分支；未合入main、未推送、未部署、未正式打包或上传；未对生产余额执行写入",
+  "sourceSha256": {
+    "tool/account_workspace_design_harness.dart": "f8fd867bf7a4234e4c8c12f9ff8016d61cb8a75fc71af05576a56f26209dc422",
+    "lib/components/layout/uten_collapsing_header_scroll_view.dart": "4ca95602c0cb6f14dc2c946b474a359bb1918cc39bc88ba28744a6c4336ed891",
+    "lib/features/basic_data/pages/account_workspace_page.dart": "721ef2b5d91717ca366d83d98933d501035cb57b07da7c70c96cebfbd0952798",
+    "lib/features/basic_data/pages/account_detail_page.dart": "00ae0658aa32341e82ae430eeb0fdcde4bb1e3eacc4f38e5f5e09e04f7bd0bf4",
+    "lib/features/basic_data/widgets/account_overview_card.dart": "1e9828fe69e76f62fb0c3c07924204d4c3a77fd98c4d84c768cd7282cba925b4",
+    "lib/features/basic_data/widgets/account_balance_reconciliation_dialog.dart": "18f9ad2b07a773a5cc31610046e2dc00a037db2a66d3ef595cda984ae2eb7868",
+    "lib/features/basic_data/widgets/master_inline_edit.dart": "72f977a0812505887336ce13ad450f1fb2e7c6eb6b0458f93c48e5ad370317c8",
+    "lib/shared/formatters/exact_decimal.dart": "1ff38e3dd712d85fc4cc71d9ac90c9ba32064f407799c7ee9572b8d8c5872f1a"
+  },
+  "sharedConsumers": [
+    "lib/components/layout/uten_adaptive_hierarchy_pane.dart",
+    "lib/features/basic_data/pages/account_detail_page.dart",
+    "lib/features/basic_data/pages/account_workspace_page.dart",
+    "lib/features/basic_data/pages/goods_price_analysis_page.dart",
+    "lib/features/basic_data/pages/party_detail_page.dart",
+    "lib/features/basic_data/pages/warehouse_page.dart",
+    "lib/features/basic_data/widgets/goods_cost_actual_panel.dart",
+    "lib/features/basic_data/widgets/goods_cost_tab.dart",
+    "lib/features/basic_data/widgets/goods_price_facet_picker.dart",
+    "lib/features/basic_data/widgets/goods_price_observation_detail.dart",
+    "lib/features/basic_data/widgets/goods_subcontract_supplier_table.dart",
+    "lib/features/basic_data/widgets/master_data_table_view.dart",
+    "lib/features/basic_data/widgets/master_entity_detail_pane.dart",
+    "lib/features/basic_data/widgets/warehouse_inventory_panel.dart",
+    "lib/features/department/widgets/department_overview_pane.dart",
+    "lib/features/employee/pages/employee_detail_page.dart",
+    "lib/features/expense/pages/expense_approval_list_page.dart",
+    "lib/features/expense/pages/expense_list_page.dart",
+    "lib/features/finance/pages/finance_account_flow_page.dart",
+    "lib/features/finance/pages/finance_ar_ap_page.dart",
+    "lib/features/finance/pages/finance_asset_workbench_page.dart",
+    "lib/features/finance/pages/finance_doc_detail_page.dart",
+    "lib/features/finance/pages/finance_procurement_approval_review_page.dart",
+    "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+    "lib/features/finance/pages/finance_quote_review_list_page.dart",
+    "lib/features/finance/pages/finance_quote_review_page.dart",
+    "lib/features/finance/pages/finance_reconciliation_page.dart",
+    "lib/features/finance/pages/finance_report_table_page.dart",
+    "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+    "lib/features/finance/pages/finance_sales_order_review_page.dart",
+    "lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart",
+    "lib/features/finance/pages/finance_statement_page.dart",
+    "lib/features/finance/payables/pages/finance_payables_page.dart",
+    "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+    "lib/features/hr_task/pages/hr_reconcile_page.dart",
+    "lib/features/hr_task/pages/hr_task_list_page.dart",
+    "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+    "lib/features/payroll/pages/payroll_review_page.dart",
+    "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
+    "lib/features/production/pages/production_daily_report_detail_page.dart",
+    "lib/features/production/pages/production_draw_request_page.dart",
+    "lib/features/production/pages/production_execution_batch_page.dart",
+    "lib/features/production/pages/production_material_analysis_page.dart",
+    "lib/features/production/pages/production_material_discovery_request_page.dart",
+    "lib/features/production/pages/where_used_report_page.dart",
+    "lib/features/production/pages/workshop_material_reports_page.dart",
+    "lib/features/production/widgets/production_execution_card_print_preview.dart",
+    "lib/features/profile/pages/profile_page.dart",
+    "lib/features/purchase/pages/purchase_doc_detail_page.dart",
+    "lib/features/purchase/pages/purchase_doc_list_page.dart",
+    "lib/features/quality/pages/production_fqc_handling_page.dart",
+    "lib/features/quality/pages/quality_pending_disposal_page.dart",
+    "lib/features/sales/pages/sales_doc_detail_page.dart",
+    "lib/features/sales/pages/sales_doc_list_page.dart",
+    "lib/features/sales/pages/sales_manager_review_page.dart",
+    "lib/features/sales/pages/sales_order_progress_page.dart",
+    "lib/features/sales/widgets/sales_shipment_task_workbench.dart",
+    "lib/features/stock/pages/instant_inventory_page.dart",
+    "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+    "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+    "lib/features/subcontract/pages/subcontract_doc_detail_page.dart",
+    "lib/features/subcontract/pages/subcontract_draw_request_page.dart",
+    "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+    "lib/features/warehouse/materialbin/pages/workshop_material_issue_batch_page.dart",
+    "lib/features/warehouse/materialbin/widgets/workshop_material_task_center.dart",
+    "lib/features/warehouse/pages/production_draw_batch_issue_page.dart",
+    "lib/features/warehouse/pages/production_finished_batch_stock_in_page.dart",
+    "lib/features/warehouse/pages/production_material_discovery_page.dart",
+    "lib/features/warehouse/pages/shelf_label_page.dart",
+    "lib/features/warehouse/pages/stock_doc_detail_page.dart",
+    "lib/features/warehouse/pages/stock_doc_list_page.dart",
+    "lib/features/warehouse/pages/warehouse_document_history_detail_page.dart",
+    "lib/features/warehouse/pages/warehouse_insight_page.dart",
+    "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+    "lib/features/warehouse/pages/warehouse_sales_outbound_batch_page.dart",
+    "lib/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart",
+    "lib/features/warehouse/pages/warehouse_stock_batch_outbound_page.dart",
+    "lib/features/warehouse/pages/warehouse_subcontract_outbound_edit_page.dart",
+    "lib/features/warehouse/widgets/production_finished_inbound_tasks_view.dart",
+    "lib/features/warehouse/widgets/subcontract_outbound_detail_table.dart",
+    "lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart",
+    "lib/features/warehouse/widgets/warehouse_document_history_view.dart",
+    "lib/features/warehouse/widgets/warehouse_draw_task_segment.dart",
+    "lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart",
+    "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart",
+    "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+    "lib/features/warehouse/widgets/warehouse_subcontract_outbound_workbench.dart",
+    "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+    "lib/shared/drafts/draft_workspace_table.dart",
+    "lib/shared/drafts/form_draft_category_table.dart",
+    "lib/shared/stock_ledger/goods_stock_ledger_panel.dart"
+  ],
+  "sharedConsumerCoverage": {
+    "sharedImplementation": "lib/components/layout/uten_collapsing_header_scroll_view.dart",
+    "integration": "Existing callers use the single shared widget; no per-page render workaround was copied.",
+    "publicRenderTests": "Shared transition, focus, semantics and IME regression evidence is reported separately by the root agent.",
+    "actualWebScope": "AccountPage real browser resize and balance editing; other listed consumers are inventory only, not all accepted on target devices.",
+    "wpfLegacy": "The Flutter render/Element/semantics lifecycle has no WPF counterpart. WPF account pages remain not migrated; no writes opened and no target-PC acceptance inferred.",
+    "componentManual": "docs/02-组件库/UtenCollapsingHeaderScrollView.md updated for the accepted stable explicit semantics boundary and complete attached-subtree invalidation; frontend-design default remains unchanged."
+  },
+  "sharedSaveConsumers": [
+    "lib/features/basic_data/pages/account_workspace_page.dart",
+    "lib/features/basic_data/pages/color_page.dart",
+    "lib/features/basic_data/pages/currency_page.dart",
+    "lib/features/basic_data/pages/payment_style_page.dart",
+    "lib/features/basic_data/pages/settlement_method_page.dart",
+    "lib/features/basic_data/pages/unit_page.dart",
+    "lib/features/basic_data/pages/warehouse_page.dart",
+    "lib/features/basic_data/widgets/master_entity_detail_pane.dart",
+    "lib/features/stock/pages/instant_inventory_page.dart"
+  ],
+  "sharedSaveConsumerCoverage": {
+    "sharedImplementation": "lib/features/basic_data/widgets/master_inline_edit.dart / MasterInlineEditActions",
+    "adapter": "lib/features/basic_data/widgets/master_inline_page_mixin.dart",
+    "contract": "UI save releases current focus and waits for the frame before guarded save. Controller transactions and normal input/empty-string semantics remain unchanged.",
+    "publicTests": "28/28 passed with old-source negative evidence; root actual Web pure-name and post-balance name-save regressions also passed with zero new console errors.",
+    "inventoryBoundary": "Direct MasterInlineEditActions consumers plus MasterInlinePageMixin callers; the list is not target-device acceptance for all consumers.",
+    "wpfLegacy": "No Flutter EditableText/DOM counterpart. WPF account migration state remains unchanged."
+  },
+  "sharedSaveIndirectConsumers": {
+    "via": "lib/features/basic_data/widgets/master_entity_detail_pane.dart",
+    "callers": [
+      "lib/features/basic_data/pages/client_category_page.dart",
+      "lib/features/basic_data/pages/mould_category_page.dart",
+      "lib/features/basic_data/pages/product_category_page.dart",
+      "lib/features/basic_data/pages/supplier_category_page.dart"
+    ],
+    "boundary": "Generic pane preserves each callers existing permission/field configuration. Not all branches or target devices were executed in this account task."
+  },
+  "acceptanceLimits": [
+    "No production balance mutation, deployment, package publication or upload.",
+    "WPF account pages remain not migrated and Win7 target-PC acceptance remains false.",
+    "Current unknown balance submission is retained inside its dialog; persistent recovery after forced process termination is not implemented.",
+    "Shared consumer inventory is not acceptance of all callers on all target devices."
+  ],
+  "localHelpers": {
+    "state": "stopped after final browser verification",
+    "ownershipChecks": "Verified DDC command target and static-helper PID/parent PID, script, output root and port before stopping. DDC exited via q; task-only Python child helpers were stopped.",
+    "verifiedClosedPorts": [
+      8379,
+      8380,
+      8381
+    ],
+    "retainedArtifacts": true,
+    "retainedFailureEvidence": true
+  }
+}

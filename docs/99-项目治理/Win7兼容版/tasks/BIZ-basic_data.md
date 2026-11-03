@@ -22,9 +22,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/account-page-balance-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 账户资料页布局与当前余额编辑增量：Web/Flutter桌面共用AccountPage；余额改动须有account:view、account:balance:view及account:balance:adjust，经共享余额核对入口提交不可变调整批次，不使用普通主档PUT覆盖余额。WPF账户列表、详情及编辑仍未迁移，不开放写入口，不据本轮Flutter/服务端结果标完成。后续须接入expectedBalance并发、按操作者隔离幂等、服务端业务日、原因/确认、原币精度、外币显式localDelta、未知提交及历史/汇总刷新合同。见账户资料设计与余额编辑20261103证据及治理记录。。
 
 ## W7-BIZ-019
 
@@ -45,9 +45,9 @@
 7. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 8. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/account-page-balance-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 账户资料页布局与当前余额编辑增量：Web/Flutter桌面共用AccountPage；余额改动须有account:view、account:balance:view及account:balance:adjust，经共享余额核对入口提交不可变调整批次，不使用普通主档PUT覆盖余额。WPF账户列表、详情及编辑仍未迁移，不开放写入口，不据本轮Flutter/服务端结果标完成。后续须接入expectedBalance并发、按操作者隔离幂等、服务端业务日、原因/确认、原币精度、外币显式localDelta、未知提交及历史/汇总刷新合同。见账户资料设计与余额编辑20261103证据及治理记录。。
 
 ## W7-BIZ-020
 
@@ -69,9 +69,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/account-page-balance-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 账户资料页布局与当前余额编辑增量：Web/Flutter桌面共用AccountPage；余额改动须有account:view、account:balance:view及account:balance:adjust，经共享余额核对入口提交不可变调整批次，不使用普通主档PUT覆盖余额。WPF账户列表、详情及编辑仍未迁移，不开放写入口，不据本轮Flutter/服务端结果标完成。后续须接入expectedBalance并发、按操作者隔离幂等、服务端业务日、原因/确认、原币精度、外币显式localDelta、未知提交及历史/汇总刷新合同。见账户资料设计与余额编辑20261103证据及治理记录。。
 
 ## W7-BIZ-021
 

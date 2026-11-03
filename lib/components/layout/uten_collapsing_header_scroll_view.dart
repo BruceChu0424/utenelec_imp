@@ -777,32 +777,52 @@ class _CompactTouchBallisticActivity extends BallisticScrollActivity {
       (delegate as _CompactTouchScrollPosition)._moveCombined(value);
 }
 
-/// Retains the content's Element/IME state when it moves between viewports.
-/// Its semantics geometry belongs to the receiving viewport, not the old
-/// Scrollable. Reset only after the render root has actually been orphaned.
+/// Retains the content's Element, IME and semantics identity between viewports.
+///
+/// Reattaching invalidates the whole subtree's semantics in its new viewport.
+/// Clearing those nodes would replace Web input DOM while EditableText still
+/// owns the same input connection and editing value.
 class _RetainedScrollContent extends SingleChildRenderObjectWidget {
   const _RetainedScrollContent({super.key, required super.child});
 
   @override
-  SingleChildRenderObjectElement createElement() =>
-      _RetainedScrollContentElement(this);
-
-  @override
-  RenderObject createRenderObject(BuildContext context) => RenderProxyBox();
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderRetainedScrollContent();
 }
 
-class _RetainedScrollContentElement extends SingleChildRenderObjectElement {
-  _RetainedScrollContentElement(super.widget);
+class _RenderRetainedScrollContent extends RenderProxyBox {
+  bool _needsSemanticsReattachment = false;
 
   @override
-  void detachRenderObject() {
-    super.detachRenderObject();
-    // RenderObject.clearSemantics is valid for an orphaned render root. The
-    // children remain mounted, retaining controllers, focus and composing text.
-    // Calling it before detach (or on an attached subtree) would violate that
-    // API contract and leave the old viewport's cached topology inconsistent.
-    assert(renderObject.parent == null && !renderObject.attached);
-    renderObject.clearSemantics();
+  void describeSemanticsConfiguration(SemanticsConfiguration config) {
+    super.describeSemanticsConfiguration(config);
+    // This stable subtree moves between two independently owned viewports.
+    // Keep its descendants out of either viewport's sibling-merge groups.
+    config
+      ..isSemanticBoundary = true
+      ..explicitChildNodes = true;
+  }
+
+  @override
+  void detach() {
+    _needsSemanticsReattachment = true;
+    super.detach();
+  }
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    if (!_needsSemanticsReattachment) return;
+    _needsSemanticsReattachment = false;
+    // Reparented nodes must publish their new topology and geometry as well
+    // as retaining their IDs. Dirty the complete attached subtree so cached
+    // descendants cannot keep references to the previous viewport's merge.
+    void invalidate(RenderObject node) {
+      node.markNeedsSemanticsUpdate();
+      node.visitChildren(invalidate);
+    }
+
+    invalidate(this);
   }
 }
 

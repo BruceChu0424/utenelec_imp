@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +9,8 @@ import '../../support/uten_test_actions.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_back_button.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:uten_imp/components/layout/uten_floating_action_group.dart';
@@ -21,14 +24,167 @@ import 'package:uten_imp/features/basic_data/repositories/account_repository.dar
 import 'package:uten_imp/features/basic_data/repositories/currency_repository.dart';
 import 'package:uten_imp/features/basic_data/repositories/payment_style_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_inline_page_mixin.dart';
 import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/inputs/uten_field_suffix_icons.dart';
 import 'package:uten_imp/components/feedback/uten_context_menu.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import '../../shared/drafts/memory_form_draft_storage.dart';
+
+class _TestSession extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
+
+ApiClient _testApi() => ApiClient(
+  Dio(BaseOptions(baseUrl: 'https://account-permissions.invalid/api'))
+    ..interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (request, handler) {
+          handler.reject(
+            DioException(
+              requestOptions: request,
+              type: DioExceptionType.cancel,
+            ),
+          );
+        },
+      ),
+    ),
+);
 
 void main() {
+  for (final saveBalance in [false, true]) {
+    testWidgets(
+      'account name draft survives ${saveBalance ? 'balance save refresh and ' : ''}desktop mobile desktop resize',
+      (tester) async {
+        await setUtenTestSurfaceSize(tester, const Size(1280, 720));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
+        final repository = _AccountRepositoryFake();
+        await _pumpPage(tester, repository, {
+          Perm.accountView,
+          Perm.accountBalanceView,
+          Perm.accountBalanceAdjust,
+          Perm.accountEdit,
+        });
+        await tester.tap(find.text('编辑模式'));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('inline-activate-account-1-name')),
+        );
+        await tester.pumpAndSettle();
+        final nameEditor = find.descendant(
+          of: find.byKey(const ValueKey('inline-account-1-name')),
+          matching: find.byType(TextField),
+        );
+        const draft = '基本户盘点名称草稿';
+        await tester.enterText(nameEditor, draft);
+        await tester.pumpAndSettle();
+        final state = tester.state(find.byType(AccountPage))
+            as MasterInlinePageMixin<AccountPage, AccountListItem>;
+        expect(state.inlineEdit.patchFor('account-1'), {'name': draft});
+        if (saveBalance) {
+          final editBalance = find.byKey(
+            const ValueKey('account-edit-balance-account-1'),
+          );
+          await tester.ensureVisible(editBalance);
+          await tester.tap(editBalance);
+          await tester.pumpAndSettle();
+          await tester.enterText(
+            find.byKey(const ValueKey('account-target-balance-account-1')),
+            '100.1234',
+          );
+          final reason = find.byKey(const ValueKey('account-balance-reason'));
+          await tester.ensureVisible(reason);
+          await tester.pump();
+          await tester.enterText(reason, '合成账户盘点');
+          await tester.tap(find.text('保存余额'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('确认提交'));
+          await tester.pumpAndSettle();
+          expect(repository.adjustCalls, 1);
+          expect(repository.activeListCalls, 2);
+          expect(repository.item.balanceCurrentText, '100.1234');
+          expect(state.inlineEdit.patchFor('account-1'), {'name': draft});
+          expect(tester.widget<TextField>(nameEditor).controller!.text, draft);
+        }
+        for (final size in [const Size(390, 844), const Size(1280, 720)]) {
+          await setUtenTestSurfaceSize(tester, size);
+          await tester.pumpAndSettle();
+          expect(state.inlineEdit.patchFor('account-1'), {'name': draft});
+          expect(nameEditor, findsOneWidget);
+          expect(tester.widget<TextField>(nameEditor).controller!.text, draft);
+        }
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final grants in [
+    {Perm.accountView, Perm.accountBalanceView, Perm.accountBalanceAdjust},
+    {Perm.accountView, Perm.accountBalanceView, Perm.accountEdit},
+  ]) {
+    final canAdjust = grants.contains(Perm.accountBalanceAdjust);
+    testWidgets(
+      'edit mode separates balance adjustment and master permissions ($canAdjust)',
+      (tester) async {
+        await setUtenTestSurfaceSize(tester, const Size(1700, 1000));
+        addTearDown(() => setUtenTestSurfaceSize(tester, null));
+        final repository = _AccountRepositoryFake();
+        await _pumpPage(tester, repository, grants);
+        expect(
+          find.byKey(const ValueKey('account-edit-balance-account-1')),
+          findsNothing,
+        );
+        await tester.tap(find.text('编辑模式'));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('account-edit-balance-account-1')),
+          canAdjust ? findsOneWidget : findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey('inline-account-1-name')),
+          canAdjust ? findsNothing : findsOneWidget,
+        );
+        if (canAdjust) {
+          final edit = tester.widget<TextButton>(
+            find.byKey(const ValueKey('account-edit-balance-account-1')),
+          );
+          expect(edit.onPressed, isNotNull);
+        }
+        await tester.tap(find.text('取消编辑'));
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const ValueKey('account-edit-balance-account-1')),
+          findsNothing,
+        );
+        expect(repository.updateCalls, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets('balance view permission alone exposes no editing mode', (
+    tester,
+  ) async {
+    await setUtenTestSurfaceSize(tester, const Size(1280, 900));
+    addTearDown(() => setUtenTestSurfaceSize(tester, null));
+    await _pumpPage(tester, _AccountRepositoryFake(), {
+      Perm.accountView,
+      Perm.accountBalanceView,
+    });
+    expect(find.text('编辑模式'), findsNothing);
+    expect(
+      find.byKey(const ValueKey('account-edit-balance-account-1')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'exact balance headers and private bank terms reach the full read and export scope',
     (tester) async {
@@ -408,19 +564,15 @@ void main() {
           .whereType<UtenMenuItem>()
           .singleWhere((item) => item.label == '余额校准');
       expect(balanceMenu.enabled, isTrue);
-      expect(find.text('99999999999999.1234'), findsWidgets);
+      expect(find.text('99,999,999,999,999.1234'), findsWidgets);
       expect(find.byTooltip('金额按币种分别展示，不跨币种相加；警戒线只影响预警，不改余额。'), findsOneWidget);
       expect(find.text('使用中 1'), findsOneWidget);
       expect(find.textContaining('美元'), findsNothing);
       expect(find.text('负余额 1 个'), findsOneWidget);
-      final warningIcon = tester.widget<Icon>(
-        find.byIcon(Icons.warning_amber_rounded),
-      );
+      final warning = tester.widget<Text>(find.text('负余额 1 个'));
       expect(
-        warningIcon.color,
-        Theme.of(
-          tester.element(find.byIcon(Icons.warning_amber_rounded)),
-        ).colorScheme.error,
+        warning.style!.color,
+        Theme.of(tester.element(find.text('负余额 1 个'))).colorScheme.error,
       );
     },
   );
@@ -536,6 +688,12 @@ Future<void> _pumpPage(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        sessionProvider.overrideWith(_TestSession.new),
+        authenticatedScopeProvider.overrideWithValue(
+          const AuthenticatedScope(userId: 'test-account-operator'),
+        ),
+        apiClientProvider.overrideWithValue(_testApi()),
+        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
         currentPermissionsProvider.overrideWithValue(permissions),
         isSuperAdminProvider.overrideWithValue(false),
         accountRepositoryProvider.overrideWithValue(repository),
@@ -547,7 +705,12 @@ Future<void> _pumpPage(
         ),
         sharedPreferencesProvider.overrideWithValue(preferences),
       ],
-      child: const MaterialApp(home: AccountPage()),
+      child: const MaterialApp(
+        locale: Locale('zh'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: AccountPage(),
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -597,6 +760,7 @@ Future<GoRouter> _pumpRoutedPage(
 }
 
 class _AccountRepositoryFake implements AccountRepository {
+  int adjustCalls = 0;
   int summaryCalls = 0;
   int activeListCalls = 0;
   int disabledListCalls = 0;
@@ -738,11 +902,46 @@ class _AccountRepositoryFake implements AccountRepository {
     currencyId: item.currencyId,
     currencyCode: 'CNY',
     currencyName: '人民币',
+    baseCurrency: true,
     styleId: 'style-bank',
     balanceCurrent: item.balanceCurrent,
     balanceCurrentText: item.balanceCurrentText,
     status: item.status,
   );
+
+  @override
+  Future<AccountBalanceAdjustmentBatchResult> adjustBalances({
+    required AccountBalanceAdjustmentScope scope,
+    required String effectiveDate,
+    required String reason,
+    required String idempotencyKey,
+    required List<AccountBalanceAdjustmentInput> items,
+  }) async {
+    adjustCalls++;
+    final target = items.single.targetBalance;
+    item = AccountListItem(
+      id: item.id,
+      code: item.code,
+      name: item.name,
+      bankAccountNo: item.bankAccountNo,
+      accountType: item.accountType,
+      currencyId: item.currencyId,
+      currencyCode: 'CNY',
+      currencyName: '人民币',
+      baseCurrency: true,
+      balanceCurrentText: target,
+      status: item.status,
+    );
+    return AccountBalanceAdjustmentBatchResult(
+      id: 'synthetic-batch',
+      scope: scope.value,
+      effectiveDate: effectiveDate,
+      reason: reason,
+      itemCount: items.length,
+      changedCount: items.length,
+      items: const [],
+    );
+  }
 
   @override
   Future<AccountDetail> update(String id, Map<String, dynamic> body) async {

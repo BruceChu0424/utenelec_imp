@@ -11,17 +11,21 @@ import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_field_message.dart';
+import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../shared/auth/permissions.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/auth/sensitive_write.dart';
+import '../../../shared/providers/sensitive_read_boundary_provider.dart';
+import '../../../shared/widgets/read_owned_dialog.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../models/account_node.dart';
-import '../models/currency_node.dart';
 import '../repositories/account_repository.dart';
-import '../repositories/currency_repository.dart';
 
 Future<AccountBalanceAdjustmentBatchResult?>
 showAccountBalanceReconciliationDialog(
@@ -30,11 +34,32 @@ showAccountBalanceReconciliationDialog(
   bool? compactOverride,
 }) {
   final compact = compactOverride ?? MediaQuery.sizeOf(context).width < 1000;
-  return showDialog<AccountBalanceAdjustmentBatchResult>(
-    context: context,
+  return UtenDialog.showAndWaitForExit<AccountBalanceAdjustmentBatchResult>(
+    context,
     barrierDismissible: false,
     builder: (_) => _AccountBalanceReconciliationDialog(
       initialAccountId: initialAccountId,
+      compact: compact,
+    ),
+  );
+}
+
+/// A focused editor for the same audited balance-adjustment command used by
+/// the full reconciliation screen. Current balance is never a master-data PUT.
+Future<AccountBalanceAdjustmentBatchResult?> showAccountBalanceEditDialog(
+  BuildContext context, {
+  required String accountId,
+  String? initialTargetBalance,
+  bool? compactOverride,
+}) {
+  final compact = compactOverride ?? MediaQuery.sizeOf(context).width < 680;
+  return UtenDialog.showAndWaitForExit<AccountBalanceAdjustmentBatchResult>(
+    context,
+    barrierDismissible: false,
+    builder: (_) => _AccountBalanceReconciliationDialog(
+      initialAccountId: accountId,
+      initialTargetBalance: initialTargetBalance,
+      singleAccountOnly: true,
       compact: compact,
     ),
   );
@@ -44,10 +69,14 @@ class _AccountBalanceReconciliationDialog extends ConsumerStatefulWidget {
   const _AccountBalanceReconciliationDialog({
     required this.compact,
     this.initialAccountId,
+    this.initialTargetBalance,
+    this.singleAccountOnly = false,
   });
 
   final bool compact;
   final String? initialAccountId;
+  final String? initialTargetBalance;
+  final bool singleAccountOnly;
 
   @override
   ConsumerState<_AccountBalanceReconciliationDialog> createState() =>
@@ -65,7 +94,6 @@ class _AccountBalanceReconciliationDialogState
   _ZeroFillSnapshot? _zeroFillSnapshot;
 
   List<AccountListItem> _accounts = const [];
-  Map<String, CurrencyListItem> _currencies = const {};
   AccountBalanceAdjustmentScope _scope = AccountBalanceAdjustmentScope.full;
   String _query = '';
   int _searchEpoch = 0;
@@ -76,10 +104,42 @@ class _AccountBalanceReconciliationDialogState
   bool _submitting = false;
   bool _requestAttempted = false;
   String _idempotencyKey = const Uuid().v4();
+  _BalanceCommand? _pendingCommand;
+  bool _confirming = false;
+  bool _allowPop = false;
+  bool _refreshRequired = false;
+  bool _retired = false;
+  int _loadEpoch = 0;
+  late final bool Function() _ownerCurrent;
+
+  bool get _inputsLocked => _submitting || _pendingCommand != null;
+
+  bool get _canAdjust {
+    final boundary = ref.read(sensitiveReadBoundaryProvider);
+    return boundary.identity != null &&
+        !boundary.identity!.readOnly &&
+        (boundary.superAdmin ||
+            (boundary.permissions.contains(Perm.accountView) &&
+                boundary.permissions.contains(Perm.accountBalanceView) &&
+                boundary.permissions.contains(Perm.accountBalanceAdjust)));
+  }
+
+  bool get _current => mounted && !_retired && _ownerCurrent() && _canAdjust;
 
   @override
   void initState() {
     super.initState();
+    _ownerCurrent = captureReadOwner(ref);
+    listenReadOwner(ref, () {
+      _retired = true;
+      _loadEpoch++;
+      final route = ModalRoute.of(context);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (route != null && route.isActive) {
+          route.navigator?.removeRoute(route);
+        }
+      });
+    });
     if (widget.initialAccountId != null) {
       _scope = AccountBalanceAdjustmentScope.selected;
     }
@@ -102,30 +162,39 @@ class _AccountBalanceReconciliationDialogState
   }
 
   String get _effectiveDate {
+    if (_pendingCommand != null) return _pendingCommand!.effectiveDate;
     final date = ChinaDateTime.today();
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-'
         '${date.day.toString().padLeft(2, '0')}';
   }
 
   Future<void> _load() async {
+    if (!_current || _inputsLocked) return;
+    final epoch = ++_loadEpoch;
+    final refreshingConflict = _refreshRequired;
     setState(() {
       _loading = true;
       _loadError = null;
     });
     try {
-      final results = await Future.wait<Object>([
-        ref.read(accountRepositoryProvider).dict(),
-        ref.read(currencyRepositoryProvider).dict(),
-      ]);
-      final accounts = (results[0] as List<AccountListItem>)
+      final repository = ref.read(accountRepositoryProvider);
+      final result = widget.singleAccountOnly
+          ? [
+              _editableAccount(
+                await repository.detail(widget.initialAccountId!),
+              ),
+            ]
+          : await repository.dict();
+      if (!_current || epoch != _loadEpoch) return;
+      final accounts = result
           .where((account) => account.status == '使用')
           .toList();
-      final currencies = results[1] as List<CurrencyListItem>;
-      if (!mounted) return;
       for (final account in accounts) {
         _targetControllers.putIfAbsent(
           account.id,
-          () => TextEditingController(),
+          () => TextEditingController(
+            text: widget.singleAccountOnly ? widget.initialTargetBalance : null,
+          ),
         );
         _localDeltaControllers.putIfAbsent(
           account.id,
@@ -138,11 +207,16 @@ class _AccountBalanceReconciliationDialogState
       }
       setState(() {
         _accounts = accounts;
-        _currencies = {for (final item in currencies) item.id: item};
         _loading = false;
+        _refreshRequired = false;
+        if (refreshingConflict) _submitError = null;
+        if (_requestAttempted) {
+          _requestAttempted = false;
+          _idempotencyKey = const Uuid().v4();
+        }
       });
     } catch (error) {
-      if (!mounted) return;
+      if (!_current || epoch != _loadEpoch) return;
       setState(() {
         _loadError = error is ApiException ? error.message : '加载活动账户失败';
         _loading = false;
@@ -150,7 +224,22 @@ class _AccountBalanceReconciliationDialogState
     }
   }
 
+  static AccountListItem _editableAccount(AccountDetail detail) =>
+      AccountListItem(
+        id: detail.id,
+        code: detail.code,
+        name: detail.name,
+        accountType: detail.accountType,
+        currencyId: detail.currencyId,
+        currencyCode: detail.currencyCode,
+        currencyName: detail.currencyName,
+        baseCurrency: detail.baseCurrency,
+        balanceCurrentText: detail.balanceCurrentText,
+        status: detail.status,
+      );
+
   void _payloadChanged() {
+    if (_inputsLocked) return;
     if (!_requestAttempted || !mounted) return;
     setState(() {
       _requestAttempted = false;
@@ -174,10 +263,11 @@ class _AccountBalanceReconciliationDialogState
       );
 
   Future<void> _fillAllTargetsWithZero() async {
-    if (_submitting || _accounts.isEmpty) return;
+    if (_inputsLocked || _accounts.isEmpty || widget.singleAccountOnly) return;
     if (_hasEnteredAmounts) {
       final overwrite =
-          await showDialog<bool>(
+          await showReadOwnedDialog<bool>(
+            ref: ref,
             context: context,
             builder: (dialogContext) => UtenAlertDialog(
               title: const Text('覆盖现有金额输入？'),
@@ -198,7 +288,7 @@ class _AccountBalanceReconciliationDialogState
             ),
           ) ??
           false;
-      if (!overwrite || !mounted) return;
+      if (!overwrite || !_current) return;
     }
 
     final snapshot = _ZeroFillSnapshot(
@@ -229,7 +319,7 @@ class _AccountBalanceReconciliationDialogState
 
   void _undoZeroFill() {
     final snapshot = _zeroFillSnapshot;
-    if (snapshot == null || _submitting) return;
+    if (snapshot == null || _inputsLocked) return;
     setState(() {
       _scope = snapshot.scope;
       _selectedIds
@@ -265,13 +355,10 @@ class _AccountBalanceReconciliationDialogState
   List<AccountListItem> get _visibleAccounts {
     final query = _query.trim();
     List<String?> fields(AccountListItem account) {
-      final currency = _currency(account);
       return [
         account.name,
         account.code,
         account.bankAccountNo,
-        currency?.code,
-        currency?.name,
         account.currencyCode,
         account.currencyName,
       ];
@@ -316,16 +403,10 @@ class _AccountBalanceReconciliationDialogState
     ],
   };
 
-  CurrencyListItem? _currency(AccountListItem account) {
-    final id = account.currencyId;
-    return id == null ? null : _currencies[id];
-  }
-
   String _currencyLabel(AccountListItem account) {
-    final currency = _currency(account);
     return financeCurrencyDisplayLabel(
-          name: account.currencyName ?? currency?.name,
-          code: account.currencyCode ?? currency?.code,
+          name: account.currencyName,
+          code: account.currencyCode,
         ) ??
         '未设置币种';
   }
@@ -343,8 +424,7 @@ class _AccountBalanceReconciliationDialogState
       financeExactDecimalUnits(account.balanceCurrentText);
 
   bool _isBaseCurrency(AccountListItem account) {
-    final currency = _currency(account);
-    return account.baseCurrency || (currency?.baseCurrency ?? false);
+    return account.baseCurrency;
   }
 
   BigInt? _deltaUnits(AccountListItem account) {
@@ -491,6 +571,7 @@ class _AccountBalanceReconciliationDialogState
   }
 
   Future<bool> _confirm() async {
+    var decided = false;
     final fullZeroTarget = _isFullZeroTarget;
     final deltas = _currencyDeltas().values.toList()
       ..sort((a, b) => a.label.compareTo(b.label));
@@ -509,11 +590,28 @@ class _AccountBalanceReconciliationDialogState
         localDecrease += localDelta.abs();
       }
     }
-    return await showDialog<bool>(
+    return await showReadOwnedDialog<bool>(
+          ref: ref,
           context: context,
+          barrierDismissible: false,
           builder: (dialogContext) => UtenAlertDialog(
             scrollable: false,
-            title: const Text('确认提交余额核对'),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.singleAccountOnly ? '确认修改当前余额' : '确认提交余额核对',
+                  ),
+                ),
+                const UtenFieldHintIcon(
+                  key: ValueKey('account-balance-confirm-help'),
+                  dense: true,
+                  info:
+                      '差额按币种分别汇总，不跨币种相加。\n\n'
+                      '提交后会生成可查的调整批次和账户流水，不能用普通编辑改掉。',
+                ),
+              ],
+            ),
             content: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 520),
               child: SingleChildScrollView(
@@ -521,10 +619,25 @@ class _AccountBalanceReconciliationDialogState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (widget.singleAccountOnly) ...[
+                      Text(
+                        '${_targetAccounts.single.name ?? _targetAccounts.single.code ?? '当前账户'}'
+                        '（${_currencyLabel(_targetAccounts.single)}）',
+                        style: Theme.of(dialogContext).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: UtenSpacing.s8),
+                      Text(
+                        '当前余额 ${financeExactMoneyDisplay(_targetAccounts.single.balanceCurrentText)}'
+                        ' → ${financeExactUnitsMoneyDisplay(_targetUnits(_targetAccounts.single.id)!)}',
+                      ),
+                      const SizedBox(height: UtenSpacing.s8),
+                    ],
                     Text(
                       fullZeroTarget
                           ? '将把 ${_targetAccounts.length} 个使用中账户的当前余额目标设为 0，'
                                 '生效日期 $_effectiveDate。禁用账户不参与。'
+                          : widget.singleAccountOnly
+                          ? '生效日：$_effectiveDate'
                           : '将核对 ${_targetAccounts.length} 个活动账户，生效日期 $_effectiveDate。',
                     ),
                     if (fullZeroTarget) ...[
@@ -542,8 +655,6 @@ class _AccountBalanceReconciliationDialogState
                       ),
                     ],
                     const SizedBox(height: UtenSpacing.s8),
-                    const Text('以下差额按币种分别汇总，不跨币种相加：'),
-                    const SizedBox(height: UtenSpacing.s12),
                     for (final delta in deltas)
                       Padding(
                         padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
@@ -561,27 +672,25 @@ class _AccountBalanceReconciliationDialogState
                       style: Theme.of(dialogContext).textTheme.titleSmall
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),
-                    const SizedBox(height: UtenSpacing.s8),
-                    Text(
-                      '提交后会生成可查的调整批次和账户流水，不能用普通编辑改掉。',
-                      style: Theme.of(dialogContext).textTheme.bodySmall
-                          ?.copyWith(
-                            color: Theme.of(
-                              dialogContext,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                    ),
                   ],
                 ),
               ),
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
+                onPressed: () {
+                  if (decided) return;
+                  decided = true;
+                  Navigator.pop(dialogContext, false);
+                },
                 child: const Text('返回核对'),
               ),
               FilledButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
+                onPressed: () {
+                  if (decided) return;
+                  decided = true;
+                  Navigator.pop(dialogContext, true);
+                },
                 child: Text(fullZeroTarget ? '确认归零并提交' : '确认提交'),
               ),
             ],
@@ -591,41 +700,125 @@ class _AccountBalanceReconciliationDialogState
   }
 
   Future<void> _submit() async {
-    if (_submitting || !_validate()) return;
-    if (!await _confirm() || !mounted) return;
+    if (_submitting || _confirming || !_current || _refreshRequired) return;
+    final wasPending = _pendingCommand != null;
+    if (!wasPending) {
+      if (!_validate()) return;
+      _confirming = true;
+      final confirmed = await _confirm();
+      _confirming = false;
+      if (!confirmed || !_current) return;
+    }
+    final command =
+        _pendingCommand ??
+        _BalanceCommand(
+          scope: _scope,
+          effectiveDate: _effectiveDate,
+          reason: _reasonController.text.trim(),
+          idempotencyKey: _idempotencyKey,
+          items: _buildInputs(),
+        );
+    final repository = ref.read(accountRepositoryProvider);
     setState(() {
       _submitting = true;
       _submitError = null;
       _requestAttempted = true;
+      _pendingCommand = command;
     });
     try {
-      final result = await ref
-          .read(accountRepositoryProvider)
-          .adjustBalances(
-            scope: _scope,
-            effectiveDate: _effectiveDate,
-            reason: _reasonController.text.trim(),
-            idempotencyKey: _idempotencyKey,
-            items: _buildInputs(),
-          );
-      if (!mounted) return;
+      final result = await runSensitiveWrite(
+        ref,
+        isCurrent: () => _current,
+        write: () => repository.adjustBalances(
+          scope: command.scope,
+          effectiveDate: command.effectiveDate,
+          reason: command.reason,
+          idempotencyKey: command.idempotencyKey,
+          items: command.items,
+        ),
+      );
+      if (!mounted || !_current) return;
+      setState(() => _allowPop = true);
       Navigator.pop(context, result);
     } catch (error) {
-      if (!mounted) return;
+      if (!_current) return;
+      final apiError = error is ApiException ? error : null;
+      final definiteRejection =
+          !wasPending &&
+          apiError != null &&
+          apiError.hasResponseCode &&
+          const {400, 403, 404, 409, 422, 429}.contains(apiError.httpStatus) &&
+          !const {
+            'SESSION_CHANGED',
+            'SESSION_STATE_UNAVAILABLE',
+          }.contains(apiError.code);
       setState(() {
         _submitting = false;
-        _submitError = error is ApiException
-            ? error.message
-            : '提交未完成。输入内容已保留，请核对后重试。';
+        if (definiteRejection) {
+          _pendingCommand = null;
+          _refreshRequired = apiError.code == 'CONFLICT';
+          _submitError =
+              '${apiError.message}'
+              '${_refreshRequired ? '。请刷新当前余额，核对保留的输入后再保存。' : ''}';
+        } else {
+          _submitError =
+              '本次提交结果待确认。金额、原因和提交标识已保留；'
+              '请点击“重试确认结果”查询原提交，确认前不能修改或关闭。';
+        }
       });
     }
+  }
+
+  Future<void> _requestClose() async {
+    if (_submitting || _confirming || !mounted) return;
+    if (_pendingCommand != null) {
+      setState(() => _submitError = '提交结果待确认，请先点击“重试确认结果”。原提交确认前不能关闭。');
+      return;
+    }
+    if (_hasEnteredAmounts || _reasonController.text.trim().isNotEmpty) {
+      _confirming = true;
+      var decided = false;
+      final discard = await showReadOwnedDialog<bool>(
+        ref: ref,
+        context: context,
+        builder: (dialogContext) => UtenAlertDialog(
+          title: const Text('放弃未保存的余额修改？'),
+          content: const Text('已输入的余额和原因尚未保存。'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                if (decided) return;
+                decided = true;
+                Navigator.pop(dialogContext, false);
+              },
+              child: const Text('继续编辑'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (decided) return;
+                decided = true;
+                Navigator.pop(dialogContext, true);
+              },
+              child: const Text('放弃修改'),
+            ),
+          ],
+        ),
+      );
+      _confirming = false;
+      if (discard != true || !mounted || !_ownerCurrent()) return;
+    }
+    setState(() => _allowPop = true);
+    Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
     final compact = widget.compact;
     final content = PopScope(
-      canPop: !_submitting,
+      canPop: _allowPop,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _requestClose();
+      },
       child: SafeArea(
         child: Column(
           children: [
@@ -650,8 +843,10 @@ class _AccountBalanceReconciliationDialogState
     return UtenDialogFrame(
       insetPadding: const EdgeInsets.all(UtenSpacing.s24),
       child: SizedBox(
-        width: 1120,
-        height: MediaQuery.sizeOf(context).height * 0.96,
+        width: widget.singleAccountOnly ? 600 : 1120,
+        height: widget.singleAccountOnly
+            ? (MediaQuery.sizeOf(context).height - 48).clamp(320.0, 760.0)
+            : MediaQuery.sizeOf(context).height * 0.96,
         child: content,
       ),
     );
@@ -659,16 +854,30 @@ class _AccountBalanceReconciliationDialogState
 
   Widget _buildHeader() {
     return UtenDialogHeader(
-      title: const Text('账户余额核对'),
-      subtitle: Text('逐项输入目标余额，或使用全部填 0 预设 · 生效日 $_effectiveDate'),
+      title: Text(widget.singleAccountOnly ? '修改当前余额' : '账户余额核对'),
+      trailing: UtenFieldHintIcon(
+        key: const ValueKey('account-balance-help'),
+        dense: true,
+        info:
+            '生效日：$_effectiveDate。\n\n'
+            '${widget.singleAccountOnly ? '填写盘点后的真实余额。保存后会生成余额调整记录，保留原有流水。' : '目标余额逐项重新填写；全部填 0 仅填充输入，确认提交后才生效。'}'
+            '\n\n若核对期间有新入账，请刷新余额后重新核对。'
+            '\n\n金额均为账户原币；外币本位币调账额只用于总账，不折算账户余额。',
+      ),
       icon: Icons.fact_check_outlined,
       showCloseButton: true,
       closeTooltip: '关闭',
-      onClose: _submitting ? null : () => Navigator.pop(context),
+      onClose: _submitting ? null : _requestClose,
     );
   }
 
   Widget _buildBody(bool compact) {
+    if (!_canAdjust) {
+      return const UtenEmpty(
+        icon: Icons.lock_outline_rounded,
+        message: '没有修改账户余额的权限，请联系管理员开通对应权限。',
+      );
+    }
     if (_loading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -707,7 +916,7 @@ class _AccountBalanceReconciliationDialogState
             ),
           ],
           selected: {_scope},
-          onSelectionChanged: _submitting
+          onSelectionChanged: _inputsLocked
               ? null
               : (values) => _changeScope(values.single),
         ),
@@ -715,7 +924,7 @@ class _AccountBalanceReconciliationDialogState
           UtenButton(
             type: UtenButtonType.secondary,
             icon: Icons.done_all_rounded,
-            onPressed: _submitting
+            onPressed: _inputsLocked
                 ? null
                 : () {
                     setState(() {
@@ -739,7 +948,7 @@ class _AccountBalanceReconciliationDialogState
           key: const ValueKey('account-balance-fill-all-zero'),
           type: UtenButtonType.secondary,
           icon: Icons.restart_alt_rounded,
-          onPressed: _submitting ? null : _fillAllTargetsWithZero,
+          onPressed: _inputsLocked ? null : _fillAllTargetsWithZero,
           child: const Text('全部使用中账户目标填 0'),
         ),
         if (_zeroFillSnapshot != null)
@@ -756,7 +965,7 @@ class _AccountBalanceReconciliationDialogState
             key: const ValueKey('account-balance-undo-fill-zero'),
             type: UtenButtonType.secondary,
             icon: Icons.undo_rounded,
-            onPressed: _submitting ? null : _undoZeroFill,
+            onPressed: _inputsLocked ? null : _undoZeroFill,
             child: const Text('撤销填 0'),
           ),
       ],
@@ -779,14 +988,14 @@ class _AccountBalanceReconciliationDialogState
       key: const ValueKey('account-balance-reason'),
       controller: _reasonController,
       ignorePointers: false,
-      enabled: !_submitting,
+      enabled: !_inputsLocked,
       minLines: 2,
       maxLines: 4,
       maxLength: 500,
       decoration: UtenInputDecoration(
         InputDecoration(
           label: fieldLabel(
-            '核对原因',
+            widget.singleAccountOnly ? '修改原因' : '核对原因',
             Theme.of(context),
             required: true,
             info: '原因会写入不可变调整批次和账户流水。',
@@ -821,12 +1030,33 @@ class _AccountBalanceReconciliationDialogState
               ),
             ),
           );
+    if (widget.singleAccountOnly) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(UtenSpacing.s24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _accountRow(_accounts.single, true),
+            const SizedBox(height: UtenSpacing.s16),
+            reason,
+            ?submitError,
+            if (_refreshRequired)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: _load,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('刷新当前余额'),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
     if (compact) {
       return ListView(
         padding: const EdgeInsets.all(UtenSpacing.s16),
         children: [
-          _securityNotice(),
-          const SizedBox(height: UtenSpacing.s12),
           scopeControls,
           const SizedBox(height: UtenSpacing.s12),
           search,
@@ -840,6 +1070,12 @@ class _AccountBalanceReconciliationDialogState
           const SizedBox(height: UtenSpacing.s12),
           reason,
           ?submitError,
+          if (_refreshRequired)
+            TextButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('刷新当前余额'),
+            ),
         ],
       );
     }
@@ -848,8 +1084,6 @@ class _AccountBalanceReconciliationDialogState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _securityNotice(),
-          const SizedBox(height: UtenSpacing.s12),
           scopeControls,
           const SizedBox(height: UtenSpacing.s12),
           search,
@@ -870,39 +1104,12 @@ class _AccountBalanceReconciliationDialogState
           const SizedBox(height: UtenSpacing.s12),
           reason,
           ?submitError,
-        ],
-      ),
-    );
-  }
-
-  Widget _securityNotice() {
-    final theme = Theme.of(context);
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(UtenSpacing.s12),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.errorContainer,
-        borderRadius: UtenRadius.mdAll,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            Icons.verified_user_outlined,
-            color: theme.colorScheme.onErrorContainer,
-          ),
-          const SizedBox(width: UtenSpacing.s8),
-          Expanded(
-            child: Text(
-              '高权限操作：目标余额必须逐项重新填写；若提交时数据已被别人改过，'
-              '本次提交会整体不生效，需重新填写。'
-              '金额均为账户原币；外币本位币调账额只用于总账，不折算账户余额。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onErrorContainer,
-                height: 1.5,
-              ),
+          if (_refreshRequired)
+            TextButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('刷新当前余额'),
             ),
-          ),
         ],
       ),
     );
@@ -953,7 +1160,8 @@ class _AccountBalanceReconciliationDialogState
         key: ValueKey('account-target-balance-${account.id}'),
         controller: controller,
         ignorePointers: false,
-        enabled: enabled && !_submitting,
+        enabled: enabled && !_inputsLocked,
+        autofocus: widget.singleAccountOnly,
         keyboardType: const TextInputType.numberWithOptions(
           decimal: true,
           signed: true,
@@ -969,8 +1177,8 @@ class _AccountBalanceReconciliationDialogState
         decoration: UtenInputDecoration(
           InputDecoration(
             isDense: true,
-            labelText: '目标余额',
-            hintText: '重新输入',
+            labelText: widget.singleAccountOnly ? '盘点后的当前余额' : '目标余额',
+            hintText: widget.singleAccountOnly ? '填写实际持有的账户余额' : '重新输入',
             error: error == null ? null : UtenFieldMessage.error(error),
             constraints: const BoxConstraints(minHeight: 48),
           ),
@@ -992,19 +1200,20 @@ class _AccountBalanceReconciliationDialogState
             children: [
               Row(
                 children: [
-                  Semantics(
-                    label: '选择账户 $name ${_currencyLabel(account)}',
-                    checked: selected,
-                    child: Checkbox(
-                      value: selected,
-                      onChanged:
-                          _scope == AccountBalanceAdjustmentScope.full ||
-                              _submitting
-                          ? null
-                          : (value) =>
-                                _toggleSelected(account.id, value ?? false),
+                  if (!widget.singleAccountOnly)
+                    Semantics(
+                      label: '选择账户 $name ${_currencyLabel(account)}',
+                      checked: selected,
+                      child: Checkbox(
+                        value: selected,
+                        onChanged:
+                            _scope == AccountBalanceAdjustmentScope.full ||
+                                _inputsLocked
+                            ? null
+                            : (value) =>
+                                  _toggleSelected(account.id, value ?? false),
+                      ),
                     ),
-                  ),
                   Expanded(
                     child: Text(
                       '$name${account.code?.isNotEmpty == true ? ' · ${account.code}' : ''}',
@@ -1066,7 +1275,8 @@ class _AccountBalanceReconciliationDialogState
               child: Checkbox(
                 value: selected,
                 onChanged:
-                    _scope == AccountBalanceAdjustmentScope.full || _submitting
+                    _scope == AccountBalanceAdjustmentScope.full ||
+                        _inputsLocked
                     ? null
                     : (value) => _toggleSelected(account.id, value ?? false),
               ),
@@ -1182,7 +1392,7 @@ class _AccountBalanceReconciliationDialogState
         key: ValueKey('account-local-delta-${account.id}'),
         controller: _localDeltaControllers[account.id],
         ignorePointers: false,
-        enabled: enabled && !_submitting,
+        enabled: enabled && !_inputsLocked,
         keyboardType: const TextInputType.numberWithOptions(
           decimal: true,
           signed: true,
@@ -1218,18 +1428,47 @@ class _AccountBalanceReconciliationDialogState
       children: [
         UtenButton(
           type: UtenButtonType.secondary,
-          onPressed: _submitting ? null : () => Navigator.pop(context),
+          onPressed: _submitting ? null : _requestClose,
           child: const Text('取消'),
         ),
         UtenButton(
           icon: Icons.task_alt_rounded,
           isLoading: _submitting,
-          onPressed: _submitting ? null : _submit,
-          child: Text('提交核对（${_targetAccounts.length}）'),
+          onPressed:
+              _submitting ||
+                  _loading ||
+                  !_current ||
+                  _targetAccounts.isEmpty ||
+                  _refreshRequired
+              ? null
+              : _submit,
+          child: Text(
+            _pendingCommand != null && !_submitting
+                ? '重试确认结果'
+                : widget.singleAccountOnly
+                ? '保存余额'
+                : '提交核对（${_targetAccounts.length}）',
+          ),
         ),
       ],
     );
   }
+}
+
+class _BalanceCommand {
+  _BalanceCommand({
+    required this.scope,
+    required this.effectiveDate,
+    required this.reason,
+    required this.idempotencyKey,
+    required List<AccountBalanceAdjustmentInput> items,
+  }) : items = List.unmodifiable(items);
+
+  final AccountBalanceAdjustmentScope scope;
+  final String effectiveDate;
+  final String reason;
+  final String idempotencyKey;
+  final List<AccountBalanceAdjustmentInput> items;
 }
 
 class _CurrencyDelta {

@@ -1185,6 +1185,21 @@ class MasterInlineEditActions<T> extends StatelessWidget {
 
   /// The master table already owns the outer floating group and selection count.
   final bool embedded;
+
+  Future<void> _saveAfterInputExit(BuildContext context) async {
+    final epoch = controller._epoch;
+    // Finish the active input connection before busy changes its readOnly
+    // configuration. Web semantics may otherwise update a detached DOM input.
+    FocusScope.of(context).unfocus();
+    await WidgetsBinding.instance.endOfFrame;
+    if (!context.mounted || epoch != controller._epoch) return;
+    await controller.save(
+      onSave,
+      beforeWrite: _paintFeedback,
+      exitOnSuccess: exitOnSuccess,
+    );
+  }
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller,
@@ -1264,11 +1279,7 @@ class MasterInlineEditActions<T> extends StatelessWidget {
         onPressed:
             !(canEdit || canCreate) || controller.busy || !controller.dirty
             ? null
-            : () => controller.save(
-                onSave,
-                beforeWrite: _paintFeedback,
-                exitOnSuccess: exitOnSuccess,
-              ),
+            : () => _saveAfterInputExit(context),
         child: Text(
           localizedText(
             context,

@@ -28,6 +28,8 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 sys.path.insert(0, str(ROOT / "deploy/client"))
 from package_windows import _PeReader, inspect_executable_info
+import windows_authenticode
+import windows_payload_binding
 from sync_package_contract import CONTRACT as CONTRACT_PATH, load_contract, synchronize as check_contract_consumers
 from sync_design_tokens import SOURCES as DESIGN_SOURCES, source_paths as design_source_paths
 
@@ -47,10 +49,14 @@ MAX_PACKAGE_BYTES = CONTRACT["maximumPackageBytes"]
 MAX_TOTAL_BYTES = CONTRACT["maximumExpandedBytesExclusive"] - 1
 MAX_MANIFEST_BYTES = CONTRACT["maximumManifestBytes"]
 MAX_JSON_BYTES = 8 * 1024 * 1024
-SOURCE_PATHS = ["clients/windows_legacy", "pubspec.yaml", "assets/security/uten-imp-root-ca.crt",
+SIGNING_SOURCES = ["deploy/client/windows_authenticode.py", "deploy/client/windows_payload_binding.py",
+    "deploy/client/zip_directory.py", "deploy/client/package_windows.py",
+    "contracts/windows-payload-binding/v1.json", "contracts/windows-engine-safety/v1.json"]
+SOURCE_PATHS = ["clients/windows_legacy", "pubspec.yaml", *SIGNING_SOURCES, "assets/security/uten-imp-root-ca.crt",
     "assets/fonts/NotoSansSC.ttf", "assets/fonts/NotoSansSCFull.ttf", "assets/fonts/OFL.txt", "assets/images/logo_ip.png", "assets/images/logo_name.png",
     "windows/runner/resources/app_icon.ico", "lib/core/theme", *DESIGN_SOURCES]
 SOURCE_REQUIRED = {"pubspec.yaml", "clients/windows_legacy/BuildVersion.targets",
+    *SIGNING_SOURCES,
     "assets/fonts/NotoSansSCFull.ttf", "assets/fonts/OFL.txt",
     "clients/windows_legacy/dependencies.lock.json",
     "clients/windows_legacy/package-contract.json",
@@ -330,7 +336,8 @@ def _source_configuration(bundle: Path, state: dict) -> None:
 
 
 def write_build_receipt(bundle: Path, output: Path, *, architecture: str, source_root: Path,
-                        source_state: dict, configuration: str, distribution_profile: str) -> dict:
+                        source_state: dict, configuration: str, distribution_profile: str,
+                        signing_provenance: dict | None = None) -> dict:
     if configuration != "Release" or distribution_profile != "Company":
         raise ValueError("Only an explicit Release/Company compilation can create a candidate build receipt")
     current = capture_source_state(source_root)
@@ -341,6 +348,10 @@ def write_build_receipt(bundle: Path, output: Path, *, architecture: str, source
     _source_configuration(bundle, current)
     receipt = {**current, "runtimeFamily": "wpf_legacy", "platform": "windows", "architecture": architecture,
                "configuration": configuration, "distributionProfile": distribution_profile, "files": files}
+    if signing_provenance is not None:
+        if not _same(signing_provenance.get("postSignFiles"), files):
+            raise ValueError("Signing provenance differs from the actual signed WPF snapshot")
+        receipt["windowsSigning"] = signing_provenance
     _write_json(_output(output, bundle, ".json"), receipt)
     return receipt
 
@@ -358,15 +369,126 @@ def inspect_bootstrap(helper: Path, *, architecture: str, version: str, build_nu
                      for path in (helper, configuration)], "fileVersion": list(info["fileVersion"])}
 
 
-def write_bootstrap_receipt(helper: Path, output: Path, *, architecture: str, source_root: Path, source_state: dict) -> dict:
+def write_bootstrap_receipt(helper: Path, output: Path, *, architecture: str, source_root: Path, source_state: dict,
+                            signing_provenance: dict | None = None) -> dict:
     current = capture_source_state(source_root)
     if not _same(current, source_state):
         raise ValueError("Source changed during bootstrap compilation")
     bootstrap = inspect_bootstrap(helper, architecture=architecture, version=current["version"], build_number=current["buildNumber"])
     receipt = {**current, "artifactKind": "bootstrap", "runtimeFamily": "wpf_legacy", "platform": "windows",
         "architecture": architecture, "configuration": "Release", "distributionProfile": "Company", "files": bootstrap["files"]}
+    if signing_provenance is not None:
+        if not _same(signing_provenance.get("postSignFiles"), bootstrap["files"]):
+            raise ValueError("Bootstrap signing provenance differs from its actual private snapshot")
+        receipt["windowsSigning"] = signing_provenance
     _write_json(_output(output, _plain(helper).parent, ".json"), receipt)
     return receipt
+
+
+def _private_destination(output: Path, compiled: Path) -> Path:
+    output, compiled = _plain(output), _plain(compiled)
+    if output.exists() or output == compiled or compiled in output.parents:
+        raise ValueError("Company signing requires a new private output outside the compiled source directory")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    return output
+
+
+def _unchanged_source(source_root: Path, source_state: dict) -> dict:
+    current = capture_source_state(source_root)
+    if not _same(current, source_state):
+        raise ValueError("Reviewed Company source changed while preparing its private signing snapshot")
+    return current
+
+
+def prepare_company_payload(compiled: Path, output: Path, receipt_path: Path, *, architecture: str,
+                            source_root: Path, source_state: dict) -> dict:
+    """Freeze six leaves, preserve vendor lock/signature, seal and sign main."""
+    current = _unchanged_source(source_root, source_state)
+    compiled = _plain(compiled)
+    output = _private_destination(output, compiled)
+    receipt_path = _output(receipt_path, compiled, ".json")
+    windows_authenticode.check_configuration()
+    with tempfile.TemporaryDirectory(prefix=".uten-wpf-sign-", dir=output.parent) as temporary:
+        frozen = Path(temporary) / "payload"
+        frozen.mkdir()
+        for name in sorted(REQUIRED):
+            shutil.copyfile(_plain(compiled / name), frozen / name)
+        before = inspect_bundle(frozen, architecture=architecture, version=current["version"], build_number=current["buildNumber"])
+        _source_configuration(frozen, current)
+        # This DLL already has the reviewed vendor signature. Never replace it
+        # with a company signature or relax its authoritative raw NuGet lock.
+        vendor_hash = _digest(frozen / BC)
+        windows_authenticode.verify_files([(BC, frozen / BC)], company_files=set())
+        windows_authenticode.sign_files([(CORE, frozen / CORE)])
+        sources = [(record["path"], frozen / record["path"]) for record in before]
+        metadata = {"runtimeFamily": "wpf_legacy", "version": current["version"],
+            "buildNumber": current["buildNumber"], "architecture": architecture, "executable": EXECUTABLE}
+        binding = windows_payload_binding.inventory(metadata, windows_payload_binding.file_records(sources))
+        windows_payload_binding.write(frozen / EXECUTABLE, binding)
+        main_signatures = windows_authenticode.sign_files([(EXECUTABLE, frozen / EXECUTABLE)])
+        after = inspect_bundle(frozen, architecture=architecture, version=current["version"], build_number=current["buildNumber"])
+        if _digest(frozen / BC) != vendor_hash:
+            raise ValueError("Company signing changed the fixed vendor dependency")
+        import time
+        deadline = time.monotonic() + windows_authenticode.VERIFY_SECONDS
+        windows_authenticode.verify_files(windows_authenticode.runtime_files(frozen), deadline=deadline)
+        windows_payload_binding.verify_sources(sources, metadata=metadata, deadline=deadline)
+        # Also re-read the actual original compiled leaves: signing must not
+        # conceal an interrupted/concurrent build or mutate compiler outputs.
+        original = [{"path": record["path"], "size": (compiled / record["path"]).stat().st_size,
+                     "sha256": _digest(_plain(compiled / record["path"]))} for record in before]
+        if not _same(original, before):
+            raise ValueError("Original compiled payload changed during Company signing")
+        _unchanged_source(source_root, source_state)
+        if output.exists():
+            raise ValueError("Private signed payload output appeared concurrently")
+        frozen.rename(output)
+    provenance = {"policy": "authenticode-company-pinned-v1", "payloadBinding": "uten-windows-payload-binding-v1",
+        "sourceBundleModified": False, "vendorSignaturePreserved": True, "preSignFiles": before, "postSignFiles": after,
+        "preSignMainSha256": next(record["sha256"] for record in before if record["path"] == EXECUTABLE),
+        "signedMainSha256": next(record["sha256"] for record in after if record["path"] == EXECUTABLE),
+        "mainSignatureEvidence": main_signatures}
+    receipt = write_build_receipt(output, receipt_path, architecture=architecture, source_root=source_root,
+        source_state=source_state, configuration="Release", distribution_profile="Company", signing_provenance=provenance)
+    return {"privatePayloadDirectory": str(output), "receipt": str(receipt_path), "windowsSigning": receipt["windowsSigning"]}
+
+
+def prepare_company_bootstrap(compiled_helper: Path, output: Path, receipt_path: Path, *, architecture: str,
+                              source_root: Path, source_state: dict) -> dict:
+    current = _unchanged_source(source_root, source_state)
+    compiled_helper = _plain(compiled_helper)
+    output = _private_destination(output, compiled_helper.parent)
+    receipt_path = _output(receipt_path, compiled_helper.parent, ".json")
+    windows_authenticode.check_configuration()
+    before = inspect_bootstrap(compiled_helper, architecture=architecture, version=current["version"], build_number=current["buildNumber"])
+    with tempfile.TemporaryDirectory(prefix=".uten-wpf-bootstrap-sign-", dir=output.parent) as temporary:
+        frozen = Path(temporary) / "bootstrap"
+        frozen.mkdir()
+        for path in (compiled_helper, compiled_helper.with_suffix(".exe.config")):
+            shutil.copyfile(_plain(path), frozen / path.name)
+        helper = frozen / compiled_helper.name
+        evidence = windows_authenticode.sign_files([(helper.name, helper)])
+        after = inspect_bootstrap(helper, architecture=architecture, version=current["version"], build_number=current["buildNumber"])
+        if not _same(before, inspect_bootstrap(compiled_helper, architecture=architecture, version=current["version"], build_number=current["buildNumber"])):
+            raise ValueError("Original compiled bootstrap changed during Company signing")
+        _unchanged_source(source_root, source_state)
+        if output.exists():
+            raise ValueError("Private signed bootstrap output appeared concurrently")
+        frozen.rename(output)
+    helper = output / compiled_helper.name
+    provenance = {"policy": "authenticode-company-pinned-v1", "sourceBundleModified": False,
+        "preSignFiles": before["files"], "postSignFiles": after["files"], "signatureEvidence": evidence}
+    receipt = write_bootstrap_receipt(helper, receipt_path, architecture=architecture, source_root=source_root,
+        source_state=source_state, signing_provenance=provenance)
+    return {"privateBootstrapDirectory": str(output), "helper": str(helper), "receipt": str(receipt_path),
+            "windowsSigning": receipt["windowsSigning"]}
+
+
+def verify_receipt_signing(receipt: dict, files: list[dict]) -> None:
+    signing = receipt.get("windowsSigning")
+    if signing is not None and (not isinstance(signing, dict) or signing.get("sourceBundleModified") is not False
+            or not _same(signing.get("postSignFiles"), files)):
+        raise ValueError("WPF signing receipt does not match its actual frozen payload")
 
 
 def validate_package(path: Path, *, architecture: str, version: str, build_number: int) -> dict:
@@ -415,24 +537,24 @@ def validate_package(path: Path, *, architecture: str, version: str, build_numbe
         files = inspect_bundle(root, architecture=architecture, version=version, build_number=build_number)
         if not _same(manifest.get("files"), files):
             raise ValueError("Candidate ZIP contents differ from their exact SHA-256 manifest")
+        import time
+        deadline = time.monotonic() + windows_authenticode.VERIFY_SECONDS
+        windows_authenticode.verify_files(windows_authenticode.runtime_files(root), deadline=deadline)
+        windows_payload_binding.verify_sources([(item["path"], root / item["path"]) for item in files], metadata={
+            "runtimeFamily": "wpf_legacy", "architecture": architecture, "version": version,
+            "buildNumber": build_number, "executable": EXECUTABLE}, deadline=deadline)
         return manifest
 
 
 def _zip_directory(path: Path) -> None:
     """Bound central-directory allocation before constructing zipfile.ZipFile."""
-    size = path.stat().st_size
-    with path.open("rb") as stream:
-        stream.seek(max(0, size - (22 + 65535)))
-        tail = stream.read(22 + 65535)
-    position = tail.rfind(b"PK\x05\x06")
-    if position < 0 or position + 22 > len(tail):
-        raise ValueError("Missing bounded WPF ZIP directory")
-    disk, start_disk, disk_count, total_count, length, offset, comment = struct.unpack_from("<HHHHIIH", tail, position + 4)
-    absolute = size - len(tail) + position
+    from zip_directory import require_bounded_directory
     expected = len(REQUIRED) + 1
-    if (disk or start_disk or disk_count != expected or total_count != expected
-            or length < expected * 46 or length > CONTRACT["maximumCentralDirectoryBytes"]
-            or offset + length != absolute or position + 22 + comment != len(tail)):
+    try:
+        result = require_bounded_directory(path, max_entries=expected, max_central_bytes=CONTRACT["maximumCentralDirectoryBytes"])
+    except ValueError as error:
+        raise ValueError("WPF ZIP must have one bounded seven-entry non-ZIP64 directory") from error
+    if result["entries"] != expected:
         raise ValueError("WPF ZIP must have one bounded seven-entry non-ZIP64 directory")
 
 
@@ -450,6 +572,7 @@ def package_update(bundle: Path, output: Path, *, architecture: str, source_root
     _source_configuration(bundle, state)
     if not _same(receipt.get("files"), files):
         raise ValueError("Payload changed after its build receipt was recorded")
+    verify_receipt_signing(receipt, files)
     manifest = {"schemaVersion": 1, "runtimeFamily": "wpf_legacy", "platform": "windows",
         "architecture": architecture, "version": state["version"], "buildNumber": state["buildNumber"],
         "packageKind": "update", "executable": EXECUTABLE, "files": files,
@@ -458,6 +581,12 @@ def package_update(bundle: Path, output: Path, *, architecture: str, source_root
         "remainingValidation": ["complete ERP workflow migration", "Win7 target-PC acceptance", "native updater implementation/acceptance"]}
     if not build:
         return result
+    import time
+    deadline = time.monotonic() + windows_authenticode.VERIFY_SECONDS
+    windows_authenticode.verify_files(windows_authenticode.runtime_files(bundle), deadline=deadline)
+    windows_payload_binding.verify_sources([(item["path"], bundle / item["path"]) for item in files], metadata={
+        "runtimeFamily": "wpf_legacy", "architecture": architecture, "version": state["version"],
+        "buildNumber": state["buildNumber"], "executable": EXECUTABLE}, deadline=deadline)
     output.parent.mkdir(parents=True, exist_ok=True)
     old_state = _digest(output) if output.exists() else None
     with tempfile.TemporaryDirectory(prefix=".uten-wpf-candidate-", dir=output.parent) as temporary:
@@ -495,6 +624,14 @@ def main() -> None:
     bootstrap.add_argument("--architecture", choices=("x86", "x64"), required=True)
     bootstrap.add_argument("--source-state", type=Path, required=True)
     bootstrap.add_argument("--output", type=Path, required=True)
+    for name in ("prepare-company", "prepare-bootstrap"):
+        prepare = commands.add_parser(name)
+        prepare.add_argument("--compiled", type=Path, required=True)
+        prepare.add_argument("--private-output", type=Path, required=True)
+        prepare.add_argument("--receipt", type=Path, required=True)
+        prepare.add_argument("--source-root", type=Path, default=ROOT)
+        prepare.add_argument("--source-state", type=Path, required=True)
+        prepare.add_argument("--architecture", choices=("x86", "x64"), required=True)
     package = commands.add_parser("package")
     for command in (receipt, package):
         command.add_argument("--source-root", type=Path, default=ROOT)
@@ -518,6 +655,10 @@ def main() -> None:
         elif args.command == "bootstrap-receipt":
             result = write_bootstrap_receipt(args.updater, args.output, architecture=args.architecture, source_root=args.source_root,
                 source_state=_read_json(args.source_state))
+        elif args.command in {"prepare-company", "prepare-bootstrap"}:
+            prepare = prepare_company_payload if args.command == "prepare-company" else prepare_company_bootstrap
+            result = prepare(args.compiled, args.private_output, args.receipt, architecture=args.architecture,
+                source_root=args.source_root, source_state=_read_json(args.source_state))
         else:
             result = package_update(args.bundle, args.output, architecture=args.architecture, source_root=args.source_root,
                 receipt_path=args.receipt, build=args.build)

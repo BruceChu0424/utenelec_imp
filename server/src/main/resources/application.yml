@@ -233,6 +233,12 @@ uten:
     poll-interval-seconds: ${UTEN_CLIENT_UPDATE_POLL_SECONDS:300}
     max-releases: ${UTEN_CLIENT_UPDATE_MAX_RELEASES:200}
     min-free-bytes: ${UTEN_CLIENT_UPDATE_MIN_FREE_BYTES:1073741824}
+    windows-publisher-sha256: ${UTEN_WINDOWS_PUBLISHER_SHA256:}
+    windows-signature-verifier: ${UTEN_WINDOWS_SIGNATURE_VERIFIER:/usr/bin/osslsigncode}
+    windows-signature-ca-file: ${UTEN_WINDOWS_SIGNATURE_CA_FILE:}
+    windows-signature-tsa-ca-file: ${UTEN_WINDOWS_SIGNATURE_TSA_CA_FILE:}
+    windows-signature-crl-file: ${UTEN_WINDOWS_SIGNATURE_CRL_FILE:}
+    windows-signature-tsa-crl-file: ${UTEN_WINDOWS_SIGNATURE_TSA_CRL_FILE:}
   storage:
     # 公司附件只用 internal；local 仅供开发，oss 仅历史精确只读，disabled 关闭附件服务。
     # internal 需要显式配置同一持久卷中的私有根目录。

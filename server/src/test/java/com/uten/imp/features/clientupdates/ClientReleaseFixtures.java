@@ -16,6 +16,10 @@ import java.util.zip.ZipOutputStream;
 /** Explicit historical-catalog seeds and audited synthetic bytes; never a production catalog. */
 final class ClientReleaseFixtures {
     private ClientReleaseFixtures() { }
+    /** Structure/state-machine fixtures deliberately do not impersonate trusted signed distributables. */
+    static ClientPackageInspector structuralInspector(ObjectMapper mapper) {
+        return new ClientPackageInspector(mapper, org.mockito.Mockito.mock(WindowsPublisherSignatures.class));
+    }
     static ClientReleaseDto.Release legacyDraft(ClientUpdateProperties properties, ObjectMapper mapper, ClientReleaseDto.Create request, String mode) {
         var release=new ClientReleaseDto.Release(request.requestId(),request.platform(),request.architecture(),request.version(),request.buildNumber(),
                 request.releaseNotes()==null?"":request.releaseNotes().strip(),request.mandatory(),request.fileName(),request.expectedSha256(),null,0,mode,

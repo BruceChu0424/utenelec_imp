@@ -30,7 +30,7 @@ class ClientReleaseQueueContractTest {
     ClientReleaseCatalog catalog;ClientReleaseService service;
     @BeforeEach void setup(){properties.setDirectory(directory.toString());when(publisher.getId()).thenReturn(UUID.randomUUID());when(publisher.getLoginAccount()).thenReturn("fixture");
         when(publisher.getPermissions()).thenReturn(Set.of(ClientReleaseService.PUBLISH_PERMISSION));when(publisher.getEmployeeId()).thenReturn(UUID.randomUUID());when(users.get()).thenReturn(java.util.Optional.of(publisher));
-        catalog=new ClientReleaseCatalog(properties,new StorageProperties(),mapper);service=new ClientReleaseService(catalog,new ClientPackageInspector(mapper),properties,users,mock(AuditService.class));}
+        catalog=new ClientReleaseCatalog(properties,new StorageProperties(),mapper);service=new ClientReleaseService(catalog,ClientReleaseFixtures.structuralInspector(mapper),properties,users,mock(AuditService.class));}
     @Test void pairedGenerationsHideHalfGroupsAndKeepThePriorCompleteGroup() throws Exception {
         var first=pair(10,"x64");var update=upload(20,"x64","update");service.publish(update.id());
         assertThat(service.check("windows","x64",1).release().id()).isEqualTo(first.get(1).id());

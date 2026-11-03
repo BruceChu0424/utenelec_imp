@@ -28,6 +28,7 @@ from pathlib import Path
 
 from build_windows_installer import validate_setup
 from package_windows import MANIFEST_NAME, inspect_executable_info, inspect_pe_imports, validate_package
+from zip_directory import require_bounded_directory
 
 MANIFEST_LIMIT_BYTES = 8 * 1024 * 1024
 REQUIRED_ENTRIES = ("uten_imp.exe", "flutter_windows.dll", "data/app.so", "data/icudtl.dat", MANIFEST_NAME)
@@ -70,9 +71,10 @@ def verify_update_zip(path: Path, *, version: str, build_number: int, architectu
     failures: list[str] = []
     report = {"package": str(path), "kind": "update"}
     try:
+        require_bounded_directory(path, max_entries=20001, max_central_bytes=16 * 1024 * 1024)
         archive = zipfile.ZipFile(path)
-    except zipfile.BadZipFile:
-        return {**report, "ok": False, "failures": ["update ZIP is not a valid ZIP file"]}
+    except (zipfile.BadZipFile, ValueError, OSError) as error:
+        return {**report, "ok": False, "failures": [f"update ZIP has no valid bounded directory: {error}"]}
     with archive:
         try:
             validate_package(path, build_number=build_number, architecture=architecture, kind="update", version=version)

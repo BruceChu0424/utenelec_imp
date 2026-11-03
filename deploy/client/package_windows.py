@@ -38,23 +38,14 @@ RUNTIME_PROFILES = {
                    "networkScope": "loopback-only", "selfUpdatesAllowed": False},
 }
 VC_RUNTIME_CORE = {"msvcp140.dll", "vcruntime140.dll"}
-# Confirmed by dumps or field events with matching symbols/native regression.
-# Reject exact failed runtimes; an unknown digest is not a safety proof.
-KNOWN_CRASHING_ENGINE_DIGESTS = {
-    "72bf222a81e542348a8100ffb1e60ecee6fb066086b678a8f1c28497e7b4695e":
-        "Flutter 3.44.2 Windows x64 Profile: null accessibility child on restore",
-    "a5f0e1c7d685a022995ce49ed8529fb72523b0a3e9634ac10a8b0754af23df14":
-        "Incomplete accessibility child guard: stale AXNodeData after tree reparent/update",
-    "011e87e890b7bfbac89f63c763341ffb8393d2b4a617dd836c471a0cdaa1346f":
-        "Flutter 3.44.2 Windows x64 Release: field C0000005 at HitTestSync RVA 0xF5D3",
-}
-# The earlier common-tree repair alone still leaves Windows HitTestSync unsafe.
-# Its exact DLL has not itself produced a field dump, so keep this classification
-# separate from the confirmed crashing Release binary above.
-KNOWN_UNREPAIRED_ENGINE_DIGESTS = {
-    "f10968fa4899f83d6415aaaa675aee92e96c27dde2d1c084f65c7589013df634":
-        "Common AXTree repair without Windows HitTestSync missing-delegate protection",
-}
+ENGINE_SAFETY_CONTRACT = Path(__file__).resolve().parents[2] / "contracts/windows-engine-safety/v1.json"
+_ENGINE_POLICY = json.loads(ENGINE_SAFETY_CONTRACT.read_text(encoding="utf-8"))
+# The cross-language contract owns the source-built admission/denial facts.
+KNOWN_CRASHING_ENGINE_DIGESTS = {entry["rawSha256"]: entry["reason"] for entry in _ENGINE_POLICY["engines"]
+                                if entry["classification"] == "confirmed-crashing"}
+KNOWN_UNREPAIRED_ENGINE_DIGESTS = {entry["rawSha256"]: entry["reason"] for entry in _ENGINE_POLICY["engines"]
+                                 if entry["classification"] == "source-confirmed-unrepaired"}
+APPROVED_ENGINE_IMAGES = {entry["peImageSha256"]: entry for entry in _ENGINE_POLICY["reviewedEngines"]}
 # These are Windows 10+ OS contracts, not libraries found on the build machine.
 # In particular, a development machine's System32 VC++ installation never makes
 # msvcp/vcruntime/concrt application dependencies available on employee devices.
@@ -79,7 +70,8 @@ DEBUG_RUNTIME = re.compile(
     r"^(?:(?:msvcp|msvcr|vcruntime|concrt|vcomp|mfc|mfcm)\d+(?:_\d+)?u?d(?:_[^.]+)?|ucrtbased)\.dll$", re.I)
 
 
-def reject_known_unsafe_engine(relative: str, digest: str) -> None:
+def reject_known_unsafe_engine(relative: str, digest: str, *, stream=None, size: int | None = None,
+                               require_approved: bool = False) -> None:
     if relative.casefold() == "flutter_windows.dll":
         reason = KNOWN_CRASHING_ENGINE_DIGESTS.get(digest.lower())
         if reason is not None:
@@ -89,6 +81,26 @@ def reject_known_unsafe_engine(relative: str, digest: str) -> None:
         if reason is not None:
             raise ValueError(f"Known unrepaired Flutter Windows engine cannot be packaged: {reason}; "
                              "rebuild with a repaired, matching runtime and complete native acceptance")
+        if stream is not None:
+            image_digest = pe_image_sha256(stream, size)
+            for identity in _ENGINE_POLICY["engines"]:
+                if image_digest == identity["peImageSha256"]:
+                    classification = "crashing" if identity["classification"] == "confirmed-crashing" else "unrepaired"
+                    raise ValueError(f"Known {classification} Flutter Windows engine cannot be packaged: "
+                                     f"{identity['reason']}; signature-independent PE identity matched")
+            if require_approved and image_digest not in APPROVED_ENGINE_IMAGES:
+                raise ValueError("Unreviewed Flutter Windows engine cannot enter formal distribution; "
+                                 "review the matching source-built Release runtime and native acceptance")
+        elif require_approved:
+            raise ValueError("Formal engine approval requires the actual bounded PE content")
+
+
+def pe_image_sha256(stream, size: int | None = None) -> str:
+    """Shared bounded parser for the signature-independent engine deny policy."""
+    if size is None:
+        stream.seek(0, os.SEEK_END)
+        size = stream.tell()
+    return _PeReader(stream, size).image_sha256()
 
 
 class _PeReader:
@@ -109,6 +121,7 @@ class _PeReader:
         if self.architecture is None or not 1 <= sections <= 96:
             raise ValueError("Executable machine is unsupported")
         optional = self.read_at(pe + 24, optional_size)
+        self.optional_offset = pe + 24
         if len(optional) < 64:
             raise ValueError("Executable optional header is truncated")
         self.magic = struct.unpack_from("<H", optional)[0]
@@ -125,12 +138,54 @@ class _PeReader:
         self.image_base = struct.unpack_from("<I" if self.magic == 0x10B else "<Q", optional,
                                              28 if self.magic == 0x10B else 24)[0]
         self.sections = []
+        self.section_table_end = pe + 24 + optional_size + sections * 40
         table = self.read_at(pe + 24 + optional_size, sections * 40)
         for index in range(sections):
             virtual_size, address, raw_size, raw_address = struct.unpack_from("<IIII", table, index * 40 + 8)
             if raw_size and raw_address + raw_size > size:
                 raise ValueError("Executable section leaves the file")
             self.sections.append((address, max(virtual_size, raw_size), raw_size, raw_address))
+
+    def image_sha256(self) -> str:
+        """PE image identity, invariant under Authenticode signing/checksum changes.
+
+        Hash headers except CheckSum/Certificate Table directory, followed by
+        complete raw sections in file order. Certificate/overlay bytes outside
+        sections are excluded. This is a deny-list identity, never a trust or
+        signature validation result. See contracts/windows-engine-safety/v1.json.
+        """
+        checksum = self.optional_offset + 64
+        security = self.optional_offset + self.directory_offset + 4 * 8
+        if (self.directory_count < 5 or self.header_size < max(security + 8, self.section_table_end)
+                or self.header_size > self.size):
+            raise ValueError("Engine PE identity requires complete bounded headers")
+        certificate, certificate_size = self.directory(4)
+        if bool(certificate) != bool(certificate_size):
+            raise ValueError("Engine PE certificate table is incomplete")
+        if certificate and (certificate % 8 or certificate_size < 8 or
+                            certificate < self.header_size or certificate + certificate_size > self.size):
+            raise ValueError("Engine PE certificate table leaves the file")
+        digest = hashlib.sha256()
+        def feed(offset: int, length: int) -> None:
+            self.stream.seek(offset)
+            while length:
+                block = self.stream.read(min(length, 1024 * 1024))
+                if not block:
+                    raise ValueError("Engine PE identity stream is truncated")
+                digest.update(block)
+                length -= len(block)
+        feed(0, checksum)
+        feed(checksum + 4, security - checksum - 4)
+        feed(security + 8, self.header_size - security - 8)
+        end = self.header_size
+        for _, _, raw_size, raw_address in sorted(self.sections, key=lambda section: section[3]):
+            if not raw_size:
+                continue
+            if raw_address < end or (certificate and raw_address + raw_size > certificate):
+                raise ValueError("Engine PE sections overlap headers, certificates or each other")
+            feed(raw_address, raw_size)
+            end = raw_address + raw_size
+        return digest.hexdigest()
 
     def read_at(self, offset: int, length: int) -> bytes:
         if offset < 0 or length < 0 or length > 16 * 1024 * 1024 or offset + length > self.size:
@@ -140,7 +195,6 @@ class _PeReader:
         if len(value) != length:
             raise ValueError("Executable is truncated")
         return value
-
     def directory(self, number: int) -> tuple[int, int]:
         if number >= self.directory_count:
             return 0, 0
@@ -513,39 +567,10 @@ def _installer_binding(kind: str, profile: dict | None, value: str | None, *, al
         raise ValueError("New formal update runtime requires its actual installer_sha256 binding")
 
 
-def package_release(bundle: Path, output: Path, *, build_number: int, architecture: str,
-                    kind: str = "update", version: str | None = None,
-                    source_root: Path | None = None, installer_sha256: str | None = None,
-                    allow_local_test: bool = False) -> dict:
+def collect_runtime_sources(bundle: Path, *, architecture: str, kind: str,
+                            source_root: Path | None = None) -> tuple[list[tuple[str, Path]], dict | None, dict]:
+    """One allowlist/dependency/JNI-selection entry for signing and packaging."""
     required = required_files(kind)
-    bundle = bundle.resolve(strict=True)
-    output = output.resolve()
-    if build_number <= 0 or build_number > 65535:
-        raise ValueError("Windows build number must be in 1..65535 (PE version limit)")
-    if architecture not in {"x64", "arm64", "x86"}:
-        raise ValueError("Unsupported Windows architecture")
-    executable_info = inspect_executable_info(bundle / "uten_imp.exe")
-    profile_path = bundle / RUNTIME_PROFILE_PATH
-    if profile_path.is_symlink() or profile_path.parent.is_symlink() or profile_path.parent.is_junction():
-        raise ValueError("Runtime profile cannot be read through a link")
-    if profile_path.is_file() and profile_path.stat().st_size > MAX_PROFILE_BYTES:
-        raise ValueError("Runtime profile metadata exceeds its bounded contract")
-    runtime_profile = validate_runtime_profile(profile_path.read_bytes() if profile_path.is_file() else None,
-                                               executable_info, allow_local_test=allow_local_test)
-    _installer_binding(kind, runtime_profile, installer_sha256, allow_local_test=allow_local_test)
-    if (executable_info["architecture"], executable_info["fileVersion"][3]) != (architecture, build_number):
-        raise ValueError("Actual executable architecture/build differs from release metadata")
-    # The manifest version must equal the version the operator publishes; the executable's
-    # own version resources stay the authoritative source both are checked against.
-    executable_version = executable_info["productVersion"][:3]
-    if executable_info["fileVersion"][:3] != executable_version:
-        raise ValueError("Executable file and product versions disagree")
-    if version is None:
-        version = ".".join(str(number) for number in executable_version)
-    elif release_version_number(version) != executable_version:
-        raise ValueError("Requested version differs from the executable version resources")
-    if output == bundle or bundle in output.parents:
-        raise ValueError("Output ZIP must be outside the input bundle")
     sources: list[tuple[str, Path]] = []
     for source in sorted(bundle.rglob("*")):
         relative = source.relative_to(bundle).as_posix()
@@ -586,6 +611,41 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
         sources = [(relative, source) for relative, source in sources if relative != proof["path"]]
         del modules[proof["path"]]
     runtime_validation = validate_runtime_dependencies(modules, architecture=architecture)
+    return sources, proof, runtime_validation
+
+
+def package_release(bundle: Path, output: Path, *, build_number: int, architecture: str,
+                    kind: str = "update", version: str | None = None,
+                    source_root: Path | None = None, installer_sha256: str | None = None,
+                    allow_local_test: bool = False) -> dict:
+    required_files(kind)
+    bundle = bundle.resolve(strict=True)
+    output = output.resolve()
+    if build_number <= 0 or build_number > 65535:
+        raise ValueError("Windows build number must be in 1..65535 (PE version limit)")
+    if architecture not in {"x64", "arm64", "x86"}:
+        raise ValueError("Unsupported Windows architecture")
+    executable_info = inspect_executable_info(bundle / "uten_imp.exe")
+    profile_path = bundle / RUNTIME_PROFILE_PATH
+    if profile_path.is_symlink() or profile_path.parent.is_symlink() or profile_path.parent.is_junction():
+        raise ValueError("Runtime profile cannot be read through a link")
+    if profile_path.is_file() and profile_path.stat().st_size > MAX_PROFILE_BYTES:
+        raise ValueError("Runtime profile metadata exceeds its bounded contract")
+    runtime_profile = validate_runtime_profile(profile_path.read_bytes() if profile_path.is_file() else None,
+                                               executable_info, allow_local_test=allow_local_test)
+    _installer_binding(kind, runtime_profile, installer_sha256, allow_local_test=allow_local_test)
+    if (executable_info["architecture"], executable_info["fileVersion"][3]) != (architecture, build_number):
+        raise ValueError("Actual executable architecture/build differs from release metadata")
+    executable_version = executable_info["productVersion"][:3]
+    if executable_info["fileVersion"][:3] != executable_version:
+        raise ValueError("Executable file and product versions disagree")
+    if version is None:
+        version = ".".join(str(number) for number in executable_version)
+    elif release_version_number(version) != executable_version:
+        raise ValueError("Requested version differs from the executable version resources")
+    if output == bundle or bundle in output.parents:
+        raise ValueError("Output ZIP must be outside the runtime bundle")
+    sources, proof, runtime_validation = collect_runtime_sources(bundle, architecture=architecture, kind=kind, source_root=source_root)
     seen: set[str] = set()
     files = []
     expanded_bytes = 0
@@ -604,13 +664,25 @@ def package_release(bundle: Path, output: Path, *, build_number: int, architectu
             raise ValueError("Expanded release exceeds 2 GiB")
         with source.open("rb") as stream:
             digest = hashlib.file_digest(stream, "sha256").hexdigest()
-        reject_known_unsafe_engine(relative, digest)
+            reject_known_unsafe_engine(relative, digest, stream=stream, size=size,
+                                       require_approved=(runtime_profile or {}).get("buildProfile") != "local_test")
         if proof is not None:
             frozen = {"data/app.so": proof["aotSha256"],
                       "data/flutter_assets/NativeAssetsManifest.json": proof["nativeAssetsSha256"]}
             if relative in frozen and digest != frozen[relative]:
                 raise ValueError("JNI omission proof invalidated by changed native assets/AOT")
         files.append({"path": relative, "size": size, "sha256": digest})
+    # Hash manifests are transport integrity, not a Windows publisher identity.
+    # Verify the exact source leaves before producing any formal archive.
+    if (runtime_profile or {}).get("buildProfile") != "local_test":
+        import windows_authenticode
+        import time
+        deadline = time.monotonic() + windows_authenticode.VERIFY_SECONDS
+        windows_authenticode.verify_files([(relative, source) for relative, source in sources
+                                           if windows_authenticode.is_signable(source)], deadline=deadline)
+        import windows_payload_binding
+        windows_payload_binding.verify_sources(sources, metadata={"runtimeFamily": "flutter", "version": version,
+            "buildNumber": build_number, "architecture": architecture, "executable": "uten_imp.exe"}, deadline=deadline)
     manifest = {"schemaVersion": 1, "platform": "windows", "architecture": architecture,
                 "version": version, "buildNumber": build_number, "executable": "uten_imp.exe",
                 "packageKind": kind, "files": files}
@@ -647,6 +719,8 @@ def validate_package(path: Path, *, build_number: int, architecture: str,
                      kind: str = "update", version: str | None = None, allow_local_test: bool = False) -> dict:
     """Independently re-read the finished ZIP before making it publishable."""
     required = required_files(kind)
+    from zip_directory import require_bounded_directory
+    require_bounded_directory(path, max_entries=MAX_FILES + 1, max_central_bytes=16 * 1024 * 1024)
     with zipfile.ZipFile(path) as archive:
         entries = archive.infolist()
         if len(entries) > MAX_FILES + 1:
@@ -692,7 +766,7 @@ def validate_package(path: Path, *, build_number: int, architecture: str,
                 digest = hashlib.file_digest(stream, "sha256").hexdigest()
                 if digest != record["sha256"]:
                     raise ValueError("Runtime SHA-256 mismatch")
-            reject_known_unsafe_engine(entry.filename, digest)
+                reject_known_unsafe_engine(entry.filename, digest, stream=stream, size=entry.file_size)
         if len(seen) != len(expected) + 1:
             raise ValueError("Archive omits release files")
         modules = {}
@@ -732,7 +806,20 @@ def validate_package(path: Path, *, build_number: int, architecture: str,
             raise ValueError("Runtime profile metadata exceeds its bounded contract")
         profile = validate_runtime_profile(archive.read(profile_entry) if profile_entry is not None else None,
                                            executable_info, allow_local_test=allow_local_test)
+        engine = next(entry for entry in entries if entry.filename.casefold() == "flutter_windows.dll")
+        with archive.open(engine) as stream:
+            reject_known_unsafe_engine(engine.filename, expected[engine.filename]["sha256"],
+                                       stream=stream, size=engine.file_size,
+                                       require_approved=(profile or {}).get("buildProfile") != "local_test")
         _installer_binding(kind, profile, manifest.get("installerSha256"), allow_local_test=allow_local_test)
+        if (profile or {}).get("buildProfile") != "local_test":
+            import windows_authenticode
+            import time
+            deadline = time.monotonic() + windows_authenticode.VERIFY_SECONDS
+            windows_authenticode.verify_archive(archive, deadline=deadline)
+            import windows_payload_binding
+            windows_payload_binding.verify_archive(archive, metadata={"runtimeFamily": "flutter", "version": recorded_version,
+                "buildNumber": build_number, "architecture": architecture, "executable": "uten_imp.exe"}, deadline=deadline)
         return manifest
 
 

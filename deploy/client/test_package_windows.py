@@ -11,6 +11,8 @@ import zipfile
 from unittest import mock
 
 import package_windows as package_module
+import windows_authenticode
+import windows_payload_binding
 
 from package_windows import (MANIFEST_NAME, UPDATER_PATH, inspect_executable, inspect_pe_imports,
                              package_release, required_vc_runtime, validate_package, validate_release_path)
@@ -107,10 +109,31 @@ def runtime_fixtures(bundle: Path, *, architecture: str = "x64") -> None:
     for name in ("flutter_windows.dll", *sorted(required_vc_runtime(architecture))):
         (bundle / name).write_bytes(fixture_executable(architecture=architecture,
                                                        imports=("KERNEL32.dll",)))
+    # Admit this non-executable synthetic engine in the test process only. The
+    # production contract deliberately contains no test-image admission.
+    with (bundle / "flutter_windows.dll").open("rb") as stream:
+        package_module.APPROVED_ENGINE_IMAGES[package_module.pe_image_sha256(stream)] = {"testFixture": True}
+
+
+def synthetic_signature_boundary(test):
+    """PE layout fixtures deliberately carry no executable/signature bytes.
+
+    Test the independent Windows trust boundary in test_windows_authenticode;
+    these suites isolate the package/resource/atomic-publication algorithms.
+    """
+    for method in ("verify_files", "verify_archive", "sign_files", "check_configuration"):
+        patch = mock.patch.object(windows_authenticode, method, return_value={"syntheticSignatureBoundary": True})
+        patch.start()
+        test.addCleanup(patch.stop)
+    for method in ("verify_sources", "verify_archive"):
+        patch = mock.patch.object(windows_payload_binding, method, return_value={"syntheticBindingBoundary": True})
+        patch.start()
+        test.addCleanup(patch.stop)
 
 
 class WindowsPackageTest(unittest.TestCase):
     def setUp(self):
+        synthetic_signature_boundary(self)
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.bundle = self.root / "bundle"
@@ -620,7 +643,7 @@ class WindowsPackageTest(unittest.TestCase):
         package_release(self.bundle, other, build_number=2, architecture="x64", kind="update")
         self.assertEqual(manifest, validate_package(other, build_number=2, architecture="x64", kind="update"))
 
-    def test_installer_cli_generates_a_complete_bootstrap_archive(self):
+    def test_installer_cli_rejects_unreviewed_synthetic_engine_without_output(self):
         # Embedded distributions can expose their runtime directory here.
         executable = sys.executable if Path(sys.executable).is_file() else shutil.which("python")
         self.assertIsNotNone(executable, "A Python executable is required for the CLI regression")
@@ -628,10 +651,9 @@ class WindowsPackageTest(unittest.TestCase):
                                  "--bundle", str(self.bundle), "--output", str(self.output),
                                  "--build-number", "2", "--architecture", "x64", "--kind", "installer"],
                                 capture_output=True, text=True)
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual("windows_bundle", json.loads(result.stdout)["mode"])
-        self.assertEqual("installer", validate_package(self.output, build_number=2,
-                                                       architecture="x64", kind="installer")["packageKind"])
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Unreviewed Flutter Windows engine", result.stderr)
+        self.assertFalse(self.output.exists())
 
 
 if __name__ == "__main__":

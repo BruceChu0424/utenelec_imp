@@ -5,10 +5,11 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+import package_windows as package_module
 
 from package_windows import MANIFEST_NAME, package_release
 from test_build_windows_installer import setup_fixture
-from test_package_windows import fixture_executable, generated_runtime_profile, runtime_fixtures
+from test_package_windows import fixture_executable, generated_runtime_profile, runtime_fixtures, synthetic_signature_boundary
 from verify_windows_release import RUNTIME_PROFILE, verify_pair, verify_update_zip
 
 ENDPOINTS = ("https://company.example/api", "https://cloud.example/api")
@@ -45,6 +46,8 @@ def formal_bundle(bundle: Path, *, version=(2, 5, 31), build=2531, architecture=
     engine_characteristics = 0x2002 if engine_dll else 0x0002
     (bundle / "flutter_windows.dll").write_bytes(with_pe_characteristics(
         fixture_executable(build, architecture=architecture, version=version), engine_characteristics))
+    with (bundle / "flutter_windows.dll").open("rb") as stream:
+        package_module.APPROVED_ENGINE_IMAGES[package_module.pe_image_sha256(stream)] = {"testFixture": True}
     snapshot = elf_blob(snapshot_architecture or architecture,
                         extra=b"".join(url.encode() for url in endpoints))
     (bundle / "data/app.so").write_bytes(snapshot)
@@ -53,6 +56,7 @@ def formal_bundle(bundle: Path, *, version=(2, 5, 31), build=2531, architecture=
 
 class VerifyWindowsReleaseTest(unittest.TestCase):
     def setUp(self):
+        synthetic_signature_boundary(self)
         self.temporary = tempfile.TemporaryDirectory(prefix="uten release preflight ")
         self.root = Path(self.temporary.name)
         self.output = self.root / "update.zip"

@@ -13,7 +13,7 @@ import zipfile
 
 import build_windows_installer as setup
 from package_windows import MANIFEST_NAME, UPDATER_PATH, inspect_executable, inspect_executable_info, required_vc_runtime
-from test_package_windows import fixture_executable, generated_runtime_profile, runtime_fixtures
+from test_package_windows import fixture_executable, generated_runtime_profile, runtime_fixtures, synthetic_signature_boundary
 
 
 def setup_fixture(*, architecture="x64", loader="x86", build=2531, strings=None, product_version=None,
@@ -35,6 +35,7 @@ def setup_fixture(*, architecture="x64", loader="x86", build=2531, strings=None,
 
 class WindowsSetupSourceTest(unittest.TestCase):
     def setUp(self):
+        synthetic_signature_boundary(self)
         self.temporary = tempfile.TemporaryDirectory(prefix="uimp setup fixture ")
         # Windows runners can expose TEMP through its 8.3 alias (RUNNER~1).
         # The builder resolves publication paths, so fault injections must use
@@ -205,18 +206,48 @@ class WindowsSetupSourceTest(unittest.TestCase):
                      "UtenBuildProfile": "formal", "UtenApplicationId": profile["applicationId"]}), 0x0002))
         for dll in self.bundle.glob("*.dll"):
             dll.write_bytes(with_pe_characteristics(dll.read_bytes(), 0x2002))
+        # The synthetic engine's PE characteristics changed above. Admit this
+        # exact fixture in the test process, never through a production option.
+        import package_windows
+        with (self.bundle / "flutter_windows.dll").open("rb") as source:
+            package_windows.APPROVED_ENGINE_IMAGES[package_windows.pe_image_sha256(source)] = {"testFixture": True}
         (self.bundle / "data/app.so").write_bytes(elf_blob("x64"))
         (self.bundle / "data/uten-runtime-profile.json").write_text(json.dumps(profile), encoding="utf-8")
         captured = []
 
         def recording_compiler(command, **options):
-            result = subprocess.run(command, **options)
+            result = subprocess.run(command, **{**options, "check": False})
             captured.append(result)
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
             self.assertNotRegex(result.stdout + result.stderr, r"(?i)\b(?:warning|error|deprecated)\b")
             return result
 
-        result = self.build(compiler=Path(os.environ["UTEN_TEST_ISCC"]), compile=True,
-                            update_output=self.update_output, runner=recording_compiler)
+        calls = self.root / "synthetic-sign-tool-calls.jsonl"
+        callback = self.root / "synthetic-sign-dispatch.py"
+        callback.write_text("import json,sys,struct\nfrom pathlib import Path\n"
+                            + f"with Path({str(calls)!r}).open('a',encoding='utf-8') as output:\n"
+                            + " output.write(json.dumps({'file':Path(sys.argv[1]).name,'synthetic':True})+'\\n')\n"
+                            + "path=Path(sys.argv[1]);data=bytearray(path.read_bytes())\n"
+                            + "pe=struct.unpack_from('<I',data,60)[0];optional=pe+24\n"
+                            + "directory=96 if struct.unpack_from('<H',data,optional)[0]==0x10b else 112\n"
+                            + "data.extend(b'\\0'*(-len(data)%8));offset=len(data)\n"
+                            + "certificate=struct.pack('<IHH',24,0x200,2)+b'NOT TRUSTED TEST'\n"
+                            + "data.extend(certificate);struct.pack_into('<II',data,optional+directory+32,offset,len(certificate))\n"
+                            + "path.write_bytes(data)\n",
+                            encoding="utf-8")
+        fake_signer = '/Suten=$q' + setup.windows_authenticode.python_executable() + '$q $q' + str(callback) + '$q $f'
+        # Exercise real ISCC dispatch only. This deliberately invalid certificate
+        # table satisfies Inno's presence test, never Windows trust. The package
+        # trust boundary is explicitly mocked for these non-executable fixtures.
+        with mock.patch.object(setup, "inno_signing_argument", return_value=fake_signer):
+            result = self.build(compiler=Path(os.environ["UTEN_TEST_ISCC"]), compile=True,
+                                update_output=self.update_output, runner=recording_compiler)
+        dispatched = [json.loads(line)["file"] for line in calls.read_text(encoding="utf-8").splitlines()]
+        self.assertTrue(any("uninst" in name.casefold() for name in dispatched), dispatched)
+        self.assertIn(self.output.name, dispatched)
+        self.assertGreaterEqual(len(dispatched), 2, dispatched)
+        # Presence is enough for Inno's dispatch fixture, never for Windows.
+        self.assertNotEqual("Valid", setup.windows_authenticode._metadata([self.output.resolve()])[0]["status"])
         self.assertEqual(1, len(captured))
         self.assertNotIn("localTest", result)
         with zipfile.ZipFile(self.update_output) as archive:
@@ -427,7 +458,7 @@ class WindowsSetupSourceTest(unittest.TestCase):
                     stream.write(b"synthetic post-validation mutation")
             return receipt
         with mock.patch.object(setup, "package_release", side_effect=package_boundary):
-            with self.assertRaisesRegex(ValueError, "changed before publication"):
+            with self.assertRaisesRegex(ValueError, "changed before publication|Windows ZIP directory is malformed"):
                 self.build(compiler=self.compiler, compile=True, runner=self.fixture_compiler,
                            update_output=self.update_output)
         self.assertEqual(b"prior setup", self.output.read_bytes())
@@ -454,16 +485,14 @@ class WindowsSetupSourceTest(unittest.TestCase):
         self.assertFalse(self.output.exists())
         self.assertFalse(self.update_output.exists())
 
-    def test_paired_cli_is_a_dry_run_until_compile_is_explicit(self):
+    def test_paired_cli_rejects_unreviewed_synthetic_engine_without_outputs(self):
         executable = sys.executable if Path(sys.executable).is_file() else shutil.which("python")
         self.assertIsNotNone(executable)
         command = [executable, str(Path(setup.__file__)), "--bundle", str(self.bundle), "--output", str(self.output),
                    "--update-output", str(self.update_output), "--version", "2.5.31", "--build-number", "2531"]
         result = subprocess.run(command, capture_output=True, text=True)
-        self.assertEqual(0, result.returncode, result.stderr)
-        plan = json.loads(result.stdout)
-        self.assertTrue(plan["dryRun"])
-        self.assertTrue(plan["updatePackage"]["dryRun"])
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Unreviewed Flutter Windows engine", result.stderr)
         self.assertFalse(self.output.exists())
         self.assertFalse(self.update_output.exists())
 

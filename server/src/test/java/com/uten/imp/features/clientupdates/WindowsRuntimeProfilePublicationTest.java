@@ -41,7 +41,7 @@ class WindowsRuntimeProfilePublicationTest {
         when(actor.getLoginAccount()).thenReturn("profile-test-publisher");
         when(users.get()).thenReturn(Optional.of(actor));
         var catalog = new ClientReleaseCatalog(properties, new StorageProperties(), mapper);
-        service = new ClientReleaseService(catalog, new ClientPackageInspector(mapper), properties, users, mock(AuditService.class));
+        service = new ClientReleaseService(catalog, ClientReleaseFixtures.structuralInspector(mapper), properties, users, mock(AuditService.class));
     }
 
     @Test void matchingNewPairBecomesVisibleOnlyTogetherAndThenRetiresTheOldGroup() throws Exception {

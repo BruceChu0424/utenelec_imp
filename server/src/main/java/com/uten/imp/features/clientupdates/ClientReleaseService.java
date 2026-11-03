@@ -130,7 +130,7 @@ public class ClientReleaseService {
                 if (total == 0 || (contentLength >= 0 && contentLength != total)) throw invalid("更新包未完整上传，请重新上传");
                 String sha256 = HexFormat.of().formatHex(digest.digest());
                 if (!sha256.equals(target.release().expectedSha256())) throw invalid("更新包 SHA-256 校验失败，请重新选择完整的软件包");
-                inspector.inspect(temporary, target.release());
+                inspector.inspectForPublication(temporary, target.release());
                 long uploadedBytes = total;
                 result = catalog.locked(root -> {
                     ClientReleaseDto.Release release = catalog.require(root, id);
@@ -153,12 +153,34 @@ public class ClientReleaseService {
     @PreAuthorize(PUBLISH_EXPRESSION)
     public ClientReleaseDto.Release publish(UUID id) {
         AuthUser actor = publisher();
+        // Signature/CRL verification may wait on a native process. Never hold the catalog
+        // lock while performing it: downloads, discovery and unrelated publishers remain usable.
+        PublicationTarget target = catalog.locked(root -> {
+            var release = catalog.require(root, id);
+            if ("PUBLISHED".equals(release.state())) return new PublicationTarget(root, release, List.of());
+            requireDraft(release);
+            return new PublicationTarget(root, release, publicationPartners(root, release));
+        });
+        if (!"PUBLISHED".equals(target.release().state())) {
+            try {
+                verifyForPublication(target.root(), target.release());
+                for (var partner : target.partners()) verifyForPublication(target.root(), partner);
+            } catch (IOException failure) {
+                throw new ApiException(ErrorCode.PRIMARY_UNAVAILABLE, "客户端软件包校验暂时失败，请稍后重试");
+            }
+        }
         ClientReleaseDto.Release result = catalog.locked(root -> {
             ClientReleaseDto.Release release = catalog.require(root, id);
+            if (!target.release().equals(release)
+                    && !("PUBLISHED".equals(release.state()) && copy(target.release(), target.release().sha256(),
+                        target.release().sizeBytes(), "PUBLISHED", release.publishedAt()).equals(release)))
+                throw new ApiException(ErrorCode.CONFLICT, "发布信息在签名校验期间发生变化，请刷新后重试");
             if ("PUBLISHED".equals(release.state())) {
                 retireSupersededWindowsPackages(root, release);
                 return release;
             }
+            if (!target.partners().equals(publicationPartners(root, release)))
+                throw new ApiException(ErrorCode.CONFLICT, "配套安装包或更新包在签名校验期间发生变化，请刷新后重试");
             requireDraft(release);
             long previousBuild = catalog.list(root).stream().filter(other -> other.publishedAt() != null
                             && other.platform().equals(release.platform()) && overlaps(other.architecture(), release.architecture())
@@ -173,7 +195,10 @@ public class ClientReleaseService {
                     && !other.packageKind().equals(release.packageKind()) && other.buildNumber() == release.buildNumber()
                     && !other.version().equals(release.version())))
                 throw new ApiException(ErrorCode.CONFLICT, "同一交付组的安装包和更新包必须使用相同版本号");
-            if (!"store".equals(release.installMode())) validatePublishedPackage(root, release);
+            if (!"store".equals(release.installMode())) {
+                validatePackageDigest(root, release);
+                for (var partner : target.partners()) validatePackageDigest(root, partner);
+            }
             if (ClientDeliveryContract.paired(release)) {
                 for (var other : catalog.list(root)) {
                     if (!sameDeliveryGroup(release, other) || !"PUBLISHED".equals(other.state())
@@ -190,6 +215,21 @@ public class ClientReleaseService {
         record(actor, "client_release_publish", id);
         return result;
     }
+
+    private List<ClientReleaseDto.Release> publicationPartners(Path root, ClientReleaseDto.Release release) throws IOException {
+        if (!ClientDeliveryContract.paired(release)) return List.of();
+        return catalog.list(root).stream().filter(other -> sameDeliveryGroup(release, other)
+                        && "PUBLISHED".equals(other.state()) && !release.packageKind().equals(other.packageKind()))
+                .sorted(Comparator.comparing(other -> other.id().toString())).toList();
+    }
+
+    private void verifyForPublication(Path root, ClientReleaseDto.Release release) throws IOException {
+        if ("store".equals(release.installMode())) return;
+        validatePublishedPackage(root, release);
+        inspector.inspectSignatures(packagePath(root, release.id()), release);
+    }
+
+    private record PublicationTarget(Path root, ClientReleaseDto.Release release, List<ClientReleaseDto.Release> partners) { }
 
     /** The installer and update ZIP become the retained generation only after both are usable. */
     private void retireSupersededWindowsPackages(Path root, ClientReleaseDto.Release published) throws IOException {
@@ -236,6 +276,11 @@ public class ClientReleaseService {
     }
 
     private void validatePublishedPackage(Path root, ClientReleaseDto.Release release) throws IOException {
+        validatePackageDigest(root, release);
+        inspector.inspect(packagePath(root, release.id()), release);
+    }
+
+    private void validatePackageDigest(Path root, ClientReleaseDto.Release release) throws IOException {
         Path binary = packagePath(root, release.id());
         if (release.sha256() == null || !Files.isRegularFile(binary, LinkOption.NOFOLLOW_LINKS)
                 || Files.size(binary) != release.sizeBytes()) throw invalid("请先完整上传并校验更新包");
@@ -246,7 +291,6 @@ public class ClientReleaseService {
         }
         if (!release.sha256().equals(HexFormat.of().formatHex(digest.digest())))
             throw invalid("已上传的更新包发生变化，请重新上传");
-        inspector.inspect(binary, release);
     }
 
     @PreAuthorize(PUBLISH_EXPRESSION)

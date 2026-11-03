@@ -33,7 +33,7 @@ class ClientRuntimeFamilyTest {
         when(actor.getId()).thenReturn(UUID.randomUUID()); when(actor.getEmployeeId()).thenReturn(UUID.randomUUID());
         when(actor.getLoginAccount()).thenReturn("publisher"); when(users.get()).thenReturn(Optional.of(actor));
         service = new ClientReleaseService(new ClientReleaseCatalog(properties, new StorageProperties(), mapper),
-                new ClientPackageInspector(mapper), properties, users, mock(AuditService.class));
+                ClientReleaseFixtures.structuralInspector(mapper), properties, users, mock(AuditService.class));
     }
 
     @Test void oldRequestCatalogAndOverloadsRemainFlutterByDefault() throws Exception {

@@ -440,7 +440,7 @@ class ClientReleaseServiceTest {
 
     private ClientReleaseService newService() {
         return new ClientReleaseService(new ClientReleaseCatalog(properties, new StorageProperties(), mapper),
-                new ClientPackageInspector(mapper), properties, users, mock(AuditService.class));
+                ClientReleaseFixtures.structuralInspector(mapper), properties, users, mock(AuditService.class));
     }
 
     private ClientReleaseDto.Release draft(long build, byte[] zip) {

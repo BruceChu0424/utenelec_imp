@@ -305,6 +305,18 @@
         <directory>${uten.build.directory}</directory>
         <resources>
             <resource>
+                <directory>../contracts/windows-payload-binding</directory>
+                <targetPath>contracts/windows-payload-binding</targetPath>
+                <filtering>false</filtering>
+                <includes><include>v1.json</include></includes>
+            </resource>
+            <resource>
+                <directory>../contracts/windows-engine-safety</directory>
+                <targetPath>contracts/windows-engine-safety</targetPath>
+                <filtering>false</filtering>
+                <includes><include>v1.json</include></includes>
+            </resource>
+            <resource>
                 <directory>src/main/resources</directory>
                 <excludes>
                     <exclude>**/.mimosa/**</exclude>

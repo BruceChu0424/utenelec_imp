@@ -36,6 +36,7 @@ namespace Uten.Legacy.Core.Tests
             EndpointSwitchFencesPendingLogin().GetAwaiter().GetResult();
             RefreshOutageKeepsSession().GetAwaiter().GetResult();
             WritesAreNotReplayed().GetAwaiter().GetResult();
+            RunClientReleasePublishCommands();
             RedirectAndReadBounds().GetAwaiter().GetResult();
             DurableLogoutRetainsIssuer().GetAwaiter().GetResult();
             DefinitiveRejectionFailsClosedWhenStorageFails().GetAwaiter().GetResult();
@@ -49,6 +50,82 @@ namespace Uten.Legacy.Core.Tests
         {
             return new ClientConfiguration(new[] { new ServerEndpoint("company", "公司", "https://imp.utenelec/api"),
                 new ServerEndpoint("cloud", "可信云端", "https://cloud.example.test/api") }, "company", 5, maxResponseBytes);
+        }
+
+        public static void RunClientReleasePublishCommands()
+        {
+            PublishResponseBudgetRetainsUnknownSubmission().GetAwaiter().GetResult();
+            UploadResponseBudgetRetainsUnknownSubmission().GetAwaiter().GetResult();
+        }
+
+        private static async Task UploadResponseBudgetRetainsUnknownSubmission()
+        {
+            var id = Guid.NewGuid().ToString("D");
+            var path = Path.Combine(Path.GetTempPath(), "uten-upload-unknown-" + Guid.NewGuid().ToString("N") + ".zip");
+            var bytes = new byte[] { 1, 2, 3, 4 };
+            File.WriteAllBytes(path, bytes);
+            string sha;
+            using (var hash = System.Security.Cryptography.SHA256.Create())
+                sha = BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant();
+            int uploads = 0;
+            using (var cancellation = new CancellationTokenSource())
+            try
+            {
+                using (var session = new SessionCoordinator(Configuration(), new Handler((request, token) =>
+                {
+                    if (request.RequestUri.AbsolutePath.EndsWith("/login", StringComparison.Ordinal))
+                        return Task.FromResult(Json(Token("access-test", "refresh-test").Replace("goods:view", "client_release:publish")));
+                    uploads++;
+                    Equal("/api/admin/client-releases/" + id + "/package", request.RequestUri.AbsolutePath, "upload keeps the original draft ID");
+                    Equal(TimeSpan.FromMinutes(5), ClientReleaseReceiveBudget.ForRequest(request, TimeSpan.FromSeconds(5)),
+                        "upload response receives five minutes without changing its total send lifetime");
+                    var sink = ClientReleaseUploadSink.FromRequest(request);
+                    using (var output = new MemoryStream()) sink.WriteTo(output, token);
+                    True(sink.Started && sink.Completed, "all original upload bytes and SHA were checked before response waiting");
+                    cancellation.Cancel();
+                    throw new OperationCanceledException(token);
+                }), new MemoryStore()))
+                {
+                    await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
+                    var error = await ThrowsAsync<ApiException>(() => session.UploadClientPackageAsync(id, path, bytes.Length,
+                        sha, session.CaptureMutationOwner(), cancellation.Token));
+                    True(error.IsSubmissionUnknown, "cancel after body send keeps the upload outcome unknown");
+                    Equal(1, uploads, "unknown upload is never automatically retransmitted");
+                    True(bytes.SequenceEqual(File.ReadAllBytes(path)), "original upload file survives interruption unchanged");
+                }
+            }
+            finally { File.Delete(path); }
+        }
+
+        private static async Task PublishResponseBudgetRetainsUnknownSubmission()
+        {
+            var id = Guid.NewGuid().ToString("D");
+            var publishPath = "/api/admin/client-releases/" + id + "/publish";
+            int publishes = 0;
+            using (var session = new SessionCoordinator(Configuration(), new Handler((request, cancellation) =>
+            {
+                if (request.RequestUri.AbsolutePath.EndsWith("/login", StringComparison.Ordinal))
+                    return Task.FromResult(Json(Token("access-test", "refresh-test").Replace("goods:view", "client_release:publish")));
+                var budget = ClientReleaseReceiveBudget.ForRequest(request, TimeSpan.FromSeconds(5));
+                if (request.RequestUri.AbsolutePath == publishPath)
+                {
+                    publishes++;
+                    Equal(TimeSpan.FromMinutes(5), budget, "publish command owns its five-minute receive budget");
+                    throw new OperationCanceledException(cancellation);
+                }
+                Equal(TimeSpan.FromSeconds(5), budget, "prepare/withdraw commands retain their default budget");
+                return Task.FromResult(Json("{}"));
+            }), new MemoryStore()))
+            {
+                await session.LoginAsync("UT0001", "test-password", CancellationToken.None);
+                var owner = session.CaptureMutationOwner();
+                await session.SendClientReleaseCommandAsync("admin/client-releases", "{\"requestId\":\"" + id + "\"}", owner, null, CancellationToken.None);
+                await session.SendClientReleaseCommandAsync("admin/client-releases/" + id + "/withdraw", null, owner, null, CancellationToken.None);
+                var error = await ThrowsAsync<ApiException>(() => session.SendClientReleaseCommandAsync(
+                    "admin/client-releases/" + id + "/publish", null, owner, null, CancellationToken.None));
+                True(error.IsSubmissionUnknown, "a dispatched publish timeout retains an unknown outcome");
+                Equal(1, publishes, "publish timeout never automatically replays the original command");
+            }
         }
         private static void ConfigurationAndPathBounds()
         {

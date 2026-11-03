@@ -59,6 +59,10 @@ ArchitecturesInstallIn64BitMode=
 ; .NET 4.8 targets Win7 SP1; loader and policy both reject an older system.
 MinVersion=6.1sp1
 UseSetupLdr=yes
+#ifndef ValidationFixture
+SignTool=uten
+SignedUninstaller=yes
+#endif
 OutputDir={#OutputDir}
 OutputBaseFilename=UtenWin7WpfSetup-{#Version}-{#BuildNumber}
 SetupIconFile={#AppIcon}

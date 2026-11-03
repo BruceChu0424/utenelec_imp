@@ -93,7 +93,8 @@ namespace Uten.Legacy.Core
                 if (disposed) throw new ObjectDisposedException(nameof(ManagedTlsHttpHandler));
                 active.TryAdd(socket, 0);
                 socket.NoDelay = true;
-                socket.ReceiveTimeout = socket.SendTimeout = (int)configuration.RequestTimeout.TotalMilliseconds;
+                socket.SendTimeout = (int)configuration.RequestTimeout.TotalMilliseconds;
+                socket.ReceiveTimeout = (int)configuration.RequestTimeout.TotalMilliseconds;
                 var ownedSocket = socket;
                 originalAbort = originalCancellation.Register(() => CloseSocket(ownedSocket));
                 using (var stream = socket.GetStream())
@@ -107,6 +108,8 @@ namespace Uten.Legacy.Core
                     LastNegotiatedCipherSuite = peer.NegotiatedCipherSuite;
                     ValidateRequestOrigin(request);
                     if (request.RequestUri != origin) throw new HttpRequestException("接口请求地址已经变化。");
+                    socket.ReceiveTimeout = (int)ClientReleaseReceiveBudget.ForRequest(request,
+                        configuration.RequestTimeout).TotalMilliseconds;
                     return ManagedHttp11.SendAndReceive(protocol.Stream, request,
                         responseSink == null ? configuration.MaxResponseBytes : responseSink.MaximumBytes,
                         originalCancellation, status =>
@@ -157,6 +160,7 @@ namespace Uten.Legacy.Core
 
         private void ValidateRequestOrigin(HttpRequestMessage request)
         {
+            ClientReleaseReceiveBudget.ForRequest(request, configuration.RequestTimeout);
             var uri = request?.RequestUri;
             var upload = ClientReleaseUploadSink.FromRequest(request);
             if (upload != null && !upload.Owns(request))

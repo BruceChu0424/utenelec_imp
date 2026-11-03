@@ -31,8 +31,122 @@ namespace Uten.Legacy.Core.Tests
                 RejectsWrongNameBeforeHttp(certificates).GetAwaiter().GetResult();
                 LateAuthBodyRemainsRevocable(certificates).GetAwaiter().GetResult();
                 CancellationClosesSocket(certificates).GetAwaiter().GetResult();
+                PublishReceiveBudgetUsesTheOwnedSocket(certificates).GetAwaiter().GetResult();
+                PublishReceiveBudgetKeepsCancellation(certificates).GetAwaiter().GetResult();
+                UploadReceiveBudgetUsesTheOwnedSocket(certificates).GetAwaiter().GetResult();
                 CertificateBounds(certificates);
             }
+        }
+
+        public static void RunPublishReceiveBudget()
+        {
+            using (var certificates = new Certificates())
+            {
+                PublishReceiveBudgetUsesTheOwnedSocket(certificates).GetAwaiter().GetResult();
+                PublishReceiveBudgetKeepsCancellation(certificates).GetAwaiter().GetResult();
+                UploadReceiveBudgetUsesTheOwnedSocket(certificates).GetAwaiter().GetResult();
+            }
+        }
+
+        private static async Task PublishReceiveBudgetUsesTheOwnedSocket(Certificates certificates)
+        {
+            TcpClient socket = null;
+            int receiveTimeout = 0, sendTimeout = 0, handshakeReceiveTimeout = 0;
+            using (var server = new Server(certificates, certificates.Leaf, stream =>
+            {
+                receiveTimeout = socket.ReceiveTimeout;
+                sendTimeout = socket.SendTimeout;
+                // Exceeds this fixture's actual five-second default socket receive timeout.
+                Thread.Sleep(5500);
+                Write(stream, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+            }, () => handshakeReceiveTimeout = socket.ReceiveTimeout))
+            using (var handler = new ManagedTlsHttpHandler(Configuration(), certificates.Policy,
+                (uri, cancellation) => socket = server.Connect(uri, cancellation)))
+            using (var client = new HttpClient(handler))
+            using (var request = new HttpRequestMessage(HttpMethod.Post,
+                "https://imp.utenelec/api/admin/client-releases/11111111-1111-1111-1111-111111111111/publish"))
+            {
+                ClientReleaseReceiveBudget.Bind(request);
+                using (var response = await client.SendAsync(request))
+                    True(response.IsSuccessStatusCode && await response.Content.ReadAsStringAsync() == "{}",
+                        "publish can finish after the ordinary socket timeout");
+                Equal(300000, receiveTimeout, "five-minute budget reaches the actual receive socket");
+                Equal(5000, handshakeReceiveTimeout, "publish TLS handshake keeps the original physical receive timeout");
+                Equal(5000, sendTimeout, "publish does not enlarge send budget");
+                server.Finish();
+            }
+            using (var server = new Server(certificates, certificates.Leaf, stream =>
+            {
+                receiveTimeout = socket.ReceiveTimeout;
+                Write(stream, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+            }))
+            using (var handler = new ManagedTlsHttpHandler(Configuration(), certificates.Policy,
+                (uri, cancellation) => socket = server.Connect(uri, cancellation)))
+            using (var client = new HttpClient(handler))
+            using (var response = await client.GetAsync("https://imp.utenelec/api/auth/me"))
+            {
+                Equal(5000, receiveTimeout, "unrelated requests keep their actual socket receive timeout");
+                server.Finish();
+            }
+        }
+
+        private static async Task PublishReceiveBudgetKeepsCancellation(Certificates certificates)
+        {
+            using (var release = new ManualResetEventSlim(false))
+            using (var server = new Server(certificates, certificates.Leaf, stream =>
+            {
+                release.Wait(TimeSpan.FromSeconds(5));
+                Write(stream, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+            }))
+            using (var handler = new ManagedTlsHttpHandler(Configuration(), certificates.Policy, server.Connect))
+            using (var client = new HttpClient(handler))
+            using (var cancellation = new CancellationTokenSource(150))
+            using (var request = new HttpRequestMessage(HttpMethod.Post,
+                "https://imp.utenelec/api/admin/client-releases/11111111-1111-1111-1111-111111111111/publish"))
+            {
+                ClientReleaseReceiveBudget.Bind(request);
+                await ThrowsAsync<OperationCanceledException>(() => client.SendAsync(request, cancellation.Token));
+                release.Set();
+                server.Finish();
+            }
+        }
+
+        private static async Task UploadReceiveBudgetUsesTheOwnedSocket(Certificates certificates)
+        {
+            var path = Path.Combine(Path.GetTempPath(), "uten-upload-receive-budget-" + Guid.NewGuid().ToString("N") + ".zip");
+            var bytes = new byte[] { 1, 2, 3, 4 };
+            File.WriteAllBytes(path, bytes);
+            string sha;
+            using (var hash = SHA256.Create()) sha = BitConverter.ToString(hash.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant();
+            TcpClient socket = null;
+            int receiveTimeout = 0, sendTimeout = 0;
+            var id = "11111111-1111-1111-1111-111111111111";
+            var sink = new ClientReleaseUploadSink(id, path, bytes.Length, sha, null, delegate { });
+            try
+            {
+                using (var server = new Server(certificates, certificates.Leaf, stream =>
+                {
+                    // Server consumed the complete Content-Length body before this callback.
+                    receiveTimeout = socket.ReceiveTimeout;
+                    sendTimeout = socket.SendTimeout;
+                    Thread.Sleep(5500);
+                    Write(stream, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+                }))
+                using (var handler = new ManagedTlsHttpHandler(Configuration(), certificates.Policy,
+                    (uri, cancellation) => socket = server.Connect(uri, cancellation)))
+                using (var client = new HttpClient(handler))
+                using (var request = new HttpRequestMessage(new HttpMethod("PUT"),
+                    "https://imp.utenelec/api/admin/client-releases/" + id + "/package"))
+                {
+                    request.Properties[ClientReleaseUploadSink.RequestProperty] = sink;
+                    using (var response = await client.SendAsync(request)) True(response.IsSuccessStatusCode, "complete upload can wait for server signature validation");
+                    True(sink.Started && sink.Completed && sink.Written == bytes.Length, "the full original file/hash reached the managed upload codec");
+                    Equal(300000, receiveTimeout, "owned upload reaches the actual five-minute receive socket");
+                    Equal(5000, sendTimeout, "upload does not widen the actual send timeout");
+                    server.Finish();
+                }
+            }
+            finally { File.Delete(path); }
         }
 
         private static ClientConfiguration Configuration()
@@ -190,7 +304,7 @@ namespace Uten.Legacy.Core.Tests
             internal int CipherSuite;
             internal string RequestHeaders;
             private TcpClient accepted;
-            internal Server(Certificates certificates, X509Certificate2 leaf, Action<Stream> respond)
+            internal Server(Certificates certificates, X509Certificate2 leaf, Action<Stream> respond, Action handshakeObserver = null)
             {
                 listener = new TcpListener(IPAddress.Loopback, 0);
                 listener.Start();
@@ -204,7 +318,7 @@ namespace Uten.Legacy.Core.Tests
                             accepted.ReceiveTimeout = accepted.SendTimeout = 5000;
                             var protocol = new TlsServerProtocol(accepted.GetStream());
                             {
-                                var peer = new RsaGcmServer(certificates, leaf);
+                                var peer = new RsaGcmServer(certificates, leaf, handshakeObserver);
                                 protocol.Accept(peer);
                                 CipherSuite = peer.SelectedSuite;
                                 var bytes = new List<byte>();
@@ -245,13 +359,17 @@ namespace Uten.Legacy.Core.Tests
         {
             private readonly Certificates certificates;
             private readonly X509Certificate2 leaf;
+            private readonly Action handshakeObserver;
             internal int SelectedSuite;
-            internal RsaGcmServer(Certificates certificates, X509Certificate2 leaf) : base(new BcTlsCrypto())
-            { this.certificates = certificates; this.leaf = leaf; }
+            internal RsaGcmServer(Certificates certificates, X509Certificate2 leaf, Action handshakeObserver = null) : base(new BcTlsCrypto())
+            { this.certificates = certificates; this.leaf = leaf; this.handshakeObserver = handshakeObserver; }
             protected override ProtocolVersion[] GetSupportedVersions() { return new[] { ProtocolVersion.TLSv12 }; }
             protected override int[] GetSupportedCipherSuites() { return new[] { Org.BouncyCastle.Tls.CipherSuite.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 }; }
             protected override TlsCredentialedSigner GetRsaSignerCredentials()
             {
+                // ClientHello has already arrived, while the client is still
+                // inside Connect and waiting for this server's credentials.
+                handshakeObserver?.Invoke();
                 var crypto = (BcTlsCrypto)Crypto;
                 var chain = new BcCertificate(new[] { crypto.CreateCertificate(leaf.RawData), crypto.CreateCertificate(certificates.Root.RawData) });
                 var key = DotNetUtilities.GetRsaKeyPair(certificates.LeafKey).Private;

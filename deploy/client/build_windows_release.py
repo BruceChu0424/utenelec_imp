@@ -42,6 +42,8 @@ from package_windows import MANIFEST_NAME
 from verify_client_endpoints import missing_endpoints
 from verify_windows_release import verify_pair
 from tool_output import UTF8_TOOL_OUTPUT, save_tool_output
+from windows_authenticode import check_configuration
+from zip_directory import require_bounded_directory
 
 SCRIPT = Path(__file__).resolve()
 REPOSITORY = SCRIPT.parents[2]
@@ -151,6 +153,9 @@ def build_formal_release(repository: Path, output_dir: Path, *, api: str, cloud_
                          runner=subprocess.run, allow_dirty: bool = False, skip_build: bool = False,
                          flutter_build=None, package_pair=None) -> dict:
     api, cloud_api = formal_endpoints(api, cloud_api)
+    # Fail before expensive AOT work if no approved public signing identity is
+    # configured. No unsigned formal output is an acceptable fallback.
+    check_configuration()
     version, build_number = read_release_version(repository)
     audit = audit_repository(repository, runner=runner)
     if not audit["treeClean"] and not allow_dirty:
@@ -195,12 +200,13 @@ def build_formal_release(repository: Path, output_dir: Path, *, api: str, cloud_
     compiler = find_compiler(iscc)
     if package_pair is None and compiler is None:
         raise ValueError("Inno Setup ISCC.exe was not found; pass --iscc with the approved compiler path")
-    (package_pair or _default_package_pair)(bundle, setup_path, update_path, version=version,
+    packaging = (package_pair or _default_package_pair)(bundle, setup_path, update_path, version=version,
                                             build_number=build_number, architecture=architecture,
                                             compiler=compiler, repository=repository, runner=runner)
 
     preflight = verify_pair(setup_path, update_path, version=version, build_number=build_number,
                             architecture=architecture, required_endpoints=(api, cloud_api))
+    require_bounded_directory(update_path, max_entries=20001, max_central_bytes=16 * 1024 * 1024)
     with zipfile.ZipFile(update_path) as archive:
         manifest = json.loads(archive.read(MANIFEST_NAME))
     receipt = {
@@ -212,6 +218,7 @@ def build_formal_release(repository: Path, output_dir: Path, *, api: str, cloud_
         "architecture": architecture,
         "runtimeFamily": "flutter",
         "flutterBuild": build_step,
+        "windowsSigning": packaging.get("windowsSigning") if isinstance(packaging, dict) else None,
         "dependencyLockEnforced": flutter_build is None and build_step == "executed",
         "dependencyLockSha256": hashlib.sha256(lock_before).hexdigest() if lock_before is not None else None,
         "pubspecLockNote": lock_note,
@@ -248,8 +255,8 @@ def build_formal_release(repository: Path, output_dir: Path, *, api: str, cloud_
 
 def _default_package_pair(bundle: Path, setup_path: Path, update_path: Path, *, version: str,
                           build_number: int, architecture: str, compiler, repository: Path,
-                          runner=subprocess.run) -> None:
-    build_windows_setup(bundle, setup_path, version=version, build_number=build_number,
+                          runner=subprocess.run) -> dict:
+    return build_windows_setup(bundle, setup_path, version=version, build_number=build_number,
                         architecture=architecture, compiler=compiler, compile=True,
                         update_output=update_path, source_root=repository, runner=runner)
 

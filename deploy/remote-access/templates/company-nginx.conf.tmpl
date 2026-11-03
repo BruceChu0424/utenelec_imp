@@ -186,6 +186,15 @@ http {
             proxy_pass http://remote_app;
             gzip off;
         }
+        # BEGIN generated client publish response budget
+        # Pair verification is bounded; account and step-up policy stays in Spring.
+        location ~ ^/api/admin/client-releases/[0-9A-Fa-f-]+/publish$ {
+            if ($request_method !~ ^(POST|OPTIONS)$) { return 405; }
+            proxy_read_timeout 300s;
+            proxy_pass http://remote_app;
+            gzip off;
+        }
+        # END generated client publish response budget
         location ~ ^/api/client-updates/[0-9A-Fa-f-]+/download$ {
             if ($request_method !~ ^(GET|HEAD|OPTIONS)$) { return 405; }
             proxy_cache off;

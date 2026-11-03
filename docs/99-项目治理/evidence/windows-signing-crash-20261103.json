@@ -1,0 +1,289 @@
+{
+  "schemaVersion": 1,
+  "sourceBaseline": "c75d6e1e3480057f4bec1a930475b402129f5a90",
+  "branch": "uimp/windows-signing-crash-20261103",
+  "fieldEvidence": {
+    "archiveSha256": "36d158d36b89712f87e358d6847f8c0cc1cb15e00cdb89d0847e9c7e65a8b41d",
+    "actualVersion": "2.5.43+2543",
+    "os": {
+      "Caption": "Microsoft Windows 11 家庭版 中文版",
+      "Version": "10.0.26200",
+      "Build": "26200",
+      "Architecture": "64 位"
+    },
+    "engineRawSha256": "011e87e890b7bfbac89f63c763341ffb8393d2b4a617dd836c471a0cdaa1346f",
+    "events": [
+      {
+        "atUtc": "2026-11-02T10:09:54.2730890Z",
+        "exception": "0xc0000005",
+        "module": "flutter_windows.dll",
+        "rva": "0x3A9FA"
+      },
+      {
+        "atUtc": "2026-11-02T01:27:51.0279521Z",
+        "exception": "0xc0000005",
+        "module": "flutter_windows.dll",
+        "rva": "0x3A9FA"
+      }
+    ],
+    "dumpBytesProvided": false,
+    "matchingPdbGuid": "015D6F44-47AA-4576-B919-626F55044F87",
+    "matchingPdbAge": 1,
+    "symbol": "AccessibilityBridge::CreateRemoveReparentedNodesUpdate / inlined ui::AXNode::id",
+    "source": "accessibility_bridge.cc:229",
+    "instruction": "mov rax,[rax+0x20]; mov eax,[rax+0x48]",
+    "limits": "No field registers, complete stack or business node recovered; native regression establishes a matching null-parent trigger, not its exact incident input"
+  },
+  "existingProductionRepair": {
+    "sharedPatch": "flutter-3.44.2-safe-accessibility-tree.patch",
+    "reviewedReleaseEngineRawSha256": "1c47300271ef26e5ec62cb133811516041ce1d980d14b4aaa73700b0109e969a",
+    "productionSourceSha256": "bb7673d749e2f0565a93f5f040fb435d876d6fb9bb75ebeed47474f49627a215",
+    "newProductionLogic": false
+  },
+  "nativeRootRegression": {
+    "priorEnvironmentFailure": "LibreOffice Python exported incompatible PYTHONHOME to tool_wrapper; cleared only subprocess environment; engine source restored",
+    "redBuildExit": 0,
+    "redTestExit": 1,
+    "greenBuildExit": 0,
+    "commonAllExit": 0,
+    "repeat1000Exit": 0
+  },
+  "releaseCommonCases": 241,
+  "actualOfflineFixture": {
+    "run": {
+      "ProcessId": 78080,
+      "AotSha256": "7144834f6a2dff2e871d7268ca0671d120273045e837e5d0f554a64b2ced6fb8",
+      "EngineSha256": "1c47300271ef26e5ec62cb133811516041ce1d980d14b4aaa73700b0109e969a",
+      "StartedAtUtc": "2026-11-03T11:59:27.9053468Z",
+      "HarnessSha256": "aaff947edeed158b88199c957493cd92d463041c9668d9fecd56823015288ef7"
+    },
+    "result": {
+      "status": "passed",
+      "reason": "all_native_window_actions_verified",
+      "completedActions": 53,
+      "plannedActions": 53,
+      "realFlutterEngine": true,
+      "accessibilityMode": "default",
+      "uiaQueries": 256,
+      "uiaFailures": 0,
+      "uiaLastCycle": 1810,
+      "uiaValueQueries": 9119,
+      "uiaRetainedValueReads": 189,
+      "expectedCycle": 1810,
+      "loadedRows": 50000,
+      "extended": true,
+      "finalUiaReadWindowMs": 2000
+    },
+    "modelReceipt": {
+      "tick": 1810,
+      "pulses": 1436,
+      "maxEventLoopGapMs": 207,
+      "retainedInput": "0001. retained input",
+      "frameworkErrors": [],
+      "updateRejections": {
+        "UPDATE_IN_PROGRESS": 31,
+        "UNSAFE_UPDATE_PATH": 1
+      },
+      "offlineFixture": true,
+      "extreme": true,
+      "cancelledReads": 351,
+      "completeReads": 3,
+      "loadedRows": 50000,
+      "logExportOk": true
+    },
+    "businessNetworkOrWrites": false,
+    "existingUserClientTouched": false,
+    "systemProtectionChanged": false,
+    "source": "current task runner + unchanged offline harness Dart source, matched 2544 Release AOT and engine"
+  },
+  "engineIdentityCases": {
+    "originals": 4,
+    "certificateTableAndChecksumVariants": 4,
+    "allRejected": true,
+    "trustedCompanySignaturesNotClaimed": true
+  },
+  "server": {
+    "tests": {
+      "tests": 112,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "jarSha256": "1ad3291e2d676d48f00778063a6e3db35c1c908a5af9208dc13533ad16c7467b",
+    "resources": [
+      {
+        "entry": "BOOT-INF/classes/contracts/windows-engine-safety/v1.json",
+        "bytes": 2771,
+        "sourceSha256": "388c46b40091f143492cd376744ace3f23251f3e5090e66ca44e8908142c75c5",
+        "packedSha256": "388c46b40091f143492cd376744ace3f23251f3e5090e66ca44e8908142c75c5"
+      },
+      {
+        "entry": "BOOT-INF/classes/contracts/windows-payload-binding/v1.json",
+        "bytes": 1412,
+        "sourceSha256": "3a10f929031872f59183d925841faa93ad52bc55fd5973e392dc6b32849efcca",
+        "packedSha256": "3a10f929031872f59183d925841faa93ad52bc55fd5973e392dc6b32849efcca"
+      }
+    ],
+    "nativeChecks": 9,
+    "javaDefaultProcessChecks": 9,
+    "overlappingValidationLayersNotAdded": true,
+    "nativeToolCommit": "868d6e95c603a8057e89336f12fe12b5d2258e00",
+    "nativeToolVersion": "2.15-dev"
+  },
+  "sharedVectors": {
+    "engine": 21,
+    "payload": 18,
+    "zipDirectory": 38
+  },
+  "proxy": {
+    "templates": 5,
+    "generator": "deploy/client/sync_client_publish_nginx.py",
+    "integration": "deploy/client/nginx_client_updates_integration.py",
+    "publishResponseSeconds": 300,
+    "ordinaryApiSeconds": 45,
+    "scaledDelayedPublishPassed": true,
+    "ordinaryTimeoutPreserved": true,
+    "authorizationAndBodyLimitsPreserved": true,
+    "deployed": false
+  },
+  "delivery": {
+    "companyCertificateAvailable": false,
+    "companyPublicTrustAcceptance": false,
+    "targetComputerAcceptance": false,
+    "systemProtectionModified": false,
+    "systemTrustModified": false,
+    "installedApplicationModified": false,
+    "formalClientArtifactsCreated": false,
+    "publishedOrDeployed": false,
+    "win7Accepted": false,
+    "fullWpfErpEquivalent": false
+  },
+  "rawEvidence": {
+    "native": "build/windows-crash-20261103/evidence.json",
+    "server": "build/windows-signature-linux/server-verification-receipt.json",
+    "signing": "build/signing-complete-final-tests.log",
+    "proxy": "build/windows-signing-root-verification/nginx-integration.log",
+    "wpfUnified": "build/windows-signing-root-verification/final-core/unified-receipt.json",
+    "publishGateway": "build/windows-crash-20261103/publish-budget-evidence.json"
+  },
+  "tools": {
+    "windows": {
+      "Skipped": 0,
+      "Failures": 0,
+      "Command": "UTEN_TEST_ISCC=D:/Software/InnoSetup6/ISCC.exe python -m unittest discover -s deploy/client -p test_*windows*.py -q",
+      "Log": "build/signing-complete-final-tests.log",
+      "Count": 122
+    },
+    "wpfProducer": {
+      "Skipped": 0,
+      "Failures": 0,
+      "Command": "python -m unittest discover -s clients/windows_legacy/tools -p test_*wpf*.py -q",
+      "Log": "build/signing-wpf-producer-complete-tests.log",
+      "Count": 31
+    },
+    "authenticodeIncludedInWindows": {
+      "Failures": 0,
+      "Command": "python -m unittest discover -s deploy/client -p test_windows_authenticode.py -q",
+      "Count": 19
+    }
+  },
+  "wpfUnified": {
+    "Succeeded": true,
+    "Win7TargetPcAccepted": false,
+    "FullErpAccepted": false,
+    "FormalPackageCreated": false,
+    "ProductionRequestsExecuted": false,
+    "SystemProtectionChanged": false,
+    "RealCompanySigningAccepted": false,
+    "ProducerBytePipelineValidatedWithMockedSigner": true,
+    "Artifacts": [
+      {
+        "Architecture": "x86",
+        "Configuration": "Debug",
+        "WarningsAsErrors": true,
+        "ExitCode": 0,
+        "Artifact": "build\\windows-signing-root-verification\\final-core\\x86\\Debug\\Uten.Legacy.Core.dll",
+        "Sha256": "b1e9983f723666081ae34400179fedf898da2cf96488bd90c41ad9225edb3a8c",
+        "BuildLog": "build/windows-signing-root-verification/final-core/x86-Debug-build.log"
+      },
+      {
+        "Architecture": "x86",
+        "Configuration": "Release",
+        "WarningsAsErrors": true,
+        "ExitCode": 0,
+        "Artifact": "build\\windows-signing-root-verification\\final-core\\x86\\Release\\Uten.Legacy.Core.dll",
+        "Sha256": "37ad84ac61f4f7cd1031e59d01656f72158a8292be4c98bff755e4d0a30ada82",
+        "BuildLog": "build/windows-signing-root-verification/final-core/x86-Release-build.log"
+      },
+      {
+        "Architecture": "x64",
+        "Configuration": "Debug",
+        "WarningsAsErrors": true,
+        "ExitCode": 0,
+        "Artifact": "build\\windows-signing-root-verification\\final-core\\x64\\Debug\\Uten.Legacy.Core.dll",
+        "Sha256": "ef495fbeacd5c31c603282fbe34ed83ef56e3bb70043621689d0483cd5be2727",
+        "BuildLog": "build/windows-signing-root-verification/final-core/x64-Debug-build.log"
+      },
+      {
+        "Architecture": "x64",
+        "Configuration": "Release",
+        "WarningsAsErrors": true,
+        "ExitCode": 0,
+        "Artifact": "build\\windows-signing-root-verification\\final-core\\x64\\Release\\Uten.Legacy.Core.dll",
+        "Sha256": "1cd1f22e2298aa06d7bb120d9592f4cafe94c512b1937a6ac744f53962f38e8a",
+        "BuildLog": "build/windows-signing-root-verification/final-core/x64-Release-build.log"
+      }
+    ],
+    "NativeProbes": [
+      {
+        "Architecture": "x86",
+        "ActualPointerBytes": 4,
+        "UploadSinkAssertions": 20,
+        "RealTlsHttpSocketScenarios": 4,
+        "TlsScenarioMethods": 3,
+        "UnknownSubmissionScenarios": 2,
+        "VerifiedTcpClientMeasurements": {
+          "PublishResponseReceiveMilliseconds": 300000,
+          "UploadResponseReceiveMilliseconds": 300000,
+          "UnrelatedGetReceiveMilliseconds": 5000,
+          "UploadSendMilliseconds": 5000,
+          "PublishSendMilliseconds": 5000,
+          "PublishHandshakeReceiveMilliseconds": 5000
+        },
+        "MeasurementEvidence": "The native loopback TLS tests read the actual client TcpClient properties at ClientHello/HTTP-body boundaries and assert equality before completing.",
+        "UnknownSubmissionRetainsOriginalRequest": true,
+        "CancellationRetained": true,
+        "NativeLog": "build/windows-signing-root-verification/final-core/x86-native-tests.log"
+      },
+      {
+        "Architecture": "x64",
+        "ActualPointerBytes": 8,
+        "UploadSinkAssertions": 20,
+        "RealTlsHttpSocketScenarios": 4,
+        "TlsScenarioMethods": 3,
+        "UnknownSubmissionScenarios": 2,
+        "VerifiedTcpClientMeasurements": {
+          "PublishResponseReceiveMilliseconds": 300000,
+          "UploadResponseReceiveMilliseconds": 300000,
+          "UnrelatedGetReceiveMilliseconds": 5000,
+          "UploadSendMilliseconds": 5000,
+          "PublishSendMilliseconds": 5000,
+          "PublishHandshakeReceiveMilliseconds": 5000
+        },
+        "MeasurementEvidence": "The native loopback TLS tests read the actual client TcpClient properties at ClientHello/HTTP-body boundaries and assert equality before completing.",
+        "UnknownSubmissionRetainsOriginalRequest": true,
+        "CancellationRetained": true,
+        "NativeLog": "build/windows-signing-root-verification/final-core/x64-native-tests.log"
+      }
+    ],
+    "checkedCompileInputs": 60,
+    "checkedToolInputs": 21,
+    "receiptSha256": "c9c174b35c6283d138dfd717e876bec7aab8831fedfd72176b7aaa4a41fa724c"
+  },
+  "sourceVerification": {
+    "coreAndToolInputsMatch": true,
+    "serverInputsMatch": true,
+    "compileAndToolInputCount": 81,
+    "serverInputCount": 22
+  }
+}

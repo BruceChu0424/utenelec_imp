@@ -22,11 +22,14 @@ import subprocess
 import tempfile
 import threading
 import time
+from sync_client_publish_nginx import TARGETS, synchronize
 
 ROOT = Path(__file__).resolve().parents[2]
 RELEASE_ID = "6a4dc49d-7aad-4d31-94df-fdcf81bdde35"
 UPLOAD = f"/api/admin/client-releases/{RELEASE_ID}/package"
 DOWNLOAD = f"/api/client-updates/{RELEASE_ID}/download"
+PUBLISH = f"/api/admin/client-releases/{RELEASE_ID}/publish"
+ORDINARY_COMMAND = f"/api/admin/client-releases/{RELEASE_ID}/withdraw"
 TOKEN = "Bearer ISOLATED_PROXY_FIXTURE"
 
 
@@ -40,7 +43,11 @@ class Backend(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "private, no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except ConnectionError:
+            # The ordinary-command timeout case intentionally closes upstream.
+            pass
 
     def do_PUT(self):
         type(self).requests.append((self.path, dict(self.headers)))
@@ -56,6 +63,16 @@ class Backend(BaseHTTPRequestHandler):
             self.reply(401, b"unauthorized")
         else:
             self.reply(404 if self.withdrawn else 200, b"withdrawn" if self.withdrawn else b"client-package")
+
+    def do_POST(self):
+        type(self).requests.append((self.path, dict(self.headers)))
+        if self.headers.get("Authorization") != TOKEN:
+            self.reply(401, b"unauthorized")
+            return
+        # A scaled verification wait exceeds the fixture's ordinary API budget,
+        # while fitting only the publish exception. No real release is written.
+        time.sleep(.35)
+        self.reply(200, b"verified-publish-fixture")
 
     def log_message(self, *args):
         pass
@@ -131,11 +148,7 @@ def wait_listener():
 def main():
     if not Path("/.dockerenv").exists():
         raise SystemExit("Run only in a disposable Linux Docker container; never on an ERP host.")
-    templates = [
-        "deploy/nginx/uten-imp-http-lan.conf", "deploy/nginx/uten-imp.conf.example",
-        "deploy/nginx/uten-imp-internal-test.conf.example", "deploy/cloud/nginx-cloud.conf.example",
-        "deploy/remote-access/templates/company-nginx.conf.tmpl",
-    ]
+    templates = TARGETS
     backend = ThreadingHTTPServer(("127.0.0.1", 18082), Backend)
     threading.Thread(target=backend.serve_forever, daemon=True).start()
     outcomes = []
@@ -160,7 +173,14 @@ def main():
                 for name in ("web", "body", "proxy", "fastcgi", "uwsgi", "scgi"):
                     (work / name).mkdir(mode=0o755)
                 config = work / "nginx.conf"
-                config.write_text(render((ROOT / template).read_text(encoding="utf-8"), work, "remote-access" in template))
+                source = (ROOT / template).read_text(encoding="utf-8")
+                assert synchronize(source) == source, template + ": generated publish contract drift"
+                rendered = render(source, work, "remote-access" in template)
+                # Keep this real proxy test quick without changing production
+                # budgets: ordinary 45s -> 200ms, publish 300s -> 1s.
+                rendered = rendered.replace("proxy_read_timeout 45s;", "proxy_read_timeout 200ms;")
+                rendered = rendered.replace("proxy_read_timeout 300s;", "proxy_read_timeout 1s;")
+                config.write_text(rendered)
                 checked = subprocess.run(["nginx", "-t", "-q", "-c", str(config)], capture_output=True, text=True)
                 assert checked.returncode == 0, template + "\n" + checked.stderr
                 process = subprocess.Popen(["nginx", "-c", str(config), "-g", "daemon off;"],
@@ -180,6 +200,11 @@ def main():
                     assert request(work, UPLOAD, "PUT", declared_size=512 * 1024 * 1024 + 1)[0] == 413
                     assert request(work, UPLOAD, "PUT", b"", authorized=False)[0] == 401
                     assert request(work, UPLOAD)[0] == 405
+                    assert request(work, PUBLISH, "POST", b"")[0] == 200
+                    assert request(work, PUBLISH, "POST", b"", authorized=False)[0] == 401
+                    assert request(work, PUBLISH)[0] == 405
+                    assert request(work, PUBLISH, "PUT", b"")[0] == 405
+                    assert request(work, ORDINARY_COMMAND, "POST", b"")[0] == 504
                     assert request(work, DOWNLOAD, "PUT", b"")[0] == 405
                     status, headers, body = request(work, DOWNLOAD)
                     assert status == 200 and body == b"client-package"

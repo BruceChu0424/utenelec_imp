@@ -129,6 +129,10 @@ if (-not $PythonPath) {
 if (-not (Test-Path -LiteralPath $PythonPath -PathType Leaf)) {
     throw 'PythonPath must identify an existing Python interpreter.'
 }
+if ($DistributionProfile -eq 'Company') {
+    & $PythonPath (Join-Path $workspaceRoot 'deploy/client/windows_authenticode.py') --check-config
+    if ($LASTEXITCODE -ne 0) { throw 'Company signing identity is not ready; no unsigned Company compilation is prepared.' }
+}
 
 & $PythonPath $dependencyTool --check
 if ($LASTEXITCODE -ne 0) {
@@ -174,23 +178,16 @@ foreach ($plan in $plans) {
         # mixed development output directory (PDBs, test assemblies or helpers).
         $payloadDirectory = Join-Path $buildRoot ("company-payloads/" + $plan.Architecture + '-' + [Guid]::NewGuid().ToString('D'))
         Assert-PrivateBuildPath $payloadDirectory
-        [IO.Directory]::CreateDirectory($payloadDirectory) | Out-Null
-        $approvedFiles = @('Uten.Legacy.Desktop.exe', 'Uten.Legacy.Core.dll', 'BouncyCastle.Cryptography.dll',
-            'Uten.Legacy.Desktop.exe.config', 'BouncyCastle-LICENSE.md', 'uten.client.json')
-        foreach ($approvedName in $approvedFiles) {
-            $inputFile = Get-Item -LiteralPath (Join-Path $plan.OutputDirectory $approvedName) -ErrorAction Stop
-            if ($inputFile.PSIsContainer -or ($inputFile.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-                throw 'Company payload source must be a regular approved file.'
-            }
-            Copy-Item -LiteralPath $inputFile.FullName -Destination (Join-Path $payloadDirectory $approvedName)
-        }
         $receiptOutput = Join-Path $buildRoot "receipts/$($plan.Architecture)-company.json"
-        & $PythonPath $packageTool receipt --source-root $workspaceRoot --source-state $sourceStateFile --bundle $payloadDirectory --architecture $plan.Architecture --configuration Release --distribution-profile Company --output $receiptOutput
-        if ($LASTEXITCODE -ne 0) { throw 'Compiled payload does not match the reviewed Company source receipt.' }
+        & $PythonPath $packageTool prepare-company --source-root $workspaceRoot --source-state $sourceStateFile --compiled $plan.OutputDirectory --private-output $payloadDirectory --architecture $plan.Architecture --receipt $receiptOutput
+        if ($LASTEXITCODE -ne 0) { throw 'Private Company payload signing/sealing failed; no candidate receipt is issued.' }
+        $bootstrapDirectory = Join-Path $buildRoot ("company-bootstrap/" + $plan.Architecture + '-' + [Guid]::NewGuid().ToString('D'))
+        Assert-PrivateBuildPath $bootstrapDirectory
         $bootstrapReceipt = Join-Path $buildRoot "receipts/$($plan.Architecture)-bootstrap-company.json"
-        & $PythonPath $packageTool bootstrap-receipt --source-root $workspaceRoot --source-state $sourceStateFile --updater (Join-Path $updaterOutput 'Uten.Legacy.Updater.exe') --architecture $plan.Architecture --output $bootstrapReceipt
-        if ($LASTEXITCODE -ne 0) { throw 'Compiled bootstrap does not match the same reviewed Company source receipt.' }
+        & $PythonPath $packageTool prepare-bootstrap --source-root $workspaceRoot --source-state $sourceStateFile --compiled (Join-Path $updaterOutput 'Uten.Legacy.Updater.exe') --private-output $bootstrapDirectory --architecture $plan.Architecture --receipt $bootstrapReceipt
+        if ($LASTEXITCODE -ne 0) { throw 'Private Company bootstrap signing failed; compiled helper remains unchanged.' }
         Write-Output "Company candidate snapshot: $payloadDirectory"
+        Write-Output "Company bootstrap snapshot: $bootstrapDirectory"
     }
 }
 Write-Output 'Native WPF source compiled and PE architecture checked. No Setup/ZIP or publication performed; Win7 target-PC acceptance remains pending.'

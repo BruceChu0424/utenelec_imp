@@ -9,6 +9,53 @@ using System.Net.Http.Headers;
 
 namespace Uten.Legacy.Core
 {
+    /// <summary>The owned publish POST and streaming package PUT may wait for server validation.
+    /// This never widens prepare/withdraw, send/handshake timeouts or an unrelated request.</summary>
+    internal sealed class ClientReleaseReceiveBudget
+    {
+        internal const string RequestProperty = "Uten.OwnedClientReleaseReceiveBudget";
+        internal static readonly TimeSpan Timeout = TimeSpan.FromMinutes(5);
+        private static readonly Regex PathPattern = new Regex(
+            "^/api/admin/client-releases/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/publish$",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        private readonly HttpRequestMessage owner;
+        private readonly Uri uri;
+
+        private ClientReleaseReceiveBudget(HttpRequestMessage request)
+        { owner = request; uri = request.RequestUri; }
+
+        internal static void Bind(HttpRequestMessage request)
+        {
+            if (!PublishRequest(request)) throw new HttpRequestException("发布等待预算不属于本次请求。");
+            request.Properties[RequestProperty] = new ClientReleaseReceiveBudget(request);
+        }
+
+        internal static TimeSpan ForRequest(HttpRequestMessage request, TimeSpan fallback)
+        {
+            var upload = ClientReleaseUploadSink.FromRequest(request);
+            if (upload != null)
+            {
+                if (!upload.Owns(request) || request.Properties.ContainsKey(RequestProperty))
+                    throw new HttpRequestException("上传等待预算离开了冻结请求。");
+                return Timeout;
+            }
+            object value;
+            if (request == null || !request.Properties.TryGetValue(RequestProperty, out value)) return fallback;
+            var budget = value as ClientReleaseReceiveBudget;
+            if (budget == null || !Object.ReferenceEquals(request, budget.owner) || request.RequestUri != budget.uri
+                || !PublishRequest(request)) throw new HttpRequestException("发布等待预算离开了冻结请求。");
+            return Timeout;
+        }
+
+        private static bool PublishRequest(HttpRequestMessage request)
+        {
+            var target = request?.RequestUri;
+            return request != null && request.Method == HttpMethod.Post && request.Content == null
+                && target != null && target.IsAbsoluteUri && target.Scheme == Uri.UriSchemeHttps
+                && target.Query.Length == 0 && target.Fragment.Length == 0 && PathPattern.IsMatch(target.AbsolutePath);
+        }
+    }
+
     /// <summary>Publish-workbench transport over the one approved TLS stack. Only the reviewed
     /// admin client-release routes are callable here; identities are frozen per operation and a
     /// dispatched write that fails without a definite server rejection stays unknown.</summary>
@@ -70,7 +117,9 @@ namespace Uten.Legacy.Core
             using (var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, scope.Cancellation))
             using (var request = new HttpRequestMessage(HttpMethod.Post, scope.Endpoint.Resolve(relativePath)))
             {
-                wait.CancelAfter(configuration.RequestTimeout);
+                if (relativePath.EndsWith("/publish", StringComparison.Ordinal))
+                    ClientReleaseReceiveBudget.Bind(request);
+                wait.CancelAfter(ClientReleaseReceiveBudget.ForRequest(request, configuration.RequestTimeout));
                 request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 if (bodyJson != null) request.Content = new StringContent(bodyJson, Encoding.UTF8, "application/json");
                 if (!String.IsNullOrEmpty(stepUpToken))
@@ -149,6 +198,7 @@ namespace Uten.Legacy.Core
                 || expectedBytes > ClientReleaseUploadSink.MaximumPackageBytes)
                 throw new ApiException("INVALID_UPLOAD_METADATA", "上传信息无效，请核对原发布记录。");
             var submitted = false;
+            ClientReleaseUploadSink sink = null;
             using (var lifetime = CancellationTokenSource.CreateLinkedTokenSource(callerCancellation, scope.Cancellation))
             {
                 lifetime.CancelAfter(TimeSpan.FromMinutes(30));
@@ -159,7 +209,6 @@ namespace Uten.Legacy.Core
                     token.ThrowIfCancellationRequested();
                     RequireScope(scope);
                     var relative = "admin/client-releases/" + releaseId + "/package";
-                    var sink = new ClientReleaseUploadSink(releaseId, sourcePath, expectedBytes, expectedSha256, progress, delegate { RequireScope(scope); });
                     var uri = scope.Endpoint.Resolve(relative);
                     for (var attempt = 0; ; attempt++)
                     {
@@ -167,6 +216,7 @@ namespace Uten.Legacy.Core
                         RequireScope(scope);
                         using (var request = new HttpRequestMessage(new HttpMethod("PUT"), uri))
                         {
+                            sink = new ClientReleaseUploadSink(releaseId, sourcePath, expectedBytes, expectedSha256, progress, delegate { RequireScope(scope); });
                             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", owned.AccessToken);
                             request.Properties[ClientReleaseUploadSink.RequestProperty] = sink;
@@ -185,7 +235,9 @@ namespace Uten.Legacy.Core
                                     {
                                         owned = await EnsureAccessAsync(scope, true, owned, token).ConfigureAwait(false);
                                         submitted = false;
-                                        continue; // No package byte has left the client yet.
+                                        // An explicit UNAUTHORIZED reply is a definite rejection.
+                                        // Any retry keeps the original ID/file/hash and a fresh stream sink.
+                                        continue;
                                     }
                                     throw preliminary;
                                 }
@@ -201,22 +253,22 @@ namespace Uten.Legacy.Core
                 catch (OperationCanceledException)
                 {
                     RequireScope(scope);
-                    if (submitted) throw SubmissionUnknown();
+                    if (submitted || sink?.Started == true) throw SubmissionUnknown();
                     if (callerCancellation.IsCancellationRequested) throw;
                     throw new ApiException("UPLOAD_TIMEOUT", "软件包上传超时，请核对原记录后重试。");
                 }
                 catch (HttpRequestException error)
                 {
                     RequireScope(scope);
-                    if (IsTlsFailure(error)) throw new ApiException("TLS_VALIDATION_FAILED", "上传服务器证书验证失败。", isSubmissionUnknown: submitted);
-                    if (submitted) throw SubmissionUnknown();
+                    if (IsTlsFailure(error)) throw new ApiException("TLS_VALIDATION_FAILED", "上传服务器证书验证失败。", isSubmissionUnknown: submitted || sink?.Started == true);
+                    if (submitted || sink?.Started == true) throw SubmissionUnknown();
                     throw new ApiException("NETWORK", "无法连接服务器，请检查网络后重试。");
                 }
                 catch (IOException)
                 {
                     RequireScope(scope);
                     // A partial package write may already be staged server-side: unknown, not failed.
-                    if (submitted) throw SubmissionUnknown();
+                    if (submitted || sink?.Started == true) throw SubmissionUnknown();
                     throw new ApiException("UPLOAD_IO", "软件包读取或上传失败，请核对原文件。");
                 }
                 catch (DecoderFallbackException)

@@ -21,6 +21,7 @@ import java.util.zip.ZipException;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
 import org.apache.commons.compress.archivers.zip.ZipFile;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /** Validates the bytes being published, including the Windows installer's authoritative manifest. */
 @Component
@@ -30,8 +31,21 @@ public class ClientPackageInspector {
     private static final String MANIFEST = "uten-client-manifest.json";
     private static final String UPDATER = "client_updater/client_updater.ps1";
     private final ObjectMapper mapper;
+    private final WindowsPublisherSignatures signatures;
 
-    public ClientPackageInspector(ObjectMapper mapper) { this.mapper = mapper; }
+    ClientPackageInspector(ObjectMapper mapper) { this(mapper, new WindowsPublisherSignatures(new ClientUpdateProperties())); }
+    @Autowired
+    public ClientPackageInspector(ObjectMapper mapper, WindowsPublisherSignatures signatures) {
+        this.mapper = mapper;
+        this.signatures = signatures;
+    }
+
+    void inspectForPublication(Path file, ClientReleaseDto.Release release) throws IOException {
+        inspect(file, release);
+        inspectSignatures(file, release);
+    }
+
+    void inspectSignatures(Path file, ClientReleaseDto.Release release) throws IOException { signatures.inspect(file, release); }
 
     void inspect(Path file, ClientReleaseDto.Release release) throws IOException {
         ClientRuntimeFamily.requireMode(release);
@@ -44,6 +58,7 @@ public class ClientPackageInspector {
         if (wpf && (Files.size(file) < 1 || Files.size(file) > WpfPackageContract.MAXIMUM_PACKAGE_BYTES))
             throw invalid("WPF 更新 ZIP 超出共享包合同上限");
         if (wpf) WindowsWpfPackageInspector.requireDirectory(file);
+        else if (isWindowsPackage(release)) ClientZipDirectory.inspect(file, MAX_FILES, 16777216L);
         long maximumExpanded = wpf ? WpfPackageContract.MAXIMUM_EXPANDED_BYTES_EXCLUSIVE - 1L : MAX_EXPANDED_BYTES;
         try (ZipFile zip = ZipFile.builder().setPath(file).get()) {
             Map<String, ZipArchiveEntry> files = new HashMap<>();
@@ -167,6 +182,7 @@ public class ClientPackageInspector {
     String installerBinding(Path file, ClientReleaseDto.Release release) throws IOException {
         if (!"windows".equals(release.platform()) || !ClientRuntimeFamily.FLUTTER.equals(release.runtimeFamily())
                 || !"update".equals(release.packageKind())) return null;
+        ClientZipDirectory.inspect(file, MAX_FILES, 16777216L);
         try (ZipFile zip = ZipFile.builder().setPath(file).get()) {
             var profile = zip.getEntry(WindowsRuntimeProfileContract.FILE);
             if (profile == null && !WindowsRuntimeProfileContract.required(release)) return null;

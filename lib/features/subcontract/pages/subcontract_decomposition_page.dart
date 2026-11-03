@@ -232,6 +232,7 @@ class _SubcontractDecompositionPageState
   /// 领料黄数(已提交、等仓库发的行数)；null = 未知。服务端拒绝读取委外订货
   /// (无订货查看权限)时红黄一起隐藏，拍平表只剩申请行。
   int? _submittedCount;
+  bool _drawCountReady = false;
   bool _drawVisible = true;
 
   String? _drawOrderId;
@@ -263,6 +264,7 @@ class _SubcontractDecompositionPageState
       _acceptedDrawQuery = null;
       _drawCount = null;
       _submittedCount = null;
+      _drawCountReady = false;
       _selectedIds.clear();
       _selectedDrawIds.clear();
       _retainedPages = const [];
@@ -541,6 +543,7 @@ class _SubcontractDecompositionPageState
     _drawBackgroundRefresh = false;
     _drawCount = null;
     _submittedCount = null;
+    _drawCountReady = false;
     _drawVisible = true;
     _page = 1;
     _keyword = '';
@@ -919,12 +922,14 @@ class _SubcontractDecompositionPageState
   Future<void> _loadDrawCountRows() async {
     if (!mounted) return;
     final requestId = ++_drawCountRequestId;
+    setState(() => _drawCountReady = false);
     try {
       final counts = await _drawRepository.drawCounts();
       if (!mounted || requestId != _drawCountRequestId) return;
       setState(() {
         _drawCount = counts.drawable;
         _submittedCount = counts.submitted;
+        _drawCountReady = true;
         _drawVisible = true;
       });
     } on ApiException catch (error) {
@@ -1301,7 +1306,7 @@ class _SubcontractDecompositionPageState
 
   /// 进入领料页(一次最多 50 个委外任务)；提交成功返回后清掉已领的勾选并重拉。
   Future<void> _openDrawRequest(List<String> orderItemIds) async {
-    if (orderItemIds.isEmpty || _drawNavigating) return;
+    if (orderItemIds.isEmpty || _drawNavigating || !_drawCountReady) return;
     if (orderItemIds.length > SubcontractDrawRepository.batchLimit) {
       context.appWarning(
         '一次最多领 ${SubcontractDrawRepository.batchLimit} 个委外任务，请分批勾选',
@@ -1328,7 +1333,7 @@ class _SubcontractDecompositionPageState
       context,
       gateway: _drawRepository,
       orderItemId: row.orderItemId,
-      canSubmitDraw: _drawData?.canSubmitDraw ?? false,
+      canSubmitDraw: _drawCountReady && (_drawData?.canSubmitDraw ?? false),
       onChanged: _refreshDraw,
     );
     if (!mounted || drawId == null) return;
@@ -1780,7 +1785,12 @@ class _SubcontractDecompositionPageState
     final applications = ref.watch(
       badgeFactOrNullProvider(BadgeFact.subcontractTaskWaitingOrder),
     );
-    final drawable = _drawVisible ? _drawCount : null;
+    // The parent already has the same count facts. Show them while the direct
+    // count still verifies this page's draw-lane access; facts grant no action.
+    final sharedDrawable = ref.watch(
+      badgeFactOrNullProvider(BadgeFact.subcontractDrawDrawable),
+    );
+    final drawable = _drawVisible ? _drawCount ?? sharedDrawable : null;
     if (applications == null && drawable == null) return null;
     return (applications ?? 0) + (drawable ?? 0);
   }
@@ -1843,7 +1853,14 @@ class _SubcontractDecompositionPageState
           countForm: (pendingTasks ?? 0) > 0
               ? UtenSegmentCountForm.actionable
               : UtenSegmentCountForm.browsing,
-          inProgressCount: _drawVisible ? _submittedCount : null,
+          inProgressCount: _drawVisible
+              ? _submittedCount ??
+                    ref.watch(
+                      badgeFactOrNullProvider(
+                        BadgeFact.subcontractDrawSubmitted,
+                      ),
+                    )
+              : null,
         ),
         // 订单红数按单据归组：可修订的财务退回 + 可判定的短交订单。
         // 黄数仅含当前真实授权且在本人责任范围内的在办订单。
@@ -2361,6 +2378,7 @@ class _SubcontractDecompositionPageState
   bool get _canSubmitDraw =>
       _pendingSeg &&
       _drawVisible &&
+      _drawCountReady &&
       !_drawLoading &&
       _drawError == null &&
       (_drawData?.canSubmitDraw ?? false);

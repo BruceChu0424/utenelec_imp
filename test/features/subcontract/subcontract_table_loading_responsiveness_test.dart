@@ -10,6 +10,7 @@ import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/components/layout/uten_history_time_filter.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
@@ -19,6 +20,7 @@ import 'package:uten_imp/features/subcontract/pages/subcontract_business_list_pa
 import 'package:uten_imp/features/subcontract/models/subcontract_doc.dart';
 import 'package:uten_imp/features/subcontract/repositories/subcontract_short_delivery_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/badges/badge_registry.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/models/subcontract_short_delivery.dart';
 
@@ -27,6 +29,47 @@ import '../../support/filter_segment_tap.dart';
 import 'fake_subcontract_draw_gateway.dart';
 
 void main() {
+  testWidgets(
+    'shared draw counts render before the direct access gate permits actions',
+    (tester) async {
+      final draw = _DelayedDrawCounts();
+      final badges = FixedBadgeSummaryNotifier(
+        badgeSummaryFixture(
+          facts: const {
+            'subcontractDraw.drawable': 7,
+            'subcontractDraw.submitted': 2,
+          },
+        ),
+      );
+      await _pump(
+        tester,
+        SubcontractDecompositionPage(
+          repository: _DelayedWorkbench(immediate: true),
+          drawRepository: draw,
+          initialSegment: 'WAITING_ORDER',
+        ),
+        badges: badges,
+        settle: false,
+      );
+      final toolbar = tester.widget<UtenFilterToolbar<dynamic>>(
+        find.byWidgetPredicate((widget) => widget is UtenFilterToolbar),
+      );
+      expect(toolbar.segments[1].count, 7);
+      expect(toolbar.segments[1].inProgressCount, 2);
+      final table = tester.widget<MasterDataTableView<SubcontractPendingRow>>(
+        find.byKey(const Key('subcontract-decomposition-pending-table')),
+      );
+      table.onSelectedIdsChanged!({'draw-draw-ready'});
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.byKey(const Key('subcontract-draw-batch')), findsNothing);
+      draw.pending.complete((drawable: 7, submitted: 2));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('subcontract-draw-batch')), findsOneWidget);
+      expect(draw.countCalls, 1);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('nonempty subcontract documents publish before supplier lookup', (
     tester,
   ) async {
@@ -113,69 +156,156 @@ void main() {
     },
   );
 
-  testWidgets('empty short delivery rows publish while category count waits', (
-    tester,
-  ) async {
-    final repository = _DelayedCounts();
-    await _pump(tester, SubcontractShortDeliveryPage(repository: repository));
-    final table = _shortTable(tester);
-    expect(repository.pending, hasLength(1));
-    expect(table.isLoading, isFalse);
-    expect(table.items, isEmpty);
-    repository.pending.single.completeError(StateError('count offline'));
-    await tester.pumpAndSettle();
-    expect(_shortTable(tester).isLoading, isFalse);
-    expect(_shortTable(tester).error, isNull);
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'short delivery rows publish with unknown shared counts and no duplicate read',
+    (tester) async {
+      final repository = _DelayedCounts();
+      await _pump(tester, SubcontractShortDeliveryPage(repository: repository));
+      final table = _shortTable(tester);
+      expect(repository.countCalls, 0);
+      expect(table.isLoading, isFalse);
+      expect(table.items, isEmpty);
+      expect(_shortToolbar(tester).segments.first.count, isNull);
+      expect(_shortTable(tester).isLoading, isFalse);
+      expect(_shortTable(tester).error, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
-  testWidgets('obsolete short delivery count cannot replace the newer count', (
-    tester,
-  ) async {
-    final repository = _DelayedCounts();
-    await _pump(tester, SubcontractShortDeliveryPage(repository: repository));
-    await selectFilterSegment(tester, '分批等待中');
-    await tester.pumpAndSettle();
-    expect(repository.pending, hasLength(2));
-    repository.pending[1].complete(
-      const SubcontractShortDeliveryCounts(pending: 7),
-    );
-    await tester.pumpAndSettle();
-    repository.pending[0].complete(
-      const SubcontractShortDeliveryCounts(pending: 99),
-    );
-    await tester.pumpAndSettle();
-    final toolbar = tester
-        .widget<UtenFilterToolbar<SubcontractShortDeliverySegment>>(
-          find.byWidgetPredicate(
-            (widget) =>
-                widget is UtenFilterToolbar<SubcontractShortDeliverySegment>,
-          ),
-        );
-    expect(toolbar.segments.first.count, 7);
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'short delivery counts follow the parent snapshot without reloading rows',
+    (tester) async {
+      final repository = _DelayedCounts();
+      final badges = FixedBadgeSummaryNotifier(
+        badgeSummaryFixture(
+          facts: const {
+            'subcontractShortDelivery.pending': 2,
+            'subcontractShortDelivery.tolerant': 3,
+            'subcontractShortDelivery.waiting': 4,
+          },
+        ),
+      );
+      await _pump(
+        tester,
+        SubcontractShortDeliveryPage(repository: repository),
+        badges: badges,
+      );
+      expect(_shortToolbar(tester).segments.map((s) => s.count).take(3), [
+        2,
+        3,
+        4,
+      ]);
+      await selectFilterSegment(tester, '分批等待中');
+      await tester.pumpAndSettle();
+      final rowCalls = repository.rowCalls;
+      badges.emit(
+        badgeSummaryFixture(
+          facts: const {
+            'subcontractShortDelivery.pending': 7,
+            'subcontractShortDelivery.tolerant': 0,
+            'subcontractShortDelivery.waiting': 9,
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      final toolbar = tester
+          .widget<UtenFilterToolbar<SubcontractShortDeliverySegment>>(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is UtenFilterToolbar<SubcontractShortDeliverySegment>,
+            ),
+          );
+      expect(toolbar.segments.first.count, 7);
+      expect(repository.rowCalls, rowCalls);
+      expect(repository.countCalls, 0);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
-  testWidgets('denied short delivery count clears rows and exposes retry', (
-    tester,
-  ) async {
-    final repository = _DelayedCounts();
-    await _pump(tester, SubcontractShortDeliveryPage(repository: repository));
-    repository.pending.single.completeError(
-      ApiException('FORBIDDEN', '无查看权限', httpStatus: 403),
-    );
-    await tester.pumpAndSettle();
-    expect(_shortTable(tester).error, '无查看权限');
-    expect(_shortTable(tester).items, isEmpty);
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'denied short delivery rows clear accepted data and expose retry',
+    (tester) async {
+      final repository = _DelayedCounts()..rows = [_shortCase];
+      await _pump(tester, SubcontractShortDeliveryPage(repository: repository));
+      expect(_shortTable(tester).items.single.id, _shortCase.id);
+      repository.rowError = ApiException('FORBIDDEN', '无查看权限', httpStatus: 403);
+      await selectFilterSegment(tester, '分批等待中');
+      await tester.pumpAndSettle();
+      expect(_shortTable(tester).error, '无查看权限');
+      expect(_shortTable(tester).items, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'reader changes clear accepted short delivery rows and retire old pending reads',
+    (tester) async {
+      final repository = _DelayedCounts()..rows = [_shortCase];
+      await _pump(tester, SubcontractShortDeliveryPage(repository: repository));
+      expect(_shortTable(tester).items.single.id, _shortCase.id);
+      repository.rowGate =
+          Completer<PagedResult<SubcontractShortDeliveryCase>>();
+      await selectFilterSegment(tester, '分批等待中');
+      await tester.pump();
+      final container = ProviderScope.containerOf(
+        tester.element(
+          find.byKey(const Key('subcontract-short-delivery-table')),
+        ),
+      );
+      container.read(readScopeRevisionProvider.notifier).state++;
+      await tester.pumpAndSettle();
+      expect(_shortTable(tester).items, isEmpty);
+      expect(_shortTable(tester).isLoading, isFalse);
+      repository.rowGate!.complete(
+        const PagedResult(
+          items: [_shortCase],
+          page: 1,
+          size: 50,
+          total: 1,
+          totalPages: 1,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(_shortTable(tester).items, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
+
+const _shortCase = SubcontractShortDeliveryCase(
+  id: 'case-old-reader',
+  orderId: 'order-old',
+  orderBillNo: 'EO-OLD',
+  orderItemId: 'item-old',
+  orderedQty: 100,
+  deliveredQty: 50,
+  shortfallQty: 50,
+  shortfallPct: 50,
+  severity: 'SEVERE',
+  status: 'PENDING_OWNER',
+  effectiveStatus: 'PENDING_OWNER',
+  version: 1,
+);
+
+UtenFilterToolbar<SubcontractShortDeliverySegment> _shortToolbar(
+  WidgetTester tester,
+) => tester.widget(
+  find.byWidgetPredicate(
+    (widget) => widget is UtenFilterToolbar<SubcontractShortDeliverySegment>,
+  ),
+);
 
 MasterDataTableView<SubcontractShortDeliveryCase> _shortTable(
   WidgetTester tester,
 ) => tester.widget(find.byKey(const Key('subcontract-short-delivery-table')));
 
-Future<void> _pump(WidgetTester tester, Widget page, {ApiClient? api}) async {
+Future<void> _pump(
+  WidgetTester tester,
+  Widget page, {
+  ApiClient? api,
+  FixedBadgeSummaryNotifier? badges,
+  bool settle = true,
+}) async {
   tester.view.physicalSize = const Size(1800, 1000);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
@@ -189,7 +319,10 @@ Future<void> _pump(WidgetTester tester, Widget page, {ApiClient? api}) async {
           Perm.subcontractOrderView,
         }),
         isSuperAdminProvider.overrideWithValue(false),
-        fixedBadgeSummaryOverride(),
+        if (badges == null)
+          fixedBadgeSummaryOverride()
+        else
+          badgeSummaryProvider.overrideWith(() => badges),
       ],
       child: page is MaterialApp
           ? page
@@ -200,7 +333,13 @@ Future<void> _pump(WidgetTester tester, Widget page, {ApiClient? api}) async {
             ),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    for (var frame = 0; frame < 5; frame++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
 }
 
 const _workbenchData = OperationsWorkbenchData(
@@ -222,6 +361,8 @@ const _workbenchData = OperationsWorkbenchData(
 
 class _DelayedWorkbench
     implements OperationsWorkbenchGateway, OperationsWorkbenchOverviewGateway {
+  _DelayedWorkbench({this.immediate = false});
+  final bool immediate;
   final pending = <Completer<OperationsWorkbenchData>>[];
 
   @override
@@ -248,21 +389,36 @@ class _DelayedWorkbench
     String? needFrom,
     String? needTo,
   }) {
+    if (immediate) return Future.value(_workbenchData);
     final completer = Completer<OperationsWorkbenchData>();
     pending.add(completer);
     return completer.future;
   }
 }
 
+class _DelayedDrawCounts extends FakeSubcontractDrawGateway {
+  _DelayedDrawCounts() : super(rows: [drawRow('draw-ready')]);
+  final pending = Completer<({int drawable, int submitted})>();
+
+  @override
+  Future<({int drawable, int submitted})> drawCounts() {
+    countCalls++;
+    return pending.future;
+  }
+}
+
 class _DelayedCounts extends SubcontractShortDeliveryRepository {
   _DelayedCounts() : super(_NoopApi());
-  final pending = <Completer<SubcontractShortDeliveryCounts>>[];
+  int countCalls = 0;
+  int rowCalls = 0;
+  Object? rowError;
+  List<SubcontractShortDeliveryCase> rows = const [];
+  Completer<PagedResult<SubcontractShortDeliveryCase>>? rowGate;
 
   @override
   Future<SubcontractShortDeliveryCounts> counts() {
-    final completer = Completer<SubcontractShortDeliveryCounts>();
-    pending.add(completer);
-    return completer.future;
+    countCalls++;
+    return Future.error(StateError('Counts must come from the shared summary'));
   }
 
   @override
@@ -279,8 +435,18 @@ class _DelayedCounts extends SubcontractShortDeliveryRepository {
     String? order,
     String? orderBillNo,
     Map<String, String?> columnFilters = const {},
-  }) async =>
-      const PagedResult(items: [], page: 1, size: 50, total: 0, totalPages: 0);
+  }) async {
+    rowCalls++;
+    if (rowError != null) throw rowError!;
+    if (rowGate != null) return rowGate!.future;
+    return PagedResult(
+      items: rows,
+      page: page,
+      size: size,
+      total: rows.length,
+      totalPages: rows.isEmpty ? 0 : 1,
+    );
+  }
 }
 
 class _NoopApi extends ApiClient {

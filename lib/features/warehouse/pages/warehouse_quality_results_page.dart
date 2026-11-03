@@ -44,6 +44,7 @@ import '../models/warehouse_quality_result.dart';
 import '../models/warehouse_quality_selection.dart';
 import '../models/warehouse_task_form_drafts.dart';
 import '../repositories/warehouse_quality_result_repository.dart';
+import '../providers/warehouse_quality_page_preparation.dart';
 import '../widgets/warehouse_quality_slice_table.dart'
     show warehouseQualityDateTime;
 import '../../../shared/warehouse/warehouse_task_scope.dart';
@@ -237,7 +238,7 @@ class _WarehouseQualityResultsPageState
     super.initState();
     // 全来源与全部作业是明确的默认范围；徽章只报告工作量，不代用户收窄。
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      trackRefresh(_load(1));
+      trackRefresh(_load(1, preferPrepared: true));
     });
   }
 
@@ -264,17 +265,18 @@ class _WarehouseQualityResultsPageState
 
   /// 状态小类计数（后端全量口径；null = 尚未返回，分段按钮显示 '—'）。
   /// 独立于列表加载：进页面（全来源）/ 切换来源时主动刷新，列表加载时联动刷新。
-  Future<void> _refreshStatusCounts() {
+  Future<void> _refreshStatusCounts({bool force = false}) {
     final version = ++_statusCountRequestVersion;
     final ownerCurrent = captureReadOwner(ref);
     final receiptType = _receiptType;
     final keyword = _effectiveKeyword;
-    return ref
-        .read(warehouseQualityResultRepositoryProvider)
-        .statusCounts(
+    return readWarehouseQualityCounts(
+          ref,
+          ref.read(warehouseQualityResultRepositoryProvider),
           receiptType: receiptType,
-          keyword: keyword.isEmpty ? null : keyword,
+          keyword: keyword,
           scopeWarehouseId: _scopeWarehouseId,
+          force: force,
         )
         .then<void>((counts) {
           if (mounted &&
@@ -302,7 +304,9 @@ class _WarehouseQualityResultsPageState
         _historyTime = const UtenHistoryTimeValue.all();
       }
     });
-    if (!seg.history || !_historyTime.isNone) _load(1);
+    if (!seg.history || !_historyTime.isNone) {
+      _load(1, preferPrepared: !seg.history);
+    }
   }
 
   void _selectWorkStatusFilter(String? value) {
@@ -350,7 +354,11 @@ class _WarehouseQualityResultsPageState
     _load(1);
   }
 
-  Future<void> _load(int page, {bool useCache = false}) async {
+  Future<void> _load(
+    int page, {
+    bool useCache = false,
+    bool preferPrepared = false,
+  }) async {
     if (!_shouldLoad) return;
     final version = ++_requestVersion;
     final ownerCurrent = captureReadOwner(ref);
@@ -373,7 +381,7 @@ class _WarehouseQualityResultsPageState
       _loading = true;
       _error = null;
     });
-    unawaited(_refreshStatusCounts());
+    unawaited(_refreshStatusCounts(force: !preferPrepared && !useCache));
     try {
       final repo = ref.read(warehouseQualityResultRepositoryProvider);
       final seg = _statusSeg!;
@@ -430,7 +438,7 @@ class _WarehouseQualityResultsPageState
           _scopeWarehouseId,
         ],
         useCache: useCache,
-        fetchPage: (target) => pageRepository.list(
+        fetchPage: (target) => WarehouseQualityPageQuery(
           page: target,
           view: pageView,
           receiptType: pageReceiptType,
@@ -442,7 +450,7 @@ class _WarehouseQualityResultsPageState
           order: pageOrder,
           billNo: pageBillNo,
           scopeWarehouseId: pageScopeWarehouseId,
-        ),
+        ).read(ref, pageRepository, preferPrepared: preferPrepared),
       );
       // 单号 facets 与列表同口径（2026-09-25 单号列统一）；失败静默（下拉降级为空）。
 
@@ -639,6 +647,16 @@ class _WarehouseQualityResultsPageState
     ref.watch(currentPermissionsProvider);
     ref.watch(authenticatedScopeProvider);
     ref.watch(formDraftsProvider);
+    if (_statusSeg?.history != true) {
+      prepareWarehouseQualityPages(
+        ref,
+        context,
+        keyword: _effectiveKeyword,
+        receiptType: _receiptType,
+        scopeWarehouseId: _scopeWarehouseId,
+        canPrepare: () => !_loading,
+      );
+    }
     final result =
         _result ??
         const PagedResult<WarehouseQualityResultTask>(

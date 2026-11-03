@@ -1,0 +1,382 @@
+{
+  "schemaVersion": 1,
+  "reviewDate": "2026-11-03",
+  "branch": "uimp/category-prefetch-sweep-20261103",
+  "baseline": "54475dc63",
+  "classification": "前端只读加载编排/共享计数消费；服务端业务、API、数据库、金额/数量、权限、草稿与未知提交合同不改",
+  "designSkill": "frontend-design；沿用既有Uten组件/主题/自适应操作面板，无视觉重做",
+  "platforms": {
+    "webAndFlutterDesktop": "同源Dart；本机FakeApi Widget/VM交互证据，不是生产延迟、真实Windows安装包或目标PC验收",
+    "wpfLegacy": "本代理未改WPF业务；主任务独立台账证据仍保留todo，不能视为Win7完整业务支持"
+  },
+  "sharedEntryPoints": [
+    "lib/shared/paging/page_preparation_coordinator.dart + page_preparation_budget_provider.dart：全App最多2条物理投机读取，跨module/owner在途保留预算",
+    "lib/shared/paging/prepared_page_read.dart：首屏完整响应15s可采用，消耗/在途合并，显式fresh不采用旧页",
+    "warehouse_task_page_preparation.dart：来源策略+完整WarehouseTaskPageQuery+父子同一计划",
+    "warehouse_quality_page_preparation.dart：40行首屏与细分计数精确scope合并",
+    "production_page_preparation.dart + production_prepared_page_provider.dart：100/50行原页大小；静态extension显式传lease，不改repo类/Provider接口",
+    "workshop_material_page_preparation.dart + stock_count_prepared_page_provider.dart：period状态聚合与PENDING审核列表交接，写前权威检查保留"
+  ],
+  "retention": "typed PreparedPageRead为容器内有界内存（每类最多8 query，50行；schedule100行），无idle Timer；15s采用时效不变，epoch/write整lease销毁。普通fresh读取与历史不复用旧准备。",
+  "cleanup": [
+    "warehouseTaskSources替代入/出方向重复来源显隐表",
+    "原repo transport方法保留唯一实现，read/prepare为静态extension，保持implements/覆写消费者合同",
+    "不复制销售coordinator、不新增业务计算或阶段数猜测"
+  ],
+  "reviewedPages": [
+    {
+      "page": "仓库管理入口",
+      "source": "lib/features/warehouse/pages/warehouse_hub_page.dart",
+      "status": "已有同源无需改",
+      "finding": "父卡与入口徽章沿用全站/所选仓汇总，不另发单页total计数；实际方向表统一委托WarehouseTaskCenterPage。"
+    },
+    {
+      "page": "合并仓库任务中心",
+      "source": "lib/features/warehouse/pages/warehouse_task_center_page.dart",
+      "status": "已修复",
+      "finding": "未选大类时仅准备首个授权方向；选中方向由该方向同一公共准备入口负责，避免父子两次计划。未发布隐藏表格，不触发写入。"
+    },
+    {
+      "page": "出库任务中心",
+      "source": "lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart",
+      "status": "已修复",
+      "finding": "共用warehouseTaskSources权限策略和WarehouseTaskPageQuery；准备已授权活动来源20行首屏；与父/子数同一warehouseTaskFactOrNullProvider。"
+    },
+    {
+      "page": "入库任务中心",
+      "source": "lib/features/warehouse/pages/warehouse_inbound_task_center_page.dart",
+      "status": "已修复",
+      "finding": "同一来源策略、exact仓范围/关键词/排序20行交接。history-only来源不投机读取；混合授权中有此类来源时也不准备ALL，用户实际选择仍走原查询。"
+    },
+    {
+      "page": "方向公共骨架",
+      "source": "lib/features/warehouse/widgets/warehouse_task_center_scaffold.dart",
+      "status": "已修复",
+      "finding": "提供准备回调，refresh/search/仓范围/reader epoch改变时暂停一帧，让可见表的fresh请求先登记，再恢复兄弟准备；显式刷新不采用旧页。"
+    },
+    {
+      "page": "方向公共记录表",
+      "source": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+      "status": "已修复",
+      "finding": "首次挂载采用精确已完成或在途准备，后续刷新/筛选仍fresh；完整状态facets/原始行/total/totalPages/读权限与跨页选择合同保留。"
+    },
+    {
+      "page": "旧领料深链",
+      "source": "lib/features/warehouse/pages/warehouse_draw_task_center_page.dart",
+      "status": "继承公共修复",
+      "finding": "已委托合并任务中心并预设方向/来源；没有复制另一套列表、计数或预热器。相关深链回归覆盖。"
+    },
+    {
+      "page": "旧销售出库深链",
+      "source": "lib/features/warehouse/pages/warehouse_sales_outbound_page.dart",
+      "status": "继承公共修复",
+      "finding": "已委托合并任务中心并预设方向/来源；没有复制另一套列表、计数或预热器。相关深链回归覆盖。"
+    },
+    {
+      "page": "旧委外出库深链",
+      "source": "lib/features/warehouse/pages/warehouse_subcontract_outbound_page.dart",
+      "status": "继承公共修复",
+      "finding": "已委托合并任务中心并预设方向/来源；没有复制另一套列表、计数或预热器。相关深链回归覆盖。"
+    },
+    {
+      "page": "旧预计到货深链",
+      "source": "lib/features/warehouse/pages/warehouse_inbound_expectations_page.dart",
+      "status": "继承公共修复",
+      "finding": "已委托合并任务中心并预设方向/来源；没有复制另一套列表、计数或预热器。相关深链回归覆盖。"
+    },
+    {
+      "page": "旧产成品入库深链",
+      "source": "lib/features/warehouse/pages/production_finished_inbound_tasks_page.dart",
+      "status": "继承公共修复",
+      "finding": "已委托合并任务中心并预设方向/来源；没有复制另一套列表、计数或预热器。相关深链回归覆盖。"
+    },
+    {
+      "page": "品质检查结果",
+      "source": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "status": "已修复",
+      "finding": "默认全部活动任务即读；父/子复用40行原始首屏与活动状态准备。细分statusCounts不能由父的粗分来源数反推，改用ScopedCategoryRead按gateway/receiptType/关键词/仓精确合并，列表不等待计数。"
+    },
+    {
+      "page": "到货异常独立入口",
+      "source": "lib/features/warehouse/pages/warehouse_arrival_exceptions_page.dart",
+      "status": "已有并行无需改",
+      "finding": "WarehouseArrivalExceptionsView进页立即读取；供应商/仓库字典Future.wait已先启动但不await后再读表，字典不能阻塞首屏。"
+    },
+    {
+      "page": "到货异常正文",
+      "source": "lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart",
+      "status": "已有并行无需改",
+      "finding": "当前列表与字典独立，保留到货例外/来源/确认动作；无父计数完成后再等第二份子统计的链。"
+    },
+    {
+      "page": "采购/委外供应商退回任务",
+      "source": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
+      "status": "已有同源自动选择即读",
+      "finding": "待退count直接badgeEntryTodoProvider；UtenFilterToolbar据同一父数自动选择pending并_load，无第二份统计等待。单工作段+历史leaf未另做跨路由预读，避免历史/未知选择额外请求。"
+    },
+    {
+      "page": "独立库存单据/草稿列表",
+      "source": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "status": "已有同源并行无需改",
+      "finding": "exact DocumentStatusScope由effectiveDocumentStatusCountsProvider统一；计数刷新与列表并行。当前合并中心不再嵌入此旧source表，独立草稿/历史入口保留自身合同。"
+    },
+    {
+      "page": "仓库报表",
+      "source": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "status": "报表选择差异保留",
+      "finding": "日期/报表类型/来源构成实际查询，非父任务徽章分段；未预读未知报表或导出。"
+    },
+    {
+      "page": "仓库历史列表",
+      "source": "lib/features/warehouse/pages/warehouse_document_history_list_page.dart",
+      "status": "历史差异保留",
+      "finding": "历史时间/单据族选择权威，未将历史批量加入后台工作页准备。"
+    },
+    {
+      "page": "旧领料状态组件",
+      "source": "lib/features/warehouse/widgets/warehouse_draw_task_segment.dart",
+      "status": "遗留组件差异保留",
+      "finding": "lib中当前合并中心/旧深链已走WarehouseTaskRecordsView；此组件保留兼容/测试证据，不新增第二套准备队列，不将其源码存在当作现役调用。"
+    },
+    {
+      "page": "旧库存分段组件",
+      "source": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+      "status": "遗留组件差异保留",
+      "finding": "lib中当前合并中心/旧深链已走WarehouseTaskRecordsView；此组件保留兼容/测试证据，不新增第二套准备队列，不将其源码存在当作现役调用。"
+    },
+    {
+      "page": "旧销售出库工作台",
+      "source": "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart",
+      "status": "遗留组件差异保留",
+      "finding": "lib中当前合并中心/旧深链已走WarehouseTaskRecordsView；此组件保留兼容/测试证据，不新增第二套准备队列，不将其源码存在当作现役调用。"
+    },
+    {
+      "page": "旧委外出库工作台",
+      "source": "lib/features/warehouse/widgets/warehouse_subcontract_outbound_workbench.dart",
+      "status": "遗留组件差异保留",
+      "finding": "lib中当前合并中心/旧深链已走WarehouseTaskRecordsView；此组件保留兼容/测试证据，不新增第二套准备队列，不将其源码存在当作现役调用。"
+    },
+    {
+      "page": "车间内料仓任务中心",
+      "source": "lib/features/warehouse/materialbin/widgets/workshop_material_task_center.dart",
+      "status": "已修复",
+      "finding": "盘点审核和周期状态使用同一全App准备预算；当前仓/权限/关键词完整进入交接，历史审核不预热。"
+    },
+    {
+      "page": "周期盘点状态WmBinStatusSegment",
+      "source": "lib/features/warehouse/materialbin/widgets/workshop_material_task_center.dart",
+      "status": "已修复",
+      "finding": "taskStatus为一份bin/current/pending-period权威状态聚合，既有ScopedCategoryRead精确仓handoff；显式刷新force，reader epoch立即清旧rows并拒绝迟到结果；不据该只读交接跳过后续结算/写前校验。"
+    },
+    {
+      "page": "车间内料仓盘点审核",
+      "source": "lib/features/stock/counts/pages/stock_count_review_page.dart",
+      "status": "已修复",
+      "finding": "仅WAREHOUSE/PENDING原50行首屏交接；route/仓/关键词/列/排序都入key，详细核对/预览/版本/用途/BOM/审批/未知提交仍由原链现场读取。"
+    },
+    {
+      "page": "车间内料仓台账",
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_bin_page.dart",
+      "status": "已有权威库存并行无需改",
+      "finding": "position与periods已同时启动；权威库存先展示，业务命令仍等完整period/closeStatus。不得把必要生命周期闸门当作辅字典删掉。"
+    },
+    {
+      "page": "内料仓开通设置",
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_setup_page.dart",
+      "status": "具体资源/配置差异保留",
+      "finding": "开通配置与批量命令读取的是实际设置状态，非父子任务计数等待；不提前触发开通/撤销/期间写入。"
+    },
+    {
+      "page": "内料仓单次领料",
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_issue_page.dart",
+      "status": "填写流程差异保留",
+      "finding": "来源仓/具体车间/期间是填写和数量权威前提；保留原输入、版本和幂等，不用任务缓存代替实际可领量。"
+    },
+    {
+      "page": "内料仓批量领料",
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_issue_batch_page.dart",
+      "status": "填写流程差异保留",
+      "finding": "批量所选来源和期间须按显式选择校验，不预触发command或改变unknown提交语义。"
+    },
+    {
+      "page": "内料仓盘点/结算页",
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_count_page.dart",
+      "status": "期间权威差异保留",
+      "finding": "具体period、closeStatus与盘点输入/预览是业务状态合同，保持现场权威读取，不跨期采用任务中心状态快照。"
+    },
+    {
+      "page": "生产管理入口",
+      "source": "lib/features/production/pages/production_hub_page.dart",
+      "status": "已有同源无需改",
+      "finding": "父徽章读productionSchedule/productionExecution/workshopTask公共事实；未另算第二份计数。"
+    },
+    {
+      "page": "生产调度与进度",
+      "source": "lib/features/production/pages/production_board_page.dart",
+      "status": "已修复",
+      "finding": "非历史准备已授权schedulePending原100行和groups原50行；父计数已有同源。点击交接/显式fresh分开，刷新首帧先登记fresh请求；保留草稿与历史时间合同。"
+    },
+    {
+      "page": "生产进行中批次表",
+      "source": "lib/features/production/widgets/production_execution_group_panel.dart",
+      "status": "已修复",
+      "finding": "首次groups精确handoff，关键词/sort/salesOrder/size/source实例完整；沿用原reader窗口与分片UI。"
+    },
+    {
+      "page": "我的车间任务",
+      "source": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "status": "已修复",
+      "finding": "只准备PREPARING/IN_PROGRESS/REPORT_INSPECTION各50行，实际点击才发布；COMPLETED/日期不预读。草稿承接仍关联原执行段，真实操作/权限/数量/材料状态与未知提交不改。"
+    },
+    {
+      "page": "生产计划列表",
+      "source": "lib/features/production/pages/production_plan_list_page.dart",
+      "status": "已有同源并行无需改",
+      "finding": "分段计数复用DocumentStatusScope公共桶并与列表独立；生产board草稿整表走统一DraftWorkspaceTable，未另造单据草稿预取或改历史选择。"
+    },
+    {
+      "page": "生产日报列表",
+      "source": "lib/features/production/pages/production_daily_report_list_page.dart",
+      "status": "已有同源并行无需改",
+      "finding": "分段计数复用DocumentStatusScope公共桶并与列表独立；生产board草稿整表走统一DraftWorkspaceTable，未另造单据草稿预取或改历史选择。"
+    },
+    {
+      "page": "超产比例审批",
+      "source": "lib/features/production/pages/production_overproduction_rate_pages.dart",
+      "status": "已有当前工作段即读",
+      "finding": "当前PENDING工作队列在initState/microtask即读，无子统计串行门控；历史/具体申请详情和审批仍单独授权。"
+    },
+    {
+      "page": "超限产出处置",
+      "source": "lib/features/production/pages/production_over_limit_pages.dart",
+      "status": "已有当前工作段即读",
+      "finding": "当前PENDING工作队列在initState/microtask即读，无子统计串行门控；历史/具体申请详情和审批仍单独授权。"
+    },
+    {
+      "page": "生产材料增补审批",
+      "source": "lib/features/production/pages/production_material_increment_pages.dart",
+      "status": "已有当前工作段即读",
+      "finding": "当前PENDING工作队列在initState/microtask即读，无子统计串行门控；历史/具体申请详情和审批仍单独授权。"
+    },
+    {
+      "page": "物料分析历史",
+      "source": "lib/features/production/pages/production_material_analysis_history_page.dart",
+      "status": "查询或业务选择差异保留",
+      "finding": "历史查询，保留历史来源/日期，不投机整段历史"
+    },
+    {
+      "page": "生产日报报表",
+      "source": "lib/features/production/pages/production_report_page.dart",
+      "status": "查询或业务选择差异保留",
+      "finding": "报表日期/状态是用户查询合同，不从任务责任数推断报表总数"
+    },
+    {
+      "page": "内料仓报表",
+      "source": "lib/features/production/pages/workshop_material_reports_page.dart",
+      "status": "查询或业务选择差异保留",
+      "finding": "具体bin/period/view是报告权威，期间/结算状态必须匹配"
+    },
+    {
+      "page": "反向用料报表",
+      "source": "lib/features/production/pages/where_used_report_page.dart",
+      "status": "查询或业务选择差异保留",
+      "finding": "货品/来源选择是必要查询输入，不预取未知业务对象"
+    },
+    {
+      "page": "物料分析编辑及候选",
+      "source": "lib/features/production/pages/production_material_analysis_page.dart",
+      "status": "查询或业务选择差异保留",
+      "finding": "候选查询与完整草稿/预览/生成链，不把预览或输入快照当只读任务首屏"
+    },
+    {
+      "page": "生产领料申请",
+      "source": "lib/features/production/pages/production_draw_request_page.dart",
+      "status": "查询或业务选择差异保留",
+      "finding": "具体执行段和来源仓的可领数量/写前版本是权威前提"
+    },
+    {
+      "page": "生产批次详情",
+      "source": "lib/features/production/pages/production_execution_batch_page.dart",
+      "status": "查询或业务选择差异保留",
+      "finding": "具体批次详情与执行生命周期，不跨资源预读"
+    },
+    {
+      "page": "生产链路核查",
+      "source": "lib/features/production/pages/production_chain_health_page.dart",
+      "status": "查询或业务选择差异保留",
+      "finding": "当前查询即读，非同源父/子任务计数等待"
+    },
+    {
+      "page": "品质任务中心",
+      "source": "lib/features/quality/pages/quality_task_center_page.dart",
+      "status": "已有同源无需改",
+      "finding": "品质父卡直接公共badgeSummary；真实列表委托统一待检处置，不复制IQC/FQC汇总。"
+    },
+    {
+      "page": "品质待检处置",
+      "source": "lib/features/quality/pages/quality_pending_disposal_page.dart",
+      "status": "已有当前队列并行无需改",
+      "finding": "进页即读统一授权qualityPending queue，FQC canDecide用unawaited独立发布；draftStatuses/未知提交/具体处置authority不能由粗徽章替代。"
+    },
+    {
+      "page": "生产FQC独立读取入口",
+      "source": "lib/features/quality/pages/production_fqc_inspections_page.dart",
+      "status": "已有当前工作段即读",
+      "finding": "ACTIVE默认在postFrame立即读取，不等另一份阶段聚合；决定能力独立，历史段不预读。"
+    },
+    {
+      "page": "品质检测记录",
+      "source": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "status": "历史记录差异保留",
+      "finding": "已授权首个IQC/FQC域在进页即读，记录/决定/日期过滤是只读历史合同，不以父待检徽章推算记录数。"
+    },
+    {
+      "page": "品质批量决定",
+      "source": "lib/features/quality/pages/quality_batch_approval_page.dart",
+      "status": "具体资源/写入差异保留",
+      "finding": "选中IQC/FQC资源与预览/确认是必要审批链，未在后台预读或重放写命令。"
+    },
+    {
+      "page": "FQC整单/单项办理",
+      "source": "lib/features/quality/pages/production_fqc_handling_page.dart",
+      "status": "具体资源/写入差异保留",
+      "finding": "具体sheet/inspection决定和未知提交核对保持原权威；没有多业务父子首屏计数等待。"
+    }
+  ],
+  "testStatus": "passed",
+  "tests": {
+    "newPreparationTests": 10,
+    "scope": [
+      "parent/child current-source handoff",
+      "mixed history grants do not leak into ALL preparation",
+      "warehouse w1 late result retired by w2/revocation",
+      "slow quality status count does not block rows",
+      "full100-row schedule with total100000/1000pages",
+      "workshop three active stages only",
+      "period read-scope epoch retirement and explicit refresh",
+      "warehouse/production explicit refresh one current fresh GET",
+      "same-API/same-lease repository replacement"
+    ],
+    "businessWritesInNewScenarios": 0,
+    "widgetTestNature": "controlled FakeApi + Flutter Widget VM; existing real gesture/selection/navigation/unknown-write suites included",
+    "productionLatencyMeasured": false,
+    "targetPcAccepted": false,
+    "win7Accepted": false,
+    "finalCombinedPassed": 220,
+    "finalCombinedFailed": 0,
+    "filesInFinalCombinedBatch": 15,
+    "staticAnalysis": "Agent scoped implementation analysis had no errors; latest test-only historyCalls style info was corrected by root. Final consolidated analysis is owned by root.",
+    "finalCombinedLog": "tmp/category-warehouse-production-final-clean.log"
+  },
+  "verificationLogs": [
+    "tmp/category-warehouse-production-final-clean.log",
+    "tmp/category-workshop-final.log",
+    "tmp/category-explicit-refresh.log"
+  ],
+  "release": {
+    "merged": false,
+    "pushed": false,
+    "deployed": false,
+    "packaged": false
+  }
+}

@@ -335,7 +335,7 @@ void main() {
     tester,
   ) async {
     final repo = await _pump(tester);
-    expect(repo.calls.first.$1, SalesQuoteFinanceState.returned);
+    expect(repo.calls, contains((SalesQuoteFinanceState.returned, 1, null)));
     expect(
       repo.calls.map((c) => c.$1),
       contains(SalesQuoteFinanceState.pending),
@@ -367,7 +367,7 @@ void main() {
 
     await tester.tap(find.text('已退回'));
     await tester.pumpAndSettle();
-    expect(repo.calls.last.$1, SalesQuoteFinanceState.returned);
+    expect(repo.calls, contains((SalesQuoteFinanceState.returned, 20, null)));
     expect(find.text('已退回: 客户要改数量'), findsWidgets);
   });
 

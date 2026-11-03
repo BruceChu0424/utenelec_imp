@@ -42,6 +42,7 @@ import '../../basic_data/widgets/master_server_column_filters.dart';
 import '../config/sales_doc_config.dart';
 import '../models/sales_doc.dart';
 import '../providers/master_name_provider.dart';
+import '../providers/sales_shipment_task_reads.dart';
 import '../repositories/sales_repository.dart';
 import 'shipment_finance_change_summary.dart';
 import '../../../shared/badges/badge_registry.dart';
@@ -221,7 +222,7 @@ class _SalesShipmentTaskWorkbenchState
         ),
       );
       final completion = widget.refreshCompletion;
-      _load(1).whenComplete(() {
+      _load(1, false, true).whenComplete(() {
         if (completion != null && !completion.isCompleted) {
           completion.complete();
         }
@@ -250,7 +251,11 @@ class _SalesShipmentTaskWorkbenchState
     super.dispose();
   }
 
-  Future<void> _load([int? page, bool useCache = false]) async {
+  Future<void> _load([
+    int? page,
+    bool useCache = false,
+    bool preferPrepared = false,
+  ]) async {
     // 路由守卫之外再失败关闭；权限撤销或独立 widget 场景都不得旁路请求数据。
     if (!_hasRequiredPermission) return;
     final requestedPage = page ?? _refreshPage;
@@ -286,14 +291,12 @@ class _SalesShipmentTaskWorkbenchState
       final pageRepository = ref.read(
         salesRepositoryProvider(SalesDocType.shipment),
       );
-      final pageFilter = SalesDocFilter(
-        keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
-        status: _isFinance && _financeAudit != 0 ? null : kSalesStatusDraft,
+      final pageFilter = salesShipmentTaskFilter(
+        finance: _isFinance,
+        keyword: _keyword,
         financeAudit: _financeAudit,
-        financeRejected: _financeRejected ? true : null,
-        warehouseWorkStatus: _isFinance
-            ? (_financeAudit == 0 ? SalesWarehouseWorkStatus.pendingPick : null)
-            : _warehouseWorkStatus,
+        financeRejected: _financeRejected,
+        warehouseWorkStatus: _warehouseWorkStatus,
         billNo: _columnFilters['billNo'],
       );
       final pageSort = _columnFilters.sortColumn;
@@ -325,6 +328,7 @@ class _SalesShipmentTaskWorkbenchState
           filter: pageFilter,
           sort: pageSort,
           order: pageOrder,
+          preferPrepared: preferPrepared,
         ),
       );
       if (!current()) return;
@@ -372,18 +376,12 @@ class _SalesShipmentTaskWorkbenchState
         'billNo': await ref
             .read(salesRepositoryProvider(SalesDocType.shipment))
             .billNoFacets(
-              filter: SalesDocFilter(
-                keyword: _keyword.trim().isEmpty ? null : _keyword.trim(),
-                status: _isFinance && _financeAudit != 0
-                    ? null
-                    : kSalesStatusDraft,
+              filter: salesShipmentTaskFilter(
+                finance: _isFinance,
+                keyword: _keyword,
                 financeAudit: _financeAudit,
-                financeRejected: _financeRejected ? true : null,
-                warehouseWorkStatus: _isFinance
-                    ? (_financeAudit == 0
-                          ? SalesWarehouseWorkStatus.pendingPick
-                          : null)
-                    : _warehouseWorkStatus,
+                financeRejected: _financeRejected,
+                warehouseWorkStatus: _warehouseWorkStatus,
               ),
             ),
       },

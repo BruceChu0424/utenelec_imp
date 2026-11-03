@@ -9,6 +9,7 @@ import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/network/read_scope_revision.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/features/sales/models/sales_doc.dart';
+import 'package:uten_imp/features/sales/models/sales_order_progress.dart';
 import 'package:uten_imp/features/sales/providers/sales_task_preload_provider.dart';
 import 'package:uten_imp/features/sales/repositories/sales_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -85,7 +86,10 @@ class _Api extends ApiClient {
   }
 }
 
-ProviderContainer _container(_Api api) => ProviderContainer(
+ProviderContainer _container(
+  _Api api, {
+  SalesRepository Function(Ref ref, SalesDocType type)? repository,
+}) => ProviderContainer(
   overrides: [
     _transport.overrideWith((ref) => api),
     apiClientProvider.overrideWith((ref) => ref.watch(_transport)),
@@ -93,8 +97,24 @@ ProviderContainer _container(_Api api) => ProviderContainer(
     authenticatedScopeProvider.overrideWith((ref) => ref.watch(_identity)),
     currentPermissionsProvider.overrideWith((ref) => ref.watch(_grants)),
     isSuperAdminProvider.overrideWithValue(false),
+    if (repository != null) salesRepositoryProvider.overrideWith(repository),
   ],
 );
+
+class _RecordingProgressRepository extends SalesRepository {
+  _RecordingProgressRepository(
+    ApiClient api,
+    PreparedPageRead<SalesOrderProgressRow> prepared,
+  ) : super(api, SalesDocType.order, preparedProgress: prepared);
+
+  final stages = <String>[];
+
+  @override
+  Future<void> prepareProgress(String stage) {
+    stages.add(stage);
+    return super.prepareProgress(stage);
+  }
+}
 
 Future<void> _flush(ProviderContainer container) async {
   for (var turn = 0; turn < 4; turn++) {
@@ -104,6 +124,76 @@ Future<void> _flush(ProviderContainer container) async {
 }
 
 void main() {
+  test(
+    'same-API repository replacement retires old queued jobs and preserves physical budget',
+    () async {
+      final budget = _Budget();
+      final api = _Api('unchanged-api', budget);
+      final prepared = PreparedPageRead<SalesOrderProgressRow>();
+      final first = _RecordingProgressRepository(api, prepared);
+      final second = _RecordingProgressRepository(api, prepared);
+      final selected = StateProvider<SalesRepository>((ref) => first);
+      final container = _container(
+        api,
+        repository: (ref, type) => type == SalesDocType.order
+            ? ref.watch(selected)
+            : SalesRepository(ref.watch(apiClientProvider), type),
+      );
+      addTearDown(() {
+        container.dispose();
+        prepared.dispose();
+        api.finishOutstanding();
+      });
+      final keep = container.listen(salesTaskPreloaderProvider, (_, _) {});
+      addTearDown(keep.close);
+      final preloader = container.read(salesTaskPreloaderProvider);
+      final epoch = container.read(exportContextEpochProvider);
+      preloader.prepare('progress', canPrepare: () => true);
+      expect(api.calls, hasLength(2));
+      expect(first.stages, ['DRAFT', 'IN_PROGRESS']);
+
+      container.read(selected.notifier).state = second;
+      await _flush(container);
+      expect(container.read(salesTaskPreloaderProvider), same(preloader));
+      expect(container.read(apiClientProvider), same(api));
+      expect(container.read(apiBaseUrlProvider), 'https://fixture.invalid/api');
+      expect(container.read(exportContextEpochProvider), epoch);
+      api.calls[0].complete();
+      await _flush(container);
+      expect(
+        api.calls,
+        hasLength(2),
+        reason:
+            'Replacing a repository retires its queued READY_TO_SHIP even before the page prepares again',
+      );
+      expect(first.stages, ['DRAFT', 'IN_PROGRESS']);
+      expect(budget.active, 1);
+
+      preloader.prepare('progress', canPrepare: () => true);
+      expect(
+        api.calls,
+        hasLength(3),
+        reason:
+            'The new source cannot reuse the old source\'s completed DRAFT from the shared lease',
+      );
+      expect(second.stages, ['DRAFT']);
+      expect(budget.active, 2);
+      api.calls[1].complete();
+      await _flush(container);
+      expect(api.calls, hasLength(4));
+      expect(second.stages, ['DRAFT', 'IN_PROGRESS']);
+      api.calls[2].complete();
+      await _flush(container);
+      expect(api.calls, hasLength(5));
+      expect(second.stages, ['DRAFT', 'IN_PROGRESS', 'READY_TO_SHIP']);
+      expect(first.stages, ['DRAFT', 'IN_PROGRESS']);
+      expect(budget.maximum, 2);
+      api.finishOutstanding();
+      await _flush(container);
+      expect(budget.active, 0);
+    },
+  );
+
   test('an expired completed category warms again on reentry', () async {
     final budget = _Budget();
     final api = _Api('fixture', budget);

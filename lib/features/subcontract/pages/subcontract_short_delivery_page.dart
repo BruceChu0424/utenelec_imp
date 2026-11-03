@@ -9,7 +9,6 @@ import 'package:uten_imp/shared/providers/native_facet_options.dart';
 // 历史记录（时间门控，ADR-066）。严重短交置顶并加「严重」标签。
 // 入口：委外 hub 卡片、任务中心状态列「回厂短交待判定」（?orderId=）、通知卡片（?caseId=）。
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -95,8 +94,6 @@ class _SubcontractShortDeliveryPageState
       MasterDataTableRowsController<SubcontractShortDeliveryCase>();
   PagedResult<SubcontractShortDeliveryCase>? _result;
   Object? _acceptedQuery;
-  SubcontractShortDeliveryCounts _counts =
-      const SubcontractShortDeliveryCounts();
   bool _loading = true;
   String? _error;
   int _requestId = 0;
@@ -120,6 +117,19 @@ class _SubcontractShortDeliveryPageState
 
   SubcontractShortDeliveryRepository get _repo =>
       widget.repository ?? ref.read(subcontractShortDeliveryRepositoryProvider);
+
+  @override
+  void scopedPagedReadOwnerChanged() {
+    if (!mounted) return;
+    setState(() {
+      ++_requestId;
+      _result = null;
+      _acceptedQuery = null;
+      _readingRows.update(const []);
+      _loading = false;
+      _error = scopedPagedReadRejection?.message;
+    });
+  }
 
   @override
   void initState() {
@@ -158,9 +168,6 @@ class _SubcontractShortDeliveryPageState
       _loading = true;
       _error = null;
     });
-    // Category counts are independent of the current list query. Start them
-    // alongside the rows and never keep an empty table waiting for its badge.
-    unawaited(_loadCounts(current));
     try {
       PagedResult<SubcontractShortDeliveryCase>? next;
       if (!_historyBlocked) {
@@ -250,7 +257,6 @@ class _SubcontractShortDeliveryPageState
           ++_requestId;
           _result = null;
           _acceptedQuery = null;
-          _counts = const SubcontractShortDeliveryCounts();
         }
         _loading = false;
         _error = error is ApiException ? error.message : '短交案件加载失败，请稍后重试';
@@ -258,26 +264,8 @@ class _SubcontractShortDeliveryPageState
     }
   }
 
-  Future<void> _loadCounts(bool Function() current) async {
-    try {
-      final counts = await _repo.counts();
-      if (current()) setState(() => _counts = counts);
-    } catch (error) {
-      if (!current()) return;
-      if (nativeReadAccessDenied(error)) {
-        // A confirmed access failure retires this whole read, including rows
-        // still in flight. A generic badge failure leaves accepted rows usable.
-        ++_requestId;
-        setState(() {
-          _result = null;
-          _acceptedQuery = null;
-          _counts = const SubcontractShortDeliveryCounts();
-          _loading = false;
-          _error = (error as ApiException).message;
-        });
-      }
-    }
-  }
+  Future<void> _refresh() =>
+      Future.wait([_load(), refreshBadges(ref)]).then((_) {});
 
   /// 表头排序键 → 服务端 sort 参数（2026-09-25 单号列统一；未列出的列不可排序）。
   static const _kSortFields = <String, String>{
@@ -376,14 +364,13 @@ class _SubcontractShortDeliveryPageState
     if (mounted) context.appSuccess(decided);
     // 判定会把订货单挪出/挪进任务中心的「进行中」(结案即离场), 红黄两数随徽章汇总
     // 一次重拉(ADR-108)。
-    refreshBadges(ref);
     // 接受损耗结清会让订货单整单结案：bump 委外订货列表精准刷新（栈下列表立即
     // 换新，与详情页写动作口径一致）。
     bumpListRefresh(
       ref,
       SubcontractDocConfig.by(SubcontractDocType.order).refreshKey,
     );
-    await _load();
+    await _refresh();
   }
 
   Future<void> _decide(
@@ -457,7 +444,7 @@ class _SubcontractShortDeliveryPageState
         leading: UtenBackButton(
           onPressed: () => backTo(context, defaultPath: RouteName.subcontract),
         ),
-        actions: [UtenRefreshButton(busy: _loading, onRefresh: () => _load())],
+        actions: [UtenRefreshButton(busy: _loading, onRefresh: _refresh)],
       ),
       body: SafeArea(
         child: UtenContentContainer.wide(
@@ -472,6 +459,17 @@ class _SubcontractShortDeliveryPageState
   }
 
   Widget _buildBody() {
+    // The hub and page use the same decision-owner facts, not the broader
+    // visible row totals. Unknown and unavailable sources stay null.
+    final pending = ref.watch(
+      badgeFactOrNullProvider(BadgeFact.subcontractShortDeliveryPending),
+    );
+    final tolerant = ref.watch(
+      badgeFactOrNullProvider(BadgeFact.subcontractShortDeliveryTolerant),
+    );
+    final waiting = ref.watch(
+      badgeFactOrNullProvider(BadgeFact.subcontractShortDeliveryWaiting),
+    );
     final scoped = _orderId != null || _supplierId != null;
     final header = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -482,7 +480,7 @@ class _SubcontractShortDeliveryPageState
             UtenFilterSegment(
               value: SubcontractShortDeliverySegment.pending,
               label: SubcontractShortDeliverySegment.pending.label,
-              count: _counts.pending,
+              count: pending,
               countForm: UtenSegmentCountForm.actionable,
             ),
             // 容差内待结案 / 分批等待中: 案子已经在跑(等下一批到货、等损耗单走完),
@@ -491,13 +489,13 @@ class _SubcontractShortDeliveryPageState
             UtenFilterSegment(
               value: SubcontractShortDeliverySegment.tolerant,
               label: SubcontractShortDeliverySegment.tolerant.label,
-              count: _counts.tolerant,
+              count: tolerant,
               countForm: UtenSegmentCountForm.inProgress,
             ),
             UtenFilterSegment(
               value: SubcontractShortDeliverySegment.waiting,
               label: SubcontractShortDeliverySegment.waiting.label,
-              count: _counts.waiting,
+              count: waiting,
               countForm: UtenSegmentCountForm.inProgress,
             ),
             UtenFilterSegment(
@@ -915,7 +913,7 @@ class _SubcontractShortDeliveryPageState
           : null,
       isLoading: _loading,
       error: _error,
-      onRetry: () => _load(),
+      onRetry: _refresh,
       emptyMessage: switch (_seg) {
         SubcontractShortDeliverySegment.pending => '没有待判定的回厂短交',
         SubcontractShortDeliverySegment.tolerant => '没有容差内待结案的短交',

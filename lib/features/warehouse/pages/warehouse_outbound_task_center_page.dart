@@ -8,6 +8,7 @@ import '../../../shared/auth/permissions.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/warehouse/warehouse_task_badges.dart';
 import '../providers/warehouse_count_refresh.dart';
+import '../providers/warehouse_task_page_preparation.dart';
 import '../repositories/warehouse_task_center_repository.dart';
 import '../widgets/warehouse_task_center_scaffold.dart';
 import '../widgets/warehouse_task_records_view.dart';
@@ -37,15 +38,11 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
     final canStock = can(Perm.stockDocView);
     final canWorkshop = can(Perm.workshopMaterialView);
     int? fact(String key) => ref.watch(warehouseTaskFactOrNullProvider(key));
-    final sources = <String, String>{
-      if (can(Perm.warehouseSalesOutboundView)) 'SALES': '销售出库',
-      if (can(Perm.subcontractOutboundView) ||
-          can(Perm.warehouseSubcontractOutboundHistoryView))
-        'SUBCONTRACT': '委外出库',
-      if (canStock || canWorkshop) 'DRAW': '生产领料',
-      if (canStock) 'OTHER': '其它出库',
-      if (canStock) 'FINISHED': '产成品出库',
-    };
+    final sources = warehouseTaskSources(
+      WarehouseTaskDirection.outbound,
+      permissions,
+      superAdmin,
+    );
     if (sources.isEmpty) return const Center(child: Text('暂无已授权的出库单据'));
     final segments = <WarehouseTaskSegmentSpec>[
       for (final entry in sources.entries)
@@ -87,6 +84,17 @@ class WarehouseOutboundTaskCenterPage extends ConsumerWidget {
       externalRefreshTick: externalRefreshTick,
       externalHeader: externalHeader,
       onResume: () => invalidateWarehouseTaskCounts(ref),
+      onPrepare: (keyword, scope, refreshTick, canPrepare) =>
+          prepareWarehouseTaskPages(
+            ref,
+            context,
+            direction: WarehouseTaskDirection.outbound,
+            sources: sources.keys,
+            scope: scope,
+            keyword: keyword,
+            refreshTick: refreshTick,
+            canPrepare: () => canPrepare,
+          ),
       trailingBuilder: !can(Perm.workshopMaterialIssue)
           ? null
           : (source) => source != 'DRAW'

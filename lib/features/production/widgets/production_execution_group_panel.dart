@@ -16,6 +16,7 @@ import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/production_execution_workbench.dart';
 import '../models/production_material_analysis.dart';
 import '../providers/production_execution_refresh.dart';
+import '../providers/production_prepared_page_provider.dart';
 import '../repositories/production_execution_workbench_repository.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/nav_helpers.dart';
@@ -99,7 +100,7 @@ class _ProductionExecutionGroupPanelState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) trackRefresh(_load());
+      if (mounted) trackRefresh(_load(preferPrepared: true));
     });
   }
 
@@ -116,10 +117,16 @@ class _ProductionExecutionGroupPanelState
     }
   }
 
-  Future<void> _load({bool useCache = false}) =>
-      trackRefresh(_loadPage(useCache: useCache), replaceKey: 'rows');
+  Future<void> _load({bool useCache = false, bool preferPrepared = false}) =>
+      trackRefresh(
+        _loadPage(useCache: useCache, preferPrepared: preferPrepared),
+        replaceKey: 'rows',
+      );
 
-  Future<void> _loadPage({bool useCache = false}) async {
+  Future<void> _loadPage({
+    bool useCache = false,
+    bool preferPrepared = false,
+  }) async {
     if (!mounted) return;
     final generation = ++_loadGeneration;
     final readQuery = (
@@ -161,12 +168,14 @@ class _ProductionExecutionGroupPanelState
           _salesOrderFilter,
         ),
         useCache: useCache,
-        fetchPage: (page) => repo.groups(
+        fetchPage: (page) => repo.readGroups(
+          preparedRead: ref.read(productionGroupsPreparedPageProvider),
           page: page,
           keyword: requestedKeyword,
           sort: requestedSort,
           order: requestedOrder,
           salesOrder: requestedSalesOrder,
+          preferPrepared: preferPrepared,
         ),
       );
       // 关联订单 facets 与列表同上下文（不含单号自身筛选）；失败不阻断列表。

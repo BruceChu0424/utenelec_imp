@@ -28,6 +28,8 @@ import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/procurement_iqc_rejection.dart';
 import '../repositories/procurement_iqc_rejection_repository.dart';
+import '../../finance/providers/finance_audit_preparation_provider.dart';
+import '../../../shared/paging/scoped_category_read.dart';
 import '../widgets/procurement_iqc_rejection_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 
@@ -142,7 +144,10 @@ class _ProcurementIqcRejectionListPageState
     super.didUpdateWidget(oldWidget);
     if (widget.refreshTick != oldWidget.refreshTick) {
       final completion = widget.refreshCompletion;
-      _load(_tableRows.visiblePage ?? _result?.page ?? 1).whenComplete(() {
+      _load(
+        _tableRows.visiblePage ?? _result?.page ?? 1,
+        forceCounts: true,
+      ).whenComplete(() {
         if (completion != null && !completion.isCompleted) {
           completion.complete();
         }
@@ -157,7 +162,12 @@ class _ProcurementIqcRejectionListPageState
     super.dispose();
   }
 
-  Future<void> _load(int page, {bool useCache = false}) async {
+  Future<void> _load(
+    int page, {
+    bool useCache = false,
+    bool preferPrepared = false,
+    bool forceCounts = false,
+  }) async {
     final requestId = ++_requestId;
     final repository = _repository;
     final ownerCurrent = captureReadOwner(ref);
@@ -187,15 +197,15 @@ class _ProcurementIqcRejectionListPageState
         keyword: _keyword,
         columnSearch: headers.searches,
       );
-      unawaited(_loadCounts(countFilter, current));
+      unawaited(_loadCounts(countFilter, current, force: forceCounts));
       final result = _statusSelected
           ? await readScopedPage<ProcurementIqcRejectionCase>(
               page,
               query: (repository, query),
               currentQuery: () => (_repository, _query),
               useCache: useCache,
-              fetchPage: (page) => repository.list(
-                ProcurementIqcRejectionFilter(
+              fetchPage: (page) {
+                final pageFilter = ProcurementIqcRejectionFilter(
                   receiptType: filter.receiptType,
                   status: filter.status,
                   keyword: filter.keyword,
@@ -203,8 +213,17 @@ class _ProcurementIqcRejectionListPageState
                   columnSearch: filter.columnSearch,
                   sort: filter.sort,
                   ascending: filter.ascending,
-                ),
-              ),
+                );
+                if (page != 1) return repository.list(pageFilter);
+                return ref
+                    .read(financeAuditPreparedPagesProvider)
+                    .iqc
+                    .read(
+                      financeIqcReadKey(repository, pageFilter),
+                      () => repository.list(pageFilter),
+                      preferPrepared: preferPrepared,
+                    );
+              },
             )
           : const PagedResult<ProcurementIqcRejectionCase>(
               items: [],
@@ -245,10 +264,26 @@ class _ProcurementIqcRejectionListPageState
 
   Future<void> _loadCounts(
     ProcurementIqcRejectionFilter filter,
-    bool Function() current,
-  ) async {
+    bool Function() current, {
+    bool force = false,
+  }) async {
     try {
-      final counts = await _repository.counts(filter);
+      final repository = _repository;
+      final counts = await ref
+          .read(scopedCategoryReadProvider)
+          .read(
+            force: force,
+            query: [
+              repository,
+              'iqc-counts',
+              filter.toQuery(
+                includePaging: false,
+                includeStatus: false,
+                includeOrdering: false,
+              ),
+            ],
+            fetch: () => repository.counts(filter),
+          );
       if (current()) setState(() => _counts = counts);
     } on ApiException catch (error) {
       if (!current()) return;
@@ -282,7 +317,7 @@ class _ProcurementIqcRejectionListPageState
       _status = value ?? (_historyStatus ? 'TERMINAL' : 'ACTIVE');
       _statusSelected = true;
     });
-    _load(1);
+    _load(1, preferPrepared: !_historyStatus);
   }
 
   /// 表头筛选回调：来源只在表头筛选（receiptType/status 参数均已在），
@@ -325,7 +360,10 @@ class _ProcurementIqcRejectionListPageState
       _myLocation ??= currentLocationOr(context, _defaultBackPath);
       ref.onPageResume(
         _myLocation!,
-        () => _load(_tableRows.visiblePage ?? _result?.page ?? 1),
+        () => _load(
+          _tableRows.visiblePage ?? _result?.page ?? 1,
+          forceCounts: true,
+        ),
       );
     }
     final body = SafeArea(child: _buildContent());
@@ -343,7 +381,10 @@ class _ProcurementIqcRejectionListPageState
             isLoading: _loading,
             onPressed: _loading
                 ? null
-                : () => _load(_tableRows.visiblePage ?? _result?.page ?? 1),
+                : () => _load(
+                    _tableRows.visiblePage ?? _result?.page ?? 1,
+                    forceCounts: true,
+                  ),
           ),
         ],
       ),

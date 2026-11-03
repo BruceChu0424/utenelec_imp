@@ -1,10 +1,91 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uten_imp/core/network/data_write_revision.dart';
+import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
+import 'package:uten_imp/shared/paging/prepared_page_read.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/operations_workbench/models/operations_workbench.dart';
 import 'package:uten_imp/features/operations_workbench/repositories/operations_workbench_repository.dart';
 
 void main() {
+  test(
+    'prepared working rows retain the complete response and ordinary refresh stays fresh',
+    () async {
+      var reads = 0;
+      final pages = PreparedPageRead<OperationsWorkbenchTask>();
+      addTearDown(pages.dispose);
+      final repository = OperationsWorkbenchRepository(
+        _api((request) {
+          reads++;
+          return _preparedResponse(reads);
+        }),
+        prepared: pages,
+      );
+      await repository.prepareWorkingPage(
+        OperationsWorkbenchDepartment.purchase,
+        'IN_PROGRESS',
+      );
+      final first = await repository.load(
+        department: OperationsWorkbenchDepartment.purchase,
+        size: 50,
+        status: 'IN_PROGRESS',
+        preferPrepared: true,
+      );
+      expect(reads, 1);
+      expect(first.summary.openTasks, 1);
+      expect(first.capabilities.canCreatePurchaseOrder, isTrue);
+      expect(first.facets['goodsName']!.single.label, 'Complete snapshot');
+      await repository.load(
+        department: OperationsWorkbenchDepartment.purchase,
+        size: 50,
+        status: 'IN_PROGRESS',
+      );
+      expect(reads, 2);
+      await repository.load(
+        department: OperationsWorkbenchDepartment.purchase,
+        size: 50,
+        status: 'IN_PROGRESS',
+        columnFilters: {'search.goodsName': 'other'},
+        preferPrepared: true,
+      );
+      expect(reads, 3);
+    },
+  );
+
+  test(
+    'writes retire prepared rows without replacing the repository or resetting its caller',
+    () async {
+      var reads = 0;
+      final api = _api((request) => _preparedResponse(++reads));
+      final container = ProviderContainer(
+        overrides: [
+          apiClientProvider.overrideWithValue(api),
+          exportContextEpochProvider.overrideWith(_ReadEpoch.new),
+        ],
+      );
+      addTearDown(container.dispose);
+      final repository = container.read(operationsWorkbenchRepositoryProvider);
+      await repository.prepareWorkingPage(
+        OperationsWorkbenchDepartment.purchase,
+        'IN_PROGRESS',
+      );
+      container.read(dataWriteRevisionProvider.notifier).state++;
+      await container.pump();
+      expect(
+        container.read(operationsWorkbenchRepositoryProvider),
+        same(repository),
+      );
+      final next = await repository.load(
+        department: OperationsWorkbenchDepartment.purchase,
+        size: 50,
+        status: 'IN_PROGRESS',
+        preferPrepared: true,
+      );
+      expect(reads, 2);
+      expect(next.summary.openTasks, 2);
+    },
+  );
   test(
     'entry overview requests no historical row window or table facets',
     () async {
@@ -299,6 +380,32 @@ void main() {
     },
   );
 }
+
+class _ReadEpoch extends ExportContextEpoch {
+  @override
+  int build() => 0;
+}
+
+Map<String, dynamic> _preparedResponse(int count) => {
+  'items': <Object>[],
+  'page': 1,
+  'size': 50,
+  'total': 0,
+  'totalPages': 1,
+  'summary': {
+    'totalTasks': count,
+    'overdueTasks': 0,
+    'openTasks': count,
+    'openQty': count,
+    'statusCounts': {'IN_PROGRESS': count},
+  },
+  'capabilities': {'canCreatePurchaseOrder': true},
+  'facets': {
+    'goodsName': [
+      {'value': 'complete', 'label': 'Complete snapshot', 'count': count},
+    ],
+  },
+};
 
 ApiClient _api(Object? Function(RequestOptions request) responder) {
   final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));

@@ -17,7 +17,7 @@ import '../../../core/router/page_navigation_session.dart';
 //  （时间段/全部，未选时间不发请求），选定后按开单日期范围加载。
 //
 // 2026-09-03 起统一「分类分段」范式（ADR-066，原 AppBar 下 TabBar 退役）：
-// 大类行 = 待排产/进行中/历史记录 + 页级搜索；默认不选显示引导占位不发请求
+// 大类行 = 待排产/进行中/历史记录 + 页级搜索；默认不选显示引导，后台只准备授权工作首屏
 //（路由深链 initialTab 预选例外：/production/schedule 预选待排产、
 // /production/schedule?tab=progress 预选进行中）。各分段保留自己的细化筛选
 //（待排产：表头排序/状态值筛选；进行中：车间/排序）。
@@ -77,6 +77,7 @@ import '../models/production_material_analysis.dart';
 import '../providers/production_pending_provider.dart';
 import '../providers/production_board_sort_provider.dart';
 import '../providers/production_execution_group_count_provider.dart';
+import '../providers/production_page_preparation.dart';
 import '../repositories/production_repository.dart';
 import '../widgets/production_fqc_replenishment_banner.dart';
 import '../widgets/production_execution_group_panel.dart';
@@ -103,6 +104,8 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
   /// 顶栏刷新与返回刷新共同推进；当前草稿/待排产/进行中/历史面板接收此代际。
   int _refreshRevision = 0;
   final _refreshController = UtenRefreshController();
+  Object? _preparationInputs;
+  bool _preparationPaused = false;
 
   @override
   void dispose() {
@@ -146,6 +149,25 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
     // null/0 一律不渲染。
     final pendingCount = ref.watch(productionPendingCountProvider).count;
     final ongoingCount = ref.watch(productionExecutionGroupCountProvider);
+    final preparationInputs = (_keyword, _refreshRevision);
+    if (_preparationInputs != null && _preparationInputs != preparationInputs) {
+      _preparationPaused = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _preparationInputs == preparationInputs) {
+          setState(() => _preparationPaused = false);
+        }
+      });
+    }
+    _preparationInputs = preparationInputs;
+    if (segment != 'history' && segment != 'drafts') {
+      prepareProductionBoardPages(
+        ref,
+        context,
+        keyword: _keyword,
+        refreshRevision: _refreshRevision,
+        canPrepare: () => !_preparationPaused,
+      );
+    }
     return UtenRefreshScope(
       controller: _refreshController,
       child: Scaffold(
@@ -651,7 +673,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) trackRefresh(_load());
+      if (mounted) trackRefresh(_load(preferPrepared: true));
     });
   }
 
@@ -715,10 +737,16 @@ class _PendingPanelState extends ConsumerState<_PendingPanel>
     return _load();
   }
 
-  Future<void> _load({bool useCache = false}) =>
-      trackRefresh(_loadPage(useCache: useCache), replaceKey: 'rows');
+  Future<void> _load({bool useCache = false, bool preferPrepared = false}) =>
+      trackRefresh(
+        _loadPage(useCache: useCache, preferPrepared: preferPrepared),
+        replaceKey: 'rows',
+      );
 
-  Future<void> _loadPage({bool useCache = false}) async {
+  Future<void> _loadPage({
+    bool useCache = false,
+    bool preferPrepared = false,
+  }) async {
     final requestVersion = ++_requestVersion;
     final kw = widget.keyword;
     final filters = Map<String, String?>.of(_filters);
@@ -756,7 +784,8 @@ class _PendingPanelState extends ConsumerState<_PendingPanel>
           _pageSize,
         ],
         useCache: useCache,
-        fetchPage: (page) => repo.schedulePending(
+        fetchPage: (page) => repo.readSchedulePending(
+          preparedRead: ref.read(productionSchedulePreparedPageProvider),
           page: page,
           size: _pageSize,
           keyword: kw,
@@ -764,6 +793,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel>
           order: sort == null ? null : (ascending ? 'asc' : 'desc'),
           status: filters['status'],
           billNo: filters['orderBillNo'],
+          preferPrepared: preferPrepared,
         ),
       );
       unawaited(_loadFacets(repo, kw, current));

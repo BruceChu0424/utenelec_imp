@@ -1,0 +1,1629 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "54475dc638ec94ad4ff38ebad0e860c70bca07d9",
+  "interpretation": "Source candidates and current hashes only. Semantic disposition and test scope are in the module reviews; no hit implies runtime acceptance.",
+  "hashNormalization": "UTF-8 text without BOM, CRLF normalized to LF; source line numbers follow the same text.",
+  "publicEntries": {
+    "completeFirstPageHandoff": "lib/shared/paging/prepared_page_read.dart",
+    "categoryCoordinator": "lib/shared/paging/page_preparation_coordinator.dart",
+    "appPhysicalBudget": "lib/shared/paging/page_preparation_budget_provider.dart",
+    "smallCategorySnapshots": "lib/shared/paging/scoped_category_read.dart",
+    "documentCounts": "lib/shared/providers/document_status_counts_provider.dart"
+  },
+  "categorySources": [
+    {
+      "source": "lib/features/expense/pages/expense_approval_list_page.dart",
+      "sha256": "c512b72663bd94de7fc738308fb7bfba03023ecd7f46f02f44fc8318d89b5cef",
+      "lines": [
+        4,
+        225,
+        229,
+        234,
+        245,
+        255
+      ]
+    },
+    {
+      "source": "lib/features/expense/pages/expense_list_page.dart",
+      "sha256": "1267a55980e208526771cbb31fbda82cf4a5b9818ff8f70c8733ef76712fe99c",
+      "lines": [
+        6,
+        208,
+        211,
+        215,
+        225,
+        231,
+        237
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "sha256": "934bc82ca07456e8bcbd8819c52c7ef87b822847979a0597e032d5241cd56003",
+      "lines": [
+        6,
+        425,
+        428,
+        429,
+        430
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_ar_ap_page.dart",
+      "sha256": "5e4bbb2fcb17b258f40d1b25d16b17c901f3f36ff9da2e145feff8fd2503b923",
+      "lines": [
+        637,
+        640,
+        641,
+        642
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_asset_workbench_page.dart",
+      "sha256": "a16220882b5ff1a3b645df3a93f18348898b8ce9eef5b6b0150f96165caa681f",
+      "lines": [
+        224,
+        230,
+        231,
+        232,
+        233
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_audit_center_page.dart",
+      "sha256": "ec83e0648e67dde62579e2104bd5ff30c302fa89be86c2abea5ae3944f735484",
+      "lines": [
+        5,
+        248,
+        253
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "sha256": "a06a070e449aa3a516594963bec7bee8e23bf1061591ee8416c4ae8567a60059",
+      "lines": [
+        1060,
+        1065,
+        1073,
+        1074,
+        1079,
+        1090,
+        1093,
+        1094
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_quote_review_list_page.dart",
+      "sha256": "bdae6bf4bf3f77ebff806df6f9a81ca0a4deca171414416e74e9c72b37f99c47",
+      "lines": [
+        395,
+        400,
+        406,
+        412
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_reconciliation_page.dart",
+      "sha256": "fb1d532e8a633182d028af2f662a354058ccfc069d32971551da2233ede95dbe",
+      "lines": [
+        379
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_report_table_page.dart",
+      "sha256": "7aa5d317cbae47ca90937f87ce820840446b5fccd674ab17a739a8f802be9ce0",
+      "lines": [
+        6,
+        607,
+        611
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+      "sha256": "5f8eb9cbff374b86c4bbfb3c0e953dffc492fa22e8708ab8db1c4cc1f65a60b2",
+      "lines": [
+        1237,
+        1247,
+        1253,
+        1259
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_statement_page.dart",
+      "sha256": "1bec0714ba45eee13458f325ffb81c86a18d48a0979bbef70088615bbf965a92",
+      "lines": [
+        425,
+        428,
+        429,
+        435,
+        438,
+        439,
+        440
+      ]
+    },
+    {
+      "source": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "sha256": "fdd1efc6fdfa4ac57424a4003e35609e27123337fb1b734da3b83d3a9721f553",
+      "lines": [
+        880,
+        886,
+        891,
+        899
+      ]
+    },
+    {
+      "source": "lib/features/finance/payables/widgets/subcontract_loss_claim_panel.dart",
+      "sha256": "b59b71b217aa017885f1d4ffb1607a24f0c9d7139d90057a348d17986777ebf2",
+      "lines": [
+        328,
+        333,
+        334,
+        335,
+        336,
+        337,
+        338
+      ]
+    },
+    {
+      "source": "lib/features/finance/payables/widgets/supplier_settlement_panel.dart",
+      "sha256": "520bdfc82b1b542c7f47988eee8ace8f463e598cc761765f14131b58e1c1f089",
+      "lines": [
+        366,
+        371,
+        372,
+        373,
+        374,
+        375,
+        376,
+        377,
+        378
+      ]
+    },
+    {
+      "source": "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+      "sha256": "ef4bf0e5c8bb891b8d576b651504c09f0cb56075061607bfb177890592caa9cd",
+      "lines": [
+        16,
+        340,
+        344,
+        352
+      ]
+    },
+    {
+      "source": "lib/features/hr_task/pages/hr_task_list_page.dart",
+      "sha256": "cbacb5afcfccad77b2272f9800a6a1f2112d361eb2ddb79c997146b40c89dfc1",
+      "lines": [
+        294,
+        301,
+        303
+      ]
+    },
+    {
+      "source": "lib/features/notice/pages/notice_list_page.dart",
+      "sha256": "b80edfe45bd1701137cc93ae50807754e508757df6d331245f591de3d8af7ab0",
+      "lines": [
+        149,
+        155,
+        156,
+        158
+      ]
+    },
+    {
+      "source": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "sha256": "364cce5a88b7f2607b0c3e1ee40ad5c894b8063635f587624be78668895a2d72",
+      "lines": [
+        4,
+        245,
+        260,
+        1327,
+        1335,
+        1355
+      ]
+    },
+    {
+      "source": "lib/features/payroll/pages/payroll_review_page.dart",
+      "sha256": "ff5d34693565ef238b3523b66c666359a08f7a12aef917e5e633777b7ae263fc",
+      "lines": [
+        155,
+        160,
+        161
+      ]
+    },
+    {
+      "source": "lib/features/payroll/pages/payroll_slip_list_page.dart",
+      "sha256": "08d0e814cd088be59b9d9b99fe0e215dbac06dad5f923699e9fb940365cb40c0",
+      "lines": [
+        113,
+        119,
+        120
+      ]
+    },
+    {
+      "source": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
+      "sha256": "bb39f8d08c4c3623c7613446567a5ff280b2085b76dacca3f848c96819f7aeda",
+      "lines": [
+        483,
+        486,
+        487,
+        500,
+        510,
+        520,
+        529
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/material_analysis_bucket_detail.dart",
+      "sha256": "c7c9607ac2cb4f06892908612ce577f70442b749defb119014847d2ea6a49c50",
+      "lines": [
+        607,
+        612,
+        622,
+        632
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/material_analysis_candidates.dart",
+      "sha256": "4bb1f1320bb5209c573ea6c1540bff919926bf2d3553accd717fe1a995157c97",
+      "lines": [
+        525
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_board_page.dart",
+      "sha256": "f29a887a2403657d43fc3eff779bd74ddaee7b286ef87720b85742df8509282c",
+      "lines": [
+        209,
+        212,
+        230,
+        236,
+        242
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_chain_health_page.dart",
+      "sha256": "8d7e14665f4cea1e7de71e3ccee95fa4983aca2159ff2c9bc970516ec9b69923",
+      "lines": [
+        154,
+        158,
+        160
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_material_increment_pages.dart",
+      "sha256": "f3964f7fcfc4227571994862bb00f2b4777bc3716d649cf0bb822939aa584838",
+      "lines": [
+        138,
+        140,
+        141,
+        142,
+        143,
+        144
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_over_limit_pages.dart",
+      "sha256": "fa1b4ee2575dbcb5b9cfc0ec995c2a3477a81b48b4c125fa16d27f11a3094afb",
+      "lines": [
+        200,
+        202,
+        203,
+        204,
+        205
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_overproduction_rate_pages.dart",
+      "sha256": "8ca66c7b8ecb256e9a10f492fe856f1d7e2d0ac1d6ca444b8465272f23e1d389",
+      "lines": [
+        172,
+        174,
+        175,
+        176,
+        177
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_report_page.dart",
+      "sha256": "1bfc5eaa69a57c3ec8085d9efb6ec81b30491f61d3f597b89da0965c6ded6f9a",
+      "lines": [
+        6,
+        13,
+        451,
+        455,
+        456,
+        461,
+        467
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "sha256": "e95b4dd49d226612c008fa96ee948206f213f1299d3c0278b3d2fa683d0f02ed",
+      "lines": [
+        2940,
+        2942,
+        2948,
+        2957,
+        2963
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/workshop_material_reports_page.dart",
+      "sha256": "42bc4477b6ae698193562a121a2451d47d6b95900db9408b6afce5a5a74a175e",
+      "lines": [
+        646,
+        649,
+        653,
+        657,
+        661,
+        665
+      ]
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "sha256": "55b9e1b1198ec861cbfe2b22d9b6dc84f56a18c0d14dd13b3e2ab5817f8e4734",
+      "lines": [
+        872,
+        879,
+        895,
+        906,
+        919,
+        928,
+        935
+      ]
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_report_page.dart",
+      "sha256": "8db962e0c38423e45bbbc95a8fbc21ca0c5a8a71eb84f637287b908c50af52cf",
+      "lines": [
+        227,
+        234
+      ]
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "sha256": "9e72ec601ea0b5d21f5b3945447845ccbd34aeaf29b9ff5cda24c0c8e81d64e0",
+      "lines": [
+        6,
+        13,
+        435,
+        439
+      ]
+    },
+    {
+      "source": "lib/features/quality/pages/production_fqc_inspections_page.dart",
+      "sha256": "b437092317366bfdbeea74c2cb9d85bdf04b1a1990968c1f80e4902aaee1c57e",
+      "lines": [
+        498,
+        503,
+        509
+      ]
+    },
+    {
+      "source": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "sha256": "39441d6103effabf7a7c02286832a8d9d7c03b1c43ea44ffc575aab352ccd850",
+      "lines": [
+        530,
+        535
+      ]
+    },
+    {
+      "source": "lib/features/quality/pages/quality_pending_disposal_page.dart",
+      "sha256": "b75488fd2696859af55bdcda0afa9f5d892ce442b1f3d670364e4222547d7895",
+      "lines": [
+        753
+      ]
+    },
+    {
+      "source": "lib/features/rd_task/pages/rd_task_page.dart",
+      "sha256": "54f4d5ccec4402afc7f05eca748ebd54c30963b141cd09a3b49dcf3fbeb1494c",
+      "lines": [
+        7,
+        160,
+        174,
+        184,
+        190,
+        197
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "sha256": "1a458fd811473dd72d86112458055d5b2fb5eb4854e0eb09beb0cfe7e218400e",
+      "lines": [
+        1096,
+        1099,
+        1104,
+        1109,
+        1117,
+        1123,
+        1139,
+        1145,
+        1161,
+        1174,
+        1188,
+        1196
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_manager_review_page.dart",
+      "sha256": "ae82f1b8417a5f1338d5970dc68fea068881fe074762ac41d6c06f3677d67184",
+      "lines": [
+        576,
+        582,
+        583
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "sha256": "43db75f5967bc9e6fc9392eb5a2be06caa4432dbacc05de5548adf64a85bac3d",
+      "lines": [
+        671,
+        674,
+        683,
+        694
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_report_page.dart",
+      "sha256": "23e2afb3278da77d05a700da1b06541e134bf0ee30ce840d76250b7263945dea",
+      "lines": [
+        5,
+        13,
+        497,
+        500
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_task_center_page.dart",
+      "sha256": "722fc69d10eab75ba0594d65c4c387249db46ae496bdd5b7be814bb052a01f29",
+      "lines": [
+        247,
+        251
+      ]
+    },
+    {
+      "source": "lib/features/sales/widgets/sales_shipment_task_workbench.dart",
+      "sha256": "ed2cbca3cd6b996fba50c1ba4ca7106a571578b4f2dc237572c4cbef005a650d",
+      "lines": [
+        1014,
+        1018,
+        1024,
+        1032,
+        1033,
+        1034
+      ]
+    },
+    {
+      "source": "lib/features/stock/counts/pages/stock_count_review_page.dart",
+      "sha256": "b71d5cda9e787dc9de902187cd657f6483823e3c499f7798e8fb2e1036fa86d1",
+      "lines": [
+        745,
+        750,
+        761,
+        766
+      ]
+    },
+    {
+      "source": "lib/features/stock/counts/pages/stock_count_session_page.dart",
+      "sha256": "ed70cf719c8be7d60e679e1c24d5cd87084d03a738162f07c55abdcf9132d6f4",
+      "lines": [
+        850,
+        855,
+        856
+      ]
+    },
+    {
+      "source": "lib/features/stock/pages/instant_inventory_page.dart",
+      "sha256": "2444bb21fee47d9a860ba5bc236418e59a009c97eb25dcb0b765efa37fcf3cd8",
+      "lines": [
+        877
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "sha256": "d4243b84f35df8501d90400952891db56a37d17264090b9dc7302018622d576c",
+      "lines": [
+        10,
+        992,
+        999,
+        1004,
+        1017,
+        1025,
+        1053,
+        1059,
+        1064,
+        1069
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "sha256": "494f24947a3d770ea4715f18bd49ec85a619cc9c50b1f07dd1b1c209b76d315a",
+      "lines": [
+        29,
+        1816,
+        1819,
+        1847,
+        1867,
+        1878,
+        1965,
+        1968,
+        1970
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "sha256": "8d22519033987b7480775f4c43fbd75523c226617d5f6bbd9116acb39981377e",
+      "lines": [
+        5,
+        14,
+        450,
+        458
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "sha256": "0766104299354b1fe90fb333eec3005e07f02b5584ddc5f95f124a98cbd7a6ab",
+      "lines": [
+        477,
+        480,
+        489,
+        495,
+        501
+      ]
+    },
+    {
+      "source": "lib/features/suggestion/pages/suggestion_list_page.dart",
+      "sha256": "bcb9c61a8307244e492cebb9f66eaa74c6bf733b3170ee79fce9c5a8a4c95c00",
+      "lines": [
+        171,
+        178,
+        179
+      ]
+    },
+    {
+      "source": "lib/features/visitor/pages/visitor_home_page.dart",
+      "sha256": "e6abb22a444dc636e3659fdb565722f4c2768b3e7a274f21b5e6b4dc8b0c15eb",
+      "lines": [
+        172,
+        182,
+        186,
+        190
+      ]
+    },
+    {
+      "source": "lib/features/visitor_approval/pages/my_visitors_page.dart",
+      "sha256": "78bd7c6b0e8b826d9ef32231ae5dc18af8583f5fbf28626e7fe29a31ed917891",
+      "lines": [
+        415,
+        418,
+        427,
+        436,
+        445
+      ]
+    },
+    {
+      "source": "lib/features/visitor_approval/pages/visitor_approval_list_page.dart",
+      "sha256": "da4f06a976e80840e97c4339df4c301e5c649aca6d9df022f7ed1a19cd1dee18",
+      "lines": [
+        6,
+        401,
+        406,
+        414,
+        422
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_bin_page.dart",
+      "sha256": "5b132eac076046f0b7ef18a351c036a441531a7420ca7d6da803ef0149cc3336",
+      "lines": [
+        895,
+        899,
+        981,
+        984,
+        985,
+        986
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_setup_page.dart",
+      "sha256": "1c81af590b73bccd5bf0fd62b00f8e915fd9e4108be338ae30d98b91c48b8708",
+      "lines": [
+        178,
+        181,
+        183,
+        196,
+        200
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/materialbin/widgets/workshop_material_overview.dart",
+      "sha256": "01d766ae0f1b5daa1f85bbee3fb47494b127ff563f62d516fdfcb2c7e57c0402",
+      "lines": [
+        324,
+        328,
+        333,
+        338,
+        343
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/materialbin/widgets/workshop_material_task_center.dart",
+      "sha256": "73c588d5702ef9bdb0fec3161cba75802177e7788b8cd968e21f9663d4e54335",
+      "lines": [
+        66
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/finance_arrival_exception_pages.dart",
+      "sha256": "0139a87f6f34425ff6139cb0986d23d2936252f6a9c1f251d70c29ec71f1549b",
+      "lines": [
+        225,
+        228,
+        236
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
+      "sha256": "ab44c85c28ec6afc98daea54b9ce7c41072de81e60dbcba707d1962fef291445",
+      "lines": [
+        393,
+        396,
+        409
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/shelf_label_page.dart",
+      "sha256": "754579a7b175ba544ed1edd8d57cc34dcde143e3c6960a390865034e30555383",
+      "lines": [
+        572
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "sha256": "d030c52d5c4b523aaa39cf6dbbad5cf5930fe5b229197dc541466a85ca326905",
+      "lines": [
+        7,
+        631,
+        638,
+        645,
+        649
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_inbound_task_center_page.dart",
+      "sha256": "1e60b66c32a1f604ec565926465da85466db6247820ecb34f154d33cf6ef31b5",
+      "lines": [
+        82
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_insight_page.dart",
+      "sha256": "5e79468848a50c8f2605d21ee4fc4c5712cfa370d801d00aee3e5cb2e950f8f8",
+      "lines": [
+        1291,
+        1295
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart",
+      "sha256": "5cef08e972fc319c51cda7942da116f79d24d912d6f421cc8c7f4a6107937afc",
+      "lines": [
+        76
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "sha256": "061610cb8143aca57767f669ba0126320c48749cd1f86e637578d5d2ec245248",
+      "lines": [
+        942,
+        947,
+        951,
+        964
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "sha256": "31cd6e7fd3b09e5014ed4b5aff06b467f40ee8bb593f177c21c18397cbe9a4b2",
+      "lines": [
+        5,
+        13,
+        438,
+        441
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_task_center_page.dart",
+      "sha256": "eb41504ef8bbbc0501f471162c54a7fcdbdec0a6cb9cc920c98b409612208c41",
+      "lines": [
+        287,
+        292
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_arrival_exceptions_view.dart",
+      "sha256": "ac6140b62599f96a51c6bef98d9c2d20d830e69993bfd77680b8853bbdf67456",
+      "lines": [
+        724,
+        738,
+        753
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_document_history_view.dart",
+      "sha256": "f5f969d0379a9aca08e9dd1b7b34d11ef765ace3d99522440a8f39f435e62cc2",
+      "lines": [
+        440,
+        448
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_draw_task_segment.dart",
+      "sha256": "a8cc7d9c6d96a9271256deb4931acf28db715fd584ff50679338d54e82875f7e",
+      "lines": [
+        553,
+        558,
+        564
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_inbound_expectations_view.dart",
+      "sha256": "31d02858515d39e46423e5ac69d093b098d26f71aaaa5c5803e60890eff1615a",
+      "lines": [
+        925
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart",
+      "sha256": "db8bd65347e2996b555f276501491d4a00e6035f08362629d9787390ceaaeecd",
+      "lines": [
+        599,
+        605,
+        615,
+        624
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+      "sha256": "33b2f7518e62b203cbc859e91d5e4aa2b3f190c13647bd459e33ccc321a73a8b",
+      "lines": [
+        712,
+        717,
+        724,
+        728
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_subcontract_outbound_workbench.dart",
+      "sha256": "10abcaa0ab03191fc9cd474ce503471543ee4ee73aa8616d3206980ccf5fd470",
+      "lines": [
+        410
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_task_center_scaffold.dart",
+      "sha256": "6eac28eabe98474393b7ae7ef288f9cee9ed730d7102408130511d407159c589",
+      "lines": [
+        9,
+        11,
+        62,
+        63,
+        131,
+        132,
+        135,
+        136,
+        162,
+        223,
+        228
+      ]
+    },
+    {
+      "source": "lib/features/webinquiry/pages/website_inquiry_list_page.dart",
+      "sha256": "9e919aea7a6b29138d5f52e6066a8794b462b39003f90f26eb54628f6e3213d3",
+      "lines": [
+        43,
+        61,
+        62,
+        63
+      ]
+    }
+  ],
+  "preparationSources": [
+    {
+      "source": "lib/features/finance/providers/finance_audit_preparation_provider.dart",
+      "sha256": "292cbe0982b71a148fa619acb9a8772ab8ea9a278e53f5f62b5d11495f724d02",
+      "lines": [
+        29,
+        30,
+        31,
+        32,
+        33,
+        300,
+        301
+      ]
+    },
+    {
+      "source": "lib/features/operations_workbench/repositories/operations_workbench_repository.dart",
+      "sha256": "0a8256c132787c46c8800939ee49e12984d9d659d1713118d6d01c20934a7899",
+      "lines": [
+        95,
+        96,
+        216,
+        222,
+        223
+      ]
+    },
+    {
+      "source": "lib/features/production/providers/production_page_preparation.dart",
+      "sha256": "ef1045e388abffbf1b44cfa8e159021a699e9020a3dfc153d7857448c5eca8e4",
+      "lines": [
+        15,
+        16
+      ]
+    },
+    {
+      "source": "lib/features/production/providers/production_prepared_page_provider.dart",
+      "sha256": "a8862f3e2125b12371f2a56d43c9619bd8c1219aa086b12f608045f327f166ca",
+      "lines": [
+        11,
+        14
+      ]
+    },
+    {
+      "source": "lib/features/production/repositories/production_execution_workbench_repository.dart",
+      "sha256": "78b60d64dda573e98c4be684baa390d8d5650e840c7bca6666a71436529ecbb5",
+      "lines": [
+        260,
+        281,
+        308,
+        353
+      ]
+    },
+    {
+      "source": "lib/features/production/repositories/production_repository.dart",
+      "sha256": "1eb05372880e6e12c6f1d5e59812e1a53acc3b13d3f67bfca1c5b6abb83ee2a9",
+      "lines": [
+        2469,
+        2491
+      ]
+    },
+    {
+      "source": "lib/features/sales/providers/sales_prepared_page_provider.dart",
+      "sha256": "cd5bff13dc1e90e4efa6fa20c57ecae8a81f57a28de89d140e5919b23b883885",
+      "lines": [
+        10,
+        14
+      ]
+    },
+    {
+      "source": "lib/features/sales/providers/sales_task_preload_provider.dart",
+      "sha256": "8562370f46ca28ad7882c4fc0313ba1148d720c436ef4cb1af08f2242bb6dbe6",
+      "lines": [
+        15,
+        16,
+        19
+      ]
+    },
+    {
+      "source": "lib/features/sales/repositories/sales_repository.dart",
+      "sha256": "4320688ffd8996af867a418134a6f28c6b8e8db223b21b21984d40c57c856c2b",
+      "lines": [
+        88,
+        89
+      ]
+    },
+    {
+      "source": "lib/features/stock/counts/providers/stock_count_prepared_page_provider.dart",
+      "sha256": "81b1034ab9d2ea9b31061eb7c71e9aa5a214946f3fadc2cb02d6a24f78b77548",
+      "lines": [
+        11
+      ]
+    },
+    {
+      "source": "lib/features/stock/counts/repositories/stock_count_request_repository.dart",
+      "sha256": "6bfa6c68e913a07ff56a0d53d9a082f3f491b9c758fb41947fa53011e964bf66",
+      "lines": [
+        193,
+        231
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/materialbin/providers/workshop_material_page_preparation.dart",
+      "sha256": "e8e9f035d0bc174c727171f69bed87d082c6100a89a75a9371203525e4885aa1",
+      "lines": [
+        31,
+        32
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/providers/warehouse_quality_page_preparation.dart",
+      "sha256": "f94da0e7522b643ffc8da31c9d375992320ba40c083a5e56d0c0458c7a6b4664",
+      "lines": [
+        130,
+        136,
+        137
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/providers/warehouse_task_page_preparation.dart",
+      "sha256": "078aae1e598a48d67d1c71ec14681718732d369d63ba23a34ead12f1159364a1",
+      "lines": [
+        147,
+        153,
+        154
+      ]
+    },
+    {
+      "source": "lib/shared/paging/page_preparation_budget_provider.dart",
+      "sha256": "392d7c13d6b86394f6eabf8ec95d6e2d5d9f1c1542c8972c5275c3b3fca5648b",
+      "lines": [
+        9
+      ]
+    },
+    {
+      "source": "lib/shared/paging/page_preparation_coordinator.dart",
+      "sha256": "21639338c940933bfcf8898e19250db2b5b7446c0fe7069fccabaf81a7f9469f",
+      "lines": [
+        9,
+        10,
+        12
+      ]
+    },
+    {
+      "source": "lib/shared/paging/prepared_page_read.dart",
+      "sha256": "2645c442a2bd87e8a4d2d25a8d2b0f5a8c93351542e78ee71a13455def7146ca",
+      "lines": [
+        8,
+        11
+      ]
+    }
+  ],
+  "sharedCountSources": [
+    {
+      "source": "lib/features/admin/widgets/server_update_popup_gate.dart",
+      "sha256": "44cf0b2716443f1f023dc98f6a108db400fd2d3cda61411a75307996b48ef9f5",
+      "lines": [
+        211
+      ]
+    },
+    {
+      "source": "lib/features/dashboard/providers/workbench_refresh.dart",
+      "sha256": "bd236a30f38e3fcaafd7f31993f563e1c77a928a3cb19c2c796b03011be5fd7f",
+      "lines": [
+        3
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_audit_center_page.dart",
+      "sha256": "ec83e0648e67dde62579e2104bd5ff30c302fa89be86c2abea5ae3944f735484",
+      "lines": [
+        137
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_doc_list_page.dart",
+      "sha256": "d4675a07688fc9e1c9dc87fe046958c79e5abca6e707e900514daccf2f872dfb",
+      "lines": [
+        657
+      ]
+    },
+    {
+      "source": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "sha256": "a06a070e449aa3a516594963bec7bee8e23bf1061591ee8416c4ae8567a60059",
+      "lines": [
+        1069
+      ]
+    },
+    {
+      "source": "lib/features/finance/providers/sales_order_finance_confirmation_count_provider.dart",
+      "sha256": "cd1324a98f2643295dc1c988c3acb579d571e72f224c76f17236c27779a73912",
+      "lines": [
+        8
+      ]
+    },
+    {
+      "source": "lib/features/hr_task/providers/hr_task_summary_provider.dart",
+      "sha256": "591a639d8697522812aba26ae140d55a9f297b312bff2569b16de64875ee3561",
+      "lines": [
+        24,
+        164,
+        195
+      ]
+    },
+    {
+      "source": "lib/features/notice/providers/notice_arrival.dart",
+      "sha256": "c0544f325e4df96034c79df55a77a93e4af3363da987cb766d61d5de14632a8f",
+      "lines": [
+        233,
+        307
+      ]
+    },
+    {
+      "source": "lib/features/notice/providers/notice_unread_index_provider.dart",
+      "sha256": "f370ffd72f78aa62d60d80d443536de1f7f8e557a909ac18c31a47212dfc124c",
+      "lines": [
+        39,
+        49
+      ]
+    },
+    {
+      "source": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "sha256": "364cce5a88b7f2607b0c3e1ee40ad5c894b8063635f587624be78668895a2d72",
+      "lines": [
+        225,
+        236,
+        239,
+        252
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_daily_report_list_page.dart",
+      "sha256": "5c72e2c6bd1fdaa5abcc466c23aa1402e9883f8a275ae848d636b8c85ade834c",
+      "lines": [
+        377
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_material_analysis_page.dart",
+      "sha256": "42caedf3cb5e536d898d75817cd4418dc81fc09ffa2eb1454882e6570c100779",
+      "lines": [
+        230
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_plan_list_page.dart",
+      "sha256": "44bb6bd56d1e5f52518a0a61c45bbecb4e202581328de0ac4345fc23e686ed7d",
+      "lines": [
+        538
+      ]
+    },
+    {
+      "source": "lib/features/production/pages/production_report_page.dart",
+      "sha256": "1bfc5eaa69a57c3ec8085d9efb6ec81b30491f61d3f597b89da0965c6ded6f9a",
+      "lines": [
+        440
+      ]
+    },
+    {
+      "source": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "sha256": "55b9e1b1198ec861cbfe2b22d9b6dc84f56a18c0d14dd13b3e2ab5817f8e4734",
+      "lines": [
+        816
+      ]
+    },
+    {
+      "source": "lib/features/quality/pages/production_fqc_inspections_page.dart",
+      "sha256": "b437092317366bfdbeea74c2cb9d85bdf04b1a1990968c1f80e4902aaee1c57e",
+      "lines": [
+        493
+      ]
+    },
+    {
+      "source": "lib/features/quality/pages/quality_task_center_page.dart",
+      "sha256": "fdad2f310afca9072aa801c6e98e7b0b9bab3de7a0399c1ea4f6cc28edc3f285",
+      "lines": [
+        199
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "sha256": "1a458fd811473dd72d86112458055d5b2fb5eb4854e0eb09beb0cfe7e218400e",
+      "lines": [
+        1059
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "sha256": "43db75f5967bc9e6fc9392eb5a2be06caa4432dbacc05de5548adf64a85bac3d",
+      "lines": [
+        626
+      ]
+    },
+    {
+      "source": "lib/features/sales/pages/sales_task_center_page.dart",
+      "sha256": "722fc69d10eab75ba0594d65c4c387249db46ae496bdd5b7be814bb052a01f29",
+      "lines": [
+        102,
+        109,
+        116,
+        124
+      ]
+    },
+    {
+      "source": "lib/features/sales/widgets/sales_shipment_task_workbench.dart",
+      "sha256": "ed2cbca3cd6b996fba50c1ba4ca7106a571578b4f2dc237572c4cbef005a650d",
+      "lines": [
+        1028
+      ]
+    },
+    {
+      "source": "lib/features/shell/pages/main_shell_page.dart",
+      "sha256": "30b5b13ced52637ae85d8d5cc453b6b57ad48acd1ea94723754eafefd26400b8",
+      "lines": [
+        122
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "sha256": "d4243b84f35df8501d90400952891db56a37d17264090b9dc7302018622d576c",
+      "lines": [
+        930
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "sha256": "494f24947a3d770ea4715f18bd49ec85a619cc9c50b1f07dd1b1c209b76d315a",
+      "lines": [
+        1786,
+        1791,
+        1800,
+        1803,
+        1814,
+        1859
+      ]
+    },
+    {
+      "source": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "sha256": "0766104299354b1fe90fb333eec3005e07f02b5584ddc5f95f124a98cbd7a6ab",
+      "lines": [
+        465,
+        468,
+        471
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/materialbin/widgets/workshop_material_task_center.dart",
+      "sha256": "73c588d5702ef9bdb0fec3161cba75802177e7788b8cd968e21f9663d4e54335",
+      "lines": [
+        61
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/finance_arrival_exception_pages.dart",
+      "sha256": "0139a87f6f34425ff6139cb0986d23d2936252f6a9c1f251d70c29ec71f1549b",
+      "lines": [
+        232
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "sha256": "d030c52d5c4b523aaa39cf6dbbad5cf5930fe5b229197dc541466a85ca326905",
+      "lines": [
+        576
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_inbound_task_center_page.dart",
+      "sha256": "1e60b66c32a1f604ec565926465da85466db6247820ecb34f154d33cf6ef31b5",
+      "lines": [
+        38
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart",
+      "sha256": "5cef08e972fc319c51cda7942da116f79d24d912d6f421cc8c7f4a6107937afc",
+      "lines": [
+        40
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/repositories/warehouse_subcontract_outbound_repository.dart",
+      "sha256": "29644f0edebe4877009b7a9bd4cc5168aa9cfe8a4d6e5a91e6f5c5914d98e8a1",
+      "lines": [
+        69
+      ]
+    },
+    {
+      "source": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+      "sha256": "33b2f7518e62b203cbc859e91d5e4aa2b3f190c13647bd459e33ccc321a73a8b",
+      "lines": [
+        679
+      ]
+    }
+  ],
+  "moduleReviews": [
+    {
+      "source": "docs/99-项目治理/全平台整改交接/evidence/category-prefetch-20261103/finance-operations-hr-review.json",
+      "sha256": "9fa3d38921bf05d388b0f25fd0d169d61fe9caba3262ecb13b2d2f70dd04f15f",
+      "lines": []
+    },
+    {
+      "source": "docs/99-项目治理/全平台整改交接/evidence/category-prefetch-20261103/other-lists-review.json",
+      "sha256": "35da7a59637c6493079abe1e8682a17cf474fbe0f78c302a93c5af42da105b6f",
+      "lines": []
+    },
+    {
+      "source": "docs/99-项目治理/全平台整改交接/evidence/category-prefetch-20261103/purchase-subcontract-review.json",
+      "sha256": "a98d0d9883cae2eac681be0e6d7ebcb0144d0b15cd7ea88517ce8232bcab8d08",
+      "lines": []
+    },
+    {
+      "source": "docs/99-项目治理/全平台整改交接/evidence/category-prefetch-20261103/warehouse-production-review.json",
+      "sha256": "8e386288c5bd88397f788f3cb2f8fbcff7e88973a9c9b8ad77d00ad8dd7e00cd",
+      "lines": []
+    }
+  ],
+  "nativeCategoryPackages": [
+    {
+      "id": "W7-BIZ-052",
+      "source": "lib/features/expense/pages/expense_approval_list_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-055",
+      "source": "lib/features/expense/pages/expense_list_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-057",
+      "source": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-059",
+      "source": "lib/features/finance/pages/finance_ar_ap_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-060",
+      "source": "lib/features/finance/pages/finance_asset_workbench_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-062",
+      "source": "lib/features/finance/pages/finance_audit_center_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-068",
+      "source": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-069",
+      "source": "lib/features/finance/pages/finance_quote_review_list_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-071",
+      "source": "lib/features/finance/pages/finance_reconciliation_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-072",
+      "source": "lib/features/finance/pages/finance_report_table_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-073",
+      "source": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-077",
+      "source": "lib/features/finance/pages/finance_statement_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-078",
+      "source": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-080",
+      "source": "lib/features/hr_profile/pages/hr_profile_changes_list_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-082",
+      "source": "lib/features/hr_task/pages/hr_task_list_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-085",
+      "source": "lib/features/notice/pages/notice_list_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-087",
+      "source": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-089",
+      "source": "lib/features/payroll/pages/payroll_review_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-091",
+      "source": "lib/features/payroll/pages/payroll_slip_list_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-093",
+      "source": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-098",
+      "source": "lib/features/production/pages/production_board_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-099",
+      "source": "lib/features/production/pages/production_chain_health_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-218",
+      "source": "lib/features/production/pages/production_material_increment_pages.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-219",
+      "source": "lib/features/production/pages/production_over_limit_pages.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-220",
+      "source": "lib/features/production/pages/production_overproduction_rate_pages.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-114",
+      "source": "lib/features/production/pages/production_report_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-115",
+      "source": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-117",
+      "source": "lib/features/production/pages/workshop_material_reports_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-123",
+      "source": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-126",
+      "source": "lib/features/purchase/pages/purchase_report_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-127",
+      "source": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-129",
+      "source": "lib/features/quality/pages/production_fqc_inspections_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-131",
+      "source": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-132",
+      "source": "lib/features/quality/pages/quality_pending_disposal_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-134",
+      "source": "lib/features/rd_task/pages/rd_task_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-137",
+      "source": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-217",
+      "source": "lib/features/sales/pages/sales_manager_review_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-139",
+      "source": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-140",
+      "source": "lib/features/sales/pages/sales_report_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-142",
+      "source": "lib/features/sales/pages/sales_task_center_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-149",
+      "source": "lib/features/stock/counts/pages/stock_count_review_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-150",
+      "source": "lib/features/stock/counts/pages/stock_count_session_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-152",
+      "source": "lib/features/stock/pages/instant_inventory_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-221",
+      "source": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-154",
+      "source": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-160",
+      "source": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-161",
+      "source": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-163",
+      "source": "lib/features/suggestion/pages/suggestion_list_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-167",
+      "source": "lib/features/visitor/pages/visitor_home_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-170",
+      "source": "lib/features/visitor_approval/pages/my_visitors_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-172",
+      "source": "lib/features/visitor_approval/pages/visitor_approval_list_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-173",
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_bin_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-177",
+      "source": "lib/features/warehouse/materialbin/pages/workshop_material_setup_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-222",
+      "source": "lib/features/warehouse/pages/finance_arrival_exception_pages.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-223",
+      "source": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-184",
+      "source": "lib/features/warehouse/pages/shelf_label_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-187",
+      "source": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-194",
+      "source": "lib/features/warehouse/pages/warehouse_inbound_task_center_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-195",
+      "source": "lib/features/warehouse/pages/warehouse_insight_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-197",
+      "source": "lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-201",
+      "source": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-202",
+      "source": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-210",
+      "source": "lib/features/warehouse/pages/warehouse_task_center_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    },
+    {
+      "id": "W7-BIZ-213",
+      "source": "lib/features/webinquiry/pages/website_inquiry_list_page.dart",
+      "status": "todo",
+      "interpretation": "Existing state retained; a Dart fix or a source hit does not migrate a native workflow."
+    }
+  ]
+}

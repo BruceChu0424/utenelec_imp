@@ -8,7 +8,7 @@
     "mergeMainAllowed": false,
     "productionDeploymentAllowed": false
   },
-  "inventorySha256": "e83538dc5b562899dfe047baf7d4347929a556e178b33a0708a2de789160091f",
+  "inventorySha256": "ce1f8c96a68db551f8f2bd320485c4498f9c6d9169a3d6088bbeb1e8b5d0e945",
   "baselineCounts": {
     "businessPagePackages": 220,
     "retainedBusinessPagePackages": 3,
@@ -6298,8 +6298,8 @@
       "phase": "D",
       "feature": "finance",
       "businessSource": "lib/features/finance/pages/finance_audit_center_page.dart",
-      "sourceSha256": "6ef455c337c46fa90d07bc4e461cc2d4aa2079a316740d73718f14bb88e113a8",
-      "sourceProofSha256": "a7e2331c14b8e03a86ac5f1c27e0bb6fae8157724c61bed36d9856a0c0004bcc",
+      "sourceSha256": "ec83e0648e67dde62579e2104bd5ff30c302fa89be86c2abea5ae3944f735484",
+      "sourceProofSha256": "3e0b591ab72aec61af353341b74bf724e06a5d1bd866e9ce356329f594420022",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -6328,10 +6328,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json"
+        "clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json",
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。",
-      "lastUpdated": "2026-11-01"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:28.556573+00:00"
     },
     {
       "id": "W7-BIZ-063",
@@ -6549,8 +6550,8 @@
       "phase": "D",
       "feature": "finance",
       "businessSource": "lib/features/finance/pages/finance_procurement_approval_tasks_page.dart",
-      "sourceSha256": "d711f7569382905a1414fb460f2827d0a5de4d815404d73131558e978fc0b5a0",
-      "sourceProofSha256": "4d76f2018ec68c977db5d7997586b34638b2cb42c443850f3c851b9a5c6c1387",
+      "sourceSha256": "a06a070e449aa3a516594963bec7bee8e23bf1061591ee8416c4ae8567a60059",
+      "sourceProofSha256": "cde61b23386651b5b2036836f690ace618e406821a8ae4ac9ffffdc833ed1780",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -6578,9 +6579,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:29.441325+00:00"
     },
     {
       "id": "W7-BIZ-069",
@@ -6590,8 +6593,8 @@
       "phase": "D",
       "feature": "finance",
       "businessSource": "lib/features/finance/pages/finance_quote_review_list_page.dart",
-      "sourceSha256": "c3e87893042bedbcca8deaeb7114be4caf13f432d66a974b7bae8e37cf0b0e0f",
-      "sourceProofSha256": "12a530c1416edbffca6649f3083e78e1c73e493a15c0f3e3125c1b10af746cfa",
+      "sourceSha256": "bdae6bf4bf3f77ebff806df6f9a81ca0a4deca171414416e74e9c72b37f99c47",
+      "sourceProofSha256": "8fc09ae6b90f677c094de01a55d2e4f655ff484a6eb5b937f55db234e12d27aa",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -6619,9 +6622,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:30.756293+00:00"
     },
     {
       "id": "W7-BIZ-070",
@@ -6632,7 +6637,7 @@
       "feature": "finance",
       "businessSource": "lib/features/finance/pages/finance_quote_review_page.dart",
       "sourceSha256": "2e9dea1b6372414d7bcaf7493e5eb887fe236394ee2aab8a78949f2fac046eea",
-      "sourceProofSha256": "2d21cdbe4b0d749fa619736072ac11e8595b6c25c2febe6be3ed4d359d1039d3",
+      "sourceProofSha256": "7102a2ad8f763eae11d8370d2b67309336dd8bc6eec44181d0e1b2953c050d82",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -6757,8 +6762,8 @@
       "phase": "D",
       "feature": "finance",
       "businessSource": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
-      "sourceSha256": "a86d16e7a517f29d28c6a9fd34318f6e8bb97d49fcac2cbb76dac8298745fb40",
-      "sourceProofSha256": "7b166b6eb3444055238cdb406535dd28313f700c741db115e2032d360a97454d",
+      "sourceSha256": "5f8eb9cbff374b86c4bbfb3c0e953dffc492fa22e8708ab8db1c4cc1f65a60b2",
+      "sourceProofSha256": "90587bfd7e3fe30da5db3343f4d83ea2b8f6a8e8b3eafd208d43052a4abf54a4",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -6787,10 +6792,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json"
+        "clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json",
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。",
-      "lastUpdated": "2026-11-01"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:32.024365+00:00"
     },
     {
       "id": "W7-BIZ-074",
@@ -6842,7 +6848,7 @@
       "feature": "finance",
       "businessSource": "lib/features/finance/pages/finance_sales_shipment_audit_page.dart",
       "sourceSha256": "e2f9bed59b86a09c43deb51f6747db9970f165318db71e3b2900af0d0fda69fc",
-      "sourceProofSha256": "8fa5895e7bc92649bc0b35a01c6cd91bfa2d0e5163eaabb2f8790fbe1fabd196",
+      "sourceProofSha256": "908db1866d0ffe6fea93851aaa2cff02535cb8a8c2bb250e06b2113a47d72b40",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -6871,10 +6877,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json"
+        "clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json",
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。",
-      "lastUpdated": "2026-11-01"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:33.427168+00:00"
     },
     {
       "id": "W7-BIZ-076",
@@ -6885,7 +6892,7 @@
       "feature": "finance",
       "businessSource": "lib/features/finance/pages/finance_sales_shipment_audit_review_page.dart",
       "sourceSha256": "b388b23102fbeac1dec9a27f319dc3403139c08942cf7cb8f1a9b6a7c34a2bb6",
-      "sourceProofSha256": "53bd5b8093ff77d4f8df88a69589a5c80c4767e1b958a0b4d63956380043a65f",
+      "sourceProofSha256": "841d4ee0a4ef9ce9a90124ff28a80bf1900be9b47170482a74f9514c7b3dae2f",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7339,8 +7346,8 @@
       "phase": "D",
       "feature": "operations_workbench",
       "businessSource": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
-      "sourceSha256": "0f3b6e62509ea3bccfa728ddbea7b92918d16205266f2123196cc8c1483987ea",
-      "sourceProofSha256": "453154bb42618da9ee80f5380d10745d28d6d407938252f0a25c8ca23885be86",
+      "sourceSha256": "364cce5a88b7f2607b0c3e1ee40ad5c894b8063635f587624be78668895a2d72",
+      "sourceProofSha256": "8319e0c2f5078922d8f88a66d4d7b9c07a9f0749a7ee865cf507a715fad18f32",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7368,9 +7375,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:34.493281+00:00"
     },
     {
       "id": "W7-BIZ-088",
@@ -7584,8 +7593,8 @@
       "phase": "D",
       "feature": "procurement_iqc_rejection",
       "businessSource": "lib/features/procurement_iqc_rejection/pages/procurement_iqc_rejection_list_page.dart",
-      "sourceSha256": "b103e33decbc67ef8f9e3d0f8101174977cf66dd2742ac8c08eadbbea5006742",
-      "sourceProofSha256": "6afe6b89b7f987587ef7b9e93d57a9ecc7ac20cd4656333792da40dab6d3c743",
+      "sourceSha256": "bb39f8d08c4c3623c7613446567a5ff280b2085b76dacca3f848c96819f7aeda",
+      "sourceProofSha256": "fe68a8dfba1819f25f2c42c4edea126468861f3ca78e56e0a07ae0a586d47209",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7613,9 +7622,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:35.500813+00:00"
     },
     {
       "id": "W7-BIZ-094",
@@ -7710,7 +7721,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_actual_output_supplement_page.dart",
       "sourceSha256": "93338b375fe00fe70f2a90aea9ca1b5c4f6f96b565aa604560d28d3ff3c4c1ea",
-      "sourceProofSha256": "e2ccee51e4dd32b72f47597cf395083ff8f35f8dde19671e9eb809d2523ec187",
+      "sourceProofSha256": "4b6f7581b44886d516349a2c79dbf7a7b3cf9d048f270ea6091ff7dc4bd3831f",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7751,7 +7762,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_analysis_sales_order_page.dart",
       "sourceSha256": "23fecd11f4a9c27cd425f9214a2aa82693be2bf3c05ac59eaa13b469be58c00a",
-      "sourceProofSha256": "c16639899e8bcec63de8ce0a9997627d454ab27a61dcb05f78dd9543f509cc17",
+      "sourceProofSha256": "913106c9175470156cce9bff7bfbad1a66547118b48510117eb4bd91e5612226",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7791,8 +7802,8 @@
       "phase": "D",
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_board_page.dart",
-      "sourceSha256": "b16f41d67f3f8715565c62de78c9b07b3f95bdbbc0a9ec84297aaba31f5f1126",
-      "sourceProofSha256": "7f832be7b2fb577b3bdb01ae37c89d3cf7a8e7761fec35dbebd099b216668b7e",
+      "sourceSha256": "f29a887a2403657d43fc3eff779bd74ddaee7b286ef87720b85742df8509282c",
+      "sourceProofSha256": "472cf68a3f903866b6a50268f344c43fb48c0e0015cf3d00a52d26e36c94b3c0",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7820,9 +7831,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:36.423433+00:00"
     },
     {
       "id": "W7-BIZ-099",
@@ -7874,7 +7887,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_daily_report_create_recovery_page.dart",
       "sourceSha256": "f8a7bb6c43ec500f0bfe0955af85be82da9e09876e6d930a69f4b976f0564bcd",
-      "sourceProofSha256": "8fbef18a64a79203b3911190ea08df1b173cad280b83a646e57973a514b895fa",
+      "sourceProofSha256": "f3f908e69b9b63c843820d1681a3774bb3427e3c7706dc252adc2fabab8a6e28",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7915,7 +7928,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_daily_report_detail_page.dart",
       "sourceSha256": "9f03a1c581e35d6b5a4e19759af2ee74f5144146a28a40660db3b0c60988b4c8",
-      "sourceProofSha256": "b112fdb009dfadd6e1f242fbb302db48468ac88725a5c94968404e791998e464",
+      "sourceProofSha256": "43ee774adb0f06fac5e7ebe2f8c8401c7d3610accd5b150b5eac067ce125e03c",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7956,7 +7969,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_daily_report_edit_page.dart",
       "sourceSha256": "1699b7f722570ba9a6994a1dac061b2c668bf0b4f9f1a6bba1178f78695c175c",
-      "sourceProofSha256": "3a3f2a0e0730a89f6cb2a4e81b94c3ebd7610db5a626e6396c891f97f6182036",
+      "sourceProofSha256": "9a96043545ec4572690b6fa7481a4ba6d97e214b58ddd4975a6cdb2655940d8b",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7999,7 +8012,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_daily_report_list_page.dart",
       "sourceSha256": "5c72e2c6bd1fdaa5abcc466c23aa1402e9883f8a275ae848d636b8c85ade834c",
-      "sourceProofSha256": "df11f861206dcd9493e31c3f942f7797e1a83c0d0e5f16958226c2a1552807ac",
+      "sourceProofSha256": "15472268f78a44d07b09baa8f3196e4e45b7693513a4eb331ea9196083dc1ae5",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8163,7 +8176,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_material_analysis_history_page.dart",
       "sourceSha256": "763d0c5d870a4318991f4721ad75c9eb8c2d096d1cff552773f3995337e66779",
-      "sourceProofSha256": "eab02a7c2fb97f2451cbfb2a983db9272a97d56091dac9153a4fca10935b3521",
+      "sourceProofSha256": "59fa11b55264a2848fa3ca4fa8adf135b183ff9a09af1bf98a05516e811ae52a",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8204,7 +8217,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_material_analysis_page.dart",
       "sourceSha256": "42caedf3cb5e536d898d75817cd4418dc81fc09ffa2eb1454882e6570c100779",
-      "sourceProofSha256": "388c37ffcdbd6461695370770dbb984e4680ca09f14fb7d3ef50ed396c0f90ec",
+      "sourceProofSha256": "7b9e515b1187689175e2c8591bfa46bfc7edccf0d51adc05da827e802e167da3",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8249,7 +8262,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_material_discovery_request_page.dart",
       "sourceSha256": "14063da1c71602498e3624413370d5699b927a0546e4f7087d9c4855b8758294",
-      "sourceProofSha256": "9a74a8c77016a5cd842e5672b3690fefda58a8507454846c03704efedc81c09b",
+      "sourceProofSha256": "323fd844561e27715b85f4a3eaceb0520074defb02fb8bb90dfa829e6fb93b15",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8422,7 +8435,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_plan_detail_page.dart",
       "sourceSha256": "d8b5a9eb4c718a7095bc59ff367a8ecd466919e0e48364afa46cd145086332c9",
-      "sourceProofSha256": "85fd2da9e2f3bf895eb27cde491d284d0c6cd037f82a4fd8addfe5c0398c5945",
+      "sourceProofSha256": "5799e2e14d2f036a3c6b94310bc788c02b672fc37b9b105e33da9c8260b7c4b5",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8463,7 +8476,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_plan_edit_page.dart",
       "sourceSha256": "776fd41aa955a3f81f1f9606f377d02904e4588eeec9f11871a7ff1b920ecd4d",
-      "sourceProofSha256": "132ddbab95c24d134ee326c6210c92605c508109e0b3552d6b8f9e7f645dcd80",
+      "sourceProofSha256": "f625a66cb2298873e1cb61317f74cf5b468829f81910a4c0111f849c3a3bb593",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8506,7 +8519,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_plan_list_page.dart",
       "sourceSha256": "44bb6bd56d1e5f52518a0a61c45bbecb4e202581328de0ac4345fc23e686ed7d",
-      "sourceProofSha256": "73865e3150e5f1edff15a6ea4ec55d7b165a71f71208be41c4aebe41ff81881a",
+      "sourceProofSha256": "e914688a619b60736007f0f38b702f0a64f75dcbde24b97a42a5a5e3a9bd617d",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8547,7 +8560,7 @@
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_plan_summary_sheet_page.dart",
       "sourceSha256": "518d724e27d97c40c5e58869dfc0cdcb2abefcedbe7cc767aeeec90c5f35109a",
-      "sourceProofSha256": "0aacb6784e115215ea8729034d5161c4eae92082901a9f1bf942d862ea7af5b6",
+      "sourceProofSha256": "8ca3f02d1143863250b9b3b34c7b89fc97304e11e7ac9a8ce6a3fa5a69ab3474",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8628,8 +8641,8 @@
       "phase": "D",
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_workshop_tasks_page.dart",
-      "sourceSha256": "30a74f2e316bad1358b14a9d5e1750687490617e6ae7b6bca202e611bcf7ecd4",
-      "sourceProofSha256": "19d0ce56750aef94829fb1922c08bd408d23f2d58ff08dc985117dbcdb37d1d0",
+      "sourceSha256": "e95b4dd49d226612c008fa96ee948206f213f1299d3c0278b3d2fa683d0f02ed",
+      "sourceProofSha256": "45a1af5bbcdda70b810de097d66169d94158b92fc47b79315f279abb8776e207",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -8659,10 +8672,11 @@
       ],
       "evidence": [
         "clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json",
-        "clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json"
+        "clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json",
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
       ],
-      "notes": "尚未迁移；2026-10-31 Flutter已接入workshop-tasks Excel公共后台导出，须同步production_execution:view与production_report:export、原任务范围/筛选及native_workshop_tasks下载围栏；见2026-10-31仓库选仓与车间任务导出记录。 2026-10-31整合复核：导出状态须消费workshop-task-stage-v1共享样例，区分报完/待检/点收入库及备料阶段；不得仅映射底层segmentStatus，本地报工草稿不作为已审核事实导出。\n2026-11-01 必要合同增量仍未迁移：production_execution:view + production_workshop_task:view:all只扩列表/历史/详情/材料阅读；assignment、原动作、count/徽章不扩大，缓存弹窗及迟到响应须按Me/范围ABA失效。原状态和DoD保留。\n2026-11-01 同责车间表格的销售要求动作改用单行公共控件；WPF 本页仍未迁移，后续迁移须保留完整备注与紧凑行高，不得用固定高度裁掉内容。",
-      "lastUpdated": "2026-11-01"
+      "notes": "尚未迁移；2026-10-31 Flutter已接入workshop-tasks Excel公共后台导出，须同步production_execution:view与production_report:export、原任务范围/筛选及native_workshop_tasks下载围栏；见2026-10-31仓库选仓与车间任务导出记录。 2026-10-31整合复核：导出状态须消费workshop-task-stage-v1共享样例，区分报完/待检/点收入库及备料阶段；不得仅映射底层segmentStatus，本地报工草稿不作为已审核事实导出。\n2026-11-01 必要合同增量仍未迁移：production_execution:view + production_workshop_task:view:all只扩列表/历史/详情/材料阅读；assignment、原动作、count/徽章不扩大，缓存弹窗及迟到响应须按Me/范围ABA失效。原状态和DoD保留。\n2026-11-01 同责车间表格的销售要求动作改用单行公共控件；WPF 本页仍未迁移，后续迁移须保留完整备注与紧凑行高，不得用固定高度裁掉内容。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:37.377582+00:00"
     },
     {
       "id": "W7-BIZ-116",
@@ -9471,7 +9485,7 @@
       "feature": "sales",
       "businessSource": "lib/features/sales/pages/sales_doc_detail_page.dart",
       "sourceSha256": "f9c364664655015ff10439a683460a6063b61cc26fd520c13603a3d1888ee811",
-      "sourceProofSha256": "7b464b5eecfb86c5763d6512d65fa45f509d3e97749fb0011856957c0cc88e87",
+      "sourceProofSha256": "d970d9b7c0439d86f2dd4e6f6a930f3bfc2e5eaa6448781075cdbb5a2ebb90d4",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9515,7 +9529,7 @@
       "feature": "sales",
       "businessSource": "lib/features/sales/pages/sales_doc_edit_page.dart",
       "sourceSha256": "adf7d4efcd331fd6008b748fc02f595a5fda36dc04b3d67964fbd8ce6f06522d",
-      "sourceProofSha256": "f538ccced73ded4eb5968d008dc3482380a73d95d9cce5d2c9827c60dadd606c",
+      "sourceProofSha256": "66dbc1f4fb04733ccdfc00c5202744cdf557dbccfe091e43b4f7f4d32850a3db",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9561,7 +9575,7 @@
       "feature": "sales",
       "businessSource": "lib/features/sales/pages/sales_doc_list_page.dart",
       "sourceSha256": "1a458fd811473dd72d86112458055d5b2fb5eb4854e0eb09beb0cfe7e218400e",
-      "sourceProofSha256": "8d70e45d8bf16b2388c6e59934c36ba45981d851afe45e5fdcc58c2c2c246678",
+      "sourceProofSha256": "14ca63d841e888fe8465855ce7fa8f0bc8599dccad79bf515819bba459e0845e",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9590,10 +9604,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/sales-task-prefetch-20261103.json"
+        "clients/windows_legacy/progress/evidence/sales-task-prefetch-20261103.json",
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 销售任务中心内嵌出货、客户零星发货、退货、报价及历史其它出货共用本列表。后续原生迁移须按权限有界预热非历史工作段首屏，点击复用完整同查询的在途/已完成读取，并按身份、权限、读取范围、API 实例及写修订隔离；显式刷新绕过预热，历史时间门控/筛选/排序/分页保持 owning 条件。WPF 本页尚未迁移，保持 todo；详见 E-SALES-TASK-PREFETCH-20261103。",
-      "lastUpdated": "2026-11-03T17:04:10.866074+00:00"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 销售任务中心内嵌出货、客户零星发货、退货、报价及历史其它出货共用本列表。后续原生迁移须按权限有界预热非历史工作段首屏，点击复用完整同查询的在途/已完成读取，并按身份、权限、读取范围、API 实例及写修订隔离；显式刷新绕过预热，历史时间门控/筛选/排序/分页保持 owning 条件。WPF 本页尚未迁移，保持 todo；详见 E-SALES-TASK-PREFETCH-20261103。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:38.366818+00:00"
     },
     {
       "id": "W7-BIZ-138",
@@ -9689,7 +9704,7 @@
       "feature": "sales",
       "businessSource": "lib/features/sales/pages/sales_order_progress_page.dart",
       "sourceSha256": "43db75f5967bc9e6fc9392eb5a2be06caa4432dbacc05de5548adf64a85bac3d",
-      "sourceProofSha256": "c7810441a255ccf6b855552227bb4aa86ccde8beabec2897148519b179781ed3",
+      "sourceProofSha256": "3c7fac46a06773a12f759bebf351e651b1e9f1855624fab32edee477b7753945",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9719,10 +9734,11 @@
       ],
       "evidence": [
         "clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json",
-        "clients/windows_legacy/progress/evidence/sales-task-prefetch-20261103.json"
+        "clients/windows_legacy/progress/evidence/sales-task-prefetch-20261103.json",
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
       ],
-      "notes": "2026-10-31 订单进度新增 managerReviewState/managerRejectReason，区分等待负责人、负责人驳回和财务状态。WPF 进度入口未迁移；不能把负责人批准解释为财务已通过。\n2026-11-01 审核未完成的有库存订货单统一归进行中/PENDING，状态明确等待销售负责人审核；不能因预留量将新单提前放入可发货。WPF 本页仍未迁移。\n2026-11-03 订单进度子分类徽章同源消费 TASK_*（badge-summary salesStage.*）口径，避免另发重复阶段统计；非历史工作段首屏可有界预热并完整匹配查询复用，按身份/权限/读取范围/API 实例/本端写修订隔离，显式刷新绕过缓存。WPF 本页尚未迁移，保持 todo，不开放占位入口；详见 E-SALES-TASK-PREFETCH-20261103。",
-      "lastUpdated": "2026-11-03T17:04:13.775057+00:00"
+      "notes": "2026-10-31 订单进度新增 managerReviewState/managerRejectReason，区分等待负责人、负责人驳回和财务状态。WPF 进度入口未迁移；不能把负责人批准解释为财务已通过。\n2026-11-01 审核未完成的有库存订货单统一归进行中/PENDING，状态明确等待销售负责人审核；不能因预留量将新单提前放入可发货。WPF 本页仍未迁移。\n2026-11-03 订单进度子分类徽章同源消费 TASK_*（badge-summary salesStage.*）口径，避免另发重复阶段统计；非历史工作段首屏可有界预热并完整匹配查询复用，按身份/权限/读取范围/API 实例/本端写修订隔离，显式刷新绕过缓存。WPF 本页尚未迁移，保持 todo，不开放占位入口；详见 E-SALES-TASK-PREFETCH-20261103。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:39.265669+00:00"
     },
     {
       "id": "W7-BIZ-140",
@@ -9774,7 +9790,7 @@
       "feature": "sales",
       "businessSource": "lib/features/sales/pages/sales_scarcity_page.dart",
       "sourceSha256": "ccf843f3920337e799b0e058321ff0f55dc86241891d5eacb1e2614421743172",
-      "sourceProofSha256": "83a622f302c7687c3a3ee3948413f1c0d86f459d2409811e0238eebf197d1a89",
+      "sourceProofSha256": "6526b12348cad6c3d3cab34e0a8391c926444727bfcf279830337abbc10c0584",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9815,7 +9831,7 @@
       "feature": "sales",
       "businessSource": "lib/features/sales/pages/sales_task_center_page.dart",
       "sourceSha256": "722fc69d10eab75ba0594d65c4c387249db46ae496bdd5b7be814bb052a01f29",
-      "sourceProofSha256": "fa8f3725d699029bdc8e1001893c6a5ce6a24220658647677e40ef5f9f6df97d",
+      "sourceProofSha256": "6e7c3acde1e2655ef5f43a8434fe9a58abff484d5ccccf63a964afc869f80dbb",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9843,10 +9859,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/sales-task-prefetch-20261103.json"
+        "clients/windows_legacy/progress/evidence/sales-task-prefetch-20261103.json",
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 销售任务中心需与订单进度和单据列表共用权威子类计数及有界首屏预热，保留不同徽章口径、权限、历史时间门控与旧结果退休。WPF 本页尚未迁移，nativeTargets 为空；本轮只登记后续消费者合同，状态保持 todo，完整 ERP/Win7 真机及正式交付未验收。详见 E-SALES-TASK-PREFETCH-20261103。",
-      "lastUpdated": "2026-11-03T17:04:16.485607+00:00"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 销售任务中心需与订单进度和单据列表共用权威子类计数及有界首屏预热，保留不同徽章口径、权限、历史时间门控与旧结果退休。WPF 本页尚未迁移，nativeTargets 为空；本轮只登记后续消费者合同，状态保持 todo，完整 ERP/Win7 真机及正式交付未验收。详见 E-SALES-TASK-PREFETCH-20261103。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:40.075992+00:00"
     },
     {
       "id": "W7-BIZ-143",
@@ -10101,8 +10118,8 @@
       "phase": "D",
       "feature": "stock",
       "businessSource": "lib/features/stock/counts/pages/stock_count_review_page.dart",
-      "sourceSha256": "a08970e6a19c3f0cd1ac8795cb5068c534fc82e8c96243687d0eb2cb9ff8e672",
-      "sourceProofSha256": "89c9b8955ef85041ba063d803e8b9799989751ca721d1739b1164911b55a391b",
+      "sourceSha256": "b71d5cda9e787dc9de902187cd657f6483823e3c499f7798e8fb2e1036fa86d1",
+      "sourceProofSha256": "1df079cc818d780b5ebfab3906f08da613a6ca53233f25d51415d6a72a326b58",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -10130,9 +10147,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:40.859659+00:00"
     },
     {
       "id": "W7-BIZ-150",
@@ -10143,7 +10162,7 @@
       "feature": "stock",
       "businessSource": "lib/features/stock/counts/pages/stock_count_session_page.dart",
       "sourceSha256": "ed70cf719c8be7d60e679e1c24d5cd87084d03a738162f07c55abdcf9132d6f4",
-      "sourceProofSha256": "66cf173a4d4709e104a9e17c7de0af67fbae47d0e3c8277f147833efd3d44ace",
+      "sourceProofSha256": "f7f1a13b6deb0a670f7a43ca4181daff242557605aef921133b968a12b814105",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -10353,8 +10372,8 @@
       "phase": "D",
       "feature": "subcontract",
       "businessSource": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
-      "sourceSha256": "b25b15d2d811ac041daaec52693f71fbfa27859497df4dff17aae1da55333890",
-      "sourceProofSha256": "e37098c628dd0463c069fa54251135d7711137e4482303608d01327f1eaa0b83",
+      "sourceSha256": "494f24947a3d770ea4715f18bd49ec85a619cc9c50b1f07dd1b1c209b76d315a",
+      "sourceProofSha256": "f86824fb43519237eccbf21e2b4e6647d08f9d4614033ba1827951d9832729d3",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -10383,10 +10402,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md"
+        "docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md",
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01公共商业字段权限合同更新：本模块实际存在的价格/金额/报表字段按对应价格码，finance:view:all只扩数据范围；历史/草稿/分析不得替代字段授权。本页不具商业事实的入口保持无价格字段。原生迁移状态/DoD不变，接入时复用后端权威及共享样例。见docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md。",
-      "lastUpdated": "2026-11-01"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01公共商业字段权限合同更新：本模块实际存在的价格/金额/报表字段按对应价格码，finance:view:all只扩数据范围；历史/草稿/分析不得替代字段授权。本页不具商业事实的入口保持无价格字段。原生迁移状态/DoD不变，接入时复用后端权威及共享样例。见docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:41.619958+00:00"
     },
     {
       "id": "W7-BIZ-155",
@@ -10654,8 +10674,8 @@
       "phase": "D",
       "feature": "subcontract",
       "businessSource": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
-      "sourceSha256": "2628504fd6d5a55e03173292fb2a8021535c4e5d20a19176317278bad3e83a33",
-      "sourceProofSha256": "f1a2c5607b8f115524ecee6bf0db146c16c233f09240b9f63f3da41c41556d73",
+      "sourceSha256": "0766104299354b1fe90fb333eec3005e07f02b5584ddc5f95f124a98cbd7a6ab",
+      "sourceProofSha256": "594b398eb4cd58daaf1f64fb14a6d1a4f8fd58c888378ba1e88d53a7f2c92a8a",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -10684,10 +10704,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md"
+        "docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md",
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01公共商业字段权限合同更新：本模块实际存在的价格/金额/报表字段按对应价格码，finance:view:all只扩数据范围；历史/草稿/分析不得替代字段授权。本页不具商业事实的入口保持无价格字段。原生迁移状态/DoD不变，接入时复用后端权威及共享样例。见docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md。",
-      "lastUpdated": "2026-11-01"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01公共商业字段权限合同更新：本模块实际存在的价格/金额/报表字段按对应价格码，finance:view:all只扩数据范围；历史/草稿/分析不得替代字段授权。本页不具商业事实的入口保持无价格字段。原生迁移状态/DoD不变，接入时复用后端权威及共享样例。见docs/99-项目治理/2026-11-01-价格分析入口与商业价格权限收口.md。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:42.437641+00:00"
     },
     {
       "id": "W7-BIZ-162",
@@ -11149,7 +11170,7 @@
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/materialbin/pages/workshop_material_bin_page.dart",
       "sourceSha256": "5b132eac076046f0b7ef18a351c036a441531a7420ca7d6da803ef0149cc3336",
-      "sourceProofSha256": "ba6d64fc0013303b3a2a7f73efcbbec9659d42d3f76a3ec82ab76155025d1ab2",
+      "sourceProofSha256": "fa0f341fa338355709fa090a2199f2a0b6d1be09fad9fb6bfc38884234fe87d5",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -11179,10 +11200,11 @@
       ],
       "evidence": [
         "clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json",
-        "clients/windows_legacy/progress/evidence/category-loading-closeout-20261101.json"
+        "clients/windows_legacy/progress/evidence/category-loading-closeout-20261101.json",
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
       ],
-      "notes": "2026-11-01 Flutter/Web 内料仓库存先呈现，期间/结算状态独立等待，新操作仍待完整就绪证明；数量、仓库范围、在办草稿和未知提交不改。WPF 此业务仍未迁移，保持 todo；见 E-CATEGORY-LOADING-CLOSEOUT-20261101。",
-      "lastUpdated": "2026-11-02T02:58:30.875026+00:00"
+      "notes": "2026-11-01 Flutter/Web 内料仓库存先呈现，期间/结算状态独立等待，新操作仍待完整就绪证明；数量、仓库范围、在办草稿和未知提交不改。WPF 此业务仍未迁移，保持 todo；见 E-CATEGORY-LOADING-CLOSEOUT-20261101。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:43.176799+00:00"
     },
     {
       "id": "W7-BIZ-174",
@@ -11365,8 +11387,8 @@
       "phase": "D",
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/finance_arrival_exception_pages.dart",
-      "sourceSha256": "9516e45c56196a0770daf16cc7e9c3d6e6063b6b740e640dc4680c6195f1967c",
-      "sourceProofSha256": "3b0ec0ddcfd56910b93c1094ceb81a39ac4f826a2d1fded854fd8921a1fd01ee",
+      "sourceSha256": "0139a87f6f34425ff6139cb0986d23d2936252f6a9c1f251d70c29ec71f1549b",
+      "sourceProofSha256": "f3e17f87b6a1641d17360442debe60f94dcecc78196b8859dda6b2e58142e237",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -11397,10 +11419,11 @@
       ],
       "evidence": [
         "clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json",
-        "clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json"
+        "clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json",
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 新登记未迁移伴随源：财务到货异常列表/详情两个真实app_router构造。财务定案权限/原source和金额、动作状态/版本独立；supplier_return_task:view:all不授予财务办理身份。\n2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。",
-      "lastUpdated": "2026-11-01"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 新登记未迁移伴随源：财务到货异常列表/详情两个真实app_router构造。财务定案权限/原source和金额、动作状态/版本独立；supplier_return_task:view:all不授予财务办理身份。\n2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:43.926282+00:00"
     },
     {
       "id": "W7-BIZ-178",
@@ -11622,7 +11645,7 @@
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/production_finished_inbound_tasks_page.dart",
       "sourceSha256": "0f31b2d908e2c1e044093dd3ae266e0a231dd3e2bd243ca285486fddfd978cb7",
-      "sourceProofSha256": "616e745db14ecf796e690a169eaa292ef82b61a2848ede9b0a4d9b80f22bc0a9",
+      "sourceProofSha256": "adceb918b19169ce94504475a22d86144e35eb4452a50bb3efaa898f5f55e7a6",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -11996,7 +12019,7 @@
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/warehouse_draw_task_center_page.dart",
       "sourceSha256": "d6ca6fbba7178a01069446911bc5c008b742ce59f7720245beee4df7d23e9d74",
-      "sourceProofSha256": "f9d7167c3444e814d320c3bfb531329d913311079979c7a05b3472a50d3d8470",
+      "sourceProofSha256": "d9558fa4d280e1c4849af00cb0383861805b14d11e7352478e18b1749275ffbc",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -12023,9 +12046,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:44.708355+00:00"
     },
     {
       "id": "W7-BIZ-192",
@@ -12079,7 +12104,7 @@
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/warehouse_inbound_expectations_page.dart",
       "sourceSha256": "28d54418fcd80c76199ee187c4abee0b58e3f34b3281ef5be3d33322da41d360",
-      "sourceProofSha256": "8ec44b2e5ff6104a95cbb3ca17610c3cf8705dbc92f9650c0d8ad7bdf7a47933",
+      "sourceProofSha256": "4b0b272e4c3ef2118d3d09844730d4eeb62cf88b2a717de84cf26df23e212264",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -12118,8 +12143,8 @@
       "phase": "D",
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/warehouse_inbound_task_center_page.dart",
-      "sourceSha256": "0099ad41222b3db2885f498c84201e7d9b7db01e447a651bd683e46cf745775f",
-      "sourceProofSha256": "e2162fa31c9a44b35040841bc7c7a5959b68cd1cddbdcc3c69a25b66a24211e5",
+      "sourceSha256": "1e60b66c32a1f604ec565926465da85466db6247820ecb34f154d33cf6ef31b5",
+      "sourceProofSha256": "14229ffec7053204315d42ce548386b0d460b1d4606266d050f7aa454d116625",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -12147,10 +12172,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json"
+        "clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json",
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。",
-      "lastUpdated": "2026-11-02T21:35:41.316298+00:00"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:45.501681+00:00"
     },
     {
       "id": "W7-BIZ-195",
@@ -12242,8 +12268,8 @@
       "phase": "D",
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/warehouse_outbound_task_center_page.dart",
-      "sourceSha256": "46ac737d86f54a61f85eab2afbd62f3a9eb9d2a752dbca4bfca3120b05f2640a",
-      "sourceProofSha256": "3d0cb7e5acb15bfc69b5588029aad7e1d248937c84ef56e240ebce4b207cf868",
+      "sourceSha256": "5cef08e972fc319c51cda7942da116f79d24d912d6f421cc8c7f4a6107937afc",
+      "sourceProofSha256": "553a5f65e789c3e836a3054e22c9f7ac828783b9e7b430fc9afe769cb2fe0dd5",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -12271,9 +12297,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:46.273182+00:00"
     },
     {
       "id": "W7-BIZ-198",
@@ -12408,8 +12436,8 @@
       "phase": "D",
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
-      "sourceSha256": "d320622717ca4a4366015711da3a4ef13ade7a2b5925310da298e2e7aea4bd9d",
-      "sourceProofSha256": "1daea5202ace11a029a4aa65b66be93be3004ff44b1ac995113c7baac04ab598",
+      "sourceSha256": "061610cb8143aca57767f669ba0126320c48749cd1f86e637578d5d2ec245248",
+      "sourceProofSha256": "ea3976099cccf4fa56826a0ea30af58d56a28279f354a58e336c173eba7cca00",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -12437,9 +12465,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:47.036271+00:00"
     },
     {
       "id": "W7-BIZ-202",
@@ -12573,7 +12603,7 @@
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/warehouse_sales_outbound_page.dart",
       "sourceSha256": "21b2ce33bc294cc1b4a3d036b1e6a86e261f0c876603136b623f4bf7e1cd59c9",
-      "sourceProofSha256": "ffd1edbdf4edaf135a5a08c696ff35c5c03f6c9804175a53f0ed500ee3d14bdd",
+      "sourceProofSha256": "fe503cb71fd6e79df9f6da2b9eb8ad204733c3ce663782514fb7dda38327bf27",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -12740,7 +12770,7 @@
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/warehouse_subcontract_outbound_page.dart",
       "sourceSha256": "a0c80e9c61b619c4fc377babe5f21d65d31a1c2a02b7b4dd052e7d5a2fbcedca",
-      "sourceProofSha256": "66c4ebf01b4bce7067240ac0230b1868b17ffa2b88ed4e7cf6e69921d13411c8",
+      "sourceProofSha256": "269105e17276203c6e4785d3271c8fa3957eb0f322e2aba6f117a2717f3ea9ab",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -12779,8 +12809,8 @@
       "phase": "D",
       "feature": "warehouse",
       "businessSource": "lib/features/warehouse/pages/warehouse_task_center_page.dart",
-      "sourceSha256": "eaaf4098a3784c716c5fd4d494f4733973e90d3d695185790812dfd03a6d8566",
-      "sourceProofSha256": "222c556fc54cc01dc65c18f33b800d7a6264ac017387c9bc377c5399a8799365",
+      "sourceSha256": "eb41504ef8bbbc0501f471162c54a7fcdbdec0a6cb9cc920c98b409612208c41",
+      "sourceProofSha256": "f8ba5bef2279c7ff36029ba2a9f6ec4ced3b8fa20d51548d563cbeb98d3e0311",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -12810,10 +12840,11 @@
       ],
       "evidence": [
         "clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json",
-        "clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json"
+        "clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json",
+        "clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 仓库多工单弹窗先关闭根弹窗再跳详情；无指定材料的申请显示待仓库填写材料，不生成虚构货品数量。WPF 本页仍未迁移。\n2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。",
-      "lastUpdated": "2026-11-02T21:35:41.316298+00:00"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 仓库多工单弹窗先关闭根弹窗再跳详情；无指定材料的申请显示待仓库填写材料，不生成虚构货品数量。WPF 本页仍未迁移。\n2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。\n2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。",
+      "lastUpdated": "2026-11-03T18:00:47.781526+00:00"
     },
     {
       "id": "W7-BIZ-211",

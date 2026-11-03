@@ -32,6 +32,9 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/display_datetime.dart';
 import '../../../shared/models/paged_result.dart';
+import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/auth/permissions.dart';
+import '../../finance/providers/finance_audit_preparation_provider.dart';
 import '../../../shared/auth/native_read_view_scope_mixin.dart'
     show nativeReadAccessDenied;
 import '../../../shared/models/procurement_inbound.dart';
@@ -81,10 +84,30 @@ class _FinanceArrivalExceptionTasksPageState
   @override
   void initState() {
     super.initState();
+    listenReadOwner(ref, () {
+      setState(() {
+        ++_requestVersion;
+        _result = null;
+        _acceptedQuery = null;
+        _loading = false;
+        _error = null;
+      });
+      final current = captureReadOwner(ref);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            current() &&
+            (ref.read(isSuperAdminProvider) ||
+                ref
+                    .read(currentPermissionsProvider)
+                    .contains(Perm.financeOrderApprovalView))) {
+          _load(1, preferPrepared: true);
+        }
+      });
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final completion = widget.refreshCompletion;
-      _load(1).whenComplete(() {
+      _load(1, preferPrepared: true).whenComplete(() {
         if (completion != null && !completion.isCompleted) {
           completion.complete();
         }
@@ -114,8 +137,10 @@ class _FinanceArrivalExceptionTasksPageState
     super.dispose();
   }
 
-  Future<void> _load(int page) async {
+  Future<void> _load(int page, {bool preferPrepared = false}) async {
     final requestVersion = ++_requestVersion;
+    final owner = captureReadOwner(ref);
+    bool current() => mounted && requestVersion == _requestVersion && owner();
     final query = _status;
     setState(() {
       if (_acceptedQuery != query) _result = null;
@@ -123,17 +148,25 @@ class _FinanceArrivalExceptionTasksPageState
       _error = null;
     });
     try {
-      final result = await ref
-          .read(procurementInboundRepositoryProvider)
-          .financeTasks(page: page, status: _status);
-      if (!mounted || requestVersion != _requestVersion) return;
+      final repo = ref.read(procurementInboundRepositoryProvider);
+      final result = page == 1
+          ? await ref
+                .read(financeAuditPreparedPagesProvider)
+                .arrivals
+                .read(
+                  financeArrivalReadKey(repo, page: page, status: query),
+                  () => repo.financeTasks(page: page, status: query),
+                  preferPrepared: preferPrepared,
+                )
+          : await repo.financeTasks(page: page, status: query);
+      if (!current()) return;
       setState(() {
         _result = result;
         _acceptedQuery = query;
         _loading = false;
       });
     } on ApiException catch (error) {
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!current()) return;
       setState(() {
         if (nativeReadAccessDenied(error)) {
           _result = null;
@@ -143,7 +176,7 @@ class _FinanceArrivalExceptionTasksPageState
         _loading = false;
       });
     } catch (_) {
-      if (!mounted || requestVersion != _requestVersion) return;
+      if (!current()) return;
       setState(() {
         _error = '超量到货任务加载失败，请检查网络后重试';
         _loading = false;

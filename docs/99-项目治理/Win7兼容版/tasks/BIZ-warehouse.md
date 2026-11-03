@@ -22,9 +22,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`；`clients/windows_legacy/progress/evidence/category-loading-closeout-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`；`clients/windows_legacy/progress/evidence/category-loading-closeout-20261101.json`；`clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json`。
 
-接续/限制：2026-11-01 Flutter/Web 内料仓库存先呈现，期间/结算状态独立等待，新操作仍待完整就绪证明；数量、仓库范围、在办草稿和未知提交不改。WPF 此业务仍未迁移，保持 todo；见 E-CATEGORY-LOADING-CLOSEOUT-20261101。。
+接续/限制：2026-11-01 Flutter/Web 内料仓库存先呈现，期间/结算状态独立等待，新操作仍待完整就绪证明；数量、仓库范围、在办草稿和未知提交不改。WPF 此业务仍未迁移，保持 todo；见 E-CATEGORY-LOADING-CLOSEOUT-20261101。；2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。。
 
 ## W7-BIZ-174
 
@@ -143,9 +143,9 @@
 9. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 10. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`；`clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json`；`clients/windows_legacy/progress/evidence/review-layout-and-refresh-20261101.json`；`clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 新登记未迁移伴随源：财务到货异常列表/详情两个真实app_router构造。财务定案权限/原source和金额、动作状态/版本独立；supplier_return_task:view:all不授予财务办理身份。；2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 新登记未迁移伴随源：财务到货异常列表/详情两个真实app_router构造。财务定案权限/原source和金额、动作状态/版本独立；supplier_return_task:view:all不授予财务办理身份。；2026-11-01 补充：审核页悬浮动作/顶栏刷新、财务小类徽章同源、销售编辑返回认领刷新循环的客户端公共分类合同已修复；本 WPF 页面仍未迁移。详见docs/99-项目治理/2026-11-01-订单复审刷新循环与审核布局补充.md。；2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。。
 
 ## W7-BIZ-178
 
@@ -500,9 +500,9 @@
 7. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 8. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。。
 
 ## W7-BIZ-192
 
@@ -570,9 +570,9 @@
 7. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 8. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json`。
+证据：`clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json`；`clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。；2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。。
 
 ## W7-BIZ-195
 
@@ -642,9 +642,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。。
 
 ## W7-BIZ-198
 
@@ -738,9 +738,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。。
 
 ## W7-BIZ-202
 
@@ -952,9 +952,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json`；`clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json`。
+证据：`clients/windows_legacy/progress/evidence/task-sales-warehouse-repair-20261101.json`；`clients/windows_legacy/progress/evidence/warehouse-inbound-progress-20261102.json`；`clients/windows_legacy/progress/evidence/category-prefetch-sweep-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 仓库多工单弹窗先关闭根弹窗再跳详情；无指定材料的申请显示待仓库填写材料，不生成虚构货品数量。WPF 本页仍未迁移。；2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 仓库多工单弹窗先关闭根弹窗再跳详情；无指定材料的申请显示待仓库填写材料，不生成虚构货品数量。WPF 本页仍未迁移。；2026-11-02 采购/委外新增精确已入库、合格待入库、剩余待退进度及双击原办理/退回导航合同；WPF 本入口仍未迁移，状态/DoD不变，接入时保留原owner/权限/版本与未知提交保护。见入库退回进度实施记录。；2026-11-03 同类任务页面预加载扩查：前端同口径徽章/有界首屏交接已按当前源码处理；WPF 对应业务仍未迁移，不因 Dart 或公共测试提高状态。后续接入须遵守完整查询、源实例/身份/权限/写修订隔离、全 App 两条物理投机预算及原历史/期间/能力闸门；详见本轮 evidence。。
 
 ## W7-BIZ-211
 

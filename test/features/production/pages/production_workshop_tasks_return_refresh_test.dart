@@ -841,7 +841,12 @@ ProductionExecutionWorkbenchRepository _repository(void Function() onLoad) {
       onRequest: (request, handler) {
         final data = switch (request.path) {
           '/production/workshop-tasks' => () {
-            onLoad();
+            // These return/refresh cases count the selected reporting query.
+            // Sibling active-stage preparations do not represent a foreground
+            // return refresh and are checked by the preparation suite.
+            if (request.queryParameters['status'] == 'IN_PROGRESS') {
+              onLoad();
+            }
             return {
               'items': [
                 {

@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/router/route_names.dart';
-import '../../../core/router/route_access_policy.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/warehouse/warehouse_task_badges.dart';
 import '../providers/warehouse_count_refresh.dart';
+import '../providers/warehouse_task_page_preparation.dart';
 import '../repositories/warehouse_task_center_repository.dart';
 import '../widgets/warehouse_task_center_scaffold.dart';
 import '../widgets/warehouse_task_records_view.dart';
@@ -33,28 +33,15 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
     final superAdmin = ref.watch(isSuperAdminProvider);
     bool can(String code) => superAdmin || permissions.contains(code);
     final canArrival = can(Perm.warehouseInboundView);
-    final canQuality = locationAllowedFor(
-      permissions,
-      superAdmin,
-      RouteName.warehouseQualityResults,
-    );
     final canStock = can(Perm.stockDocView);
     final canWorkshop = can(Perm.workshopMaterialView);
     int? fact(String key) => ref.watch(warehouseTaskFactOrNullProvider(key));
     int? sum(int? a, int? b) => a == null || b == null ? null : a + b;
-    final sources = <String, String>{
-      if (canArrival ||
-          canQuality ||
-          can(Perm.warehousePurchaseReceiptHistoryView))
-        'PURCHASE': '采购入库',
-      if (canArrival ||
-          canQuality ||
-          can(Perm.warehouseSubcontractReceiptHistoryView))
-        'SUBCONTRACT': '委外入库',
-      if (canStock) 'FINISHED': '产成品入库',
-      if (canStock) 'OTHER': '其它入库',
-      if (canStock || canWorkshop) 'RETURN': '生产退料',
-    };
+    final sources = warehouseTaskSources(
+      WarehouseTaskDirection.inbound,
+      permissions,
+      superAdmin,
+    );
     if (sources.isEmpty) return const Center(child: Text('暂无已授权的入库单据'));
     final segments = <WarehouseTaskSegmentSpec>[
       for (final entry in sources.entries)
@@ -103,6 +90,17 @@ class WarehouseInboundTaskCenterPage extends ConsumerWidget {
       externalRefreshTick: externalRefreshTick,
       externalHeader: externalHeader,
       onResume: () => invalidateWarehouseTaskCounts(ref),
+      onPrepare: (keyword, scope, refreshTick, canPrepare) =>
+          prepareWarehouseTaskPages(
+            ref,
+            context,
+            direction: WarehouseTaskDirection.inbound,
+            sources: sources.keys,
+            scope: scope,
+            keyword: keyword,
+            refreshTick: refreshTick,
+            canPrepare: () => canPrepare,
+          ),
       bodyBuilder: (source, keyword, refresh, header) =>
           WarehouseTaskRecordsView(
             key: ValueKey(('inbound', source)),

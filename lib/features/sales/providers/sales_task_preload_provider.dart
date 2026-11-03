@@ -1,9 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/network/data_write_revision.dart';
-import '../../../shared/paging/prepared_page_read.dart';
+import '../../../shared/paging/page_preparation_coordinator.dart';
+import '../../../shared/paging/page_preparation_budget_provider.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 import '../models/sales_doc.dart';
 import '../repositories/sales_repository.dart';
@@ -11,34 +10,22 @@ import '../repositories/sales_repository.dart';
 /// Prepare only the current category's working first pages. Two shared workers
 /// survive category switches so abandoned categories cannot flood the network.
 class SalesTaskPreloader {
-  SalesTaskPreloader(this._ref);
+  SalesTaskPreloader(Ref ref)
+    : _ref = ref,
+      _coordinator = PagePreparationCoordinator(
+        budget: ref.read(pagePreparationBudgetProvider),
+      );
   final Ref _ref;
-  String? _group;
-  int _active = 0;
-  bool _disposed = false;
-  final _waiting = <Future<void> Function()>[];
-  bool Function()? _canPrepare;
-  final _batchAge = Stopwatch();
+  final PagePreparationCoordinator _coordinator;
 
   void prepare(String group, {required bool Function() canPrepare}) {
-    _canPrepare = canPrepare;
-    if (_disposed) return;
-    if (_group == group &&
-        (_active > 0 ||
-            _waiting.isNotEmpty ||
-            _batchAge.elapsed < PreparedPageRead.defaultFreshFor)) {
-      _drain();
-      return;
-    }
-    _group = group;
-    _batchAge
-      ..reset()
-      ..start();
-    _waiting.clear();
+    final jobs = <Future<void> Function()>[];
+    Object? source;
     if (group == 'progress') {
       final repo = _ref.read(salesRepositoryProvider(SalesDocType.order));
+      source = repo;
       for (final stage in const ['DRAFT', 'IN_PROGRESS', 'READY_TO_SHIP']) {
-        _waiting.add(() => repo.prepareProgress(stage));
+        jobs.add(() => repo.prepareProgress(stage));
       }
     } else {
       final type = switch (group) {
@@ -50,6 +37,7 @@ class SalesTaskPreloader {
       };
       if (type != null) {
         final repo = _ref.read(salesRepositoryProvider(type));
+        source = repo;
         final filters = type == SalesDocType.quote
             ? [
                 const SalesDocFilter(bucket: 'ACTIVE'),
@@ -68,39 +56,19 @@ class SalesTaskPreloader {
               ]
             : const [SalesDocFilter(status: kSalesStatusDraft)];
         for (final filter in filters) {
-          _waiting.add(() => repo.prepareList(filter: filter));
+          jobs.add(() => repo.prepareList(filter: filter));
         }
       }
     }
-    // Register the handoff before post-frame automatic task selection.
-    // Transport yields normally without blocking layout.
-    _drain();
-  }
-
-  void _drain() {
-    while (!_disposed &&
-        _active < 2 &&
-        _waiting.isNotEmpty &&
-        (_canPrepare?.call() ?? false)) {
-      final task = _waiting.removeAt(0);
-      _active++;
-      unawaited(
-        Future<void>.sync(task).catchError((Object _) {}).whenComplete(() {
-          _active--;
-          _drain();
-        }),
-      );
-    }
+    _coordinator.prepare([group, source], jobs, canPrepare: canPrepare);
   }
 
   void dispose() {
-    _disposed = true;
-    _waiting.clear();
+    _coordinator.dispose();
   }
 
   void retire() {
-    _group = null;
-    _waiting.clear();
+    _coordinator.retire();
   }
 }
 
@@ -110,13 +78,13 @@ final salesTaskPreloaderProvider = Provider((ref) {
   final preloader = SalesTaskPreloader(ref);
   // Retire the jobs, not the physical workers. Late transports from a prior
   // owner still occupy the same two slots until they finish.
-  void retire() {
-    preloader.retire();
-    ref.notifyListeners();
-  }
+  final retire = pagePreparationRetirementCallback(ref, preloader.retire);
 
   ref.listen(exportContextEpochProvider, (_, _) => retire());
   ref.listen(dataWriteRevisionProvider, (_, _) => retire());
+  for (final type in SalesDocType.values) {
+    ref.listen(salesRepositoryProvider(type), (_, _) => retire());
+  }
   ref.onDispose(preloader.dispose);
   return preloader;
 }, dependencies: [exportContextEpochProvider, salesRepositoryProvider]);

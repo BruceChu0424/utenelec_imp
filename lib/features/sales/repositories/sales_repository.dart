@@ -146,7 +146,12 @@ class SalesRepository {
 
   Future<void> prepareList({required SalesDocFilter filter}) async {
     final query = _listQuery(filter: filter);
-    await preparedLists?.prepare([api, _base, query], () => _fetchList(query));
+    await preparedLists?.prepare([
+      this,
+      api,
+      _base,
+      query,
+    ], () => _fetchList(query));
   }
 
   Future<PagedResult<SalesDocListItem>> list({
@@ -167,7 +172,7 @@ class SalesRepository {
     final prepared = preparedLists;
     if (page == 1 && prepared != null) {
       return prepared.read(
-        [api, _base, query],
+        [this, api, _base, query],
         () => _fetchList(query),
         preferPrepared: preferPrepared,
       );
@@ -318,7 +323,7 @@ class SalesRepository {
     final prepared = preparedProgress;
     if (page == 1 && prepared != null) {
       return prepared.read(
-        [api, query],
+        [this, api, query],
         () => _fetchProgress(query),
         preferPrepared: preferPrepared,
       );
@@ -332,7 +337,7 @@ class SalesRepository {
     // Match the visible page's complete default query. Preparation never asks
     // for history, all rows, facets or the pagination look-ahead window.
     final query = _progressQuery(size: 50, stage: stage);
-    await prepared.prepare([api, query], () => _fetchProgress(query));
+    await prepared.prepare([this, api, query], () => _fetchProgress(query));
   }
 
   /// 订单进度订单号列值筛选桶（2026-09-25 单号列统一）：与列表同一过滤口径分组计数。

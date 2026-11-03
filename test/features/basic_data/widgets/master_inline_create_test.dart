@@ -153,7 +153,7 @@ void main() {
       addTearDown(controller.dispose);
       final key = controller.creationDraftKeys.first;
       controller.setCreationValue(key, 'name', '尚未确认的新资料');
-      final save = controller.save((id, patch) async {});
+      final save = controller.save((id, patch) async {}, exitOnSuccess: true);
       await started.future;
       controller.retireReadScope();
       expect(controller.creationIsUncertain(key), isTrue);
@@ -163,6 +163,7 @@ void main() {
       expect(await controller.save((id, patch) async {}), isFalse);
       expect(writes, [key]);
       expect(controller.creationDraftKeys, contains(key));
+      expect(controller.active, isTrue);
     },
   );
   testWidgets(
@@ -381,13 +382,14 @@ void main() {
     controller.setCreationValue(first, 'name', 'Confirmed one');
     final second = controller.creationDraftKeys[1];
     controller.setCreationValue(second, 'name', 'Confirmed two');
-    expect(await controller.save(_discardUpdate), isFalse);
+    expect(await controller.save(_discardUpdate, exitOnSuccess: true), isFalse);
     expect(creates, 2);
     expect(refreshes, 1);
     expect(controller.dirty, isFalse);
     expect(controller.creationDraftKeys, isNot(contains(first)));
     expect(controller.creationDraftKeys, isNot(contains(second)));
     expect(controller.error, contains('资料已保存'));
+    expect(controller.active, isTrue);
     expect(await controller.save(_discardUpdate), isFalse);
     expect(creates, 2);
   });

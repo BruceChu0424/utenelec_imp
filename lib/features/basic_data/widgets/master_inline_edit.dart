@@ -458,6 +458,7 @@ class MasterInlineEditController<T> extends ChangeNotifier {
   Future<bool> save(
     Future<void> Function(String, Map<String, dynamic>) saveRow, {
     Future<void> Function()? beforeWrite,
+    bool exitOnSuccess = false,
   }) async {
     if (!active || busy || !dirty) return false;
     if (_patches.keys.any(_retiredReadRows.contains)) {
@@ -553,6 +554,9 @@ class MasterInlineEditController<T> extends ChangeNotifier {
       _originals.clear();
       _baselines.clear();
       _fields.clear();
+      // Finish in the same authority epoch as the acknowledged batch. Failed,
+      // uncertain or remaining drafts must keep their editing session.
+      if (exitOnSuccess && creationComplete && !dirty) invalidateAuthority();
       notifyListeners();
       return creationComplete;
     } catch (failure) {
@@ -1168,6 +1172,7 @@ class MasterInlineEditActions<T> extends StatelessWidget {
     this.embedded = false,
     this.cancelLabel,
     this.discardNote,
+    this.exitOnSuccess = false,
   });
   final MasterInlineEditController<T> controller;
   final bool canEdit;
@@ -1176,6 +1181,7 @@ class MasterInlineEditActions<T> extends StatelessWidget {
   final List<Widget> additionalActions;
   final String? cancelLabel;
   final String? discardNote;
+  final bool exitOnSuccess;
 
   /// The master table already owns the outer floating group and selection count.
   final bool embedded;
@@ -1258,7 +1264,11 @@ class MasterInlineEditActions<T> extends StatelessWidget {
         onPressed:
             !(canEdit || canCreate) || controller.busy || !controller.dirty
             ? null
-            : () => controller.save(onSave, beforeWrite: _paintFeedback),
+            : () => controller.save(
+                onSave,
+                beforeWrite: _paintFeedback,
+                exitOnSuccess: exitOnSuccess,
+              ),
         child: Text(
           localizedText(
             context,

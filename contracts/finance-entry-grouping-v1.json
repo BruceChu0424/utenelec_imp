@@ -1,0 +1,214 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "same_supplier_keeps_two_lines_and_exact_amounts",
+      "entries": [
+        {
+          "supplierId": "A",
+          "accountId": "bank",
+          "currencyId": "CNY",
+          "exchangeRate": "1",
+          "accountAmount": "100.000000000000000000000001",
+          "bankFeeAccountAmount": "0",
+          "items": [
+            {
+              "amountOriginal": "100.000000000000000000000001"
+            }
+          ]
+        },
+        {
+          "supplierId": "A",
+          "accountId": "bank",
+          "currencyId": "CNY",
+          "exchangeRate": "1",
+          "accountAmount": "2.000000000000000000000002",
+          "bankFeeAccountAmount": "0",
+          "items": [
+            {
+              "amountOriginal": "2.000000000000000000000002"
+            }
+          ]
+        }
+      ],
+      "groups": 1,
+      "lineCounts": [
+        2
+      ],
+      "accountAmounts": [
+        "102.000000000000000000000003"
+      ]
+    },
+    {
+      "name": "supplier_account_currency_method_are_distinct",
+      "entries": [
+        {
+          "supplierId": "A",
+          "accountId": "bank1",
+          "currencyId": "CNY",
+          "paymentMethodId": "cash",
+          "items": [
+            {}
+          ]
+        },
+        {
+          "supplierId": "B",
+          "accountId": "bank1",
+          "currencyId": "CNY",
+          "paymentMethodId": "cash",
+          "items": [
+            {}
+          ]
+        },
+        {
+          "supplierId": "A",
+          "accountId": "bank2",
+          "currencyId": "CNY",
+          "paymentMethodId": "cash",
+          "items": [
+            {}
+          ]
+        },
+        {
+          "supplierId": "A",
+          "accountId": "bank1",
+          "currencyId": "USD",
+          "paymentMethodId": "cash",
+          "items": [
+            {}
+          ]
+        },
+        {
+          "supplierId": "A",
+          "accountId": "bank1",
+          "currencyId": "CNY",
+          "paymentMethodId": "transfer",
+          "items": [
+            {}
+          ]
+        }
+      ],
+      "groups": 5,
+      "lineCounts": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "projects_departments_and_line_notes_do_not_split_headers",
+      "entries": [
+        {
+          "accountId": "bank",
+          "currencyId": "CNY",
+          "items": [
+            {
+              "expenseStyleId": "travel",
+              "departmentId": "D1",
+              "remark": "first"
+            }
+          ]
+        },
+        {
+          "currencyId": "CNY",
+          "accountId": "bank",
+          "items": [
+            {
+              "expenseStyleId": "office",
+              "departmentId": "D2",
+              "remark": "second"
+            }
+          ]
+        }
+      ],
+      "groups": 1,
+      "lineCounts": [
+        2
+      ]
+    },
+    {
+      "name": "different_bank_evidence_or_prepayment_order_stays_separate",
+      "entries": [
+        {
+          "clientId": "C",
+          "receiptKind": "AR_SETTLEMENT",
+          "bankReference": "R1",
+          "items": [
+            {}
+          ]
+        },
+        {
+          "clientId": "C",
+          "receiptKind": "AR_SETTLEMENT",
+          "bankReference": "R2",
+          "items": [
+            {}
+          ]
+        },
+        {
+          "clientId": "C",
+          "receiptKind": "CUSTOMER_PREPAYMENT",
+          "salesOrderId": "O1",
+          "items": []
+        },
+        {
+          "clientId": "C",
+          "receiptKind": "CUSTOMER_PREPAYMENT",
+          "salesOrderId": "O2",
+          "items": []
+        }
+      ],
+      "groups": 4,
+      "lineCounts": [
+        1,
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "receipt_rows_with_and_without_fee_stay_one_batch",
+      "entries": [
+        {
+          "clientId": "C",
+          "receiptKind": "AR_SETTLEMENT",
+          "accountId": "bank",
+          "feeSettlementMode": "NONE",
+          "feeBearer": "NONE",
+          "amountOriginal": "100",
+          "accountAmount": "100",
+          "bankFeeAccountAmount": "0",
+          "items": [
+            {
+              "amountOriginal": "100"
+            }
+          ]
+        },
+        {
+          "clientId": "C",
+          "receiptKind": "AR_SETTLEMENT",
+          "accountId": "bank",
+          "feeSettlementMode": "DEDUCTED_FROM_PROCEEDS",
+          "feeBearer": "COMPANY",
+          "amountOriginal": "35",
+          "accountAmount": "33",
+          "bankFeeAccountAmount": "2",
+          "items": [
+            {
+              "amountOriginal": "35"
+            }
+          ]
+        }
+      ],
+      "groups": 1,
+      "lineCounts": [
+        2
+      ],
+      "accountAmounts": [
+        "133"
+      ]
+    }
+  ]
+}

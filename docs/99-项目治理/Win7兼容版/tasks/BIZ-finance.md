@@ -189,9 +189,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`。
+证据：`clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json`；`clients/windows_legacy/progress/evidence/finance-batch-entry-20261102.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。；2026-11-02 钱流五类新建改为逐行往来单位/账户/方式/币种及同条件自动合单；新增 /api/finance/{seg}/batch 原子幂等合同，流水号选填、数量单价金额公共联动。WPF尚未迁移；不开放写入口，不据Flutter/后端结果标记本任务完成。接手须复用 contracts/finance-entry-grouping-v1.json、服务端分组与金额权威、整批回滚、未知提交及附件恢复。源码与验证边界见finance-batch-entry-20261102证据。。
 
 ## W7-BIZ-065
 

@@ -191,6 +191,19 @@ class FinanceRepository {
     return FinanceDocDetail.fromJson(json);
   }
 
+  Future<List<FinanceDocDetail>> createBatch(
+    Map<String, dynamic> command,
+  ) async {
+    final json = await api.post(
+      '${FinanceEndpoints.docBase(_seg)}/batch',
+      body: command,
+    );
+    return [
+      for (final item in (json['items'] as List))
+        FinanceDocDetail.fromJson(Map<String, dynamic>.from(item as Map)),
+    ];
+  }
+
   Future<FinanceDocDetail> update(String id, Map<String, dynamic> body) async {
     final json = await api.put(FinanceEndpoints.docOne(_seg, id), body: body);
     return FinanceDocDetail.fromJson(json);

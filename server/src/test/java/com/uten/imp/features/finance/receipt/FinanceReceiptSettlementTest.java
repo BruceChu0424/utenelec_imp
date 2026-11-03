@@ -342,14 +342,13 @@ class FinanceReceiptSettlementTest {
     }
 
     @Test
-    void v1RejectsMissingBankReferenceBeforeAccountMutation() {
+    void optionalBankReferenceAllowsDraftWithoutPostingAccounts() {
         ArApLedger ledger=receivable("100.0000","7.000000");
         FinanceReceiptSaveRequest request=request(ledger, "10.0000", "7.200000", "0.0000");
         request.setBankReference("   ");
 
-        assertThatThrownBy(() -> service.create(request))
-                .isInstanceOf(ApiException.class)
-                .hasMessageContaining("真实银行入账流水号");
+        FinanceReceiptDetail draft = service.create(request);
+        assertThat(draft.getBankReference()).isNull();
         verify(accountUpdate,never()).executeUpdate();
         verify(reconciliationInsert,never()).executeUpdate();
     }

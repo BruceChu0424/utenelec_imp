@@ -245,7 +245,7 @@ void main() {
           (column) => column.key == 'bankReference',
         );
         expect(bank.label, '银行流水号');
-        expect(bank.required, isTrue);
+        expect(bank.required, isFalse);
         expect(bank.headerInfo, contains('共用'));
       },
     );

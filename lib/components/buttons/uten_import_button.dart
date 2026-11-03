@@ -21,11 +21,13 @@ class UtenImportButton extends StatelessWidget {
     required this.onPressed,
     this.icon = Icons.download_rounded,
     this.height = UtenTableToolbar.controlHeight,
+    this.compactLabel = '引入',
   });
 
   final String label;
   final VoidCallback? onPressed;
   final IconData icon;
+  final String compactLabel;
 
   /// 控件高度。默认与「表头设置」同高（桌面40，触屏至少48）。
   final double height;
@@ -34,7 +36,7 @@ class UtenImportButton extends StatelessWidget {
   Widget build(BuildContext context) => UtenButton(
     onPressed: onPressed,
     icon: icon,
-    compactLabel: '引入',
+    compactLabel: compactLabel,
     semanticLabel: label,
     height: height,
     child: Text(label),

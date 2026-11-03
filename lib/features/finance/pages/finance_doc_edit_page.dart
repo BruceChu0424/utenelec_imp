@@ -45,6 +45,7 @@ import '../../../components/inputs/uten_employee_picker.dart';
 import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_field_placeholder.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_multi_value_cell.dart';
 import '../../../components/layout/uten_app_bar.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_collapsible_section.dart';
@@ -62,6 +63,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/currency_display.dart';
 import '../../../shared/models/department_node.dart';
 import '../../../shared/widgets/sales_order_picker.dart';
+import '../../../shared/widgets/uten_department_picker.dart';
 import '../../basic_data/models/client_node.dart';
 import '../../basic_data/models/reference_method_option.dart';
 import '../../basic_data/repositories/reference_method_repository.dart';
@@ -82,6 +84,13 @@ import '../config/finance_doc_config.dart';
 import '../intake/finance_intake_launcher.dart';
 import '../models/finance_decimal.dart';
 import '../models/finance_doc.dart';
+import '../models/finance_entry_request.dart';
+import '../models/finance_entry_terms.dart';
+import '../widgets/finance_entry_columns.dart';
+import '../../../components/layout/uten_adaptive_panel.dart';
+import '../../../components/feedback/uten_context_menu.dart';
+import '../../../components/layout/uten_panel_header.dart';
+
 import '../models/finance_document_currency.dart';
 import '../providers/finance_name_provider.dart';
 import '../repositories/customer_prepayment_repository.dart';
@@ -97,6 +106,8 @@ import '../../../core/ui/human_error_message.dart';
 import '../widgets/finance_receipt_totals.dart';
 import '../widgets/finance_entry_file_picker.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
+
+part 'finance_doc_batch_entry.dart';
 
 const _receiptKindArSettlement = 'AR_SETTLEMENT';
 const _receiptKindCustomerPrepayment = 'CUSTOMER_PREPAYMENT';
@@ -168,6 +179,41 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
   /// 明细表 sticky 表头是否已置顶（页面滚动条门控：置顶前不显示，置顶后才显示）。
   final _gridPinned = ValueNotifier<bool>(false);
   bool _saving = false;
+  bool _useBatchEntry = true;
+  final _entryDraftRevision = ValueNotifier<int>(0);
+  final _entryDraftSources = <Listenable>{};
+  void _notifyEntryDraft() => _entryDraftRevision.value++;
+  void _syncEntryDraftSources() {
+    final current = <Listenable>{
+      if (widget.id == null && _useBatchEntry)
+        for (final row in _grid.rows) ...[
+          row.entry,
+          row.department,
+          row.qty,
+          row.price,
+          row.amount,
+          row.exchangeRate,
+          row.writeOff,
+          row.remark,
+          row.styleIdNotifier,
+          row.inAccountIdNotifier,
+          row.occurDateNotifier,
+        ],
+    };
+    for (final source in _entryDraftSources.difference(current)) {
+      source.removeListener(_notifyEntryDraft);
+    }
+    for (final source in current.difference(_entryDraftSources)) {
+      source.addListener(_notifyEntryDraft);
+    }
+    _entryDraftSources
+      ..clear()
+      ..addAll(current);
+  }
+
+  List<String> _createdBatchIds = [];
+  Map<String, dynamic>? _batchCommand;
+  void _updateEntry(VoidCallback change) => setState(change);
   bool _preparingLedgerRows = false;
   bool _intakeBusy = false;
   int _rowPreparationEpoch = 0;
@@ -200,6 +246,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
   bool get formDraftBusy => _saving || _intakeBusy || _preparingLedgerRows;
   @override
   bool get formDraftCanReplaySubmission =>
+      _useBatchEntry ||
       _createdDocId != null ||
       widget.docType == FinanceDocType.receipt ||
       widget.docType == FinanceDocType.payment;
@@ -224,21 +271,28 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     _agentStatementNo,
     _grid,
     _pendingFiles,
-    for (final row in _grid.rows) ...[
-      row.department,
-      row.qty,
-      row.price,
-      row.amount,
-      row.exchangeRate,
-      row.writeOff,
-      row.remark,
-      row.styleIdNotifier,
-      row.inAccountIdNotifier,
-      row.occurDateNotifier,
-    ],
+    if (widget.id == null && _useBatchEntry)
+      _entryDraftRevision
+    else
+      for (final row in _grid.rows) ...[
+        row.entry,
+        row.department,
+        row.qty,
+        row.price,
+        row.amount,
+        row.exchangeRate,
+        row.writeOff,
+        row.remark,
+        row.styleIdNotifier,
+        row.inAccountIdNotifier,
+        row.occurDateNotifier,
+      ],
   ];
   @override
   Map<String, dynamic> captureFormDraft() => {
+    'entrySchema': _useBatchEntry ? 1 : null,
+    'createdBatchIds': _createdBatchIds,
+    'batchCommand': _batchCommand,
     'remark': _remark.text,
     'rate': _rate.text,
     'amountOriginal': _amountOriginal.text,
@@ -272,6 +326,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     'rows': [
       for (final row in _grid.rows)
         {
+          'entry': row.entry.toJson(),
+          'pricing': row.pricing?.exportState(),
           'department': row.department.text,
           'departmentName': row.departmentReferenceName,
           'qty': row.qty.text,
@@ -309,6 +365,11 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
   };
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    _useBatchEntry = widget.id == null && data['entrySchema'] == 1;
+    _createdBatchIds = draftStrings(data['createdBatchIds']);
+    _batchCommand = data['batchCommand'] is Map
+        ? draftMap(data['batchCommand'])
+        : null;
     final prepareEpoch = ++_rowPreparationEpoch;
     final rowOwner = _rowPreparationOwner(
       prepareEpoch,
@@ -399,6 +460,13 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         row.exchangeRate.text = draftText(item, 'exchangeRate');
         row.writeOff.text = draftText(item, 'writeOff');
         row.remark.text = draftText(item, 'remark');
+        if (_useBatchEntry) {
+          row.entry.restore(draftMap(item['entry']));
+          row.enableEntryPricing();
+          if (item['pricing'] != null) {
+            row.pricing?.restoreState(item['pricing']);
+          }
+        }
       },
       isCurrent: rowOwner,
       publish: _grid.replaceAll,
@@ -407,10 +475,15 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
     await ref
         .read(financeNameServiceProvider)
         .loadPartyNames(
-          clientIds: partyReferenceIds([if (_cfg.isClient) _partyId]),
+          clientIds: partyReferenceIds([
+            if (_cfg.isClient) _partyId,
+            if (_cfg.isClient) ..._grid.rows.map((row) => row.entry.partyId),
+          ]),
           supplierIds: partyReferenceIds([
             if (!_cfg.isClient) _partyId,
             _settlementAgentSupplierId,
+            if (_cfg.isSupplier) ..._grid.rows.map((row) => row.entry.partyId),
+            ..._grid.rows.map((row) => row.entry.agentId),
           ]),
         );
     if (!_rowPreparationOwner(prepareEpoch)()) return;
@@ -422,6 +495,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
   @override
   void initState() {
     super.initState();
+    _useBatchEntry = widget.id == null;
+    _grid.rowsListenable.addListener(_syncEntryDraftSources);
     // 付款汇率必须由财务明确填写，其他旧单据保留原有默认值。
     if (_cfg.type != FinanceDocType.payment) _rate.text = '1';
     _rate.addListener(_syncReceiptRateToRows);
@@ -430,6 +505,12 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
 
   @override
   void dispose() {
+    _grid.rowsListenable.removeListener(_syncEntryDraftSources);
+    for (final source in _entryDraftSources) {
+      source.removeListener(_notifyEntryDraft);
+    }
+    _entryDraftSources.clear();
+    _entryDraftRevision.dispose();
     _gridPinned.dispose();
     _pendingFiles.dispose();
     _billNo.dispose();
@@ -620,8 +701,12 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         );
         _syncReceiptRateToRows();
       }
-      if (_grid.isEmpty && !_cfg.isSettle) {
-        _grid.addRow(FinanceGridRow(mode: _cfg.itemMode));
+      if (_grid.isEmpty && (!_cfg.isSettle || widget.id == null)) {
+        _grid.addRow(
+          widget.id == null
+              ? _newEntryRow()
+              : FinanceGridRow(mode: _cfg.itemMode),
+        );
       }
     } on UiWorkCancelled {
       return;
@@ -661,6 +746,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
   }
 
   void _syncReceiptRateToRows() {
+    if (widget.id == null && _useBatchEntry) return;
     if (_cfg.type != FinanceDocType.receipt) return;
     final value = _rate.text.trim();
     for (final row in _grid.rows) {
@@ -1030,6 +1116,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
   }
 
   Future<void> _save() async {
+    if (widget.id == null && _useBatchEntry) return _saveEntryBatch();
     if (_saving || _intakeBusy || _preparingLedgerRows) return;
     if (_createdDocId case final createdId?) {
       // 单据已创建、凭证未全部上传：只补传附件，成功后进入详情。
@@ -1433,10 +1520,6 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       _receiptSettlementError('直接到账的汇率来源必须是银行回单');
       return null;
     }
-    if (_bankReference.text.trim().isEmpty) {
-      context.appError('请填写真实银行入账流水号');
-      return null;
-    }
 
     final accountAmountUnits = financeAmountUnits(_accountAmount.text.trim());
     if (accountAmountUnits == null || accountAmountUnits <= BigInt.zero) {
@@ -1616,10 +1699,6 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       context.appError('本位币同币付款汇率必须为1');
       return null;
     }
-    if (_bankReference.text.trim().isEmpty) {
-      context.appError('请填写真实银行扣款流水号');
-      return null;
-    }
     return {
       'accountCurrencyId': currency,
       'accountAmount': financeAmountFromUnits(debit),
@@ -1676,9 +1755,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
               decoration: UtenInputDecoration(
                 InputDecoration(
                   label: fieldLabel(
-                    financeEntryText(context, 'batchBankReference'),
+                    '${financeEntryText(context, 'batchBankReference')}（选填）',
                     theme,
-                    required: true,
                     info: financeEntryText(context, 'batchBankReferenceHint'),
                   ),
                 ),
@@ -2002,9 +2080,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                 key: const ValueKey('finance-payment-bank-reference'),
                 controller: _bankReference,
                 decoration: UtenInputDecoration(
-                  InputDecoration(
-                    label: fieldLabel('银行扣款流水号', theme, required: true),
-                  ),
+                  InputDecoration(label: fieldLabel('银行扣款流水号（选填）', theme)),
                   info: '用于银行对账和付款追溯。',
                 ),
               ),
@@ -2091,6 +2167,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
   bool get _canUseIntake {
     if (widget.id != null ||
         _createdDocId != null ||
+        _createdBatchIds.isNotEmpty ||
         !_cfg.isSettle ||
         _loading ||
         _saving ||
@@ -2107,11 +2184,15 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         permissions.contains(_cfg.createPerm);
   }
 
-  Future<void> _recognizeBankReceipt() async {
+  Future<void> _recognizeBankReceipt({FinanceGridRow? entry}) async {
+    final accountId = entry?.entry.accountId ?? _accountId;
+    final bankReference = entry?.entry.bankReference ?? _bankReference;
+    final accountAmount = entry?.entry.accountAmount ?? _accountAmount;
+    final bankFee = entry?.entry.fee ?? _bankFee;
     if (!_canUseIntake || _intakeBusy) return;
     final account = ref
         .read(financeNameServiceProvider)
-        .accountReferences[_accountId];
+        .accountReferences[accountId];
     if (account == null || account.status != '使用') {
       context.appWarning(financeEntryText(context, 'selectAccount'));
       return;
@@ -2138,9 +2219,9 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         docType: widget.docType,
         stillCurrent: current,
         currentFields: {
-          FinanceIntakeField.bankReference: _bankReference.text,
-          FinanceIntakeField.accountAmount: _accountAmount.text,
-          FinanceIntakeField.bankFee: _bankFee.text,
+          FinanceIntakeField.bankReference: bankReference.text,
+          FinanceIntakeField.accountAmount: accountAmount.text,
+          FinanceIntakeField.bankFee: bankFee.text,
         },
       );
       if (!mounted) return;
@@ -2161,7 +2242,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
       }
       final currentAccount = ref
           .read(financeNameServiceProvider)
-          .accountReferences[_accountId];
+          .accountReferences[accountId];
       if (currentAccount == null ||
           currentAccount.status != '使用' ||
           currentAccount.currencyId != account.currencyId ||
@@ -2196,8 +2277,8 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         }
       }
       setState(() {
-        if (patch.bankReference case final value?) _bankReference.text = value;
-        if (patch.accountAmount case final value?) _accountAmount.text = value;
+        if (patch.bankReference case final value?) bankReference.text = value;
+        if (patch.accountAmount case final value?) accountAmount.text = value;
       });
       context.appSuccess(financeEntryText(context, 'applied'));
     } on ApiException catch (error) {
@@ -2365,6 +2446,14 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
         permissions.contains(Perm.financeViewAll) &&
         permissions.contains(Perm.customerPrepaymentView) &&
         permissions.contains(Perm.financeReceiptCreate);
+    if (widget.id == null && _useBatchEntry) {
+      return _buildEntryBatch(
+        names,
+        financeMethods,
+        canRegisterCustomerPrepayment,
+        canApplyCustomerPrepayment,
+      );
+    }
     return withFormDraft(
       Scaffold(
         appBar: UtenAppBar(
@@ -2643,6 +2732,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                             _cfg.type == FinanceDocType.payment
                                             ? '引用应付'
                                             : '从应收应付引入',
+                                        compactLabel: '引用应付',
                                         onPressed:
                                             _saving || _createdDocId != null
                                             ? null
@@ -2669,6 +2759,7 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                                             'receipt-import-ar',
                                           ),
                                           label: '引用应收',
+                                          compactLabel: '引用应收',
                                           onPressed:
                                               _saving || _createdDocId != null
                                               ? null

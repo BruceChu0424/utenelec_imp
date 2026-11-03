@@ -1,4 +1,11 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+
+import 'package:flutter/rendering.dart';
 import 'package:dio/dio.dart';
+import 'package:uten_imp/shared/drafts/form_draft_mixin.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
+import '../../../support/audit_screenshot_support.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -331,50 +338,70 @@ void main() {
     },
   );
 
-  testWidgets(
-    'new order defaults to empty shipment policy for sales to choose',
-    (tester) async {
-      await _pumpEditor(tester, type: SalesDocType.order);
+  testWidgets('new order uses partial shipment without a policy input', (
+    tester,
+  ) async {
+    final capture = GlobalKey();
+    await _pumpEditor(tester, type: SalesDocType.order, capture: capture);
+    final form =
+        tester.state(find.byType(SalesDocEditPage))
+            as FormDraftMixin<SalesDocEditPage>;
+    expect(form.captureFormDraft()['shipmentPolicy'], 'ALLOW_PARTIAL');
+    await form.restoreFormDraft({
+      ...form.captureFormDraft(),
+      'shipmentPolicy': 'REQUIRE_COMPLETE',
+    });
+    await tester.pumpAndSettle();
+    expect(form.captureFormDraft()['shipmentPolicy'], 'ALLOW_PARTIAL');
 
-      expect(
-        find.byKey(const ValueKey('sales-order-shipment-policy')),
-        findsOneWidget,
-      );
-      // customerConfirm 不再提供给新单：默认空，由销售自选 ALLOW_PARTIAL / REQUIRE_COMPLETE。
-      expect(find.text('客户确认后分批'), findsNothing);
-      expect(find.textContaining('请选择发运策略'), findsNothing);
-      expect(_dropdownWithLabel('发运策略'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('sales-order-shipment-policy')),
+      findsNothing,
+    );
+    // 新单自动允许分批，不再要求选择策略。
+    expect(find.text('客户确认后分批'), findsNothing);
+    expect(find.textContaining('请选择发运策略'), findsNothing);
+    expect(_dropdownWithLabel('发运策略'), findsNothing);
 
-      // 销售订单仍需选择币种、填写税率，但汇率改由财务维护。
-      expect(_dropdownWithLabel('币种'), findsOneWidget);
-      final settlementFinder = _dropdownWithLabel('结账方式');
-      expect(settlementFinder, findsOneWidget);
-      final settlement = tester.widget<UtenDropdownField>(settlementFinder);
-      expect(settlement.required, isTrue);
-      expect(settlement.value, isNull);
-      expect(settlement.allowClear, isFalse);
-      final decorator = tester.widget<InputDecorator>(
-        find.descendant(
-          of: settlementFinder,
-          matching: find.byType(InputDecorator),
-        ),
-      );
-      final border = decorator.decoration.enabledBorder! as OutlineInputBorder;
-      expect(
-        border.borderSide.color,
-        Theme.of(tester.element(settlementFinder)).colorScheme.error,
-      );
-      expect(_textFieldWithLabel('税率(%)'), findsOneWidget);
-      expect(_textFieldWithLabel('汇率'), findsNothing);
-      expect(find.text('总金额(订单币种)'), findsOneWidget);
-      // 表尾合计条（UtenTotalsSummaryBar）：标签与数值分两个 Text 渲染。
-      // 2026-09-11 底部固定操作条改成右下角悬浮「取消/保存」后，原来那条
-      //「合计(订单币种) 0.00」已删除——明细表下方本来就有合计，底部再报一遍是重复。
-      expect(find.text('总金额(订单币种): '), findsOneWidget);
-      expect(find.text('合计(订单币种) 0.00'), findsNothing);
-      expect(find.textContaining('¥'), findsNothing);
-    },
-  );
+    // 销售订单仍需选择币种、填写税率，但汇率改由财务维护。
+    expect(_dropdownWithLabel('币种'), findsOneWidget);
+    final settlementFinder = _dropdownWithLabel('结账方式');
+    expect(settlementFinder, findsOneWidget);
+    final settlement = tester.widget<UtenDropdownField>(settlementFinder);
+    expect(settlement.required, isTrue);
+    expect(settlement.value, isNull);
+    expect(settlement.allowClear, isFalse);
+    final decorator = tester.widget<InputDecorator>(
+      find.descendant(
+        of: settlementFinder,
+        matching: find.byType(InputDecorator),
+      ),
+    );
+    final border = decorator.decoration.enabledBorder! as OutlineInputBorder;
+    expect(
+      border.borderSide.color,
+      Theme.of(tester.element(settlementFinder)).colorScheme.error,
+    );
+    expect(_textFieldWithLabel('税率(%)'), findsOneWidget);
+    expect(_textFieldWithLabel('汇率'), findsNothing);
+    expect(find.text('总金额(订单币种)'), findsOneWidget);
+    // 表尾合计条（UtenTotalsSummaryBar）：标签与数值分两个 Text 渲染。
+    // 2026-09-11 底部固定操作条改成右下角悬浮「取消/保存」后，原来那条
+    //「合计(订单币种) 0.00」已删除——明细表下方本来就有合计，底部再报一遍是重复。
+    expect(find.text('总金额(订单币种): '), findsOneWidget);
+    expect(find.text('合计(订单币种) 0.00'), findsNothing);
+    expect(find.textContaining('¥'), findsNothing);
+    await tester.runAsync(() async {
+      final boundary =
+          capture.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+      final rendered = await boundary.toImage();
+      final png = await rendered.toByteData(format: ui.ImageByteFormat.png);
+      final file = File('build/staff-feedback/new-order.png');
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(png!.buffer.asUint8List());
+      rendered.dispose();
+    });
+  });
 
   testWidgets('375px order editor has no deposit or advance receipt input', (
     tester,
@@ -582,7 +609,9 @@ Future<_EditorApi> _pumpEditor(
   bool failBatchOnce = false,
   int batchCount = 1,
   Size size = const Size(1600, 1200),
+  GlobalKey? capture,
 }) async {
+  if (capture != null) await loadAuditScreenshotFonts(tester);
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -611,37 +640,41 @@ Future<_EditorApi> _pumpEditor(
         ),
         sessionProvider.overrideWith(_TestSessionNotifier.new),
       ],
-      child: MaterialApp.router(
-        // 保存成功后会 context.replace 跳详情；无 GoRouter 会抛断言，
-        // 使「保存失败」通知顶掉 V187 转草稿提示（旧卡降级为无文本轮廓）。
-        routerConfig: GoRouter(
-          initialLocation: '/edit',
-          routes: [
-            GoRoute(
-              path: '/edit',
-              builder: (_, _) => SalesDocEditPage(
-                docType: type,
-                id: id,
-                initialOrderId: initialOrderId,
-                initialOrderItems: initialOrderItems,
+      child: RepaintBoundary(
+        key: capture,
+        child: MaterialApp.router(
+          theme: capture == null ? null : buildLightTheme(),
+          // 保存成功后会 context.replace 跳详情；无 GoRouter 会抛断言，
+          // 使「保存失败」通知顶掉 V187 转草稿提示（旧卡降级为无文本轮廓）。
+          routerConfig: GoRouter(
+            initialLocation: '/edit',
+            routes: [
+              GoRoute(
+                path: '/edit',
+                builder: (_, _) => SalesDocEditPage(
+                  docType: type,
+                  id: id,
+                  initialOrderId: initialOrderId,
+                  initialOrderItems: initialOrderItems,
+                ),
               ),
-            ),
-            GoRoute(
-              path: '/:rest(.*)',
-              builder: (_, _) => const SizedBox.shrink(),
-            ),
-          ],
-        ),
-        builder: (context, child) => Stack(
-          children: [
-            Positioned.fill(child: child!),
-            const Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: AppNotificationHost(),
-            ),
-          ],
+              GoRoute(
+                path: '/:rest(.*)',
+                builder: (_, _) => const SizedBox.shrink(),
+              ),
+            ],
+          ),
+          builder: (context, child) => Stack(
+            children: [
+              Positioned.fill(child: child!),
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: AppNotificationHost(),
+              ),
+            ],
+          ),
         ),
       ),
     ),

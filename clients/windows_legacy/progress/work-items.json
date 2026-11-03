@@ -4564,7 +4564,7 @@
       "feature": "basic_data",
       "businessSource": "lib/features/basic_data/pages/client_category_page.dart",
       "sourceSha256": "7cb8c00b20bae86c742b55927cf5864ccf11e1ed670a66858302083f1b3fb349",
-      "sourceProofSha256": "1db8a15fe650f4545a5b8fe8af4c85be929cb12da24d47c5ebbffe9152e42f79",
+      "sourceProofSha256": "faac1d387a387dbaa0ae7769587b0d55cb80850a659ae571623933bdab0d6265",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -4592,9 +4592,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/staff-feedback-20261103.json"
+      ],
+      "notes": "2026-11-03：客户默认货运策略改为只读原记录，新订单固定允许分批，不再参与客户预填。WPF 客户分类编辑尚未迁移，保持 todo。",
+      "lastUpdated": "2026-11-03T11:59:00.032564+00:00"
     },
     {
       "id": "W7-BIZ-023",
@@ -4989,7 +4991,7 @@
       "feature": "basic_data",
       "businessSource": "lib/features/basic_data/pages/party_detail_page.dart",
       "sourceSha256": "ad73dd12427d43013c3c5ce8160b709976d0f46ca35969cd4026b46c4d8cf2d7",
-      "sourceProofSha256": "097d366daef12cf2d4485c3654f65f8460c16d1d492aceda4f6cf11c5055d4a0",
+      "sourceProofSha256": "3be9a94947d20e557d8f0e34c1387f252877294b7716390bc56750c81a840538",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -5017,9 +5019,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/staff-feedback-20261103.json"
+      ],
+      "notes": "2026-11-03：客户详情公共编辑字段保留原货运策略只读且不回传。WPF 客户详情尚未迁移，保持 todo。",
+      "lastUpdated": "2026-11-03T11:58:58.491956+00:00"
     },
     {
       "id": "W7-BIZ-033",
@@ -6701,8 +6705,8 @@
       "phase": "D",
       "feature": "finance",
       "businessSource": "lib/features/finance/pages/finance_report_table_page.dart",
-      "sourceSha256": "cf8830f829d7c44db7f416f30b47bd2371675e46e24a1008c4cea4cf26724d24",
-      "sourceProofSha256": "2b5633402877a47b19455cae8366aae77a7a6117887997c7400da645d96da8bd",
+      "sourceSha256": "7aa5d317cbae47ca90937f87ce820840446b5fccd674ab17a739a8f802be9ce0",
+      "sourceProofSha256": "b8c93b9ca698bc43f9cbc5ed60fb7a8bea77500d464d86b31221a4028ad803d8",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -6731,10 +6735,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "docs/99-项目治理/2026-11-01-财务钱流全分类数据与导出审计.md"
+        "docs/99-项目治理/2026-11-01-财务钱流全分类数据与导出审计.md",
+        "clients/windows_legacy/progress/evidence/staff-feedback-20261103.json"
       ],
-      "notes": "2026-11-01：本轮审计修复预收不冲减应收、收入incomeAmount分类行金额、总账北京时间/红冲/未知合计、同步导出快照与各分类偏好；Web/Flutter共用入口已改，本WPF页仍未迁移，须保持币种/NULL/来源和新返回合同。",
-      "lastUpdated": "2026-11-02T06:44:11.716063+00:00"
+      "notes": "2026-11-03：客户对账单新增 clientName/客户名称；列表、筛选、排序、打印及导出须同一投影。WPF 报表尚未迁移，保持 todo。",
+      "lastUpdated": "2026-11-03T11:58:56.782846+00:00"
     },
     {
       "id": "W7-BIZ-073",
@@ -7641,9 +7646,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/staff-feedback-20261103.json"
+      ],
+      "notes": "2026-11-03：子缺口供应方式只读；默认来源缺失时引导维护货品资料，不在排产补选角色。WPF 尚未迁移，保持 todo。",
+      "lastUpdated": "2026-11-03T11:59:02.775653+00:00"
     },
     {
       "id": "W7-BIZ-095",
@@ -8188,7 +8195,7 @@
       "phase": "D",
       "feature": "production",
       "businessSource": "lib/features/production/pages/production_material_analysis_page.dart",
-      "sourceSha256": "84e5eccf82c1b8ca7585bc9db8071dc9fc033bddcf6621969610ce91cd71283f",
+      "sourceSha256": "42caedf3cb5e536d898d75817cd4418dc81fc09ffa2eb1454882e6570c100779",
       "sourceProofSha256": "4997d162ed0028c4fc3b175986a101bb8a8e2a65e1d0310f9b77e32819035bbf",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
@@ -8219,10 +8226,11 @@
       ],
       "evidence": [
         "clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json",
-        "clients/windows_legacy/progress/evidence/storage-claim-role-20261102.json"
+        "clients/windows_legacy/progress/evidence/storage-claim-role-20261102.json",
+        "clients/windows_legacy/progress/evidence/staff-feedback-20261103.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。\n2026-11-02 仓库调拨保留原预留身份及数量、以不可变流转凭证投影实际锁定仓位；排产供应方式只读，计划接口不能改写货品主档。Web/Flutter 已修改，WPF 本入口仍未迁移、保持 todo，不开放写入。完整生产/委外取料及 Win7 真机验收未完成；见 E-STORAGE-CLAIM-ROLE-20261102。",
-      "lastUpdated": "2026-11-03T02:51:27.110490+00:00"
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。\n2026-11-02 仓库调拨保留原预留身份及数量、以不可变流转凭证投影实际锁定仓位；排产供应方式只读，计划接口不能改写货品主档。Web/Flutter 已修改，WPF 本入口仍未迁移、保持 todo，不开放写入。完整生产/委外取料及 Win7 真机验收未完成；见 E-STORAGE-CLAIM-ROLE-20261102。\n2026-11-03：物料分析主表、汇总及分桶供应方式只读；服务端拒绝改角色且不回写 goods.source_type，历史已下达事实保留。WPF 尚未迁移，保持 todo。",
+      "lastUpdated": "2026-11-03T11:58:55.347999+00:00"
     },
     {
       "id": "W7-BIZ-109",
@@ -9497,8 +9505,8 @@
       "phase": "D",
       "feature": "sales",
       "businessSource": "lib/features/sales/pages/sales_doc_edit_page.dart",
-      "sourceSha256": "80dd01613c8ebfb9636ff93c613eaa23cf96097d061449f701e3ad9d0e718afc",
-      "sourceProofSha256": "d6a868a3ab1e8833ef59071d71451c0895b250c97b66cdfee9e3507feaf1ae48",
+      "sourceSha256": "42ff07ba614108534ca0273516a826c4bcc02659ab9a548f7e7018b64a102003",
+      "sourceProofSha256": "fc83c024f1ca279d42c0f04dc681b54f81c2b9819819a336ab4736aaa7d6458d",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9527,10 +9535,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json"
+        "clients/windows_legacy/progress/evidence/business-auxiliary-references-20261101.json",
+        "clients/windows_legacy/progress/evidence/staff-feedback-20261103.json"
       ],
-      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-01 业务辅助选择改用已有业务动作授权的最小引用，人员仅工号、姓名、部门、职位；本次未实施或验收此WPF任务的原生增量，既有状态与DoD保留。见业务辅助引用证据及治理记录。",
-      "lastUpdated": "2026-11-02T04:23:15.170391+00:00"
+      "notes": "2026-11-03：订单新建无需填写发运策略，缺省 ALLOW_PARTIAL；客户切换/未落单草稿同口径，已有订单省略字段保留原策略及修订保护。WPF 尚未迁移，保持 todo。",
+      "lastUpdated": "2026-11-03T11:59:01.414476+00:00"
     },
     {
       "id": "W7-BIZ-137",

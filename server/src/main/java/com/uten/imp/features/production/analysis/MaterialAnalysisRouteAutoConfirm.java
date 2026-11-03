@@ -15,7 +15,7 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
  * 「按货品档案自动确认供应方式」的唯一判据 (ADR-102, 2026-09-27 起在服务端).
  *
  * <p>以前这条规则在页面里 (进页后再发一次 PUT /routes, 盖全屏遮罩); 现在服务端在「新建/刷新分析」
- * 与「人工改路线」这两类重算里、同一事务直接确认, 页面只显示结果. 详情接口用同一个判据数出
+ * 等重算里、同一事务直接确认, 页面只显示结果. 详情接口用同一个判据数出
  * 「还有几组可以自动确认」, 页面据此静默刷新一次, 不再自己判断.
  *
  * <p>一个操作组 (与 PUT /routes 按组生效同一粒度, 分组见 {@link MaterialAnalysisService.MaterialGroupIndex})
@@ -24,7 +24,7 @@ import static com.uten.imp.features.production.analysis.MaterialAnalysisContract
  *   <li>还没有人确认过路线, 且当前有独立需求 ({@link MaterialAnalysisService.MaterialRow#actionable()});</li>
  *   <li>所属产品没有被计划闸挡住 (与 PUT /routes 同一份 planningBlockedReasons);</li>
  *   <li>路线是「定了的」: 顶层行若已有历史生产计划, 就是自制; 否则取货品档案推出的建议
- *       (采购/自制/委外). 档案空且没有下层 (建议为 REVIEW) 的不碰, 留给人补选;</li>
+ *       (采购/自制/委外). 档案空且没有下层 (建议为 REVIEW) 的不碰, 留给货品资料维护;</li>
  *   <li>没有仍有效的下游任务 (未撤销的采购/委外/自制行动、未红冲的顶层产出交接), 挂在它上面的
  *       自制计划也没下达过 —— 这些行改路线要先撤回, 自动确认更不能替人决定;</li>
  *   <li>组里各行定下的路线相同.</li>

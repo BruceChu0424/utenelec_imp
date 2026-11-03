@@ -274,17 +274,17 @@
 
 ## W7-BIZ-072 · lib/features/finance/pages/finance_report_table_page.dart
 
-模块 `finance`；873 行；SHA256 `cf8830f829d7c44db7f416f30b47bd2371675e46e24a1008c4cea4cf26724d24`。
+模块 `finance`；877 行；SHA256 `7aa5d317cbae47ca90937f87ce820840446b5fccd674ab17a739a8f802be9ce0`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | FinanceReportTablePage @63 (page-class)<br>_FinanceReportTablePageState @72 (state-class) |
 | 真实路由绑定 | /finance/report；router @2142；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/detail；router @2147；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/summary；router @2152；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/customer-prepayment；router @2172；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/recon；router @2178；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/cost；router @2183；builder ['FinanceReportTablePage']；redirect None<br>/finance/report/gl；router @2188；builder ['FinanceReportTablePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | finance_report:export @339；定义 lib/shared/auth/permissions.dart:446<br>payment_style:edit @587；定义 lib/shared/auth/permissions.dart:510<br>finance_report:export @810；定义 lib/shared/auth/permissions.dart:446<br>finance_report:export @819；定义 lib/shared/auth/permissions.dart:446 |
+| 权限 | finance_report:export @339；定义 lib/shared/auth/permissions.dart:446<br>payment_style:edit @587；定义 lib/shared/auth/permissions.dart:510<br>finance_report:export @814；定义 lib/shared/auth/permissions.dart:446<br>finance_report:export @823；定义 lib/shared/auth/permissions.dart:446 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | addPostFrameCallback @144 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @180 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @227 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>_printLoader @302 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader({bool template = false}) async {<br>loadBoundedReportPrintPreview @306 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>showUtenPrintPreview @331 [action-like-invocation] 提示 ['print']；await showUtenPrintPreview(<br>_printLoader @336 [action-like-invocation] 提示 ['print']；loader: () => _printLoader(template: true),<br>remove @489 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>remove @497 [action-like-invocation] 提示 ['remove']；_filters.remove('search.${column.key}');<br>UtenPrintPreviewButton @805 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @817 [action-like-invocation] 提示 ['export']；UtenExportButton( |
+| 动作处理 | addPostFrameCallback @144 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @180 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @227 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>_printLoader @302 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader({bool template = false}) async {<br>loadBoundedReportPrintPreview @306 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>showUtenPrintPreview @331 [action-like-invocation] 提示 ['print']；await showUtenPrintPreview(<br>_printLoader @336 [action-like-invocation] 提示 ['print']；loader: () => _printLoader(template: true),<br>remove @489 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>remove @497 [action-like-invocation] 提示 ['remove']；_filters.remove('search.${column.key}');<br>UtenPrintPreviewButton @809 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @821 [action-like-invocation] 提示 ['export']；UtenExportButton( |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。<br>存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 

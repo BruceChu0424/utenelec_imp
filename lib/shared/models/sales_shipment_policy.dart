@@ -1,10 +1,11 @@
 /// 客户默认条款与销售订单共用的发运策略契约。
-/// 历史值保留用于展示，不允许在新单中选择。
+/// 新单自动允许分批；其它值保留用于历史展示与旧客户端兼容。
 abstract final class SalesShipmentPolicy {
   static const legacyUnspecified = 'LEGACY_UNSPECIFIED';
   static const allowPartial = 'ALLOW_PARTIAL';
   static const requireComplete = 'REQUIRE_COMPLETE';
   static const customerConfirm = 'CUSTOMER_CONFIRM';
+  static const defaultPolicy = allowPartial;
 
   static const selectable = <String>[allowPartial, requireComplete];
 }

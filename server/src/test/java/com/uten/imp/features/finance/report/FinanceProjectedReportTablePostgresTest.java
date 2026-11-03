@@ -63,7 +63,43 @@ class FinanceProjectedReportTablePostgresTest {
     @AfterAll static void stop(){PG.stop();}
     @BeforeEach void clean(){db.execute("TRUNCATE finance_receipts,finance_receipt_lines,finance_payments,finance_payment_lines,finance_expenses,finance_expense_items,finance_other_incomes,finance_other_income_items,ar_ap_ledger,ar_ap_source_refs,sales_orders,subcontract_material_issues,subcontract_material_issue_items,subcontract_receipts,subcontract_receipt_items,v_workshop_material_period_report,v_workshop_material_bin_ledger,workshop_material_requisition_postings,workshop_material_requisition_lines,workshop_material_requisitions,stock_documents,stock_document_items,workshop_material_close_theory_lines,workshop_material_period_closes,workshop_material_close_materials,workshop_material_period_lines,workshop_material_periods,production_daily_reports,production_daily_report_items");
         db.execute("TRUNCATE production_execution_segments");
+        db.execute("TRUNCATE sales_shipments,sales_shipment_items,sales_returns,sales_return_items");
         db.update("UPDATE units SET name='同名单位'");db.update("UPDATE goods SET unit_id=? WHERE id=?",UNIT,GOODS);
+    }
+    @Test void clientStatementNamesFollowEachShipmentAndReturnThroughPagingFilteringAndExport() {
+        UUID other=UUID.randomUUID();
+        db.update("INSERT INTO clients(id,code,name) VALUES(?,?,'另一客户')",other,"OTHER-"+other);
+        UUID shipment=UUID.randomUUID(),otherShipment=UUID.randomUUID(),returned=UUID.randomUUID();
+        db.update("INSERT INTO sales_shipments(id,bill_no,client_id,currency_id,status,is_deleted) VALUES(?,'XC-NAME',?,?,1,false),(?,'XC-OTHER',?,?,1,false)",
+                shipment,CLIENT,CURRENCY,otherShipment,other,SECOND_CURRENCY);
+        db.update("INSERT INTO sales_shipment_items(id,shipment_id,goods_id,unit_id,bill_date,qty,price,amount_original,is_deleted) VALUES(?,?,?,?,?,10,2.50,25,false),(?,?,?,?,?,1,7,7,false)",
+                UUID.randomUUID(),shipment,GOODS,UNIT,FROM,UUID.randomUUID(),otherShipment,GOODS,UNIT,FROM);
+        db.update("INSERT INTO sales_returns(id,bill_no,client_id,currency_id,status,is_deleted) VALUES(?,'XT-NAME',?,?,1,false)",returned,CLIENT,CURRENCY);
+        db.update("INSERT INTO sales_return_items(id,return_id,goods_id,unit_id,bill_date,qty,price,amount_original,is_deleted) VALUES(?,?,?,?,?,2,2.50,5,false)",
+                UUID.randomUUID(),returned,GOODS,UNIT,FROM);
+        var options=new FinanceReportColumnOptions(Map.of("search.clientName","客户%_"),"clientName","asc");
+        var first=statements.clientStatement(null,FROM,TO,1,1,options);
+        var second=statements.clientStatement(null,FROM,TO,2,1,options);
+        assertThat(first.total()).isEqualTo(2);
+        assertThat(first.columns()).extracting(column->column.key()).startsWith("billDate","clientName","goodsName");
+        assertThat(first.columns().get(1).label()).isEqualTo("客户名称");
+        assertThat(first.columnSearchKeys()).contains("clientName");
+        assertThat(first.rows()).singleElement().satisfies(row->{
+            assertThat(row.get("clientName")).isEqualTo("客户%_");
+            assertThat((BigDecimal)row.get("qty")).isEqualByComparingTo("-2");
+            assertThat((BigDecimal)row.get("amount")).isEqualByComparingTo("-5");
+        });
+        assertThat(second.rows()).singleElement().satisfies(row->{
+            assertThat(row.get("clientName")).isEqualTo("客户%_");
+            assertThat((BigDecimal)row.get("qty")).isEqualByComparingTo("10");
+            assertThat((BigDecimal)row.get("amount")).isEqualByComparingTo("25");
+        });
+        var exported=reports.export("statements/client",Map.of("dateFrom",FROM.toString(),"dateTo",TO.toString(),
+                "f.search.clientName","客户%_","sort","clientName","order","asc"),null,null);
+        assertThat(exported.columns()).extracting(column->column.label()).contains("客户名称");
+        assertThat(exported.rows()).hasSize(2).allSatisfy(row->assertThat(row.get("clientName")).isEqualTo("客户%_"));
+        assertThat(statements.clientStatement("另一客户",FROM,TO,1,50).rows()).singleElement()
+                .satisfies(row->assertThat(row.get("clientName")).isEqualTo("另一客户"));
     }
     @ParameterizedTest @ValueSource(strings={"order-plan","ar-detail","ap-detail","ar-summary","ap-summary","receipt-detail","receipt-summary","payment-detail","payment-summary","expense-detail","expense-summary","income-detail","income-summary","fee-offset"})
     void everyOrdinaryReportExecutesItsDeclaredTypedProjectionBeforeCountAndPaging(String kind){

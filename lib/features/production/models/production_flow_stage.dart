@@ -164,7 +164,7 @@ class ProductionFlowStage {
       return ProductionFlowStage(
         route: route,
         key: routePendingKey,
-        label: '待选供应方式',
+        label: '待维护货品来源',
         tone: ProductionFlowTone.decide,
         stepIndex: 0,
         stepCount: switch (route) {
@@ -172,7 +172,7 @@ class ProductionFlowStage {
           ProductionFlowRoute.buy => _buyStepCount,
           ProductionFlowRoute.subcontract => _subcontractStepCount,
         },
-        detail: '先在「供应方式」里选好采购 / 委外 / 自制，选好即自动保存，这一行才能下单。',
+        detail: '请先在货品资料维护默认来源，再刷新物料分析；排产内不能修改产品角色。',
       );
     }
     final stage = _fromKey(key.isEmpty ? null : key, progress: progress);

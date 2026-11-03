@@ -24,6 +24,9 @@ import jakarta.persistence.LockModeType;
 import jakarta.persistence.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -125,8 +128,10 @@ class SalesOrderExchangeRateAuthorityTest {
         lenient().when(shipmentsQuery.getResultList()).thenReturn(List.of());
     }
 
-    @Test
-    void createUsesMasterPriceAndEditableDiscountButNeverClientRateOrAmounts() {
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = " ")
+    void createDefaultsPartialShipmentWithoutClientPolicyOrRate(String policy) {
         UUID currencyId = UUID.randomUUID();
         when(currentUser.requireEmployeeId()).thenReturn(makerId);
         when(docNumberService.nextNumber(DocNumberPrefix.SALES_ORDER))
@@ -135,12 +140,14 @@ class SalesOrderExchangeRateAuthorityTest {
         when(priceMasker.canView()).thenReturn(true);
 
         OrderSaveRequest request = request(currencyId, "999999");
+        request.setShipmentPolicy(policy);
         OrderItemLine line = request.getItems().getFirst();
         line.setPrice(null);
         line.setDiscount(new BigDecimal("0.8"));
 
         var detail = service.create(request);
 
+        assertThat(detail.getShipmentPolicy()).isEqualTo(SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL);
         assertThat(detail.getExchangeRate()).isNull();
         assertThat(detail.getTotalOriginal()).isEqualByComparingTo("16.0000");
         assertThat(detail.getTotalLocal()).isNull();
@@ -170,16 +177,21 @@ class SalesOrderExchangeRateAuthorityTest {
                 .hasMessageContaining("单价");
     }
 
-    @Test
-    void sameCurrencyUpdateClearsLegacySalesStageRateAndLocalAmount() {
+    @ParameterizedTest
+    @ValueSource(strings = {"REQUIRE_COMPLETE", "CUSTOMER_CONFIRM", "LEGACY_UNSPECIFIED"})
+    void sameCurrencyUpdatePreservesHistoricalPolicyAndClearsSalesStageRate(String policy) {
         UUID currencyId = UUID.randomUUID();
         SalesOrder order = editableOrder(currencyId, "6.8");
+        order.setShipmentPolicy(policy);
         prepareUpdate(order);
         stubActiveCurrency(currencyId);
         when(priceMasker.canView()).thenReturn(true);
 
-        var detail = service.update(order.getId(), request(currencyId, "999999"));
+        var request = request(currencyId, "999999");
+        request.setShipmentPolicy(null);
+        var detail = service.update(order.getId(), request);
 
+        assertThat(detail.getShipmentPolicy()).isEqualTo(policy);
         assertThat(detail.getExchangeRate()).isNull();
         assertThat(detail.getTotalLocal()).isNull();
         assertThat(detail.getItems().getFirst().getAmountLocal()).isNull();

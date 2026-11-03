@@ -2823,12 +2823,16 @@ abstract class _MaterialAnalysisMaterialTableState
     return routes.length == 1 ? routes.single : null;
   }
 
-  String? _materialTableRouteText(_MaterialTableRow row) => row.contextOnly
-      ? '—'
-      : _materialTableRoute(row)?.label ??
-            (row.aggregate == null && row.group == null
-                ? '—'
-                : _l10n.materialMixedRoutes);
+  String? _materialTableRouteText(_MaterialTableRow row) {
+    if (row.contextOnly) return '—';
+    final route = _materialTableRoute(row);
+    if (route != null) return route.label;
+    final groups = _materialRowGroups(row);
+    if (groups.isEmpty) return '—';
+    return groups.every((group) => _materialDisplayRoute(group) == null)
+        ? '待维护货品来源'
+        : _l10n.materialMixedRoutes;
+  }
 
   Widget _materialTableRouteCell(ThemeData theme, _MaterialTableRow row) {
     final text = _materialTableRouteText(row) ?? '—';
@@ -5346,7 +5350,7 @@ abstract class _MaterialAnalysisMaterialTableState
     // （上方拦截过 confirmedRoute == null）。
     final route = _draftRoute(group)!;
     if (_routeBlockedBySafetyGap(group, route)) {
-      return '本版本仅采购路线支持公共安全补库，请改用采购路线下达';
+      return '本版本仅默认来源为采购的货品支持公共安全补库，请核对货品资料';
     }
     if (!group.paths.every(_hasResolvedMaterialSource)) {
       return '这一行的物料来源读不出来，请刷新分析后核对';

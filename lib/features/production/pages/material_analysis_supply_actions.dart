@@ -908,7 +908,7 @@ abstract class _MaterialAnalysisSupplyActionsState
     // 委外遇到公共安全缺口：fail-closed（本版本仅采购路线支持补库）。
     if (route != MaterialSupplyRoute.buy &&
         entries.any((entry) => entry.safetyReplenishmentGapQty > 0)) {
-      context.appError('本版本仅采购路线支持公共安全补库，请改用采购路线下达');
+      context.appError('本版本仅默认来源为采购的货品支持公共安全补库，请核对货品资料');
       return null;
     }
     // 采购/委外允许超量下单（富余入库后转公共可用，供后续分析使用）；

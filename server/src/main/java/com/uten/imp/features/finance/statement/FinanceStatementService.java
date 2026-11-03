@@ -301,6 +301,7 @@ public class FinanceStatementService {
         com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         List<ReportColumn> cols = List.of(
                 ReportColumn.date("billDate", "开单日期"),
+                ReportColumn.text("clientName", "客户名称", 180),
                 ReportColumn.text("goodsName", "货品名称", 220),
                 ReportColumn.text("color", "颜色", 110),
                 ReportColumn.text("unit", "单位", 70),
@@ -313,7 +314,7 @@ public class FinanceStatementService {
                 ReportColumn.text("__sourceType",""),ReportColumn.text("__sourceId",""));
         String core = """
                 SELECT * FROM (
-                    SELECT i.bill_date AS bill_date, g.name AS goods_name,
+                    SELECT i.bill_date AS bill_date, cl.name AS client_name, g.name AS goods_name,
                            COALESCE(c.name,'') AS color_name, COALESCE(u.name,'') AS unit_name,
                            i.qty AS qty, i.price AS price, i.amount_original AS amount,
                            d.bill_no AS remark,
@@ -330,7 +331,7 @@ public class FinanceStatementService {
                     WHERE d.status = 1 AND d.is_deleted = false AND i.is_deleted = false
                       AND i.bill_date BETWEEN :from AND :to
                     UNION ALL
-                    SELECT i.bill_date, g.name,
+                    SELECT i.bill_date, cl.name, g.name,
                            COALESCE(c.name,''), COALESCE(u.name,''),
                            -i.qty, i.price, -i.amount_original,
                            d.bill_no || '(退货)',

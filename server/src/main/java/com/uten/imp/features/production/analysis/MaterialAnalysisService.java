@@ -6311,8 +6311,8 @@ public class MaterialAnalysisService {
     /**
      * 父节点有效路线是委外的节点(ADR-143 §4.5，推广 ADR-129 §2.5)：委外节点的直属物料都发给委外商，
      * 一律按设计使用数量(合同用量)，与委外领料计划冻结的单耗一致。第 1 层的父节点是来源行的根产品，
-     * 看根产品确认的路线；下层看父节点的有效路线(与分配同一口径，新节点按建议)。不看会被路线确认
-     * 回写的 goods.source_type。
+     * 看根产品确认的路线；下层看父节点的有效路线(与分配同一口径，新节点按建议)。
+     * 已确认快照不随当前 goods.source_type 追溯改写。
      */
     private static Set<String> subcontractOutboundNodes(List<SourceLine> roots, Map<UUID, List<Object[]>> rows,
             Map<String, String> routes) {
@@ -8959,20 +8959,6 @@ public class MaterialAnalysisService {
             case "自制" -> "MAKE";
             case "委外" -> "SUBCONTRACT";
             default -> hasChildren ? "MAKE" : "REVIEW";
-        };
-    }
-
-    /**
-     * 确认路线 → 货品主档来源 (goods.source_type 值域见 V128：'自制' / '采购' / '委外')，
-     * 是 {@link #suggestion(String, boolean)} 的逆映射：确认即回写主档，下次分析的建议
-     * 路线就是这次确认的值。非法路线与 {@link #normalizeRoute} 同一条报错。
-     */
-    static String sourceTypeForRoute(String route) {
-        return switch (normalizeRoute(route)) {
-            case "BUY" -> "采购";
-            case "MAKE" -> "自制";
-            case "SUBCONTRACT" -> "委外";
-            default -> throw validation("物料路线必须为 BUY、MAKE 或 SUBCONTRACT");
         };
     }
 

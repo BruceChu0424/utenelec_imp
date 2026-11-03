@@ -729,7 +729,7 @@ void main() {
     expect(find.text('拖入或点击添加客户文件，加入后可在文件卡上 AI 识别'), findsOneWidget);
     // 没有附件上传权限也能加文件识别(manageWithoutUploadPerm 通道)。
     expect(
-      find.byKey(const ValueKey('pending-attachment-add')),
+      find.byKey(const ValueKey('pending-attachment-upload-dropzone')),
       findsOneWidget,
     );
 
@@ -1040,12 +1040,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('新建订货选客户: 仍按客户上次订货的币种预填', (tester) async {
+  testWidgets('新建订货选客户: 带入币种但发运策略固定为允许分批', (tester) async {
     await _pump(
       tester,
       docType: SalesDocType.order,
       permissions: _orderPerms,
-      lastTerms: {'currencyId': 'usd', 'settlementMethodId': null},
+      lastTerms: {
+        'currencyId': 'usd',
+        'settlementMethodId': null,
+        'shipmentPolicy': 'REQUIRE_COMPLETE',
+      },
     );
     tester
         .widget<ClientPickerField>(find.byType(ClientPickerField))
@@ -1055,6 +1059,13 @@ void main() {
       find.byWidgetPredicate((w) => w is UtenDropdownField && w.label == '币种'),
     );
     expect(currency.value, 'usd');
+    expect(_draftSnapshot(tester)['shipmentPolicy'], 'ALLOW_PARTIAL');
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is UtenDropdownField && w.label == '发运策略',
+      ),
+      findsNothing,
+    );
     expect(
       currency.items.where((i) => i.value != null).map((i) => i.value),
       containsAll(['cny', 'usd']),

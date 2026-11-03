@@ -788,7 +788,7 @@ abstract class _MaterialAnalysisPageBase
   final Set<String> _selectedPlanLineIds = {};
   final Map<String, MaterialSupplyRoute> _routeDraft = {};
   // 2026-09-16：「按历史分析推导上次确认路线」的前端记忆整套退役——供应方式的
-  // 单一事实源是货品主档 goods.source_type，确认即回写主档，建议路线
+  // 单一事实源是货品主档 goods.source_type，排产只读且不回写主档，建议路线
   // (sourceSuggestion) 随快照下发，不再另发一趟 /last-routes 也不再本地缓存。
   // 只留下会话作用域键：在途调拨读取仍要用它隔离迟到响应。
   Set<String>? _sessionScopePermissions;

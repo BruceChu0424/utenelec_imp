@@ -377,7 +377,7 @@ abstract class _MaterialAnalysisPlanActionsState
   /// 全选筛选结果 + 路线说明）+ 下单(N)。
   ///
   /// 「确认路线(N)」按钮已退役（2026-09-25 ADR-102 修订）：进页对货品档案能
-  /// 定路线的行自动确认，缺路线的行红框、在「供应方式」列选好即自动保存，
+  /// 定路线的行自动确认，缺路线的行须先维护货品默认来源再刷新，
   /// 不再需要批量确认入口。
   List<Widget> _bottomActionButtons() {
     if (_isFqcReplenishmentOnly) return const [];

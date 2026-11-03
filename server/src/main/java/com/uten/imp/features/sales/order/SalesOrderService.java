@@ -1266,9 +1266,6 @@ public class SalesOrderService {
     @Transactional
     @PreAuthorize("hasAuthority('sales_order:create')")
     public OrderDetail create(OrderSaveRequest req) {
-        // 发运策略必选（2026-08-18 起）：新单必须显式选择 允许分批 / 整单齐套，
-        // 不再允许留空（留空草稿到审核也会被拦，提前到保存点报错更友好）。
-        requireSelectableShipmentPolicy(req == null ? null : req.getShipmentPolicy());
         return createInternal(req, null, null);
     }
 
@@ -1285,6 +1282,8 @@ public class SalesOrderService {
 
     private OrderDetail createInternal(
             OrderSaveRequest req, UUID sourceQuoteId, UUID expectedQuoteOwner) {
+        // 普通新建、AI 开单与报价转单共用默认；旧客户端仍可显式传入齐套策略。
+        requireSelectableShipmentPolicy(req == null ? null : req.getShipmentPolicy());
         tx.bind();
         referenceValidator.validate(req);
         if (expectedQuoteOwner != null && req.getCurrencyId() == null) {
@@ -1473,12 +1472,6 @@ public class SalesOrderService {
             return revised;
         }
         applyHeader(req, o);
-        // 发运策略必选：保存后草稿不得处于未选/历史未指定状态（历史草稿补选后才能保存）。
-        if (o.getShipmentPolicy() == null || o.getShipmentPolicy().isBlank()
-                || SalesOrder.SHIPMENT_POLICY_LEGACY.equals(o.getShipmentPolicy())) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "请选择发运策略(允许分批发货 / 整单齐套后发货)");
-        }
         // 同一草稿行保留首次落单时冻结的单价，避免货品主档后来调价静默改写商业快照；
         // 新增/换货行才读取当前货品主档价。旧客户端没有行 UUID 时按稳定商业身份兜底匹配。
         List<SalesOrderItem> existingItems =
@@ -1543,11 +1536,6 @@ public class SalesOrderService {
         orderRepo.saveAndFlush(order);
 
         applyHeader(req, order);
-        if (order.getShipmentPolicy() == null || order.getShipmentPolicy().isBlank()
-                || SalesOrder.SHIPMENT_POLICY_LEGACY.equals(order.getShipmentPolicy())) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "请选择发运策略(允许分批发货 / 整单齐套后发货)");
-        }
         List<OrderItemDto> revised =
                 reconcileRejectedRevisionItems(order, existing, req.getItems());
         order.setStatus(STATUS_DRAFT);
@@ -1827,12 +1815,8 @@ public class SalesOrderService {
         if (o.getStatus() == null || o.getStatus() != STATUS_DRAFT) {
             throw new ApiException(ErrorCode.BUSINESS, "仅草稿单据可审核");
         }
-        // 发运策略必选（与保存同口径）：历史未指定/未选草稿须先编辑补选再审核。
-        if (o.getShipmentPolicy() == null || o.getShipmentPolicy().isBlank()
-                || SalesOrder.SHIPMENT_POLICY_LEGACY.equals(o.getShipmentPolicy())) {
-            throw new ApiException(ErrorCode.BUSINESS,
-                    "请先编辑订单选择发运策略(允许分批发货 / 整单齐套后发货)再审核");
-        }
+        // 缺省策略自动补齐；历史已记录的策略继续按原约定执行。
+        o.setShipmentPolicy(resolveShipmentPolicy(null, o.getShipmentPolicy()));
         List<SalesOrderItem> items = lockOrderItems(id);
         if (items.isEmpty()) {
             throw new ApiException(ErrorCode.BUSINESS, "明细为空，不可审核");
@@ -2714,10 +2698,7 @@ public class SalesOrderService {
                 && (o.getBillNo() == null || req.getSourceDocNo() != null)) {
             o.setSourceDocNo(req.getSourceDocNo());
         }
-        if (req.getShipmentPolicy() != null) {
-            o.setShipmentPolicy(normalizeShipmentPolicy(req.getShipmentPolicy()));
-        }
-        // 新单未选发运策略时保留 null（销售自填），不再默认 CUSTOMER_CONFIRM。
+        o.setShipmentPolicy(resolveShipmentPolicy(req.getShipmentPolicy(), o.getShipmentPolicy()));
         o.setClientFileCurrency(com.uten.imp.features.sales.SalesPriceAuthority.canonicalCurrency(
                 req.getClientFileCurrency()));
     }
@@ -2765,7 +2746,11 @@ public class SalesOrderService {
                 "系统还没有设置唯一启用的本位币，请联系管理员处理后再转订货");
     }
 
-    private String normalizeShipmentPolicy(String raw) {
+    static String resolveShipmentPolicy(String raw, String existing) {
+        if (raw == null || raw.isBlank()) {
+            return existing == null || existing.isBlank()
+                    ? SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL : existing;
+        }
         String policy = raw == null ? "" : raw.trim().toUpperCase(java.util.Locale.ROOT);
         return switch (policy) {
             case SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL,
@@ -2777,8 +2762,9 @@ public class SalesOrderService {
         };
     }
 
-    /** 新单发运策略必选（仅允许新单可选值；CUSTOMER_CONFIRM 为历史保留值，不接受新选）。 */
+    /** 空值采用默认分批；保留旧客户端显式齐套值，历史客户确认值不得用于新单。 */
     private void requireSelectableShipmentPolicy(String raw) {
+        if (raw == null || raw.isBlank()) return;
         String policy = raw == null ? "" : raw.trim().toUpperCase(java.util.Locale.ROOT);
         if (!SalesOrder.SHIPMENT_POLICY_ALLOW_PARTIAL.equals(policy)
                 && !SalesOrder.SHIPMENT_POLICY_REQUIRE_COMPLETE.equals(policy)) {

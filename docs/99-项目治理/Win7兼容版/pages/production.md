@@ -4,7 +4,7 @@
 
 ## W7-BIZ-094 · lib/features/production/pages/material_analysis_child_shortage_page.dart
 
-模块 `production`；721 行；SHA256 `a8c0e435d8bd7f634423ee8f3fdd414b004ddf6ff2589597c0459506465bc57b`。
+模块 `production`；721 行；SHA256 `87d0a4c64a0eafe0b4c74dd8527ed129d8d80b682296a5e62e4b1160bfaca060`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -256,7 +256,7 @@
 
 ## W7-BIZ-108 · lib/features/production/pages/production_material_analysis_page.dart
 
-模块 `production`；3344 行；SHA256 `84e5eccf82c1b8ca7585bc9db8071dc9fc033bddcf6621969610ce91cd71283f`。
+模块 `production`；3344 行；SHA256 `42caedf3cb5e536d898d75817cd4418dc81fc09ffa2eb1454882e6570c100779`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|

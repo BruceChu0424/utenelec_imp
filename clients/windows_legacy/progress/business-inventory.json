@@ -20445,7 +20445,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "301cd118c5dd7cd8a61abd2146799ab5716cf409db7cc68c12233301532cbaaf"
+          "targetSha256": "f2b34f223cc82aaa5888b17cdaa29ec33a17f513ba16a9fab7a38c8d0a4bfcbf"
         },
         {
           "directive": "import",
@@ -31315,7 +31315,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "766f4dcc4e7635b0ccc98e97b4bd03c2bd434ea563b5aa5b990a5cea19a38e34"
+          "targetSha256": "798e20211e1e9c76ec4f4b6e3549d8dc76c62f43311d7d971d4afe819d7ec890"
         },
         {
           "directive": "import",
@@ -31447,7 +31447,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "301cd118c5dd7cd8a61abd2146799ab5716cf409db7cc68c12233301532cbaaf"
+          "targetSha256": "f2b34f223cc82aaa5888b17cdaa29ec33a17f513ba16a9fab7a38c8d0a4bfcbf"
         },
         {
           "directive": "import",
@@ -77716,8 +77716,8 @@
       "id": "page:finance/pages/finance_report_table_page.dart",
       "feature": "finance",
       "source": "lib/features/finance/pages/finance_report_table_page.dart",
-      "sha256": "cf8830f829d7c44db7f416f30b47bd2371675e46e24a1008c4cea4cf26724d24",
-      "lineCount": 873,
+      "sha256": "7aa5d317cbae47ca90937f87ce820840446b5fccd674ab17a739a8f802be9ce0",
+      "lineCount": 877,
       "classes": [
         {
           "name": "FinanceReportTablePage",
@@ -78319,14 +78319,14 @@
         {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
-          "line": 810,
+          "line": 814,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 446
         },
         {
           "symbol": "Perm.financeReportExport",
           "literal": "finance_report:export",
-          "line": 819,
+          "line": 823,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 446
         }
@@ -78427,7 +78427,7 @@
         {
           "symbol": "UtenPrintPreviewButton",
           "receiver": null,
-          "line": 805,
+          "line": 809,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "print"
@@ -78437,7 +78437,7 @@
         {
           "symbol": "UtenExportButton",
           "receiver": null,
-          "line": 817,
+          "line": 821,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "export"
@@ -94026,7 +94026,7 @@
       "id": "page:production/pages/material_analysis_child_shortage_page.dart",
       "feature": "production",
       "source": "lib/features/production/pages/material_analysis_child_shortage_page.dart",
-      "sha256": "a8c0e435d8bd7f634423ee8f3fdd414b004ddf6ff2589597c0459506465bc57b",
+      "sha256": "87d0a4c64a0eafe0b4c74dd8527ed129d8d80b682296a5e62e4b1160bfaca060",
       "lineCount": 721,
       "classes": [
         {
@@ -94617,7 +94617,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55"
+          "targetSha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41"
         },
         {
           "directive": "import",
@@ -94702,7 +94702,7 @@
         },
         {
           "source": "lib/features/production/repositories/production_repository.dart",
-          "sha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55",
+          "sha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
           "lineCount": 2456,
           "apiEndpointReferences": [
             {
@@ -95911,7 +95911,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55"
+          "targetSha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41"
         },
         {
           "directive": "import",
@@ -95932,7 +95932,7 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/production/repositories/production_repository.dart",
-          "sha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55",
+          "sha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
           "lineCount": 2456,
           "apiEndpointReferences": [
             {
@@ -97483,7 +97483,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55"
+          "targetSha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41"
         },
         {
           "directive": "import",
@@ -97699,7 +97699,7 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/production/repositories/production_repository.dart",
-          "sha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55",
+          "sha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
           "lineCount": 2456,
           "apiEndpointReferences": [
             {
@@ -99444,7 +99444,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55"
+          "targetSha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41"
         },
         {
           "directive": "import",
@@ -99550,7 +99550,7 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/production/repositories/production_repository.dart",
-          "sha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55",
+          "sha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
           "lineCount": 2456,
           "apiEndpointReferences": [
             {
@@ -101190,7 +101190,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55"
+          "targetSha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41"
         },
         {
           "directive": "import",
@@ -101267,7 +101267,7 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/production/repositories/production_repository.dart",
-          "sha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55",
+          "sha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
           "lineCount": 2456,
           "apiEndpointReferences": [
             {
@@ -103231,7 +103231,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55"
+          "targetSha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41"
         },
         {
           "directive": "import",
@@ -103598,7 +103598,7 @@
         },
         {
           "source": "lib/features/production/repositories/production_repository.dart",
-          "sha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55",
+          "sha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
           "lineCount": 2456,
           "apiEndpointReferences": [
             {
@@ -106258,7 +106258,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55"
+          "targetSha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41"
         }
       ],
       "partUnits": [],
@@ -106267,7 +106267,7 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/production/repositories/production_repository.dart",
-          "sha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55",
+          "sha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
           "lineCount": 2456,
           "apiEndpointReferences": [
             {
@@ -109384,7 +109384,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55"
+          "targetSha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41"
         }
       ],
       "partUnits": [],
@@ -109393,7 +109393,7 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/production/repositories/production_repository.dart",
-          "sha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55",
+          "sha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
           "lineCount": 2456,
           "apiEndpointReferences": [
             {
@@ -110359,7 +110359,7 @@
       "id": "page:production/pages/production_material_analysis_page.dart",
       "feature": "production",
       "source": "lib/features/production/pages/production_material_analysis_page.dart",
-      "sha256": "84e5eccf82c1b8ca7585bc9db8071dc9fc033bddcf6621969610ce91cd71283f",
+      "sha256": "42caedf3cb5e536d898d75817cd4418dc81fc09ffa2eb1454882e6570c100779",
       "lineCount": 3344,
       "classes": [
         {
@@ -111622,7 +111622,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c818271faa8350cc151fb38e748e40676702673c0d0d08e65b85e6fa539b7ce4"
+          "targetSha256": "03ab54ebebe0dc5e30f01b70675e06b236e0de2b546ce0e1a2e60b20b7dacfaa"
         },
         {
           "directive": "import",
@@ -111694,7 +111694,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55"
+          "targetSha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41"
         },
         {
           "directive": "import",
@@ -111946,7 +111946,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "04ad340e6b5689f21cd19571968fda004085a6f55bf66d98172767ad4301bf67"
+          "targetSha256": "c7c9607ac2cb4f06892908612ce577f70442b749defb119014847d2ea6a49c50"
         },
         {
           "directive": "part",
@@ -111970,7 +111970,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "5e896e996574599856915c224ee9d2310ad8301c4bb9d7a5e6417d48b48b81d8"
+          "targetSha256": "c5479fc49a9077c81ab9ae6a97dd9a729b1835f4d3567c911d581dc0bb9e3a2a"
         },
         {
           "directive": "part",
@@ -111982,7 +111982,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "a8c0e435d8bd7f634423ee8f3fdd414b004ddf6ff2589597c0459506465bc57b"
+          "targetSha256": "87d0a4c64a0eafe0b4c74dd8527ed129d8d80b682296a5e62e4b1160bfaca060"
         },
         {
           "directive": "part",
@@ -111994,7 +111994,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "f2314cd23543f533b8f388d2ae82420782e649145d4211367fe8f7b28872747e"
+          "targetSha256": "ac68cb1a2b9af76388f8104f332573229f8a7d49b70b5ade1f540721bb1c45e5"
         },
         {
           "directive": "part",
@@ -112018,7 +112018,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "4a97a7c0cf618063236428dcd71c29f2cfcf54bc43c40ed0cf4c5e174a29eabc"
+          "targetSha256": "c139bf4b1b11d2e94f2889ba8ce0c0d34f66620e96ab8403e468b0452d832bb1"
         },
         {
           "directive": "part",
@@ -112090,7 +112090,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1b8099a0a9338fcd4ddcf945a995ebda830ba99d3911f55aff09fb38f2daff67"
+          "targetSha256": "809d1439c566a796ef38dab05dd0f84c6014ef3f819913b89d08c660e6d57b92"
         },
         {
           "directive": "part",
@@ -112102,7 +112102,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "1736ef645ce9ed88d17e6f1d5b89c80f267e70cdc82a7db50161728b1002d772"
+          "targetSha256": "a34b2ace123f2f528e5d65f1ee6ec9d1071762b8758b20b9878ad89f3faccad1"
         }
       ],
       "partUnits": [
@@ -112455,8 +112455,8 @@
         },
         {
           "source": "lib/features/production/pages/material_analysis_bucket_detail.dart",
-          "sha256": "04ad340e6b5689f21cd19571968fda004085a6f55bf66d98172767ad4301bf67",
-          "lineCount": 1466,
+          "sha256": "c7c9607ac2cb4f06892908612ce577f70442b749defb119014847d2ea6a49c50",
+          "lineCount": 1429,
           "classes": [
             {
               "name": "_BucketCandidatePlanInput",
@@ -112490,13 +112490,13 @@
             },
             {
               "name": "MaterialTopLevelBadge",
-              "line": 1390,
+              "line": 1353,
               "role": "supporting-class",
               "extends": "StatelessWidget"
             },
             {
               "name": "MaterialAnalysisPreparationCell",
-              "line": 1427,
+              "line": 1390,
               "role": "supporting-class",
               "extends": "StatelessWidget"
             }
@@ -112553,19 +112553,9 @@
               "evidenceLine": "style: theme.textTheme.bodyMedium?.copyWith("
             },
             {
-              "symbol": "_canEditMaterialRoute",
-              "receiver": "_host",
-              "line": 451,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "edit"
-              ],
-              "evidenceLine": "_host._canEditMaterialRoute(group);"
-            },
-            {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 455,
+              "line": 453,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -112573,29 +112563,9 @@
               "evidenceLine": "style: theme.textTheme.bodyMedium?.copyWith("
             },
             {
-              "symbol": "_confirmRouteChange",
-              "receiver": "_host",
-              "line": 487,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "confirm"
-              ],
-              "evidenceLine": "await _host._confirmRouteChange(group, next);"
-            },
-            {
-              "symbol": "remove",
-              "receiver": "_selectedIds",
-              "line": 492,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "remove"
-              ],
-              "evidenceLine": "_selectedIds.remove(row.id);"
-            },
-            {
               "symbol": "_submitMaterialBucket",
               "receiver": null,
-              "line": 512,
+              "line": 475,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -112605,7 +112575,7 @@
             {
               "symbol": "_hasSupplySubmitQty",
               "receiver": "_host",
-              "line": 525,
+              "line": 488,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -112615,7 +112585,7 @@
             {
               "symbol": "_submitPreparationGroups",
               "receiver": "_host",
-              "line": 534,
+              "line": 497,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -112625,7 +112595,7 @@
             {
               "symbol": "addPostFrameCallback",
               "receiver": "WidgetsBinding.instance",
-              "line": 548,
+              "line": 511,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "post"
@@ -112635,7 +112605,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 632,
+              "line": 595,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -112645,7 +112615,7 @@
             {
               "symbol": "_submitMaterialBucket",
               "receiver": null,
-              "line": 929,
+              "line": 892,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -112655,7 +112625,7 @@
             {
               "symbol": "_submitMaterialBucket",
               "receiver": null,
-              "line": 947,
+              "line": 910,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -112665,7 +112635,7 @@
             {
               "symbol": "_submitMaterialBucket",
               "receiver": null,
-              "line": 987,
+              "line": 950,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -112675,7 +112645,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 1339,
+              "line": 1302,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -112685,7 +112655,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 1407,
+              "line": 1370,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -113041,7 +113011,7 @@
         },
         {
           "source": "lib/features/production/pages/material_analysis_child_shortage.dart",
-          "sha256": "5e896e996574599856915c224ee9d2310ad8301c4bb9d7a5e6417d48b48b81d8",
+          "sha256": "c5479fc49a9077c81ab9ae6a97dd9a729b1835f4d3567c911d581dc0bb9e3a2a",
           "lineCount": 997,
           "classes": [
             {
@@ -113198,7 +113168,7 @@
         },
         {
           "source": "lib/features/production/pages/material_analysis_child_shortage_page.dart",
-          "sha256": "a8c0e435d8bd7f634423ee8f3fdd414b004ddf6ff2589597c0459506465bc57b",
+          "sha256": "87d0a4c64a0eafe0b4c74dd8527ed129d8d80b682296a5e62e4b1160bfaca060",
           "lineCount": 721,
           "classes": [
             {
@@ -113401,7 +113371,7 @@
         },
         {
           "source": "lib/features/production/pages/material_analysis_plan_actions.dart",
-          "sha256": "f2314cd23543f533b8f388d2ae82420782e649145d4211367fe8f7b28872747e",
+          "sha256": "ac68cb1a2b9af76388f8104f332573229f8a7d49b70b5ade1f540721bb1c45e5",
           "lineCount": 423,
           "classes": [
             {
@@ -113857,8 +113827,8 @@
         },
         {
           "source": "lib/features/production/pages/material_analysis_material_table.dart",
-          "sha256": "4a97a7c0cf618063236428dcd71c29f2cfcf54bc43c40ed0cf4c5e174a29eabc",
-          "lineCount": 9080,
+          "sha256": "c139bf4b1b11d2e94f2889ba8ce0c0d34f66620e96ab8403e468b0452d832bb1",
+          "lineCount": 9033,
           "classes": [
             {
               "name": "_MaterialTableRow",
@@ -113874,13 +113844,13 @@
             },
             {
               "name": "_MaterialAnalysisIssuedRateField",
-              "line": 8839,
+              "line": 8792,
               "role": "supporting-class",
               "extends": "StatefulWidget"
             },
             {
               "name": "_MaterialAnalysisIssuedRateFieldState",
-              "line": 8869,
+              "line": 8822,
               "role": "state-class",
               "extends": "State<_MaterialAnalysisIssuedRateField>"
             }
@@ -114139,7 +114109,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 2359,
+              "line": 2354,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -114149,7 +114119,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 2369,
+              "line": 2364,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -114159,7 +114129,7 @@
             {
               "symbol": "remove",
               "receiver": "_collapsedBomProducts",
-              "line": 2675,
+              "line": 2670,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -114169,7 +114139,7 @@
             {
               "symbol": "remove",
               "receiver": "_expandedMaterialAggregates",
-              "line": 2680,
+              "line": 2675,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -114179,7 +114149,7 @@
             {
               "symbol": "remove",
               "receiver": "_collapsedBomBranches",
-              "line": 2687,
+              "line": 2682,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -114189,7 +114159,7 @@
             {
               "symbol": "remove",
               "receiver": "_expandedMaterialAggregates",
-              "line": 2726,
+              "line": 2721,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -114199,7 +114169,7 @@
             {
               "symbol": "remove",
               "receiver": "_collapsedBomBranches",
-              "line": 2734,
+              "line": 2729,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -114207,19 +114177,9 @@
               "evidenceLine": "_collapsedBomBranches.remove(key);"
             },
             {
-              "symbol": "_confirmRouteChanges",
-              "receiver": null,
-              "line": 2868,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "confirm"
-              ],
-              "evidenceLine": "_confirmRouteChanges("
-            },
-            {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 2947,
+              "line": 2900,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -114229,7 +114189,7 @@
             {
               "symbol": "_editOwningWarehouse",
               "receiver": null,
-              "line": 2960,
+              "line": 2913,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "edit"
@@ -114239,7 +114199,7 @@
             {
               "symbol": "_editOwningWarehouse",
               "receiver": null,
-              "line": 2984,
+              "line": 2937,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "edit"
@@ -114249,7 +114209,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 3399,
+              "line": 3352,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -114259,7 +114219,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 3420,
+              "line": 3373,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -114269,7 +114229,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 3424,
+              "line": 3377,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -114279,7 +114239,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 3426,
+              "line": 3379,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -114289,7 +114249,7 @@
             {
               "symbol": "_tableDefaultSubmitQtyText",
               "receiver": null,
-              "line": 3834,
+              "line": 3787,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -114299,7 +114259,7 @@
             {
               "symbol": "_tableDefaultSubmitQtyText",
               "receiver": null,
-              "line": 3849,
+              "line": 3802,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -114309,7 +114269,7 @@
             {
               "symbol": "_tableDefaultSubmitQty",
               "receiver": null,
-              "line": 3855,
+              "line": 3808,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -114319,7 +114279,7 @@
             {
               "symbol": "_submitQtyWithOrderPolicy",
               "receiver": null,
-              "line": 3863,
+              "line": 3816,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -114329,7 +114289,7 @@
             {
               "symbol": "_tableDefaultSubmitQtyText",
               "receiver": null,
-              "line": 3932,
+              "line": 3885,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -114339,7 +114299,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableSeededQtyTexts",
-              "line": 4087,
+              "line": 4040,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -114349,7 +114309,7 @@
             {
               "symbol": "_tableDefaultSubmitQty",
               "receiver": null,
-              "line": 4090,
+              "line": 4043,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -114359,7 +114319,7 @@
             {
               "symbol": "_tableDefaultSubmitQtyText",
               "receiver": null,
-              "line": 4091,
+              "line": 4044,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -114369,7 +114329,7 @@
             {
               "symbol": "_tableIssueBlockedReason",
               "receiver": null,
-              "line": 4105,
+              "line": 4058,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -114379,7 +114339,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableTypedBlockedNotices",
-              "line": 4121,
+              "line": 4074,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -114389,7 +114349,7 @@
             {
               "symbol": "_tableIssueBlockedReason",
               "receiver": null,
-              "line": 4139,
+              "line": 4092,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -114399,7 +114359,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableAutoSelectedKeys",
-              "line": 4147,
+              "line": 4100,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -114409,7 +114369,7 @@
             {
               "symbol": "remove",
               "receiver": "_selectedMaterialGroupKeys",
-              "line": 4148,
+              "line": 4101,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -114419,7 +114379,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 4156,
+              "line": 4109,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -114429,7 +114389,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 4231,
+              "line": 4184,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -114439,7 +114399,7 @@
             {
               "symbol": "_cancelPreparationEditorPreview",
               "receiver": null,
-              "line": 4243,
+              "line": 4196,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "cancel"
@@ -114449,7 +114409,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 4244,
+              "line": 4197,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -114459,7 +114419,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 4247,
+              "line": 4200,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -114469,7 +114429,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableUserTypedQty",
-              "line": 4304,
+              "line": 4257,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -114479,7 +114439,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableUserDeselectedKeys",
-              "line": 4311,
+              "line": 4264,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -114489,7 +114449,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableTypedBlockedNotices",
-              "line": 4316,
+              "line": 4269,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -114499,7 +114459,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 4331,
+              "line": 4284,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -114509,7 +114469,7 @@
             {
               "symbol": "CancelToken",
               "receiver": null,
-              "line": 4385,
+              "line": 4338,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -114519,7 +114479,7 @@
             {
               "symbol": "previewIssuePlans",
               "receiver": null,
-              "line": 4390,
+              "line": 4343,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -114529,7 +114489,7 @@
             {
               "symbol": "_aggregateTransferPaths",
               "receiver": null,
-              "line": 4811,
+              "line": 4764,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "transfer"
@@ -114539,7 +114499,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 4905,
+              "line": 4858,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -114549,7 +114509,7 @@
             {
               "symbol": "removeWhere",
               "receiver": null,
-              "line": 4922,
+              "line": 4875,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -114559,7 +114519,7 @@
             {
               "symbol": "complete",
               "receiver": "completion",
-              "line": 5027,
+              "line": 4980,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "complete"
@@ -114569,7 +114529,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableWorkerDraft",
-              "line": 5223,
+              "line": 5176,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -114579,7 +114539,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 5285,
+              "line": 5238,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "issue"
@@ -114589,7 +114549,7 @@
             {
               "symbol": "_tableIssueBlockedReason",
               "receiver": null,
-              "line": 5344,
+              "line": 5297,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "issue"
@@ -114599,7 +114559,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 5405,
+              "line": 5358,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -114609,7 +114569,7 @@
             {
               "symbol": "_tableTransferBlockedReason",
               "receiver": null,
-              "line": 5437,
+              "line": 5390,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "transfer"
@@ -114619,7 +114579,7 @@
             {
               "symbol": "_tableTransferBlockedReason",
               "receiver": null,
-              "line": 5473,
+              "line": 5426,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -114629,7 +114589,7 @@
             {
               "symbol": "_materialTableTransferCell",
               "receiver": null,
-              "line": 5497,
+              "line": 5450,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -114639,7 +114599,7 @@
             {
               "symbol": "topLevelWithdrawCell",
               "receiver": "_aggregateTable",
-              "line": 5500,
+              "line": 5453,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "withdraw"
@@ -114649,7 +114609,7 @@
             {
               "symbol": "withdrawCell",
               "receiver": "_aggregateTable",
-              "line": 5501,
+              "line": 5454,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "withdraw"
@@ -114659,7 +114619,7 @@
             {
               "symbol": "_materialTableTransferCell",
               "receiver": null,
-              "line": 5520,
+              "line": 5473,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -114669,7 +114629,7 @@
             {
               "symbol": "_materialTableTransferCell",
               "receiver": null,
-              "line": 5526,
+              "line": 5479,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -114679,7 +114639,7 @@
             {
               "symbol": "_materialTableTransferCell",
               "receiver": null,
-              "line": 5532,
+              "line": 5485,
               "kind": "action-ui-factory",
               "actionNameHints": [
                 "transfer"
@@ -114689,7 +114649,7 @@
             {
               "symbol": "_tableTransferBlockedReason",
               "receiver": null,
-              "line": 5537,
+              "line": 5490,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -114699,7 +114659,7 @@
             {
               "symbol": "_showTransferLauncher",
               "receiver": null,
-              "line": 5550,
+              "line": 5503,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -114709,7 +114669,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 5599,
+              "line": 5552,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -114719,7 +114679,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 5608,
+              "line": 5561,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -114729,7 +114689,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 5692,
+              "line": 5645,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -114739,7 +114699,7 @@
             {
               "symbol": "_tableDefaultSubmitQty",
               "receiver": null,
-              "line": 5736,
+              "line": 5689,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -114749,7 +114709,7 @@
             {
               "symbol": "_tableDefaultSubmitQty",
               "receiver": null,
-              "line": 5763,
+              "line": 5716,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -114759,7 +114719,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 5821,
+              "line": 5774,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -114769,7 +114729,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 5879,
+              "line": 5832,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -114779,7 +114739,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 5891,
+              "line": 5844,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -114789,7 +114749,7 @@
             {
               "symbol": "_tableIssueBlockedReason",
               "receiver": null,
-              "line": 5900,
+              "line": 5853,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -114799,7 +114759,7 @@
             {
               "symbol": "_tableDefaultSubmitQty",
               "receiver": null,
-              "line": 5935,
+              "line": 5888,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -114809,7 +114769,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 5966,
+              "line": 5919,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -114819,7 +114779,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 5979,
+              "line": 5932,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -114829,7 +114789,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 6189,
+              "line": 6142,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -114839,7 +114799,7 @@
             {
               "symbol": "_tableSubmitQtyTextOf",
               "receiver": null,
-              "line": 6431,
+              "line": 6384,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -114849,7 +114809,7 @@
             {
               "symbol": "_tableDefaultSubmitQtyText",
               "receiver": null,
-              "line": 6439,
+              "line": 6392,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -114859,7 +114819,7 @@
             {
               "symbol": "_tableSubmitQtyOf",
               "receiver": null,
-              "line": 6444,
+              "line": 6397,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -114869,7 +114829,7 @@
             {
               "symbol": "_tableSubmitQtyTextOf",
               "receiver": null,
-              "line": 6446,
+              "line": 6399,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -114879,7 +114839,7 @@
             {
               "symbol": "_tableSubmitQtyOf",
               "receiver": null,
-              "line": 6467,
+              "line": 6420,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -114889,7 +114849,7 @@
             {
               "symbol": "_finishPreparationQuantityEditing",
               "receiver": null,
-              "line": 6475,
+              "line": 6428,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "finish"
@@ -114899,7 +114859,7 @@
             {
               "symbol": "_completePreparationSupplyUsage",
               "receiver": null,
-              "line": 6506,
+              "line": 6459,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "complete"
@@ -114909,7 +114869,7 @@
             {
               "symbol": "whenComplete",
               "receiver": null,
-              "line": 6531,
+              "line": 6484,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "complete"
@@ -114919,7 +114879,7 @@
             {
               "symbol": "_submitMaterialTableRows",
               "receiver": null,
-              "line": 6646,
+              "line": 6599,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -114929,7 +114889,7 @@
             {
               "symbol": "_submitMaterialTableRowsInScope",
               "receiver": null,
-              "line": 6650,
+              "line": 6603,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -114939,7 +114899,7 @@
             {
               "symbol": "_submitMaterialTableRowsInScope",
               "receiver": null,
-              "line": 6656,
+              "line": 6609,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -114949,7 +114909,7 @@
             {
               "symbol": "submit",
               "receiver": "_aggregateTable",
-              "line": 6672,
+              "line": 6625,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -114959,7 +114919,7 @@
             {
               "symbol": "_tableSubmitQtyOf",
               "receiver": null,
-              "line": 6700,
+              "line": 6653,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -114969,7 +114929,7 @@
             {
               "symbol": "_tableDefaultSubmitQtyText",
               "receiver": null,
-              "line": 6708,
+              "line": 6661,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -114979,7 +114939,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 6726,
+              "line": 6679,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -114989,7 +114949,7 @@
             {
               "symbol": "_tableIssueBlockedReason",
               "receiver": null,
-              "line": 6745,
+              "line": 6698,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -114999,7 +114959,7 @@
             {
               "symbol": "_confirmMaterialTableSubmit",
               "receiver": null,
-              "line": 6785,
+              "line": 6738,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "confirm",
@@ -115010,7 +114970,7 @@
             {
               "symbol": "settle",
               "receiver": null,
-              "line": 6807,
+              "line": 6760,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "settle"
@@ -115020,7 +114980,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableUserTypedQty",
-              "line": 6810,
+              "line": 6763,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -115030,7 +114990,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 6817,
+              "line": 6770,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -115040,7 +115000,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 6845,
+              "line": 6798,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -115050,7 +115010,7 @@
             {
               "symbol": "_issueMaterialTableWorkshopBatch",
               "receiver": null,
-              "line": 6849,
+              "line": 6802,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -115060,7 +115020,7 @@
             {
               "symbol": "settle",
               "receiver": null,
-              "line": 6871,
+              "line": 6824,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "settle"
@@ -115070,7 +115030,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 6876,
+              "line": 6829,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -115080,7 +115040,7 @@
             {
               "symbol": "settle",
               "receiver": null,
-              "line": 6897,
+              "line": 6850,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "settle"
@@ -115090,7 +115050,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 6904,
+              "line": 6857,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -115100,7 +115060,7 @@
             {
               "symbol": "settle",
               "receiver": null,
-              "line": 6922,
+              "line": 6875,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "settle"
@@ -115110,7 +115070,7 @@
             {
               "symbol": "submit",
               "receiver": "_aggregateTable",
-              "line": 6936,
+              "line": 6889,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -115120,7 +115080,7 @@
             {
               "symbol": "removeAll",
               "receiver": "_selectedMaterialGroupKeys",
-              "line": 6954,
+              "line": 6907,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -115130,7 +115090,7 @@
             {
               "symbol": "remove",
               "receiver": "_selectedMaterialGroupKeys",
-              "line": 6959,
+              "line": 6912,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -115140,7 +115100,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableAutoSelectedKeys",
-              "line": 6960,
+              "line": 6913,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -115150,7 +115110,7 @@
             {
               "symbol": "remove",
               "receiver": "_tableUserDeselectedKeys",
-              "line": 6961,
+              "line": 6914,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -115160,7 +115120,7 @@
             {
               "symbol": "_reportMaterialTableSubmit",
               "receiver": null,
-              "line": 6976,
+              "line": 6929,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -115170,7 +115130,7 @@
             {
               "symbol": "_reconcileWorkshopUrgesAfterOrder",
               "receiver": null,
-              "line": 6984,
+              "line": 6937,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "reconcile"
@@ -115180,7 +115140,7 @@
             {
               "symbol": "_issueMaterialTableWorkshopBatch",
               "receiver": null,
-              "line": 6998,
+              "line": 6951,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "issue"
@@ -115190,7 +115150,7 @@
             {
               "symbol": "_tableSubmitQtyTextOf",
               "receiver": null,
-              "line": 7039,
+              "line": 6992,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -115200,7 +115160,7 @@
             {
               "symbol": "_issueWorkshopPlans",
               "receiver": null,
-              "line": 7051,
+              "line": 7004,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -115210,7 +115170,7 @@
             {
               "symbol": "_tableSubmitQtyTextOf",
               "receiver": null,
-              "line": 7074,
+              "line": 7027,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -115220,7 +115180,7 @@
             {
               "symbol": "_tableSubmitQtyTextOf",
               "receiver": null,
-              "line": 7135,
+              "line": 7088,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -115230,7 +115190,7 @@
             {
               "symbol": "_confirmMaterialTableSubmit",
               "receiver": null,
-              "line": 7147,
+              "line": 7100,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "confirm",
@@ -115241,7 +115201,7 @@
             {
               "symbol": "_tableSubmitQtyTextOf",
               "receiver": null,
-              "line": 7167,
+              "line": 7120,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -115251,7 +115211,7 @@
             {
               "symbol": "_tableIssueTarget",
               "receiver": null,
-              "line": 7176,
+              "line": 7129,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -115261,7 +115221,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 7264,
+              "line": 7217,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -115271,7 +115231,7 @@
             {
               "symbol": "_reportMaterialTableSubmit",
               "receiver": null,
-              "line": 7271,
+              "line": 7224,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -115281,7 +115241,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 7337,
+              "line": 7290,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -115291,7 +115251,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 7359,
+              "line": 7312,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -115301,7 +115261,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 7470,
+              "line": 7423,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -115311,7 +115271,7 @@
             {
               "symbol": "_pendingIssueLabelOfRoute",
               "receiver": null,
-              "line": 7585,
+              "line": 7538,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -115321,7 +115281,7 @@
             {
               "symbol": "_pendingIssueLabelOfRoute",
               "receiver": null,
-              "line": 7601,
+              "line": 7554,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "issue"
@@ -115331,7 +115291,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 7680,
+              "line": 7633,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -115341,7 +115301,7 @@
             {
               "symbol": "_showTransferLauncher",
               "receiver": null,
-              "line": 7991,
+              "line": 7944,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "transfer"
@@ -115351,7 +115311,7 @@
             {
               "symbol": "showMaterialTransferLauncher",
               "receiver": null,
-              "line": 7995,
+              "line": 7948,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -115361,7 +115321,7 @@
             {
               "symbol": "_canFutureTransferIn",
               "receiver": null,
-              "line": 8002,
+              "line": 7955,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "transfer"
@@ -115371,7 +115331,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 8153,
+              "line": 8106,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -115381,7 +115341,7 @@
             {
               "symbol": "_canCancelSpecificAction",
               "receiver": null,
-              "line": 8188,
+              "line": 8141,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "cancel"
@@ -115391,7 +115351,7 @@
             {
               "symbol": "copyWith",
               "receiver": null,
-              "line": 8266,
+              "line": 8219,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "copy"
@@ -115401,7 +115361,7 @@
             {
               "symbol": "_canCancelSpecificAction",
               "receiver": null,
-              "line": 8287,
+              "line": 8240,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -115411,7 +115371,7 @@
             {
               "symbol": "_canCancelSpecificAction",
               "receiver": null,
-              "line": 8316,
+              "line": 8269,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -115421,7 +115381,7 @@
             {
               "symbol": "_cancelMaterialAction",
               "receiver": null,
-              "line": 8328,
+              "line": 8281,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -115431,7 +115391,7 @@
             {
               "symbol": "_confirmSharedFutureClaim",
               "receiver": null,
-              "line": 8403,
+              "line": 8356,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "confirm"
@@ -115441,7 +115401,7 @@
             {
               "symbol": "_confirmSharedFutureClaim",
               "receiver": null,
-              "line": 8473,
+              "line": 8426,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "confirm"
@@ -115451,7 +115411,7 @@
             {
               "symbol": "_cancelCurrentAnalysis",
               "receiver": null,
-              "line": 8561,
+              "line": 8514,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "cancel"
@@ -115461,7 +115421,7 @@
             {
               "symbol": "cancelMaterialAnalysis",
               "receiver": null,
-              "line": 8590,
+              "line": 8543,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -115471,7 +115431,7 @@
             {
               "symbol": "_canCancelSpecificAction",
               "receiver": null,
-              "line": 8641,
+              "line": 8594,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -115481,7 +115441,7 @@
             {
               "symbol": "_canWithdrawIssuedAnalysisPlan",
               "receiver": null,
-              "line": 8655,
+              "line": 8608,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "withdraw"
@@ -115491,7 +115451,7 @@
             {
               "symbol": "_withdrawIssuedAnalysisPlan",
               "receiver": null,
-              "line": 8659,
+              "line": 8612,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "withdraw"
@@ -115501,7 +115461,7 @@
             {
               "symbol": "_canWithdrawIssuedAnalysisPlan",
               "receiver": null,
-              "line": 8664,
+              "line": 8617,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "withdraw"
@@ -115511,7 +115471,7 @@
             {
               "symbol": "_canWithdrawIssuedAnalysisPlan",
               "receiver": null,
-              "line": 8716,
+              "line": 8669,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "withdraw"
@@ -115521,7 +115481,7 @@
             {
               "symbol": "withdrawMaterialAnalysisPlan",
               "receiver": null,
-              "line": 8729,
+              "line": 8682,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "withdraw"
@@ -115531,7 +115491,7 @@
             {
               "symbol": "_cancelMaterialAction",
               "receiver": null,
-              "line": 8760,
+              "line": 8713,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "cancel"
@@ -115541,7 +115501,7 @@
             {
               "symbol": "cancelAction",
               "receiver": "_aggregateTable",
-              "line": 8763,
+              "line": 8716,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -115551,7 +115511,7 @@
             {
               "symbol": "_canCancelSpecificAction",
               "receiver": null,
-              "line": 8766,
+              "line": 8719,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -115561,7 +115521,7 @@
             {
               "symbol": "cancelMaterialSupplyAction",
               "receiver": null,
-              "line": 8790,
+              "line": 8743,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -115571,7 +115531,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 8895,
+              "line": 8848,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -115581,7 +115541,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 8907,
+              "line": 8860,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -115591,12 +115551,52 @@
             {
               "symbol": "_save",
               "receiver": null,
-              "line": 8910,
+              "line": 8863,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "save"
               ],
               "evidenceLine": "() => unawaited(_save()),"
+            },
+            {
+              "symbol": "cancel",
+              "receiver": null,
+              "line": 8924,
+              "kind": "action-like-invocation",
+              "actionNameHints": [
+                "cancel"
+              ],
+              "evidenceLine": "_debounce?.cancel();"
+            },
+            {
+              "symbol": "_save",
+              "receiver": null,
+              "line": 8925,
+              "kind": "action-like-invocation",
+              "actionNameHints": [
+                "save"
+              ],
+              "evidenceLine": "unawaited(_save());"
+            },
+            {
+              "symbol": "_save",
+              "receiver": null,
+              "line": 8929,
+              "kind": "method-declaration-candidate",
+              "actionNameHints": [
+                "save"
+              ],
+              "evidenceLine": "Future<void> _save() async {"
+            },
+            {
+              "symbol": "updateMaterialAnalysisIssuedRates",
+              "receiver": "widget.repository",
+              "line": 8943,
+              "kind": "action-like-invocation",
+              "actionNameHints": [
+                "update"
+              ],
+              "evidenceLine": "final rates = await widget.repository.updateMaterialAnalysisIssuedRates("
             },
             {
               "symbol": "cancel",
@@ -115609,49 +115609,9 @@
               "evidenceLine": "_debounce?.cancel();"
             },
             {
-              "symbol": "_save",
-              "receiver": null,
-              "line": 8972,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "save"
-              ],
-              "evidenceLine": "unawaited(_save());"
-            },
-            {
-              "symbol": "_save",
-              "receiver": null,
-              "line": 8976,
-              "kind": "method-declaration-candidate",
-              "actionNameHints": [
-                "save"
-              ],
-              "evidenceLine": "Future<void> _save() async {"
-            },
-            {
-              "symbol": "updateMaterialAnalysisIssuedRates",
-              "receiver": "widget.repository",
-              "line": 8990,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "update"
-              ],
-              "evidenceLine": "final rates = await widget.repository.updateMaterialAnalysisIssuedRates("
-            },
-            {
-              "symbol": "cancel",
-              "receiver": null,
-              "line": 9018,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "cancel"
-              ],
-              "evidenceLine": "_debounce?.cancel();"
-            },
-            {
               "symbol": "removeListener",
               "receiver": "_focus",
-              "line": 9019,
+              "line": 8972,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "remove"
@@ -115661,7 +115621,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 9044,
+              "line": 8997,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -115671,7 +115631,7 @@
             {
               "symbol": "_save",
               "receiver": null,
-              "line": 9047,
+              "line": 9000,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "save"
@@ -115681,7 +115641,7 @@
             {
               "symbol": "cancel",
               "receiver": null,
-              "line": 9051,
+              "line": 9004,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "cancel"
@@ -115691,7 +115651,7 @@
             {
               "symbol": "_save",
               "receiver": null,
-              "line": 9052,
+              "line": 9005,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "save"
@@ -115700,7 +115660,7 @@
             },
             {
               "symbol": "transferReason",
-              "line": 5549,
+              "line": 5502,
               "kind": "callback-reference",
               "callback": "onTap",
               "actionNameHints": [
@@ -115709,7 +115669,7 @@
             },
             {
               "symbol": "_finishPreparationQuantityEditing",
-              "line": 5998,
+              "line": 5951,
               "kind": "callback-reference",
               "callback": "onFinished",
               "actionNameHints": [
@@ -115721,49 +115681,49 @@
             {
               "symbol": "Perm.productionMaterialAnalysisView",
               "literal": "production_material_analysis:view",
-              "line": 8015,
+              "line": 7968,
               "definitionSource": "lib/shared/auth/permissions.dart",
               "definitionLine": 398
             },
             {
               "symbol": "Perm.productionMaterialAnalysisNotify",
               "literal": "production_material_analysis:notify",
-              "line": 8016,
+              "line": 7969,
               "definitionSource": "lib/shared/auth/permissions.dart",
               "definitionLine": 402
             },
             {
               "symbol": "Perm.productionMaterialAnalysisNotify",
               "literal": "production_material_analysis:notify",
-              "line": 8219,
+              "line": 8172,
               "definitionSource": "lib/shared/auth/permissions.dart",
               "definitionLine": 402
             },
             {
               "symbol": "Perm.productionMaterialAnalysisClaimSharedFuture",
               "literal": "production_material_analysis:claim_shared_future",
-              "line": 8223,
+              "line": 8176,
               "definitionSource": "lib/shared/auth/permissions.dart",
               "definitionLine": 414
             },
             {
               "symbol": "Perm.productionMaterialAnalysisNotify",
               "literal": "production_material_analysis:notify",
-              "line": 8224,
+              "line": 8177,
               "definitionSource": "lib/shared/auth/permissions.dart",
               "definitionLine": 402
             },
             {
               "symbol": "Perm.productionPlanReverse",
               "literal": "production_plan:reverse",
-              "line": 8650,
+              "line": 8603,
               "definitionSource": "lib/shared/auth/permissions.dart",
               "definitionLine": 657
             },
             {
               "symbol": "Perm.productionPlanDelete",
               "literal": "production_plan:delete",
-              "line": 8651,
+              "line": 8604,
               "definitionSource": "lib/shared/auth/permissions.dart",
               "definitionLine": 656
             }
@@ -117062,8 +117022,8 @@
         },
         {
           "source": "lib/features/production/pages/material_analysis_supply_actions.dart",
-          "sha256": "1b8099a0a9338fcd4ddcf945a995ebda830ba99d3911f55aff09fb38f2daff67",
-          "lineCount": 1315,
+          "sha256": "809d1439c566a796ef38dab05dd0f84c6014ef3f819913b89d08c660e6d57b92",
+          "lineCount": 1085,
           "classes": [
             {
               "name": "_MaterialAnalysisSupplyActionsState",
@@ -117074,99 +117034,9 @@
           ],
           "actionHandlers": [
             {
-              "symbol": "_saveRoutes",
-              "receiver": null,
-              "line": 28,
-              "kind": "method-declaration-candidate",
-              "actionNameHints": [
-                "save"
-              ],
-              "evidenceLine": "Future<void> _saveRoutes({Set<String>? onlyGroupKeys}) async {"
-            },
-            {
-              "symbol": "updateMaterialAnalysisRoutes",
-              "receiver": null,
-              "line": 114,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "update"
-              ],
-              "evidenceLine": ".updateMaterialAnalysisRoutes("
-            },
-            {
-              "symbol": "removeAll",
-              "receiver": "_selectedMaterialGroupKeys",
-              "line": 131,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "remove"
-              ],
-              "evidenceLine": "_selectedMaterialGroupKeys.removeAll("
-            },
-            {
-              "symbol": "removeAll",
-              "receiver": "_selectedMaterialGroupKeys",
-              "line": 165,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "remove"
-              ],
-              "evidenceLine": "_selectedMaterialGroupKeys.removeAll("
-            },
-            {
-              "symbol": "_confirmRouteChange",
-              "receiver": null,
-              "line": 206,
-              "kind": "method-declaration-candidate",
-              "actionNameHints": [
-                "confirm"
-              ],
-              "evidenceLine": "Future<bool> _confirmRouteChange("
-            },
-            {
-              "symbol": "_confirmRouteChanges",
-              "receiver": null,
-              "line": 209,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "confirm"
-              ],
-              "evidenceLine": ") => _confirmRouteChanges([group], route);"
-            },
-            {
-              "symbol": "_confirmRouteChanges",
-              "receiver": null,
-              "line": 213,
-              "kind": "method-declaration-candidate",
-              "actionNameHints": [
-                "confirm"
-              ],
-              "evidenceLine": "Future<bool> _confirmRouteChanges("
-            },
-            {
-              "symbol": "_canEditMaterialRoute",
-              "receiver": null,
-              "line": 233,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "edit"
-              ],
-              "evidenceLine": "groups.any((group) => !_canEditMaterialRoute(group))) {"
-            },
-            {
-              "symbol": "_saveRoutes",
-              "receiver": null,
-              "line": 245,
-              "kind": "action-like-invocation",
-              "actionNameHints": [
-                "save"
-              ],
-              "evidenceLine": "await _saveRoutes(onlyGroupKeys: keys);"
-            },
-            {
               "symbol": "_residualSubmitQty",
               "receiver": null,
-              "line": 295,
+              "line": 65,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -117176,7 +117046,7 @@
             {
               "symbol": "_submitQtyWithOrderPolicy",
               "receiver": null,
-              "line": 318,
+              "line": 88,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -117186,7 +117056,7 @@
             {
               "symbol": "_residualSubmitQty",
               "receiver": null,
-              "line": 338,
+              "line": 108,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -117196,7 +117066,7 @@
             {
               "symbol": "_hasSupplySubmitQty",
               "receiver": null,
-              "line": 454,
+              "line": 224,
               "kind": "method-declaration-candidate",
               "actionNameHints": [
                 "submit"
@@ -117206,7 +117076,7 @@
             {
               "symbol": "_residualSubmitQty",
               "receiver": null,
-              "line": 456,
+              "line": 226,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -117216,7 +117086,7 @@
             {
               "symbol": "_residualSubmitQty",
               "receiver": null,
-              "line": 457,
+              "line": 227,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -117226,7 +117096,7 @@
             {
               "symbol": "_hasSupplySubmitQty",
               "receiver": null,
-              "line": 515,
+              "line": 285,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -117236,7 +117106,7 @@
             {
               "symbol": "_completePreparationSupplyUsage",
               "receiver": null,
-              "line": 699,
+              "line": 469,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "complete"
@@ -117246,7 +117116,7 @@
             {
               "symbol": "_completePreparationSupplyUsage",
               "receiver": null,
-              "line": 910,
+              "line": 680,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "complete"
@@ -117256,7 +117126,7 @@
             {
               "symbol": "MaterialSupplySubmitConfirmDialog",
               "receiver": null,
-              "line": 1060,
+              "line": 830,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "confirm",
@@ -117267,7 +117137,7 @@
             {
               "symbol": "_residualSubmitQty",
               "receiver": null,
-              "line": 1279,
+              "line": 1049,
               "kind": "action-like-invocation",
               "actionNameHints": [
                 "submit"
@@ -117280,8 +117150,8 @@
         },
         {
           "source": "lib/features/production/pages/material_analysis_view_models.dart",
-          "sha256": "1736ef645ce9ed88d17e6f1d5b89c80f267e70cdc82a7db50161728b1002d772",
-          "lineCount": 275,
+          "sha256": "a34b2ace123f2f528e5d65f1ee6ec9d1071762b8758b20b9878ad89f3faccad1",
+          "lineCount": 264,
           "classes": [
             {
               "name": "_PendingMakeCandidate",
@@ -117290,56 +117160,50 @@
               "extends": null
             },
             {
-              "name": "_PendingRouteDecision",
+              "name": "_SupplyNotificationTarget",
               "line": 23,
               "role": "supporting-class",
               "extends": null
             },
             {
-              "name": "_SupplyNotificationTarget",
+              "name": "_MaterialAnalysisIndexes",
               "line": 34,
               "role": "supporting-class",
               "extends": null
             },
             {
-              "name": "_MaterialAnalysisIndexes",
-              "line": 45,
-              "role": "supporting-class",
-              "extends": null
-            },
-            {
               "name": "_BomPresentation",
-              "line": 83,
+              "line": 72,
               "role": "supporting-class",
               "extends": null
             },
             {
               "name": "_BomFilterProjection",
-              "line": 97,
+              "line": 86,
               "role": "supporting-class",
               "extends": null
             },
             {
               "name": "_MaterialReadPresentation",
-              "line": 136,
+              "line": 125,
               "role": "supporting-class",
               "extends": null
             },
             {
               "name": "_MaterialGroup",
-              "line": 178,
+              "line": 167,
               "role": "supporting-class",
               "extends": null
             },
             {
               "name": "_MaterialAggregate",
-              "line": 191,
+              "line": 180,
               "role": "supporting-class",
               "extends": null
             },
             {
               "name": "_StatusView",
-              "line": 254,
+              "line": 243,
               "role": "supporting-class",
               "extends": null
             }
@@ -117697,7 +117561,7 @@
         },
         {
           "source": "lib/features/production/repositories/production_repository.dart",
-          "sha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55",
+          "sha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
           "lineCount": 2456,
           "apiEndpointReferences": [
             {
@@ -122744,7 +122608,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55"
+          "targetSha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41"
         },
         {
           "directive": "import",
@@ -123070,7 +122934,7 @@
         },
         {
           "source": "lib/features/production/repositories/production_repository.dart",
-          "sha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55",
+          "sha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
           "lineCount": 2456,
           "apiEndpointReferences": [
             {
@@ -124917,7 +124781,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55"
+          "targetSha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41"
         },
         {
           "directive": "import",
@@ -125073,7 +124937,7 @@
         },
         {
           "source": "lib/features/production/repositories/production_repository.dart",
-          "sha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55",
+          "sha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
           "lineCount": 2456,
           "apiEndpointReferences": [
             {
@@ -126668,7 +126532,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55"
+          "targetSha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41"
         }
       ],
       "partUnits": [],
@@ -126706,7 +126570,7 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/production/repositories/production_repository.dart",
-          "sha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55",
+          "sha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
           "lineCount": 2456,
           "apiEndpointReferences": [
             {
@@ -128075,7 +127939,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55"
+          "targetSha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41"
         },
         {
           "directive": "import",
@@ -128108,7 +127972,7 @@
       "directRepositoryEvidence": [
         {
           "source": "lib/features/production/repositories/production_repository.dart",
-          "sha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55",
+          "sha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
           "lineCount": 2456,
           "apiEndpointReferences": [
             {
@@ -130415,7 +130279,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c818271faa8350cc151fb38e748e40676702673c0d0d08e65b85e6fa539b7ce4"
+          "targetSha256": "03ab54ebebe0dc5e30f01b70675e06b236e0de2b546ce0e1a2e60b20b7dacfaa"
         },
         {
           "directive": "import",
@@ -130511,7 +130375,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55"
+          "targetSha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41"
         },
         {
           "directive": "import",
@@ -130850,7 +130714,7 @@
         },
         {
           "source": "lib/features/production/repositories/production_repository.dart",
-          "sha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55",
+          "sha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
           "lineCount": 2456,
           "apiEndpointReferences": [
             {
@@ -153758,8 +153622,8 @@
       "id": "page:sales/pages/sales_doc_edit_page.dart",
       "feature": "sales",
       "source": "lib/features/sales/pages/sales_doc_edit_page.dart",
-      "sha256": "80dd01613c8ebfb9636ff93c613eaa23cf96097d061449f701e3ad9d0e718afc",
-      "lineCount": 4852,
+      "sha256": "42ff07ba614108534ca0273516a826c4bcc02659ab9a548f7e7018b64a102003",
+      "lineCount": 4805,
       "classes": [
         {
           "name": "SalesDocEditPage",
@@ -155019,28 +154883,28 @@
         {
           "symbol": "Perm.salesQuoteView",
           "literal": "sales_quote:view",
-          "line": 2901,
+          "line": 2884,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 305
         },
         {
           "symbol": "Perm.salesQuoteCreate",
           "literal": "sales_quote:create",
-          "line": 2901,
+          "line": 2884,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 591
         },
         {
           "symbol": "Perm.currencyCreate",
           "literal": "currency:create",
-          "line": 4804,
+          "line": 4757,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 574
         },
         {
           "symbol": "Perm.settlementMethodCreate",
           "literal": "settlement_method:create",
-          "line": 4807,
+          "line": 4760,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 587
         }
@@ -155499,7 +155363,7 @@
         {
           "symbol": "restoreDraftEmployees",
           "receiver": null,
-          "line": 595,
+          "line": 597,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "restore"
@@ -155509,7 +155373,7 @@
         {
           "symbol": "restoreDraftGridResponsive",
           "receiver": null,
-          "line": 598,
+          "line": 600,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "restore"
@@ -155519,7 +155383,7 @@
         {
           "symbol": "restoreDraft",
           "receiver": "row",
-          "line": 605,
+          "line": 607,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "restore"
@@ -155529,7 +155393,7 @@
         {
           "symbol": "restoreDraftResponsive",
           "receiver": "_pendingFiles",
-          "line": 609,
+          "line": 611,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "restore"
@@ -155539,7 +155403,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 721,
+          "line": 726,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -155549,7 +155413,7 @@
         {
           "symbol": "confirmGoodsMatch",
           "receiver": "row",
-          "line": 857,
+          "line": 862,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -155559,7 +155423,7 @@
         {
           "symbol": "salesAiReviewNeedsEdit",
           "receiver": "l10n",
-          "line": 858,
+          "line": 863,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "edit"
@@ -155569,7 +155433,7 @@
         {
           "symbol": "_save",
           "receiver": null,
-          "line": 875,
+          "line": 880,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -155579,7 +155443,7 @@
         {
           "symbol": "removeListener",
           "receiver": "_grid.rowsListenable",
-          "line": 888,
+          "line": 893,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155589,7 +155453,7 @@
         {
           "symbol": "removeListener",
           "receiver": "c",
-          "line": 891,
+          "line": 896,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155599,7 +155463,7 @@
         {
           "symbol": "startFormDraftIdentityGuard",
           "receiver": null,
-          "line": 917,
+          "line": 922,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "start"
@@ -155609,7 +155473,7 @@
         {
           "symbol": "restoreExtraColumns",
           "receiver": "row",
-          "line": 1165,
+          "line": 1170,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "restore"
@@ -155619,7 +155483,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 1194,
+          "line": 1199,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -155629,7 +155493,7 @@
         {
           "symbol": "addPostFrameCallback",
           "receiver": "WidgetsBinding.instance",
-          "line": 1206,
+          "line": 1211,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "post"
@@ -155639,7 +155503,7 @@
         {
           "symbol": "_importFromUpstream",
           "receiver": null,
-          "line": 1440,
+          "line": 1445,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "import"
@@ -155649,7 +155513,7 @@
         {
           "symbol": "removeWhere",
           "receiver": "_grid",
-          "line": 1482,
+          "line": 1487,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155659,7 +155523,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofilled",
-          "line": 1516,
+          "line": 1521,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155669,7 +155533,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofilled",
-          "line": 1517,
+          "line": 1522,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155679,17 +155543,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofilled",
-          "line": 1518,
-          "kind": "action-like-invocation",
-          "actionNameHints": [
-            "remove"
-          ],
-          "evidenceLine": "if (_autofilled.remove('shipmentPolicy')) _shipmentPolicy = null;"
-        },
-        {
-          "symbol": "remove",
-          "receiver": "_autofilled",
-          "line": 1519,
+          "line": 1523,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155699,7 +155553,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofilled",
-          "line": 1520,
+          "line": 1524,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155709,7 +155563,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofillValues",
-          "line": 1521,
+          "line": 1525,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155719,7 +155573,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofillValues",
-          "line": 1522,
+          "line": 1526,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155729,7 +155583,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofilled",
-          "line": 1698,
+          "line": 1689,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155739,7 +155593,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofillValues",
-          "line": 1699,
+          "line": 1690,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155749,7 +155603,7 @@
         {
           "symbol": "remove",
           "receiver": "_autofilled",
-          "line": 1706,
+          "line": 1697,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155759,7 +155613,7 @@
         {
           "symbol": "showClientShipAddressSheet",
           "receiver": null,
-          "line": 1718,
+          "line": 1709,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "ship"
@@ -155769,7 +155623,7 @@
         {
           "symbol": "remove",
           "receiver": null,
-          "line": 1735,
+          "line": 1726,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155779,7 +155633,7 @@
         {
           "symbol": "remove",
           "receiver": null,
-          "line": 1736,
+          "line": 1727,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155789,7 +155643,7 @@
         {
           "symbol": "removeListener",
           "receiver": "c",
-          "line": 1744,
+          "line": 1735,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155799,7 +155653,7 @@
         {
           "symbol": "remove",
           "receiver": "_errors",
-          "line": 1945,
+          "line": 1930,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155809,7 +155663,7 @@
         {
           "symbol": "removeRows",
           "receiver": "_grid",
-          "line": 2014,
+          "line": 1999,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -155819,7 +155673,7 @@
         {
           "symbol": "_save",
           "receiver": null,
-          "line": 2021,
+          "line": 2006,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "save"
@@ -155829,7 +155683,7 @@
         {
           "symbol": "_finishCreatedShipments",
           "receiver": null,
-          "line": 2056,
+          "line": 2041,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -155839,7 +155693,7 @@
         {
           "symbol": "_saveShipmentBatch",
           "receiver": null,
-          "line": 2060,
+          "line": 2045,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -155849,7 +155703,7 @@
         {
           "symbol": "_finishCreatedDocument",
           "receiver": null,
-          "line": 2065,
+          "line": 2050,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -155859,7 +155713,7 @@
         {
           "symbol": "toSaveJson",
           "receiver": null,
-          "line": 2249,
+          "line": 2232,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -155869,7 +155723,7 @@
         {
           "symbol": "_saveShipmentBatch",
           "receiver": null,
-          "line": 2255,
+          "line": 2238,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -155879,7 +155733,7 @@
         {
           "symbol": "saveFormDraftNow",
           "receiver": null,
-          "line": 2260,
+          "line": 2243,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -155889,7 +155743,7 @@
         {
           "symbol": "create",
           "receiver": "repo",
-          "line": 2264,
+          "line": 2247,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -155899,7 +155753,7 @@
         {
           "symbol": "update",
           "receiver": "repo",
-          "line": 2265,
+          "line": 2248,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "update"
@@ -155909,7 +155763,7 @@
         {
           "symbol": "_finishCreatedDocument",
           "receiver": null,
-          "line": 2288,
+          "line": 2271,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -155919,7 +155773,7 @@
         {
           "symbol": "completeFormDraft",
           "receiver": null,
-          "line": 2291,
+          "line": 2274,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "complete"
@@ -155929,7 +155783,7 @@
         {
           "symbol": "popSavedEditOrReplace",
           "receiver": null,
-          "line": 2296,
+          "line": 2279,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "edit"
@@ -155939,7 +155793,7 @@
         {
           "symbol": "describeSubmitError",
           "receiver": null,
-          "line": 2306,
+          "line": 2289,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -155949,7 +155803,7 @@
         {
           "symbol": "_saveShipmentBatch",
           "receiver": null,
-          "line": 2313,
+          "line": 2296,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "save"
@@ -155959,7 +155813,7 @@
         {
           "symbol": "saveFormDraftNow",
           "receiver": null,
-          "line": 2319,
+          "line": 2302,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "save"
@@ -155969,7 +155823,7 @@
         {
           "symbol": "batchShip",
           "receiver": null,
-          "line": 2323,
+          "line": 2306,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "ship"
@@ -155979,7 +155833,7 @@
         {
           "symbol": "_finishCreatedShipments",
           "receiver": null,
-          "line": 2362,
+          "line": 2345,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "finish"
@@ -155989,7 +155843,7 @@
         {
           "symbol": "describeSubmitError",
           "receiver": null,
-          "line": 2381,
+          "line": 2364,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "submit"
@@ -155999,7 +155853,7 @@
         {
           "symbol": "_finishCreatedShipments",
           "receiver": null,
-          "line": 2389,
+          "line": 2372,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "finish"
@@ -156009,7 +155863,7 @@
         {
           "symbol": "completeFormDraft",
           "receiver": null,
-          "line": 2400,
+          "line": 2383,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "complete"
@@ -156019,7 +155873,7 @@
         {
           "symbol": "_finishCreatedDocument",
           "receiver": null,
-          "line": 2456,
+          "line": 2439,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "finish"
@@ -156029,7 +155883,7 @@
         {
           "symbol": "completeFormDraft",
           "receiver": null,
-          "line": 2469,
+          "line": 2452,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "complete"
@@ -156039,7 +155893,7 @@
         {
           "symbol": "_confirmBatchIntake",
           "receiver": null,
-          "line": 2592,
+          "line": 2575,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "confirm"
@@ -156049,7 +155903,7 @@
         {
           "symbol": "_cancelIntakeSelecting",
           "receiver": null,
-          "line": 2619,
+          "line": 2602,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "cancel"
@@ -156059,7 +155913,7 @@
         {
           "symbol": "remove",
           "receiver": "_intakeSelected",
-          "line": 2630,
+          "line": 2613,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -156069,7 +155923,7 @@
         {
           "symbol": "_confirmBatchIntake",
           "receiver": null,
-          "line": 2637,
+          "line": 2620,
           "kind": "method-declaration-candidate",
           "actionNameHints": [
             "confirm"
@@ -156079,7 +155933,7 @@
         {
           "symbol": "remove",
           "receiver": "_intakeBusyFiles",
-          "line": 2814,
+          "line": 2797,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -156089,7 +155943,7 @@
         {
           "symbol": "downloadBytes",
           "receiver": null,
-          "line": 2853,
+          "line": 2836,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "download"
@@ -156099,7 +155953,7 @@
         {
           "symbol": "create",
           "receiver": "repository",
-          "line": 3311,
+          "line": 3294,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -156109,7 +155963,7 @@
         {
           "symbol": "remove",
           "receiver": "_errors",
-          "line": 3372,
+          "line": 3355,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -156119,7 +155973,7 @@
         {
           "symbol": "removeWhere",
           "receiver": "_grid",
-          "line": 3415,
+          "line": 3398,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "remove"
@@ -156129,7 +155983,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 3707,
+          "line": 3690,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -156139,7 +155993,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 3729,
+          "line": 3712,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -156149,7 +156003,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 3761,
+          "line": 3744,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -156159,7 +156013,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 3774,
+          "line": 3757,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -156169,7 +156023,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 3800,
+          "line": 3783,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -156179,7 +156033,7 @@
         {
           "symbol": "utenMakerAuditCells",
           "receiver": null,
-          "line": 3849,
+          "line": 3832,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "audit"
@@ -156189,7 +156043,7 @@
         {
           "symbol": "UtenImportButton",
           "receiver": null,
-          "line": 4565,
+          "line": 4553,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "import"
@@ -156199,7 +156053,7 @@
         {
           "symbol": "updateFor",
           "receiver": null,
-          "line": 4585,
+          "line": 4573,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "update"
@@ -156209,7 +156063,7 @@
         {
           "symbol": "UtenEditFloatingActions",
           "receiver": null,
-          "line": 4681,
+          "line": 4669,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "edit"
@@ -242102,7 +241956,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisController.java",
-      "sha256": "c244a0e9c3dfb35d3735c49c92084f92c9075e27641a51f677fc696078184ed2",
+      "sha256": "85dd609b1a45ca5468127d9c33bf6ce214ee302b5441c81029b64a6b90b15c0b",
       "lineCount": 385,
       "class": "MaterialAnalysisController",
       "declaredBasePaths": [
@@ -252459,8 +252313,8 @@
     },
     {
       "source": "lib/features/basic_data/widgets/client_master_edit.dart",
-      "sha256": "301cd118c5dd7cd8a61abd2146799ab5716cf409db7cc68c12233301532cbaaf",
-      "lineCount": 457
+      "sha256": "f2b34f223cc82aaa5888b17cdaa29ec33a17f513ba16a9fab7a38c8d0a4bfcbf",
+      "lineCount": 459
     },
     {
       "source": "lib/features/basic_data/widgets/client_ship_address_sheet.dart",
@@ -253264,8 +253118,8 @@
     },
     {
       "source": "lib/features/finance/pages/finance_report_table_page.dart",
-      "sha256": "cf8830f829d7c44db7f416f30b47bd2371675e46e24a1008c4cea4cf26724d24",
-      "lineCount": 873
+      "sha256": "7aa5d317cbae47ca90937f87ce820840446b5fccd674ab17a739a8f802be9ce0",
+      "lineCount": 877
     },
     {
       "source": "lib/features/finance/pages/finance_sales_order_confirmation_page.dart",
@@ -253844,7 +253698,7 @@
     },
     {
       "source": "lib/features/production/models/production_flow_stage.dart",
-      "sha256": "c818271faa8350cc151fb38e748e40676702673c0d0d08e65b85e6fa539b7ce4",
+      "sha256": "03ab54ebebe0dc5e30f01b70675e06b236e0de2b546ce0e1a2e60b20b7dacfaa",
       "lineCount": 599
     },
     {
@@ -253919,8 +253773,8 @@
     },
     {
       "source": "lib/features/production/pages/material_analysis_bucket_detail.dart",
-      "sha256": "04ad340e6b5689f21cd19571968fda004085a6f55bf66d98172767ad4301bf67",
-      "lineCount": 1466
+      "sha256": "c7c9607ac2cb4f06892908612ce577f70442b749defb119014847d2ea6a49c50",
+      "lineCount": 1429
     },
     {
       "source": "lib/features/production/pages/material_analysis_candidates.dart",
@@ -253929,12 +253783,12 @@
     },
     {
       "source": "lib/features/production/pages/material_analysis_child_shortage.dart",
-      "sha256": "5e896e996574599856915c224ee9d2310ad8301c4bb9d7a5e6417d48b48b81d8",
+      "sha256": "c5479fc49a9077c81ab9ae6a97dd9a729b1835f4d3567c911d581dc0bb9e3a2a",
       "lineCount": 997
     },
     {
       "source": "lib/features/production/pages/material_analysis_child_shortage_page.dart",
-      "sha256": "a8c0e435d8bd7f634423ee8f3fdd414b004ddf6ff2589597c0459506465bc57b",
+      "sha256": "87d0a4c64a0eafe0b4c74dd8527ed129d8d80b682296a5e62e4b1160bfaca060",
       "lineCount": 721
     },
     {
@@ -253944,8 +253798,8 @@
     },
     {
       "source": "lib/features/production/pages/material_analysis_material_table.dart",
-      "sha256": "4a97a7c0cf618063236428dcd71c29f2cfcf54bc43c40ed0cf4c5e174a29eabc",
-      "lineCount": 9080
+      "sha256": "c139bf4b1b11d2e94f2889ba8ce0c0d34f66620e96ab8403e468b0452d832bb1",
+      "lineCount": 9033
     },
     {
       "source": "lib/features/production/pages/material_analysis_order_page.dart",
@@ -253954,7 +253808,7 @@
     },
     {
       "source": "lib/features/production/pages/material_analysis_plan_actions.dart",
-      "sha256": "f2314cd23543f533b8f388d2ae82420782e649145d4211367fe8f7b28872747e",
+      "sha256": "ac68cb1a2b9af76388f8104f332573229f8a7d49b70b5ade1f540721bb1c45e5",
       "lineCount": 423
     },
     {
@@ -253964,13 +253818,13 @@
     },
     {
       "source": "lib/features/production/pages/material_analysis_supply_actions.dart",
-      "sha256": "1b8099a0a9338fcd4ddcf945a995ebda830ba99d3911f55aff09fb38f2daff67",
-      "lineCount": 1315
+      "sha256": "809d1439c566a796ef38dab05dd0f84c6014ef3f819913b89d08c660e6d57b92",
+      "lineCount": 1085
     },
     {
       "source": "lib/features/production/pages/material_analysis_view_models.dart",
-      "sha256": "1736ef645ce9ed88d17e6f1d5b89c80f267e70cdc82a7db50161728b1002d772",
-      "lineCount": 275
+      "sha256": "a34b2ace123f2f528e5d65f1ee6ec9d1071762b8758b20b9878ad89f3faccad1",
+      "lineCount": 264
     },
     {
       "source": "lib/features/production/pages/production_actual_output_supplement_page.dart",
@@ -254034,7 +253888,7 @@
     },
     {
       "source": "lib/features/production/pages/production_material_analysis_page.dart",
-      "sha256": "84e5eccf82c1b8ca7585bc9db8071dc9fc033bddcf6621969610ce91cd71283f",
+      "sha256": "42caedf3cb5e536d898d75817cd4418dc81fc09ffa2eb1454882e6570c100779",
       "lineCount": 3344
     },
     {
@@ -254189,7 +254043,7 @@
     },
     {
       "source": "lib/features/production/repositories/production_repository.dart",
-      "sha256": "b6fdddbc1a44d174681827fbc31eca41d1887660bc48e5e6893e4dff47301b55",
+      "sha256": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
       "lineCount": 2456
     },
     {
@@ -254799,8 +254653,8 @@
     },
     {
       "source": "lib/features/sales/pages/sales_doc_edit_page.dart",
-      "sha256": "80dd01613c8ebfb9636ff93c613eaa23cf96097d061449f701e3ad9d0e718afc",
-      "lineCount": 4852
+      "sha256": "42ff07ba614108534ca0273516a826c4bcc02659ab9a548f7e7018b64a102003",
+      "lineCount": 4805
     },
     {
       "source": "lib/features/sales/pages/sales_doc_list_page.dart",
@@ -256589,8 +256443,8 @@
     },
     {
       "source": "lib/shared/models/sales_shipment_policy.dart",
-      "sha256": "766f4dcc4e7635b0ccc98e97b4bd03c2bd434ea563b5aa5b990a5cea19a38e34",
-      "lineCount": 19
+      "sha256": "798e20211e1e9c76ec4f4b6e3549d8dc76c62f43311d7d971d4afe819d7ec890",
+      "lineCount": 20
     },
     {
       "source": "lib/shared/models/subcontract_short_delivery.dart",
@@ -257809,7 +257663,7 @@
     },
     {
       "source": "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisController.java",
-      "sha256": "c244a0e9c3dfb35d3735c49c92084f92c9075e27641a51f677fc696078184ed2",
+      "sha256": "85dd609b1a45ca5468127d9c33bf6ce214ee302b5441c81029b64a6b90b15c0b",
       "lineCount": 385
     },
     {

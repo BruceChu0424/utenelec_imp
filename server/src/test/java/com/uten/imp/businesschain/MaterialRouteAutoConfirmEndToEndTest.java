@@ -157,7 +157,7 @@ class MaterialRouteAutoConfirmEndToEndTest {
         assertEquals("REVIEW",review.sourceSuggestion());
         assertNull(review.sourceConfirmed(),"空来源且无下层的行不替人决定");
 
-        assertEquals("自制",sourceType(t.mid()),"与人工确认同一套主档回写");
+        assertEquals("",sourceType(t.mid()),"计划快照可按既有 BOM 推导，但不能补写主档角色");
         assertEquals("采购",sourceType(t.leaf()));
         assertEquals(leafVersion,goodsVersion(t.leaf()),"建议本就来自主档的行不改主档、不抬版本");
         assertEquals(planner,db.queryForObject("SELECT route_confirmed_by FROM production_material_analysis_materials WHERE id=?",
@@ -209,29 +209,28 @@ class MaterialRouteAutoConfirmEndToEndTest {
      * 人工把采购件改成自制后, 它下面刚冒出独立需求的子件在同一次改路线请求里按主档确认,
      * 响应带回 1 组; 人工改的那一行保持人的决定.
      */
-    @Test void manualRouteChangeConfirmsNewlyExposedChildrenInTheSameResponse(){
-        Tree t=tree("auto-manual");
+    @Test void planningCannotChangeTheRoleAndANewAnalysisReadsTheMasterDefault(){
+        Tree t=tree("auto-master-only");
         db.update("UPDATE goods SET source_type='采购' WHERE id=?",t.mid());
-        fixture.loginAs(planner(t.world(),"auto-manual",true));
-        AnalysisView view=create(t,"auto-manual");
-        MaterialView mid=byGoods(view,t.mid());
+        fixture.loginAs(planner(t.world(),"auto-master-only",true));
+        AnalysisView view=create(t,"auto-master-only");MaterialView mid=byGoods(view,t.mid());
         assertEquals("BUY",mid.sourceConfirmed());
-        assertNull(byGoods(view,t.midLeaf()).sourceConfirmed(),"父件外购时子件没有独立需求, 不确认");
-
-        AnalysisView changed=analyses.saveRoutes(view.analysisId(),new RouteRequest(view.version(),view.fingerprint(),
-                "auto-manual-route-"+view.analysisId(),
-                List.of(new RouteDecision(mid.materialLineId(),mid.actionGroupKey(),"MAKE","改为自己做"))));
-
-        assertEquals(1,changed.autoConfirmedRouteCount());
-        assertEquals("MAKE",byGoods(changed,t.mid()).sourceConfirmed());
-        assertEquals("BUY",byGoods(changed,t.midLeaf()).sourceConfirmed());
-        assertEquals(0,changed.pendingAutoConfirmRouteCount());
-        assertEquals(List.of("PREVIEW","ROUTE"),operations(view.analysisId()));
+        assertThrows(com.uten.imp.common.web.ApiException.class,()->analyses.saveRoutes(view.analysisId(),
+            new RouteRequest(view.version(),view.fingerprint(),"reject-role-"+view.analysisId(),
+                List.of(new RouteDecision(mid.materialLineId(),mid.actionGroupKey(),"MAKE",null)))));
+        assertEquals("采购",sourceType(t.mid()));assertEquals(List.of("PREVIEW"),operations(view.analysisId()));
+        // Simulate an independent, authorized master-data edit. Planning itself never performs this update.
+        db.update("UPDATE goods SET source_type='自制' WHERE id=?",t.mid());
+        AnalysisView next=analyses.preview(new PreviewRequest(null,null,null,t.world().warehouseId(),"master-new-analysis",
+            List.of(new PreviewItem("OTHER",null,t.root(),null,t.world().unitId(),t.sourceRef()+"-new",
+                "主档默认来源回归",BusinessTime.today().plusDays(10),new BigDecimal("100")))));
+        assertEquals("MAKE",byGoods(next,t.mid()).sourceConfirmed());
+        assertEquals("BUY",byGoods(next,t.midLeaf()).sourceConfirmed());
     }
 
     /**
-     * 自动确认只补空白档案, 不改写别人填过的来源 (2026-09-27 集成复核): 顶层产品已有生产计划时
-     * 按自制确认, 档案若写着委外, 档案保持委外、不抬版本; 档案空白时照旧补成自制.
+     * 自动确认只写分析快照, 不回写货品主档 (2026-09-27 集成复核): 顶层产品已有生产计划时
+     * 按自制确认, 档案若写着委外, 档案保持委外、不抬版本; 档案空白时仍保留空白.
      */
     @Test void automaticConfirmationNeverOverwritesAFilledGoodsMaster(){
         Tree t=tree("auto-keep");
@@ -252,7 +251,7 @@ class MaterialRouteAutoConfirmEndToEndTest {
         clearConfirmation(root.materialLineId());
         db.update("UPDATE goods SET source_type='' WHERE id=?",t.root());
         applyAutomatic(view.analysisId(),planner,root,t.root(),"MAKE");
-        assertEquals("自制",sourceType(t.root()),"空白档案照旧补上");
+        assertEquals("",sourceType(t.root()),"计划自动确认也不能补写货品主档");
     }
 
     private void clearConfirmation(UUID material){

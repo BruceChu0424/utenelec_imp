@@ -492,11 +492,8 @@ class ProductionMaterialAnalysisWorkflowContractTest {
     }
 
     @Test
-    void confirmRoutesWritesGoodsSourceTypeAndRouteMemoryEndpointIsRetired() throws Exception {
-        // 2026-09-16 供应方式单一事实源 = 货品主档：确认路线同事务回写 goods.source_type
-        // (人工决定，抬 version；值没变不落盘)，同一条 UPDATE 把本行 source_suggestion
-        // 对齐成确认值(否则回写后下一次刷新算出的建议 = 刚确认的值，会被当成主档事实
-        // 变更把确认清掉)；按历史分析推导的 /last-routes 记忆整套退役(存量由 V598 回填)。
+    void confirmRoutesPreservesGoodsSourceTypeAndRouteMemoryEndpointIsRetired() throws Exception {
+        // 计划只确认货品默认来源，不能把计划决定反向写回货品角色。
         String service = source("features/production/analysis/MaterialAnalysisService.java");
         assertThat(service)
                 .doesNotContain("lastRoutesPerGoods")
@@ -512,12 +509,11 @@ class ProductionMaterialAnalysisWorkflowContractTest {
         String writer = source("features/production/analysis/MaterialAnalysisRouteBatchWriter.java");
         assertThat(writer)
                 .contains("SET confirmed_route = input.route, source_suggestion = input.suggestion")
-                .contains("SET source_type = input.source_type, version = goods.version + 1,")
                 .contains("updated_by = :actorId")
                 .contains("NOT goods.is_deleted")
-                .contains("goods.source_type IS DISTINCT FROM input.source_type")
-                .contains("mixedGoods.contains(change.goodsId()) ? retainedSuggestions.get(change.goodsId()) : change.route()");
-        assertThat(service).contains("static String sourceTypeForRoute(String route)");
+                .contains("retainedSuggestions.get(change.goodsId())")
+                .doesNotContain("UPDATE goods SET source_type");
+        assertThat(service).doesNotContain("sourceTypeForRoute(");
         String controller = source("features/production/analysis/MaterialAnalysisController.java");
         assertThat(controller)
                 .doesNotContain("\"/last-routes\"")

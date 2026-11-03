@@ -1,0 +1,76 @@
+{
+  "id": "E-STAFF-FEEDBACK-20261103",
+  "branch": "uimp/staff-feedback-20261103",
+  "base": "c75d6e1e3",
+  "classification": [
+    "frontend",
+    "backend",
+    "shared-contract"
+  ],
+  "platforms": {
+    "web+flutter": {
+      "implementation": "同一 Dart 业务入口",
+      "validation": "本地组件交互和临时 PostgreSQL；不代表正式客户端/生产验收"
+    },
+    "wpf_legacy": {
+      "status": "not-migrated",
+      "targetPcAcceptance": false,
+      "tasks": [
+        "W7-BIZ-022",
+        "W7-BIZ-032",
+        "W7-BIZ-072",
+        "W7-BIZ-094",
+        "W7-BIZ-108",
+        "W7-BIZ-136"
+      ]
+    }
+  },
+  "contracts": [
+    "客户对账单 clientName / 客户名称：销售出货与退货同一客户来源，列表/表头筛选/排序/打印/导出共用服务端投影。",
+    "排产主表、汇总和采购/委外/车间桶只读默认供应方式；服务端锁货品后拒绝偏离默认的角色更改，任何确认均不回写 goods.source_type；历史已下达事实保留。",
+    "订单新建/报价转单/AI 共用服务端 ALLOW_PARTIAL 缺省；新建表单和本地未落单草稿无需填写策略，不从客户条款覆盖。已有订单省略策略保留历史，旧客户端显式齐套仍兼容。",
+    "客户资料公共编辑字段只读保留原策略，不再提示新单预填。现有排产、发货、退货与资金事实的订单修订守卫保留。"
+  ],
+  "sourceSha256": {
+    "lib/features/basic_data/widgets/client_master_edit.dart": "f2b34f223cc82aaa5888b17cdaa29ec33a17f513ba16a9fab7a38c8d0a4bfcbf",
+    "lib/features/finance/pages/finance_report_table_page.dart": "7aa5d317cbae47ca90937f87ce820840446b5fccd674ab17a739a8f802be9ce0",
+    "lib/features/production/models/production_flow_stage.dart": "03ab54ebebe0dc5e30f01b70675e06b236e0de2b546ce0e1a2e60b20b7dacfaa",
+    "lib/features/production/pages/material_analysis_bucket_detail.dart": "c7c9607ac2cb4f06892908612ce577f70442b749defb119014847d2ea6a49c50",
+    "lib/features/production/pages/material_analysis_child_shortage.dart": "c5479fc49a9077c81ab9ae6a97dd9a729b1835f4d3567c911d581dc0bb9e3a2a",
+    "lib/features/production/pages/material_analysis_child_shortage_page.dart": "87d0a4c64a0eafe0b4c74dd8527ed129d8d80b682296a5e62e4b1160bfaca060",
+    "lib/features/production/pages/material_analysis_material_table.dart": "c139bf4b1b11d2e94f2889ba8ce0c0d34f66620e96ab8403e468b0452d832bb1",
+    "lib/features/production/pages/material_analysis_plan_actions.dart": "ac68cb1a2b9af76388f8104f332573229f8a7d49b70b5ade1f540721bb1c45e5",
+    "lib/features/production/pages/material_analysis_supply_actions.dart": "809d1439c566a796ef38dab05dd0f84c6014ef3f819913b89d08c660e6d57b92",
+    "lib/features/production/pages/material_analysis_view_models.dart": "a34b2ace123f2f528e5d65f1ee6ec9d1071762b8758b20b9878ad89f3faccad1",
+    "lib/features/production/pages/production_material_analysis_page.dart": "42caedf3cb5e536d898d75817cd4418dc81fc09ffa2eb1454882e6570c100779",
+    "lib/features/production/repositories/production_repository.dart": "e70eed340f34ad6293c8f862d2818c1299dc6c22aace52dbace37cdb6412bc41",
+    "lib/features/sales/pages/sales_doc_edit_page.dart": "42ff07ba614108534ca0273516a826c4bcc02659ab9a548f7e7018b64a102003",
+    "lib/shared/models/sales_shipment_policy.dart": "798e20211e1e9c76ec4f4b6e3549d8dc76c62f43311d7d971d4afe819d7ec890",
+    "server/src/main/java/com/uten/imp/features/finance/statement/FinanceStatementService.java": "e829e3aac915d638cc8eb710ef897d25efaacfddc2f235f03ba358a4975ffce4",
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisController.java": "85dd609b1a45ca5468127d9c33bf6ce214ee302b5441c81029b64a6b90b15c0b",
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisRouteAutoConfirm.java": "f28289d2bb35201e7baa7fb9e27ae7f287a882e556f8ae0084fef003af30ea08",
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisRouteBatchWriter.java": "10b0b17533b6e12bbf17b124ccbfb0b53810d97c9c01a390e91cb6f161da1d46",
+    "server/src/main/java/com/uten/imp/features/production/analysis/MaterialAnalysisService.java": "46e34ae6b79aaaeaf408edde3290aaad350df989d4120b86c9bffd4f24c20644",
+    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrder.java": "c17aa15be479dcbcd0a459ee50753825c264e16c562fdb33b4c53b0c59d61fe2",
+    "server/src/main/java/com/uten/imp/features/sales/order/SalesOrderService.java": "c2557aba62fa24b7527f6d2c6f173904289ed36ebcee0861f9e133fac5271d65",
+    "server/src/main/java/com/uten/imp/features/sales/order/dto/OrderSaveRequest.java": "12dad0b7ccbb7ef8f0eae66d06dc4ae98a440b6d211c77537024b73d5b83db96"
+  },
+  "fullErpEquivalent": false,
+  "win7Accepted": false,
+  "productionDeployment": false,
+  "validationRecord": "docs/99-项目治理/2026-11-03-人员反馈与默认分批发货.md",
+  "checks": {
+    "flutterSalesAndRootRoutes": "68 passed; build-staff-sales-final.log",
+    "flutterFinanceAndClientMaster": "23 passed; build-staff-report-client-final.log",
+    "flutterProductionFullPage": "158 passed; build-staff-production-final.log; no test failures or pointer warnings",
+    "flutterPinnedDependencies": "71 passed; build-staff-pinned-final.log; after flutter pub get --enforce-lockfile, original pubspec.lock unchanged",
+    "backendBusinessChains": "12 passed; build-staff-backend.log; dedicated role-only full migrated PostgreSQL scenarios",
+    "backendFinancialProjectionAndOrderAndWriter": "61 passed; build-staff-backend-final.log; 35 + 14 + 4 + 8, no failures/errors/skips",
+    "backendWorkflowContract": "23 passed; build-staff-workflow-final.log; retired reverse role mapper and replaced obsolete write-back expectation",
+    "flutterStaticAnalysis": "10 targets, no issues; build-staff-analysis-clean.log",
+    "progressAndInventory": "canonical regeneration, inventory and progress checks passed; stable IDs, states and completion counts unchanged",
+    "knownExtendedFailures": "Two sales-progress draft-category cases remain outside this edit scope; actual order draft restoration/save/attachment retry cases passed in build-staff-regression.log. An earlier print fixture waited in fake async; corrected fixture passed in final report runs.",
+    "backendTotal": "96 distinct tests passed, zero failures/errors/skips (12 business-chain + 61 financial/order/writer + 23 workflow contract)",
+    "flutterTotal": "249 distinct tests passed (68 sales/root-route + 23 finance/client + 158 production); pinned rerun 71 is overlapping, not added"
+  }
+}

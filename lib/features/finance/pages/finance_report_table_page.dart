@@ -729,6 +729,10 @@ class _FinanceReportTablePageState
             width: _isStatusColumnLabel(c.label)
                 ? 72
                 : (c.width ?? 120).toDouble(),
+            minimumWidthOf:
+                _exportReport == 'statements/client' && c.key == 'clientName'
+                ? (_) => (c.width ?? 180).toDouble()
+                : null,
             type: c.type,
             columnSearchEnabled:
                 data.columnSearchKeys.contains(c.key) &&

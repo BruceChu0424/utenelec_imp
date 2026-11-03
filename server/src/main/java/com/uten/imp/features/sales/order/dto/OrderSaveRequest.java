@@ -52,8 +52,8 @@ public class OrderSaveRequest {
     private String sourceDocNo;
 
     /**
-     * ALLOW_PARTIAL / REQUIRE_COMPLETE / CUSTOMER_CONFIRM.
-     * Null leaves a new order unset and preserves the stored value on update;
+     * 缺省为 ALLOW_PARTIAL；REQUIRE_COMPLETE 兼容旧客户端，CUSTOMER_CONFIRM 仅保留历史。
+     * Null defaults a new order to ALLOW_PARTIAL and preserves the stored value on update;
      * non-null values are normalized and validated by the order service.
      */
     private String shipmentPolicy;

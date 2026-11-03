@@ -107,7 +107,7 @@ public class MaterialAnalysisController {
     }
 
     // 2026-09-16：GET /last-routes(按历史分析推导「上次确认路线」的预填记忆)已退役——
-    // 供应方式的单一事实源是货品主档 goods.source_type：PUT /{id}/routes 确认即回写主档，
+    // 供应方式的单一事实源是货品主档 goods.source_type：排产只读取默认来源，不回写主档，
     // 新分析的建议路线(source_suggestion)直接从主档来，前端不再另读记忆。
 
     /** Learned defaults used only to prefill a new planning draft. */

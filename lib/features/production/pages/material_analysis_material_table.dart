@@ -1171,7 +1171,7 @@ abstract class _MaterialAnalysisMaterialTableState
     return groups;
   }
 
-  /// 勾选只表示下单/追加意图；供应方式另行自动保存。
+  /// 勾选只表示下单/追加意图；供应方式由服务端按货品默认来源确认。
   /// 汇总和原行共用办理资格，缺少可编辑指派不隐藏选择入口。
   List<_MaterialGroup> _materialRowSelectableGroups(_MaterialTableRow row) {
     assert(() {
@@ -2085,7 +2085,7 @@ abstract class _MaterialAnalysisMaterialTableState
       minimumWidthOf: (_) => 72,
       info:
           '这行物料现在走到哪一步（等待下单 → 下单 → 财务审批 → 收货 → 检验 → '
-          '入库)；点击状态可看全程明细。还没确认供应方式的行显示「待选供应方式」。',
+          '入库)；点击状态可看全程明细。还没确认供应方式的行显示「待维护货品来源」。',
       value: _materialTableStatusText,
       cellBuilderHandlesSemantics: true,
       cellColor: (context, row) {
@@ -2201,12 +2201,7 @@ abstract class _MaterialAnalysisMaterialTableState
             ? null
             : utenStatusBadgeCellColor(_materialSupplyRouteBadgeType(route));
       },
-      info:
-          '这批物料怎么准备：采购 = 向供应商买；委外 = 发给加工商加工；'
-          '自制 = 自己车间生产。带下层物料的可选路线更多。'
-          '未选供应方式的行显示红框，选好即自动保存后才能下单；'
-          '确认之后仍可随时改，三个下达桶的行与计数会跟着变，'
-          '但已经下达过的行要先撤回才能改。',
+      info: '供应方式来自货品资料默认来源：采购、自制或委外。排产内只读；需要调整时请维护货品资料后刷新。已有下达记录保留原路线。',
       cellBuilder: (_, row) => _materialTableRouteCell(theme, row),
     ),
     MasterColumnDef(
@@ -2828,70 +2823,28 @@ abstract class _MaterialAnalysisMaterialTableState
     return routes.length == 1 ? routes.single : null;
   }
 
-  String? _materialTableRouteText(_MaterialTableRow row) => row.contextOnly
-      ? '—'
-      : _materialTableRoute(row)?.label ??
-            (row.aggregate == null && row.group == null
-                ? '—'
-                : _l10n.materialMixedRoutes);
+  String? _materialTableRouteText(_MaterialTableRow row) {
+    if (row.contextOnly) return '—';
+    final route = _materialTableRoute(row);
+    if (route != null) return route.label;
+    final groups = _materialRowGroups(row);
+    if (groups.isEmpty) return '—';
+    return groups.every((group) => _materialDisplayRoute(group) == null)
+        ? '待维护货品来源'
+        : _l10n.materialMixedRoutes;
+  }
 
   Widget _materialTableRouteCell(ThemeData theme, _MaterialTableRow row) {
-    final route = _materialTableRoute(row);
-    final groups = _materialRowGroups(row);
-    final editable = _canRoute && !_busy && groups.isNotEmpty;
-    if (!editable) {
-      return Text(_materialTableRouteText(row) ?? '—');
-    }
-    // 2026-09-16 用户口径：表格内下拉统一用自家 UtenDropdownField（统一弹层/
-    // 单行省略号/描边与同行格一致），不再用原生 DropdownButton。
-    final dropdown = UtenDropdownField(
-      key: ValueKey(
-        'material-route-dropdown-${row.material?.materialLineId ?? row.key}',
-      ),
-      dense: true,
-      value: route?.name,
-      // 混合路线事实保留；未选时直接显示字段名，与普通及表格输入的空值口径一致。
-      hintText: route == null ? '供应方式' : _l10n.materialMixedRoutes,
-      items: [
-        for (final option in MaterialSupplyRoute.values)
-          UtenDropdownItem(value: option.name, label: option.label),
-      ],
-      onChanged: (chosen) {
-        if (chosen == null) return;
-        final next = MaterialSupplyRoute.values.byName(chosen);
-        if (groups.every(
-          (group) => group.representative.confirmedRoute == next,
-        )) {
-          return;
-        }
-        unawaited(
-          _confirmRouteChanges(
-            groups,
-            next,
-            forAggregate: row.aggregate != null,
-          ),
-        );
-      },
-    );
-    // ADR-102（2026-09-25 确认路线退役修订）：还没确认供应方式的行把这一格
-    // 框成红的、下拉留空。货品档案里能定路线的行由服务端在建分析 / 刷新时
-    // 已自动确认 (2026-09-27)，红框只剩「主档来源为空且无 BOM」的叶子行——
-    // 选好即自动保存，这一行才能下单。
-    final pending = groups.any(
-      (group) => group.representative.confirmedRoute == null,
-    );
-    if (!pending) return dropdown;
+    final text = _materialTableRouteText(row) ?? '—';
     return UtenEditorTooltip(
-      message: '这一行还没选供应方式，选好后立即保存并确认，它才能下单。',
-      child: DecoratedBox(
+      message: '产品角色和供应方式沿用货品资料默认来源。需要调整时请维护货品资料，再刷新物料分析；已有下达记录保留原路线。',
+      child: Text(
+        text,
         key: ValueKey(
-          'material-route-pending-${row.material?.materialLineId ?? row.key}',
+          'material-route-readonly-${row.material?.materialLineId ?? row.key}',
         ),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(UtenRadius.control),
-          border: Border.all(color: theme.colorScheme.error, width: 1.5),
-        ),
-        child: dropdown,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }
@@ -5361,14 +5314,14 @@ abstract class _MaterialAnalysisMaterialTableState
       return '此来源已有未提交的汇总总量，请到「按物料汇总」修改、下达或撤销该草稿';
     }
     if (group.representative.confirmedRoute == null) {
-      return '这一行还没选供应方式，先在「供应方式」列里选好（选好即自动保存）';
+      return '请先在货品资料维护默认来源，再刷新物料分析';
     }
     // 路线草稿保存失败时 _routeDraft/_dirtyRouteGroups 会留在页面上，此时
     // _draftRoute 给的是还没落盘的路线：照它选下达通道会直接吃服务端 400，
     // 而且 _notifyRoute 只要页面上还有任一脏组就整段拒绝。所有旧入口都把脏组
     // 当「路线待确认」，主表这个新口子不能漏。
     if (_dirtyRouteGroups.contains(group.key)) {
-      return '这一行的供应方式还没保存成功，请重新选一次供应方式';
+      return '供应方式尚未按货品默认来源确认，请刷新物料分析';
     }
     final planningBlock = _planningBlockForGroup(group);
     if (planningBlock != null) return planningBlock;
@@ -5397,7 +5350,7 @@ abstract class _MaterialAnalysisMaterialTableState
     // （上方拦截过 confirmedRoute == null）。
     final route = _draftRoute(group)!;
     if (_routeBlockedBySafetyGap(group, route)) {
-      return '本版本仅采购路线支持公共安全补库，请改用采购路线下达';
+      return '本版本仅默认来源为采购的货品支持公共安全补库，请核对货品资料';
     }
     if (!group.paths.every(_hasResolvedMaterialSource)) {
       return '这一行的物料来源读不出来，请刷新分析后核对';

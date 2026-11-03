@@ -209,6 +209,7 @@ List<MasterFieldDef> buildClientFields(
             key: 'defaultShipmentPolicy',
             label: '默认货运策略',
             type: MasterFieldType.select,
+            readOnly: true,
             options: [
               for (final policy in SalesShipmentPolicy.selectable)
                 MasterSelectOption(
@@ -227,7 +228,8 @@ List<MasterFieldDef> buildClientFields(
                 ),
             ],
             group: '财务',
-            hint: '新建销售订货单预填；每次下单自动记住最新选择',
+            hint: '新订单自动允许分批发货，此处保留原记录',
+            info: '新建销售订货单自动允许分批发货；此处原记录不参与新单预填。',
           ),
           MasterFieldDef(
             key: 'defaultCurrencyId',

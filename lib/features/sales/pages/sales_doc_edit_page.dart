@@ -587,7 +587,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     _settlementMethodId = data['settlementMethodId'] as String?;
     _sellerId = data['sellerId'] as String?;
     _senderId = data['senderId'] as String?;
-    _shipmentPolicy = data['shipmentPolicy'] as String?;
+    _shipmentPolicy = widget.docType == SalesDocType.order && widget.id == null
+        ? SalesShipmentPolicy.defaultPolicy
+        : data['shipmentPolicy'] as String?;
     _billingMode = data['billingMode'] as String?;
     _directPurpose = data['directPurpose'] as String?;
     _validUntil = DateTime.tryParse(data['validUntil'] as String? ?? '');
@@ -681,6 +683,9 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   @override
   void initState() {
     super.initState();
+    if (widget.docType == SalesDocType.order) {
+      _shipmentPolicy = SalesShipmentPolicy.defaultPolicy;
+    }
     _guidedPlan = widget.initialGuidedPlan;
     ref.listenManual(sessionProvider, (before, after) {
       if (before == null ||
@@ -1515,7 +1520,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         // Values remembered for a different client must not survive a missing-history response.
         if (_autofilled.remove('currency')) _currencyId = null;
         if (_autofilled.remove('settlementMethod')) _settlementMethodId = null;
-        if (_autofilled.remove('shipmentPolicy')) _shipmentPolicy = null;
         if (_autofilled.remove('shipAddr')) _shipAddr.clear();
         if (_autofilled.remove('shipPhone')) _shipLinkPhone.clear();
         _autofillValues.remove('shipAddr');
@@ -1641,10 +1645,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         'currency' => _currencyId == null || _autofilled.contains(key),
         'settlementMethod' =>
           _settlementMethodId == null || _autofilled.contains(key),
-        'shipmentPolicy' =>
-          _shipmentPolicy == null ||
-              _shipmentPolicy == SalesShipmentPolicy.legacyUnspecified ||
-              _autofilled.contains(key),
         _ => false,
       };
       if (!isSoft) return;
@@ -1653,8 +1653,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
           _currencyId = incoming;
         case 'settlementMethod':
           _settlementMethodId = incoming;
-        case 'shipmentPolicy':
-          _shipmentPolicy = incoming;
       }
       _autofilled.add(key);
     }
@@ -1672,13 +1670,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         _cfg.hasCurrency && widget.docType != SalesDocType.quote,
         last.currencyId,
         currencyEntries.containsKey(last.currencyId),
-      );
-      // 发运策略是封闭枚举：仅带回新单可选值（历史 CUSTOMER_CONFIRM/LEGACY 不预填）。
-      softPrefill(
-        'shipmentPolicy',
-        widget.docType == SalesDocType.order,
-        last.shipmentPolicy,
-        SalesShipmentPolicy.selectable.contains(last.shipmentPolicy),
       );
     });
   }
@@ -1807,12 +1798,6 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
     // 报价必填有效期(2026-09-29)：没有有效期的报价无法约束核价与转单时效。
     if (_cfg.hasValidUntil && _cfg.validUntilRequired && _validUntil == null) {
       fail('validUntil', '请选择有效期');
-    }
-    // 发运策略必选（与后端同口径）：历史「未指定/客户确认」只读保留，不算未选。
-    if (widget.docType == SalesDocType.order &&
-        (_shipmentPolicy == null ||
-            _shipmentPolicy == SalesShipmentPolicy.legacyUnspecified)) {
-      fail('shipmentPolicy', '请选择发运策略');
     }
     final allRows = _grid.rows;
     final rows = allRows.where((r) => r.goods != null).toList();
@@ -2214,10 +2199,8 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         'validUntil': _fmt(_validUntil!),
       if (_cfg.hasDeliverDate && _deliverDate != null)
         'deliverDate': _fmt(_deliverDate!),
-      if (widget.docType == SalesDocType.order &&
-          _shipmentPolicy != null &&
-          SalesShipmentPolicy.selectable.contains(_shipmentPolicy))
-        'shipmentPolicy': _shipmentPolicy,
+      if (widget.docType == SalesDocType.order && widget.id == null)
+        'shipmentPolicy': SalesShipmentPolicy.defaultPolicy,
       if (_cfg.hasContractNo && _contractNo.text.trim().isNotEmpty)
         'contractNo': _contractNo.text.trim(),
       if (_cfg.hasContractInfo) ...{
@@ -4203,7 +4186,12 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                                                   },
                                                 ),
                                               if (widget.docType ==
-                                                  SalesDocType.order)
+                                                      SalesDocType.order &&
+                                                  widget.id != null &&
+                                                  _shipmentPolicy != null &&
+                                                  _shipmentPolicy !=
+                                                      SalesShipmentPolicy
+                                                          .allowPartial)
                                                 _shipmentPolicyField(),
                                               if (_cfg.hasContractNo)
                                                 TextField(
@@ -4703,49 +4691,14 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
   }
 
   Widget _shipmentPolicyField() {
-    final value = _shipmentPolicy;
-    // 可编辑：未选择(null) 或 当前值仍是新单可选策略。历史 CUSTOMER_CONFIRM/LEGACY 只读保留。
-    final editable =
-        value == null || SalesShipmentPolicy.selectable.contains(value);
-    return Column(
-      key: const ValueKey('sales-order-shipment-policy-field'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (editable)
-          UtenDropdownField(
-            key: const ValueKey('sales-order-shipment-policy'),
-            label: '发运策略',
-            value: value,
-            required: true,
-            autofilled: _autofilled.contains('shipmentPolicy'),
-            errorMessage: _errors.contains('shipmentPolicy') ? '请选择发运策略' : null,
-            items: [
-              for (final policy in SalesShipmentPolicy.selectable)
-                UtenDropdownItem(
-                  value: policy,
-                  label: salesShipmentPolicyLabel(policy),
-                ),
-            ],
-            allowClear: false,
-            searchable: false,
-            onChanged: (next) {
-              if (next == null) return;
-              setState(() => _shipmentPolicy = next);
-              _clearError('shipmentPolicy');
-              _markConfirmed('shipmentPolicy');
-            },
-          )
-        else
-          InputDecorator(
-            key: const ValueKey('sales-order-shipment-policy-readonly'),
-            decoration: const InputDecoration(
-              labelText: '发运策略',
-              filled: true,
-              suffixIcon: Icon(Icons.lock_outline, size: 18),
-            ),
-            child: Text(salesShipmentPolicyLabel(value)),
-          ),
-      ],
+    return InputDecorator(
+      key: const ValueKey('sales-order-shipment-policy-readonly'),
+      decoration: const InputDecoration(
+        labelText: '原发运策略',
+        filled: true,
+        suffixIcon: Icon(Icons.lock_outline, size: 18),
+      ),
+      child: Text(salesShipmentPolicyLabel(_shipmentPolicy)),
     );
   }
 

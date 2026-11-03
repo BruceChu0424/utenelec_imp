@@ -1,4 +1,12 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:ui' as ui;
+
+import 'package:flutter/rendering.dart';
+import '../../support/audit_screenshot_support.dart';
+import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:dio/dio.dart';
+import 'package:uten_imp/components/print/uten_print_preview.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +24,70 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  testWidgets(
+    'client statement shares customer names with search, paging, print and export',
+    (tester) async {
+      final capture = GlobalKey();
+      final api = await _pump(tester, 'recon', capture: capture);
+      tester
+          .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
+          .onSelectionChanged!(4);
+      await tester.pumpAndSettle();
+      MasterDataTableView<Map<String, dynamic>> table() =>
+          tester.widget(find.byType(MasterDataTableView<Map<String, dynamic>>));
+      expect(table().columns.take(3).map((column) => column.key), [
+        'billDate',
+        'clientName',
+        'goodsName',
+      ]);
+      expect(find.text('客户名称'), findsOneWidget);
+      expect(find.text('甲客户'), findsWidgets);
+      table().onFilterChanged('search.clientName', '甲客户');
+      await tester.pumpAndSettle();
+      table().onSortChange!('clientName', false);
+      await tester.pumpAndSettle();
+      await table().onPageChange!(2);
+      await tester.pumpAndSettle();
+      expect(api.requests.last.$2, containsPair('f.search.clientName', '甲客户'));
+      expect(api.requests.last.$2, containsPair('sort', 'clientName'));
+      final export = table().toolbarActions!
+          .whereType<UtenExportButton>()
+          .single;
+      expect(export.report, 'statements/client');
+      expect(export.queryParams, containsPair('f.search.clientName', '甲客户'));
+      final printed = await tester.runAsync(
+        () => table().toolbarActions!
+            .whereType<UtenPrintPreviewButton>()
+            .single
+            .loader(),
+      );
+      expect(printed!.headers, contains('客户名称'));
+      expect(printed.rows.first[1], '甲客户');
+      await tester.runAsync(() async {
+        final boundary =
+            capture.currentContext!.findRenderObject()!
+                as RenderRepaintBoundary;
+        final rendered = await boundary.toImage();
+        final png = await rendered.toByteData(format: ui.ImageByteFormat.png);
+        final file = File('build/staff-feedback/client-statement.png');
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(png!.buffer.asUint8List());
+        rendered.dispose();
+      });
+      api.delayedClient = Completer<Map<String, dynamic>>();
+      table().onFilterChanged('search.clientName', '旧条件');
+      await tester.pump(const Duration(milliseconds: 600));
+      table().onFilterChanged('search.clientName', '新条件');
+      await tester.pumpAndSettle();
+      expect(table().items.single['clientName'], '新条件');
+      api.delayedClient!.complete(
+        _clientStatementData({'f.search.clientName': '旧条件'}),
+      );
+      await tester.pumpAndSettle();
+      expect(table().items.single['clientName'], '新条件');
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets('对账成本和总账各自恢复分类，不受钱流明细分类影响', (tester) async {
     for (final entry in [
       ('detail', '/ar-ap/detail'),
@@ -72,9 +144,9 @@ void main() {
         api.requests.last.$2,
         containsPair('f.search.orderDate', '2026-10..2026-11'),
       );
-      final export = tester.widget<UtenExportButton>(
-        find.byType(UtenExportButton),
-      );
+      final export = table().toolbarActions!
+          .whereType<UtenExportButton>()
+          .single;
       expect(
         export.queryParams,
         containsPair('f.search.expectedOriginal', '>=90071992547409.1234'),
@@ -182,8 +254,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(api.requests.last.$2['sort'], isNull);
         expect(
-          tester
-              .widget<UtenExportButton>(find.byType(UtenExportButton))
+          table().toolbarActions!
+              .whereType<UtenExportButton>()
+              .single
               .queryParams['sort'],
           isNull,
         );
@@ -214,8 +287,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.requests.last.$2['f.side'], '负债和所有者权益');
       expect(
-        tester
-            .widget<UtenExportButton>(find.byType(UtenExportButton))
+        table().toolbarActions!
+            .whereType<UtenExportButton>()
+            .single
             .queryParams['f.side'],
         '负债和所有者权益',
       );
@@ -281,12 +355,14 @@ Future<_HeaderApi> _pump(
   String card, {
   bool serverTotals = false,
   bool separatePrefs = false,
+  GlobalKey? capture,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1800, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
   final api = _HeaderApi()..serverTotals = serverTotals;
+  if (capture != null) await loadAuditScreenshotFonts(tester);
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -303,17 +379,65 @@ Future<_HeaderApi> _pump(
           financeGlReportPrefsProvider.overrideWith(_GlPrefs.new),
         ],
       ],
-      child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: const Locale('zh'),
-        home: FinanceReportTablePage(cardId: card),
+      child: RepaintBoundary(
+        key: capture,
+        child: MaterialApp(
+          theme: capture == null ? null : buildLightTheme(),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('zh'),
+          home: FinanceReportTablePage(cardId: card),
+        ),
       ),
     ),
   );
   await tester.pumpAndSettle();
   return api;
 }
+
+Map<String, dynamic> _clientStatementData(Map<String, dynamic> query) => {
+  'readScopeVersion': 'scope-1',
+  'columns': [
+    {'key': 'billDate', 'label': '开单日期', 'type': 'date', 'width': 140},
+    {'key': 'clientName', 'label': '客户名称', 'type': 'text', 'width': 180},
+    {'key': 'goodsName', 'label': '货品名称', 'type': 'text', 'width': 220},
+    {'key': 'qty', 'label': '数量', 'type': 'number', 'unitKey': 'unit'},
+    {'key': 'unit', 'label': '单位', 'type': 'text'},
+    {
+      'key': 'price',
+      'label': '含税单价',
+      'type': 'money',
+      'unitKey': 'currencyCode',
+    },
+    {
+      'key': 'amount',
+      'label': '含税金额',
+      'type': 'money',
+      'unitKey': 'currencyCode',
+    },
+    {'key': 'remark', 'label': '备注', 'type': 'text'},
+    {'key': 'currencyCode', 'label': '币别', 'type': 'text'},
+  ],
+  'columnSearchKeys': ['billDate', 'clientName', 'goodsName', 'qty', 'remark'],
+  'rows': [
+    {
+      'billDate': '2026-11-03',
+      'clientName': query['f.search.clientName'] ?? '甲客户',
+      'goodsName': '优腾三联双控开关',
+      'unit': '个',
+      'qty': 100,
+      'price': 13.11,
+      'amount': 1311,
+      'remark': 'XC202611030001',
+      'currencyCode': '人民币',
+    },
+  ],
+  'facets': <String, dynamic>{},
+  'page': query['page'] ?? 1,
+  'size': query['size'] == 500 ? 1 : 50,
+  'total': query['size'] == 500 ? 2 : 100,
+  'totalPages': 2,
+};
 
 class _DetailPrefs extends FinanceDetailReportPrefsNotifier {
   @override
@@ -340,6 +464,7 @@ class _HeaderApi extends ApiClient {
   final requests = <(String, Map<String, dynamic>)>[];
   bool rejectHeaders = false;
   bool serverTotals = false;
+  Completer<Map<String, dynamic>>? delayedClient;
   @override
   Future<Map<String, dynamic>> get(
     String path, {
@@ -348,6 +473,12 @@ class _HeaderApi extends ApiClient {
     if (!path.startsWith('/finance/reports/')) return {};
     final parameters = Map<String, dynamic>.of(query ?? {});
     requests.add((path, parameters));
+    if (path.endsWith('/statements/client')) {
+      if (parameters['f.search.clientName'] == '旧条件' && delayedClient != null) {
+        return delayedClient!.future;
+      }
+      return _clientStatementData(parameters);
+    }
     if (rejectHeaders && parameters.containsKey('f.search.orderNo')) {
       throw ApiException('TEMPORARY', '暂时无法检索', httpStatus: 503);
     }

@@ -6,7 +6,7 @@ import 'package:uten_imp/features/basic_data/widgets/master_inline_create_fields
 
 void main() {
   test(
-    'sales editors omit all protected finance fields while preserving shipment policy',
+    'sales editors omit protected finance fields and the historical shipment default',
     () {
       final fields = buildClientFields(
         const {},
@@ -28,7 +28,13 @@ void main() {
       final body = controller.buildBody();
       expect(body, isNotNull);
       expect(body!['name'], '客户');
-      expect(body['defaultShipmentPolicy'], 'ALLOW_PARTIAL');
+      expect(body.containsKey('defaultShipmentPolicy'), isFalse);
+      expect(
+        fields
+            .singleWhere((field) => field.key == 'defaultShipmentPolicy')
+            .readOnly,
+        isTrue,
+      );
       expect(body.keys.toSet().intersection(clientFinancialFieldKeys), isEmpty);
     },
   );

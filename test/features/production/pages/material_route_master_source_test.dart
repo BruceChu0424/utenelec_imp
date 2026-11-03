@@ -14,8 +14,8 @@
 //  2. 详情报待确认：恰好一次静默刷新(完整来源 + 版本/指纹)，零 PUT /routes、零遮罩，
 //     回包的自动确认条数轻提示；同一纪元不重复、回包仍报待确认也不连环刷新；
 //  3. 详情不报待确认：页面自己一条都不确认(零写入)；
-//  4. REVIEW 行显示空下拉 + 红框(没有兜底委外、没有黄标)，选好即自动保存；
-//  5. 下拉直改(含把确认过的路线改掉)立即保存(PUT /routes)，不弹确认框；
+//  4. REVIEW 行只读显示待维护货品来源，不在排产补选角色；
+//  5. 已确认路线同样只读，连续点击不产生角色写入；
 //  6. 没有 route 权限的人进页零写入，行保持建议值只读展示。
 import 'dart:convert';
 
@@ -24,7 +24,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import '../../../support/material_analysis_tree.dart';
-import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
@@ -47,7 +46,7 @@ void main() {
     expect(_value(tester, 'm4'), MaterialSupplyRoute.subcontract);
     // m5 主档来源为空(REVIEW → null)：红框空选，服务端也不确认。
     expect(_value(tester, 'm5'), isNull);
-    expect(_pendingFrame(tester, 'm5'), isTrue);
+    expect(_pendingFrame(tester, 'm5'), isFalse);
     expect(_pendingFrame(tester, 'm1'), isFalse);
 
     expect(harness.writes, isEmpty, reason: '页面不再为自动确认发 PUT /routes');
@@ -97,36 +96,25 @@ void main() {
     expect(_value(tester, 'm1'), MaterialSupplyRoute.make);
   });
 
-  testWidgets('下拉直改即存：不弹确认框，立即保存并回写', (tester) async {
+  testWidgets('已确认供应方式只读，连续点击不会修改角色或发出写请求', (tester) async {
     final harness = await _pump(tester);
-    expect(harness.writes, isEmpty);
-    await _choose(tester, 'm1', '委外');
+    final cell = find.byKey(const ValueKey('material-route-readonly-m1'));
+    await Scrollable.ensureVisible(tester.element(cell), alignment: 0.75);
     await tester.pumpAndSettle();
-    // 「确认并换桶」弹窗退役：选好即写，没有中间确认。
-    expect(find.text('确认并换桶'), findsNothing);
-    expect(harness.writes, hasLength(1));
-    final decisions =
-        (harness.writes.last.data as Map<String, dynamic>)['decisions'];
-    expect(decisions, [
-      {'actionGroupKey': 'a-m1', 'route': 'SUBCONTRACT'},
-    ]);
-    expect(_value(tester, 'm1'), MaterialSupplyRoute.subcontract);
-    expect(_pendingFrame(tester, 'm1'), isFalse);
+    for (var i = 0; i < 12; i++) {
+      await tester.tapAt(tester.getCenter(cell));
+      await tester.pump();
+    }
+    expect(_value(tester, 'm1'), MaterialSupplyRoute.make);
+    expect(_dropdown('m1'), findsNothing);
+    expect(harness.writes, isEmpty);
   });
 
-  testWidgets('REVIEW 红框行：选好供应方式即自动保存', (tester) async {
+  testWidgets('默认来源缺失时引导维护货品，排产不能补选角色', (tester) async {
     final harness = await _pump(tester);
-    expect(_value(tester, 'm5'), isNull, reason: '主档来源为空显示空选，不再兜底委外');
-    await _choose(tester, 'm5', '采购');
-    await tester.pumpAndSettle();
-    expect(harness.writes, hasLength(1));
-    final decisions =
-        (harness.writes.last.data as Map<String, dynamic>)['decisions'];
-    expect(decisions, [
-      {'actionGroupKey': 'a-m5', 'route': 'BUY'},
-    ]);
-    expect(_value(tester, 'm5'), MaterialSupplyRoute.buy);
-    expect(_pendingFrame(tester, 'm5'), isFalse);
+    expect(_routeTextNear(tester, 'm5'), contains('待维护货品来源'));
+    expect(_dropdown('m5'), findsNothing);
+    expect(harness.writes, isEmpty);
   });
 
   testWidgets('没有 route 权限：进页零写入，建议值只读展示', (tester) async {
@@ -137,7 +125,7 @@ void main() {
     // 行仍是「路线待确认」（进度徽章红字指路）。
     expect(_pendingFrame(tester, 'm1'), isFalse, reason: '只读格没有红框框选');
     expect(_routeTextNear(tester, 'm1'), contains('自制'));
-    expect(_routeTextNear(tester, 'm5'), contains('—'));
+    expect(_routeTextNear(tester, 'm5'), contains('待维护货品来源'));
   });
 }
 
@@ -145,8 +133,12 @@ Finder _dropdown(String id) =>
     find.byKey(ValueKey('material-route-dropdown-$id'));
 
 MaterialSupplyRoute? _value(WidgetTester tester, String id) {
-  final value = tester.widget<UtenDropdownField>(_dropdown(id)).value;
-  return value == null ? null : MaterialSupplyRoute.values.byName(value);
+  final text = tester
+      .widget<Text>(find.byKey(ValueKey('material-route-readonly-$id')))
+      .data;
+  return MaterialSupplyRoute.values
+      .where((route) => route.label == text)
+      .firstOrNull;
 }
 
 /// 路线格有没有被红框框住（未确认供应方式）。
@@ -167,29 +159,6 @@ String _routeTextNear(WidgetTester tester, String id) {
 List<String> _notices(WidgetTester tester) => ProviderScope.containerOf(
   tester.element(find.byType(ProductionMaterialAnalysisPage)),
 ).read(appNotificationProvider).map((notice) => notice.message).toList();
-
-Future<void> _choose(WidgetTester tester, String id, String label) async {
-  await tester.ensureVisible(_dropdown(id));
-  final field = tester.widget<UtenDropdownField>(_dropdown(id));
-  final value = field.items.singleWhere((item) => item.label == label).value;
-  await tester.tap(_dropdown(id));
-  await tester.pump(const Duration(milliseconds: 300));
-  // The portal menu shares its element scope with the field; another row can
-  // have the same closed label. Select this field's visible option by identity.
-  final option = find.byKey(
-    ValueKey<(String, Key?, String?)>((
-      'uten-dropdown-option',
-      field.key,
-      value,
-    )),
-  );
-  expect(
-    find.descendant(of: option, matching: find.text(label)),
-    findsOneWidget,
-  );
-  await tester.tap(option);
-  await tester.pump(const Duration(milliseconds: 300));
-}
 
 /// 服务端自动确认的夹具：与 MaterialAnalysisRouteAutoConfirm 同口径的简化版——
 /// 未确认且主档建议非空(非 REVIEW)的操作组按建议确认，返回确认的组数。
@@ -231,7 +200,7 @@ Future<_Harness> _pump(
           ];
         } else if (request.method == 'POST' &&
             request.path.endsWith('/preview')) {
-          // 服务端刷新：同一次重算里按货品档案确认(同事务回写主档)，
+          // 服务端刷新：同一次重算里按货品档案确认(不回写主档)，
           // 版本只涨一次，回包带本次确认条数。
           harness.data =
               jsonDecode(jsonEncode(harness.data)) as Map<String, dynamic>;

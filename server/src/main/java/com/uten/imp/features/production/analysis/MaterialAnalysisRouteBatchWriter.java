@@ -6,7 +6,6 @@ import jakarta.persistence.EntityManager;
 
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -17,7 +16,7 @@ final class MaterialAnalysisRouteBatchWriter {
     record Change(UUID materialId, String groupKey, UUID goodsId, String route, String reason) {}
     record Result(int materialsChanged, int goodsChanged) {}
 
-    private static final MaterialSnapshotInput GOODS = new MaterialSnapshotInput("goods_id uuid", "source_type varchar");
+    private static final MaterialSnapshotInput GOODS = new MaterialSnapshotInput("goods_id uuid");
     private static final MaterialSnapshotInput ROUTES = new MaterialSnapshotInput(
             "material_id uuid", "group_key varchar", "route varchar", "reason varchar", "suggestion varchar");
     private final EntityManager em;
@@ -29,27 +28,15 @@ final class MaterialAnalysisRouteBatchWriter {
         return apply(analysisId, actorId, changes, supplyScope, true);
     }
 
-    /**
-     * 服务端重算里的自动确认 (ADR-102, {@link MaterialAnalysisRouteAutoConfirm}): 写法与人工确认
-     * 完全相同, 只是货品行只锁「主档来源真要改」的那几行 (多数行建议本来就取自主档, 不用改).
-     * 重算发生在各种命令里, 没必要为一次不改主档的确认去锁一批货品行、拉长锁等待.
-     */
+    /** Automatic snapshots read master defaults and never write the goods master. */
     Result applyAutomatic(UUID analysisId, UUID actorId, List<Change> changes) {
         return apply(analysisId, actorId, changes, changes, false);
     }
 
     private Result apply(UUID analysisId, UUID actorId, List<Change> changes, List<Change> supplyScope, boolean lockEveryGoods) {
         if (changes.isEmpty()) return new Result(0, 0);
-        Map<UUID, String> goodsRoutes = new HashMap<>();
-        var mixedGoods = new HashSet<UUID>();
-        for (Change change : changes) {
-            String prior = goodsRoutes.putIfAbsent(change.goodsId(), change.route());
-            if (prior != null && !prior.equals(change.route())) mixedGoods.add(change.goodsId());
-        }
-        // Lock order matches PostgreSQL UUID ordering and every other goods writer.
-        List<UUID> goodsIds = goodsRoutes.keySet().stream().sorted(PostgresUuidOrder.INSTANCE).toList();
-        String goodsInput = GOODS.json(goodsIds, id -> new Object[] {id,
-                mixedGoods.contains(id) ? null : MaterialAnalysisService.sourceTypeForRoute(goodsRoutes.get(id))});
+        List<UUID> goodsIds = changes.stream().map(Change::goodsId).distinct().sorted(PostgresUuidOrder.INSTANCE).toList();
+        String goodsInput = GOODS.json(goodsIds, id -> new Object[] {id});
         var goods = NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT goods.id, goods.source_type,
                        fn_goods_has_order_bom(goods.id)
@@ -61,10 +48,14 @@ final class MaterialAnalysisRouteBatchWriter {
         Map<UUID, String> retainedSuggestions = new HashMap<>();
         for (Object[] row : goods) retainedSuggestions.put((UUID) row[0],
                 MaterialAnalysisService.suggestion(Objects.toString(row[1], null), Boolean.TRUE.equals(row[2])));
+        if (lockEveryGoods && changes.stream().anyMatch(change ->
+                !Objects.equals(change.route(), retainedSuggestions.get(change.goodsId())))) {
+            throw MaterialAnalysisService.conflict("排产不能修改产品角色或供应方式；请由有权限的人员在货品资料维护默认来源，再刷新物料分析");
+        }
 
         String routeInput = ROUTES.json(changes.stream().sorted(Comparator.comparing(Change::materialId, PostgresUuidOrder.INSTANCE)).toList(),
                 change -> new Object[] {change.materialId(), change.groupKey(), change.route(), change.reason(),
-                        mixedGoods.contains(change.goodsId()) ? retainedSuggestions.get(change.goodsId()) : change.route()});
+                        retainedSuggestions.get(change.goodsId())});
         String supplyInput = ROUTES.json(supplyScope,
                 change -> new Object[] {change.materialId(), change.groupKey(), change.route(), null, null});
         Object[] checked = (Object[]) em.createNativeQuery("""
@@ -136,28 +127,7 @@ final class MaterialAnalysisRouteBatchWriter {
                 """.formatted(ROUTES.recordset("selected")))
                 .setParameter("analysisId", analysisId).setParameter("actorId", actorId)
                 .setParameter("snapshots", routeInput).executeUpdate();
-        if (!lockEveryGoods) {
-            // Same PostgreSQL UUID lock order as the manual path, restricted to rows the update below touches.
-            // 自动确认只补空白档案, 从不改写别人填过的来源 (例: 顶层产品已有生产计划按自制确认,
-            // 但档案写的是委外 —— 档案保持委外, 只有人工确认才回写).
-            List<UUID> locked = NativeQueryResults.typedRows(em.createNativeQuery("""
-                    SELECT goods.id FROM goods JOIN %s ON input.goods_id=goods.id
-                    WHERE NOT goods.is_deleted AND input.source_type IS NOT NULL
-                      AND NULLIF(btrim(goods.source_type), '') IS NULL
-                    ORDER BY input._position FOR UPDATE OF goods
-                    """.formatted(GOODS.recordset("input")), UUID.class).setParameter("snapshots", goodsInput), UUID.class);
-            if (locked.isEmpty()) return new Result(materialCount, 0);
-            goodsInput = GOODS.json(locked.stream().sorted(PostgresUuidOrder.INSTANCE).toList(), id -> new Object[] {id,
-                    mixedGoods.contains(id) ? null : MaterialAnalysisService.sourceTypeForRoute(goodsRoutes.get(id))});
-        }
-        int goodsCount = em.createNativeQuery("""
-                UPDATE goods SET source_type = input.source_type, version = goods.version + 1,
-                    updated_at = now(), updated_by = :actorId
-                FROM %s
-                WHERE goods.id=input.goods_id AND NOT goods.is_deleted AND input.source_type IS NOT NULL
-                  AND goods.source_type IS DISTINCT FROM input.source_type
-                """.formatted(GOODS.recordset("input")))
-                .setParameter("snapshots", goodsInput).setParameter("actorId", actorId).executeUpdate();
-        return new Result(materialCount, goodsCount);
+        // Planning stores its own route snapshot. Only the goods-master service may change the product role.
+        return new Result(materialCount, 0);
     }
 }

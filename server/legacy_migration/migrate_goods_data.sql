@@ -11,17 +11,14 @@
 -- =====================================================================
 
 SELECT set_config('app.business_identifier_legacy_import', 'on', true);
--- FK RESTRICT is intentional: an individual master reload must refuse to erase
--- goods already used by documents, stock, production, BOM or analysis rows.
-DELETE FROM goods;
-
 CREATE TEMP TABLE goods_stage (
     legacy_id int, code text, name text, short_name text, model text, spec text,
     parent_legacy int,
     unit_legacy_id int, color_legacy_id int, mould_legacy_id int, client_legacy_id int,
     vend_legacy_id int, vend2_legacy_id int, assteam_legacy_id int, veil_legacy_id int,
     approver_legacy_id int, make_legacy_id int,
-    price double precision, a_price numeric(18,4), price2 numeric(18,4),
+    -- Never round a source price in staging or pass it through binary float.
+    price numeric, a_price numeric, price2 numeric,
     max_qty double precision, min_qty double precision,
     init_stock int, init_count numeric(18,4), init_weight numeric(18,4),
     kqty numeric(18,4), kqty2 numeric(18,4), pieces int, lost_rate numeric(18,4), cap double precision,
@@ -36,6 +33,38 @@ CREATE TEMP TABLE goods_stage (
     bom_status boolean, status text, app_status int, app_status2 int, g_style int, ck int, zk numeric(18,4)
 );
 \copy goods_stage FROM '/tmp/goods.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
+
+-- The installed target schema may have a fixed numeric scale. PostgreSQL
+-- silently rounds on assignment, so prove exact representability BEFORE any
+-- DELETE/INSERT. A wider source must fail, never be rounded or truncated.
+DO $price_precision$
+DECLARE
+    price_column text;
+    target_type text;
+    target_oid oid;
+    loses_precision boolean;
+BEGIN
+    FOREACH price_column IN ARRAY ARRAY['price','a_price','price2'] LOOP
+        SELECT format_type(a.atttypid,a.atttypmod), a.atttypid
+          INTO target_type, target_oid
+          FROM pg_attribute a
+         WHERE a.attrelid='goods'::regclass AND a.attname=price_column
+           AND a.attnum>0 AND NOT a.attisdropped;
+        IF target_oid IS DISTINCT FROM 'numeric'::regtype::oid THEN
+            RAISE EXCEPTION 'Goods price target must be exact numeric: % (%)', price_column, target_type;
+        END IF;
+        EXECUTE format('SELECT EXISTS (SELECT 1 FROM goods_stage WHERE %1$I IS NOT NULL AND '
+            '(%1$I::text IN (''NaN'',''Infinity'',''-Infinity'') OR %1$I IS DISTINCT FROM %1$I::%2$s))',
+            price_column,target_type) INTO loses_precision;
+        IF loses_precision THEN
+            RAISE EXCEPTION 'Goods source price cannot fit % without rounding/truncation: %', target_type, price_column;
+        END IF;
+    END LOOP;
+END $price_precision$;
+
+-- FK RESTRICT is intentional: an individual master reload must refuse to erase
+-- goods already used by documents, stock, production, BOM or analysis rows.
+DELETE FROM goods;
 
 WITH numbered AS (
     SELECT gs.*,
@@ -126,6 +155,15 @@ SELECT
     gs.bom_status, gs.status, gs.app_status, gs.app_status2, gs.g_style, gs.ck, gs.zk,
     FALSE, reserved.last_seq - gs.allocation_count + gs.seq_ordinal
 FROM numbered gs CROSS JOIN reserved;
+
+DO $price_reconciliation$ BEGIN
+    IF EXISTS (SELECT 1 FROM goods_stage source LEFT JOIN goods target USING(legacy_id)
+               WHERE target.id IS NULL OR target.price IS DISTINCT FROM source.price
+                  OR target.a_price IS DISTINCT FROM source.a_price
+                  OR target.price2 IS DISTINCT FROM source.price2) THEN
+        RAISE EXCEPTION 'Goods price changed during import; source and target must match exactly';
+    END IF;
+END $price_reconciliation$;
 
 
 SELECT '✔ 货品 ' || count(*) ||

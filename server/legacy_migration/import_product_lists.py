@@ -9,8 +9,8 @@
 
 整库重建请用 prepare_clean_master_data.py + prepare_goods_excel.py 离线派生后
 导入：本脚本保留为既有库的补空工具，不创建 Excel 新货品，不能代表全量导入。
-prepare_goods_excel.py 保留原始编码/legacy 身份，在 BOM/交易前导入最新非空
-属性、新货品和来源，并保存全部 80 列、价格策略子行及双层哈希证据。
+prepare_goods_excel.py 保留原始编码/legacy 身份，在 BOM/交易前以数据库为主、
+Excel 只补缺失属性及新增货品，并保存全部 80 列、价格策略子行及双层哈希证据。
 
 用途
 ----
@@ -29,8 +29,7 @@ prepare_goods_excel.py 保留原始编码/legacy 身份，在 BOM/交易前导�
 - 默认 **不再** 按 Excel「产品分类」路径建新分类、不再改 goods.category_id；
   分类结构以老库迁移树为准（2026-07-30 的首次导入曾重指 21883 个货品分类，
   已于 2026-07-31 全部回滚并删除新建的 493 个 XL 分类）。
-- 只有显式传 `--recategorize` 才恢复旧行为（按 `a->b->c` 路径幂等建节点挂在
-  根「货品资料」下，并把匹配货品的 category_id 重指到叶子分类）。
+- 2026-11-03 数据库优先规则禁止 `--recategorize` 覆盖分类，旧参数会明确报错。
 4. 核对机制（“确定是这个产品”）：编号命中后再比对名称（去空白）。
    - 名称一致或互相包含 → 视为同一产品，执行导入；
    - 名称明显不同 → 不导入，写入复核清单 `import_report/name_mismatch.csv` 人工确认。
@@ -57,7 +56,7 @@ prepare_goods_excel.py 保留原始编码/legacy 身份，在 BOM/交易前导�
    为什么这一段不按编号：这批 Excel 的编号只命中 22488 分之 85，名称却是干净的
    (17010 个不重名、同名映射到两个仓库的冲突 0 条)，2026-09-15 用户明确指定按名称。
    - 只填空：库里已有值一律不动，重跑不会冲掉界面上人工改过的所属仓库
-     (要覆盖得显式传 --overwrite-warehouse)；
+     (`--overwrite-warehouse` 旧参数现已禁止并明确报错)；
    - ADR-145：仓库按名称只匹配「主仓 001 下、启用、非车间内料仓、非不良品仓的子仓」
      (fn_warehouse_is_good_stock_leaf)；找不到同名仓库时报错并写进
      warehouse_name_unmatched.csv，不再补建任何仓库存根(目标子仓由
@@ -69,7 +68,7 @@ prepare_goods_excel.py 保留原始编码/legacy 身份，在 BOM/交易前导�
    仓库名按 warehouse_crosswalk.csv 的目标子仓换成编号，写出 goods_legacy_id|warehouse_code。
    全量导入在交易模块之前先用它填所属仓库，老库主仓 132 的明细与余额才能按所属子仓拆分。
 
-幂等：可重复执行。分类按(父, 名称)查建、颜色按名称查建、
+幂等：可重复执行。保留已有分类、颜色按名称查建、
 货品更新结果收敛(实测第二遍写入 0 行)。
 报告：`<数据目录>/import_report/` 下 summary.txt + CSV
 (含 warehouse_unmatched.csv：Excel 有这个名字、库里没有同名货品，属正常差集；
@@ -89,6 +88,7 @@ from pathlib import Path
 import xlrd
 from prepare_clean_master_data import (ordinary_warehouse_targets, classify_owning_warehouse,
                                       workshop_warehouse_reference)
+from legacy_goods_authority import is_missing_legacy_value
 
 # ----- 默认路径：环境变量 UTEN_LEGACY_INPUT_DIR 下的 product lists 目录 -----
 # 原始 Excel 含业务数据, 2026-09-23 起不放在代码仓库里; 未设置变量时必须显式传 --data-dir。
@@ -102,8 +102,6 @@ DEFAULT_FILES = [
 
 ROLE_MAP = {"自制件": "自制", "外购件": "采购", "委外件": "委外"}
 UNIT_ALIAS = {"千克": "kg"}  # Excel 单位名 → 平台 units.name
-ROOT_CODE = "GOODS"          # 分类树根「货品资料」
-NEW_CODE_PREFIX = "XL"       # 新建分类编码前缀（XL01/XL02…，每父级内按序）
 HERE = Path(__file__).resolve().parent
 MAIN_WAREHOUSE_CODE = "001"  # ADR-145 唯一主仓
 
@@ -241,10 +239,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="产品列表 Excel 移植（干跑/导入）")
     ap.add_argument("--apply", action="store_true", help="正式写库（缺省只干跑出报告）")
     ap.add_argument("--recategorize", action="store_true",
-                    help="【默认关闭】按 Excel 产品分类路径建新分类树并重指货品分类；"
-                         "2026-07-31 决策：分类结构只走老树，Excel 只补字段，勿随意开启")
+                    help="【已禁止】数据库优先，仅保留旧参数以明确报错")
     ap.add_argument("--overwrite-warehouse", action="store_true",
-                    help="【默认关闭】连库里已有的所属仓库一起覆盖；默认只填空，不冲掉界面上人工改过的值")
+                    help="【已禁止】数据库优先，所属仓库只补空")
     ap.add_argument("--data-dir", default=str(DEFAULT_DATA_DIR) if DEFAULT_DATA_DIR else None,
                     required=DEFAULT_DATA_DIR is None,
                     help="Excel 所在目录(默认 $UTEN_LEGACY_INPUT_DIR/product lists)")
@@ -256,6 +253,8 @@ def main() -> None:
     ap.add_argument("--crosswalk", default=str(HERE / "warehouse_crosswalk.csv"),
                     help="仓库对照表(默认 server/legacy_migration/warehouse_crosswalk.csv)")
     args = ap.parse_args()
+    if args.recategorize or args.overwrite_warehouse:
+        ap.error("数据库优先规则禁止 --recategorize/--overwrite-warehouse 覆盖已有资料；Excel 只补空")
 
     data_dir = Path(args.data_dir)
     report_dir = data_dir / "import_report"
@@ -333,60 +332,8 @@ def main() -> None:
     print(f"匹配命中：{len(verified) + len(mismatch)}；名称核对通过：{len(verified)}；"
           f"名称不符（转人工复核）：{len(mismatch)}；编号未命中：{len(unmatched)}")
 
-    # ----- 分类树：按路径建节点（仅 --recategorize 显式开启时；默认不动分类结构） -----
-    by_parent_name: dict[tuple, tuple] = {}  # (parent_id, name) -> (id, level, path)
-    child_codes: dict[object, set] = {}
-    root = None
-    if args.recategorize:
-        cur.execute("SELECT id, parent_id, name, code, level, path FROM material_categories WHERE is_deleted = false")
-        cat_rows = cur.fetchall()
-        for cid, pid, name, code, level, path in cat_rows:
-            by_parent_name[(pid, name)] = (cid, level, path)
-            child_codes.setdefault(pid, set()).add(code or "")
-            if pid is None and code == ROOT_CODE:
-                root = (cid, level, path)
-        if root is None:
-            raise SystemExit("找不到分类根「货品资料」(code=GOODS)，请先完成老库分类迁移")
-
     stats: Counter = Counter()
     now = datetime.now(timezone.utc)
-
-    def next_code(pid) -> str:
-        used = child_codes.setdefault(pid, set())
-        n = 1
-        while f"{NEW_CODE_PREFIX}{n:02d}" in used:
-            n += 1
-        code = f"{NEW_CODE_PREFIX}{n:02d}"
-        used.add(code)
-        return code
-
-    def ensure_category(path_str: str):
-        """按 `a->b->c` 路径幂等建节点，返回叶子 (id, level, path)。"""
-        parts = [p.strip() for p in path_str.split("->") if p.strip()]
-        if not parts:
-            return None
-        pid, level, path = root
-        for name in parts:
-            hit = by_parent_name.get((pid, name))
-            if hit is None:
-                code = next_code(pid)
-                cid = None
-                if args.apply:
-                    cur.execute(
-                        """INSERT INTO material_categories
-                           (id, legacy_id, code, name, parent_id, level, sort_order, path,
-                            created_at, updated_at, is_deleted)
-                           VALUES (gen_random_uuid(), NULL, %s, %s, %s, %s, %s, %s, %s, %s, false)
-                           RETURNING id""",
-                        (code, name, pid, level + 1, 0, f"{path}{code}/", now, now))
-                    cid = cur.fetchone()[0]
-                else:
-                    cid = f"dry:{pid}:{name}"
-                hit = (cid, level + 1, f"{path}{code}/")
-                by_parent_name[(pid, name)] = hit
-                stats["分类新建"] += 1
-            pid, level, path = hit
-        return (pid, level, path)
 
     # ----- 颜色字典：按名对 legacy_id，缺名建色 -----
     cur.execute("SELECT legacy_id, name FROM colors WHERE is_deleted = false AND name IS NOT NULL")
@@ -470,7 +417,7 @@ def main() -> None:
 
     # ----- 逐条更新 -----
     def blank(v):
-        return v is None or (isinstance(v, str) and v.strip() == "")
+        return is_missing_legacy_value(v)
 
     updates = 0
     workshop_unmatched: list[tuple] = []   # 生产车间名没映射上部门（进报告 CSV）
@@ -478,14 +425,8 @@ def main() -> None:
         sets, params = {}, []
 
         role = ROLE_MAP.get(rec["role"])
-        if role and g["source_type"] != role:
+        if role and blank(g["source_type"]):
             sets["source_type"] = role
-
-        # 分类重指：仅 --recategorize 时启用（默认分类结构只走老树，Excel 只补内容字段）
-        if args.recategorize:
-            leaf = ensure_category(rec["category_path"]) if rec["category_path"] else None
-            if leaf and str(g["category_id"]) != str(leaf[0]):
-                sets["category_id"] = leaf[0]
 
         fills = [
             ("series", "series", str), ("material", "material", str),
@@ -543,9 +484,6 @@ def main() -> None:
                         (*sets.values(), g["id"]))
         if "source_type" in sets:
             stats[f"来源-{role}"] += 1
-        if "category_id" in sets:
-            stats["分类重指"] += 1
-
     # =================================================================
     # 3. 所属仓库(V587，goods.owning_warehouse_id)
     # =================================================================
@@ -555,7 +493,7 @@ def main() -> None:
     #
     # 三条口径：
     # ① 只填空：库里已经有值就不动。界面上计划员可以改所属仓库，重跑本脚本
-    #    绝不能把人工改过的值冲掉(--overwrite-warehouse 显式覆盖除外)。
+    #    绝不能把已有值冲掉；旧覆盖参数已在读取源文件前拒绝。
     # ② ADR-145：仓库按名称只对「主仓 001 下的可选良品子仓」；找不到就报错写报告，
     #    不再补建仓库存根(禁用仓/主仓/不良品仓/内料仓都不能当所属仓库)。
     # ③ V587 未应用时整段跳过并明说，不让脚本在 42703 上炸掉。
@@ -622,7 +560,7 @@ def main() -> None:
                                                "PRESERVE_EXISTING_OWNER_FOR_SEPARATE_REVIEW" if current_warehouse is not None
                                                else "OWNER_NULL_REVIEWED_OPEN_BIN_CROSSWALK_REQUIRED"))
                 continue
-            if current_warehouse is not None and not args.overwrite_warehouse:
+            if current_warehouse is not None:
                 stats["所属仓库-已有值不动"] += 1
                 continue
             wid = find_warehouse(target_name)

@@ -26,7 +26,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
             ExpectFailure(() => GoodsReadContract.ListPath(null, null, 1, 101), check, "unbounded page rejected");
 
             string pageJson = "{\"items\":[{\"id\":\"" + id + "\",\"code\":\"001\",\"name\":\"货品 123\","
-                + "\"price\":123456789012345.678900,\"priceDisplayText\":\"123456789012345.68\","
+                + "\"price\":123456789012345.678900,\"priceDisplayText\":\"123456789012345.6789\","
                 + "\"discount\":0.9000,\"stockQty\":9007199254740993.0001,\"legacyId\":9007199254740993,"
                 + "\"sourceType\":\"OUTSOURCE\"}],\"page\":1,\"size\":20,\"total\":21,\"totalPages\":2,"
                 + "\"readScopeVersion\":\"scope-a\"}";
@@ -35,7 +35,7 @@ namespace Uten.Legacy.Desktop.Features.Goods
             check(page.Page == 1 && page.Size == 20 && page.Total == 21 && page.TotalPages == 2, "server pagination retained");
             check(page.ReadScopeVersion == "scope-a", "server read-scope marker retained");
             check(row.Text("price") == "123456789012345.678900", "price has exact raw digits and trailing zeroes");
-            check(row.Price == "123456789012345.68", "server display text is authoritative");
+            check(row.Price == "123456789012345.6789", "server exact display text is authoritative without rounding");
             check(row.Discount == "0.9000", "discount is retained as factor, not multiplied into percent");
             check(row.StockQuantity == "9007199254740993.0001", "quantity never passes through binary floating point");
             check(row.LegacyId == "9007199254740993", "historical identifier precision retained");

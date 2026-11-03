@@ -741,7 +741,7 @@ public class GoodsService {
         cols.add(new ExportColumn("unitName", "单位", ExportColumn.TEXT));
         cols.add(new ExportColumn("material", "材质", ExportColumn.TEXT));
         cols.add(new ExportColumn("sourceType", "来源", ExportColumn.TEXT));
-        if (showPrice) cols.add(new ExportColumn("price", "价格", ExportColumn.MONEY));
+        if (showPrice) cols.add(new ExportColumn("price", "价格", ExportColumn.EXACT_NUMBER));
         if (showDiscount) cols.add(new ExportColumn("discount", "折扣", ExportColumn.TEXT));
         cols.add(new ExportColumn("stockQty", "库存量", ExportColumn.NUMBER));
         // 采购批量口径（V575）：供应商 MOQ / 整箱倍数，采购据此抬量、取整。

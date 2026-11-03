@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.goods.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.uten.imp.common.util.DecimalText;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
@@ -14,13 +15,13 @@ import java.util.UUID;
  * 不能建立在线关系。cNumber 显式 {@code @JsonProperty("cNumber")} 防 Jackson 连续大写
  * decapitalize 坑（参考 mWeight→mweight），前端 fromJson 同名读取。
  *
- * <p>price 使用 BigDecimal，与数据库 NUMERIC(18,4) 一致。
+ * <p>price 使用 BigDecimal；展示保留原始有效小数，不舍入到固定小数位。
  */
 @Getter
 @AllArgsConstructor
 public class GoodsListItem {
-    /** Decimal display text matches the two-place header predicate without client binary rounding. */
-    public String getPriceDisplayText() { return price==null?null:price.setScale(2,java.math.RoundingMode.HALF_UP).toPlainString(); }
+    /** Exact decimal text shared by list display and numeric header comparisons. */
+    public String getPriceDisplayText() { return DecimalText.of(price); }
     public String getDiscountDisplayText() { return discount==null?null:discount.setScale(2,java.math.RoundingMode.HALF_UP).toPlainString(); }
     public String getStockQtyDisplayText() { return stockQty==null?null:stockQty.setScale(2,java.math.RoundingMode.HALF_UP).toPlainString(); }
     private UUID id;

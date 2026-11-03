@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/drafts/form_draft_mixin.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import '../../../shared/drafts/form_draft_values.dart';
 
@@ -37,7 +38,7 @@ import '../../../core/responsive/breakpoint.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/action_feedback.dart';
 
-/// 主档字段值类型：文本 / 整数 / 金额（double）/ 下拉选择。
+/// 主档字段值类型：文本 / 整数 / 金额（默认 double，可显式保留十进制原文）/ 下拉选择。
 enum MasterFieldType { text, integer, money, select, custom }
 
 /// 下拉选项（select 类型用）：[value] 提交值、[label] 展示文案。
@@ -105,6 +106,7 @@ class MasterFieldDef {
     this.group,
     this.options,
     this.selectInteger = false,
+    this.exactDecimal = false,
     this.readOnly = false,
     this.onAddNew,
     this.customBuilder,
@@ -144,6 +146,9 @@ class MasterFieldDef {
 
   /// select 提交值是否按整数解析（颜色/单位 legacy_id = true，提交 JSON 数字）。
   final bool selectInteger;
+
+  /// Opt-in decimal text submission for fields whose source precision must survive.
+  final bool exactDecimal;
 
   /// 只读字段（如编号）：禁用展示、不参与提交。
   /// 编辑时显既有值；新建时值为空 → 显 [hint]（如「保存后自动生成」）。
@@ -418,7 +423,9 @@ class MasterEditFormController extends ChangeNotifier {
             }
             body[f.key] = v;
           } else if (f.type == MasterFieldType.money) {
-            final v = double.tryParse(raw);
+            final Object? v = f.exactDecimal
+                ? financeExactDecimal(raw)
+                : double.tryParse(raw);
             if (v == null) {
               return _fail(f, '「${f.label}」需为数字'); // TODO(l10n): 补 arb
             }

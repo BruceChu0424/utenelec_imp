@@ -6,7 +6,7 @@ package com.uten.imp.common.export;
  *
  * @param key  行 Map 取值键（与查询投影别名 / 行模型字段对齐）
  * @param label 表头文案
- * @param type text / date / money / number / qty / bool(常量见下)
+ * @param type text / date / money / number / exact_number / qty / bool(常量见下)
  */
 public record ExportColumn(String key, String label, String type, Double width,
                            String unitLabel, String unitKey) {
@@ -18,6 +18,12 @@ public record ExportColumn(String key, String label, String type, Double width,
     public static final String DATE = "date";
     public static final String MONEY = "money";
     public static final String NUMBER = "number";
+    /** Numeric source facts with an exact decimal-text XLSX cell, avoiding Excel visual rounding. */
+    public static final String EXACT_NUMBER = "exact_number";
+
+    public static boolean isNumeric(String type) {
+        return MONEY.equals(type) || NUMBER.equals(type) || QTY.equals(type) || EXACT_NUMBER.equals(type);
+    }
     /** 用量等小数位不定的数量：按存储值全精度显示(0.00001 不显示成 0.00)，导回时读到同一个数。 */
     public static final String QTY = "qty";
     public static final String BOOL = "bool";

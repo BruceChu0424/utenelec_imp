@@ -10,6 +10,8 @@ import com.uten.imp.features.master.goods.dto.GoodsListItem;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Constructor;
+import java.math.BigDecimal;
+import org.springframework.test.util.ReflectionTestUtils;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -81,6 +83,33 @@ class GoodsJsonSerializationContractTest {
         assertTrue(json.get("actualDefectRate").isNull(), json::toString);
     }
 
+    @Test
+    void exactPriceTextFromEditorsDeserializesAsBigDecimalWithoutRounding() throws Exception {
+        var request = objectMapper.readValue("{\"price\":\"99999999999999.1234567890\"}",
+                com.uten.imp.features.master.goods.dto.GoodsSaveRequest.class);
+        assertEquals(new BigDecimal("99999999999999.1234567890"), request.getPrice());
+    }
+
+    @Test
+    void priceTextRetainsAllDigitsInListAndDetailWithoutRounding() throws Exception {
+        for (String raw : List.of("0.914", "1.005", "99999999999999.1234567890", "0.0000000001", "0")) {
+            var expected = new BigDecimal(raw).stripTrailingZeros().toPlainString();
+            var list = (GoodsListItem) emptyInstance(GoodsListItem.class);
+            ReflectionTestUtils.setField(list, "price", new BigDecimal(raw));
+            var detail = (GoodsDetail) emptyInstance(GoodsDetail.class);
+            detail.setPrice(new BigDecimal(raw));
+            assertEquals(expected, objectMapper.readTree(objectMapper.writeValueAsString(list))
+                    .get("priceDisplayText").textValue());
+            assertEquals(expected, objectMapper.readTree(objectMapper.writeValueAsString(detail))
+                    .get("priceDisplayText").textValue());
+            assertEquals(new BigDecimal(raw), list.getPrice());
+            detail.setPriceMasked(true);
+            assertTrue(objectMapper.readTree(objectMapper.writeValueAsString(detail)).get("priceDisplayText").isNull());
+        }
+        assertTrue(objectMapper.readTree(objectMapper.writeValueAsString(emptyInstance(GoodsListItem.class)))
+                .get("priceDisplayText").isNull());
+    }
+
     private void assertFlattensUsage(List<String> names) {
         for (String key : USAGE_KEYS) {
             assertTrue(names.contains(key), () -> key + " missing in " + names);
@@ -96,7 +125,7 @@ class GoodsJsonSerializationContractTest {
                 () -> "JSON key must be unique and case-stable: " + canonical + " in " + names);
     }
 
-    private List<String> serializedFieldNames(Class<?> type) throws Exception {
+    private Object emptyInstance(Class<?> type) throws Exception {
         Constructor<?> constructor = type.getDeclaredConstructors()[0];
         Object[] arguments = new Object[constructor.getParameterCount()];
         Class<?>[] parameterTypes = constructor.getParameterTypes();
@@ -112,7 +141,11 @@ class GoodsJsonSerializationContractTest {
             }
         }
 
-        String json = objectMapper.writeValueAsString(constructor.newInstance(arguments));
+        return constructor.newInstance(arguments);
+    }
+
+    private List<String> serializedFieldNames(Class<?> type) throws Exception {
+        String json = objectMapper.writeValueAsString(emptyInstance(type));
         List<String> names = new ArrayList<>();
         try (JsonParser parser = objectMapper.getFactory().createParser(json)) {
             while (parser.nextToken() != null) {

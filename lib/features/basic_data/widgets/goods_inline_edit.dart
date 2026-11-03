@@ -41,7 +41,7 @@ Map<String, MasterInlineField<GoodsListItem>> goodsInlineFields(
   }) => MasterInlineField(key: key, read: read, required: required);
   MasterInlineField<GoodsListItem> number(
     String key,
-    num? Function(GoodsListItem) read,
+    Object? Function(GoodsListItem) read,
   ) => MasterInlineField(
     key: key,
     read: read,
@@ -129,7 +129,7 @@ Map<String, MasterInlineField<GoodsListItem>> goodsInlineFields(
     'minOrderQty': number('minOrderQty', (g) => g.minOrderQty),
     'orderMultipleQty': number('orderMultipleQty', (g) => g.orderMultipleQty),
     if (permissions.contains(Perm.goodsPriceEdit)) ...{
-      'price': number('price', (g) => g.price),
+      'price': number('price', (g) => g.priceText),
       'discount': number('discount', (g) => g.discount),
     },
   };

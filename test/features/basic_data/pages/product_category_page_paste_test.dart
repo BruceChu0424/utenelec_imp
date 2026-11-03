@@ -46,6 +46,7 @@ const _source = GoodsDetail(
   colorId: 'color-white',
   owningWarehouseId: 'warehouse-1',
   price: 20,
+  priceDisplayText: '20.123456789',
   discount: 0.9,
   subcontractAllowedLossPct: 7.25,
   version: 8,
@@ -318,6 +319,24 @@ void main() {
       expect(bom.listCalls, [_source.id]);
     });
   }
+
+  testWidgets('有价格编辑权的货品复制保留服务端完整价格原文', (tester) async {
+    final goods = _GoodsRepository();
+    final bom = _BomRepository();
+    await _pumpPage(tester, goods, bom, bomPermissions: {Perm.goodsPriceEdit});
+    await tester.tap(find.text('原分类'));
+    await tester.pumpAndSettle();
+    await _rightClickAt(tester, tester.getCenter(find.text(_source.name!)));
+    await tester.tap(find.text('复制货品'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('新分类'));
+    await tester.pumpAndSettle();
+    await _rightClickBlank(tester);
+    await tester.tap(find.text('粘贴货品'));
+    await tester.pumpAndSettle();
+    expect(goods.created.single['price'], '20.123456789');
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('复制源分类货品后在空目标分类空白处粘贴，副本与组件写入目标且立即显示', (tester) async {
     final goods = _GoodsRepository();

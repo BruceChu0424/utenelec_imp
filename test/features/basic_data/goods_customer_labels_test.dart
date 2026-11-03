@@ -127,6 +127,43 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('货品详情显示、编辑初值和提交保留原始价格精度', (tester) async {
+    final detail = GoodsDetail.fromJson({
+      'id': 'exact-price',
+      'name': '精确价格货品',
+      'status': '使用',
+      'sourceType': '自制',
+      'unitId': 'unit-pcs',
+      'writable': true,
+      'price': 0.82,
+      'priceDisplayText': '99999999999999.123456789',
+    });
+    await _pumpGoods(
+      tester,
+      detail: detail,
+      permissions: const {
+        Perm.goodsView,
+        Perm.goodsEdit,
+        Perm.goodsPriceView,
+        Perm.goodsPriceEdit,
+      },
+    );
+    expect(find.text('99999999999999.123456789'), findsWidgets);
+    await tester.tap(find.text('编辑'));
+    await tester.pumpAndSettle();
+    final state = tester.state<MasterEditFormState>(
+      find.byType(MasterEditForm),
+    );
+    expect(
+      state.controller.controllers['price']!.text,
+      '99999999999999.123456789',
+    );
+    expect(_buildBody(state)['price'], '99999999999999.123456789');
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('只有货品基础编辑权限时客户名称与客户型号不可编辑也不提交', (tester) async {
     await _pumpGoods(
       tester,

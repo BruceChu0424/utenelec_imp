@@ -644,6 +644,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
           key: 'price',
           label: '价格',
           type: MasterFieldType.money,
+          exactDecimal: true,
           group: '商务',
         ),
       if (canViewDiscount)
@@ -831,7 +832,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       'colorId': d.colorId ?? '',
       'mouldId': d.mouldId ?? '',
       'rearInsertCode': d.rearInsertCode ?? '',
-      'price': s(d.price),
+      'price': d.priceText ?? '',
       'discount': s(d.discount),
       'pack': d.pack ?? '',
       'unitId': d.unitId ?? '',
@@ -1652,7 +1653,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         MasterDetailRow('模具编号', d.mouldCode),
       ]),
       _DetailSection('商务', [
-        if (canViewPrice) MasterDetailRow('价格', s(d.price)),
+        if (canViewPrice) MasterDetailRow('价格', d.priceText ?? ''),
         if (canViewDiscount)
           MasterDetailRow('折扣', d.discount == null ? '' : '${d.discount}'),
         MasterDetailRow('包装', d.pack),

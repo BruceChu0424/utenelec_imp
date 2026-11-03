@@ -311,6 +311,12 @@ public class XlsxExportService {
                                   CellStyle textStyle) {
         if (v == null) return;
         switch (type == null ? ExportColumn.TEXT : type) {
+            case ExportColumn.EXACT_NUMBER -> {
+                BigDecimal d = ExportCellValues.decimal(v);
+                cell.setCellValue(d == null ? Objects.toString(v) : ExportCellValues.exactText(d));
+                // String cells keep every digit; reuse numeric alignment without Excel General rounding.
+                cell.setCellStyle(qtyStyle);
+            }
             case ExportColumn.MONEY, ExportColumn.NUMBER, ExportColumn.QTY -> {
                 BigDecimal d = ExportCellValues.decimal(v);
                 if (d != null) {

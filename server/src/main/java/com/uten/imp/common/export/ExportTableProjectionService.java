@@ -106,7 +106,7 @@ public class ExportTableProjectionService {
                 .filter(available::containsKey).findFirst().orElse(null);
             if(actual==null)continue;
             String type=available.get(actual).type();
-            if(type==null||!Set.of(ExportColumn.NUMBER,ExportColumn.MONEY,ExportColumn.QTY).contains(type))continue;
+            if(!ExportColumn.isNumeric(type))continue;
             Object value=row.get(actual);
             if(!(value instanceof Number)&&!(value instanceof String))continue;
             try{facts.put(key,new BigDecimal(value.toString()));}catch(NumberFormatException ignored){}

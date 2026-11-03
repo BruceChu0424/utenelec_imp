@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare an auditable Excel-authoritative goods overlay without a database.
+"""Prepare an auditable database-first goods supplement without a database.
 
 Run after prepare_clean_master_data.py and before goods/BOM/transaction import.
 The input goods CSV is never changed. The output retains its column order and
@@ -24,6 +24,7 @@ from prepare_clean_master_data import (color_name, unit_name, ordinary_warehouse
 from audit_goods_quantity_units import audit as audit_quantity_units
 from prepare_workshop_stock_location_policy import CROSSWALK_COLUMNS, AUTHORITY_COLUMNS
 from goods_excel_name import excel_product_name, excel_product_name_evidence, reviewed_excel_product_name
+from legacy_goods_authority import is_missing_legacy_value
 
 
 ROLE_MAP = {"自制件": "自制", "外购件": "采购", "委外件": "委外"}
@@ -210,8 +211,8 @@ def emit_attributes(path: Path, attributes: list[dict]):
   RAISE EXCEPTION 'Excel workshop does not resolve to exactly one active department';
  END IF;
 END $excel_guard$;
-UPDATE goods g SET source_type=a.source_type,
- owning_workshop_department_id=COALESCE((SELECT id FROM departments d WHERE NOT d.is_deleted AND d.name=a.workshop_name),g.owning_workshop_department_id),
+UPDATE goods g SET source_type=COALESCE(NULLIF(btrim(g.source_type),''),a.source_type),
+ owning_workshop_department_id=COALESCE(g.owning_workshop_department_id,(SELECT id FROM departments d WHERE NOT d.is_deleted AND d.name=a.workshop_name)),
  purchase_allowed_over_receipt_pct=COALESCE(a.over_receipt,g.purchase_allowed_over_receipt_pct),
  min_order_qty=COALESCE(a.min_order,g.min_order_qty),
  order_multiple_qty=COALESCE(a.order_multiple,g.order_multiple_qty),
@@ -450,6 +451,7 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
     workshop_references = []
     ids = stable_new_ids([row["values"]["产品编号"] for row in coded if key(row["values"]["产品编号"]) not in by_code], set(original))
     changes, identities, issues, owning, attributes, continuation = [], [], [], [], [], []
+    conflicts, excel_prices = [], {}
     name_decorations = []
     quantity_unit_candidates = []
     stats = Counter()
@@ -492,10 +494,18 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
                            "category_method": category_method, "source_file": rec["file"], "source_row": rec["row"]})
         stats["new_goods" if is_new else "matched_goods"] += 1
 
-        def assign(field, value, reason="excel_nonempty_authority"):
+        def assign(field, value, reason="excel_fill_missing_legacy_value"):
             if value == "" or value is None:
                 return
             column = fields[field]
+            if (not is_new and not is_missing_legacy_value(row[column], reference=field.endswith("_legacy_id"))):
+                if row[column] != str(value):
+                    conflicts.append({"legacy_id": identity, "code": code, "field": field,
+                        "legacy_value": row[column], "excel_value": str(value), "selected_value": row[column],
+                        "source_file": rec["file"], "source_sheet": rec["sheet"], "source_row": rec["row"],
+                        "reason": "legacy_database_value_retained"})
+                    stats["retained_legacy_" + field] += 1
+                return
             if row[column] != str(value):
                 changes.append({"legacy_id": identity, "code": code, "field": field, "old": row[column], "new": str(value), "reason": reason})
                 row[column] = str(value)
@@ -505,6 +515,7 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
             assign(target, values.get(source))
         assign("status", "使用" if values.get("启用状态") == "启用" else "禁用" if values.get("启用状态") == "停用" else "")
         unit_conflict = None
+        unresolved_base_unit = False
         for source, target, filename in [("基本单位", "unit_legacy_id", "unit.csv"), ("颜色", "color_legacy_id", "color.csv"),
                                           ("模具编号", "mould_legacy_id", "mould.csv"), ("关联客户", "client_legacy_id", "client.csv")]:
             value = values.get(source, "")
@@ -514,7 +525,9 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
             reference = dictionaries[filename].get(key(alias))
             if reference is None:
                 issue(rec, source, value, "unresolved_exact_dictionary_reference")
-                if source in ("基本单位", "颜色"):
+                if source == "基本单位":
+                    unresolved_base_unit = True
+                if source in ("基本单位", "颜色") and is_missing_legacy_value(row[fields[target]], reference=True):
                     raise ValueError(f"Required cleaned dictionary reference missing: {code}/{source}/{value}")
             else:
                 old_reference = row[fields[target]]
@@ -545,19 +558,25 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
                 number = decimal(value, maximum=Decimal(1) if target == "zk" else None)
                 if number is None:
                     issue(rec, source, value, "invalid_numeric_preserve_legacy_value")
-                elif target == "m_weight" and unit_conflict:
+                elif target == "m_weight" and (unit_conflict or unresolved_base_unit):
                     issue(rec, source, value, "per_excel_unit_weight_deferred_with_base_unit_conflict")
                 else:
                     assign(target, number)
+        excel_prices[identity] = {"value": values.get("建议售价", ""),
+            "source_file": rec["file"], "source_sheet": rec["sheet"], "source_row": rec["row"]}
         sale_price = decimal(values.get("建议售价", ""))
-        if sale_price and Decimal(sale_price) > 0:
-            if unit_conflict:
+        if values.get("建议售价", "") and sale_price is None:
+            issue(rec, "建议售价", values["建议售价"], "invalid_numeric_preserve_legacy_value")
+        elif sale_price and Decimal(sale_price) > 0:
+            if unit_conflict or unresolved_base_unit:
                 issue(rec, "建议售价", values["建议售价"], "per_excel_unit_price_deferred_with_base_unit_conflict")
-            elif key(values.get("单位")) == key(values.get("基本单位")) and decimal(values.get("比例", "")) == "1":
+            elif (values.get("基本单位") and key(unit_name(values.get("单位", ""))) == key(unit_name(values["基本单位"]))
+                  and decimal(values.get("比例", "")) is not None and Decimal(values["比例"]) == 1):
                 assign("price", sale_price)
             else:
                 issue(rec, "建议售价", values["建议售价"], "alternate_unit_price_preserved_in_raw_archive")
-        notes = [values.get("原ERP备注", "") or row[fields["require_remark"]]]
+        assign("require_remark", values.get("原ERP备注", ""))
+        notes = [row[fields["require_remark"]]]
         extras = {field: values[field] for field in sorted(NOTE_FIELDS) if values.get(field) not in (None, "", "0", "否", "无", "天")}
         if values.get("产品分类"):
             extras["产品分类"] = values["产品分类"]
@@ -573,8 +592,15 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
             if values.get(field):
                 extras[field] = values[field]
         if extras:
-            notes.append("[Excel补充资料] " + json.dumps(extras, ensure_ascii=False, separators=(",", ":")))
-        assign("require_remark", "\n".join(note for note in notes if note))
+            supplement = "[Excel补充资料] " + json.dumps(extras, ensure_ascii=False, separators=(",", ":"))
+            if supplement not in row[fields["require_remark"]].splitlines():
+                notes.append(supplement)
+        combined_notes = "\n".join(note for note in notes if note)
+        if combined_notes != row[fields["require_remark"]]:
+            changes.append({"legacy_id": identity, "code": code, "field": "require_remark",
+                "old": row[fields["require_remark"]], "new": combined_notes, "reason": "append_excel_supplement_preserve_legacy_remark"})
+            row[fields["require_remark"]] = combined_notes
+            stats["changed_require_remark"] += 1
         warehouse = values.get("所属仓库", "")
         if warehouse:
             kind, warehouse_code, reference = classify_owning_warehouse(warehouse, warehouses)
@@ -600,7 +626,7 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
                 issue(rec, source, value, "invalid_numeric_not_imported")
             # Multiples must be positive; exported zero means not configured.
             attrs[target] = number if target != "order_multiple" or number and Decimal(number) > 0 else ""
-            if unit_conflict and target in ("min_order", "order_multiple"):
+            if (unit_conflict or unresolved_base_unit) and target in ("min_order", "order_multiple"):
                 attrs[target] = ""
         attributes.append(attrs)
     if used_decisions != set(decisions):
@@ -665,7 +691,8 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
     # Name cleanup must not change any earlier name-based unit/warehouse/default
     # evidence policy. Keep the raw source name throughout those reviews, then
     # separate only the output name after all other fields have been determined.
-    decoration_ids = {item["legacy_id"] for item in name_decorations}
+    decoration_ids = {item["legacy_id"] for item in name_decorations
+                      if is_missing_legacy_value(original.get(int(item["legacy_id"]), {}).get(fields["name"]))}
     retained_changes = [change for change in changes
                         if not (change["legacy_id"] in decoration_ids and change["field"] == "name")]
     stats["changed_name"] -= len(changes) - len(retained_changes)
@@ -673,6 +700,9 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
     goods_by_id = {row[fields["legacy_id"]]: row for row in goods}
     for decoration in name_decorations:
         row = goods_by_id[decoration["legacy_id"]]
+        decoration["applied"] = decoration["legacy_id"] in decoration_ids
+        if not decoration["applied"]:
+            continue
         if row[fields["name"]] != decoration["source_name"]:
             raise ValueError("Goods name changed before reviewed display-decoration separation")
         row[fields["name"]] = decoration["name"]
@@ -682,6 +712,25 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
                             "old": old[fields["name"]], "new": decoration["name"], "reason": "excel_name_without_display_metadata"})
             stats["changed_name"] += 1
     output_goods = output_dir / "goods.csv"
+    price_reconciliation = []
+    for row in goods:
+        identity = row[fields["legacy_id"]]
+        old = original.get(int(identity))
+        for field in ("price", "a_price", "price2"):
+            if old is not None and not is_missing_legacy_value(old[fields[field]]) and row[fields[field]] != old[fields[field]]:
+                raise ValueError(f"Legacy database price changed during Excel preparation: {identity}/{field}")
+        source_price = excel_prices.get(identity, {})
+        price_reconciliation.append({"legacy_id": identity, "code": row[fields["code"]],
+            **{"legacy_" + field: old[fields[field]] if old else "" for field in ("price", "a_price", "price2")},
+            **{"selected_" + field: row[fields[field]] for field in ("price", "a_price", "price2")},
+            "excel_suggested_price": source_price.get("value", ""),
+            "resolution": "legacy_database_price_retained" if old and not is_missing_legacy_value(old[fields["price"]])
+                          else "excel_added_goods" if old is None else "missing_legacy_price_supplement_or_unset",
+            **{field: source_price.get(field, "") for field in ("source_file", "source_sheet", "source_row")}})
+    write_csv(output_dir / "goods_price_reconciliation.csv", ["legacy_id", "code", "legacy_price", "legacy_a_price", "legacy_price2",
+              "selected_price", "selected_a_price", "selected_price2", "excel_suggested_price", "resolution", "source_file", "source_sheet", "source_row"], price_reconciliation)
+    write_csv(output_dir / "goods_excel_conflicts.csv", ["legacy_id", "code", "field", "legacy_value", "excel_value", "selected_value",
+              "source_file", "source_sheet", "source_row", "reason"], conflicts)
     write_csv(output_goods, headers, goods)
     write_csv(output_dir / "goods_owning_warehouse.csv", ["goods_legacy_id", "warehouse_code"], owning)
     write_csv(output_dir / "goods_workshop_stock_location_review.csv",
@@ -689,7 +738,7 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
                "workshop_code", "workshop_name", "owning_warehouse", "resolution", "source_file", "source_row"],
               workshop_references)
     write_csv(output_dir / "goods_excel_name_decorations.csv",
-              ["legacy_id", "code", "source_name", "name", "color", "model", "series", "source_file", "source_sheet", "source_row", "reason"],
+              ["legacy_id", "code", "source_name", "name", "color", "model", "series", "source_file", "source_sheet", "source_row", "reason", "applied"],
               name_decorations)
     if decision_bytes is not None:
         (output_dir / "goods_name_review_decisions.json").write_bytes(decision_bytes)
@@ -732,12 +781,13 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
     evidence_inputs, quantity_summary = audit_quantity_units(source_dir, output_dir, quantity_unit_candidates, excel, unit_names)
     inputs = list(dict.fromkeys([*inputs, *evidence_inputs]))
     stats.update({"legacy_goods_rows": len(original), "derived_goods_rows": len(goods), "excel_rows": len(excel),
-                  "excel_name_decorations_separated": len(name_decorations),
+                  "excel_name_decorations_separated": len(decoration_ids),
+                  "legacy_field_conflicts_retained": len(conflicts), "price_reconciliation_rows": len(price_reconciliation),
                   "excel_coded_rows": len(coded), "price_strategy_rows_archived": len(continuation), "owning_warehouse_rows": len(owning),
                   "issues": len(issues), "source_roles": len(attributes), "source_engineering_review": len(source_review),
                   "workshop_warehouse_references": len(workshop_references),
                   "quantity_unit_review_goods": quantity_summary["candidate_goods"]})
-    manifest = {"formatVersion": 1, "kind": "derived_excel_goods_overlay", "policy": "excel-authority-preserve-quantity-units-reviewed-workshop-location-v5",
+    manifest = {"formatVersion": 1, "kind": "derived_excel_goods_overlay", "policy": "legacy-database-first-excel-fill-missing-v6",
                 "namePolicy": "source-proven-excel-display-decoration-v2",
                 "reviewedNameDecisions": None if decision_bytes is None else {
                     "file": "goods_name_review_decisions.json", "sha256": hashlib.sha256(decision_bytes).hexdigest(),
@@ -745,7 +795,7 @@ def prepare(source_dir: Path, dictionary_dir: Path, excel_dir: Path, crosswalk: 
                 "generators": [{"file": path.name, "sha256": digest(path)} for path in
                                (Path(__file__), Path(__file__).with_name("prepare_clean_master_data.py"), Path(__file__).with_name("audit_goods_quantity_units.py"),
                                 Path(__file__).with_name("prepare_workshop_stock_location_policy.py"),
-                                Path(__file__).with_name("goods_excel_name.py"))],
+                                Path(__file__).with_name("goods_excel_name.py"), Path(__file__).with_name("legacy_goods_authority.py"))],
                 "sourceInputs": [{"path": str(path.resolve()), "sha256": digest(path)} for path in inputs], "workbooks": workbooks,
                 "statistics": dict(stats), "outputs": [{"file": path.name, "sha256": digest(path), "bytes": path.stat().st_size}
                   for path in sorted(output_dir.iterdir()) if path.is_file() and

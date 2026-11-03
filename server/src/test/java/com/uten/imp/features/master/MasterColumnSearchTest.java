@@ -71,6 +71,15 @@ class MasterColumnSearchTest {
     }
 
     @Test
+    void goodsPriceNumericProjectionKeepsTheExactSourceValue() {
+        HibernateCriteriaBuilder cb = mock(HibernateCriteriaBuilder.class);
+        Expression<?> id = mock(Expression.class);
+        MasterColumnSearch.numericValue(cb, id, MasterColumnSearch.Domain.GOODS, "price");
+        verify(cb).sql(eq("(SELECT master.price FROM goods master WHERE master.id=?)"),
+                eq(java.math.BigDecimal.class), eq(id));
+    }
+
+    @Test
     void sensitiveColumnSearchAcceptsBodyAndRejectsUrl() {
         var request = new MockHttpServletRequest();
         request.addParameter("search.name", "电器");

@@ -3,7 +3,7 @@
 
 Run after the final Excel overlay and reference-master preparation. Raw notes
 remain in a private row-level ledger. Only explicit reviewed semantics produce
-SQL: latest Excel original remarks -> displayed paper, V457 rear-insert codes,
+SQL: legacy database remarks, supplemented only when blank, -> displayed paper, V457 rear-insert codes,
 unambiguous labelled missing mould references, and mould-code rack suffixes.
 """
 from __future__ import annotations
@@ -15,6 +15,8 @@ import hashlib
 import json
 from pathlib import Path
 import re
+
+from legacy_goods_authority import is_missing_legacy_value, prefer_legacy_value
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
@@ -67,7 +69,7 @@ def location(original_code: str, existing_place: str) -> tuple[str, str] | None:
 
 def field_disposition(field: str) -> str:
     return {
-        "paper": "goods.paper; latest nonempty Excel original remark takes priority",
+        "paper": "goods.paper; nonblank legacy database remark wins; Excel only fills a missing remark",
         "require_remark": "goods.require_remark; not B_Goods.Paper; retain Excel supplementary archive",
         "stock_place": "archive only; legacy B_StoragePlace identity is not a verified current goods rack",
     }.get(field, "goods." + field + "; direct named source field; never infer from an unrelated note")
@@ -87,7 +89,8 @@ CREATE TEMP TABLE goods_mould_semantics (
 \\copy goods_mould_semantics FROM '/tmp/goods_mould_semantics.csv' WITH (FORMAT csv, DELIMITER '|', HEADER true)
 DO $$ BEGIN
  IF EXISTS (SELECT 1 FROM goods_note_semantics s LEFT JOIN goods g ON g.legacy_id=s.goods_legacy_id
-            WHERE g.id IS NULL OR (COALESCE(g.paper,'')<>COALESCE(s.expected_paper,'') AND COALESCE(g.paper,'')<>s.latest_paper)) THEN
+            WHERE g.id IS NULL OR (COALESCE(g.paper,'')<>COALESCE(s.expected_paper,'') AND COALESCE(g.paper,'')<>s.latest_paper)
+               OR (NULLIF(btrim(s.expected_paper),'') IS NOT NULL AND s.expected_paper IS DISTINCT FROM s.latest_paper)) THEN
   RAISE EXCEPTION 'Semantic enrichment: goods note identity or expected source drift';
  END IF;
  IF EXISTS (SELECT 1 FROM mould_location_semantics s LEFT JOIN moulds m ON m.legacy_id=s.mould_legacy_id
@@ -96,12 +99,14 @@ DO $$ BEGIN
  END IF;
  IF EXISTS (SELECT 1 FROM goods_mould_semantics s LEFT JOIN goods g ON g.legacy_id=s.goods_legacy_id
             LEFT JOIN moulds m ON m.legacy_id=s.proposed_mould_id WHERE g.id IS NULL OR m.id IS NULL
-            OR COALESCE(g.mould_legacy_id,0) NOT IN (COALESCE(s.expected_mould_id,0),s.proposed_mould_id)) THEN
+            OR COALESCE(s.expected_mould_id,0)<>0
+            OR COALESCE(g.mould_legacy_id,0) NOT IN (0,s.proposed_mould_id)) THEN
   RAISE EXCEPTION 'Semantic enrichment: source-backed mould reference drift';
  END IF;
 END $$;
 UPDATE goods g SET paper=s.latest_paper FROM goods_note_semantics s
-WHERE g.legacy_id=s.goods_legacy_id AND g.paper IS DISTINCT FROM s.latest_paper;
+WHERE g.legacy_id=s.goods_legacy_id AND NULLIF(btrim(g.paper),'') IS NULL
+AND g.paper IS DISTINCT FROM s.latest_paper;
 UPDATE goods g SET rear_insert_code=s.proposed_rear FROM goods_note_semantics s
 WHERE g.legacy_id=s.goods_legacy_id AND s.rear_action='SET'
 AND g.rear_insert_code IS DISTINCT FROM s.proposed_rear;
@@ -117,7 +122,7 @@ DO $$ BEGIN
   RAISE EXCEPTION 'Semantic enrichment: target fields differ from reviewed source';
  END IF;
 END $$;
-SELECT 'Excel original remarks' AS semantic_check,count(*) AS rows FROM goods_note_semantics
+SELECT 'Database-first selected remarks' AS semantic_check,count(*) AS rows FROM goods_note_semantics
 UNION ALL SELECT 'Mould rack locations',count(*) FROM mould_location_semantics
 UNION ALL SELECT 'Evidenced missing mould references',count(*) FROM goods_mould_semantics;
 """
@@ -137,7 +142,7 @@ def audit(raw: Path, overlay: Path, references: Path, output: Path) -> dict:
             if code and code in identities:
                 identity = identities[code]["legacy_id"]
                 if identity in latest and latest[identity]["values"] != record["values"]:
-                    raise ValueError("Repeated contradictory authoritative Excel master")
+                    raise ValueError("Repeated contradictory supplementary Excel master")
                 latest[identity] = record
     moulds = {row["legacy_id"]: row for row in read_csv(references / "mould.csv")}
     old_codes = {row["legacy_id"]: row for row in read_csv(references / "original_master_codes.csv") if row["domain"] == "mould"}
@@ -159,19 +164,29 @@ def audit(raw: Path, overlay: Path, references: Path, output: Path) -> dict:
         rec = latest.get(identity, {})
         values = rec.get("values", {})
         latest_note = values.get("原ERP备注", "")
-        selected_note = latest_note or row.get("paper", "")
-        selected_source = "excel_original_remark" if latest_note else "legacy_paper"
+        legacy_note = old.get("paper", "")
+        prepared_note = row.get("paper", "")
+        if not is_missing_legacy_value(legacy_note) and legacy_note != prepared_note:
+            raise ValueError(f"Legacy database goods remark was overwritten before semantic audit: {identity}")
+        legacy_mould = old.get("mould_legacy_id", "")
+        if legacy_mould not in ("", "0") and legacy_mould in moulds and legacy_mould != row.get("mould_legacy_id", ""):
+            raise ValueError(f"Legacy database goods mould was overwritten before semantic audit: {identity}")
+        database_note = prefer_legacy_value(legacy_note, prepared_note)
+        selected_note = prefer_legacy_value(database_note, latest_note)
+        selected_source = "excel_original_remark" if is_missing_legacy_value(database_note) else "legacy_paper"
         selected_rear = rear_codes(selected_note)
         previous_rear = rear_codes(row.get("paper", ""))
-        if latest_note:
+        if not is_missing_legacy_value(selected_note):
             rear_action = "SET" if len(selected_rear) == 1 else "PRESERVE"
-            notes.append(dict(goods_legacy_id=identity,expected_paper=row.get("paper", ""),latest_paper=latest_note,
+            notes.append(dict(goods_legacy_id=identity,expected_paper=prepared_note,latest_paper=selected_note,
                               expected_rear=next(iter(previous_rear), ""),proposed_rear=next(iter(selected_rear), "") if len(selected_rear) == 1 else "",
-                              rear_action=rear_action,source_file=rec["file"],source_row=rec["row"]))
-            if latest_note != row.get("paper", ""):
-                counters["latest_display_note_changes"] += 1
-                if row.get("paper"):
-                    counters["latest_display_note_nonempty_conflicts"] += 1
+                              rear_action=rear_action,
+                              source_file="goods.csv" if selected_source == "legacy_paper" else rec["file"],
+                              source_row=identity if selected_source == "legacy_paper" else rec["row"]))
+            if selected_note != prepared_note:
+                counters["supplementary_display_note_fills"] += 1
+        if not is_missing_legacy_value(latest_note) and not is_missing_legacy_value(database_note) and latest_note != database_note:
+            counters["retained_database_note_conflicts"] += 1
         if len(selected_rear) > 1:
             counters["conflicting_rear_codes"] += 1
         semantic_notes = []
@@ -180,6 +195,7 @@ def audit(raw: Path, overlay: Path, references: Path, output: Path) -> dict:
         if latest_note:
             semantic_notes.append(("Excel.原ERP备注", latest_note))
         for source_field, note in semantic_notes:
+            is_selected_note = (source_field == "B_Goods.Paper") == (selected_source == "legacy_paper")
             def evidence(kind, value, resolution, detail):
                 ledger.append(dict(goods_legacy_id=identity,code=row["code"],source_field=source_field,
                     source_text=note,semantic_kind=kind,candidate_value=value,
@@ -189,7 +205,7 @@ def audit(raw: Path, overlay: Path, references: Path, output: Path) -> dict:
                     resolution=resolution,evidence=detail,source_file=rec.get("file", "goods.csv") if source_field.startswith("Excel") else "goods.csv",
                     source_row=rec.get("row", "") if source_field.startswith("Excel") else identity))
             for candidate in sorted(rear_codes(note)):
-                evidence("rear_insert_code",candidate,"STRUCTURED_V457" if source_field.startswith("Excel") or not latest_note else "LEGACY_EVIDENCE_KEEP_EXCEL_PRIORITY",
+                evidence("rear_insert_code",candidate,"STRUCTURED_V457" if is_selected_note else "SUPPLEMENTARY_EVIDENCE_KEEP_DATABASE_PRIORITY",
                          "V457 explicitly identifies rear insert; never use front or generic core as rear")
             for candidate in FRONT.findall(note):
                 evidence("front_core_code",candidate,"PRESERVE_NO_CURRENT_TARGET_FIELD","Explicit front core; current schema has rear_insert_code only, no front-core field")
@@ -203,16 +219,16 @@ def audit(raw: Path, overlay: Path, references: Path, output: Path) -> dict:
                     selected_aliases.add(RACK_SUFFIX.sub("", selected_original["original_code"]))
                 matched = exact_moulds.get(candidate, set())
                 if candidate in selected_aliases and selected_id not in ("", "0"):
-                    resolution, detail = "EXISTING_RELATION_CONFIRMED", "Explicit note agrees with selected legacy/Excel mould identity"
+                    resolution, detail = "EXISTING_RELATION_CONFIRMED", "Explicit note agrees with the database-first selected mould identity"
                 elif selected_id not in ("", "0"):
-                    resolution, detail = "KEEP_EXPLICIT_RELATION_CONFLICT", "Different or parent-tooling code in note cannot replace direct MouldID or latest Excel relation"
-                elif values.get("模具编号") or values.get("模具名称"):
-                    resolution, detail = "KEEP_EXCEL_REFERENCE_REVIEW", "Latest Excel mould fields exist; old note cannot override unresolved newer identity"
-                elif latest_note and not source_field.startswith("Excel"):
-                    resolution, detail = "KEEP_LATEST_NOTE_PRIORITY", "Latest nonempty Excel remark is authoritative; old-note-only tooling cannot override its context"
+                    resolution, detail = "KEEP_EXPLICIT_RELATION_CONFLICT", "A note cannot replace an existing direct database-first mould relation"
+                elif not is_selected_note:
+                    resolution, detail = "KEEP_DATABASE_NOTE_PRIORITY", "A supplementary Excel note cannot supply tooling against the selected database note"
+                elif selected_source == "excel_original_remark" and (values.get("模具编号") or values.get("模具名称")):
+                    resolution, detail = "KEEP_EXCEL_REFERENCE_REVIEW", "Supplementary Excel mould fields are unresolved; do not infer a different relation from its note"
                 elif len(matched) == 1 and len(mould_codes(note)) == 1:
                     target = next(iter(matched))
-                    resolution, detail = "FILL_MISSING_EXACT_LABELLED_REFERENCE", "Explicit mould label plus one exact original code/backup code and no current/Excel relation"
+                    resolution, detail = "FILL_MISSING_EXACT_LABELLED_REFERENCE", "Selected authoritative note explicitly labels one exact original/backup code and the current relation is missing"
                     proposed = dict(goods_legacy_id=identity,expected_mould_id=selected_id or "0",proposed_mould_id=target,source_text=note,evidence=detail)
                     if not any(previous["goods_legacy_id"] == identity for previous in mould_updates):
                         mould_updates.append(proposed)
@@ -222,7 +238,7 @@ def audit(raw: Path, overlay: Path, references: Path, output: Path) -> dict:
             if any(word in note for word in ("模具","镶件","前模","后模")) and not (mould_codes(note) or rear_codes(note) or FRONT.search(note) or UNSPECIFIED_CORE.search(note)):
                 evidence("unresolved_tooling_instruction","","PRESERVE_NO_GUESS","Instruction lacks a unique explicit identity or rear insert code")
             if "材质" in note or "材料" in note:
-                evidence("material_or_recipe_context","","KEEP_NAMED_MATERIAL_FIELD","Recipe, component material or commercial unit price is not the whole product material; Material/Excel材质 remains authoritative")
+                evidence("material_or_recipe_context","","KEEP_NAMED_MATERIAL_FIELD","Recipe, component material or commercial unit price is not the whole product material; retain the database-first named material field")
             if any(word in note for word in ("包装","螺丝","喷码","贴纸","定签","定装")):
                 evidence("packaging_or_marking_instruction","","PRESERVE_IN_DISPLAYED_NOTE","Mixed assembly/brand/printing instructions cannot become a numeric package quantity or purchase multiple")
     for identity, source in old_codes.items():
@@ -239,19 +255,24 @@ def audit(raw: Path, overlay: Path, references: Path, output: Path) -> dict:
     write_csv(output / "mould_location_semantics.csv",places,["mould_legacy_id","original_code","expected_place","rack_code","proposed_place"])
     write_csv(output / "goods_mould_semantics.csv",mould_updates,["goods_legacy_id","expected_mould_id","proposed_mould_id","source_text","evidence"])
     (output / "goods_legacy_semantics.sql").write_text(SQL,encoding="utf-8")
-    summary = dict(raw_goods=len(raw_goods),final_goods=len(final_goods),excel_original_remarks=len(notes),
+    summary = dict(raw_goods=len(raw_goods),final_goods=len(final_goods),
+                   selected_authoritative_remarks=len(notes),
+                   excel_original_remarks=sum(bool(rec["values"].get("原ERP备注", "").strip()) for rec in latest.values()),
                    raw_field_nonempty_counts={field:sum(bool(row[field].strip()) for row in raw_goods) for field in SEMANTIC_FIELDS},
                    semantic_decisions=len(ledger),resolutions=dict(Counter(row["resolution"] for row in ledger)),
                    distinct_goods_by_resolution={resolution:len({row["goods_legacy_id"] for row in ledger if row["resolution"]==resolution}) for resolution in sorted({row["resolution"] for row in ledger})},
                    mould_rack_locations=len(places),mould_missing_exact_reference_fills=len(mould_updates),
-                   rear_insert_explicit_excel_count=sum(row["rear_action"]=="SET" for row in notes),
+                   rear_insert_explicit_excel_count=sum(row["rear_action"]=="SET" and row["source_file"]!="goods.csv" for row in notes),
+                   rear_insert_explicit_database_count=sum(row["rear_action"]=="SET" and row["source_file"]=="goods.csv" for row in notes),
                    changes=dict(counters),production_acceptance=False)
     (output / "goods_semantics_summary.json").write_text(json.dumps(summary,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
     parents = [raw/"export_manifest.json",raw/"goods.csv",overlay/"goods.csv",overlay/"goods_excel_raw.jsonl",overlay/"goods_excel_identity.csv",
                overlay/"goods_excel_manifest.json",references/"mould.csv",references/"original_master_codes.csv",references/"reference_masters_manifest.json"]
     evidence_paths=[ROOT/"docs/数据迁移/04-模具资料-老库溯源.md",ROOT/"docs/数据迁移/77-V457货品后模镶件编号.md",
-                    ROOT/"server/src/main/resources/db/migration/V457__goods_rear_insert_code.sql",HERE/"migrate_goods_data.sql"]
-    manifest = dict(kind="evidenced-goods-semantics-v1",generator_sha256=digest(Path(__file__)),
+                    ROOT/"server/src/main/resources/db/migration/V457__goods_rear_insert_code.sql",HERE/"migrate_goods_data.sql",
+                    HERE/"legacy_goods_authority.py"]
+    manifest = dict(kind="evidenced-goods-semantics-v1",policy="database-first-excel-supplement-only-v1",generator_sha256=digest(Path(__file__)),
+                    authority_policy_sha256=digest(HERE/"legacy_goods_authority.py"),
                     inputs=[dict(path=str(path.resolve()),sha256=digest(path)) for path in parents],
                     evidence_sources=[dict(path=str(path.resolve()),sha256=digest(path)) for path in evidence_paths],
                     outputs=[dict(file=path.name,sha256=digest(path),bytes=path.stat().st_size) for path in sorted(output.iterdir()) if path.is_file() and path.name!="goods_semantics_manifest.json"])

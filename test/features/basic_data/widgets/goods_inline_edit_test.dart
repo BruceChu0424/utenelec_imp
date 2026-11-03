@@ -100,6 +100,16 @@ void main() {
       expect(fields['price']!.type, MasterFieldType.money);
       expect(fields['price']!.validate!('-0.0001'), isNotNull);
       expect(fields['price']!.validate!('99999999999999.9999'), isNull);
+      expect(
+        fields['price']!.read(
+          const GoodsListItem(
+            id: 'exact-price',
+            price: 0.82,
+            priceDisplayText: '0.914',
+          ),
+        ),
+        '0.914',
+      );
       expect(fields['minOrderQty']!.validate!('-1'), isNotNull);
     },
   );

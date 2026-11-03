@@ -16,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../components/buttons/uten_button.dart';
 import '../../components/feedback/uten_busy_overlay.dart';
 import '../../components/inputs/uten_input.dart';
+import '../../components/inputs/uten_field_hint_icon.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/step_up_coordinator.dart';
@@ -77,6 +78,7 @@ class _ReauthDialogState extends State<ReauthDialog> {
 
   Future<void> _confirm() async {
     final password = _controller.text;
+    if (_busy || _locked) return;
     if (password.isEmpty) {
       setState(() => _error = '请输入登录密码');
       return;
@@ -118,68 +120,75 @@ class _ReauthDialogState extends State<ReauthDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return UtenAlertDialog(
-      key: const Key('reauth-dialog'),
-      title: const UtenDialogHeading(
-        title: Text('请确认是你本人'),
-        icon: Icons.lock_outline_rounded,
-      ),
-      showCloseButton: _locked,
-      closeEnabled: !_busy,
-      onClose: () => Navigator.of(context).pop(),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '请输入你的登录密码。确认后可连续操作；停止操作 5 分钟后，需要再次确认。',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: UtenSpacing.s12),
-            UtenInput(
-              key: const Key('reauth-password'),
-              label: '登录密码',
-              isPassword: true,
-              controller: _controller,
-              enabled: !_busy && !_locked,
-              errorMessage: _error,
-              onChanged: (_) {
-                if (_error != null) setState(() => _error = null);
-              },
-              onFieldSubmitted: (_) => unawaited(_confirm()),
-            ),
-            // 服务端给的原因 (还能试几次 / 暂停多久) 要让人一眼看到，不只藏在输入框的提示图标里。
-            if (_error != null) ...[
-              const SizedBox(height: UtenSpacing.s8),
-              Text(
-                _error!,
-                key: const Key('reauth-error'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: UtenColors.error,
+    return Stack(
+      children: [
+        UtenAlertDialog(
+          key: const Key('reauth-dialog'),
+          title: const UtenDialogHeading(
+            title: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(child: Text('请确认是你本人')),
+                UtenFieldHintIcon(
+                  dense: true,
+                  info: '请输入你的登录密码。确认后可连续操作；停止操作 5 分钟后，需要再次确认。',
                 ),
+              ],
+            ),
+            icon: Icons.lock_outline_rounded,
+          ),
+          showCloseButton: _locked,
+          closeEnabled: !_busy,
+          onClose: () => Navigator.of(context).pop(),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                UtenInput(
+                  key: const Key('reauth-password'),
+                  label: '登录密码',
+                  isPassword: true,
+                  controller: _controller,
+                  enabled: !_busy && !_locked,
+                  errorMessage: _error,
+                  onChanged: (_) {
+                    if (_error != null) setState(() => _error = null);
+                  },
+                  onFieldSubmitted: (_) => unawaited(_confirm()),
+                ),
+                // 服务端给的原因 (还能试几次 / 暂停多久) 要让人一眼看到，不只藏在输入框的提示图标里。
+                if (_error != null) ...[
+                  const SizedBox(height: UtenSpacing.s8),
+                  Text(
+                    _error!,
+                    key: const Key('reauth-error'),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: UtenColors.error),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            if (!_locked)
+              UtenButton(
+                type: UtenButtonType.ghost,
+                onPressed: _busy ? null : () => Navigator.of(context).pop(),
+                child: const Text('取消'),
               ),
-            ],
+            UtenButton(
+              key: const Key('reauth-confirm'),
+              onPressed: _busy || _locked ? null : () => unawaited(_confirm()),
+              child: const Text('确认'),
+            ),
           ],
         ),
-      ),
-      actionsAlignment: MainAxisAlignment.center,
-      actions: [
-        if (!_locked)
-          UtenButton(
-            type: UtenButtonType.ghost,
-            onPressed: _busy ? null : () => Navigator.of(context).pop(),
-            child: const Text('取消'),
-          ),
-        UtenButton(
-          key: const Key('reauth-confirm'),
-          onPressed: _busy || _locked ? null : () => unawaited(_confirm()),
-          child: const Text('确认'),
-        ),
+        if (_busy)
+          const UtenBusyOverlay(title: '正在验证身份', showDoNotLeaveHint: false),
       ],
     );
   }

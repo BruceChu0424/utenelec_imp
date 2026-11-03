@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/maintenance/server_maintenance.dart';
+import 'package:uten_imp/core/platform/desktop_window.dart';
+import 'package:uten_imp/core/responsive/display_zoom.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/shared/widgets/server_maintenance_host.dart';
+import 'package:uten_imp/shared/widgets/desktop_window_host.dart';
 
 import 'support/audit_screenshot_support.dart';
 
@@ -63,6 +68,23 @@ Future<void> _prepareCapture(WidgetTester tester) async {
   if (_captureScreenshots) await loadAuditScreenshotFonts(tester);
 }
 
+Future<int> _nativeStripPixel(WidgetTester tester, GlobalKey capture) async =>
+    (await tester.runAsync(() async {
+      final boundary =
+          capture.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+      final image = await boundary.toImage();
+      final bytes = (await image.toByteData())!.buffer.asUint8List();
+      final offset = (image.width * 18 + 10) * 4;
+      final color = Color.fromARGB(
+        bytes[offset + 3],
+        bytes[offset],
+        bytes[offset + 1],
+        bytes[offset + 2],
+      ).toARGB32();
+      image.dispose();
+      return color;
+    }))!;
+
 Future<void> _capture(WidgetTester tester, String name) async {
   if (_captureScreenshots) {
     await tester.pump();
@@ -115,6 +137,197 @@ Future<void> _dispose(
 }
 
 void main() {
+  testWidgets('reminder stays above a newly mounted native header surface', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1024, 768);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller = ServerMaintenanceController(
+      read: () async => _status(ServerMaintenancePhase.scheduled),
+      ready: () async => true,
+    );
+    final input = TextEditingController(text: '保留草稿');
+    final native = DesktopWindowController(enabled: true);
+    final headerVersion = ValueNotifier(0);
+    final capture = GlobalKey();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [desktopWindowControllerProvider.overrideWithValue(native)],
+        child: MaterialApp(
+          theme: buildLightTheme(),
+          builder: (_, child) => RepaintBoundary(
+            key: capture,
+            child: DesktopWindowHost(
+              mode: DesktopWindowMode.main,
+              child: ServerMaintenanceView(
+                controller: controller,
+                animateCountdown: false,
+                child: child!,
+              ),
+            ),
+          ),
+          home: ValueListenableBuilder<int>(
+            valueListenable: headerVersion,
+            builder: (_, version, _) => DesktopWindowHeaderSurface(
+              key: ValueKey(version),
+              decoration: const BoxDecoration(color: Colors.white),
+              child: Scaffold(body: TextField(controller: input)),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    final before = await _nativeStripPixel(tester, capture);
+    expect(before, isNot(Colors.white.toARGB32()));
+    headerVersion.value++;
+    await tester.pump();
+    final after = await _nativeStripPixel(tester, capture);
+    expect(
+      after,
+      before,
+      reason: 'A new header portal must remain below the mask',
+    );
+    tester.view.physicalSize = const Size(900, 700);
+    await tester.pump();
+    await tester.pump();
+    expect(
+      tester.getRect(
+        find.byKey(const ValueKey('server-maintenance-reminder-barrier')),
+      ),
+      const Rect.fromLTWH(0, 0, 900, 700),
+    );
+    expect(await _nativeStripPixel(tester, capture), before);
+    await _acknowledge(tester);
+    expect(await _nativeStripPixel(tester, capture), Colors.white.toARGB32());
+    await _dispose(tester, controller, input);
+    native.dispose();
+    headerVersion.dispose();
+  });
+
+  for (final zoom in [.85, 1.0, 1.3, 2.0]) {
+    testWidgets(
+      'reminder covers the native strip at $zoom zoom and releases it on close',
+      (tester) async {
+        tester.view.physicalSize = const Size(1280, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        var status = _status(ServerMaintenancePhase.available);
+        final controller = ServerMaintenanceController(
+          read: () async => status,
+          ready: () async => true,
+        );
+        final input = TextEditingController(text: '保留未保存输入');
+        var nativeClicks = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: buildLightTheme(),
+            builder: (context, child) => Overlay.wrap(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    top: 36,
+                    child: UtenDisplayZoomBox(
+                      fontFactor: zoom,
+                      child: ServerMaintenanceView(
+                        controller: controller,
+                        animateCountdown: false,
+                        child: child!,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 36,
+                    child: GestureDetector(
+                      key: const ValueKey('native-strip'),
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => nativeClicks++,
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            home: Scaffold(body: TextField(controller: input)),
+          ),
+        );
+        await tester.pump();
+        final editor = tester.state<EditableTextState>(
+          find.byType(EditableText),
+        );
+        status = _status(ServerMaintenancePhase.scheduled);
+        await controller.checkNow();
+        await tester.pump();
+        final barrier = find.byKey(
+          const ValueKey('server-maintenance-reminder-barrier'),
+        );
+        expect(barrier, findsOneWidget);
+        expect(tester.getRect(barrier), const Rect.fromLTWH(0, 0, 1280, 900));
+        await tester.tapAt(const Offset(20, 18));
+        await tester.pump();
+        expect(nativeClicks, 0);
+        expect(_reminder, findsOneWidget);
+        await _acknowledge(tester);
+        expect(barrier, findsNothing);
+        await tester.tapAt(const Offset(20, 18));
+        expect(nativeClicks, 1);
+        for (var i = 0; i < 3; i++) {
+          await tester.tap(_countdown);
+          await tester.pump();
+          expect(barrier, findsOneWidget);
+          await _acknowledge(tester);
+        }
+        expect(tester.state(find.byType(EditableText)), same(editor));
+        expect(input.text, '保留未保存输入');
+        await _dispose(tester, controller, input);
+      },
+    );
+  }
+
+  testWidgets(
+    'reminder outside the route navigator has a local overlay fallback',
+    (tester) async {
+      var status = _status(ServerMaintenancePhase.available);
+      final controller = ServerMaintenanceController(
+        read: () async => status,
+        ready: () async => true,
+      );
+      final input = TextEditingController(text: '保留');
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildLightTheme(),
+          builder: (_, child) => ServerMaintenanceView(
+            controller: controller,
+            animateCountdown: false,
+            child: child!,
+          ),
+          home: Scaffold(body: TextField(controller: input)),
+        ),
+      );
+      await tester.pump();
+      status = _status(ServerMaintenancePhase.scheduled);
+      await controller.checkNow();
+      await tester.pump();
+      expect(_reminder, findsOneWidget);
+      status = _status(ServerMaintenancePhase.available);
+      await controller.checkNow();
+      await tester.pump();
+      expect(_reminder, findsNothing);
+      expect(
+        find.byKey(const ValueKey('server-maintenance-reminder-barrier')),
+        findsNothing,
+      );
+      await _dispose(tester, controller, input);
+    },
+  );
+
   testWidgets(
     'one notice, keyboard acknowledge, cancellation and input survive',
     (tester) async {

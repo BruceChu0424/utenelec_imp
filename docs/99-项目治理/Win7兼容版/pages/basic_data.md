@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | AccountDetailPage @63 (page-class)<br>_AccountDetailPageState @77 (state-class)<br>_WarningValue @1298 (supporting-class) |
-| 真实路由绑定 | /basicinfo/account/:id；router @989；builder ['AccountDetailPage']；redirect None |
+| 真实路由绑定 | /basicinfo/account/:id；router @1004；builder ['AccountDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | account:edit @151；定义 lib/shared/auth/permissions.dart:127<br>account:delete @152；定义 lib/shared/auth/permissions.dart:581<br>account:status @153；定义 lib/shared/auth/permissions.dart:582<br>account:balance:view @155；定义 lib/shared/auth/permissions.dart:129<br>account:balance:adjust @158；定义 lib/shared/auth/permissions.dart:131<br>account:flow:view @161；定义 lib/shared/auth/permissions.dart:130<br>account:warning:manage @164；定义 lib/shared/auth/permissions.dart:132 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | BasicDataHubPage @30 (page-class)<br>_BasicResource @167 (supporting-class)<br>_C @182 (supporting-class) |
-| 真实路由绑定 | /basicinfo；router @875；builder ['BasicDataHubPage']；redirect None |
+| 真实路由绑定 | /basicinfo；router @890；builder ['BasicDataHubPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ClientCategoryPage @52 (page-class)<br>_ClientCategoryPageState @59 (state-class) |
-| 真实路由绑定 | /finance/customers；router @661；builder ['ClientCategoryPage']；redirect None<br>/basicinfo/client；router @937；builder ['ClientCategoryPage']；redirect None |
+| 真实路由绑定 | /finance/customers；router @676；builder ['ClientCategoryPage']；redirect None<br>/basicinfo/client；router @952；builder ['ClientCategoryPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | client_category:view @80；定义 lib/shared/auth/permissions.dart:182<br>client_category:create @89；定义 lib/shared/auth/permissions.dart:544<br>client_category:edit @93；定义 lib/shared/auth/permissions.dart:183<br>client_category:delete @97；定义 lib/shared/auth/permissions.dart:545<br>client_category:move @101；定义 lib/shared/auth/permissions.dart:546<br>client_category:reorder @105；定义 lib/shared/auth/permissions.dart:547<br>client:create @247；定义 lib/shared/auth/permissions.dart:561<br>client:status @248；定义 lib/shared/auth/permissions.dart:563<br>client:finance @259；定义 lib/shared/auth/permissions.dart:188<br>client:finance @395；定义 lib/shared/auth/permissions.dart:188<br>client:edit @449；定义 lib/shared/auth/permissions.dart:187<br>client:delete @450；定义 lib/shared/auth/permissions.dart:562<br>client:export @460；定义 lib/shared/auth/permissions.dart:189<br>client:finance @481；定义 lib/shared/auth/permissions.dart:188<br>client:assign @499；定义 lib/shared/auth/permissions.dart:191<br>client:assign @504；定义 lib/shared/auth/permissions.dart:191<br>client:finance @540；定义 lib/shared/auth/permissions.dart:188<br>client:finance @559；定义 lib/shared/auth/permissions.dart:188<br>client:status @564；定义 lib/shared/auth/permissions.dart:563<br>client:assign @607；定义 lib/shared/auth/permissions.dart:191<br>client:assign @626；定义 lib/shared/auth/permissions.dart:191<br>client:view @687；定义 lib/shared/auth/permissions.dart:186<br>client:assign @687；定义 lib/shared/auth/permissions.dart:191<br>client:assign @751；定义 lib/shared/auth/permissions.dart:191<br>client:assign @761；定义 lib/shared/auth/permissions.dart:191 |
 | 接口常量 | ApiEndpoints.clients @446 → /master/clients<br>ApiEndpoints.client @447 → /master/clients/{id} |
@@ -99,7 +99,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ColorPage @60 (page-class)<br>_ColorPageState @67 (state-class) |
-| 真实路由绑定 | /basicinfo/color；router @964；builder ['ColorPage']；redirect None |
+| 真实路由绑定 | /basicinfo/color；router @979；builder ['ColorPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | color:create @216；定义 lib/shared/auth/permissions.dart:568<br>color:edit @219；定义 lib/shared/auth/permissions.dart:203<br>color:delete @222；定义 lib/shared/auth/permissions.dart:569<br>color:status @225；定义 lib/shared/auth/permissions.dart:570<br>color:create @369；定义 lib/shared/auth/permissions.dart:568<br>color:edit @397；定义 lib/shared/auth/permissions.dart:203<br>color:view @436；定义 lib/shared/auth/permissions.dart:202<br>color:edit @540；定义 lib/shared/auth/permissions.dart:203<br>color:status @642；定义 lib/shared/auth/permissions.dart:570<br>color:delete @683；定义 lib/shared/auth/permissions.dart:569<br>color:export @976；定义 lib/shared/auth/permissions.dart:204<br>color:export @986；定义 lib/shared/auth/permissions.dart:204 |
 | 接口常量 | ApiEndpoints.colors @660 → /master/colors<br>ApiEndpoints.colors @710 → /master/colors |
@@ -117,7 +117,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | CurrencyPage @57 (page-class)<br>_CurrencyPageState @64 (state-class) |
-| 真实路由绑定 | /basicinfo/currency；router @974；builder ['CurrencyPage']；redirect None |
+| 真实路由绑定 | /basicinfo/currency；router @989；builder ['CurrencyPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | currency:create @222；定义 lib/shared/auth/permissions.dart:574<br>currency:edit @225；定义 lib/shared/auth/permissions.dart:213<br>currency:delete @228；定义 lib/shared/auth/permissions.dart:575<br>currency:status @231；定义 lib/shared/auth/permissions.dart:576<br>currency:create @378；定义 lib/shared/auth/permissions.dart:574<br>currency:edit @425；定义 lib/shared/auth/permissions.dart:213<br>currency:view @471；定义 lib/shared/auth/permissions.dart:212<br>currency:edit @586；定义 lib/shared/auth/permissions.dart:213<br>currency:delete @692；定义 lib/shared/auth/permissions.dart:575<br>currency:status @692；定义 lib/shared/auth/permissions.dart:576<br>currency:export @1054；定义 lib/shared/auth/permissions.dart:214<br>currency:export @1064；定义 lib/shared/auth/permissions.dart:214 |
 | 接口常量 | ApiEndpoints.currency @759 → /master/currencies/{id} |
@@ -135,7 +135,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | GoodsDetailPage @38 (page-class)<br>_GoodsDetailPageState @63 (state-class) |
-| 真实路由绑定 | /basicinfo/goods/new；router @909；builder ['GoodsDetailPage']；redirect None<br>/basicinfo/goods/:id；router @923；builder ['GoodsDetailPage']；redirect None |
+| 真实路由绑定 | /basicinfo/goods/new；router @924；builder ['GoodsDetailPage']；redirect None<br>/basicinfo/goods/:id；router @938；builder ['GoodsDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | goods:view @165；定义 lib/shared/auth/permissions.dart:139<br>goods:view @175；定义 lib/shared/auth/permissions.dart:139<br>goods:status @211；定义 lib/shared/auth/permissions.dart:554<br>goods:view @217；定义 lib/shared/auth/permissions.dart:139<br>goods:status @217；定义 lib/shared/auth/permissions.dart:554<br>goods:status @221；定义 lib/shared/auth/permissions.dart:554<br>goods:delete @278；定义 lib/shared/auth/permissions.dart:553<br>goods:view @284；定义 lib/shared/auth/permissions.dart:139<br>goods:delete @284；定义 lib/shared/auth/permissions.dart:553<br>goods:delete @288；定义 lib/shared/auth/permissions.dart:553<br>goods:create @362；定义 lib/shared/auth/permissions.dart:552<br>goods:delete @366；定义 lib/shared/auth/permissions.dart:553<br>goods:status @367；定义 lib/shared/auth/permissions.dart:554<br>goods:bom:create @368；定义 lib/shared/auth/permissions.dart:555<br>goods:bom:edit @369；定义 lib/shared/auth/permissions.dart:556<br>goods:bom:delete @370；定义 lib/shared/auth/permissions.dart:557 |
 | 接口常量 | ApiEndpoints.good @252 → /master/goods/{id} |
@@ -171,7 +171,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | GoodsPriceAnalysisPage @43 (page-class)<br>_GoodsPriceAnalysisPageState @51 (state-class)<br>_PriceBasisPanel @1420 (supporting-class)<br>_PriceBasisPanelState @1428 (state-class) |
-| 真实路由绑定 | /basicinfo/goods/:id/price-analysis；router @916；builder ['GoodsPriceAnalysisPage']；redirect None |
+| 真实路由绑定 | /basicinfo/goods/:id/price-analysis；router @931；builder ['GoodsPriceAnalysisPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -207,7 +207,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | MasterRecordHistoryPage @4 (page-class) |
-| 真实路由绑定 | /basicinfo/history；router @885；builder ['MasterRecordHistoryPage']；redirect None |
+| 真实路由绑定 | /basicinfo/history；router @900；builder ['MasterRecordHistoryPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -225,7 +225,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | MasterRecordRevisionPage @4 (page-class) |
-| 真实路由绑定 | /basicinfo/history/:entityType/:id；router @897；builder ['MasterRecordRevisionPage']；redirect None |
+| 真实路由绑定 | /basicinfo/history/:entityType/:id；router @912；builder ['MasterRecordRevisionPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -243,7 +243,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | MouldCategoryPage @57 (page-class)<br>_MouldCategoryPageState @64 (state-class) |
-| 真实路由绑定 | /basicinfo/mould；router @932；builder ['MouldCategoryPage']；redirect None |
+| 真实路由绑定 | /basicinfo/mould；router @947；builder ['MouldCategoryPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | mould_category:view @85；定义 lib/shared/auth/permissions.dart:173<br>mould_category:create @94；定义 lib/shared/auth/permissions.dart:540<br>mould_category:edit @98；定义 lib/shared/auth/permissions.dart:174<br>mould_category:delete @102；定义 lib/shared/auth/permissions.dart:541<br>mould_category:move @106；定义 lib/shared/auth/permissions.dart:542<br>mould_category:reorder @110；定义 lib/shared/auth/permissions.dart:543<br>mould:status @366；定义 lib/shared/auth/permissions.dart:560<br>mould:create @371；定义 lib/shared/auth/permissions.dart:558<br>mould:create @399；定义 lib/shared/auth/permissions.dart:558<br>mould:edit @483；定义 lib/shared/auth/permissions.dart:178<br>mould:delete @484；定义 lib/shared/auth/permissions.dart:559<br>mould:status @485；定义 lib/shared/auth/permissions.dart:560<br>mould:export @491；定义 lib/shared/auth/permissions.dart:179<br>mould:edit @523；定义 lib/shared/auth/permissions.dart:178<br>mould:create @614；定义 lib/shared/auth/permissions.dart:558<br>mould:edit @615；定义 lib/shared/auth/permissions.dart:178<br>mould:edit @879；定义 lib/shared/auth/permissions.dart:178<br>mould:delete @880；定义 lib/shared/auth/permissions.dart:559 |
 | 接口常量 | ApiEndpoints.moulds @480 → /master/moulds<br>ApiEndpoints.mould @481 → /master/moulds/{id}<br>ApiEndpoints.mould @897 → /master/moulds/{id} |
@@ -261,7 +261,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PartyDetailPage @78 (page-class)<br>_PartyDetailPageState @89 (state-class) |
-| 真实路由绑定 | /basicinfo/client/:id；router @943；builder ['PartyDetailPage']；redirect None<br>/basicinfo/supplier/:id；router @956；builder ['PartyDetailPage']；redirect None |
+| 真实路由绑定 | /basicinfo/client/:id；router @958；builder ['PartyDetailPage']；redirect None<br>/basicinfo/supplier/:id；router @971；builder ['PartyDetailPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | client:edit @145；定义 lib/shared/auth/permissions.dart:187<br>supplier:edit @145；定义 lib/shared/auth/permissions.dart:123<br>client:finance @147；定义 lib/shared/auth/permissions.dart:188<br>client:status @151；定义 lib/shared/auth/permissions.dart:563<br>supplier:status @151；定义 lib/shared/auth/permissions.dart:567<br>client:delete @153；定义 lib/shared/auth/permissions.dart:562<br>supplier:delete @153；定义 lib/shared/auth/permissions.dart:566<br>client:assign @154；定义 lib/shared/auth/permissions.dart:191<br>client:view @236；定义 lib/shared/auth/permissions.dart:186<br>supplier:view @236；定义 lib/shared/auth/permissions.dart:122<br>client:view @258；定义 lib/shared/auth/permissions.dart:186<br>supplier:view @258；定义 lib/shared/auth/permissions.dart:122<br>subcontract_order:view @330；定义 lib/shared/auth/permissions.dart:343<br>supplier:view @337；定义 lib/shared/auth/permissions.dart:122<br>subcontract_order:view @337；定义 lib/shared/auth/permissions.dart:343<br>subcontract_order:view @853；定义 lib/shared/auth/permissions.dart:343<br>subcontract_order:view @857；定义 lib/shared/auth/permissions.dart:343<br>client:finance @1084；定义 lib/shared/auth/permissions.dart:188<br>client:status @1095；定义 lib/shared/auth/permissions.dart:563<br>client:view @1910；定义 lib/shared/auth/permissions.dart:186<br>client:edit @1911；定义 lib/shared/auth/permissions.dart:187<br>client:finance @1912；定义 lib/shared/auth/permissions.dart:188<br>client:finance @1913；定义 lib/shared/auth/permissions.dart:188<br>client:finance @1951；定义 lib/shared/auth/permissions.dart:188<br>client:view @2005；定义 lib/shared/auth/permissions.dart:186<br>supplier:view @2005；定义 lib/shared/auth/permissions.dart:122<br>client:status @2006；定义 lib/shared/auth/permissions.dart:563<br>supplier:status @2006；定义 lib/shared/auth/permissions.dart:567<br>client:view @2087；定义 lib/shared/auth/permissions.dart:186<br>supplier:view @2087；定义 lib/shared/auth/permissions.dart:122<br>client:delete @2088；定义 lib/shared/auth/permissions.dart:562<br>supplier:delete @2088；定义 lib/shared/auth/permissions.dart:566 |
 | 接口常量 | ApiEndpoints.client @1999 → /master/clients/{id}<br>ApiEndpoints.supplier @2000 → /master/suppliers/{id}<br>ApiEndpoints.clients @2079 → /master/clients<br>ApiEndpoints.suppliers @2080 → /master/suppliers |
@@ -279,7 +279,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PaymentStylePage @104 (page-class)<br>_PaymentStylePageState @111 (state-class)<br>_PaymentStyleWorkspaceRow @1360 (supporting-class)<br>_PaymentStyleInspector @1368 (supporting-class)<br>_PaymentStyleInspectorState @1386 (state-class)<br>_InspectorHeader @1512 (supporting-class)<br>_BasicInfoSection @1566 (supporting-class)<br>_BusinessAttributesSection @1604 (supporting-class)<br>_HierarchySection @1665 (supporting-class)<br>_ChildrenSection @1697 (supporting-class)<br>_MigrationSection @1756 (supporting-class)<br>_InfoField @1795 (supporting-class)<br>_FlagField @1844 (supporting-class)<br>_InlineNotice @1890 (supporting-class)<br>_EditResult @1924 (supporting-class)<br>_PaymentStyleEditDialog @1969 (supporting-class)<br>_PaymentStyleEditDialogState @2003 (state-class) |
-| 真实路由绑定 | /basicinfo/payment-style；router @998；builder ['PaymentStylePage']；redirect None |
+| 真实路由绑定 | /basicinfo/payment-style；router @1013；builder ['PaymentStylePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | payment_style:create @339；定义 lib/shared/auth/permissions.dart:583<br>payment_style:edit @341；定义 lib/shared/auth/permissions.dart:510<br>payment_style:status @343；定义 lib/shared/auth/permissions.dart:584<br>payment_style:move @345；定义 lib/shared/auth/permissions.dart:585<br>payment_style:reorder @347；定义 lib/shared/auth/permissions.dart:586<br>payment_style:view @352；定义 lib/shared/auth/permissions.dart:509 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -297,7 +297,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ProductCategoryPage @74 (page-class)<br>_ProductCategoryPageState @82 (state-class) |
-| 真实路由绑定 | /basicinfo/goods；router @880；builder ['ProductCategoryPage']；redirect None |
+| 真实路由绑定 | /basicinfo/goods；router @895；builder ['ProductCategoryPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | material_category:view @132；定义 lib/shared/auth/permissions.dart:135<br>goods:edit @134；定义 lib/shared/auth/permissions.dart:140<br>material_category:create @139；定义 lib/shared/auth/permissions.dart:536<br>material_category:edit @143；定义 lib/shared/auth/permissions.dart:136<br>material_category:delete @148；定义 lib/shared/auth/permissions.dart:537<br>material_category:move @152；定义 lib/shared/auth/permissions.dart:538<br>material_category:reorder @157；定义 lib/shared/auth/permissions.dart:539<br>goods:import @176；定义 lib/shared/auth/permissions.dart:147<br>goods:create @532；定义 lib/shared/auth/permissions.dart:552<br>goods:delete @533；定义 lib/shared/auth/permissions.dart:553<br>goods:status @534；定义 lib/shared/auth/permissions.dart:554<br>goods:bom:edit @536；定义 lib/shared/auth/permissions.dart:556<br>goods:bom:delete @537；定义 lib/shared/auth/permissions.dart:557<br>goods:bom:edit @539；定义 lib/shared/auth/permissions.dart:556<br>goods:bom:create @540；定义 lib/shared/auth/permissions.dart:555<br>goods:bom:create @544；定义 lib/shared/auth/permissions.dart:555<br>goods:bom:edit @545；定义 lib/shared/auth/permissions.dart:556<br>goods:price:edit @547；定义 lib/shared/auth/permissions.dart:151<br>goods:discount:view @552；定义 lib/shared/auth/permissions.dart:166<br>goods:price:view @554；定义 lib/shared/auth/permissions.dart:155<br>goods:price:edit @555；定义 lib/shared/auth/permissions.dart:151<br>goods:export @808；定义 lib/shared/auth/permissions.dart:144<br>goods:import @820；定义 lib/shared/auth/permissions.dart:147<br>goods:cost:view @1003；定义 lib/shared/auth/permissions.dart:159 |
 | 接口常量 | ApiEndpoints.goods @783 → /master/goods<br>ApiEndpoints.good @784 → /master/goods/{id} |
@@ -315,7 +315,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SettlementMethodPage @56 (page-class)<br>_SettlementMethodPageState @64 (state-class)<br>_SettlementTermsDialog @866 (supporting-class)<br>_SettlementTermsDialogState @888 (state-class) |
-| 真实路由绑定 | /basicinfo/settlement-methods；router @1003；builder ['SettlementMethodPage']；redirect None |
+| 真实路由绑定 | /basicinfo/settlement-methods；router @1018；builder ['SettlementMethodPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | settlement_method:create @173；定义 lib/shared/auth/permissions.dart:587<br>settlement_method:edit @176；定义 lib/shared/auth/permissions.dart:589<br>settlement_method:export @802；定义 lib/shared/auth/permissions.dart:590<br>settlement_method:export @813；定义 lib/shared/auth/permissions.dart:590<br>settlement_method:edit @896；定义 lib/shared/auth/permissions.dart:589 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -333,7 +333,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SupplierCategoryPage @41 (page-class)<br>_SupplierCategoryPageState @49 (state-class) |
-| 真实路由绑定 | /finance/suppliers；router @666；builder ['SupplierCategoryPage']；redirect None<br>/basicinfo/supplier；router @951；builder ['SupplierCategoryPage']；redirect None |
+| 真实路由绑定 | /finance/suppliers；router @681；builder ['SupplierCategoryPage']；redirect None<br>/basicinfo/supplier；router @966；builder ['SupplierCategoryPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | supplier_category:view @70；定义 lib/shared/auth/permissions.dart:197<br>supplier_category:create @80；定义 lib/shared/auth/permissions.dart:548<br>supplier_category:edit @84；定义 lib/shared/auth/permissions.dart:198<br>supplier_category:delete @89；定义 lib/shared/auth/permissions.dart:549<br>supplier_category:move @93；定义 lib/shared/auth/permissions.dart:550<br>supplier_category:reorder @98；定义 lib/shared/auth/permissions.dart:551<br>supplier:create @226；定义 lib/shared/auth/permissions.dart:565<br>supplier:status @227；定义 lib/shared/auth/permissions.dart:567<br>supplier:edit @395；定义 lib/shared/auth/permissions.dart:123<br>supplier:delete @396；定义 lib/shared/auth/permissions.dart:566<br>supplier:export @406；定义 lib/shared/auth/permissions.dart:199<br>supplier:status @443；定义 lib/shared/auth/permissions.dart:567 |
 | 接口常量 | ApiEndpoints.suppliers @392 → /master/suppliers<br>ApiEndpoints.supplier @393 → /master/suppliers/{id} |
@@ -351,7 +351,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | UnitPage @58 (page-class)<br>_UnitPageState @65 (state-class) |
-| 真实路由绑定 | /basicinfo/unit；router @969；builder ['UnitPage']；redirect None |
+| 真实路由绑定 | /basicinfo/unit；router @984；builder ['UnitPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | unit:create @209；定义 lib/shared/auth/permissions.dart:571<br>unit:edit @212；定义 lib/shared/auth/permissions.dart:208<br>unit:delete @215；定义 lib/shared/auth/permissions.dart:572<br>unit:status @218；定义 lib/shared/auth/permissions.dart:573<br>unit:create @361；定义 lib/shared/auth/permissions.dart:571<br>unit:edit @389；定义 lib/shared/auth/permissions.dart:208<br>unit:view @428；定义 lib/shared/auth/permissions.dart:207<br>unit:edit @538；定义 lib/shared/auth/permissions.dart:208<br>unit:status @635；定义 lib/shared/auth/permissions.dart:573<br>unit:delete @667；定义 lib/shared/auth/permissions.dart:572<br>unit:export @953；定义 lib/shared/auth/permissions.dart:209<br>unit:export @963；定义 lib/shared/auth/permissions.dart:209 |
 | 接口常量 | ApiEndpoints.units @651 → /master/units<br>ApiEndpoints.units @692 → /master/units |
@@ -369,7 +369,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WarehousePage @88 (page-class)<br>_WarehousePageState @95 (state-class)<br>_WarehouseTreeNode @1747 (supporting-class)<br>_WarehouseWorkshopField @1762 (supporting-class)<br>_WarehouseWorkshopFieldState @1776 (state-class)<br>_WarehouseKeepersDialog @1822 (supporting-class)<br>_WarehouseKeepersDialogState @1844 (state-class) |
-| 真实路由绑定 | /basicinfo/warehouse；router @979；builder ['WarehousePage']；redirect None |
+| 真实路由绑定 | /basicinfo/warehouse；router @994；builder ['WarehousePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | warehouse:create @238；定义 lib/shared/auth/permissions.dart:577<br>warehouse:edit @241；定义 lib/shared/auth/permissions.dart:218<br>warehouse:delete @244；定义 lib/shared/auth/permissions.dart:578<br>warehouse:status @247；定义 lib/shared/auth/permissions.dart:579<br>warehouse:create @561；定义 lib/shared/auth/permissions.dart:577<br>warehouse:export @1676；定义 lib/shared/auth/permissions.dart:219<br>warehouse:export @1685；定义 lib/shared/auth/permissions.dart:219 |
 | 接口常量 | ApiEndpoints.warehouse @652 → /master/warehouses/{id}<br>ApiEndpoints.warehouses @1376 → /master/warehouses<br>ApiEndpoints.warehouses @1380 → /master/warehouses |

@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SecurityBlacklistPage @68 (page-class)<br>_SecurityBlacklistPageState @76 (state-class) |
-| 真实路由绑定 | /security/blacklist；router @2299；builder ['SecurityBlacklistPage']；redirect None |
+| 真实路由绑定 | /security/blacklist；router @2314；builder ['SecurityBlacklistPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SecurityScanPage @23 (page-class)<br>_SecurityScanPageState @30 (state-class) |
-| 真实路由绑定 | /security/scan；router @2294；builder ['SecurityScanPage']；redirect None |
+| 真实路由绑定 | /security/scan；router @2309；builder ['SecurityScanPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | visitor:blacklist @98；定义 lib/shared/auth/permissions.dart:74 |
 | 接口常量 | 未静态确认；不能当作不存在 |

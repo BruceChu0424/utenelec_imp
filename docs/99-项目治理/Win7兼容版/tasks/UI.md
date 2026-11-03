@@ -134,9 +134,9 @@
 1. 100/125/150%及系统/应用缩放，caption独立几何、老GPU/低内存不裁切或卡住。
 2. 记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/entry-scrollbar-window-20261103.json`。
 
-接续/限制：按依赖与DoD继续，完成后登记证据。
+接续/限制：；2026-11-03 入口页滚动栏增量：已有 DashboardView 接入 UtenEntryPageScrollBehavior，读取同源生成的 desktopStart=1280，窄屏/平板隐藏竖栏且保留触摸平移和滚轮；文档/编辑页与宽屏原栏保持。x86/x64 实际STA调用方9种宽度、400行、60次切宽、卸载恢复及编辑页隔离通过；触屏真机/Win7与完整工作台迁移仍未验，不提升本项原状态。证据 E-ENTRY-SCROLLBAR-WINDOW-20261103。。
 
 ## W7-UI-009
 

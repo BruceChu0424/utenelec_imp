@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/web_update/web_update_safety.dart';
+import '../../core/router/entry_page_scrollbar.dart';
 
 /// One guard registration per editor instance; pushed lookup pages keep it alive.
 class FormDraftNavigation {
@@ -107,12 +108,18 @@ class DraftAwareGoRoute extends GoRoute {
   DraftAwareGoRoute({
     required super.path,
     super.name,
-    super.builder,
+    GoRouterWidgetBuilder? builder,
     super.pageBuilder,
     super.parentNavigatorKey,
     super.redirect,
     super.routes,
   }) : super(
+         builder: builder == null
+             ? null
+             : (context, state) => UtenEntryPageScrollbar(
+                 location: state.uri.path,
+                 child: builder(context, state),
+               ),
          onExit: builder != null || pageBuilder != null
              ? FormDraftNavigation.onExit
              : null,

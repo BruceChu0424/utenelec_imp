@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | WebsiteManagementPage @31 (page-class)<br>_WebsiteWorkspace @55 (supporting-class)<br>_WebsiteWorkspaceState @61 (state-class)<br>_Fact @454 (supporting-class)<br>_SectionRow @468 (supporting-class)<br>_ConnectionEditor @506 (supporting-class)<br>_ConnectionEditorState @520 (state-class) |
-| 真实路由绑定 | /website-management；router @784；builder ['WebsiteManagementPage']；redirect None |
+| 真实路由绑定 | /website-management；router @799；builder ['WebsiteManagementPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | website:view @39；定义 lib/shared/auth/permissions.dart:520<br>website:view @67；定义 lib/shared/auth/permissions.dart:520<br>authorization:manage @179；定义 lib/shared/auth/permissions.dart:22<br>website:content_edit @187；定义 lib/shared/auth/permissions.dart:521<br>website:product_edit @194；定义 lib/shared/auth/permissions.dart:522<br>website:media_manage @201；定义 lib/shared/auth/permissions.dart:523<br>website:content_edit @208；定义 lib/shared/auth/permissions.dart:521<br>website:content_edit @215；定义 lib/shared/auth/permissions.dart:521<br>website:publish @222；定义 lib/shared/auth/permissions.dart:524<br>website:publish @223；定义 lib/shared/auth/permissions.dart:524<br>website:rollback @224；定义 lib/shared/auth/permissions.dart:525<br>website:view @322；定义 lib/shared/auth/permissions.dart:520<br>website:view @326；定义 lib/shared/auth/permissions.dart:520<br>authorization:manage @393；定义 lib/shared/auth/permissions.dart:22<br>webinquiry:view @429；定义 lib/shared/auth/permissions.dart:519 |
 | 接口常量 | 未静态确认；不能当作不存在 |

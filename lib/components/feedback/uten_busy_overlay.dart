@@ -38,28 +38,39 @@ class UtenBusyOverlay extends StatefulWidget {
   /// task lifetime and accessibility progress announcement.
   final bool showDoNotLeaveHint;
 
-  /// 全局「让位」计数：大于 0 时所有忙碌遮罩暂不绘制、不挡点击。
+  /// 活跃「让位」作用域计数，仅暂停进入作用域前已经存在的忙碌遮罩。
   static final ValueNotifier<int> _yielding = ValueNotifier<int>(0);
+  static final _active = <_UtenBusyOverlayState>{};
+  static final _yieldOwners = <Set<_UtenBusyOverlayState>>{};
 
-  /// 在 [body] 运行期间让所有忙碌遮罩让位，结束(含异常)后恢复。
+  /// 在 [body] 运行期间让既有忙碌遮罩让位，结束(含异常)后恢复。
+  /// 弹窗内新开始的任务仍显示自身遮罩，避免验证等按钮只禁用而没有等待反馈。
   ///
   /// 给必须压在遮罩之上、等用户操作的全局弹窗用(如敏感操作的再认证密码框)：遮罩是
   /// root Overlay 里的裸 OverlayEntry，Navigator 每推一个路由都会把裸 entry 重新抬到最顶层，
   /// 盖住后弹出的对话框——请求在等密码、遮罩在等请求，整页卡死。让位期间对话框自带的
   /// 模态屏障照样挡住底下页面。
   static Future<T> yieldWhile<T>(Future<T> Function() body) async {
+    // Yield the operations which were already waiting. A newly started task
+    // inside the modal (for example password verification) owns its own mask.
+    final owners = Set<_UtenBusyOverlayState>.of(_active);
+    _yieldOwners.add(owners);
     _yielding.value++;
     try {
       return await body();
     } finally {
-      _yielding.value--;
+      _yieldOwners.remove(owners);
+      _yielding.value = _yieldOwners.length;
     }
   }
 
   /// 仅测试用：widget 测试卸树时弃掉的让位 Future 永不完成，全局计数永久
   /// 大于 0，后续用例的遮罩全部隐身。逐条用例复位。
   @visibleForTesting
-  static void debugResetYield() => _yielding.value = 0;
+  static void debugResetYield() {
+    _yieldOwners.clear();
+    _yielding.value = 0;
+  }
 
   @override
   State<UtenBusyOverlay> createState() => _UtenBusyOverlayState();
@@ -72,6 +83,12 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
     onAvailable: _ensureEntry,
     onUnavailable: _removeEntry,
   );
+
+  @override
+  void initState() {
+    super.initState();
+    UtenBusyOverlay._active.add(this);
+  }
 
   @override
   void didChangeDependencies() {
@@ -122,6 +139,10 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
 
   @override
   void dispose() {
+    UtenBusyOverlay._active.remove(this);
+    for (final owners in UtenBusyOverlay._yieldOwners) {
+      owners.remove(this);
+    }
     _lifecycle.dispose();
     _removeEntry();
     super.dispose();
@@ -134,7 +155,12 @@ class _UtenBusyOverlayState extends State<UtenBusyOverlay> {
     return ValueListenableBuilder<int>(
       valueListenable: UtenBusyOverlay._yielding,
       builder: (context, yielding, _) =>
-          yielding > 0 ? const SizedBox.shrink() : _buildMask(context),
+          yielding > 0 &&
+              UtenBusyOverlay._yieldOwners.any(
+                (owners) => owners.contains(this),
+              )
+          ? const SizedBox.shrink()
+          : _buildMask(context),
     );
   }
 

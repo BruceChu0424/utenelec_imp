@@ -1,0 +1,54 @@
+{
+  "id": "E-WINDOWS-UPDATE-PAGE-20261102",
+  "baseline": "c75d6e1e3",
+  "branch": "uimp/windows-update-page-20261102",
+  "scope": "Flutter Windows software update page and shared install retry",
+  "classification": [
+    "frontend",
+    "client-update-lifecycle"
+  ],
+  "sourceSha256": {
+    "lib/features/client_update/client_update_page.dart": "08576bf1c918699d7245cff2e79fda8591ac4e012168c2cced28684763eaf7f3",
+    "lib/features/client_update/client_update_host.dart": "586d8d5be94b75d17149f3cc5c66767489db9c634b37255790e008b849cc0611",
+    "lib/features/client_update/client_update_controller.dart": "a659d84f479b3436bec4384f1ba7866aa6150710a37c8c99773f4cc38177c2cf",
+    "lib/features/client_update/client_staged_update.dart": "c999f99f438c00b1e1503ab45712bbf414f4bdaa261c1a38b4ac75169bc24ed4",
+    "test/features/client_update/client_update_delivery_flow_test.dart": "e8b6b1496a450cac7e17aeb0b7914aa77649afc893533041df9631cdde81752d",
+    "test/features/client_update/client_update_redesign_test.dart": "bd02af87028ed63d3a67750c4e8ed938e26d7ea1cfd475473650799c302373ca",
+    "test/support/client_update_desktop_harness.dart": "132c2cc1aad20b48de655206a8caa91fb95ca4ce777f6171c05f96fd4b1945b3"
+  },
+  "verification": {
+    "flutterTests": 80,
+    "flutterTestsPassed": true,
+    "analyzeTargets": 7,
+    "analyzeIssues": 0,
+    "nativeUpdaterFixtureCasesPassed": 9,
+    "nativeUiOfflineFixture": true,
+    "nativeUiObserved": [
+      "fresh-login-offer",
+      "details-page",
+      "dirty-work-blocks-with-reason",
+      "save-and-continue",
+      "failure-with-retry",
+      "retry-without-second-download"
+    ],
+    "manualRetryObserved": {
+      "downloads": 1,
+      "installAttempts": 2,
+      "simulatedHandoffs": 1
+    },
+    "detailsIdleCountdown": "component regression passed; final native acceptance not claimed"
+  },
+  "wpf": {
+    "task": "W7-BIZ-039",
+    "status": "todo",
+    "pageMigrated": false,
+    "win7TargetAccepted": false
+  },
+  "release": {
+    "formalPackageCreated": false,
+    "uploaded": false,
+    "deployed": false,
+    "installedClientReplaced": false
+  },
+  "report": "docs/99-项目治理/2026-11-02-Windows软件更新页与安装重试.md"
+}

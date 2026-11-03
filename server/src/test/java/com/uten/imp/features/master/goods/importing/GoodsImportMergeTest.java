@@ -50,7 +50,7 @@ class GoodsImportMergeTest {
         var first=new com.uten.imp.features.master.currency.Currency(); first.setName("美金"); first.setCode("002"); first.setStatus("使用");
         var replacement=new com.uten.imp.features.master.currency.Currency(); replacement.setName("美金"); replacement.setCode("002"); replacement.setStatus("使用");
         var currencies=mock(com.uten.imp.features.master.currency.CurrencyRepository.class);
-        when(currencies.findAll()).thenReturn(List.of(first),List.of(replacement));
+        when(currencies.findAll()).thenReturn(List.of(first)).thenReturn(List.of(replacement));
         ReflectionTestUtils.setField(f.service,"currencyRepo",currencies);
         byte[] file;
         try(var book=new XSSFWorkbook(new java.io.ByteArrayInputStream(workbook("G1","现有货品","","","",f.goods.getId().toString())));

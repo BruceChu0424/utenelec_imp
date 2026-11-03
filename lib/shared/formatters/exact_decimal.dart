@@ -137,7 +137,7 @@ String financeExactDecimalFromUnits(BigInt units, {int scale = 4}) {
   return '${negative ? '-' : ''}$whole.$fraction';
 }
 
-String financeExactMoneyDisplay(String? raw) {
+String financeExactMoneyDisplay(String? raw, {bool groupThousands = false}) {
   final text = financeExactDecimal(raw);
   if (text == null) return '—';
   final negative = text.startsWith('-');
@@ -148,7 +148,13 @@ String financeExactMoneyDisplay(String? raw) {
     fraction = fraction.substring(0, fraction.length - 1);
   }
   fraction = fraction.padRight(2, '0');
-  return '${negative ? '-' : ''}${parts.first}.$fraction';
+  final whole = groupThousands
+      ? parts.first.replaceAllMapped(
+          RegExp(r'(\d)(?=(\d{3})+$)'),
+          (match) => '${match[1]},',
+        )
+      : parts.first;
+  return '${negative ? '-' : ''}$whole.$fraction';
 }
 
 /// 编辑页金额预览(ADR-112): 数量 × 单价(× 折扣倍率)的十进制精确乘积, 与服务端 MoneyPolicy

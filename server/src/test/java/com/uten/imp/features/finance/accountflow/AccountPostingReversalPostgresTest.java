@@ -3,6 +3,7 @@ package com.uten.imp.features.finance.accountflow;
 import com.uten.imp.testsupport.FixtureDatabaseProperties;
 
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.web.ApiException;
 import com.uten.imp.features.finance.accountbalance.AccountBalanceAdjustmentService;
 import com.uten.imp.features.finance.accountbalance.dto.AccountBalanceAdjustmentBatchRequest;
 import com.uten.imp.features.finance.accountbalance.dto.AccountBalanceAdjustmentItemRequest;
@@ -42,6 +43,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * dup-backend-split-04 真库验收(ADR-112): 资金账户过账只经 {@link AccountFlowLedgerService} 一个入口。
@@ -164,16 +166,41 @@ class AccountPostingReversalPostgresTest {
         login("posting-adjuster");
         Map<UUID, List<BigDecimal>> before = balances(List.of(first, second));
 
-        adjustments.adjust(new AccountBalanceAdjustmentBatchRequest("SELECTED", BusinessTime.today(),
+        var request = new AccountBalanceAdjustmentBatchRequest("SELECTED", BusinessTime.today(),
                 "银行对账校准", "adjust-up-" + first, List.of(
                 new AccountBalanceAdjustmentItemRequest(first, new BigDecimal("1000"), new BigDecimal("1012.5"), null),
-                new AccountBalanceAdjustmentItemRequest(second, new BigDecimal("1000"), new BigDecimal("1000"), null))));
+                new AccountBalanceAdjustmentItemRequest(second, new BigDecimal("1000"), new BigDecimal("1000"), null)));
+        var result = adjustments.adjust(request);
         assertThat(balances(List.of(first)).get(first).getFirst()).isEqualByComparingTo("1012.5");
         assertThat(balances(List.of(second)).get(second).getFirst()).as("没变动的账户不写流水").isEqualByComparingTo("1000");
         assertThat(jdbc.queryForObject("""
                 SELECT count(*) FROM finance_reconciliations
                 WHERE source_doc_type = 'BALANCE_ADJUSTMENT' AND account_id = ANY(?)
                 """, Long.class, (Object) new UUID[]{first, second})).isEqualTo(1L);
+
+        // A repeated save after a lost response returns the original receipt and never posts twice.
+        assertThat(adjustments.adjust(request).id()).isEqualTo(result.id());
+        assertThat(balances(List.of(first)).get(first).getFirst()).isEqualByComparingTo("1012.5");
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM finance_reconciliations
+                WHERE source_doc_type = 'BALANCE_ADJUSTMENT' AND account_id = ANY(?)
+                """, Long.class, (Object) new UUID[]{first, second})).isEqualTo(1L);
+
+        // A stale edited row rejects the entire batch, including another otherwise valid row.
+        assertThatThrownBy(() -> adjustments.adjust(new AccountBalanceAdjustmentBatchRequest(
+                "SELECTED", BusinessTime.today(), "旧余额整批拒绝", "adjust-stale-" + first, List.of(
+                new AccountBalanceAdjustmentItemRequest(first, new BigDecimal("1000"), new BigDecimal("1020"), null),
+                new AccountBalanceAdjustmentItemRequest(second, new BigDecimal("1000"), new BigDecimal("1050"), null)))))
+                .isInstanceOf(ApiException.class).hasMessageContaining("账户余额已变化");
+        assertThat(balances(List.of(second)).get(second).getFirst()).isEqualByComparingTo("1000");
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM account_balance_adjustment_batches WHERE idempotency_key = ?
+                """, Long.class, "adjust-stale-" + first)).isZero();
+
+        assertThatThrownBy(() -> adjustments.adjust(new AccountBalanceAdjustmentBatchRequest(
+                "SELECTED", BusinessTime.today(), request.reason(), request.idempotencyKey(), List.of(
+                new AccountBalanceAdjustmentItemRequest(first, new BigDecimal("1012.5"), new BigDecimal("1020"), null)))))
+                .isInstanceOf(ApiException.class).hasMessageContaining("已经用于另一笔");
 
         adjustments.adjust(new AccountBalanceAdjustmentBatchRequest("SELECTED", BusinessTime.today(),
                 "校准回原值", "adjust-back-" + first, List.of(

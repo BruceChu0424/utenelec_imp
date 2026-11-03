@@ -26,6 +26,12 @@
 - 相同业务格的多个挂载副本共享业务草稿。未获得焦点的副本可同步当前值；有焦点或正在组合输入的副本保留本地编辑值。
 - `requiredEmpty` 保留新增必填空值的既有红框提示。字段必填校验和保存规则仍由宿主负责。
 
+## 宿主保存的焦点生命周期
+
+`MasterInlineEditActions` 在用户点击保存后先通过 `FocusScope.unfocus()` 结束当前输入连接，等待 `endOfFrame`，再核对宿主仍挂载且编辑会话 epoch 未变，随后进入原有的 `controller.save` 和保存反馈流程。这样在保存置忙切换文本格 `readOnly` 前，Web 不会继续向已经退役的输入 DOM 发布配置。
+
+该顺序属于共享保存操作的 UI 宿主，不放进无业务状态的 `UtenInlineEditCell`，也不改变控制器逐行事务、原始输入、正常空串、IME 提交和未知提交语义；失焦本身不提交业务数据。账号、权限或草稿会话在等待期间退役时仍拒绝旧保存。
+
 ## 消费路径
 
 - 主档已有行: `MasterInlineEditController.columns` / `MasterInlineRecordEditor`。

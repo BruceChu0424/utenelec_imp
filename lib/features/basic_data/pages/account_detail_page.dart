@@ -722,11 +722,12 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
 
   Future<void> _reconcileBalance() async {
     if (!_canAdjustBalance) return;
-    final result = await showAccountBalanceReconciliationDialog(
+    final current = captureReadOwner(ref);
+    final result = await showAccountBalanceEditDialog(
       context,
-      initialAccountId: widget.accountId,
+      accountId: widget.accountId,
     );
-    if (result == null || !mounted) return;
+    if (result == null || !mounted || !current() || !_canAdjustBalance) return;
     context.appSuccess(
       '余额核对批次 ${result.batchNo ?? result.id} 已提交，'
       '更新 ${result.changedCount}/${result.itemCount} 个账户',

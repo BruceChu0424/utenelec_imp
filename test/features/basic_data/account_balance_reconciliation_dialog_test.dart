@@ -1,5 +1,9 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,6 +13,23 @@ import 'package:uten_imp/features/basic_data/repositories/account_repository.dar
 import 'package:uten_imp/features/basic_data/repositories/currency_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/account_balance_reconciliation_dialog.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
+import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
+import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+
+const _balancePermissions = {
+  Perm.accountView,
+  Perm.accountBalanceView,
+  Perm.accountBalanceAdjust,
+};
+
+final _editorPermissions = StateProvider<Set<String>>(
+  (ref) => _balancePermissions,
+);
+final _editorIdentity = StateProvider<AuthenticatedScope?>(
+  (ref) => const AuthenticatedScope(userId: 'balance-editor'),
+);
 
 Finder _targetFields() => find.byWidgetPredicate(
   (widget) =>
@@ -47,6 +68,8 @@ void main() {
             name: '别的账户',
             accountType: 'BANK',
             currencyId: 'currency-cny',
+            currencyCode: 'CNY',
+            currencyName: '人民币',
             status: '使用',
           ),
           AccountListItem(
@@ -55,6 +78,8 @@ void main() {
             name: 'MAIN备用户',
             accountType: 'BANK',
             currencyId: 'currency-cny',
+            currencyCode: 'CNY',
+            currencyName: '人民币',
             status: '使用',
           ),
           AccountListItem(
@@ -63,6 +88,8 @@ void main() {
             name: 'MAIN',
             accountType: 'BANK',
             currencyId: 'currency-cny',
+            currencyCode: 'CNY',
+            currencyName: '人民币',
             status: '使用',
           ),
           AccountListItem(
@@ -78,6 +105,12 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'balance-editor'),
+            ),
+            apiClientProvider.overrideWithValue(ApiClient(Dio())),
+            currentPermissionsProvider.overrideWithValue(_balancePermissions),
+            isSuperAdminProvider.overrideWithValue(false),
             accountRepositoryProvider.overrideWithValue(repository),
             currencyRepositoryProvider.overrideWithValue(
               _CurrencyRepositoryFake(),
@@ -122,6 +155,12 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'balance-editor'),
+            ),
+            apiClientProvider.overrideWithValue(ApiClient(Dio())),
+            currentPermissionsProvider.overrideWithValue(_balancePermissions),
+            isSuperAdminProvider.overrideWithValue(false),
             accountRepositoryProvider.overrideWithValue(accountRepository),
             currencyRepositoryProvider.overrideWithValue(
               _CurrencyRepositoryFake(),
@@ -172,6 +211,12 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'balance-editor'),
+            ),
+            apiClientProvider.overrideWithValue(ApiClient(Dio())),
+            currentPermissionsProvider.overrideWithValue(_balancePermissions),
+            isSuperAdminProvider.overrideWithValue(false),
             accountRepositoryProvider.overrideWithValue(accountRepository),
             currencyRepositoryProvider.overrideWithValue(
               _CurrencyRepositoryFake(),
@@ -277,6 +322,12 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            authenticatedScopeProvider.overrideWithValue(
+              const AuthenticatedScope(userId: 'balance-editor'),
+            ),
+            apiClientProvider.overrideWithValue(ApiClient(Dio())),
+            currentPermissionsProvider.overrideWithValue(_balancePermissions),
+            isSuperAdminProvider.overrideWithValue(false),
             accountRepositoryProvider.overrideWithValue(accountRepository),
             currencyRepositoryProvider.overrideWithValue(
               _CurrencyRepositoryFake(),
@@ -360,6 +411,336 @@ void main() {
       expect(accountRepository.inputs[1].localDelta, '-700.0000');
     },
   );
+
+  testWidgets(
+    'single balance edit loads one fresh account and preserves four-decimal target',
+    (tester) async {
+      final repository = _AccountRepositoryFake();
+      await _pumpSingle(
+        tester,
+        repository,
+        initialTarget: '99999999999999.1235',
+      );
+      expect(repository.detailCalls, 1);
+      expect(repository.dictCalls, 0);
+      expect(_targetFields(), findsOneWidget);
+      expect(find.text('全部使用中账户目标填 0'), findsNothing);
+      expect(find.text('仅选定账户'), findsNothing);
+      expect(
+        tester.widget<TextField>(_targetFields()).controller!.text,
+        '99999999999999.1235',
+      );
+      await _enterSingleReason(tester, '上线账户盘点');
+      await _saveSingle(tester);
+      expect(repository.scope, AccountBalanceAdjustmentScope.selected);
+      expect(repository.inputs.single.expectedBalance, '99999999999999.1234');
+      expect(repository.inputs.single.targetBalance, '99999999999999.1235');
+      expect(find.text('修改当前余额'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'unknown balance submission freezes payload and retries the original command',
+    (tester) async {
+      final repository = _AccountRepositoryFake()
+        ..nextError = NetworkTimeoutException();
+      await _pumpSingle(tester, repository);
+      await tester.enterText(_targetFields(), '12.3456');
+      await _enterSingleReason(tester, '现金实盘');
+      await _saveSingle(tester);
+      expect(repository.attempts, hasLength(1));
+      expect(tester.widget<TextField>(_targetFields()).enabled, isFalse);
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('account-balance-reason')),
+            )
+            .enabled,
+        isFalse,
+      );
+      expect(find.textContaining('提交结果待确认'), findsOneWidget);
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(find.text('修改当前余额'), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('修改当前余额'), findsOneWidget);
+      await tester.tap(find.text('重试确认结果'));
+      await tester.pumpAndSettle();
+      expect(repository.attempts, hasLength(2));
+      expect(repository.attempts[1].key, repository.attempts[0].key);
+      expect(repository.attempts[1].date, repository.attempts[0].date);
+      expect(repository.attempts[1].reason, repository.attempts[0].reason);
+      expect(
+        repository.attempts[1].items.single.toJson(),
+        repository.attempts[0].items.single.toJson(),
+      );
+      expect(find.text('修改当前余额'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'definite balance conflict keeps inputs and requires a fresh expected balance',
+    (tester) async {
+      final repository = _AccountRepositoryFake()
+        ..nextError = ApiException(
+          'CONFLICT',
+          '账户余额已变化',
+          httpStatus: 409,
+          hasResponseCode: true,
+        );
+      await _pumpSingle(tester, repository);
+      await tester.enterText(_targetFields(), '12.3456');
+      await _enterSingleReason(tester, '现金实盘');
+      await _saveSingle(tester);
+      expect(find.text('刷新当前余额'), findsOneWidget);
+      expect(
+        tester.widget<TextField>(_targetFields()).controller!.text,
+        '12.3456',
+      );
+      repository.refreshedBalance = '10.0000';
+      await tester.ensureVisible(find.text('刷新当前余额'));
+      await tester.pump();
+      await tester.tap(find.text('刷新当前余额'));
+      await tester.pumpAndSettle();
+      expect(repository.detailCalls, 2);
+      expect(
+        tester.widget<TextField>(_targetFields()).controller!.text,
+        '12.3456',
+      );
+      await _saveSingle(tester);
+      expect(repository.attempts, hasLength(2));
+      expect(repository.attempts[1].key, isNot(repository.attempts[0].key));
+      expect(repository.attempts[1].items.single.expectedBalance, '10.0000');
+      expect(repository.attempts[1].items.single.targetBalance, '12.3456');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('discard confirmation protects unsaved single balance input', (
+    tester,
+  ) async {
+    final repository = _AccountRepositoryFake();
+    await _pumpSingle(tester, repository);
+    await tester.enterText(_targetFields(), '12.3456');
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    expect(find.text('放弃未保存的余额修改？'), findsOneWidget);
+    await tester.tap(find.text('继续编辑'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(_targetFields()).controller!.text,
+      '12.3456',
+    );
+    expect(repository.attempts, isEmpty);
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('放弃修改'));
+    await tester.pumpAndSettle();
+    expect(find.text('修改当前余额'), findsNothing);
+  });
+
+  testWidgets(
+    'permission revocation closes confirmation and cannot send an old edit',
+    (tester) async {
+      final repository = _AccountRepositoryFake();
+      final container = await _pumpSingle(tester, repository);
+      await tester.enterText(_targetFields(), '12.3456');
+      await _enterSingleReason(tester, '现金实盘');
+      await tester.tap(find.text('保存余额'));
+      await tester.pumpAndSettle();
+      expect(find.text('确认修改当前余额'), findsOneWidget);
+      container.read(_editorPermissions.notifier).state = {
+        Perm.accountView,
+        Perm.accountBalanceView,
+      };
+      await tester.pumpAndSettle();
+      container.read(_editorPermissions.notifier).state = _balancePermissions;
+      await tester.pumpAndSettle();
+      expect(find.text('确认修改当前余额'), findsNothing);
+      expect(find.text('修改当前余额'), findsNothing);
+      expect(repository.attempts, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'account A-B-A while detail loads never publishes the old account',
+    (tester) async {
+      final repository = _AccountRepositoryFake()
+        ..pendingDetail = Completer<AccountDetail>();
+      final container = await _pumpSingle(tester, repository, settle: false);
+      container.read(_editorIdentity.notifier).state = const AuthenticatedScope(
+        userId: 'other-editor',
+      );
+      await tester.pump();
+      container.read(_editorIdentity.notifier).state = const AuthenticatedScope(
+        userId: 'balance-editor',
+      );
+      await tester.pump();
+      repository.pendingDetail!.complete(
+        const AccountDetail(
+          id: 'account-1',
+          name: '旧身份账户',
+          status: '使用',
+          baseCurrency: true,
+          balanceCurrentText: '500.0000',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('旧身份账户'), findsNothing);
+      expect(find.text('修改当前余额'), findsNothing);
+      expect(repository.attempts, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'ordinary account edit permission cannot load or change a balance',
+    (tester) async {
+      final repository = _AccountRepositoryFake();
+      await _pumpSingle(
+        tester,
+        repository,
+        permissions: {
+          Perm.accountView,
+          Perm.accountEdit,
+          Perm.accountBalanceView,
+        },
+      );
+      expect(repository.detailCalls, 0);
+      expect(_targetFields(), findsNothing);
+      expect(find.textContaining('没有修改账户余额的权限'), findsOneWidget);
+      expect(repository.attempts, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'rapid confirmation sends once and late result cannot escape an identity change',
+    (tester) async {
+      final repository = _AccountRepositoryFake()
+        ..pendingSubmit = Completer<AccountBalanceAdjustmentBatchResult>();
+      final container = await _pumpSingle(tester, repository);
+      await tester.enterText(_targetFields(), '12.3456');
+      await _enterSingleReason(tester, '现金实盘');
+      await tester.tap(find.text('保存余额'));
+      await tester.pumpAndSettle();
+      final confirm = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, '确认提交'),
+      );
+      confirm.onPressed!();
+      confirm.onPressed!();
+      for (var turn = 0; turn < 20 && repository.attempts.isEmpty; turn++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(repository.attempts, hasLength(1));
+      expect(find.text('修改当前余额'), findsOneWidget);
+      container.read(_editorIdentity.notifier).state = const AuthenticatedScope(
+        userId: 'other-editor',
+      );
+      await tester.pump();
+      container.read(_editorIdentity.notifier).state = const AuthenticatedScope(
+        userId: 'balance-editor',
+      );
+      await tester.pump();
+      repository.pendingSubmit!.complete(
+        const AccountBalanceAdjustmentBatchResult(
+          id: 'old-batch',
+          scope: 'SELECTED',
+          effectiveDate: '2026-11-03',
+          reason: '现金实盘',
+          itemCount: 1,
+          changedCount: 1,
+          items: [],
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(repository.attempts, hasLength(1));
+      expect(find.text('修改当前余额'), findsNothing);
+      expect(find.text('打开单账户编辑'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+}
+
+Future<ProviderContainer> _pumpSingle(
+  WidgetTester tester,
+  _AccountRepositoryFake repository, {
+  String? initialTarget,
+  bool settle = true,
+  Set<String> permissions = _balancePermissions,
+}) async {
+  await tester.binding.setSurfaceSize(const Size(1280, 900));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  SharedPreferences.setMockInitialValues({});
+  final preferences = await SharedPreferences.getInstance();
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        authenticatedScopeProvider.overrideWith(
+          (ref) => ref.watch(_editorIdentity),
+        ),
+        currentPermissionsProvider.overrideWith(
+          (ref) => ref.watch(_editorPermissions),
+        ),
+        isSuperAdminProvider.overrideWithValue(false),
+        apiClientProvider.overrideWithValue(ApiClient(Dio())),
+        accountRepositoryProvider.overrideWithValue(repository),
+        currencyRepositoryProvider.overrideWithValue(_CurrencyRepositoryFake()),
+        sharedPreferencesProvider.overrideWithValue(preferences),
+      ],
+      child: MaterialApp(
+        home: _OpenSingleDialogHost(initialTarget: initialTarget),
+      ),
+    ),
+  );
+  final container = ProviderScope.containerOf(
+    tester.element(find.byType(_OpenSingleDialogHost)),
+  );
+  container.read(_editorPermissions.notifier).state = permissions;
+  await tester.tap(find.text('打开单账户编辑'));
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+  return container;
+}
+
+Future<void> _saveSingle(WidgetTester tester) async {
+  await tester.tap(find.text('保存余额'));
+  await tester.pumpAndSettle();
+  expect(find.text('确认修改当前余额'), findsOneWidget);
+  await tester.tap(find.text('确认提交'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _enterSingleReason(WidgetTester tester, String reason) async {
+  final field = find.byKey(const ValueKey('account-balance-reason'));
+  await tester.ensureVisible(field);
+  await tester.pump();
+  await tester.enterText(field, reason);
+}
+
+class _OpenSingleDialogHost extends StatelessWidget {
+  const _OpenSingleDialogHost({this.initialTarget});
+  final String? initialTarget;
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Center(
+      child: FilledButton(
+        onPressed: () => showAccountBalanceEditDialog(
+          context,
+          accountId: 'account-1',
+          initialTargetBalance: initialTarget,
+        ),
+        child: const Text('打开单账户编辑'),
+      ),
+    ),
+  );
 }
 
 class _OpenDialogHost extends StatelessWidget {
@@ -386,9 +767,29 @@ class _AccountRepositoryFake implements AccountRepository {
   List<AccountBalanceAdjustmentInput> inputs = const [];
   String? idempotencyKey;
   AccountBalanceAdjustmentScope? scope;
+  int detailCalls = 0;
+  int dictCalls = 0;
+  String? refreshedBalance;
+  Object? nextError;
+  Completer<AccountBalanceAdjustmentBatchResult>? pendingSubmit;
+  Completer<AccountDetail>? pendingDetail;
+  final attempts =
+      <
+        ({
+          String key,
+          String date,
+          String reason,
+          List<AccountBalanceAdjustmentInput> items,
+        })
+      >[];
 
   @override
   Future<List<AccountListItem>> dict() async {
+    dictCalls++;
+    return _items;
+  }
+
+  List<AccountListItem> get _items {
     if (accountItems != null) return accountItems!;
     return foreign
         ? const [
@@ -425,6 +826,25 @@ class _AccountRepositoryFake implements AccountRepository {
   }
 
   @override
+  Future<AccountDetail> detail(String id) async {
+    detailCalls++;
+    if (pendingDetail != null) return pendingDetail!.future;
+    final row = _items.singleWhere((item) => item.id == id);
+    return AccountDetail(
+      id: row.id,
+      code: row.code,
+      name: row.name,
+      accountType: row.accountType,
+      currencyId: row.currencyId,
+      currencyCode: row.currencyCode,
+      currencyName: row.currencyName,
+      baseCurrency: row.baseCurrency,
+      balanceCurrentText: refreshedBalance ?? row.balanceCurrentText,
+      status: row.status,
+    );
+  }
+
+  @override
   Future<AccountBalanceAdjustmentBatchResult> adjustBalances({
     required AccountBalanceAdjustmentScope scope,
     required String effectiveDate,
@@ -435,6 +855,16 @@ class _AccountRepositoryFake implements AccountRepository {
     inputs = items;
     this.idempotencyKey = idempotencyKey;
     this.scope = scope;
+    attempts.add((
+      key: idempotencyKey,
+      date: effectiveDate,
+      reason: reason,
+      items: items,
+    ));
+    final error = nextError;
+    nextError = null;
+    if (error != null) throw error;
+    if (pendingSubmit != null) return pendingSubmit!.future;
     return AccountBalanceAdjustmentBatchResult(
       id: 'batch-1',
       batchNo: 'AB260001',

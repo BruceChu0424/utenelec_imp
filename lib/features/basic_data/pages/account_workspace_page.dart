@@ -178,6 +178,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
   bool _disabledLoading = false;
   bool _disabledRequested = false;
   bool _detailBusy = false;
+  bool _balanceEditOpen = false;
   final _navigation = PageNavigationSession();
   AccountListItem? _selectedAccount;
   Set<String> _selectedAccountIds = {};
@@ -1059,17 +1060,44 @@ class _AccountPageState extends ConsumerState<AccountPage>
     if (_batchBusy) return;
     if (!await inlineEdit.confirmLeave(context) || !mounted) return;
     if (!_canAdjustBalance) return;
+    final boundary = captureInlineRead();
     final result = await showAccountBalanceReconciliationDialog(
       context,
       initialAccountId: accountId,
       compactOverride: compactOverride ? true : null,
     );
-    if (result == null || !mounted) return;
+    if (result == null || !mounted || !inlineAcceptsRead(boundary)) return;
     context.appSuccess(
       '余额核对批次 ${result.batchNo ?? result.id} 已提交，'
       '更新 ${result.changedCount}/${result.itemCount} 个账户',
     );
     await _refresh();
+  }
+
+  Future<void> _editCurrentBalance(AccountListItem account) async {
+    if (_balanceEditOpen ||
+        _batchBusy ||
+        inlineEdit.busy ||
+        !inlineEdit.active ||
+        !inlineReadReady ||
+        !_canAdjustBalance ||
+        account.status != '使用') {
+      return;
+    }
+    final boundary = captureInlineRead();
+    _balanceEditOpen = true;
+    try {
+      final result = await showAccountBalanceEditDialog(
+        context,
+        accountId: account.id,
+      );
+      if (result == null || !mounted || !inlineAcceptsRead(boundary)) return;
+      context.appSuccess('当前余额已保存，已保留本次调整记录');
+      // Keep the editing session and unrelated master-data drafts intact.
+      await _refresh(preserveSelection: true, page: _visibleReadPage);
+    } finally {
+      _balanceEditOpen = false;
+    }
   }
 
   List<UtenContextMenuEntry> _rowMenu(AccountListItem account) {
@@ -1152,7 +1180,8 @@ class _AccountPageState extends ConsumerState<AccountPage>
   ) => [
     MasterInlineEditActions<AccountListItem>(
       controller: inlineEdit,
-      canEdit: _canEdit && inlineReadReady && !_batchBusy,
+      canEdit:
+          (_canEdit || _canAdjustBalance) && inlineReadReady && !_batchBusy,
       canCreate: _canCreate && inlineReadReady && !_batchBusy,
       onSave: saveInline,
       embedded: true,
@@ -1204,6 +1233,14 @@ class _AccountPageState extends ConsumerState<AccountPage>
       label: '状态',
       width: 72,
       value: (account) => account.status,
+      cellBuilder: (context, account) => Text(
+        account.status ?? '—',
+        style: TextStyle(
+          color: account.status == '使用'
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
     ),
     MasterColumnDef(
       key: 'code',
@@ -1218,6 +1255,10 @@ class _AccountPageState extends ConsumerState<AccountPage>
       width: 210,
       sortable: true,
       value: (account) => account.name,
+      cellBuilder: (_, account) => Text(
+        account.name ?? '—',
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
     ),
     MasterColumnDef(
       key: 'accountType',
@@ -1242,14 +1283,58 @@ class _AccountPageState extends ConsumerState<AccountPage>
       MasterColumnDef(
         key: 'balanceCurrent',
         label: '当前余额',
-        width: 150,
+        width: 210,
         type: 'money',
         sortable: true,
         columnSearchEnabled: true,
         exactValueOf: (account) => account.balanceCurrentText,
-        info: '按账户原币余额的原始精度检索；不同币种不合计',
-        value: (account) =>
-            financeExactMoneyDisplay(account.balanceCurrentText),
+        info:
+            '按账户原币余额的原始精度检索；不同币种不合计。'
+            '进入编辑模式后，具有余额调整权限的人员可填写盘点后的当前余额。',
+        value: (account) => financeExactMoneyDisplay(
+          account.balanceCurrentText,
+          groupThousands: true,
+        ),
+        cellColor: (context, _) => inlineEdit.active && _canAdjustBalance
+            ? Theme.of(context).colorScheme.primary.withValues(alpha: .04)
+            : null,
+        cellBuilderHandlesSemantics: true,
+        cellBuilder: (context, account) {
+          final amount = financeExactMoneyDisplay(
+            account.balanceCurrentText,
+            groupThousands: true,
+          );
+          const style = TextStyle(
+            fontWeight: FontWeight.w600,
+            fontFeatures: [FontFeature.tabularFigures()],
+          );
+          if (inlineEdit.active &&
+              _canAdjustBalance &&
+              account.status == '使用') {
+            return SizedBox(
+              width: double.infinity,
+              child: TextButton.icon(
+                key: ValueKey('account-edit-balance-${account.id}'),
+                onPressed: inlineReadReady && !inlineEdit.busy && !_batchBusy
+                    ? () => _editCurrentBalance(account)
+                    : null,
+                iconAlignment: IconAlignment.end,
+                icon: const Icon(Icons.edit_outlined, size: 16),
+                label: Text(amount, style: style),
+                style: TextButton.styleFrom(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: UtenSpacing.s8,
+                  ),
+                ),
+              ),
+            );
+          }
+          return Align(
+            alignment: Alignment.centerRight,
+            child: Text(amount, style: style),
+          );
+        },
       ),
   ];
 
@@ -1271,7 +1356,7 @@ class _AccountPageState extends ConsumerState<AccountPage>
         tint: UtenColors.statusNeutral.withValues(alpha: 0.12),
         items: disabled?.items ?? const <AccountListItem>[],
         total: total,
-        detailLabel: disabled == null ? '点击加载' : '下拉查看详情',
+        detailLabel: '',
         loading: _disabledLoading,
         error: _disabledError,
         onExpand: _loadDisabledAccounts,
@@ -1456,7 +1541,8 @@ class _AccountPageState extends ConsumerState<AccountPage>
                                 (_canCreate ||
                                     _canEdit ||
                                     _canStatus ||
-                                    _canDelete)
+                                    _canDelete ||
+                                    _canAdjustBalance)
                                 ? UtenFloatingActionGroup.scrollClearance
                                 : 0,
                             columnEditingEnabled: _canEdit,
@@ -1499,8 +1585,8 @@ class _AccountPageState extends ConsumerState<AccountPage>
                                       exportQuery: _exportQuery,
                                       exportBody: _exportBody,
                                       exportFilename: '账户资料',
-                                      type: UtenButtonType.primary,
-                                      size: UtenButtonSize.large,
+                                      type: UtenButtonType.secondary,
+                                      size: UtenButtonSize.medium,
                                       icon: null,
                                     ),
                                     UtenExportButton(
@@ -1511,8 +1597,8 @@ class _AccountPageState extends ConsumerState<AccountPage>
                                       bodyParams: _exportBody,
                                       filename: '账户资料',
                                       label: '导出账户',
-                                      type: UtenButtonType.primary,
-                                      size: UtenButtonSize.large,
+                                      type: UtenButtonType.secondary,
+                                      size: UtenButtonSize.medium,
                                       icon: null,
                                     ),
                                   ],
@@ -1522,12 +1608,11 @@ class _AccountPageState extends ConsumerState<AccountPage>
                             onFilterChanged: (key, value) => inlineNavigate(
                               () => _onFilterChanged(key, value),
                             ),
-                            // 行底色按状态（ADR-169 收编）：使用=蓝档淡底（裸色收编）/
-                            // 禁用=灰档淡底（停用归中性终态，原浅红当异常色）。
+                            // Keep the ledger neutral; state remains explicit in
+                            // its own text column and disabled rows stay muted.
                             rowColor: (account) => switch (account.status) {
-                              '使用' => UtenColors.info.withValues(alpha: 0.11),
                               '禁用' => UtenColors.statusNeutral.withValues(
-                                alpha: 0.09,
+                                alpha: 0.05,
                               ),
                               _ => null,
                             },

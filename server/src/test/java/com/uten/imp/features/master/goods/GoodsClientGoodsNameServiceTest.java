@@ -243,6 +243,21 @@ class GoodsClientGoodsNameServiceTest {
         });
     }
 
+    @Test void priceExportIsExactDecimalTextRatherThanAnExcelRoundedNumber() {
+        login(Set.of("goods:view", "goods:price:view"));
+        var exporting = spy(service);
+        GoodsListItem item = mock(GoodsListItem.class);
+        when(item.getId()).thenReturn(UUID.randomUUID());
+        when(item.getPrice()).thenReturn(new java.math.BigDecimal("99999999999999.1234567890"));
+        when(categories.findByDeletedFalseOrderBySortOrderAscNameAsc()).thenReturn(List.of());
+        doReturn(new PageResponse<>(List.of(item), 1, 100, 1, 1))
+                .when(exporting).list(isNull(), anyInt(), anyInt(), anyString(), anyString());
+        var payload = exporting.export(null, "code", "asc", 100);
+        assertThat(payload.columns()).filteredOn(column -> column.key().equals("price"))
+                .singleElement().satisfies(column -> assertThat(column.type()).isEqualTo(ExportColumn.EXACT_NUMBER));
+        assertThat(payload.rows().getFirst()).containsEntry("price", new java.math.BigDecimal("99999999999999.1234567890"));
+    }
+
     private GoodsInlineEditService inline(GoodsService commands, Goods value) {
         Query lock = mock(Query.class);
         when(em.createNativeQuery(anyString())).thenReturn(lock);

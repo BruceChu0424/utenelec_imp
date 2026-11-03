@@ -55,6 +55,23 @@ class ExportTableProjectionServiceTest {
         assertThat(result.columns().getFirst().type()).isEqualTo("qty");
         verify(platform).evaluateDisplayRows("view_sales",List.of(id),List.of(Map.of("qty",new BigDecimal("3"))));
     }
+    @Test void exactNumberPriceKeepsNumericFactsForDisplayCalculationsAndPdfText() {
+        UUID id=UUID.randomUUID();
+        BigDecimal price = new BigDecimal("0.9141234567");
+        var definition=new Definition(id,"view_goods","价格两倍","CALCULATED",false,
+            new Formula(new Operand(null,"price",null),List.of(new Step("MULTIPLY",new Operand(null,null,"2")))),0,0);
+        when(platform.definitionsByIds("view_goods",List.of(id))).thenReturn(List.of(definition));
+        when(platform.evaluateDisplayRows(eq("view_goods"),eq(List.of(id)),anyList()))
+            .thenReturn(List.of(Map.of(id,"1.8282469134")));
+        var column = new ExportColumn("price","价格",ExportColumn.EXACT_NUMBER);
+        var result=service.project(List.of(column), List.of(Map.of("price",price)),
+            new TableColumnProjection("t","view_goods",List.of(column("price","价格"),column("platform:"+id,"价格两倍"))),"view_goods");
+        assertThat(result.columns().getFirst().type()).isEqualTo(ExportColumn.EXACT_NUMBER);
+        assertThat(result.rows().getFirst()).containsEntry("price",price).containsEntry("platform:"+id,"1.8282469134");
+        verify(platform).evaluateDisplayRows("view_goods",List.of(id),List.of(Map.of("price",price)));
+        assertThat(ExportCellValues.display(column,result.rows().getFirst())).isEqualTo("0.9141234567");
+    }
+
     @Test void storedTextColumnKeepsLeadingZeroesAndReadsOnlyExportedRecordIds() {
         UUID id=UUID.randomUUID(),record=UUID.randomUUID();
         var definition=new Definition(id,"master_goods","外部编码","TEXT",false,null,0,0);

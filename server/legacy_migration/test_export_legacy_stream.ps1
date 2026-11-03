@@ -88,7 +88,75 @@ try {
             }
         }
     }
-    Write-Host ('PASS ' + $cases + ' byte-identical CSV cases; cultures, delimiters, empty sets, Unicode and RFC quoting')
+    $invariant = [System.Globalization.CultureInfo]::InvariantCulture
+    $numberStyle = [System.Globalization.NumberStyles]::Float
+    $preciseDecimal = [decimal]::Parse('0.9141234567890123456789', $invariant)
+    $scaledDecimal = [decimal]::Parse('12.3400000000000000000000', $invariant)
+    $preciseDouble = [double]::Parse('1.2345678901234567', $invariant)
+    $nextDouble = [double]::Parse('1.0000000000000002', $invariant)
+    $preciseSingle = [single]::Parse('1.23456789', $invariant)
+    # Framework Double.ToString() defaults to G15; prove that loses real bits.
+    $legacyG15 = [double]::Parse($preciseDouble.ToString('G15', $invariant), $numberStyle, $invariant)
+    if ([BitConverter]::DoubleToInt64Bits($legacyG15) -eq [BitConverter]::DoubleToInt64Bits($preciseDouble)) {
+        throw 'The selected precision fixture does not expose the historical G15 loss'
+    }
+    if ($PSVersionTable.PSEdition -ne 'Core') {
+        [System.Threading.Thread]::CurrentThread.CurrentCulture = $invariant
+        $legacyDefault = [double]::Parse($preciseDouble.ToString(), $numberStyle, $invariant)
+        if ([BitConverter]::DoubleToInt64Bits($legacyDefault) -eq [BitConverter]::DoubleToInt64Bits($preciseDouble)) {
+            throw 'The Framework default-format regression fixture no longer demonstrates precision loss'
+        }
+    }
+
+    $priceTable = New-Object System.Data.DataTable
+    $priceNames = @('price', 'a_price', 'price2', 'sprice', 'material_price', 'die_cast_price', 'machining_price', 'other_float', 'price_style')
+    $priceTypes = @([decimal], [double], [single], [double], [decimal], [double], [double], [double], [int])
+    $priceValues = @($preciseDecimal, $preciseDouble, $preciseSingle, $nextDouble, $scaledDecimal,
+                     [double]-0.125, [double]0.00000000000012345678901234567, $preciseDouble, 17)
+    for ($i = 0; $i -lt $priceNames.Count; $i++) { $priceTable.Columns.Add($priceNames[$i], $priceTypes[$i]) | Out-Null }
+    $priceTable.Rows.Add($priceValues) | Out-Null
+    $priceTable.Rows.Add(@([DBNull]::Value, [double]0, [single]0, [double]-0.0, [decimal]0, [double]0, [double]0, [double]0, 0)) | Out-Null
+    $priceCases = 0
+    foreach ($culture in @('en-US', 'zh-CN', 'de-DE', 'fr-FR')) {
+        [System.Threading.Thread]::CurrentThread.CurrentCulture = [System.Globalization.CultureInfo]::GetCultureInfo($culture)
+        foreach ($delimiter in @([char]'|', [char]',')) {
+            $pricePath = Join-Path $tempRoot 'prices.csv'
+            $priceReader = $priceTable.CreateDataReader()
+            try {
+                $priceCount = [UtenLegacyCsvStream]::Write($priceReader, $pricePath, $delimiter)
+                if ($priceCount -ne 2) { throw 'Price writer lost a row' }
+                if ($priceReader.IsClosed) { throw 'Price writer closed the caller-owned reader' }
+            } finally { $priceReader.Dispose() }
+            $exported = @(Import-Csv -LiteralPath $pricePath -Delimiter $delimiter)
+            if ($exported[0].price -ne '0.9141234567890123456789' -or $exported[0].material_price -ne '12.3400000000000000000000') {
+                throw ('Decimal price digits or scale changed for culture ' + $culture)
+            }
+            foreach ($field in @('a_price', 'sprice', 'die_cast_price', 'machining_price')) {
+                $parsed = [double]::Parse($exported[0].$field, $numberStyle, $invariant)
+                $originalValue = [double]$priceTable.Rows[0][$field]
+                if ([BitConverter]::DoubleToInt64Bits($parsed) -ne [BitConverter]::DoubleToInt64Bits($originalValue)) {
+                    throw ('Double price bits changed for ' + $field + ' culture ' + $culture)
+                }
+            }
+            $parsedSingle = [single]::Parse($exported[0].price2, $numberStyle, $invariant)
+            if ([BitConverter]::ToInt32([BitConverter]::GetBytes($parsedSingle), 0) -ne
+                [BitConverter]::ToInt32([BitConverter]::GetBytes($preciseSingle), 0)) {
+                throw ('Single price bits changed for culture ' + $culture)
+            }
+            if ($exported[0].other_float -ne $preciseDouble.ToString() -or $exported[0].price_style -ne '17') {
+                throw 'A non-price column was reformatted'
+            }
+            if ($exported[1].price -ne '' -or $exported[1].a_price -ne '0' -or $exported[1].price2 -ne '0') {
+                throw 'Null or zero price was changed into another fact'
+            }
+            if ([UtenLegacyCsvStream]::FormatValue($preciseDecimal, 'A_PRICE') -ne '0.9141234567890123456789') {
+                throw 'Price column recognition should ignore case'
+            }
+            if ([System.Threading.Thread]::CurrentThread.CurrentCulture.Name -ne $culture) { throw 'Writer changed caller culture' }
+            $priceCases++
+        }
+    }
+    Write-Host ('PASS ' + $cases + ' byte-identical non-price CSV cases; ' + $priceCases + ' exact price cases; invariant decimal digits and floating-point round-trip bits')
 } finally {
     [System.Threading.Thread]::CurrentThread.CurrentCulture = $previousCulture
     # Remove only this explicitly-created regression workspace.

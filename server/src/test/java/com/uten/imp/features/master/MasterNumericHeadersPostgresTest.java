@@ -100,7 +100,7 @@ class MasterNumericHeadersPostgresTest {
                 mock(MouldRepository.class),mock(TxSessionVars.class),em,mock(CategoryDrivenCodeService.class),mock(OwnerVisibility.class),
                 actor,mock(GoodsCostMasker.class),mock(GoodsMasterRelationshipResolver.class),scope);
         var filter=new GoodsQueryFilter(null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,
-                false,false,false,false,null,null,false).withColumnSearch(Map.of("clientGoodsName","客户%_货名","price","12.35",
+                false,false,false,false,null,null,false).withColumnSearch(Map.of("clientGoodsName","客户%_货名","price","12.3456",
                         "discount","0.9","stockQty",">=10","minOrderQty","10..10","orderMultipleQty","2"));
         var page1=service.list(filter,1,1,"stockQty","desc");
         var page2=service.list(filter,2,1,"stockQty","desc");
@@ -108,16 +108,17 @@ class MasterNumericHeadersPostgresTest {
         assertThat(page1.getItems().getFirst().getId()).isEqualTo(second);
         assertThat(page2.getItems().getFirst().getId()).isEqualTo(first);
         assertThat(page2.getItems().getFirst().getStockQty()).isEqualByComparingTo("12");
-        assertThat(page2.getItems().getFirst().getPriceDisplayText()).isEqualTo("12.35");
+        assertThat(page2.getItems().getFirst().getPriceDisplayText()).isEqualTo("12.3456");
         assertThat(page2.getItems().getFirst().getStockQtyDisplayText()).isEqualTo("12.00");
         assertThat(service.locate(filter,first,1,"stockQty","desc").page()).isEqualTo(2);
         assertThat(service.locate(filter,second,1,"stockQty","desc").page()).isEqualTo(1);
         assertThat(service.locate(filter,privateGoods,1,"stockQty","desc").found()).isFalse();
         UUID half=goods("H-HALF",owner);
         db.update("UPDATE goods SET price=1.005 WHERE id=?",half);
-        var halfPage=service.list(filter.withColumnSearch(Map.of("price","1.01")),1,20,null,null);
+        var halfPage=service.list(filter.withColumnSearch(Map.of("price","1.005")),1,20,null,null);
+        assertThat(service.list(filter.withColumnSearch(Map.of("price","1.01")),1,20,null,null).getTotal()).isZero();
         assertThat(halfPage.getItems().getFirst().getId()).isEqualTo(half);
-        assertThat(halfPage.getItems().getFirst().getPriceDisplayText()).isEqualTo("1.01");
+        assertThat(halfPage.getItems().getFirst().getPriceDisplayText()).isEqualTo("1.005");
         when(actor.get()).thenReturn(java.util.Optional.of(new AuthUser(UUID.randomUUID(),owner,"reader",Set.of(),false,true,false)));
         org.assertj.core.api.Assertions.assertThatThrownBy(()->service.list(filter,1,20,null,null))
                 .isInstanceOf(com.uten.imp.common.web.ApiException.class).hasMessageContaining("价格查看权限");

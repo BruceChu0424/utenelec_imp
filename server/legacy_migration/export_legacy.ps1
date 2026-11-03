@@ -36,11 +36,41 @@ if (-not ('UtenLegacyCsvStream' -as [type])) {
     $csvWriterSource = @'
 using System;
 using System.Data;
+using System.Globalization;
 using System.IO;
 using System.Text;
 
 public static class UtenLegacyCsvStream
 {
+    private static bool IsPriceColumn(string name)
+    {
+        return String.Equals(name, "price", StringComparison.OrdinalIgnoreCase)
+            || String.Equals(name, "price2", StringComparison.OrdinalIgnoreCase)
+            || String.Equals(name, "sprice", StringComparison.OrdinalIgnoreCase)
+            || (name != null && name.EndsWith("_price", StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static string FormatValue(object value, string columnName)
+    {
+        return FormatValue(value, IsPriceColumn(columnName));
+    }
+
+    private static string FormatValue(object value, bool isPrice)
+    {
+        if (value == null || value == DBNull.Value) return "";
+        if (isPrice)
+        {
+            // Decimal retains all stored digits and scale. Binary floating-point
+            // uses round-trip text, never the .NET Framework default G15/G7.
+            // A longer binary tail is evidence, not a value to round for display.
+            if (value is decimal) return ((decimal)value).ToString(CultureInfo.InvariantCulture);
+            if (value is double) return ((double)value).ToString("R", CultureInfo.InvariantCulture);
+            if (value is float) return ((float)value).ToString("R", CultureInfo.InvariantCulture);
+        }
+        // Preserve the historical representation of every non-price field.
+        return value.ToString();
+    }
+
     public static long Write(IDataReader reader, string path, char delimiter)
     {
         if (reader == null) throw new ArgumentNullException("reader");
@@ -50,10 +80,12 @@ public static class UtenLegacyCsvStream
             // Explicit Windows line endings preserve the existing CSV bytes.
             writer.NewLine = "\r\n";
             int columns = reader.FieldCount;
+            bool[] priceColumns = new bool[columns];
             for (int column = 0; column < columns; column++)
             {
                 if (column != 0) writer.Write(delimiter);
                 writer.Write(reader.GetName(column));
+                priceColumns[column] = IsPriceColumn(reader.GetName(column));
             }
             writer.WriteLine();
             while (reader.Read())
@@ -62,9 +94,7 @@ public static class UtenLegacyCsvStream
                 {
                     if (column != 0) writer.Write(delimiter);
                     if (reader.IsDBNull(column)) continue;
-                    // Match the original GetValue(...).ToString() exactly:
-                    // no invariant-culture or date/number reformatting here.
-                    string value = reader.GetValue(column).ToString();
+                    string value = FormatValue(reader.GetValue(column), priceColumns[column]);
                     if (value.IndexOf(delimiter) >= 0 || value.IndexOf('"') >= 0
                         || value.IndexOf('\r') >= 0 || value.IndexOf('\n') >= 0)
                     {

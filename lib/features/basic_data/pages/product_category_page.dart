@@ -647,6 +647,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
                 key: 'price',
                 label: '价格',
                 type: MasterFieldType.money,
+                exactDecimal: true,
               ),
             if (_canEditPrice)
               MasterFieldDef(
@@ -1009,7 +1010,7 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       if (d.version != null) body['version'] = d.version;
     }
     if (!copyMode || _canEditPrice) {
-      body['price'] = d.price;
+      body['price'] = d.priceText;
       if (_canEditPrice) body['currencyId'] = d.currencyId;
       body['discount'] = d.discount;
     }
@@ -1758,9 +1759,9 @@ class _ProductCategoryPageState extends ConsumerState<ProductCategoryPage>
       type: 'money',
       sortable: true,
       columnSearchEnabled: true,
-      info: '按本列显示的两位价格检索，可输入精确值、比较或范围。',
-      exactValueOf: (g) => g.priceDisplayText ?? g.price?.toStringAsFixed(2),
-      value: (g) => g.priceDisplayText ?? g.price?.toStringAsFixed(2),
+      info: '按原始精度价格检索，可输入精确值、比较或范围。',
+      exactValueOf: (g) => g.priceText,
+      value: (g) => g.priceText,
     ),
     MasterColumnDef(
       key: 'currencyId',

@@ -256,6 +256,6 @@ public class TabularPdfExportService {
     }
     private static String clean(String value) { return value == null ? "" : value.replaceAll("[\\p{Cntrl}\\r\\n]+", " "); }
     private static boolean isNumeric(ExportColumn column) {
-        return ExportColumn.MONEY.equals(column.type()) || ExportColumn.NUMBER.equals(column.type()) || ExportColumn.QTY.equals(column.type());
+        return ExportColumn.isNumeric(column.type());
     }
 }

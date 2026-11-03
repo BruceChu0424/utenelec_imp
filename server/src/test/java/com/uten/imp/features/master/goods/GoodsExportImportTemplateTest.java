@@ -80,6 +80,20 @@ class GoodsExportImportTemplateTest {
     }
 
     @Test
+    void exactTextGoodsPriceExportShowsEveryStoredDecimalWithoutRounding() throws Exception {
+        var columns = List.of(new ExportColumn("price", "价格", ExportColumn.EXACT_NUMBER));
+        var rows = List.<Map<String,Object>>of(Map.of("price", new java.math.BigDecimal("0.914")),
+                Map.of("price", new java.math.BigDecimal("99999999999999.1234567890")));
+        byte[] bytes = writer().build(columns, rows, null, "master_goods");
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
+            var sheet = workbook.getSheetAt(0);
+            var formatter = new org.apache.poi.ss.usermodel.DataFormatter();
+            assertEquals("0.914", formatter.formatCellValue(sheet.getRow(1).getCell(0)));
+            assertEquals("99999999999999.1234567890", sheet.getRow(2).getCell(0).getStringCellValue());
+        }
+    }
+
+    @Test
     void historicalSystemExportWithChangedCodeCreatesGoodsInTheCurrentSystem() throws Exception {
         assertHistoricalSystemExportCanBeImported("NEW001", false);
     }

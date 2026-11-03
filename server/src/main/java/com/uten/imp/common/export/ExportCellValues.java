@@ -40,7 +40,7 @@ final class ExportCellValues {
         Object raw=row.get(column.key());if(raw==null)return "—";
         if(ExportColumn.BOOL.equals(column.type()))return bool(raw)?"是":"否";
         if(ExportColumn.DATE.equals(column.type()))return date(raw);
-        boolean numeric=ExportColumn.MONEY.equals(column.type())||ExportColumn.NUMBER.equals(column.type())||ExportColumn.QTY.equals(column.type());
+        boolean numeric=ExportColumn.isNumeric(column.type());
         BigDecimal number=numeric?decimal(raw):null;
         String value=number==null?Objects.toString(raw):exactText(number);
         String unit=number==null?"":unit(column,row);

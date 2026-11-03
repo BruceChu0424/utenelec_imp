@@ -54,7 +54,7 @@ public final class MasterColumnSearch {
         return cb.and(predicates.toArray(Predicate[]::new));
     }
 
-    /** Fixed display-grain numeric projection, also reused for derived-column ordering. */
+    /** Numeric projection matching each column display, also used for derived ordering. */
     public static Expression<java.math.BigDecimal> numericValue(CriteriaBuilder cb,Expression<?> recordId,Domain domain,String key) {
         var expression=numericFields(domain).get(key);
         if(expression==null) throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"数值列不支持检索");
@@ -67,7 +67,7 @@ public final class MasterColumnSearch {
 
     private static Map<String,String> numericFields(Domain domain) {
         return switch(domain) {
-            case GOODS->Map.of("price","round(master.price,2)","discount","round(master.zk,2)",
+            case GOODS->Map.of("price","master.price","discount","round(master.zk,2)",
                     "stockQty","stockQty", "minOrderQty","master.min_order_qty", "orderMultipleQty","master.order_multiple_qty");
             case CLIENT->Map.of("tday","master.tday::numeric","credit","round(master.credit,2)",
                     "creditFloor","round(coalesce(master.credit_floor,0),2)");

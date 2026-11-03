@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.goods.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.uten.imp.common.util.DecimalText;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.Setter;
@@ -24,6 +25,9 @@ import java.util.UUID;
 @Setter
 @AllArgsConstructor
 public class GoodsDetail {
+    /** Exact price for display and editing, without a JSON-number/double round trip. */
+    public String getPriceDisplayText() { return priceMasked ? null : DecimalText.of(price); }
+
     // ===== 列表核心 =====
     private UUID id;
     private String code;

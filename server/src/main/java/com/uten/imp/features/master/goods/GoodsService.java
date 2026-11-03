@@ -743,7 +743,7 @@ public class GoodsService {
         cols.add(new ExportColumn("material", "材质", ExportColumn.TEXT));
         cols.add(new ExportColumn("sourceType", "来源", ExportColumn.TEXT));
         if (showPrice) {
-            cols.add(new ExportColumn("price", "价格", ExportColumn.MONEY));
+            cols.add(new ExportColumn("price", "价格", ExportColumn.EXACT_NUMBER));
             cols.add(new ExportColumn("currencyId", "币种", ExportColumn.TEXT));
         }
         if (showDiscount) cols.add(new ExportColumn("discount", "折扣", ExportColumn.TEXT));

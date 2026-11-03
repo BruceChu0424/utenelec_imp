@@ -2,11 +2,12 @@
 //
 // 数值字段一律走 (json['x'] as num?)?.toInt()/toDouble()，避免 int/double 被后端
 // 序列化成 String（或 null）时直接 cast 崩溃——老库迁移常踩这个坑。
-// price 为后端 BigDecimal / PostgreSQL NUMERIC(18,4)，前端仅为表单展示按 double 解析；
+// price 的精确展示/编辑使用服务端 priceDisplayText；double 仅为旧消费者兼容值；
 // 服务端计算和落库不经过二进制浮点，也不对金额做破坏聚合/约束的字段级随机加密。
 
 import 'master_facet.dart';
 import '../../../core/utils/currency_display.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/stock_inventory/measurement_hold.dart';
 
 /// Where goods.name_en came from (ADR-134): typed by a person, or learned when
@@ -110,6 +111,10 @@ class GoodsListItem {
 
   final double? discount; // 折扣倍率 1.0=原价 0.9=9折（复用老库 B_Goods.zk）
   final String? priceDisplayText;
+
+  /// Server decimal text takes precedence over the legacy numeric fallback.
+  String? get priceText =>
+      financeExactTrimmed(priceDisplayText ?? price?.toString());
   final String? discountDisplayText;
   final String? stockQtyDisplayText;
   final String? status;
@@ -185,13 +190,15 @@ class GoodsListItem {
     nameEnSource: json['nameEnSource'] as String?,
     spec: json['spec'] as String?,
     model: json['model'] as String?,
-    price: (json['price'] as num?)?.toDouble(),
+    price: json['price'] == null
+        ? null
+        : double.tryParse(json['price'].toString()),
     currencyId: json['currencyId'] as String?,
     currencyCode: json['currencyCode'] as String?,
     currencyName: json['currencyName'] as String?,
     currencyIsBase: json['currencyIsBase'] as bool?,
     discount: (json['discount'] as num?)?.toDouble(),
-    priceDisplayText: json['priceDisplayText'] as String?,
+    priceDisplayText: (json['priceDisplayText'] ?? json['price'])?.toString(),
     discountDisplayText: json['discountDisplayText'] as String?,
     stockQtyDisplayText: json['stockQtyDisplayText'] as String?,
     status: json['status'] as String?,
@@ -338,6 +345,7 @@ class GoodsDetail {
     this.currencyCode,
     this.currencyName,
     this.currencyIsBase,
+    this.priceDisplayText,
     this.discount,
     this.status,
     this.legacyId,
@@ -453,6 +461,13 @@ class GoodsDetail {
   final String? currencyCode;
   final String? currencyName;
   final bool? currencyIsBase;
+  final String? priceDisplayText;
+
+  /// Exact source price for the detail view and edit initial value.
+  String? get priceText => priceMasked
+      ? null
+      : financeExactTrimmed(priceDisplayText ?? price?.toString());
+
   final double? discount; // 折扣倍率 1.0=原价 0.9=9折（复用老库 B_Goods.zk）
   final String? status;
   final int? legacyId;
@@ -611,11 +626,14 @@ class GoodsDetail {
     spec: json['spec'] as String?,
     model: json['model'] as String?,
     cNumber: (json['cNumber'] ?? json['cnumber']) as String?,
-    price: (json['price'] as num?)?.toDouble(),
+    price: json['price'] == null
+        ? null
+        : double.tryParse(json['price'].toString()),
     currencyId: json['currencyId'] as String?,
     currencyCode: json['currencyCode'] as String?,
     currencyName: json['currencyName'] as String?,
     currencyIsBase: json['currencyIsBase'] as bool?,
+    priceDisplayText: (json['priceDisplayText'] ?? json['price'])?.toString(),
     discount: (json['discount'] as num?)?.toDouble(),
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),

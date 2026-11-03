@@ -14,6 +14,7 @@ import 'package:uten_imp/features/basic_data/models/goods_node.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_facet_repository.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_entity_detail_pane.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_edit_dialog.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
 import 'package:uten_imp/features/basic_data/pages/product_category_page.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
@@ -106,6 +107,61 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('货品价格列展示和精确值保留全部小数，旧响应回退也不舍入', (tester) async {
+    await _pumpPage(tester, _FakePlatformTableRepository(), {
+      Perm.goodsView,
+      Perm.goodsPriceView,
+    });
+    final table = tester.widget<MasterDataTableView<GoodsListItem>>(
+      find.byType(MasterDataTableView<GoodsListItem>),
+    );
+    final price = table.columns.singleWhere((column) => column.key == 'price');
+    const exact = GoodsListItem(
+      id: 'exact',
+      price: 0.82,
+      priceDisplayText: '0.914',
+    );
+    const legacy = GoodsListItem(id: 'legacy', price: 1.005);
+    expect(price.value(exact), '0.914');
+    expect(price.exactValueOf!(exact), '0.914');
+    expect(price.value(legacy), '1.005');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('新增行详情表单按原始精度回传价格字符串', (tester) async {
+    await _pumpPage(tester, _FakePlatformTableRepository(), {
+      Perm.goodsView,
+      Perm.goodsCreate,
+      Perm.goodsPriceEdit,
+    });
+    final finder = find.byType(
+      MasterEntityDetailPane<GoodsListItem, GoodsDetail>,
+    );
+    final pane = tester
+        .widget<MasterEntityDetailPane<GoodsListItem, GoodsDetail>>(finder);
+    final state =
+        tester.state(finder)
+            as MasterEntityPaneController<GoodsListItem, GoodsDetail>;
+    final creation = pane.config.inlineCreation!(state);
+    expect(
+      creation.fields.singleWhere((field) => field.key == 'price').exactDecimal,
+      isTrue,
+    );
+    final controller = MasterEditFormController(
+      fields: creation.fields,
+      initialValues: const {
+        'name': '精确价格新货品',
+        'price': '99999999999999.1234567890',
+        'sourceType': '自制',
+        'unitId': 'unit-pcs',
+        'status': '使用',
+      },
+    );
+    addTearDown(controller.dispose);
+    expect(controller.buildBody()!['price'], '99999999999999.1234567890');
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('只有货品查看权限时远程候选和导出与含禁用品列表同范围', (tester) async {
     final facets = _ScopeFacetRepository();

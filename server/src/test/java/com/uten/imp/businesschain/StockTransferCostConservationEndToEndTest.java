@@ -93,6 +93,89 @@ class StockTransferCostConservationEndToEndTest {
 
  private void sameMain(FullChainEndToEndTest.World w,UUID b){UUID root=UUID.randomUUID();db.update("INSERT INTO warehouses(id,code,name,status,is_accountable) VALUES(?,?,?,'使用',FALSE)",root,"ROOT-"+root,"移仓共同主仓");db.update("UPDATE warehouses SET parent_id=? WHERE id IN (?,?)",root,w.warehouseId(),b);}
 
+ @Test void actualMadeFinishedGoodsCanMoveFromHardwareToFinishedWarehouseAndShipWithoutReleasingTheOrder(){
+  var w=world();UUID target=warehouse();sameMain(w,target);
+  db.update("UPDATE warehouses SET name='五金仓库' WHERE id=?",w.warehouseId());
+  db.update("UPDATE warehouses SET name='成品仓库' WHERE id=?",target);
+  var production=harness.produceFinishedFromOpeningInputs(w,w.goodsA(),"20","20");
+  UUID orderItem=production.orderItemId(),inbound=production.finishedInId();
+  org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"drainCosts",w);
+  assertThat(db.queryForObject("SELECT doc_type FROM stock_documents WHERE id=?",String.class,inbound)).isEqualTo("FINISHED_IN");
+  assertThat(number("SELECT SUM(qty) FROM stock_movements WHERE source_doc_id=? AND direction=1 AND movement_type=13",inbound)).isEqualByComparingTo("20");
+  moveAndShipFinished(w,w.goodsA(),orderItem,target,"20","PRODUCTION_INBOUND");
+  assertThat(number("SELECT produced_qty FROM sales_order_items WHERE id=?",orderItem)).isEqualByComparingTo("20");
+ }
+
+ @Test void actualSubcontractFinishedRootSupplyKeepsItsOriginalReceiptAndOrderWhenMovedToFinishedWarehouse(){
+  var target=new java.util.concurrent.atomic.AtomicReference<UUID>();
+  harness.subcontractRootStockFixture(w->{UUID id=warehouse();sameMain(w,id);target.set(id);
+   db.update("UPDATE warehouses SET name='五金仓库' WHERE id=?",w.warehouseId());db.update("UPDATE warehouses SET name='成品仓库' WHERE id=?",id);
+  },source->{
+   harness.settleRootStockCosts(source);
+   String roots=db.queryForObject("SELECT jsonb_agg(to_jsonb(event) ORDER BY event.id)::text FROM preplan_root_output_events event WHERE analysis_item_id=?",String.class,source.analysisItem());
+   assertThat(db.queryForObject("SELECT source_type FROM goods WHERE id=?",String.class,source.goods())).isEqualTo("委外");
+   assertThat(number("SELECT SUM(qty) FROM stock_movements WHERE source_doc_id=? AND movement_type=17 AND direction=1",source.receipt())).isEqualByComparingTo("10");
+   moveAndShipFinished(source.world(),source.goods(),source.salesOrderItem(),target.get(),"10","ROOT_SUPPLY_INBOUND");
+   assertThat(db.queryForObject("SELECT jsonb_agg(to_jsonb(event) ORDER BY event.id)::text FROM preplan_root_output_events event WHERE analysis_item_id=?",String.class,source.analysisItem())).isEqualTo(roots);
+   assertThat(number("SELECT root_fulfilled_qty FROM production_material_analysis_items WHERE id=?",source.analysisItem())).isEqualByComparingTo("10");
+   assertThat(db.queryForObject("SELECT warehouse_id FROM subcontract_receipts WHERE id=?",UUID.class,source.receipt())).isEqualTo(source.world().warehouseId());
+  });
+ }
+
+ @Test void actualHistoricalStoppedSubcontractFinishedStockCanMoveWhileCostIsPendingWithoutResumingOrReleasing(){
+  var target=new java.util.concurrent.atomic.AtomicReference<UUID>();
+  harness.subcontractRootStockFixture(w->{UUID id=warehouse();sameMain(w,id);target.set(id);},source->{
+   assertThat(number("SELECT node.pending_parents FROM stock_value_pools pool JOIN stock_value_nodes node ON node.id=pool.head_node_id WHERE pool.warehouse_id=? AND pool.goods_id=?",source.world().warehouseId(),source.goods())).isPositive();
+   UUID order=db.queryForObject("SELECT order_id FROM sales_order_items WHERE id=?",UUID.class,source.salesOrderItem());
+   // Reconstruct the observed historical row. Current cancel has release semantics;
+   // this fixture must not pretend it produced the persisted stopped+reserved state.
+   db.update("UPDATE sales_orders SET is_stopped=TRUE WHERE id=?",order);
+   UUID claim=moveFinishedPreservingClaim(source.world(),source.goods(),source.salesOrderItem(),target.get(),"10","ROOT_SUPPLY_INBOUND");
+   assertThat(db.queryForObject("SELECT is_stopped FROM sales_orders WHERE id=?",Boolean.class,order)).isTrue();
+   assertThat(number("SELECT node.pending_parents FROM stock_value_pools pool JOIN stock_value_nodes node ON node.id=pool.head_node_id WHERE pool.warehouse_id=? AND pool.goods_id=?",target.get(),source.goods())).isPositive();
+   var shipments=beans.getBean(com.uten.imp.features.sales.shipment.SalesShipmentService.class);
+   com.uten.imp.features.sales.shipment.dto.ShipmentSaveRequest sale=org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"shipmentRequest",source.world(),source.salesOrderItem(),source.goods(),"10");
+   sale.setWarehouseId(target.get());assertThatThrownBy(()->shipments.create(sale)).isInstanceOf(ApiException.class);
+   assertThat(number("SELECT consumed_qty+released_qty FROM stock_reservations WHERE id=?",claim)).isZero();
+   assertThat(number("SELECT reserved_qty FROM sales_order_items WHERE id=?",source.salesOrderItem())).isEqualByComparingTo("10");
+   harness.settleRootStockCosts(source);
+   assertThat(number("SELECT node.pending_parents FROM stock_value_pools pool JOIN stock_value_nodes node ON node.id=pool.head_node_id WHERE pool.warehouse_id=? AND pool.goods_id=?",target.get(),source.goods())).isZero();
+   assertThat(number("SELECT fn_stock_claim_open_at(?,?)",claim,target.get())).isEqualByComparingTo("10");
+  });
+ }
+
+ private UUID moveFinishedPreservingClaim(FullChainEndToEndTest.World w,UUID goods,UUID orderItem,UUID target,String qty,String reservationSource){
+  UUID claim=db.queryForObject("SELECT id FROM stock_reservations WHERE order_item_id=? AND status=0 AND NOT is_deleted",UUID.class,orderItem);
+  String before=db.queryForObject("SELECT to_jsonb(r)::text FROM stock_reservations r WHERE id=?",String.class,claim);
+  assertThat(db.queryForObject("SELECT source_doc_type FROM stock_reservations WHERE id=?",String.class,claim)).isEqualTo(reservationSource);
+  var request=new StockDocSaveRequest();request.setDocType("OTHER_OUT");request.setBillDate(BusinessTime.today());request.setWarehouseId(w.warehouseId());
+  var line=new StockDocItemLine();line.setGoodsId(goods);line.setUnitId(w.unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(new BigDecimal(qty));request.setItems(List.of(line));
+  UUID rejected=stock.create(request).getId();assertThatThrownBy(()->stock.approve(rejected)).isInstanceOf(ApiException.class);
+  assertThat(number("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",rejected)).isZero();
+  request.setDocType("TRANSFER");request.setToWarehouseId(target);UUID document=stock.create(request).getId();stock.approve(document);
+  assertThat(db.queryForObject("SELECT to_jsonb(r)::text FROM stock_reservations r WHERE id=?",String.class,claim)).isEqualTo(before);
+  assertThat(number("SELECT fn_stock_claim_open_at(?,?)",claim,target)).isEqualByComparingTo(qty);
+  assertThat(number("SELECT qty FROM stock_balances WHERE goods_id=? AND warehouse_id=?",goods,w.warehouseId())).isZero();
+  assertThat(number("SELECT qty FROM stock_balances WHERE goods_id=? AND warehouse_id=?",goods,target)).isEqualByComparingTo(qty);
+  assertThat(db.queryForObject("SELECT owning_warehouse_id FROM goods WHERE id=?",UUID.class,goods)).isEqualTo(target);
+  return claim;
+ }
+
+ private void moveAndShipFinished(FullChainEndToEndTest.World w,UUID goods,UUID orderItem,UUID target,String qty,String reservationSource){
+  UUID claim=moveFinishedPreservingClaim(w,goods,orderItem,target,qty,reservationSource);
+  var shipments=beans.getBean(com.uten.imp.features.sales.shipment.SalesShipmentService.class);
+  var warehouse=beans.getBean(com.uten.imp.features.sales.shipment.warehouse.WarehouseSalesOutboundProjectionService.class);
+  com.uten.imp.features.sales.shipment.dto.ShipmentSaveRequest sale=org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"shipmentRequest",w,orderItem,goods,qty);
+  sale.setWarehouseId(null);var shipment=shipments.create(sale);org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"confirmShipmentFinance",shipment.getId());
+  assertThat(warehouse.detail(shipment.getId()).lines().getFirst().warehouseChoices()).anyMatch(choice->choice.warehouseId().equals(target)&&choice.canFulfill());
+  var outbound=new com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest();outbound.setTargetStatus("SHIPPED");outbound.setWarehouseId(target);
+  outbound.setStockPlaces(List.of(new com.uten.imp.features.sales.shipment.dto.WarehouseWorkTransitionRequest.StockPlace(shipment.getItems().getFirst().getId(),"成品库位")));
+  warehouse.transition(shipment.getId(),outbound);
+  assertThat(number("SELECT shipped_qty FROM sales_order_items WHERE id=?",orderItem)).isEqualByComparingTo(qty);
+  assertThat(number("SELECT consumed_qty FROM stock_reservations WHERE id=?",claim)).isEqualByComparingTo(qty);
+  assertThat(number("SELECT qty FROM stock_balances WHERE goods_id=? AND warehouse_id=?",goods,target)).isZero();
+ }
+
  @Test void concurrentDuplicateApprovalMovesPhysicalStockAndClaimsOnlyOnce()throws Exception{
   var w=world();UUID b=warehouse();sameMain(w,b);db.update("UPDATE goods SET min_qty=0 WHERE id=?",w.goodsD());
   stock.approve(create(w,"OTHER_IN","20","200").getId());UUID order=harness.createApprovedOrder(w,w.goodsD(),"20","100");

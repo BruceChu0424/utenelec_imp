@@ -87,5 +87,35 @@
     "finalStorageMigrationSha256": "77C60C6623BAB19B7722E154A3E677984AB3FF56B99618E1373BF03BD9DD8560"
   },
   "actualUiAcceptance": false,
-  "productionDataChanged": false
+  "productionDataChanged": false,
+  "finishedGoodsSupplement": {
+    "productionReadOnlyInvestigation": true,
+    "productionDataChanged": false,
+    "productionFixInstalledAtObservation": false,
+    "firstFullSuite": {
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "liveShapeSuite": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "uniqueTransferCasesAcrossRuns": 13,
+    "liveShapeCases": [
+      "actualSubcontractFinishedRootSupplyKeepsItsOriginalReceiptAndOrderWhenMovedToFinishedWarehouse",
+      "actualMadeFinishedGoodsCanMoveFromHardwareToFinishedWarehouseAndShipWithoutReleasingTheOrder",
+      "actualHistoricalStoppedSubcontractFinishedStockCanMoveWhileCostIsPendingWithoutResumingOrReleasing"
+    ],
+    "compilation": "Maven test compiled the initial 12-case run; the two changed test sources were then recompiled with javac --release 21 using that successful run's exact test classpath before the final selected-method Maven Surefire run.",
+    "sourceGuardCoverage": [
+      "FINISHED_IN made product, 20 units",
+      "SUBCONTRACT_RECEIPT with ROOT_SUPPLY_INBOUND sales claim",
+      "historical stopped source order with pending cost dependencies"
+    ],
+    "actualUiAcceptance": false
+  }
 }

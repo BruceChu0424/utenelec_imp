@@ -5983,7 +5983,26 @@ class FullChainEndToEndTest {
     }
 
     private void runSubcontractSupplyChain(boolean rootSupplyMode) {
-        World w = seedWorld(rootSupplyMode ? "rootSc" : "s23v307");
+        runSubcontractSupplyChain(rootSupplyMode,null,null);
+    }
+
+    record SubcontractRootStock(World world,UUID goods,UUID salesOrderItem,UUID analysisItem,UUID receipt,
+            List<UUID> costingGoods) {}
+
+    void settleRootStockCosts(SubcontractRootStock source) {
+        InventoryValueWorkTestSupport.drain(inventoryValueWork,jdbc,source.costingGoods());
+    }
+
+    /** Reuses the real application/order/draw/IQC/root-output chain for storage-location regressions. */
+    void subcontractRootStockFixture(java.util.function.Consumer<World> prepare,
+            java.util.function.Consumer<SubcontractRootStock> afterStocked) {
+        runSubcontractSupplyChain(true,prepare,afterStocked);
+    }
+
+    private void runSubcontractSupplyChain(boolean rootSupplyMode,java.util.function.Consumer<World> prepare,
+            java.util.function.Consumer<SubcontractRootStock> afterStocked) {
+        World w = seedWorld(afterStocked==null?(rootSupplyMode ? "rootSc" : "s23v307"):"rootSc-store-"+UUID.randomUUID());
+        if(prepare!=null)prepare.accept(w);
         UUID finished = UUID.randomUUID();
         UUID siblingFinished = UUID.randomUUID();
         UUID subcontracted = UUID.randomUUID();
@@ -6243,6 +6262,11 @@ class FullChainEndToEndTest {
             assertEquals(0,bigDecimalFor("select reserved_qty from sales_order_items where id=?",orderItemId(orderA)).compareTo(new BigDecimal("10")));
             assertEquals(0,publicAvailable(w.warehouseId(),subcontracted).compareTo(BigDecimal.ZERO));
             loginAs(w.superAdminUserId());
+            if(afterStocked!=null) {
+                afterStocked.accept(new SubcontractRootStock(w,subcontracted,orderItemId(orderA),targetAnalysisItemId,receiptId,
+                        List.of(subcontracted,suppliedMaterial,secondSuppliedMaterial)));
+                return;
+            }
             MaterialView completedRoot=analysisService.detail(analysisA).flatMaterials().stream()
                     .filter(m -> m.materialLineId().equals(subcontractRow.materialLineId())).findFirst().orElseThrow();
             assertEquals(0,completedRoot.requiredQty().compareTo(new BigDecimal("10")),
@@ -12360,11 +12384,11 @@ class FullChainEndToEndTest {
 
     /** Explicit compatibility-plan fixture with real opening inputs, DRAW issue, START and FINISHED_IN.
      * New planning-chain acceptance starts at material analysis in its own scenarios. */
-    private record Production(UUID orderItemId, UUID planItemId, UUID finishedInId) {}
+    record Production(UUID orderItemId, UUID planItemId, UUID finishedInId) {}
 
     private record ProductionAssignment(UUID workshopId, UUID workerId) {}
 
-    private Production produceFinishedFromOpeningInputs(World w, UUID goodsId, String orderQty, String planQty) {
+    Production produceFinishedFromOpeningInputs(World w, UUID goodsId, String orderQty, String planQty) {
         assertEquals(w.goodsA(),goodsId,"This fixture explicitly supplies B2+E1 for seeded product A only");
         loginAs(w.superAdminUserId());
         receiveOpeningInputsForA(w,planQty);

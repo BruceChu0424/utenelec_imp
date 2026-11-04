@@ -175,8 +175,10 @@ namespace Uten.Legacy.Desktop.Features.Units
                     check(Equals(dateEntry.Content, "共2天") && Equals(((ToolTip)dateEntry.ToolTip).Content, "2026.10.01-2026.10.02"),
                         "query refresh preserves compact duration and exact date disclosure");
                     var clearDate = Field<Button>(window, "clearDate");
-                    check(Equals(clearDate.Content, "清除") && clearDate.Visibility == Visibility.Visible
-                        && clearDate.MinHeight == dateEntry.MinHeight, "date range clear is text-only and uses the ordinary button height");
+                    // 2026-11-04 用户口径：清除入口 = 卡片内红色圆形关闭按钮（×白字红底）。
+                    check(Equals(clearDate.Content, "×") && clearDate.Visibility == Visibility.Visible
+                        && Equals(clearDate.Background, window.FindResource("Uten.Caption.Close"))
+                        && Equals(clearDate.Style, window.FindResource("Uten.CaptionButton")), "date range clear is the red circular in-card close");
                     clearDate.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     check(clearDate.Visibility == Visibility.Collapsed && Equals(dateEntry.Content, "选择日期") && rows.ItemsSource == null && search.Text == "保留的查询", "date clear removes both bounds and preserves unrelated filters");
                     Field<Button>(window, "refresh").RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); PumpUntil(() => rows.Items.Count == 1);

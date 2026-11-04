@@ -136,7 +136,7 @@ void main() {
   );
 
   testWidgets(
-    'clear is an icon free text action inside the card with the same height',
+    'clear is the red circular close inside the card with the same height',
     (tester) async {
       var cleared = 0;
       final pending = Completer<void>();
@@ -164,10 +164,16 @@ void main() {
           tester.getCenter(find.byKey(const Key('test-range-entry'))).dx,
         ),
       );
+      // 2026-11-04 用户口径：清除入口 = 框内最右侧的红色圆形关闭按钮，
+      // 不再并排第二个文字按钮（UtenCloseButton 红底白 ×）。
       expect(
-        find.descendant(of: card, matching: find.byType(Icon)),
-        findsNothing,
+        find.descendant(
+          of: card,
+          matching: find.byIcon(Icons.close_rounded),
+        ),
+        findsOneWidget,
       );
+      expect(find.text('清除'), findsNothing);
       expect(
         closeRect.height,
         tester.getSize(find.byKey(const Key('test-range-entry'))).height,
@@ -356,7 +362,7 @@ void main() {
       expect(tester.getSize(date).height, tester.getSize(action).height);
       expect(tester.getSize(date).height, 40);
       expect(find.text('共62天'), findsOneWidget);
-      await tester.tap(find.text('清除'));
+      await tester.tap(find.byKey(const Key('uten-date-range-clear')));
       await tester.pumpAndSettle();
       expect(find.text('选择日期'), findsOneWidget);
     },

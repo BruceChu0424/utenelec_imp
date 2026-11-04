@@ -13,6 +13,7 @@ class UtenDateRangeButton extends StatelessWidget {
     required this.lastDate,
     required this.onChanged,
     this.helpText,
+    this.label,
     this.onClear,
     this.buttonKey,
     this.clearButtonKey,
@@ -24,6 +25,7 @@ class UtenDateRangeButton extends StatelessWidget {
   final DateTime lastDate;
   final FutureOr<void> Function(DateTimeRange range) onChanged;
   final String? helpText;
+  final String? label;
   final FutureOr<void> Function()? onClear;
   final Key? buttonKey;
   final Key? clearButtonKey;
@@ -36,6 +38,7 @@ class UtenDateRangeButton extends StatelessWidget {
     firstDate: firstDate,
     lastDate: lastDate,
     helpText: helpText,
+    label: label,
     onClear: onClear,
     buttonKey: buttonKey,
     clearButtonKey: clearButtonKey,

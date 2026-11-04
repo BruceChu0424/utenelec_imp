@@ -61,8 +61,13 @@ namespace Uten.Legacy.Desktop.Features.Units
             dateEntry.ColumnDefinitions.Add(new ColumnDefinition()); dateEntry.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             dateRange.HorizontalContentAlignment = HorizontalAlignment.Left;
             dateRange.Click += (sender, args) => ChooseDates(); dateEntry.Children.Add(dateRange);
-            clearDate.Content = "清除"; clearDate.ToolTip = "清除日期";
-            clearDate.Margin = new Thickness(Space("S4"), 0, 0, 0);
+            // 2026-11-04 用户口径：清除入口 = 日期卡片内最右侧的红色圆形关闭按钮
+            // （与弹窗标题栏同款 Uten.CaptionButton + Uten.Caption.Close），不再并排文字「清除」。
+            clearDate.Content = "×"; clearDate.ToolTip = "清除日期";
+            clearDate.Style = (Style)FindResource("Uten.CaptionButton");
+            clearDate.Background = (Brush)FindResource("Uten.Caption.Close");
+            clearDate.VerticalAlignment = VerticalAlignment.Center;
+            clearDate.Margin = new Thickness(Space("S4"), 0, Space("S4"), 0);
             System.Windows.Automation.AutomationProperties.SetName(clearDate, "清除日期");
             clearDate.Click += (sender, args) =>
             {

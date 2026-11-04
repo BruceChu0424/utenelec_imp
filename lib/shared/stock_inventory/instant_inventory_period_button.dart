@@ -27,6 +27,7 @@ class InstantInventoryPeriodButton extends StatelessWidget {
     range: range,
     firstDate: DateTime(2010),
     lastDate: ChinaDateTime.today(),
+    label: '筛选范围',
     helpText: '选择库存统计日期范围',
     enabled: enabled,
     onChanged: onChanged,

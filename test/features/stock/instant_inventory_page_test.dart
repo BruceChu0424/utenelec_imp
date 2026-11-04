@@ -122,12 +122,17 @@ void main() {
     }
   }
 
-  testWidgets('默认近一个月且文字清除按钮清除当前范围', (tester) async {
+  testWidgets('默认近一个月，框内红圆关闭按钮清除当前范围', (tester) async {
     final stock = _RecordingStockRepository();
     await pumpPage(tester, stock: stock);
     final defaults = recentMonthDateRange();
     expect(stock.lastDateFrom, inventoryPeriodDate(defaults.start));
     expect(stock.lastDateTo, inventoryPeriodDate(defaults.end));
+    // 2026-11-04 用户口径：已选范围显示「筛选范围：近1个月」，清除入口是
+    // 框内最右侧的红色圆形关闭按钮，不再并排第二个「清除」文字按钮。
+    // 测试环境默认 en locale，范围短文案按语言切换，标签前缀恒为中文原文。
+    expect(find.textContaining('筛选范围：'), findsOneWidget);
+    expect(find.text('清除'), findsNothing);
     await tapInventoryHeader(
       tester,
       const Key('instant-inventory-clear-period'),
@@ -135,6 +140,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(stock.lastDateFrom, isNull);
     expect(stock.lastDateTo, isNull);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('instant-inventory-select-period')),
+        matching: find.byIcon(Icons.close_rounded),
+      ),
+      findsNothing,
+    );
   });
 
   testWidgets(

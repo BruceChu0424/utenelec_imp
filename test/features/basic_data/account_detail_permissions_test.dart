@@ -293,7 +293,15 @@ void main() {
       expect(find.text('搜索单号、对方单位或摘要'), findsOneWidget);
       // 2026-09-11 撤掉「查询」按钮（全站同改）：改日期即查、搜索防抖/回车即查。
       expect(find.text('查询'), findsNothing);
-      expect(find.text('清除'), findsOneWidget);
+      // 2026-11-04 用户口径：日期筛选 = 单按钮弹窗；本页范围恒有值、无清除入口，
+      // 也不再有并排的「清除」文字按钮。
+      expect(
+        find.descendant(
+          of: find.byType(UtenDateRangeSelectionButton),
+          matching: find.byIcon(Icons.close_rounded),
+        ),
+        findsNothing,
+      );
       expect(find.byType(UtenDateRangeSelectionButton), findsOneWidget);
       expect(find.text('近1个月'), findsOneWidget);
       final expected = recentMonthDateRange();

@@ -1,0 +1,23 @@
+{
+ "id": "E-DATE-RANGE-CLEAR-CIRCLE-20261104",
+ "baselineCommit": "caac352ed",
+ "branch": "main (shared worktree, uncommitted increment)",
+ "classification": "frontend-presentation-and-interaction",
+ "runtimeFamily": "wpf_legacy",
+ "architectures": [
+  "x86",
+  "x64"
+ ],
+ "status": "local-native-increment-verified",
+ "userDirective": "2026-11-04 用户口径：日期筛选的清除入口删除文字「清除」按钮，改为卡片内最右侧的红色圆形关闭按钮（红底白 ×，同 Flutter 即时库存「筛选范围：近N天 ×」形态）；单按钮弹窗选择起止日期的口径不变。",
+ "change": {
+  "window": "Features/Units/UnitRecordHistoryWindow.cs: clearDate 改用 Uten.CaptionButton 样式 + Uten.Caption.Close 红底、Content ×、AutomationName 仍为「清除日期」；仍在日期卡片 Grid 右列，范围两端为空时 Collapsed；清除语义、防重入 guard 与查询权威不变。",
+  "contractChecks": "Features/Units/UnitHistoryContractChecks.cs: 契约改为断言红圆关闭（×、Caption.Close 背景、CaptionButton 样式、可见性），删除文字按钮同高断言。"
+ },
+ "verification": {
+  "x86DebugBuild": "build_windows_wpf.ps1 -Build -Configuration Debug -Architecture x86 通过；PE 架构 332。",
+  "x64DebugBuild": "build_windows_wpf.ps1 -Build -Configuration Debug -Architecture all 通过；PE 架构 34404。",
+  "dateRangeContracts": "Uten.Legacy.Tests.exe --date-range-contracts: PASS date range contracts; dates=61; history UI=16; process=x86（含新红圆断言与既有紧凑标签/悬停/近月默认/服务端查询键全部保留）。"
+ },
+ "boundaries": "仅呈现层增量；不新增写入口、不改服务端合同与权限。其他 Flutter 日期范围业务页在原生候选端仍未迁移，不因本公共控件增量视为完成。Win7 SP1 真机 UAT 与完整 ERP 验收状态不变。"
+}

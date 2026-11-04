@@ -2010,7 +2010,8 @@ void main() {
       final date = find.byKey(const Key('where-used-select-dates'));
       expect(date, findsOneWidget);
       await tester.ensureVisible(date);
-      await tester.tap(find.text('选择日期').hitTestable());
+      // 页面默认近一月范围，入口显示紧凑文案而非空态「选择日期」；直接点按钮本体。
+      await tester.tap(date);
       await tester.pumpAndSettle();
       Navigator.of(
         tester.element(find.byType(UtenDateRangePickerDialog)),

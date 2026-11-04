@@ -79,7 +79,9 @@ void main() {
       expect(rect.center.dy, rects.first.center.dy);
     }
     expect(tester.getSize(find.byKey(const Key('cell-button'))).height, 36);
-    expect(find.text('选择日期'), findsOneWidget);
+    // 已选固定范围（10-01..10-31）显示紧凑文案「共31天」，不出现空态「选择日期」，
+    // 也不显示原始日期串（2026-11-03 默认近月 + 紧凑显示契约）。
+    expect(find.text('共31天'), findsOneWidget);
     expect(find.textContaining('2026-10'), findsNothing);
     expect(
       find.ancestor(

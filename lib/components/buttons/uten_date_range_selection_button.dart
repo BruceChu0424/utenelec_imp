@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
 import '../../core/utils/date_range_display.dart';
+import '../../core/responsive/compact_presentation.dart';
 import '../feedback/uten_busy_overlay.dart';
 import '../feedback/uten_date_range_picker.dart';
 import '../feedback/uten_date_range_tooltip.dart';
 import '../inputs/required_field_decoration.dart';
 import '../layout/uten_app_bar_action_scope.dart';
 import 'uten_button.dart';
+import 'uten_close_button.dart';
 
 /// One entry for a calendar interval, including optional unbounded endpoints.
 /// Values stay local to the picker until confirmation; cancellation does not
@@ -196,25 +198,30 @@ class _UtenDateRangeSelectionButtonState
                   )
                 : null,
           ),
+          // 已选范围的清除入口 = 框内最右侧的红色圆形关闭按钮（与弹窗右上角
+          // 同款 UtenCloseButton），不再并排第二个文字按钮。
           child: canClear
               ? Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Flexible(child: button),
-                    UtenButton(
+                    UtenCloseButton(
                       key:
                           widget.clearButtonKey ??
                           const Key('uten-date-range-clear'),
-                      type: UtenButtonType.ghost,
-                      semanticLabel: _t(
+                      tooltip: _t(
                         '清除日期范围',
                         'Clear date range',
                         '날짜 범위 지우기',
                       ),
+                      // 紧凑窗口（<840）里同排 UtenButton 走 padded 命中区，
+                      // 视觉高 48；关闭钮跟随同一行高，宽桌面保持标准 40。
+                      desktopHitExtent: UtenCompactPresentation.of(context)
+                          ? UtenControlMetrics.touchExtent
+                          : UtenControlMetrics.standardHeight,
                       onPressed: widget.enabled && !_picking && !_applying
                           ? _clear
                           : null,
-                      child: Text(_t('清除', 'Clear', '지우기')),
                     ),
                   ],
                 )

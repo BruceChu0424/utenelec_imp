@@ -85,7 +85,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
     expect(find.text('近90天'), findsOneWidget);
-    expect(find.text('清除'), findsOneWidget);
+    // 2026-11-04 用户口径：清除入口 = 框内红色圆形关闭按钮，不再是文字按钮。
+    expect(
+      find.byKey(const Key('uten-date-range-clear')),
+      findsOneWidget,
+    );
     expect(
       tester.getSize(find.byKey(const Key('date-preview-entry'))).height,
       tester.getSize(find.byKey(const Key('date-preview-peer'))).height,

@@ -1,0 +1,47 @@
+{
+  "id": "E-NOTICE-ACK-READ-BADGE-20261103",
+  "reviewDateLocal": "2026-11-03",
+  "branch": "uimp/notice-ack-read-badge-20261103",
+  "base": "8937e02d2",
+  "classification": ["frontend", "backend", "shared-contract"],
+  "wpfLegacy": {
+    "status": "not-migrated",
+    "tasks": ["W7-SHELL-004", "W7-FLOW-014", "W7-BIZ-084", "W7-BIZ-085"],
+    "audit": [
+      {
+        "source": "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml",
+        "lines": "48-50",
+        "finding": "原生业务导航仅工作台、货品、单位，没有通知列表、详情或未读徽标入口。"
+      },
+      {
+        "source": "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs",
+        "lines": "274-276",
+        "finding": "对应导航仅创建已有工作台、货品及单位页面，没有通知页面路由。"
+      },
+      {
+        "source": "clients/windows_legacy/Uten.Legacy.Desktop/Views/DashboardView.cs",
+        "lines": "46-77",
+        "finding": "Load 仅调用 GET /dashboard/overview，待办仅货品路由提供查看；没有通知深链、已读或收到回执写入。"
+      }
+    ],
+    "sourceSearch": {
+      "scope": "clients/windows_legacy 下受版本管理的 C# 和 XAML 源码，排除 bin/obj",
+      "patterns": ["/notices", "/notice", "NoticeView", "NoticeCard", "UnreadCount", "unreadCount"],
+      "matches": 0,
+      "limitation": "静态审查用于确认未迁移消费者，不代表真实原生交互验收。"
+    },
+    "requiredContracts": [
+      "收到成功必须由服务端在同一事务中写入本人收到回执和已读状态；重复收到保持幂等，未知结果不得盲目重放。",
+      "通知列表、详情、未读筛选、外壳未读计数及弹窗采用同一服务端已读事实；收到成功后不得继续展示该通知的未读标识。",
+      "通知卡片的红点和未读文字位于顶行右侧，与类型图标同排；采用更醒目的尺寸并保留窄屏空间和可访问性。",
+      "待迁移的异步收到动作须复用原生等待层、防连点和完整失败、取消、未知结果收尾；保持身份、权限与读取代次隔离。"
+    ],
+    "nativeTargetsAdded": false,
+    "writeEntryAdded": false,
+    "taskStatusChanged": false,
+    "targetPcAcceptance": false
+  },
+  "fullErpEquivalent": false,
+  "win7Accepted": false,
+  "productionDeployment": false
+}

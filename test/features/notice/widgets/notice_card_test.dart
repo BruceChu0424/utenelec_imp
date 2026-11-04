@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
+import 'package:uten_imp/components/feedback/uten_busy_overlay.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
@@ -35,6 +36,7 @@ Future<void> _mount(
   WidgetTester tester,
   Widget child, {
   bool dark = false,
+  double textScale = 1,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
@@ -46,6 +48,12 @@ Future<void> _mount(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         locale: const Locale('zh'),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          child: child!,
+        ),
         home: Scaffold(body: SingleChildScrollView(child: child)),
       ),
     ),
@@ -54,6 +62,69 @@ Future<void> _mount(
 }
 
 void main() {
+  for (final dark in [false, true]) {
+    for (final scale in [1.0, 2.0]) {
+      for (final selecting in [false, true]) {
+        testWidgets(
+          'unread is visible beside the icon without overlapping stack or selection, dark=$dark scale=$scale selecting=$selecting',
+          (tester) async {
+            final notice = _notice('system', NoticeType.system);
+            await _mount(
+              tester,
+              SizedBox(
+                width: 280,
+                child: NoticeCard(
+                  notice: notice,
+                  onTap: () {},
+                  groupCount: 12,
+                  groupUnread: 3,
+                  selecting: selecting,
+                ),
+              ),
+              dark: dark,
+              textScale: scale,
+            );
+            final unread = find.byKey(
+              const ValueKey('notice-unread-indicator'),
+            );
+            final icon = tester.getRect(find.byIcon(notice.type.icon));
+            final status = tester.getRect(unread);
+            final card = tester.getRect(find.byType(NoticeCard));
+            expect(status.center.dy, closeTo(icon.center.dy, 0.5));
+            expect(status.left, greaterThan(icon.right));
+            expect(card.contains(status.topLeft), isTrue);
+            expect(card.contains(status.bottomRight), isTrue);
+            final other = tester.getRect(
+              selecting
+                  ? find.byIcon(Icons.radio_button_unchecked)
+                  : find.text('12'),
+            );
+            expect(status.overlaps(other), isFalse);
+            expect(
+              tester.widget<Text>(find.text('未读')).style!.fontSize,
+              greaterThanOrEqualTo(14),
+            );
+            expect(find.text('系统提醒'), findsNothing);
+            expect(tester.takeException(), isNull);
+          },
+        );
+      }
+    }
+  }
+
+  testWidgets('read notices remove the entire unread indicator', (
+    tester,
+  ) async {
+    final unread = _notice('system', NoticeType.system);
+    await _mount(tester, NoticeCard(notice: unread, onTap: () {}));
+    expect(find.text('未读'), findsOneWidget);
+    await _mount(
+      tester,
+      NoticeCard(notice: unread.copyWith(isRead: true), onTap: () {}),
+    );
+    expect(find.byKey(const ValueKey('notice-unread-indicator')), findsNothing);
+  });
+
   testWidgets(
     'receipt waits, prevents duplicate requests, and allows retry after failure',
     (tester) async {
@@ -75,11 +146,11 @@ void main() {
       await tester.pump();
       await tester.tap(action, warnIfMissed: false);
       expect(attempts, 1);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(UtenBusyOverlay), findsOneWidget);
       gate.completeError(StateError('offline'));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(UtenBusyOverlay), findsNothing);
       await tester.tap(action);
       await tester.pumpAndSettle();
       expect(attempts, 2);

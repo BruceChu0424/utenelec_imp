@@ -1061,9 +1061,6 @@ class NoticeServiceTest {
         notice.setInteractionMode("acknowledge");
         notice.setAudienceScope("all");
         when(noticeRepository.findById(noticeId)).thenReturn(Optional.of(notice));
-        when(ackRepository.findById(new NoticeAcknowledgmentId(noticeId, userId)))
-                .thenReturn(Optional.empty())
-                .thenReturn(Optional.of(existingAck(noticeId, userId)));
         when(ackRepository.countByIdNoticeId(noticeId)).thenReturn(1L).thenReturn(1L);
 
         NoticeService.AckResult first = service.acknowledge(noticeId);
@@ -1072,7 +1069,8 @@ class NoticeServiceTest {
 
         NoticeService.AckResult second = service.acknowledge(noticeId);
         assertTrue(second.myAcked());
-        verify(ackRepository, atLeastOnce()).save(any());
+        verify(ackRepository, times(2)).acknowledgeAndMarkRead(noticeId, userId);
+        verify(ackRepository, never()).save(any());
     }
 
     @Test
@@ -1087,6 +1085,24 @@ class NoticeServiceTest {
 
         assertThrows(ApiException.class, () -> service.acknowledge(noticeId));
         verify(ackRepository, never()).save(any());
+        verify(ackRepository, never()).acknowledgeAndMarkRead(any(), any());
+    }
+
+    @Test
+    void acknowledgingAnotherRecipientsNoticeDoesNotWriteEitherState() {
+        UUID noticeId = UUID.randomUUID();
+        Notice notice = new Notice();
+        notice.setId(noticeId);
+        notice.setType("system");
+        notice.setInteractionMode("acknowledge");
+        notice.setAudienceScope("selected");
+        notice.setAudienceUserId(UUID.randomUUID());
+        when(noticeRepository.findById(noticeId)).thenReturn(Optional.of(notice));
+
+        assertEquals(ErrorCode.NOT_FOUND,
+                assertThrows(ApiException.class, () -> service.acknowledge(noticeId)).getCode());
+        verify(ackRepository, never()).acknowledgeAndMarkRead(any(), any());
+        verify(stateRepository, never()).save(any());
     }
 
     @Test
@@ -1679,13 +1695,6 @@ class NoticeServiceTest {
         e.setFullName(name);
         e.setHireDate(hireDate);
         return e;
-    }
-
-    private NoticeAcknowledgment existingAck(UUID noticeId, UUID userId) {
-        NoticeAcknowledgment ack = new NoticeAcknowledgment();
-        ack.setId(new NoticeAcknowledgmentId(noticeId, userId));
-        ack.setAckedAt(Instant.now());
-        return ack;
     }
 
     private NoticeBlessingRow blessingRow(UUID id, String name, String content, UUID userId) {

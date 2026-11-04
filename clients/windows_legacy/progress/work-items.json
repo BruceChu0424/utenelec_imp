@@ -8,7 +8,7 @@
     "mergeMainAllowed": false,
     "productionDeploymentAllowed": false
   },
-  "inventorySha256": "c4de8d2891d627b9617aaf56be828036300f12e54480183aecc7a863afdcf50f",
+  "inventorySha256": "2de9448a33918b7b5bff12f9ccbb15f8c37a9821a317b64ce4399ee1c6a1edae",
   "baselineCounts": {
     "businessPagePackages": 226,
     "retainedBusinessPagePackages": 3,
@@ -1505,9 +1505,11 @@
         "未读/已读/广播/来源单据，定位参数正确、不落未迁页面或丢业务上下文。",
         "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
       ],
-      "evidence": [],
-      "notes": "",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/notice-ack-read-badge-20261103.json"
+      ],
+      "notes": "2026-11-03 通知收到/未读合同增量：当前 WPF 通知列表、详情、外壳未读徽标及收到动作均未迁移；MainWindow 仅工作台/货品/单位入口，DashboardView 仅 GET /dashboard/overview，未接通知回执。后续迁移须由服务端同事务保存本人收到与已读，列表/详情/筛选/未读计数/弹窗同一权威状态；重复收到幂等，未知结果不盲重放。卡片红点与未读文字移至顶行右侧、与类型 icon 同排并放大；异步动作复用原生等待层及防连点，保留身份/权限/读取代次隔离。仅登记待迁移合同，不新增原生写入口，不提高任务状态或 Win7/完整 ERP 验收；见 E-NOTICE-ACK-READ-BADGE-20261103。",
+      "lastUpdated": "2026-11-04T00:10:12.626532+00:00"
     },
     {
       "id": "W7-SHELL-005",
@@ -3641,9 +3643,11 @@
         "来源深链、发布/阅读/处理权限、附件/历史，不落空占位页。",
         "记录适用调用方、保留差异、当前源码验证及尚未覆盖条件；不得推定其它版本已完成。"
       ],
-      "evidence": [],
-      "notes": "",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/notice-ack-read-badge-20261103.json"
+      ],
+      "notes": "2026-11-03 通知收到/未读合同增量：当前 WPF 通知列表、详情、外壳未读徽标及收到动作均未迁移；MainWindow 仅工作台/货品/单位入口，DashboardView 仅 GET /dashboard/overview，未接通知回执。后续迁移须由服务端同事务保存本人收到与已读，列表/详情/筛选/未读计数/弹窗同一权威状态；重复收到幂等，未知结果不盲重放。卡片红点与未读文字移至顶行右侧、与类型 icon 同排并放大；异步动作复用原生等待层及防连点，保留身份/权限/读取代次隔离。仅登记待迁移合同，不新增原生写入口，不提高任务状态或 Win7/完整 ERP 验收；见 E-NOTICE-ACK-READ-BADGE-20261103。",
+      "lastUpdated": "2026-11-04T00:10:14.794491+00:00"
     },
     {
       "id": "W7-FLOW-015",
@@ -7586,7 +7590,7 @@
       "feature": "hr_task",
       "businessSource": "lib/features/hr_task/pages/hr_task_list_page.dart",
       "sourceSha256": "d13384a766c8139886e8b5b7dfd312b5df54b2071f8658fe6fa8e7762dc1285f",
-      "sourceProofSha256": "673706879260b755815a760d8e174a3880965ddff6b9016a0ac00f5ede283075",
+      "sourceProofSha256": "e9c82a0ea14749ace499f5fabeb1f1c40f90fab6aabbab8bb0a6c107545a6fa0",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7668,7 +7672,7 @@
       "feature": "notice",
       "businessSource": "lib/features/notice/pages/notice_detail_page.dart",
       "sourceSha256": "b07fd25a042bae14e70b63a19641fcc94895c1cf443d21478e30c7e4133d1da3",
-      "sourceProofSha256": "620ccc83b2d880f029dbe5ef2c28dd0c44b680d858d1c3523aa968c7089c7861",
+      "sourceProofSha256": "09227b63a0fafb9532fc69f591f1a7c50adfe56cc152cc2964dda82c9e827b18",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7696,9 +7700,11 @@
         "当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。",
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
-      "evidence": [],
-      "notes": "尚未迁移；先做动作/合同审计。",
-      "lastUpdated": "2026-10-28"
+      "evidence": [
+        "clients/windows_legacy/progress/evidence/notice-ack-read-badge-20261103.json"
+      ],
+      "notes": "尚未迁移；先做动作/合同审计。\n2026-11-03 通知收到/未读合同增量：当前 WPF 通知列表、详情、外壳未读徽标及收到动作均未迁移；MainWindow 仅工作台/货品/单位入口，DashboardView 仅 GET /dashboard/overview，未接通知回执。后续迁移须由服务端同事务保存本人收到与已读，列表/详情/筛选/未读计数/弹窗同一权威状态；重复收到幂等，未知结果不盲重放。卡片红点与未读文字移至顶行右侧、与类型 icon 同排并放大；异步动作复用原生等待层及防连点，保留身份/权限/读取代次隔离。仅登记待迁移合同，不新增原生写入口，不提高任务状态或 Win7/完整 ERP 验收；见 E-NOTICE-ACK-READ-BADGE-20261103。",
+      "lastUpdated": "2026-11-04T00:10:17.000933+00:00"
     },
     {
       "id": "W7-BIZ-085",
@@ -7708,8 +7714,8 @@
       "phase": "D",
       "feature": "notice",
       "businessSource": "lib/features/notice/pages/notice_list_page.dart",
-      "sourceSha256": "b80edfe45bd1701137cc93ae50807754e508757df6d331245f591de3d8af7ab0",
-      "sourceProofSha256": "dcf46778213345144759c49e12331979161ae74d8bcbb6ccb3fdee49852513ad",
+      "sourceSha256": "ec5005230ff86200ad2defb0fee58d29a570adb05304930a96b32ea29b32d107",
+      "sourceProofSha256": "6524ca69713bbb5d249f9221e9a99b306f01a222e34113c0aebf8fb33fd9236a",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -7738,10 +7744,11 @@
         "更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。"
       ],
       "evidence": [
-        "clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json"
+        "clients/windows_legacy/progress/evidence/plural-page-source-inventory-20261101.json",
+        "clients/windows_legacy/progress/evidence/notice-ack-read-badge-20261103.json"
       ],
-      "notes": "2026-10-31 新增报价/订货销售负责人居中审核提醒。WPF 通知与业务审核仍未迁移；须同步 SALES_QUOTE_PENDING_MANAGER_REVIEW / SALES_ORDER_PENDING_MANAGER_REVIEW、登录及在线授权补发、认领心跳和办结撤回，不能仅显示普通通知。\n2026-11-01 必要合同增量仍未迁移：V982仓库通知按真实指定supervisor与相关child keeper并集后交精确业务资格池；隐式SA不成为负责人，历史read/ack/身份不重写。原通知及销售审核迁移要求保留。",
-      "lastUpdated": "2026-11-01T14:24:52.678548+00:00"
+      "notes": "2026-10-31 新增报价/订货销售负责人居中审核提醒。WPF 通知与业务审核仍未迁移；须同步 SALES_QUOTE_PENDING_MANAGER_REVIEW / SALES_ORDER_PENDING_MANAGER_REVIEW、登录及在线授权补发、认领心跳和办结撤回，不能仅显示普通通知。\n2026-11-01 必要合同增量仍未迁移：V982仓库通知按真实指定supervisor与相关child keeper并集后交精确业务资格池；隐式SA不成为负责人，历史read/ack/身份不重写。原通知及销售审核迁移要求保留。\n2026-11-03 通知收到/未读合同增量：当前 WPF 通知列表、详情、外壳未读徽标及收到动作均未迁移；MainWindow 仅工作台/货品/单位入口，DashboardView 仅 GET /dashboard/overview，未接通知回执。后续迁移须由服务端同事务保存本人收到与已读，列表/详情/筛选/未读计数/弹窗同一权威状态；重复收到幂等，未知结果不盲重放。卡片红点与未读文字移至顶行右侧、与类型 icon 同排并放大；异步动作复用原生等待层及防连点，保留身份/权限/读取代次隔离。仅登记待迁移合同，不新增原生写入口，不提高任务状态或 Win7/完整 ERP 验收；见 E-NOTICE-ACK-READ-BADGE-20261103。",
+      "lastUpdated": "2026-11-04T00:10:19.144871+00:00"
     },
     {
       "id": "W7-BIZ-086",
@@ -7752,7 +7759,7 @@
       "feature": "notice",
       "businessSource": "lib/features/notice/pages/notice_publish_page.dart",
       "sourceSha256": "5f04455460405ab002ff93932b1334ae9a631de814f4989161deaa22a765c274",
-      "sourceProofSha256": "bde1c0fc3572630cdf6f66f7d30ccd2c50d9ec33446758dc310a42f4e9ab9c44",
+      "sourceProofSha256": "ece91f291c78625a9a40c8baf12a7eb3d26da3552e43698145bfb33f5bb7242a",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9397,7 +9404,7 @@
       "feature": "purchase",
       "businessSource": "lib/features/purchase/pages/purchase_doc_edit_page.dart",
       "sourceSha256": "6b554eaaa4c13c87687fc3c02a0d62372f67426826c3e188b08585d2544cf7bf",
-      "sourceProofSha256": "ccd16966834b82a96b9ca0a292e81ff86a8e9f14084908faac2103c45a87284b",
+      "sourceProofSha256": "6f75317673ff0c1b3c77ec0f691543965998afdcdfaee04ed1b8f9dfd2848cae",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -9530,7 +9537,7 @@
       "feature": "purchase",
       "businessSource": "lib/features/purchase/pages/purchase_order_edit_page.dart",
       "sourceSha256": "08943248c2778b89cf2c68df4340dbf00b16d9c411e6d283afd3650dd3e1f504",
-      "sourceProofSha256": "45d14dac213fb2ae1ce473a592f29efc9c58e32b31c83616b038b205b3c93f2e",
+      "sourceProofSha256": "4b606e39c2e17e38a3d4ef05e789b3d048852ef690e575eb59193438a880764b",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",
@@ -10556,7 +10563,7 @@
       "feature": "shell",
       "businessSource": "lib/features/shell/pages/main_shell_page.dart",
       "sourceSha256": "19495fc970ffaf599b507023f14af5f8e21e08ceb0790393c9165c1c36dbf24f",
-      "sourceProofSha256": "466e23dc4c0597e1e3c9b4b66e97be1b2cccb72b2be7c5ddf534a21f49149b5f",
+      "sourceProofSha256": "80584a7094a24d52281ba626eeccd2d9df2e3af78ecbe05a24336023ec21dc5c",
       "status": "todo",
       "impactArea": "frontend+shared-contract",
       "owner": "待认领",

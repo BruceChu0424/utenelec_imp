@@ -34,6 +34,7 @@ import '../models/notice.dart';
 import '../models/notice_group.dart';
 import '../providers/notice_providers.dart';
 import '../widgets/notice_card.dart';
+import '../widgets/notice_action_busy.dart';
 import '../widgets/notice_detail_dialog.dart';
 import '../widgets/notice_group_dialog.dart';
 import '../widgets/notice_popup_settings_dialog.dart';
@@ -127,7 +128,12 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
     );
     if (confirmed != true) return;
 
-    final deleted = await deleteNotices(ref, _selected.toList());
+    if (!mounted) return;
+    final deleted = await runNoticeActionWithBusy(
+      context,
+      title: '正在删除通知',
+      action: () => deleteNotices(ref, _selected.toList()),
+    );
     if (!mounted) return;
     _exitSelection();
     context.appSuccess('已删除 $deleted 条通知');
@@ -203,7 +209,11 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                     size: UtenActionButtonSize.small,
                     label: const Text('全部已读'),
                     onAction: () async {
-                      await markAllNoticeRead(ref);
+                      await runNoticeActionWithBusy(
+                        context,
+                        title: '正在标记已读',
+                        action: () => markAllNoticeRead(ref),
+                      );
                       if (context.mounted) {
                         context.appSuccess('全部已读');
                       }
@@ -221,7 +231,14 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
               loading: () => const UtenSkeletonList(itemCount: 6),
               error: (e, _) => UtenEmpty.error(
                 message: humanErrorMessage(e) ?? '通知加载失败，请稍后重试',
-                onAction: () => ref.invalidate(noticeListProvider),
+                onAction: () async {
+                  await runNoticeActionWithBusy(
+                    context,
+                    title: '正在加载通知',
+                    action: () =>
+                        ref.read(noticeListProvider.notifier).refresh(),
+                  );
+                },
               ),
               data: (notices) {
                 if (notices.isEmpty) {
@@ -286,7 +303,11 @@ class _NoticeListPageState extends ConsumerState<NoticeListPage> {
                           _opening = true;
                           try {
                             if (!notice.isRead) {
-                              await markNoticeRead(ref, notice.id);
+                              await runNoticeActionWithBusy(
+                                this.context,
+                                title: '正在打开通知',
+                                action: () => markNoticeRead(ref, notice.id),
+                              );
                             }
                             if (!mounted) return;
                             await showNoticeDetailDialog(

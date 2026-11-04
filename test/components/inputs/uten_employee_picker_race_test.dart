@@ -133,7 +133,12 @@ void main() {
   });
 
   for (final multiple in [false, true]) {
-    for (final change in ['initial', 'scope', 'equivalent rebuild']) {
+    for (final change in [
+      'initial',
+      'scope',
+      'equivalent rebuild',
+      'label hydration',
+    ]) {
       testWidgets(
         '${multiple ? 'multi' : 'single'} pending selection respects $change',
         (tester) async {
@@ -149,7 +154,9 @@ void main() {
           );
           late StateSetter update;
           var scope = 'first-scope';
-          var initial = <UtenEmployeePickerItem>[];
+          var initial = <UtenEmployeePickerItem>[
+            if (change == 'label hydration') first,
+          ];
           List<UtenEmployeePickerItem>? changed;
           await tester.pumpWidget(
             MaterialApp(
@@ -186,17 +193,31 @@ void main() {
           );
           await tester.pumpAndSettle();
           await tester.tap(
-            find.byKey(const ValueKey('employee-picker-item-first')),
+            find.byKey(
+              ValueKey(
+                'employee-picker-item-${change == 'label hydration' ? 'second' : 'first'}',
+              ),
+            ),
           );
           await tester.pump();
           update(() {
             if (change == 'initial') initial = [second];
+            if (change == 'label hydration')
+              initial = [
+                const UtenEmployeePickerItem(
+                  id: 'first',
+                  name: '甲新标签',
+                  employeeCode: 'A2',
+                ),
+              ];
             if (change == 'scope') scope = 'second-scope';
           });
           await tester.pump();
           await tester.tap(find.widgetWithText(UtenButton, '确定'));
           await tester.pumpAndSettle();
-          if (change == 'equivalent rebuild') {
+          if (change == 'label hydration') {
+            expect(changed?.map((item) => item.id), ['second']);
+          } else if (change == 'equivalent rebuild') {
             expect(changed?.map((item) => item.id), ['first']);
           } else {
             expect(changed, isNull);

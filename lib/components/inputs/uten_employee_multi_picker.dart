@@ -143,7 +143,10 @@ class _UtenEmployeeMultiPickerState extends State<UtenEmployeeMultiPicker>
       widget.initialSelection,
       oldWidget.initialSelection,
     );
-    if (initialChanged ||
+    if (!sameEmployeePickerSelectionIdentity(
+          widget.initialSelection,
+          oldWidget.initialSelection,
+        ) ||
         widget.enabled != oldWidget.enabled ||
         widget.panelScopeBuilder != oldWidget.panelScopeBuilder ||
         widget.candidateScopeKey != oldWidget.candidateScopeKey ||

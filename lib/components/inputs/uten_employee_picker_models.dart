@@ -68,6 +68,23 @@ bool sameEmployeePickerSelection(
   return true;
 }
 
+/// Ownership and eligibility retire a pending choice; display hydration does not.
+bool sameEmployeePickerSelectionIdentity(
+  List<UtenEmployeePickerItem> first,
+  List<UtenEmployeePickerItem> second,
+) {
+  if (first.length != second.length) return false;
+  for (var index = 0; index < first.length; index++) {
+    final a = first[index], b = second[index];
+    if (a.id != b.id ||
+        a.enabled != b.enabled ||
+        a.disabledReason != b.disabledReason) {
+      return false;
+    }
+  }
+  return true;
+}
+
 typedef UtenEmployeePickerLoader =
     Future<List<UtenEmployeePickerItem>> Function(String? keyword);
 

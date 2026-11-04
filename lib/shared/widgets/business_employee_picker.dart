@@ -224,6 +224,7 @@ class _BusinessEmployeePickerState extends ConsumerState<BusinessEmployeePicker>
         required: widget.required,
         enabled: widget.enabled && !_invalidated,
         initial: _invalidated ? null : _resolved,
+        selectedId: widget.selectedId,
         hydrateInitialSelection: false,
         candidateScopeKey: (
           widget.purpose,
@@ -235,6 +236,7 @@ class _BusinessEmployeePickerState extends ConsumerState<BusinessEmployeePicker>
         presentation: UtenEmployeePickerPresentation.businessReference,
         pagedLoader: _loadCandidates,
         onChanged: (value) {
+          _generation++;
           setState(() {
             _resolved = value;
             _lookupError = null;

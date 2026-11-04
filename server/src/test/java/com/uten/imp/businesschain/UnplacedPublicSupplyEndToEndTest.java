@@ -273,7 +273,7 @@ class UnplacedPublicSupplyEndToEndTest {
     }
     private AnalysisView target(FullChainEndToEndTest.World world,UUID goods,String label){
         UUID product=UUID.randomUUID();fixture.insertGoods(product,"UNPLACED-P-"+product,"公共供给接收产品","自制",world.unitId(),world.unitLegacy());fixture.insertBom(product,goods,"1");
-        return ReflectionTestUtils.invokeMethod(support,"preview",world,world.warehouseId(),product,goods,label,label.equals("source")?"100":"1000",BusinessTime.today().plusDays(10));
+        return support.preview(world,world.warehouseId(),product,label,label.equals("source")?"100":"1000",BusinessTime.today().plusDays(10));
     }
     private AnalysisView claim(Case c,AnalysisView target,String qty,String key){return commands.claimSharedFuture(target.analysisId(),request(target,material(target,c.goods),qty,c.action,key+target.analysisId()));}
     private ClaimSharedFutureRequest request(AnalysisView target,MaterialView m,String qty,UUID source,String key){return new ClaimSharedFutureRequest(target.version(),target.fingerprint(),key,List.of(m.actionGroupKey()),List.of(new SharedFutureClaimQuantity(m.actionGroupKey(),new BigDecimal(qty),source)),true);}

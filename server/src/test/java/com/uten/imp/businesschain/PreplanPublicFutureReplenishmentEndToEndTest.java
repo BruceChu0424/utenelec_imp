@@ -213,7 +213,7 @@ class PreplanPublicFutureReplenishmentEndToEndTest {
                 WHERE goods_id=? AND NOT is_deleted AND status=0
                 """, BigDecimal.class, goods));
     }
-    private AnalysisView preview(FullChainEndToEndTest.World w,UUID warehouse,UUID product,String label,String amount,LocalDate need) {
+    AnalysisView preview(FullChainEndToEndTest.World w,UUID warehouse,UUID product,String label,String amount,LocalDate need) {
         fixture.loginAs(w.superAdminUserId());
         var view=analyses.preview(new PreviewRequest(null,null,null,warehouse,"public-preview-"+product+label,
                 List.of(new PreviewItem("OTHER",null,product,null,w.unitId(),"public-source-"+product+label,"公共在途认领",need,new BigDecimal(amount)))));

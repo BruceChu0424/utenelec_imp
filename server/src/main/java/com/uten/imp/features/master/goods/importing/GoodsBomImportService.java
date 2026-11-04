@@ -834,15 +834,15 @@ public class GoodsBomImportService {
         if (cell.getCellType() == CellType.NUMERIC) {
             // 读取原生数值与受限浮点尾差；显示格式不能舍入实际用量。
             String raw = com.uten.imp.common.importing.ExcelImportNumbers.numericText(cell, 24);
-            return raw == null ? null : boundedNumber(new BigDecimal(raw), key);
+            return raw == null ? null : boundedNumber(new BigDecimal(raw));
         }
         String raw = trim(df, row, col, key);
         if (isBlank(raw)) return null;
         if (!NUMBER_PATTERN.matcher(raw).matches()) throw new NumberFormatException("Invalid numeric cell");
-        return boundedNumber(new BigDecimal(raw.replace(",", "")), key);
+        return boundedNumber(new BigDecimal(raw.replace(",", "")));
     }
 
-    private static BigDecimal boundedNumber(BigDecimal value, String key) {
+    private static BigDecimal boundedNumber(BigDecimal value) {
         if (value.precision()>1100 || value.scale() < -1000 || value.scale()>1000)
             throw new NumericRangeException("原数超出可审计表示范围，请核对原文件");
         try { com.uten.imp.common.util.FinancialExactAmount.quantity(value,"BOM导入原数"); }

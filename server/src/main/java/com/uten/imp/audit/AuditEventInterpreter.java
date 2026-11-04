@@ -122,6 +122,7 @@ public class AuditEventInterpreter {
                     "查看采购到货异常财务审批详情"),
             Map.entry("view_expense_claim_detail", "查看费用报销详情"),
             Map.entry("view_business_application_detail", "查看行政财务申请详情"),
+            Map.entry("view_finance_application_detail", "查看财务申请详情"),
             Map.entry("configure_department_approval_substitute", "配置部门负责人回避审批人"),
             Map.entry("view_fixed_asset_detail", "查看固定资产详情"),
             Map.entry("view_deferred_expense_detail", "查看递延费用详情"),
@@ -1322,6 +1323,7 @@ public class AuditEventInterpreter {
         values.put("finance_other_income_items", "其他收入单明细");
         values.put("finance_bank_transfers", "银行转账单");
         values.put("finance_bank_transfer_lines", "银行转账明细");
+        values.put("finance_applications", "财务申请单");
         values.put("finance_reconciliations", "对账单");
         values.put("finance_check_register", "出票登记");
         values.put("gl_vouchers", "总账凭证");

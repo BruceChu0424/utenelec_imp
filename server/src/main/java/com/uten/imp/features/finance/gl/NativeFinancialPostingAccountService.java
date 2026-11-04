@@ -259,7 +259,7 @@ public class NativeFinancialPostingAccountService implements NativeFinancialPost
     }
 
     /** Original cash authority has already locked and calculated its real source lines. Freeze identities only. */
-    @Transactional(propagation=Propagation.MANDATORY)
+    @Override @Transactional(propagation=Propagation.MANDATORY)
     public UUID prepareCash(String kind,UUID id){
         if(!Set.of("PAYMENT","RECEIPT").contains(kind))throw invalid("原生收付款类别不正确");
         boolean payment="PAYMENT".equals(kind);String table=payment?"finance_payments":"finance_receipts",lineTable=payment?"finance_payment_lines":"finance_receipt_lines",fk=payment?"payment_id":"receipt_id";
@@ -276,7 +276,7 @@ public class NativeFinancialPostingAccountService implements NativeFinancialPost
             if(account==null||account.styleId()==null)throw conflict("原往来缺少可定位的已记账科目，请先核对或生成原来源凭证，不能按当前科目用途猜配");
             if(!Objects.equals(account.originalCurrencyId(),cash.get("currency_id")))throw conflict("原债务的真实原币单位与本次收付款不一致");
             bindExistingArApEntry(ledger);
-            if(first==null)first=account.styleId();ordinal++;
+            if(first==null){first=account.styleId();}ordinal++;
             var source=db.queryForMap("SELECT * FROM ar_ap_ledger WHERE id=?",ledger);
             var legacy=legacyBinding(ledger);
             if(!Objects.equals(source.get(payment?"supplier_id":"client_id"),cash.get(payment?"supplier_id":"client_id")))throw conflict("原往来对象与收付款不一致");
@@ -305,7 +305,7 @@ public class NativeFinancialPostingAccountService implements NativeFinancialPost
                 complete?"直接读取原已记账分录及辅助/原币证据":"直接读取原已记账科目；历史分录缺少财务代码/辅助证据，不重标历史");
     }
     private Account accountForSettlement(UUID ledgerId){
-        Account account=frozenArAp(ledgerId);if(account==null)account=existingBookedAccount(ledgerId);if(account!=null)return account;
+        Account account=frozenArAp(ledgerId);if(account==null){account=existingBookedAccount(ledgerId);}if(account!=null)return account;
         // Keep the already-supported verified bootstrap workflow before a real R1 accounting baseline is activated.
         // This is the current cash document's old business posting role, explicitly not a historical debt-account proof.
         if(Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM finance_gl_opening_baselines b JOIN finance_accounting_import_batches batch ON batch.id=b.import_batch_id WHERE batch.status='POSTED' AND batch.reversed_at IS NULL)",Boolean.class)))return null;
@@ -347,7 +347,7 @@ public class NativeFinancialPostingAccountService implements NativeFinancialPost
         var row=rows.getFirst();if(Boolean.TRUE.equals(row.get("owner_reverses_journal")))return false;
         controlledJournals.getObject().reverse((UUID)row.get("voucher_id"),"NATIVE-ARAP-REV-"+ledgerId,com.uten.imp.common.time.BusinessTime.today(),"NATIVE_ARAP_REV",ledgerId,"NATIVE_ARAP_REV","原生往来反审，保留原债务分录及冻结引用",current.requireId());return true;
     }
-    @Transactional(propagation=Propagation.MANDATORY)
+    @Override @Transactional(propagation=Propagation.MANDATORY)
     public void attachCash(String kind,UUID id){
         db.queryForObject("SELECT fn_finance_attach_native_cash_allocations(?,?)",Integer.class,kind,id);
     }
@@ -404,7 +404,7 @@ public class NativeFinancialPostingAccountService implements NativeFinancialPost
     }
 
     /** Import approval owns an original complete month. Native generation must never silently book it a second time. */
-    @Transactional(propagation=Propagation.MANDATORY,readOnly=true)
+    @Override @Transactional(propagation=Propagation.MANDATORY,readOnly=true)
     public void requireNoImportedPeriod(LocalDate day){
         if(Boolean.TRUE.equals(db.queryForObject("""
             SELECT EXISTS(SELECT 1 FROM finance_accounting_period_coverage c JOIN finance_accounting_import_batches b ON b.id=c.import_batch_id
@@ -439,7 +439,7 @@ public class NativeFinancialPostingAccountService implements NativeFinancialPost
             result.put(id,new Debt(id,direction,party,(UUID)r.get("currency_id"),date(r.get("bill_date")),amount(r,"amount_original"),amount(r,"amount_original_local"),amount(r,"amount_balance_original"),amount(r,"amount_balance"),List.copyOf(entries),complete,a==null?"旧来源缺少原科目快照，须核对原分录；不按当前用途重标":a.basis(),sourceFingerprint(r)));
         }return Collections.unmodifiableMap(result);
     }
-    private String sourceFingerprint(Map<String,Object> r){Map<String,Object> stable=new LinkedHashMap<>();for(String k:List.of("id","direction","source_doc_type","source_doc_id","bill_date","client_id","supplier_id","currency_id","amount_original","amount_original_local","exchange_rate"))stable.put(k,r.get(k));return hash(encode(stable));}
+    private String sourceFingerprint(Map<String,Object> r){Map<String,Object> stable=new LinkedHashMap<>();for(String k:List.of("id","direction","source_doc_type","source_doc_id","bill_date","client_id","supplier_id","currency_id","amount_original","amount_original_local","exchange_rate")){stable.put(k,r.get(k));}return hash(encode(stable));}
     private String encode(Object value){try{return json.writeValueAsString(value);}catch(Exception e){throw invalid("会计对应资料无法保存");}}
     private <T>T decode(String value,Class<T> type){try{return json.readValue(value,type);}catch(Exception e){throw conflict("原会计对应快照无法读取，请保留原结果核对");}}
     private static String hash(String value){return ImmutableDocumentStore.digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));}

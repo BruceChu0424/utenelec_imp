@@ -43,26 +43,31 @@ class ProcurementReturnQualityPolicyTest {
      * 恰好等于收货金额(原币与本币), 合格件全退后应付不留 0.0001 尾差。
      */
     @Test
-    void failedAmountAndReturnableLimitAreComplementsInEitherDispositionOrder() {
-        for (var events : List.of(
-                List.of(event("FAIL", "1"), event("PASS", "2")),
-                List.of(event("PASS", "2"), event("FAIL", "1")))) {
-            UUID inspection = UUID.randomUUID();
-            var source = policyResult(java.util.Collections.singletonList(new Object[]{
-                    new BigDecimal("3"), new BigDecimal("2"), BigDecimal.ONE, "RESOLVED",
-                    new BigDecimal("2"), inspection}), events, null);
-            BigDecimal failedOriginal = ProcurementIqcAmountSplit.failedSlices(
-                    new BigDecimal("100"), new BigDecimal("3"), toEvents(events), BigDecimal.ONE);
-            BigDecimal failedLocal = ProcurementIqcAmountSplit.failedSlices(
-                    new BigDecimal("710"), new BigDecimal("3"), toEvents(events), BigDecimal.ONE);
+    void failedAmountAndReturnableLimitAreComplementsInEitherDispositionOrder() throws Exception {
+        // 3 件分摊 100/710 除不尽：本次按 4 位四舍五入的显式选择核对（MoneyPolicyTest 同范式）；
+        // 两侧互为补数与取舍方式无关，末片收回来源余额。
+        try(var ignored=BusinessPrecisionContext.use(java.util.Map.of(
+                "money.cumulative-share",new BusinessPrecisionContext.Choice(4,"HALF_UP")))){
+            for (var events : List.of(
+                    List.of(event("FAIL", "1"), event("PASS", "2")),
+                    List.of(event("PASS", "2"), event("FAIL", "1")))) {
+                UUID inspection = UUID.randomUUID();
+                var source = policyResult(java.util.Collections.singletonList(new Object[]{
+                        new BigDecimal("3"), new BigDecimal("2"), BigDecimal.ONE, "RESOLVED",
+                        new BigDecimal("2"), inspection}), events, null);
+                BigDecimal failedOriginal = ProcurementIqcAmountSplit.failedSlices(
+                        new BigDecimal("100"), new BigDecimal("3"), toEvents(events), BigDecimal.ONE);
+                BigDecimal failedLocal = ProcurementIqcAmountSplit.failedSlices(
+                        new BigDecimal("710"), new BigDecimal("3"), toEvents(events), BigDecimal.ONE);
 
-            var result = ProcurementReturnQualityPolicy.lockAndLimit(
-                    source.em(), "PURCHASE", UUID.randomUUID(),
-                    new BigDecimal("3"), BigDecimal.ONE,
-                    new BigDecimal("100"), new BigDecimal("710"));
+                var result = ProcurementReturnQualityPolicy.lockAndLimit(
+                        source.em(), "PURCHASE", UUID.randomUUID(),
+                        new BigDecimal("3"), BigDecimal.ONE,
+                        new BigDecimal("100"), new BigDecimal("710"));
 
-            assertThat(failedOriginal.add(result.amountOriginal())).isEqualByComparingTo("100");
-            assertThat(failedLocal.add(result.amountLocal())).isEqualByComparingTo("710");
+                assertThat(failedOriginal.add(result.amountOriginal())).isEqualByComparingTo("100");
+                assertThat(failedLocal.add(result.amountLocal())).isEqualByComparingTo("710");
+            }
         }
     }
 

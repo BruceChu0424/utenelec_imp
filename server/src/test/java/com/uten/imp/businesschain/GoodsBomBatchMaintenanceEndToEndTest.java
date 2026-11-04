@@ -88,7 +88,7 @@ class GoodsBomBatchMaintenanceEndToEndTest {
         route("commit");batches.commit(confirm(preview));
         assertTrue(deleted(direct));assertFalse(deleted(nested));assertEquals(1,bom.list(sub).size());
         assertEquals("goods:bom:delete,goods:bom:edit",lastRequiredPermissions());
-        db.update("UPDATE goods SET status='禁用' WHERE id=?",c);
+        disableAsActor(c);
         assertRetired(nested);
         assertNull(db.queryForObject("SELECT retirement_reason FROM goods_bom_items WHERE id=?",String.class,direct),
                 "Disabling a component must not rewrite an earlier manual deletion");
@@ -112,7 +112,7 @@ class GoodsBomBatchMaintenanceEndToEndTest {
         assertEquals(0,new BigDecimal("0.12").compareTo(bom.list(source).getFirst().getQty()));
         assertEquals(0,new BigDecimal("0.11").compareTo(bom.list(target).getFirst().getQty()),
                 "A copied active recipe retains its own quantity after the source changes");
-        db.update("UPDATE goods SET status='禁用' WHERE id=?",component);
+        disableAsActor(component);
         assertRetired(original);assertRetired(copied.getId());
         String before=state();
         assertThrows(ApiException.class,()->bom.create(other,line(component,"0.11")));
@@ -133,7 +133,7 @@ class GoodsBomBatchMaintenanceEndToEndTest {
     @Test void overwritePreservesActiveIdentityButCannotReviveAnAutomaticallyRetiredComponent(){
         UUID target=goods("disabled-retain"),component=goods("disabled-retained-component"),active=goods("active-retained-component");
         UUID original=edge(target,component,"7",2),retained=edge(target,active,"3",1);
-        db.update("UPDATE goods SET status='禁用' WHERE id=?",component);
+        disableAsActor(component);
         assertRetired(original);assertFalse(deleted(retained));
         String before=state();long history=count("goods_operation_history"),events=count("business_outbox");
         assertThrows(ApiException.class,()->batches.preview(new BomBatchMaintenanceRequest(OVERWRITE,List.of(target),
@@ -244,4 +244,25 @@ class GoodsBomBatchMaintenanceEndToEndTest {
     private long count(String table){return db.queryForObject("SELECT count(*) FROM "+table,Long.class);}
     private long bomAudit(){return db.queryForObject("SELECT count(*) FROM audit_log WHERE target_type IN('goods','goods_bom_items')",Long.class);}
     private String lastRequiredPermissions(){return db.queryForObject("SELECT array_to_string(required_permissions,',') FROM goods_operation_history WHERE actor_id=? ORDER BY created_at DESC,id DESC LIMIT 1",String.class,actor);}
+    /** 停用组件会退役父件配方并按 V1034 采用守卫重算 sourceE；直写夹具在同一事务里声明操作人，与正式入口的事务绑定一致。 */
+    private void disableAsActor(UUID id){
+        db.execute((java.sql.Connection con)->{
+            boolean autocommit=con.getAutoCommit();
+            con.setAutoCommit(false);
+            try(var bind=con.prepareStatement("SELECT set_config('app.actor_id',?,true)");
+                var disable=con.prepareStatement("UPDATE goods SET status='禁用' WHERE id=?")){
+                bind.setString(1,actor.toString());
+                bind.execute();
+                disable.setObject(1,id);
+                disable.executeUpdate();
+                con.commit();
+            }catch(java.sql.SQLException failure){
+                con.rollback();
+                throw failure;
+            }finally{
+                con.setAutoCommit(autocommit);
+            }
+            return null;
+        });
+    }
 }

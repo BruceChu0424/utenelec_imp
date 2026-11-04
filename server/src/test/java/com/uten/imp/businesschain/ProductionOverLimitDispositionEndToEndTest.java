@@ -9,6 +9,7 @@ import com.uten.imp.features.production.dailyreport.dto.ReportablePlanLine;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.support.DailyReportApproveRequests;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,7 +42,13 @@ class ProductionOverLimitDispositionEndToEndTest {
     @Autowired JdbcTemplate db;
     @Autowired ProductionDailyReportService reports;
     @Autowired ProductionOverLimitDispositionService dispositions;
-    @AfterEach void logout(){SecurityContextHolder.clearContext();}
+    private AutoCloseable precisionChoices;
+    @BeforeEach void bindDefaultPrecision(){
+        // 超产报工(如 1000/1200)会产生除不尽的实际单耗，按生产端显式精度选择绑定。
+        precisionChoices=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "goods.bom.actual-usage",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN"),
+                "stock.value.interval",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN")));}
+    @AfterEach void logout(){SecurityContextHolder.clearContext();if(precisionChoices!=null)try{precisionChoices.close();}catch(Exception ignored){}}
 
     @Test void draftsCanBeCorrectedAndDeletedWithoutPublishingAnApprovalTask(){
         Scenario s=draft();

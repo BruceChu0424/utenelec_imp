@@ -220,7 +220,7 @@ class FinanceMaterialStatementPostgresTest {
   try(var book=new org.apache.poi.xssf.usermodel.XSSFWorkbook();var output=new java.io.ByteArrayOutputStream()){
    var sheet=book.createSheet("匿名财务原表");var header=sheet.createRow(2);for(int i=0;i<10;i++)header.createCell(i).setCellValue(table.columns().get(i).label());
    for(int at=0;at<table.rows().size();at++){var row=sheet.createRow(at+3);for(int col=0;col<10;col++){Object value=table.rows().get(at).get(table.columns().get(col).key());if(value==null)continue;var cell=row.createCell(col);if(value instanceof BigDecimal number){cell.setCellValue(0);cell.getCTCell().setV(number.toPlainString());}else cell.setCellValue(value.toString());}}
-   for(int col=11;col<=16;col++)sheet.setColumnHidden(col,true);book.write(output);return output.toByteArray();
+   for(int col=11;col<=16;col++){sheet.setColumnHidden(col,true);}book.write(output);return output.toByteArray();
   }
  }
  UUID style(String category){UUID id=UUID.randomUUID();db.update("INSERT INTO payment_styles(id,code,name,category,level,status) VALUES(?,?,?,?,0,'使用')",id,"MAT-S-"+id,"匿名真实科目-"+id,category);return id;}

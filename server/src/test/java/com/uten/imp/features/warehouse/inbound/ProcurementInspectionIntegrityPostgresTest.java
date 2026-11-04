@@ -921,8 +921,9 @@ class ProcurementInspectionIntegrityPostgresTest {
                     id,bill_no,bill_date,receipt_id,line_no,order_item_id,
                     goods_id,goods_code_snapshot,goods_name_snapshot,
                     goods_snapshot_source,goods_snapshot_locked_at,
-                    unit_id,unit_rate,qty,price,amount_original,amount_local,replacement_intent,is_deleted)
-                VALUES (?,?,?,?,1,?,?,?,?, 'MASTER_AT_APPROVAL',now(),?,1,6,10,60,60,'NORMAL',FALSE)
+                    unit_id,unit_rate,qty,charged_base_qty,gift_base_qty,
+                    price,amount_original,amount_local,replacement_intent,is_deleted)
+                VALUES (?,?,?,?,1,?,?,?,?, 'MASTER_AT_APPROVAL',now(),?,1,6,6,0,10,60,60,'NORMAL',FALSE)
                 """, productionReceiptItemId, receiptNo, billDate, receiptId,
                 orderItemId, materialId, "G-IQC-PROD-" + materialId,
                 "IQC production material", unitId);
@@ -931,8 +932,9 @@ class ProcurementInspectionIntegrityPostgresTest {
                     id,bill_no,bill_date,receipt_id,line_no,order_item_id,goods_id,
                     goods_code_snapshot,goods_name_snapshot,
                     goods_snapshot_source,goods_snapshot_locked_at,
-                    unit_id,unit_rate,qty,price,amount_original,amount_local,replacement_intent,is_deleted)
-                VALUES (?,?,?,?,2,?,?,?,?, 'MASTER_AT_APPROVAL',now(),?,1,3,10,30,30,'NORMAL',FALSE)
+                    unit_id,unit_rate,qty,charged_base_qty,gift_base_qty,
+                    price,amount_original,amount_local,replacement_intent,is_deleted)
+                VALUES (?,?,?,?,2,?,?,?,?, 'MASTER_AT_APPROVAL',now(),?,1,3,3,0,10,30,30,'NORMAL',FALSE)
                 """, unrelatedReceiptItemId, receiptNo, billDate, receiptId,unrelatedOrderItemId,
                 unrelatedGoodsId, "G-IQC-PROD-" + unrelatedGoodsId,
                 "IQC unrelated material", unitId);

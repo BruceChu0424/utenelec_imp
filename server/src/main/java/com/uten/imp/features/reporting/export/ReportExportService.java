@@ -129,8 +129,11 @@ public class ReportExportService {
         return view(repository.find(id).orElseThrow());
     }
     public record PrecisionResume(UUID requestId,int expectedAttempt) { }
-    @Transactional public View resumePrecision(UUID id,PrecisionResume command){
+    private static void requirePrecisionResume(PrecisionResume command){
         if(command==null||command.requestId()==null||command.expectedAttempt()<1)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请保留原导出精度续处理编号和尝试版本");
+    }
+    @Transactional public View resumePrecision(UUID id,PrecisionResume command){
+        requirePrecisionResume(command);
         var initial=authorized(id);requireCompatibleReader(initial);requireCurrentAccess(initial);
         repository.lockQueue();var job=authorized(id);requireCompatibleReader(job);requireCurrentAccess(job);
         var selected=BusinessPrecisionContext.choices();var previous=repository.precisionReceipt(command.requestId());

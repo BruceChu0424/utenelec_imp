@@ -60,7 +60,7 @@ class FinanceStatementDocumentPostgresTest {
  @Test void twoExplicitWorksheetsKeepSeparateImmutableSourcesAndRepeatWithoutFinancialWrites()throws Exception{
   var fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);var world=fixture.seedWorld("source-worksheet");fixture.loginAs(world.superAdminUserId());
   byte[] bytes;try(var book=new org.apache.poi.xssf.usermodel.XSSFWorkbook();var out=new java.io.ByteArrayOutputStream()){
-   for(String name:List.of("附件甲","附件乙")){var sheet=book.createSheet(name);var header=sheet.createRow(2);for(int column=0;column<6;column++)header.createCell(column).setCellValue(com.uten.imp.features.finance.gl.FinanceTemplateContract.header("copperDetail",column));var row=sheet.createRow(3);row.createCell(0).setCellValue("2026-09-01");row.createCell(1).setCellValue(name);row.createCell(2).setCellValue("1.000000000000000000000001");row.createCell(3).setCellValue("KG");row.createCell(4).setCellValue("3");row.createCell(5).setCellValue("PCS");}
+   for(String name:List.of("附件甲","附件乙")){var sheet=book.createSheet(name);var header=sheet.createRow(2);for(int column=0;column<6;column++){header.createCell(column).setCellValue(com.uten.imp.features.finance.gl.FinanceTemplateContract.header("copperDetail",column));}var row=sheet.createRow(3);row.createCell(0).setCellValue("2026-09-01");row.createCell(1).setCellValue(name);row.createCell(2).setCellValue("1.000000000000000000000001");row.createCell(3).setCellValue("KG");row.createCell(4).setCellValue("3");row.createCell(5).setCellValue("PCS");}
    book.write(out);bytes=out.toByteArray();
   }
   int journals=db.queryForObject("SELECT count(*) FROM gl_entries",Integer.class),debt=db.queryForObject("SELECT count(*) FROM ar_ap_ledger",Integer.class),stock=db.queryForObject("SELECT count(*) FROM stock_movements",Integer.class),cash=db.queryForObject("SELECT count(*) FROM finance_reconciliations",Integer.class);
@@ -129,7 +129,7 @@ class FinanceStatementDocumentPostgresTest {
    var header=sheet.createRow(5);for(int index=0;index<columns.size();index++)header.createCell(index).setCellValue(Objects.toString(map(columns.get(index)).get("label"),""));
    for(int r=6;r<=7;r++){var row=sheet.createRow(r);for(int index=0;index<columns.size();index++){
     String key=map(columns.get(index)).get("key").toString();Object value=actual.getOrDefault(key+"Exact",actual.get(key));String text=Objects.toString(value,"");
-    if(r==7&&key.equals("amount"))text=new BigDecimal(text).add(new BigDecimal("0.000000000000000000000001")).toPlainString();row.createCell(index).setCellValue(text);
+    if(r==7&&key.equals("amount")){text=new BigDecimal(text).add(new BigDecimal("0.000000000000000000000001")).toPlainString();}row.createCell(index).setCellValue(text);
    }}workbook.write(bytes);return bytes.toByteArray();
   }catch(java.io.IOException e){throw new IllegalStateException(e);}
  }

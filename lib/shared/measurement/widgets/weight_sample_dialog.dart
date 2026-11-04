@@ -717,10 +717,7 @@ class _WeightSampleDialogState extends ConsumerState<_WeightSampleDialog>
             : '本次单重 ${formatUnitWeight(unitWeight)}',
       );
       if (current != null && current > 0) {
-        final relative = financeExactDivideTexts(
-          unitWeight,
-          currentText,
-        ).text;
+        final relative = financeExactDivideTexts(unitWeight, currentText).text;
         final pct = relative == null
             ? null
             : financeExactMultiplyTexts([

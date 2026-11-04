@@ -105,7 +105,7 @@ class MigratedSchemaBaselinePostgresTest {
 
     private static void assertHead(Connection connection) throws SQLException {
         try (var query = connection.createStatement();
-             var rows = query.executeQuery("SELECT max(version::int) FROM flyway_schema_history WHERE success")) {
+             var rows = query.executeQuery("SELECT max(version::numeric) FROM flyway_schema_history WHERE success")) {
             assertTrue(rows.next());
             assertEquals(com.uten.imp.testsupport.FixtureNumbers.integer(MigrationRehearsalSupport.CURRENT_HEAD_VERSION), rows.getInt(1));
         }

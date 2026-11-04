@@ -88,7 +88,7 @@ class GoodsListLocationEndToEndTest {
         UUID disabledPart=seed(partCategory,"DP"+tag,"停用组件",null);
         edge(original.get(0),activePart,false);edge(original.get(1),activePart,true);
         UUID retiredEdge=edge(original.get(2),disabledPart,false);
-        db.update("UPDATE goods SET status='禁用' WHERE id=?",disabledPart);
+        disableAsActor(disabledPart);
         GoodsQueryFilter query=filter(Map.of("categoryId",leaf));
         var small=ProductionJdbcMeasurement.begin();goods.list(query,1,1,null,null);ProductionJdbcMeasurement.end();
         var large=ProductionJdbcMeasurement.begin();var page=goods.list(query,1,200,null,null);ProductionJdbcMeasurement.end();
@@ -217,6 +217,28 @@ class GoodsListLocationEndToEndTest {
                 VALUES(?,?,?,?,?,?,'使用',false,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))
                 """,id,category,code,name,world.unitId(),price);return id;
     }
+    /** 停用退役按 V1034 采用守卫重算父件 sourceE；直写夹具在同一事务里声明操作人，与正式入口的事务绑定一致。 */
+    private void disableAsActor(UUID id){
+        db.execute((java.sql.Connection con)->{
+            boolean autocommit=con.getAutoCommit();
+            con.setAutoCommit(false);
+            try(var bind=con.prepareStatement("SELECT set_config('app.actor_id',?,true)");
+                var disable=con.prepareStatement("UPDATE goods SET status='禁用' WHERE id=?")){
+                bind.setString(1,world.superAdminUserId().toString());
+                bind.execute();
+                disable.setObject(1,id);
+                disable.executeUpdate();
+                con.commit();
+            }catch(java.sql.SQLException failure){
+                con.rollback();
+                throw failure;
+            }finally{
+                con.setAutoCommit(autocommit);
+            }
+            return null;
+        });
+    }
+
     private UUID edge(UUID parent,UUID component,boolean deleted) {
         UUID id=UUID.randomUUID();
         db.update("INSERT INTO goods_bom_items(id,goods_id,component_goods_id,qty,sort_order) VALUES(?,?,?,1,1)",id,parent,component);

@@ -60,7 +60,7 @@ public final class ProductionMaterialMovementTestSupport {
 
     private static boolean required(Connection connection)throws SQLException {
         try(var statement=connection.createStatement();var result=statement.executeQuery(
-                "SELECT COALESCE(max(version::integer),0)>=514 FROM flyway_schema_history WHERE success AND version IS NOT NULL")) {
+                "SELECT COALESCE(max(version::numeric),0)>=514 FROM flyway_schema_history WHERE success AND version IS NOT NULL")) {
             if(!result.next()) throw new SQLException("Missing fixture migration identity");
             return result.getBoolean(1);
         }

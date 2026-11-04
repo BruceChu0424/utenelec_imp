@@ -30,6 +30,10 @@ class FinanceCostTemplatePostgresTest {
                 "subcontract_receipts","subcontract_receipt_items","ar_ap_ledger","v_stock_actual_cogs_postings","v_stock_actual_sales_cost_coverage",
                 "finance_sales_cost_inputs","v_finance_sales_expense_client_facts","v_finance_sales_expense_period_coverage",
                 "v_workshop_material_period_report","finance_plastic_template_inputs","warehouses","colors");
+        // The exact-ratio columns call the real migrated precision functions; without them the
+        // class-42 "function does not exist" surfaces as Spring bad SQL grammar.
+        MigratedProjectionSchema.createCurrentFunctions(db,"fn_business_decimal_from_integer",
+                "fn_business_exact_divide_with_policy","fn_business_exact_divide");
         EntityManager em=mock(EntityManager.class);when(em.createNativeQuery(anyString())).thenAnswer(c->query(c.getArgument(0)));
         var access=mock(FinanceDocumentAccessPolicy.class);when(access.hasAuthority(anyString())).thenReturn(true);when(access.scope()).thenReturn(new OwnerScope(true,Set.of()));
         reports=new FinanceCostService(em,access);
@@ -89,5 +93,5 @@ class FinanceCostTemplatePostgresTest {
     static void cost(String v){db.update("INSERT INTO v_stock_actual_cogs_postings(client_id,business_date,amount_local,pending) VALUES(?,'2026-09-03',?,false)",CLIENT,new BigDecimal(v));}
     static void input(String channel,String tax,String freight){db.update("INSERT INTO finance_sales_cost_inputs(period,client_id,channel,tax_rate,freight_local,confirmed,client_name_snapshot,seller_name_snapshot,region_snapshot,director_snapshot) VALUES('2026-09',?,?,?,?,true,'匿名客户','','','')",CLIENT,channel,new BigDecimal(tax),new BigDecimal(freight));}
     static void amount(Map<String,Object> row,String field,String expected){assertThat((BigDecimal)row.get(field)).as(field).isEqualByComparingTo(expected);}
-    static Query query(String sql){Query q=mock(Query.class);Map<String,Object> p=new LinkedHashMap<>();when(q.setParameter(anyString(),any())).thenAnswer(c->{p.put(c.getArgument(0),c.getArgument(1));return q;});when(q.getSingleResult()).thenAnswer(c->named.queryForObject(sql,p,Long.class));when(q.getResultList()).thenAnswer(c->named.query(sql,p,(r,n)->{Object[] row=new Object[r.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++)row[i]=r.getObject(i+1);return row;}));return q;}
+    static Query query(String sql){Query q=mock(Query.class);Map<String,Object> p=new LinkedHashMap<>();when(q.setParameter(anyString(),any())).thenAnswer(c->{p.put(c.getArgument(0),c.getArgument(1));return q;});when(q.getSingleResult()).thenAnswer(c->named.queryForObject(sql,p,Long.class));when(q.getResultList()).thenAnswer(c->named.query(sql,p,(r,n)->{Object[] row=new Object[r.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++){row[i]=r.getObject(i+1);}return row;}));return q;}
 }

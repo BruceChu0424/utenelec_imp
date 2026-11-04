@@ -64,7 +64,7 @@ public class FinanceStatementService {
             UUID partyId,UUID currencyId,int page,int size,FinanceReportColumnOptions options) {
         requireTemplateContext(false,partyId,currencyId,from,to,options);
         BigDecimal rate=verifiedLossRate(lossRate);
-        var rules=lossPolicies==null?List.<Map<String,Object>>of():lossPolicies.rulesFor(partyId,from,to);
+        var rules=lossPolicies==null?List.<Map<String,Object>>of():lossPolicies.rulesFor(partyId,to);
         String ruleJson=lossPolicies==null?"[]":lossPolicies.rulesJson(rules);
         var quantity=quantityEvidence==null?null:quantityEvidence.relevant(new com.uten.imp.application.port.FinanceSubcontractQuantityEvidenceReadPort.Scope(partyId,from,to));
         String quantityJson=quantity==null?"[]":quantityEvidence.statementJson(quantity);

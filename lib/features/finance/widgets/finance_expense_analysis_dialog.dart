@@ -842,7 +842,7 @@ class _EditorState extends ConsumerState<FinanceExpenseAnalysisSurface>
 
   void _replaceAllocations(
     List<Map<String, dynamic>> values, {
-    Map<dynamic,dynamic> legacyText = const {},
+    Map<dynamic, dynamic> legacyText = const {},
   }) {
     _allocationGrid.replaceAll([
       for (int i = 0; i < values.length; i++)

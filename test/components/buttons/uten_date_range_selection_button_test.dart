@@ -167,10 +167,7 @@ void main() {
       // 2026-11-04 用户口径：清除入口 = 框内最右侧的红色圆形关闭按钮，
       // 不再并排第二个文字按钮（UtenCloseButton 红底白 ×）。
       expect(
-        find.descendant(
-          of: card,
-          matching: find.byIcon(Icons.close_rounded),
-        ),
+        find.descendant(of: card, matching: find.byIcon(Icons.close_rounded)),
         findsOneWidget,
       );
       expect(find.text('清除'), findsNothing);

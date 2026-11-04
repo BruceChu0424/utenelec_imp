@@ -21,6 +21,6 @@ public final class FinanceAccountingExpenseStyles {
                 SELECT s.id,COALESCE(c.code,s.code),COALESCE(c.name,s.name),s.category FROM payment_styles s
                 LEFT JOIN finance_chart_code_styles m ON m.style_id=s.id LEFT JOIN finance_chart_codes c ON c.code=m.code
                 WHERE fn_finance_expense_posting_style_allowed(s.id,:purpose,true) ORDER BY s.path,s.id
-                """).setParameter("purpose",purpose.name())))result.add(new Reference((UUID)row[0],Objects.toString(row[1],""),Objects.toString(row[2],""),row[3].toString(),purpose.name()));return List.copyOf(result);
+                """).setParameter("purpose",purpose.name()))){result.add(new Reference((UUID)row[0],Objects.toString(row[1],""),Objects.toString(row[2],""),row[3].toString(),purpose.name()));}return List.copyOf(result);
     }
 }

@@ -121,7 +121,7 @@ class StaffSingleDeviceLoginPostgresTest {
         var first = sessions.openStaffSession(account, "Windows 客户端");
         var colleagueSession = sessions.openStaffSession(colleague, "另一员工");
         var watches = new SessionWatchService(sessions);
-        sessions.setEvents(event -> watches.replaced((AuthSessionService.ReplacedSessions) event));
+        sessions.setEvents(watches::replaced);
         var old = watches.watch(first.sid(), account);
         var kept = watches.watch(colleagueSession.sid(), colleague);
         assertThat(old.hasResult()).isFalse();

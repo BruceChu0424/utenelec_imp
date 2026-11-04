@@ -45,10 +45,11 @@ class BusinessPrecisionHttpPostgresTest {
         var provider=new StaticListableBeanFactory(Map.of("vars",vars)).getBeanProvider(TxSessionVars.class);
         var manager=new JpaTransactionManager(emf);manager.setDataSource(source);manager.setTransactionExecutionListeners(List.of(new BusinessPrecisionTransactionBinder(provider)));
         write=new TransactionTemplate(manager);read=new TransactionTemplate(manager);read.setReadOnly(true);
+        var json=new StaticListableBeanFactory(Map.of("json",new ObjectMapper().findAndRegisterModules())).getBeanProvider(ObjectMapper.class);
         mvc=MockMvcBuilders.standaloneSetup(new ProbeController()).setControllerAdvice(new GlobalExceptionHandler())
-            .addFilters(new BusinessPrecisionRequestFilter(new ObjectMapper().findAndRegisterModules())).build();
+            .addFilters(new BusinessPrecisionRequestFilter(json)).build();
     }
-    @AfterAll static void stop(){if(emf!=null)emf.close();if(source!=null)source.destroy();PG.stop();}
+    @AfterAll static void stop(){if(emf!=null){emf.close();}if(source!=null){source.destroy();}PG.stop();}
     @BeforeEach void clean(){failBinding=false;db.update("DELETE FROM precision_http_probe");}
     @AfterEach void contextWasReleased(){assertThat(BusinessPrecisionContext.choices()).isEmpty();}
 

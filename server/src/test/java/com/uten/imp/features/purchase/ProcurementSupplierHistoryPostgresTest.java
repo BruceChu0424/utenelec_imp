@@ -329,11 +329,15 @@ class ProcurementSupplierHistoryPostgresTest {
                     tax_rate,status,is_deleted,created_at)
                 VALUES (?,?,DATE '2026-08-29',?,?,?,?,0,?,?)
                 """, order, billNo, supplier, settlement, currency, taxRate, deleted, createdAt);
+        // V1033 adoption guard: a quantity write must carry its real original unit and positive rate.
+        UUID unit = UUID.randomUUID();
+        jdbc.update("INSERT INTO units(id,code,name,status) VALUES (?,?,?,'使用')",
+                unit, "UNIT-PO-" + unit, "件");
         jdbc.update("""
                 INSERT INTO purchase_order_items(
-                    id,bill_no,bill_date,order_id,goods_id,qty,price,goods_snapshot_source)
-                VALUES (?,?,DATE '2026-08-29',?,?,1,?,'MASTER_AT_SAVE')
-                """, UUID.randomUUID(), billNo, order, goods, price);
+                    id,bill_no,bill_date,order_id,goods_id,unit_id,unit_rate,qty,price,goods_snapshot_source)
+                VALUES (?,?,DATE '2026-08-29',?,?,?,?,1,?,'MASTER_AT_SAVE')
+                """, UUID.randomUUID(), billNo, order, goods, unit, price);
         return order;
     }
 

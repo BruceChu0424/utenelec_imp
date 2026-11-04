@@ -45,6 +45,7 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
     private static MigratedSchemaBaseline.ScopedDatabase database;
 
     private static JdbcTemplate jdbc;
+    private static UUID actor;
     private static TransactionTemplate transaction;
     private static EntityManagerFactory entityManagerFactory;
     private static EntityManager entityManager;
@@ -76,6 +77,16 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
         entityManagerFactory = factory.getObject();
         assertNotNull(entityManagerFactory);
         entityManager = entityManagerFactory.createEntityManager();
+        // V1034 起停用退役重算父件 sourceE 须在同一事务声明真实操作人。
+        UUID employee=UUID.randomUUID();actor=UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)
+                SELECT ?,?,'BOM树停用测试操作人','其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'
+                """,employee,"EMP-"+employee);
+        jdbc.update("""
+                INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status,is_super_admin)
+                VALUES(?,?,?,?,false,'active',false)
+                """,actor,employee,"BOM-TREE-ACTOR-"+actor,"test-only");
     }
 
     @AfterAll
@@ -107,7 +118,7 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
         var reader=new MaterialAnalysisBomSnapshotReader(entityManager);
         assertThat(reader.read(List.of(source)).get(sourceId)).hasSize(5);
 
-        jdbc.update("UPDATE goods SET status='禁用' WHERE id=?",disabledRaw);
+        disableAsActor(disabledRaw);
         var afterRawDisable=reader.read(List.of(source)).get(sourceId);
         assertThat(afterRawDisable).hasSize(3);
         assertThat(afterRawDisable).extracting(row->row[2]).containsOnly(semi,keptRaw,keptRoot);
@@ -116,7 +127,7 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
         jdbc.update("UPDATE goods SET status='使用' WHERE id=?",disabledRaw);
         assertThat(reader.read(List.of(source)).get(sourceId)).hasSize(3);
 
-        jdbc.update("UPDATE goods SET status='禁用' WHERE id=?",semi);
+        disableAsActor(semi);
         var afterSemiDisable=reader.read(List.of(source)).get(sourceId);
         assertThat(afterSemiDisable).singleElement().satisfies(row->{
             assertThat(row[0]).isEqualTo(rootKept);
@@ -531,6 +542,28 @@ class MaterialAnalysisBomTreeHibernatePostgresTest {
         }
         assertThat(root).isInstanceOf(PSQLException.class);
         assertThat(((PSQLException) root).getSQLState()).isEqualTo("23514");
+    }
+
+    /** 停用退役按 V1034 采用守卫重算父件 sourceE；直写夹具在同一事务里声明操作人，与正式入口的事务绑定一致。 */
+    private static void disableAsActor(UUID id){
+        jdbc.execute((java.sql.Connection con)->{
+            boolean autocommit=con.getAutoCommit();
+            con.setAutoCommit(false);
+            try(var bind=con.prepareStatement("SELECT set_config('app.actor_id',?,true)");
+                var disable=con.prepareStatement("UPDATE goods SET status='禁用' WHERE id=?")){
+                bind.setString(1,actor.toString());
+                bind.execute();
+                disable.setObject(1,id);
+                disable.executeUpdate();
+                con.commit();
+            }catch(java.sql.SQLException failure){
+                con.rollback();
+                throw failure;
+            }finally{
+                con.setAutoCommit(autocommit);
+            }
+            return null;
+        });
     }
 
     private static void insertGoods(UUID goodsId, UUID unitId, String codePrefix) {

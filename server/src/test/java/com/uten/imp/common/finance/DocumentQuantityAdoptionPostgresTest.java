@@ -58,7 +58,7 @@ class DocumentQuantityAdoptionPostgresTest {
         assertThatThrownBy(()->db.update("UPDATE purchase_receipt_items SET charged_base_qty=2 WHERE id=?",id)).rootCause().hasMessageMatching("(?s).*UTEN_PRECISION_REQUIRED.*|(?s).*actual quantity adoption.*");
     }
     @Test void sourceTrancheFinalReturnUsesActualRemainingBasicQuantity(){
-        UUID source=UUID.randomUUID(),unit=UUID.randomUUID(),first=UUID.randomUUID(),current=UUID.randomUUID();
+        UUID source=UUID.randomUUID(),unit=UUID.randomUUID();
         db.update("INSERT INTO purchase_receipt_items(id,unit_id,qty,gift_qty,unit_rate,quantity_semantics,charged_base_qty,gift_base_qty) VALUES(?,?,3,0,1,'CHARGED_PLUS_GIFT_V1',3,0)",source,unit);
         // This independent source-slice oracle retains actual historical allocations.
         assertThat(db.queryForObject("SELECT fn_document_return_quantity_slice(1,3,1,2,.6667,'{\"version\":1,\"choices\":{}}'::jsonb)",BigDecimal.class)).isEqualByComparingTo(".3333");

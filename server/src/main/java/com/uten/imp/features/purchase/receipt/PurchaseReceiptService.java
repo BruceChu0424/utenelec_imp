@@ -469,7 +469,7 @@ public class PurchaseReceiptService {
         }
     }
     private boolean postOrDefer(com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest req){
-        return com.uten.imp.common.finance.ProcurementPayablePosting.post(firstPayables,arApService,req);
+        return com.uten.imp.features.finance.arap.ProcurementPayablePosting.post(firstPayables,arApService,req);
     }
     private void requireReversibleArAp(UUID id,String type){
         if(firstPayables!=null&&firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source(type,id)))return;

@@ -105,7 +105,7 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
             assertThat(currentMigration.migrate().migrationsExecuted)
                     .isEqualTo(CURRENT_MIGRATION_COUNT-migrationFileCountUpTo(855));
             currentMigration.validate();assertThat(currentMigration.migrate().migrationsExecuted).isZero();
-            assertThat(db.queryForObject("SELECT max(version::integer) FROM flyway_schema_history WHERE success",Integer.class))
+            assertThat(db.queryForObject("SELECT max(version::numeric) FROM flyway_schema_history WHERE success",Integer.class))
                     .isEqualTo(com.uten.imp.testsupport.FixtureNumbers.integer(CURRENT_HEAD_VERSION));
             assertThat(db.queryForObject("SELECT to_regclass('public.sms_gateway_settings') IS NOT NULL", Boolean.class)).isTrue();
             assertThat(db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE version IS NOT NULL AND success",Integer.class))
@@ -124,7 +124,7 @@ class RootSupplyActualWarehouseForwardMigrationEndToEndTest {
             assertThat(db.queryForObject("SELECT data_type='integer' AND is_nullable='YES' AND column_default IS NULL FROM information_schema.columns WHERE table_schema='public' AND table_name='purchase_receipt_items' AND column_name='order_item_legacy_id'",Boolean.class)).isTrue();
             assertThat(db.queryForObject("SELECT count(*) FROM purchase_receipt_items WHERE receipt_id=? AND order_item_legacy_id IS NOT NULL",Integer.class,fixture.receipt())).isZero();
             assertThat(businessFacts(fixture,true)).containsExactlyElementsOf(beforeCurrent);
-            assertThat(db.queryForList("SELECT row_to_json(history)::text FROM flyway_schema_history history WHERE version::integer<=855 ORDER BY installed_rank",String.class))
+            assertThat(db.queryForList("SELECT row_to_json(history)::text FROM flyway_schema_history history WHERE version::numeric<=855 ORDER BY installed_rank",String.class))
                     .containsExactlyElementsOf(historyThrough855);
             var originalFulfillments=db.queryForList("SELECT row_to_json(output)::text FROM preplan_root_output_events output WHERE analysis_id=? AND event_kind='FULFILL' ORDER BY id",String.class,fixture.analysis());
             assertThat(originalFulfillments).hasSize(2);

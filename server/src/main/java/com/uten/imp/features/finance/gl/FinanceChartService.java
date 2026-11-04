@@ -43,7 +43,7 @@ public class FinanceChartService {
             throw invalid("请填写完整数字文本代码、科目名称、外币名称属性和新增依据");
         if(request.category()!=null&&!Set.of("ACCOUNT","LIABILITY","EQUITY","INCOME","EXPENSE").contains(request.category()))throw invalid("核算类别不正确");
         if(request.category()!=null)CurrentAuthorityGuard.requireAll("payment_style:create");
-        tx.bind();if(request.category()!=null)PaymentStyleHierarchyLock.lockForHierarchyChange(em);lock();
+        tx.bind();if(request.category()!=null){PaymentStyleHierarchyLock.lockForHierarchyChange(em);}lock();
         String fingerprint=ImmutableDocumentStore.digest(encode(request).getBytes(java.nio.charset.StandardCharsets.UTF_8));
         var previous=db.queryForList("SELECT actor_id,fingerprint,result::text FROM finance_chart_manual_operations WHERE request_id=?",request.requestId());
         if(!previous.isEmpty()) {
@@ -210,7 +210,6 @@ public class FinanceChartService {
         String fingerprint=ImmutableDocumentStore.digest((ids.stream().map(UUID::toString).sorted().toList().toString()
                 +desiredLines.stream().sorted().toList()+classification+currency).getBytes(java.nio.charset.StandardCharsets.UTF_8));
         Set<UUID> before=new LinkedHashSet<>(db.queryForList("SELECT style_id FROM finance_chart_code_styles WHERE code=?",UUID.class,code));
-        Set<String> previousLines=new LinkedHashSet<>(db.queryForList("SELECT DISTINCT line_key FROM finance_chart_owned_bindings WHERE code=?",String.class,code));
         if(version.getFirst()!=request.expectedVersion()) {
             var saved=db.queryForObject("SELECT mapping_fingerprint FROM finance_chart_codes WHERE code=?",String.class,code);
             if(version.getFirst()==request.expectedVersion()+1&&before.equals(ids)&&fingerprint.equals(saved))return list();

@@ -211,6 +211,7 @@ public class FinanceGlSettlementCapacityService implements FinanceGlSettlementCa
             for(var p:pending)if(!date(p.get("as_of")).isAfter(boundary)){l=l.subtract(decimal(p.get("amount_local")));o=o.subtract(decimal(p.get("amount_original")));}
             local=local==null?l:local.min(l);original=original==null?o:original.min(o);
         }
+        if(local==null||original==null)throw invalid("清偿范围缺少截止边界，不能计算可用清偿余额");
         List<SourceAmount> available=new ArrayList<>();List<Object> originalProof=new ArrayList<>();
         for(var ref:sources){try{var fact=fact(ref);match(scope,fact);
             requirePartition(fact,nativePrepayment);

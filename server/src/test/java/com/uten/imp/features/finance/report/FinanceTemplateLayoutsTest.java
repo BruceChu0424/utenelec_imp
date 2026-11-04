@@ -14,7 +14,7 @@ class FinanceTemplateLayoutsTest {
     @Test void balancePaperKeepsEightColumnsFiftyThreeLineNumbersBothSidesAndSourceBands()throws Exception {
         var facts=new ArrayList<Map<String,Object>>();
         FinanceTemplateContract.template("balanceSheet").path("rows").properties().forEach(entry->{
-            int line=Integer.parseInt(entry.getKey());facts.add(new LinkedHashMap<>(Map.of("lineNo",line,"item",entry.getValue().asText(),"periodEnd",BigDecimal.valueOf(line*100L),"yearStart",BigDecimal.valueOf(line*10L),"basis","匿名独立凭证")));
+            int line;try{line=Integer.parseInt(entry.getKey());}catch(NumberFormatException failure){throw new IllegalArgumentException("Balance sheet contract row key is not numeric",failure);}facts.add(new LinkedHashMap<>(Map.of("lineNo",line,"item",entry.getValue().asText(),"periodEnd",BigDecimal.valueOf(line*100L),"yearStart",BigDecimal.valueOf(line*10L),"basis","匿名独立凭证")));
         });
         var source=new ReportTableResponse(List.of(),facts,Map.of(),1,53,53,1);
         var paper=FinancialStatementPresentation.apply("BALANCE","template",source);

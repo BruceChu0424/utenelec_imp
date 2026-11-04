@@ -43,6 +43,11 @@ class FinanceLegacyOpeningStatementPostgresTest {
         PG.start();
         jdbc=new JdbcTemplate(new DriverManagerDataSource(PG.getJdbcUrl(),PG.getUsername(),PG.getPassword()));
         MigratedProjectionSchema.createCurrentTables(jdbc,TABLES);
+        // Statement events and summary reconciliation resolve fn_business_exact_divide
+        // when preparing FinanceCashEventSql; the projection fixture installs the
+        // migrated function family explicitly (same trio as the summary fixture).
+        MigratedProjectionSchema.createCurrentFunctions(jdbc,
+                "fn_business_decimal_from_integer","fn_business_exact_divide_with_policy","fn_business_exact_divide");
         var fixtureConfiguration = new Configuration()
                 .setProperty("hibernate.hbm2ddl.auto","none");
         fixtureConfiguration.getProperties().put("hibernate.connection.datasource", jdbc.getDataSource());

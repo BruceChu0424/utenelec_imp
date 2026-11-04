@@ -56,9 +56,13 @@ class FinanceReportUnitsPostgresTest {
                 "currencies","employees","departments","payment_styles","client_director_v","client_categories","supplier_categories","sales_orders",
                 "sales_order_items","sales_shipments","sales_shipment_items","customer_open_item_offset_batches","customer_open_item_offsets",
                 "fixed_assets","deferred_expenses","fa_depreciation_log","da_amortization_log","gl_vouchers","gl_entries",
-                "goods","material_categories","v_stock_actual_cogs_postings","units","colors",
+                "goods","material_categories","v_stock_actual_cogs_postings","units","colors","stock_movements",
                 "purchase_receipts","purchase_receipt_items","purchase_returns","purchase_return_items","sales_returns","sales_return_items",
                 "party_monthly_summaries","party_month_dirty","finance_payment_lines","supplier_open_item_offsets","legacy_finance_import_sources");
+        // Cash-event book rates call the real migrated precision functions; without them the
+        // class-42 "function does not exist" surfaces as Spring bad SQL grammar.
+        MigratedProjectionSchema.createCurrentFunctions(db,"fn_business_decimal_from_integer",
+                "fn_business_exact_divide_with_policy","fn_business_exact_divide");
         em=mock(EntityManager.class);when(em.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0)));
         access=mock(FinanceDocumentAccessPolicy.class);when(access.scope()).thenReturn(new OwnerScope(true,Set.of()));
         when(access.hasAuthority(anyString())).thenReturn(true);

@@ -184,6 +184,9 @@ class CustomerPrepaymentSummaryPostgresTest {
         String shipmentNo="XC20260907%06d".formatted(sequence);
         String returnNo="XT20260907%06d".formatted(sequence);
         UUID goods=seedGoods(suffix);
+        // V1035 adoption guard: a shipment quantity write carries its real original unit and positive rate.
+        UUID unitId=UUID.randomUUID();
+        jdbc.update("INSERT INTO units(id,code,name) VALUES(?,?,'件')",unitId,"SUM-U-"+suffix);
         jdbc.update("""
                 INSERT INTO clients(id,code,name,status,code_sequence)
                 VALUES(?,?,'Summary client','使用',(SELECT COALESCE(MAX(code_sequence),0)+1 FROM clients))
@@ -208,9 +211,9 @@ class CustomerPrepaymentSummaryPostgresTest {
                 """,shipment,shipmentNo,client,currency,order,new BigDecimal(invoiceAmount),new BigDecimal(invoiceAmount));
         jdbc.update("""
                 INSERT INTO sales_shipment_items(id,shipment_id,order_item_id,bill_no,bill_date,goods_id,
-                    qty,price,amount_original,amount_local,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,goods_snapshot_locked_at)
-                VALUES(?,?,?,?,DATE '2026-09-07',?,?,10,?, ?,?,'Summary goods','MASTER_AT_APPROVAL',now())
-                """,shipmentItem,shipment,orderItem,shipmentNo,goods,new BigDecimal(shippedQty),new BigDecimal(invoiceAmount),new BigDecimal(invoiceAmount),"SUM-G-"+suffix);
+                    unit_id,unit_rate,qty,price,amount_original,amount_local,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source,goods_snapshot_locked_at)
+                VALUES(?,?,?,?,DATE '2026-09-07',?,?,?,?,1,?,10,?, ?,?,'Summary goods','MASTER_AT_APPROVAL',now())
+                """,shipmentItem,shipment,orderItem,shipmentNo,goods,unitId,new BigDecimal(shippedQty),new BigDecimal(invoiceAmount),new BigDecimal(invoiceAmount),"SUM-G-"+suffix);
         confirmShipmentSource(shipment, actorUser, actor);
         ledger(invoice,"SALES_SHIPMENT",shipment,shipmentNo,client,currency,new BigDecimal(invoiceAmount),new BigDecimal(invoiceBalance));
         jdbc.update("""

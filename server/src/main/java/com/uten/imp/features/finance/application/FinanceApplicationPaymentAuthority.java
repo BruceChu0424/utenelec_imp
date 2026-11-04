@@ -36,7 +36,7 @@ public class FinanceApplicationPaymentAuthority implements FinanceApplicationPay
         var evidence=proof(command.applicationId());boolean zero=app.get("amount_original") instanceof java.math.BigDecimal amount&&amount.signum()==0;if(!zero&&evidence.isEmpty())throw new ApiException(ErrorCode.VALIDATION_FAILED,"请先上传本申请的真实银行付款回单或现金签收凭据并完成安全核验");
         return permit(app,actor,evidence);
     }
-    @Override public Permit requirePayrollConfirmation(UUID id,UUID batch,UUID request,UUID voucher){AuthUser actor=roles.live(FinanceApplicationPermissions.CONFIRM);var app=payroll(id,batch);posted(app,voucher);return permit(app,actor,List.of());}
+    @Override public Permit requirePayrollConfirmation(UUID id,UUID batch,UUID voucher){AuthUser actor=roles.live(FinanceApplicationPermissions.CONFIRM);var app=payroll(id,batch);posted(app,voucher);return permit(app,actor,List.of());}
     @Override public Permit requirePayrollReversal(UUID id,UUID batch,FinancePayrollPaymentPort.Reverse command){AuthUser actor=roles.live(FinanceApplicationPermissions.REVERSE);var app=payroll(id,batch);posted(app,command.paymentVoucherId());return permit(app,actor,List.of());}
     private Map<String,Object> payroll(UUID id,UUID batch){var rows=db.queryForList("SELECT * FROM finance_applications WHERE id=? FOR UPDATE",id);if(rows.size()!=1||!"PAYROLL_BATCH".equals(rows.getFirst().get("source_kind"))||!Objects.equals(batch,rows.getFirst().get("source_id")))throw new ApiException(ErrorCode.NOT_FOUND,"原工资付款申请不存在");return rows.getFirst();}
     private void posted(Map<String,Object> app,UUID voucher){

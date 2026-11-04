@@ -63,7 +63,7 @@ public class FinanceAuxiliaryImportService {
         var parsed=FinanceAuxiliaryWorkbookParser.parse(receivable,name,bytes);var resolved=resolveCurrencies(parsed);
         String mapping=resolved.fingerprint();
         var previous=db.queryForList("SELECT id FROM finance_statement_source_reviews WHERE actor_id=? AND kind=? AND source_system=? AND currency_id=? AND date_from=? AND date_to=? AND sha256=? AND currency_mapping_fingerprint=?",UUID.class,current.requireId(),kind,book,currencyId,from,to,hash,mapping);
-        if(!previous.isEmpty()){files.checkLegacy("FINANCE_AUXILIARY_COMPARE_REPLAY",bytes);if(requestId!=null)intake.complete(requestId,FinanceDocumentIntakeOperations.Family.AUXILIARY_STATEMENT_PREVIEW,payload,previous.getFirst());return imported(previous.getFirst());}
+        if(!previous.isEmpty()){files.checkLegacy("FINANCE_AUXILIARY_COMPARE_REPLAY",bytes);if(requestId!=null){intake.complete(requestId,FinanceDocumentIntakeOperations.Family.AUXILIARY_STATEMENT_PREVIEW,payload,previous.getFirst());}return imported(previous.getFirst());}
         UUID id=UUID.randomUUID();
         Preview preview=new Preview(id,receivable,book,currencyId,from,to,name,hash,resolved.rows(),resolved.issues(),false,FinanceAuxiliaryReports.columns(receivable),mapping);
         var stored=files.save("FINANCE_AUXILIARY_COMPARE",name,name.toLowerCase(Locale.ROOT).endsWith(".xls")?"application/vnd.ms-excel":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",bytes);
@@ -137,11 +137,11 @@ public class FinanceAuxiliaryImportService {
         var existing=existing(preview);var selected=new LinkedHashSet<UUID>();existing.values().forEach(row->selected.add((UUID)row.get("id")));
         var actual=new HashMap<String,Map<String,Object>>();
         if(!selected.isEmpty())try(var ignored=ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)) {
-            for(int page=1;page<=40;page++) {
+            for(int page=1;;page++) {
                 var report=FinanceAuxiliaryReports.selectedBalances(em,access,preview.receivable(),preview.dateFrom(),preview.dateTo(),null,preview.sourceSystem(),selected,page,500);
                 for(var row:report.rows())actual.put(row.get("accountCode")+"\u0000"+row.get("partyCode")+"\u0000"+row.get("__currencyId"),row);
                 if(report.rows().size()<500)break;
-                if(page==40)throw invalid("辅助比对结果超过完整读取范围，请缩小原文件范围");
+                if(page>=40)throw invalid("辅助比对结果超过完整读取范围，请缩小原文件范围");
             }
         }
         var result=new ArrayList<Comparison>();

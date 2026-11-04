@@ -62,7 +62,7 @@ final class FinanceExpenseReports {
         for(var row:rows) {
             if(!totalKey.equals(row.get("__lineKey"))&&!"ADM_RATIO".equals(row.get("__lineKey")))row.put("__context",List.of(totalKey));
         }
-        return filtered(template.equals("manufacturingExpense")?"gl/manufacturing-expense":"gl/admin-expense",pivotColumns(template,year),rows,options);
+        return filtered(pivotColumns(template,year),rows,options);
     }
     static List<ReportColumn> operatingColumns(int throughMonth) {
         var result=new ArrayList<ReportColumn>();
@@ -129,7 +129,7 @@ final class FinanceExpenseReports {
             List<String> context=new ArrayList<>();for(var candidate:definitions)if(candidate.terms().stream().map(t->t.startsWith("-")?t.substring(1):t).anyMatch(definition.key()::equals))context.add(candidate.key());
             row.put("__context",context);rows.add(row);
         }
-        var filtered=filtered("gl/operating-pl",operatingColumns(throughMonth),rows,options);
+        var filtered=filtered(operatingColumns(throughMonth),rows,options);
         if(maximum!=null) {
             var sink=new com.uten.imp.common.export.ExportRowBatches(filtered.columns().stream().map(c->new com.uten.imp.common.export.ExportColumn(c.key(),c.label(),c.type(),null,c.unitLabel(),c.unitKey())).toList(),maximum);
             filtered.rows().forEach(sink);int total=sink.finish();return new ReportTableResponse(filtered.columns(),List.of(),Map.of(),1,500,total,ReportReadPlan.totalPages(total,500)).withColumnSearchKeys(filtered.columnSearchKeys());
@@ -139,7 +139,7 @@ final class FinanceExpenseReports {
         return new ReportTableResponse(filtered.columns(),window.rows(),filtered.facets(),window.page(),window.size(),total,
                 ReportReadPlan.totalPages(total,window.size())).withColumnSearchKeys(filtered.columnSearchKeys());
     }
-    static ReportTableResponse filtered(String report,List<ReportColumn> columns,List<Map<String,Object>> rows,FinanceReportColumnOptions options) {
+    static ReportTableResponse filtered(List<ReportColumn> columns,List<Map<String,Object>> rows,FinanceReportColumnOptions options) {
         var original=new ReportTableResponse(columns,rows,Map.of(),1,Math.max(1,rows.size()),rows.size(),rows.isEmpty()?0:1);
         var selected=GlComputedHeaders.apply("gl/analysis-template",original,options);
         Set<String> keys=new LinkedHashSet<>();selected.rows().forEach(row->keys.add(row.get("__lineKey").toString()));
@@ -163,6 +163,6 @@ final class FinanceExpenseReports {
     static BigDecimal[] values(BigDecimal[] input){return input==null?zero():input.clone();}
     static BigDecimal add(BigDecimal left,BigDecimal right){return left==null||right==null?null:left.add(right);}
     static BigDecimal decimal(Object value){return value instanceof BigDecimal d?d:null;}
-    static BigDecimal sum(BigDecimal[] values,int through){BigDecimal sum=BigDecimal.ZERO;for(int month=1;month<=through;month++)sum=add(sum,values[month]);return sum;}
+    static BigDecimal sum(BigDecimal[] values,int through){BigDecimal sum=BigDecimal.ZERO;for(int month=1;month<=through;month++){sum=add(sum,values[month]);}return sum;}
     static BigDecimal percent(BigDecimal amount,BigDecimal base){return amount==null||base==null||base.signum()==0?null:MoneyPolicy.percentOf(amount,base);}
 }

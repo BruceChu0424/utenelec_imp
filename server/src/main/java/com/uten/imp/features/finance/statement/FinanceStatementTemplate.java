@@ -61,5 +61,5 @@ final class FinanceStatementTemplate {
         }result.put(total.key(),groups);}
         return result;
     }
-    private static BigDecimal total(List<com.uten.imp.common.report.ReportTotal> totals,String key){for(var total:totals)if(total.key().equals(key)&&total.groups().size()==1)return total.groups().getFirst().value();return null;}
+    private static BigDecimal total(List<com.uten.imp.common.report.ReportTotal> totals,String key){for(var total:totals){if(total.key().equals(key)&&total.groups().size()==1)return total.groups().getFirst().value();}return null;}
 }

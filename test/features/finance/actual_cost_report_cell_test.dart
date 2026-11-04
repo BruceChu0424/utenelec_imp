@@ -3,26 +3,93 @@ import 'package:uten_imp/features/report/shared/report_cell.dart';
 import 'package:uten_imp/features/report/shared/report_column.dart';
 
 void main() {
-  test('mixed-currency original money cells retain source currency for table and print', () {
-    const amount=ReportColumn(key:'amount',label:'金额',type:'money',unitKey:'currencyCode');
-    const exact='12345678901234.123456789012345678901234';
-    for(final currency in {'USD':'美金','人民币':'元'}.entries){
-      final row=<String,dynamic>{'amount':exact,'currencyCode':currency.key,'__showCurrencyInOriginal':true};
-      expect(formatReportCell(amount,row,includeUnit:false),'$exact ${currency.value}');
-      expect(row['amount'],exact);
-    }
-    expect(formatReportCell(amount,{'amount':'100','currencyCode':'USD'},includeUnit:false),'100.00');
-    expect(formatReportCell(amount,{'amount':'***','currencyCode':'USD','__showCurrencyInOriginal':true},includeUnit:false),'***');
-    const quantity=ReportColumn(key:'qty',label:'数量',type:'number',unitKey:'unit');
-    expect(formatReportCell(quantity,{'qty':'3','unit':'只','__showCurrencyInOriginal':true},includeUnit:false),'3');
-  });
-  test('explicit original-table non-applicable fields stay distinct from missing facts and real zero',(){
-    const balance=ReportColumn(key:'balance',label:'结存',type:'number');
-    expect(formatReportCell(balance,{'balance':null,'balanceExact':'999','__notApplicable':'price, balance'}),'—');
-    expect(formatReportCell(balance,{'balance':null,'balanceExact':'999','__notApplicable':['balance']}),'—');
-    expect(formatReportCell(balance,{'balance':null,'balanceExact':'999','__notApplicable':'balanceOther'}),isNull);
-    expect(formatReportCell(balance,{'balance':'0','__notApplicable':'price'}),'0');
-  });
+  test(
+    'mixed-currency original money cells retain source currency for table and print',
+    () {
+      const amount = ReportColumn(
+        key: 'amount',
+        label: '金额',
+        type: 'money',
+        unitKey: 'currencyCode',
+      );
+      const exact = '12345678901234.123456789012345678901234';
+      for (final currency in {'USD': '美金', '人民币': '元'}.entries) {
+        final row = <String, dynamic>{
+          'amount': exact,
+          'currencyCode': currency.key,
+          '__showCurrencyInOriginal': true,
+        };
+        expect(
+          formatReportCell(amount, row, includeUnit: false),
+          '$exact ${currency.value}',
+        );
+        expect(row['amount'], exact);
+      }
+      expect(
+        formatReportCell(amount, {
+          'amount': '100',
+          'currencyCode': 'USD',
+        }, includeUnit: false),
+        '100.00',
+      );
+      expect(
+        formatReportCell(amount, {
+          'amount': '***',
+          'currencyCode': 'USD',
+          '__showCurrencyInOriginal': true,
+        }, includeUnit: false),
+        '***',
+      );
+      const quantity = ReportColumn(
+        key: 'qty',
+        label: '数量',
+        type: 'number',
+        unitKey: 'unit',
+      );
+      expect(
+        formatReportCell(quantity, {
+          'qty': '3',
+          'unit': '只',
+          '__showCurrencyInOriginal': true,
+        }, includeUnit: false),
+        '3',
+      );
+    },
+  );
+  test(
+    'explicit original-table non-applicable fields stay distinct from missing facts and real zero',
+    () {
+      const balance = ReportColumn(key: 'balance', label: '结存', type: 'number');
+      expect(
+        formatReportCell(balance, {
+          'balance': null,
+          'balanceExact': '999',
+          '__notApplicable': 'price, balance',
+        }),
+        '—',
+      );
+      expect(
+        formatReportCell(balance, {
+          'balance': null,
+          'balanceExact': '999',
+          '__notApplicable': ['balance'],
+        }),
+        '—',
+      );
+      expect(
+        formatReportCell(balance, {
+          'balance': null,
+          'balanceExact': '999',
+          '__notApplicable': 'balanceOther',
+        }),
+        isNull,
+      );
+      expect(
+        formatReportCell(balance, {'balance': '0', '__notApplicable': 'price'}),
+        '0',
+      );
+    },
+  );
   const money = ReportColumn(key: 'amount', label: 'amount', type: 'money');
   test(
     'decimal original fields preserve every digit without an Exact alias',

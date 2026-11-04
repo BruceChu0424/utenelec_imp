@@ -115,7 +115,9 @@ class GiftPhysicalConservationEndToEndTest {
         F f=fixture();UUID receipt=receipt(f,"10","1");
         // A pre-V843 persisted draft has annotation-only gift and no extra physical authority.
         db.update("UPDATE purchase_receipts SET quantity_semantics='LEGACY_RECORDED' WHERE id=?",receipt);
-        db.update("UPDATE purchase_receipt_items SET quantity_semantics='LEGACY_RECORDED' WHERE receipt_id=?",receipt);
+        // V1033: re-tagging the annotation-only legacy semantics adopts its physical
+        // facts too — the gift is no longer a physical tranche, so its base is 0.
+        db.update("UPDATE purchase_receipt_items SET quantity_semantics='LEGACY_RECORDED',gift_base_qty=0 WHERE receipt_id=?",receipt);
         receipts.approve(receipt);passAndStock(f,receipt);assertThat(stock(f)).isEqualByComparingTo("10");
         var draft=(com.uten.imp.features.purchase.receipt.dto.ReceiptDetail)unapproval.unapprove("purchaseReceipt",receipt,new DocumentUnapprovalService.UnapproveRequest("gift-legacy-"+receipt,"保原历史实物量"));
         assertThat(stock(f)).isZero();assertThat(draft.getItems().getFirst().getQuantitySemantics()).isEqualTo("LEGACY_RECORDED");

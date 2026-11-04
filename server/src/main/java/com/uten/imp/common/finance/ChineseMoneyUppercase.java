@@ -25,7 +25,7 @@ public final class ChineseMoneyUppercase {
     private static String yuan(BigInteger value){
         var groups=new ArrayList<Integer>();while(value.signum()>0){var part=value.divideAndRemainder(BigInteger.valueOf(10000));groups.add(part[1].intValueExact());value=part[0];}
         var out=new StringBuilder();boolean skipped=false;
-        for(int i=groups.size()-1;i>=0;i--){int group=groups.get(i);if(group==0){skipped=true;continue;}if(!out.isEmpty()&&(group<1000||skipped))out.append('零');out.append(four(group)).append(GROUP[i]);skipped=false;}return out.toString();
+        for(int i=groups.size()-1;i>=0;i--){int group=groups.get(i);if(group==0){skipped=true;continue;}if(!out.isEmpty()&&(group<1000||skipped)){out.append('零');}out.append(four(group)).append(GROUP[i]);skipped=false;}return out.toString();
     }
-    private static String four(int value){var out=new StringBuilder();boolean zero=false;int divisor=1000;for(int i=3;i>=0;i--){int digit=value/divisor%10;divisor/=10;if(digit==0){if(!out.isEmpty())zero=true;continue;}if(zero)out.append('零');out.append(DIGITS.charAt(digit)).append(FOUR[i]);zero=false;}return out.toString();}
+    private static String four(int value){var out=new StringBuilder();boolean zero=false;int divisor=1000;for(int i=3;i>=0;i--){int digit=value/divisor%10;divisor/=10;if(digit==0){if(!out.isEmpty()){zero=true;}continue;}if(zero){out.append('零');}out.append(DIGITS.charAt(digit)).append(FOUR[i]);zero=false;}return out.toString();}
 }

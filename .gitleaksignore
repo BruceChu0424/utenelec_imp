@@ -485,3 +485,22 @@ a667078dfe9639b730d54e7283ad9b9e66e535b2:docs/99-项目治理/全平台整改交
 2023707486680b9282abdef4ad1067b531d34239:clients/windows_legacy/progress/evidence/shared-picker-field-regression-20261102.json:generic-api-key:11
 # PDF generator receipt: LF SHA-256 verified against the owning committed Dart source.
 32ef71ef73d2265ed8c3ae9de8bd36f7dc018b6b:assets/workers/uten_pdf_worker.build.json:generic-api-key:22
+# 2026-11-04 财务整合批次误报：PDF worker 构建清单的源文件 SHA-256 固定表与治理回执 JSON 中的哈希/键值对，均为非凭据。
+0aaffa3aa28894b047e2113dda338cc3f20b5c1a:assets/workers/uten_pdf_worker.build.json:generic-api-key:26
+0aaffa3aa28894b047e2113dda338cc3f20b5c1a:assets/workers/uten_pdf_worker.build.json:generic-api-key:27
+0aaffa3aa28894b047e2113dda338cc3f20b5c1a:assets/workers/uten_pdf_worker.build.json:generic-api-key:28
+0aaffa3aa28894b047e2113dda338cc3f20b5c1a:clients/windows_legacy/progress/evidence/employee-applications-20261103.json:generic-api-key:214
+0aaffa3aa28894b047e2113dda338cc3f20b5c1a:docs/99-项目治理/evidence/login-session-lifecycle-backend-20261103.json:generic-api-key:14
+0aaffa3aa28894b047e2113dda338cc3f20b5c1a:docs/99-项目治理/evidence/login-session-lifecycle-backend-20261103.json:generic-api-key:18
+0aaffa3aa28894b047e2113dda338cc3f20b5c1a:docs/99-项目治理/evidence/login-session-lifecycle-frontend-20261103.json:generic-api-key:140
+0aaffa3aa28894b047e2113dda338cc3f20b5c1a:docs/99-项目治理/evidence/login-session-lifecycle-frontend-20261103.json:generic-api-key:141
+0aaffa3aa28894b047e2113dda338cc3f20b5c1a:docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/backend-query-elision-followup-review.json:generic-api-key:361
+0aaffa3aa28894b047e2113dda338cc3f20b5c1a:docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/web-interaction-receipt.json:generic-api-key:80
+0aaffa3aa28894b047e2113dda338cc3f20b5c1a:server/src/main/java/com/uten/imp/features/finance/statement/FinanceMaterialStatementService.java:generic-api-key:224
+7d74d11eb504740f0ea0cfe31e7f3e72b2a80592:clients/windows_legacy/progress/evidence/employee-applications-20261103.json:generic-api-key:214
+99885ee696f48aa4ee3878f0d95c0a479fcaee2e:docs/99-项目治理/evidence/login-session-lifecycle-backend-20261103.json:generic-api-key:14
+99885ee696f48aa4ee3878f0d95c0a479fcaee2e:docs/99-项目治理/evidence/login-session-lifecycle-backend-20261103.json:generic-api-key:18
+99885ee696f48aa4ee3878f0d95c0a479fcaee2e:docs/99-项目治理/evidence/login-session-lifecycle-frontend-20261103.json:generic-api-key:140
+99885ee696f48aa4ee3878f0d95c0a479fcaee2e:docs/99-项目治理/evidence/login-session-lifecycle-frontend-20261103.json:generic-api-key:141
+b95a7c5bf94dbe0ac22a3abe2561428dbb150fe7:docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/backend-query-elision-followup-review.json:generic-api-key:361
+b95a7c5bf94dbe0ac22a3abe2561428dbb150fe7:docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/web-interaction-receipt.json:generic-api-key:80

@@ -18,8 +18,10 @@ Future<void> tapFinanceAction(WidgetTester tester, String label) async {
       action = find.text(label).hitTestable();
     }
   }
-  if(action.evaluate().isEmpty){
-    debugPrint('Missing finance action $label; tooltips=${tester.widgetList<Tooltip>(find.byType(Tooltip)).map((widget)=>widget.message).toList()}; texts=${tester.widgetList<Text>(find.byType(Text)).map((widget)=>widget.data).whereType<String>().take(50).toList()}');
+  if (action.evaluate().isEmpty) {
+    debugPrint(
+      'Missing finance action $label; tooltips=${tester.widgetList<Tooltip>(find.byType(Tooltip)).map((widget) => widget.message).toList()}; texts=${tester.widgetList<Text>(find.byType(Text)).map((widget) => widget.data).whereType<String>().take(50).toList()}',
+    );
   }
   await tester.tap(action.last);
   await tester.pumpAndSettle();

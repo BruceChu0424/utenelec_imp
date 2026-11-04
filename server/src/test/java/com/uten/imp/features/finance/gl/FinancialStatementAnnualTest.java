@@ -35,6 +35,6 @@ class FinancialStatementAnnualTest {
     }
     private static Map<String,Object> row(int no,String amount) {
         Map<String,Object> row=new LinkedHashMap<>();row.put("lineNo",no);
-        for(int month=1;month<=12;month++)row.put("m"+month,new BigDecimal(amount));return row;
+        for(int month=1;month<=12;month++){row.put("m"+month,new BigDecimal(amount));}return row;
     }
 }

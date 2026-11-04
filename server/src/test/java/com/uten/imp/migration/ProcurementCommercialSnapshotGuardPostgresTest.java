@@ -692,22 +692,27 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
             // ADR-143 §三.7: 委外回厂行冻结物料口径 R(= 回厂量), 并按冻结单耗核销已发外的直属物料 f(R) = R x 1。
             String basisColumn = "SUBCONTRACT".equals(type) ? ",material_basis_qty" : "";
             String basisValue = "SUBCONTRACT".equals(type) ? "," + qty.toPlainString() : "";
+            // V1033 起新收货行按原数量×原换算率落基本量；采购行需给出与采用值一致的
+            // 计费/赠品基本量(数量×换算率1)，委外表没有这两列。
+            String chargedColumns = "PURCHASE".equals(type) ? ",charged_base_qty,gift_base_qty" : "";
+            String chargedValues = "PURCHASE".equals(type) ? "," + qty.toPlainString() + ",0" : "";
             try (PreparedStatement insert = connection.prepareStatement("""
                     INSERT INTO %s(
-                        id,bill_no,bill_date,receipt_id,line_no,goods_id,unit_rate,
+                        id,bill_no,bill_date,receipt_id,line_no,goods_id,unit_id,unit_rate,
                         qty,price,amount_original,amount_local,order_item_id,
-                        replacement_intent,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source%s)
-                    VALUES(?,?,'2026-08-30',?,1,?,1,?,1,?,?,?,
-                        'NORMAL','V438-G','V438货品','MASTER_AT_SAVE'%s)
-                    """.formatted(receiptItemTable(type), basisColumn, basisValue))) {
+                        replacement_intent%s,goods_code_snapshot,goods_name_snapshot,goods_snapshot_source%s)
+                    VALUES(?,?,'2026-08-30',?,1,?,?,1,?,1,?,?,?,
+                        'NORMAL'%s,'V438-G','V438货品','MASTER_AT_SAVE'%s)
+                    """.formatted(receiptItemTable(type), chargedColumns, basisColumn, chargedValues, basisValue))) {
                 insert.setObject(1, receiptItemId);
                 insert.setString(2, billNo);
                 insert.setObject(3, receiptId);
                 insert.setObject(4, goods);
-                insert.setBigDecimal(5, qty);
+                insert.setObject(5, materialUnit);
                 insert.setBigDecimal(6, qty);
                 insert.setBigDecimal(7, qty);
-                insert.setObject(8, orderItemId);
+                insert.setBigDecimal(8, qty);
+                insert.setObject(9, orderItemId);
                 insert.executeUpdate();
             }
             if ("SUBCONTRACT".equals(type)) {
@@ -840,20 +845,24 @@ class ProcurementCommercialSnapshotGuardPostgresTest {
         }
         try(PreparedStatement insert=connection.prepareStatement("""
                 INSERT INTO purchase_receipt_items(
-                    id,bill_no,bill_date,receipt_id,line_no,goods_id,unit_rate,
+                    id,bill_no,bill_date,receipt_id,line_no,goods_id,unit_id,unit_rate,
                     qty,price,amount_original,amount_local,order_item_id,
+                    charged_base_qty,gift_base_qty,
                     goods_code_snapshot,goods_name_snapshot,goods_snapshot_source)
-                VALUES(?,?,'2026-08-30',?,1,?,1,?,1,?,?,?,
+                VALUES(?,?,'2026-08-30',?,1,?,?,1,?,1,?,?,?,
+                       ?,0,
                        'V440-G','V440 goods','MASTER_AT_SAVE')
                 """)){
             insert.setObject(1,itemId);
             insert.setString(2,billNo);
             insert.setObject(3,receiptId);
             insert.setObject(4,goods);
-            insert.setBigDecimal(5,qty);
+            insert.setObject(5,materialUnit);
             insert.setBigDecimal(6,qty);
             insert.setBigDecimal(7,qty);
-            insert.setObject(8,orderItemId);
+            insert.setBigDecimal(8,qty);
+            insert.setObject(9,orderItemId);
+            insert.setBigDecimal(10,qty);
             insert.executeUpdate();
         }
         return new ReceiptSeed(receiptId,itemId,null);

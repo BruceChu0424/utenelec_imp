@@ -57,11 +57,12 @@ class ProcurementMasterDefaultsSyncPostgresTest {
                 """, id, "G-SYNC-LOCK-" + id);
         UUID supplier = supplier("SUP-SYNC-LOCK");
         UUID order = purchaseOrder(supplier, low, null, null, null);
+        UUID unit = unit();
         jdbc.update("""
-                INSERT INTO purchase_order_items(id,order_id,goods_id,qty,price,line_no,is_deleted,
+                INSERT INTO purchase_order_items(id,order_id,goods_id,qty,price,line_no,is_deleted,unit_id,unit_rate,
                     bill_no,bill_date,goods_snapshot_source)
-                VALUES (?,?,?,1,18,2,false,'POI-LOCK',DATE '2026-09-15','MASTER_AT_SAVE')
-                """, UUID.randomUUID(), order, high);
+                VALUES (?,?,?,1,18,2,false,?,1,'POI-LOCK',DATE '2026-09-15','MASTER_AT_SAVE')
+                """, UUID.randomUUID(), order, high, unit);
         UUID warehouse = UUID.randomUUID();
         jdbc.update("INSERT INTO warehouses(id,code,name,status,is_accountable) VALUES (?,?,'锁序仓','使用',true)",
                 warehouse, "WH-LOCK-" + warehouse);
@@ -226,12 +227,12 @@ class ProcurementMasterDefaultsSyncPostgresTest {
         jdbc.update("INSERT INTO units(id,code,name,status) VALUES (?,?,'箱','使用')",
                 unit, "UNIT-SYNC-" + unit);
         UUID order = purchaseOrder(supplier, goods, null, currency, "13.0000");
-        jdbc.update("UPDATE purchase_order_items SET line_no=1, unit_id=? WHERE order_id=?", unit, order);
+        jdbc.update("UPDATE purchase_order_items SET line_no=1, unit_id=?, unit_rate=1 WHERE order_id=?", unit, order);
         // Lowest possible UUID on the last visible line: UUID sorting must not select the earlier price.
         jdbc.update("""
-                INSERT INTO purchase_order_items(id,order_id,goods_id,qty,price,line_no,unit_id,is_deleted,
+                INSERT INTO purchase_order_items(id,order_id,goods_id,qty,price,line_no,unit_id,unit_rate,is_deleted,
                     bill_no,bill_date,goods_snapshot_source)
-                VALUES ('00000000-0000-4000-8000-000000000001',?,?,1,78,2,?,false,
+                VALUES ('00000000-0000-4000-8000-000000000001',?,?,1,78,2,?,1,false,
                     'POI-CONTEXT',DATE '2026-09-15','MASTER_AT_SAVE')
                 """, order, goods, unit);
         long goodsVersion = jdbc.queryForObject("SELECT version FROM goods WHERE id=?", Long.class, goods);
@@ -359,13 +360,21 @@ class ProcurementMasterDefaultsSyncPostgresTest {
                 LocalDate.of(2026, 9, 15), supplierId, settlementId, currencyId, taxRate);
         jdbc.update("""
                 INSERT INTO purchase_order_items (
-                    id, order_id, goods_id, qty, price, is_deleted,
+                    id, order_id, goods_id, qty, price, is_deleted, unit_id, unit_rate,
                     bill_no, bill_date, goods_snapshot_source)
-                VALUES (?, ?, ?, 10, 12.500000, false,
+                VALUES (?, ?, ?, 10, 12.500000, false, ?, 1,
                         ?, DATE '2026-09-15', 'MASTER_AT_SAVE')
-                """, UUID.randomUUID(), orderId, goodsId,
+                """, UUID.randomUUID(), orderId, goodsId, unit(),
                 "POI-SYNC-" + orderId.toString().substring(0, 8));
         return orderId;
+    }
+
+    /** V1033 起新单据行按原数量×原换算率落基本量；直写夹具补真实计量单位与 1:1 换算率。 */
+    private UUID unit() {
+        UUID id = UUID.randomUUID();
+        jdbc.update("INSERT INTO units(id, code, name, status) VALUES (?, ?, '个', '使用')",
+                id, "UNT-SYNC-" + id.toString().substring(0, 8));
+        return id;
     }
 
     private UUID subcontractOrder(UUID supplierId, UUID goodsId, UUID settlementId, UUID currencyId, String taxRate) {

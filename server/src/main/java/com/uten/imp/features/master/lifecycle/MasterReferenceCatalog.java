@@ -338,6 +338,7 @@ final class MasterReferenceCatalog {
 
         inFlight(out);
         finance(out);
+        financeReproduction(out);
         return List.copyOf(out);
     }
 
@@ -541,6 +542,95 @@ final class MasterReferenceCatalog {
                 FROM supplier_settlement_batches s
                 WHERE s.supplier_id %s AND NOT s.is_deleted AND s.status NOT IN ('CLOSED', 'REVERSED')"""
                 .formatted(TARGETS)));
+    }
+
+    /**
+     * 2026-11 财务复刻/精度批次新增的主档引用：未完成复核的输入、在用的辅助核算绑定、
+     * 未冲销的预付资产和在途的暂估/调整仍然锁住对应主档；已确认/已过账的输入是历史事实，
+     * 归入豁免。标签只给定位线索，不展示私有单号或金额。
+     */
+    private static void financeReproduction(List<Reference> out) {
+        // 财务辅助核算目录：在用绑定仍指向真实客户/供应商，过账分录另有不可变快照。
+        for (Col col : List.of(new Col(CLIENT, "client_id"), new Col(SUPPLIER, "supplier_id"))) {
+            out.add(new Reference(col.target(), "finance_auxiliary_items", col.column(), RefKind.FINANCE_AUXILIARY, """
+                    SELECT i.%1$s, 'FINANCE_AUXILIARY', CAST(i.id AS text),
+                           '在用的财务辅助核算项目 ' || i.source_code, CAST(NULL AS uuid), 'public'
+                    FROM finance_auxiliary_items i
+                    WHERE i.%1$s %2$s AND i.status = 'ACTIVE'"""
+                    .formatted(col.column(), TARGETS)));
+        }
+        // 模板输入与对账证据：未确认/待复核的输入仍可编辑，继续使用客户、货品、颜色、单位身份。
+        out.add(new Reference(CLIENT, "finance_sales_cost_inputs", "client_id", RefKind.FINANCE_REVIEW_INPUT, """
+                SELECT c.client_id, 'FINANCE_REVIEW_INPUT', btrim(c.period::text) || ':' || c.client_id::text,
+                       '未确认的期间销售成本模板输入', c.updated_by, 'finance'
+                FROM finance_sales_cost_inputs c
+                WHERE c.client_id %1$s AND NOT c.confirmed""".formatted(TARGETS)));
+        out.add(new Reference(UNIT, "finance_plastic_template_inputs", "source_unit_id", RefKind.FINANCE_REVIEW_INPUT, """
+                SELECT p.source_unit_id, 'FINANCE_REVIEW_INPUT', CAST(p.period_line_id AS text),
+                       '未确认的塑料粒模板输入', p.updated_by, 'finance'
+                FROM finance_plastic_template_inputs p
+                WHERE p.source_unit_id %1$s AND NOT p.confirmed""".formatted(TARGETS)));
+        for (Col col : List.of(new Col(SUPPLIER, "supplier_id"), new Col(GOODS, "goods_id"))) {
+            out.add(new Reference(col.target(), "finance_copper_template_inputs", col.column(),
+                    RefKind.FINANCE_REVIEW_INPUT, """
+                    SELECT t.%1$s, 'FINANCE_REVIEW_INPUT', CAST(t.source_line_id AS text),
+                           '未确认的铜件模板输入', t.updated_by, 'finance'
+                    FROM finance_copper_template_inputs t
+                    WHERE t.%1$s %2$s AND NOT t.confirmed""".formatted(col.column(), TARGETS)));
+        }
+        for (Col col : List.of(new Col(GOODS, "goods_id"), new Col(COLOR, "color_id"))) {
+            out.add(new Reference(col.target(), "finance_material_contexts", col.column(),
+                    RefKind.FINANCE_REVIEW_INPUT, """
+                    SELECT c.%1$s, 'FINANCE_REVIEW_INPUT', CAST(c.id AS text),
+                           '在用的财务物料对账上下文', c.created_by, 'finance'
+                    FROM finance_material_contexts c
+                    WHERE c.%1$s %2$s AND c.active""".formatted(col.column(), TARGETS)));
+        }
+        // 委外损耗率政策与对账数量证据：提交待复核或已批准且生效中的继续引用主档。
+        String policyOpen = "(p.status = 'SUBMITTED' OR p.status = 'APPROVED' AND p.enabled)";
+        for (Col col : List.of(new Col(SUPPLIER, "supplier_id"), new Col(GOODS, "goods_id"),
+                new Col(COLOR, "color_id"), new Col(UNIT, "unit_id"))) {
+            out.add(new Reference(col.target(), "finance_subcontract_loss_policies", col.column(),
+                    RefKind.FINANCE_REVIEW_INPUT, """
+                    SELECT p.%1$s, 'FINANCE_REVIEW_INPUT', CAST(p.id AS text),
+                           '生效中的委外损耗率政策', CAST(NULL AS uuid), 'public'
+                    FROM finance_subcontract_loss_policies p
+                    WHERE p.%1$s %2$s AND %3$s""".formatted(col.column(), TARGETS, policyOpen)));
+        }
+        for (Col col : List.of(new Col(SUPPLIER, "supplier_id"), new Col(GOODS, "goods_id"),
+                new Col(COLOR, "color_id"), new Col(UNIT, "pcs_unit_id"))) {
+            out.add(new Reference(col.target(), "finance_subcontract_quantity_evidence", col.column(),
+                    RefKind.FINANCE_REVIEW_INPUT, """
+                    SELECT e.%1$s, 'FINANCE_REVIEW_INPUT', CAST(e.id AS text),
+                           '生效中的委外对账数量证据', CAST(NULL AS uuid), 'public'
+                    FROM finance_subcontract_quantity_evidence e
+                    WHERE e.%1$s %2$s AND (e.status = 'SUBMITTED' OR e.status = 'APPROVED' AND e.enabled)"""
+                    .formatted(col.column(), TARGETS)));
+        }
+        // 供应商预付资产：未冲销的预付仍属于该供应商。
+        out.add(new Reference(SUPPLIER, "finance_supplier_advances", "supplier_id", RefKind.SUPPLIER_ADVANCE, """
+                SELECT a.supplier_id, 'SUPPLIER_ADVANCE', CAST(a.payment_id AS text),
+                       '未冲销的供应商预付资产', CAST(NULL AS uuid), 'public'
+                FROM finance_supplier_advances a
+                WHERE a.supplier_id %s AND a.status = 'OPEN'""".formatted(TARGETS)));
+        // 采购暂估应付候选与对账确认：在途时仍按该供应商归集。
+        out.add(new Reference(SUPPLIER, "finance_procurement_payable_candidates", "supplier_id", RefKind.PAYABLE, """
+                SELECT c.supplier_id, 'PAYABLE', CAST(c.id AS text),
+                       '待对账确认的供应商暂估应付', CAST(NULL AS uuid), 'public'
+                FROM finance_procurement_payable_candidates c
+                WHERE c.supplier_id %s AND c.status = 'PENDING'""".formatted(TARGETS)));
+        out.add(new Reference(SUPPLIER, "finance_procurement_ap_recognitions", "supplier_id", RefKind.PAYABLE, """
+                SELECT r.supplier_id, 'PAYABLE', CAST(r.id AS text),
+                       '草稿中的供应商对账确认', CAST(NULL AS uuid), 'public'
+                FROM finance_procurement_ap_recognitions r
+                WHERE r.supplier_id %s AND r.status = 'DRAFT'""".formatted(TARGETS)));
+        // 单据级应付费用调整：草稿仍在编辑。
+        out.add(new Reference(SUPPLIER, "finance_payable_statement_adjustments", "supplier_id",
+                RefKind.PAYABLE_ADJUSTMENT, """
+                SELECT a.supplier_id, 'PAYABLE_ADJUSTMENT', CAST(a.id AS text),
+                       '草稿中的单据应付费用调整', a.created_by, 'finance'
+                FROM finance_payable_statement_adjustments a
+                WHERE a.supplier_id %s AND a.status = 'DRAFT'""".formatted(TARGETS)));
     }
 
     private static Reference goodsColumn(MasterEntityKind target, String column) {
@@ -765,6 +855,12 @@ final class MasterReferenceCatalog {
         // 表头仓库 + 行仓共同决定，行仓本身由库存余额守卫覆盖；这里只豁免引用登记。
         exempt(out, ExemptReason.COVERED, "手工出入库单行级仓库(V787)；库存移动由库存余额守卫覆盖",
                 "stock_document_items", "warehouse_id");
+        // 2026-11 财务复刻批次：BOM 采纳证据是不可变的已发生事实；正式 BOM 引用由
+        // goods_bom_items 守卫覆盖，采纳行只留来源动作与数值证据定位。
+        exempt(out, ExemptReason.HISTORY, "货品 BOM 材料成本采纳证据；正式引用由 goods_bom_items 守卫覆盖",
+                "goods_bom_material_cost_adoptions", "goods_id");
+        exempt(out, ExemptReason.HISTORY, "货品 BOM 周期数量采纳证据；正式引用由 goods_bom_items 守卫覆盖",
+                "goods_bom_periodic_quantity_adoptions", "goods_id", "component_goods_id");
         return List.copyOf(out);
     }
 

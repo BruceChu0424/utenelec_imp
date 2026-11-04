@@ -53,6 +53,7 @@ class FinancePaymentSettlementTest {
     private static final UUID MAKER_ID = UUID.fromString("40000000-0000-0000-0000-000000000004");
     private static final UUID APPROVER_ID = UUID.fromString("50000000-0000-0000-0000-000000000005");
     private static final UUID ACCOUNT_STYLE_ID = UUID.fromString("60000000-0000-0000-0000-000000000006");
+    private static final UUID COUNTER_STYLE_ID = UUID.fromString("70000000-0000-0000-0000-000000000007");
 
     private FinancePaymentRepository paymentRepo;
     private FinancePaymentLineRepository lineRepo;
@@ -134,9 +135,10 @@ class FinancePaymentSettlementTest {
         Query idempotencyLock = query();
         createReplay = query();
         Query supplierLookup = query();
-        Query hierarchy=query();Query postingStyle=query();
+        Query hierarchy=query();Query postingStyle=query();Query counterStyle=query();
         when(hierarchy.getSingleResult()).thenReturn(1L);
         when(postingStyle.getSingleResult()).thenReturn(ACCOUNT_STYLE_ID);
+        when(counterStyle.getSingleResult()).thenReturn(COUNTER_STYLE_ID);
         when(postingCount.getSingleResult()).thenAnswer(ignored ->
                 postingCounts.isEmpty() ? 0L : postingCounts.removeFirst());
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
@@ -159,6 +161,7 @@ class FinancePaymentSettlementTest {
             if (sql.contains("account_style_id(account.id)")) return ledgerLock;
             if(sql.contains("PAYMENT_STYLE_HIERARCHY"))return hierarchy;
             if(sql.contains("system_posting_style_id(:roleKey)"))return postingStyle;
+            if(sql.contains("fn_finance_native_cash_counter_style('PAYMENT',:id,:role,:currency,'SUPPLIER',:party,:day)"))return counterStyle;
             if (sql.contains("pg_advisory_xact_lock(hashtextextended")) {
                 return idempotencyLock;
             }

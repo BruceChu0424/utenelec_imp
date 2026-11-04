@@ -9,7 +9,7 @@ import static com.uten.imp.features.finance.statement.FinanceMaterialStatementSe
 final class FinanceMaterialSidebar {
  private final FinanceMaterialStatementService s;
  FinanceMaterialSidebar(FinanceMaterialStatementService s){this.s=s;}
- static Map<String,Object> family(Map<String,Object> context){var result=new TreeMap<String,Object>();for(String key:List.of("auxiliary_id","account_code","accounting_currency_id","amount_basis","original_currency_id"))result.put(key,Objects.toString(context.get(key),null));return result;}
+ static Map<String,Object> family(Map<String,Object> context){var result=new TreeMap<String,Object>();for(String key:List.of("auxiliary_id","account_code","accounting_currency_id","amount_basis","original_currency_id")){result.put(key,Objects.toString(context.get(key),null));}return result;}
  String key(Map<String,Object> context,SidebarLine line){return "side:"+s.hash(family(context))+":"+line.slot()+":"+line.dateFrom()+":"+line.dateTo();}
  Map<String,Object> validate(Map<String,Object> context,SidebarLine line){
   requireContext((UUID)context.get("id"),line.contextId());reference(line.sourceReference());if(line.slot()<1||line.slot()>4||line.dateFrom()==null||line.dateTo()==null||line.dateFrom().isAfter(line.dateTo()))throw invalid("原旁算只有四个位置，请明确适用起止日期和1至4位置");

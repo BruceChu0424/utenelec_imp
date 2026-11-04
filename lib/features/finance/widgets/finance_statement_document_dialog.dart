@@ -506,7 +506,7 @@ class _OriginalState extends ConsumerState<_Original> {
     }
     setState(() => _busy = true);
     try {
-      final bytes = await _api.getBytes(
+      final bytes = await _api.postForBytes(
         '$_base/reviews/${widget.id}/counterpart-file',
       );
       if (_current) {

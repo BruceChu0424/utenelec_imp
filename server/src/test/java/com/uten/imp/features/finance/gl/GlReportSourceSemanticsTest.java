@@ -46,7 +46,8 @@ class GlReportSourceSemanticsTest {
                 assertThat(tx.propagation()).isEqualTo(Propagation.REQUIRED);
             }
         }
-        assertThat(found).isEqualTo(11); // Both original and typed overloads retain the same snapshot boundary.
+        assertThat(found).isEqualTo(14); // Both original and typed overloads retain the same snapshot boundary;
+        // 14 = 11 + finance reproduction batch's profitAnnual(int,int), profitAnnual(int,int,options), adminExpense(int,int,options).
     }
     @Test
     void balanceSheetConsumesAllocatedFactsAndUsesOpeningAndClosingSnapshots() {

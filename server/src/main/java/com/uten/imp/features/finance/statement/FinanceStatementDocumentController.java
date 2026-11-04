@@ -36,5 +36,5 @@ public class FinanceStatementDocumentController {
     public Map<String,Object> counterpart(@PathVariable UUID id,@RequestPart("input")CounterpartConfirmation input,@RequestPart("file")MultipartFile file)throws IOException{
         return service.confirmCounterpart(id,input,file.getOriginalFilename(),file.getContentType(),file.getBytes());
     }
-    @GetMapping("/reviews/{id}/counterpart-file")public ResponseEntity<byte[]> counterpartFile(@PathVariable UUID id){return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).header(HttpHeaders.CONTENT_DISPOSITION,org.springframework.http.ContentDisposition.attachment().filename(service.counterpartFilename(id),java.nio.charset.StandardCharsets.UTF_8).build().toString()).body(service.counterpartFile(id));}
+    @PostMapping("/reviews/{id}/counterpart-file")public ResponseEntity<byte[]> counterpartFile(@PathVariable UUID id){return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).header(HttpHeaders.CONTENT_DISPOSITION,org.springframework.http.ContentDisposition.attachment().filename(service.counterpartFilename(id),java.nio.charset.StandardCharsets.UTF_8).build().toString()).body(service.counterpartFile(id));}
 }

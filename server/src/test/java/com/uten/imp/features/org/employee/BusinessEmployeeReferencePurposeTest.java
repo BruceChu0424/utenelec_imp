@@ -54,7 +54,8 @@ class BusinessEmployeeReferencePurposeTest {
     @Test void projectionAndUnknownPurposesAreClosedContracts() {
         assertEquals(Set.of("id","code","fullName","departmentId","departmentName","positionName","status","accountStatus"),
                 Arrays.stream(BusinessEmployeeReference.class.getRecordComponents()).map(java.lang.reflect.RecordComponent::getName).collect(Collectors.toSet()));
-        assertEquals(34,BusinessEmployeeReferencePurpose.values().length);
+        // 37 = 34 + 财务复原批次新增 FINANCE_AUXILIARY_PARTY/FINANCE_EXPENSE_ATTRIBUTION/FINANCE_APPLICATION_REVIEWER。
+        assertEquals(37,BusinessEmployeeReferencePurpose.values().length);
         assertThrows(ApiException.class,()->BusinessEmployeeReferencePurpose.parse("ANY_WRITE"));
         assertThrows(ApiException.class,()->BusinessEmployeeReferencePurpose.parse(null));
     }

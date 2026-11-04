@@ -131,7 +131,22 @@ class SchemaIndexHygieneContractTest {
             Map.entry("stock_value_legacy_balance_cases.resolution_event_id",
                     "旧库开账差异案例，只按案例读取"),
             Map.entry("preplan_make_entitlement_delegations.stock_reservation_id",
-                    "MAKE 委托已退役(PreplanStockEntitlementService 不再写入)，整表待删除"));
+                    "MAKE 委托已退役(PreplanStockEntitlementService 不再写入)，整表待删除"),
+            // V1025 精确冻结/恢复批次加的估值图恢复游标：只随主键前向读取，应用侧
+            // 只在 INSERT 列清单里出现，没有按游标回查的查询；这些热表每次估值改写
+            // 都更新，建索引会让更新失去 HOT，与同表既有游标列的保留理由一致。
+            Map.entry("stock_value_nodes.precision_source_node_id",
+                    "估值节点精度来源游标：只按主键前向读取，建索引会让节点改写失去 HOT"),
+            Map.entry("stock_value_tasks.restores_task_id",
+                    "精度恢复任务前驱，只在同一估值树下顺序读取"),
+            Map.entry("stock_value_edges.restores_transfer_id",
+                    "精度恢复转移游标，没有按它回查的查询"),
+            Map.entry("stock_value_events.projection_restore_of_event_id",
+                    "投影恢复事件前驱指针，事件链只前向遍历"),
+            Map.entry("stock_value_production_cost_revisions.restores_revision_id",
+                    "成本任务恢复版本前驱，只按主键读取"),
+            Map.entry("stock_value_production_cost_tasks.restores_task_id",
+                    "成本任务恢复前驱，只按主键读取"));
 
     /**
      * 等值探针「列 = 货品」用得上的领头索引(别名 i 为 pg_index、a 为领头列)：不带表达式，且不带条件或条件

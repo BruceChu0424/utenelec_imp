@@ -83,14 +83,14 @@ class FinanceDocumentIntakeOperationsPostgresTest {
   mvc.perform(get("/api/finance/auxiliary-imports/operations/"+request)).andExpect(status().isOk())
     .andExpect(jsonPath("$.requestId").value(request.toString())).andExpect(jsonPath("$.preview.importId").value(source.toString()))
     .andExpect(jsonPath("$.preview.sha256").value(hash));
-  mvc.perform(get("/api/finance/auxiliary-imports/"+source+"/file")).andExpect(status().isOk()).andExpect(content().bytes(file));
+  mvc.perform(post("/api/finance/auxiliary-imports/"+source+"/file")).andExpect(status().isOk()).andExpect(content().bytes(file));
   byte[] body=json.writeValueAsBytes(Map.of("importId",source));
   mvc.perform(post("/api/finance/auxiliary-imports/directory-apply").contentType("application/json").content(body)).andExpect(status().isOk());
   var afterFirst=sourceAndDirectoryCounts();
   // A normal second script run uses these GETs only. A repeated original POST is independently safe.
   mvc.perform(get("/api/finance/auxiliary-imports/"+source)).andExpect(status().isOk()).andExpect(jsonPath("$.directoryApplied").value(true));
   mvc.perform(get("/api/finance/auxiliary-imports/operations/"+request)).andExpect(status().isOk());
-  mvc.perform(get("/api/finance/auxiliary-imports/"+source+"/file")).andExpect(status().isOk()).andExpect(content().bytes(file));
+  mvc.perform(post("/api/finance/auxiliary-imports/"+source+"/file")).andExpect(status().isOk()).andExpect(content().bytes(file));
   assertThat(sourceAndDirectoryCounts()).isEqualTo(afterFirst);
   mvc.perform(multipart("/api/finance/auxiliary-imports/preview").file(multipart)
     .param("side","receivable").param("sourceSystem",book).param("currencyId",base.toString())

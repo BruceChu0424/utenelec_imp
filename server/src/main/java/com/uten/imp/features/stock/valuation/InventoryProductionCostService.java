@@ -18,10 +18,19 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
     private final InventoryValuationService values;
     private final boolean typedScopesInstalled;
     private final boolean frozenIdentityInstalled;
+    private final boolean exactBookValueInstalled;
     public InventoryProductionCostService(NamedParameterJdbcTemplate db,InventoryMutationLock mutex,InventoryValuationService values){
         super(db,mutex);this.values=values;
         this.typedScopesInstalled=Boolean.TRUE.equals(db.queryForObject("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='stock_value_production_cost_objects' AND column_name='source_kind')",Map.of(),Boolean.class));
         this.frozenIdentityInstalled=Boolean.TRUE.equals(db.queryForObject("SELECT to_regprocedure('public.fn_production_cost_input_identity(uuid,uuid)') IS NOT NULL",Map.of(),Boolean.class));
+        // The exact booked-net columns come with the V500/V517 value ledger. Projection-only
+        // fixtures of the V754/V756 bridge keep their v1 snapshots without this fact.
+        this.exactBookValueInstalled=Boolean.TRUE.equals(db.queryForObject("""
+                SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public'
+                    AND table_name='stock_value_nodes' AND column_name='owned_value_local')
+                AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public'
+                    AND table_name='stock_value_nodes' AND column_name='distributed_value_local')
+                """,Map.of(),Boolean.class));
     }
 
     @Override @Transactional(propagation=Propagation.MANDATORY)
@@ -408,7 +417,7 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
     private Map<String,Object> snapshot(UUID segment){return db.queryForMap("""
             SELECT (SELECT coalesce(jsonb_agg(jsonb_build_object('node',n.id,'revision',n.revision,'value',n.basis_value_local,'pending',n.pending_parents,
                     'returnedQty',coalesce((to_jsonb(n)->>'returned_consumption_qty')::numeric,0),'quantityBasis',n.quantity_basis,
-                    'returnCursor',to_jsonb(n)->>'consumption_return_head_id','valuePrecisionVersion',coalesce((SELECT to_jsonb(applied)->>'value_precision_version' FROM stock_value_node_revisions applied WHERE applied.node_id=n.id AND applied.revision=n.revision),to_jsonb(n)->>'value_precision_version'),'bookedNetValue',n.owned_value_local+n.distributed_value_local%s) ORDER BY n.id),'[]'::jsonb)
+                    'returnCursor',to_jsonb(n)->>'consumption_return_head_id','valuePrecisionVersion',coalesce((SELECT to_jsonb(applied)->>'value_precision_version' FROM stock_value_node_revisions applied WHERE applied.node_id=n.id AND applied.revision=n.revision),to_jsonb(n)->>'value_precision_version'),%s%s) ORDER BY n.id),'[]'::jsonb)
                 FROM stock_value_production_cost_inputs i JOIN stock_value_nodes n ON n.id=i.input_node_id WHERE i.execution_segment_id=:segment) inputs,
                 coalesce(jsonb_agg(jsonb_build_object('source',s.source_node_id,'movement',s.movement_id,'qty',s.qty_base,
                     'withdrawnMovement',to_jsonb(s)->>'withdrawn_movement_id',
@@ -417,7 +426,8 @@ public class InventoryProductionCostService extends InventoryValueLedger impleme
             FROM (SELECT o.*,CASE WHEN (to_jsonb(o)->>'withdrawn_movement_id') IS NULL THEN qty_base ELSE 0 END active_qty,
                     sum(CASE WHEN (to_jsonb(o)->>'withdrawn_movement_id') IS NULL THEN qty_base ELSE 0 END) OVER(ORDER BY output_sequence) through_qty
                 FROM stock_value_production_cost_outputs o WHERE execution_segment_id=:segment) s
-            """.formatted(frozenIdentityInstalled?",'identity',fn_production_cost_input_identity(n.id,i.approved_posting_id),'valueModel',n.value_model,'exactLower',CASE WHEN n.bound_revision=n.revision THEN n.bound_lower END,'exactUpper',CASE WHEN n.bound_revision=n.revision THEN n.bound_upper END":"",
+            """.formatted(exactBookValueInstalled?"'bookedNetValue',n.owned_value_local+n.distributed_value_local":"",
+                    frozenIdentityInstalled?",'identity',fn_production_cost_input_identity(n.id,i.approved_posting_id),'valueModel',n.value_model,'exactLower',CASE WHEN n.bound_revision=n.revision THEN n.bound_lower END,'exactUpper',CASE WHEN n.bound_revision=n.revision THEN n.bound_upper END":"",
                     frozenIdentityInstalled?",'identity',fn_production_cost_input_identity(s.source_node_id,NULL)":""),args("segment",segment));}
     private Map<String,Object> object(UUID id,boolean lock){List<Map<String,Object>> rows=db.queryForList("SELECT * FROM stock_value_production_cost_objects WHERE execution_segment_id=:id"+(lock?" FOR UPDATE":""),args("id",id));
         if(rows.size()!=1)throw conflict("生产成本对象尚未建立");return rows.getFirst();}

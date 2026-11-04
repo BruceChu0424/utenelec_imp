@@ -83,7 +83,7 @@ class ClientNativeCreditEndToEndTest {
         var exported=clients.export(filter,"creditFloor","asc",20);
         try(var book=new XSSFWorkbook(new ByteArrayInputStream(xlsx.build(exported.columns(),exported.rows())))){
             var sheet=book.getSheetAt(0);var formatter=new DataFormatter();int creditColumn=-1,floorColumn=-1;
-            for(var cell:sheet.getRow(0)){if(cell.getStringCellValue().startsWith("信用额度"))creditColumn=cell.getColumnIndex();if("铺底额".equals(cell.getStringCellValue()))floorColumn=cell.getColumnIndex();}
+            for(var cell:sheet.getRow(0)){if(cell.getStringCellValue().startsWith("信用额度")){creditColumn=cell.getColumnIndex();}if("铺底额".equals(cell.getStringCellValue()))floorColumn=cell.getColumnIndex();}
             assertThat(creditColumn).isNotNegative();assertThat(floorColumn).isNotNegative();
             assertThat(formatter.formatCellValue(sheet.getRow(1).getCell(creditColumn))).isEqualTo(credit);
             assertThat(formatter.formatCellValue(sheet.getRow(1).getCell(floorColumn))).isEqualTo(tiny);

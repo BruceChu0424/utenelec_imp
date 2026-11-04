@@ -85,5 +85,6 @@ String? exactNumberDisplay(
 /// Prefer original decimal strings/Exact DTO fields when they are available.
 extension ExactBusinessNumberText on num {
   String toExactString({int minimumFractionDigits = 0}) =>
-      exactNumberDisplay(this, minimumFractionDigits: minimumFractionDigits) ?? toString();
+      exactNumberDisplay(this, minimumFractionDigits: minimumFractionDigits) ??
+      toString();
 }

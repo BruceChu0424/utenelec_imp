@@ -25,7 +25,7 @@ final class FinanceTrialBalance {
         projected.add(new ReportColumn("__sectionOrder","","int",1));
         projected.add(new ReportColumn("__band","","int",1));
         projected.add(ReportColumn.text("__rowKind","",1));
-        boolean opening=FinancialLedgerReadScope.asOf(em,from.minusDays(1)).complete(),closing=FinancialLedgerReadScope.asOf(em,to).complete(),movement=FinancialLedgerReadScope.range(em,from,to).complete();
+        boolean opening=FinancialLedgerReadScope.asOf(em,from.minusDays(1)).complete(),closing=FinancialLedgerReadScope.asOf(em,to).complete(),movement=FinancialLedgerReadScope.range(em,from).complete();
         // Projection order is the declared nine columns followed by metadata.
         // Putting an order key before the six amounts shifts every numeric cell.
         String guarded="SELECT \"styleCode\",\"styleName\",\"currencyName\","

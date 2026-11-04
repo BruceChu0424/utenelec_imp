@@ -55,8 +55,10 @@ class PrelockStatementBudgetEndToEndTest {
 
     /** 委外发料草稿改一行的语句上限: 改前 69 条(其中整行哈希 28 条), ADR-107 实测 46 条, 取 +10%。 */
     static final int MATERIAL_ISSUE_UPDATE_BUDGET = 51;
-    /** 2026-09-30 同夹具572→474条；去重复锁/详情后收紧到525，防止冗余工作回流。 */
-    static final int ISSUE_BATCH_BUDGET = 525;
+    /** 2026-09-30 同夹具572→474条；去重复锁/详情后收紧到525，防止冗余工作回流。
+     * 2026-11 财务复原批次给出库明细公斤原输入补 BusinessNumericInputEvidencePort 证据:
+     * 原输入与已确认精度不一致时 flush 后按 xmin 回读核对实际存储再登记, 实测 537, 按实测上调。 */
+    static final int ISSUE_BATCH_BUDGET = 537;
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {

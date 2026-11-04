@@ -78,8 +78,14 @@ void main() {
       valid: true,
     ));
     expect(parseGoodsPurchaseOverReceiptPct('100.01').valid, isFalse);
-    expect(parseGoodsPurchaseOverReceiptPct('1.234'), (value: '1.234', valid: true));
-    expect(parseGoodsPurchaseOverReceiptPct('0.0000000000000000000000001').valid, isFalse);
+    expect(parseGoodsPurchaseOverReceiptPct('1.234'), (
+      value: '1.234',
+      valid: true,
+    ));
+    expect(
+      parseGoodsPurchaseOverReceiptPct('0.0000000000000000000000001').valid,
+      isFalse,
+    );
     expect(parseGoodsPurchaseOverReceiptPct('-1').valid, isFalse);
   });
 

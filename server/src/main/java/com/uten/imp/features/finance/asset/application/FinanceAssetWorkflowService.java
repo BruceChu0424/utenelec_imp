@@ -336,7 +336,7 @@ public class FinanceAssetWorkflowService {
                     .setParameter("actor", actor).setParameter("id", id).executeUpdate();
         }
         boolean linked=grouped||opening!=null&&opening.existingVoucherId()!=null;
-        Map<String,Object> recognition=new LinkedHashMap<>();if(voucher!=null)recognition.put("voucherId",voucher.toString());recognition.put("existingGlLinked",linked);recognition.put("zeroBalanceEvidence",grouped&&voucher==null);
+        Map<String,Object> recognition=new LinkedHashMap<>();if(voucher!=null){recognition.put("voucherId",voucher.toString());}recognition.put("existingGlLinked",linked);recognition.put("zeroBalanceEvidence",grouped&&voucher==null);
         event(deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET", id, "ACTIVATED", linked?(voucher==null?"原账零余额已核对，不新增凭证":"已关联原有凭证，不重复入账"):"初始确认已记账", date, null, recognition, actor);
         return result(id, deferred);
     }

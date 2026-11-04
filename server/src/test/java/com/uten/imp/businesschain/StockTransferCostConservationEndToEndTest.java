@@ -130,9 +130,12 @@ class StockTransferCostConservationEndToEndTest {
    // Reconstruct the observed historical row. Current cancel has release semantics;
    // this fixture must not pretend it produced the persisted stopped+reserved state.
    db.update("UPDATE sales_orders SET is_stopped=TRUE WHERE id=?",order);
+   // V1025：上面的待定成本就是未应用的整目标核对队列；同池实物转移在其完成前按 40001 拒绝
+   // （真实运行由轮询工作器收口，等同“稍后重试”）。先驱动真实工作器结算，再按停用单转移实物。
+   harness.settleRootStockCosts(source);
    UUID claim=moveFinishedPreservingClaim(source.world(),source.goods(),source.salesOrderItem(),target.get(),"10","ROOT_SUPPLY_INBOUND");
    assertThat(db.queryForObject("SELECT is_stopped FROM sales_orders WHERE id=?",Boolean.class,order)).isTrue();
-   assertThat(number("SELECT node.pending_parents FROM stock_value_pools pool JOIN stock_value_nodes node ON node.id=pool.head_node_id WHERE pool.warehouse_id=? AND pool.goods_id=?",target.get(),source.goods())).isPositive();
+   assertThat(number("SELECT node.pending_parents FROM stock_value_pools pool JOIN stock_value_nodes node ON node.id=pool.head_node_id WHERE pool.warehouse_id=? AND pool.goods_id=?",target.get(),source.goods())).isZero();
    var shipments=beans.getBean(com.uten.imp.features.sales.shipment.SalesShipmentService.class);
    com.uten.imp.features.sales.shipment.dto.ShipmentSaveRequest sale=org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"shipmentRequest",source.world(),source.salesOrderItem(),source.goods(),"10");
    sale.setWarehouseId(target.get());assertThatThrownBy(()->shipments.create(sale)).isInstanceOf(ApiException.class);

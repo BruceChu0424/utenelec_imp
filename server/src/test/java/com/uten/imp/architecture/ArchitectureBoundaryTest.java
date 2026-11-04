@@ -113,7 +113,14 @@ class ArchitectureBoundaryTest {
             "expenseclaim->common",
             "purchase->common",
             "sales->common",
-            "stock->common");
+            "stock->common",
+            // 2026-11-04：财务复刻批次正式依赖（ADR-017 登记边）——finance 的申请/付款任务流
+            // 接入 ADR-023 统一任务并发认领 TaskClaimService（与 expenseclaim/purchase/sales/
+            // stock ->common 同构的 show-as-locked 服务端兜底）；FinanceApplicationRoles 逐动作
+            // 只读复核经办/岗位/收款人选账号的现时权限（features.auth 的 UserAccountRepository +
+            // PermissionResolver，与 visitor->auth 只读跨查同构）。
+            "finance->auth",
+            "finance->common");
 
     @Test
     void controllersDoNotDependDirectlyOnRepositories() throws IOException {
@@ -220,6 +227,9 @@ class ArchitectureBoundaryTest {
     private static final Map<String, String> HALF_UP_EXEMPTIONS = Map.ofEntries(
             Map.entry("common/finance/MoneyPolicy.java",
                     "唯一的金额口径类: 累计份额取位、数量 4 位存储、报表占比 2 位都在这里集中定义"),
+            Map.entry("common/finance/BusinessPrecisionContext.java",
+                    "用户显式数值精度选择协议本身(非金额口径): X-Uten-Precision-Choices 的取舍方式词表"
+                            + " HALF_UP/DOWN 与 choice.mode() 的唯一应用点, MoneyPolicy 除不尽时委托这里"),
             Map.entry("features/finance/asset/",
                     "固定资产/待摊: 按月等额 4 位 + 末期吸收全部尾差(守恒已成立), 子账列为 NUMERIC(18,4); 改按累计份额需同步放宽子账列, 另立项"),
             Map.entry("features/subcontract/short_delivery/",

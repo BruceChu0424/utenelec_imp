@@ -238,13 +238,13 @@ public class XlsxExportService {
         private void initializeLayout(SheetState state) {
             var layout=state.layout;var sheet=state.sheet;
             for(int rowNo=layout.headerStartRow();rowNo<=layout.headerRow();rowNo++) {
-                Row row=sheet.getRow(rowNo);if(row==null)row=sheet.createRow(rowNo);row.setHeightInPoints(layout.rowHeight());
-                for(int col=0;col<state.columns.size();col++){Cell cell=row.getCell(col);if(cell==null)cell=row.createCell(col);cell.setCellStyle(layoutStyle(header,layout,false,null,HorizontalAlignment.CENTER,true));}
+                Row row=sheet.getRow(rowNo);if(row==null){row=sheet.createRow(rowNo);}row.setHeightInPoints(layout.rowHeight());
+                for(int col=0;col<state.columns.size();col++){Cell cell=row.getCell(col);if(cell==null){cell=row.createCell(col);}cell.setCellStyle(layoutStyle(header,layout,false,null,HorizontalAlignment.CENTER,true));}
             }
             for(var heading:layout.headings()) {
                 Row row=sheet.getRow(heading.row());if(row==null)row=sheet.createRow(heading.row());
                 row.setHeightInPoints(Math.max(layout.rowHeight(),heading.fontSize()+8));
-                Cell cell=row.getCell(heading.column());if(cell==null)cell=row.createCell(heading.column());cell.setCellValue(heading.text());
+                Cell cell=row.getCell(heading.column());if(cell==null){cell=row.createCell(heading.column());}cell.setCellValue(heading.text());
                 var style=workbook.createCellStyle();style.cloneStyleFrom(heading.row()>=layout.headerStartRow()?layoutStyle(header,layout,heading.bold(),null,HorizontalAlignment.CENTER,true):text);
                 var font=workbook.createFont();font.setFontName(layout.fontName());font.setFontHeightInPoints((short)heading.fontSize());font.setBold(heading.bold());style.setFont(font);
                 style.setAlignment(switch(heading.alignment()){case "CENTER"->HorizontalAlignment.CENTER;case "RIGHT"->HorizontalAlignment.RIGHT;default->HorizontalAlignment.LEFT;});
@@ -263,9 +263,9 @@ public class XlsxExportService {
                     Row row=sheet.getRow(rowNo);if(row!=null&&row.getCell(column)!=null)row.getCell(column).setBlank();
                 }
             }
-            layout.headingRowHeights().forEach((rowNo,height)->{Row row=sheet.getRow(rowNo);if(row==null)row=sheet.createRow(rowNo);row.setHeightInPoints(height);});
+            layout.headingRowHeights().forEach((rowNo,height)->{Row row=sheet.getRow(rowNo);if(row==null){row=sheet.createRow(rowNo);}row.setHeightInPoints(height);});
             for(int rowNo=0;rowNo<=layout.headerRow();rowNo++)if(state.supplemental.containsKey(rowNo)){
-                Row row=sheet.getRow(rowNo);if(row==null)row=sheet.createRow(rowNo);appendSupplemental(state,row);
+                Row row=sheet.getRow(rowNo);if(row==null){row=sheet.createRow(rowNo);}appendSupplemental(state,row);
             }
             sheet.setRepeatingRows(new org.apache.poi.ss.util.CellRangeAddress(0,layout.headerRow(),-1,-1));
             sheet.getPrintSetup().setLandscape(layout.landscape());sheet.setFitToPage(true);
@@ -294,7 +294,7 @@ public class XlsxExportService {
             if(body){Object styles=source.get("bodyStyles");details=styles instanceof java.util.List<?> list&&column<list.size()?sourceMap(list.get(column)):java.util.Map.of();}
             else{String address=new org.apache.poi.ss.util.CellReference(sourceRow,column).formatAsString();details=sourceMap(sourceMap(source.get("sourceStyles")).get(address));}
             if(details.isEmpty())return;var original=cell.getCellStyle();String key="source-text|"+original.getIndex()+"|"+details;
-            cell.setCellStyle(layoutStyles.computeIfAbsent(key,ignored->{var style=workbook.createCellStyle();style.cloneStyleFrom(original);style.setWrapText(Boolean.TRUE.equals(details.get("wrapText")));style.setShrinkToFit(Boolean.TRUE.equals(details.get("shrinkToFit")));Object alignment=details.get("alignment");if(alignment instanceof String text&&java.util.Set.of("LEFT","CENTER","RIGHT").contains(text))style.setAlignment(HorizontalAlignment.valueOf(text));String fontKey="source|"+state.layout.fontName()+"|"+details.get("fontSize")+"|"+details.get("bold");var font=layoutFonts.computeIfAbsent(fontKey,unused->{var created=workbook.createFont();created.setFontName(state.layout.fontName());created.setFontHeightInPoints((short)sourceNumber(details.get("fontSize")));created.setBold(Boolean.TRUE.equals(details.get("bold")));return created;});style.setFont(font);return style;}));
+            cell.setCellStyle(layoutStyles.computeIfAbsent(key,ignored->{var style=workbook.createCellStyle();style.cloneStyleFrom(original);style.setWrapText(Boolean.TRUE.equals(details.get("wrapText")));style.setShrinkToFit(Boolean.TRUE.equals(details.get("shrinkToFit")));Object alignment=details.get("alignment");if(alignment instanceof String text&&java.util.Set.of("LEFT","CENTER","RIGHT").contains(text)){style.setAlignment(HorizontalAlignment.valueOf(text));}String fontKey="source|"+state.layout.fontName()+"|"+details.get("fontSize")+"|"+details.get("bold");var font=layoutFonts.computeIfAbsent(fontKey,unused->{var created=workbook.createFont();created.setFontName(state.layout.fontName());created.setFontHeightInPoints((short)sourceNumber(details.get("fontSize")));created.setBold(Boolean.TRUE.equals(details.get("bold")));return created;});style.setFont(font);return style;}));
         }
         /** Source nowrap is retained in sourcePrint. Complete new body values
          * may expand vertically; no font reduction, raw-value rewrite or clipped
@@ -304,7 +304,7 @@ public class XlsxExportService {
             var source=state.layout.sourcePrint();if(source.isEmpty()||cell.getCellStyle().getShrinkToFit())return;
             String value=sourceValueFormatter.formatCellValue(cell);if(value.isEmpty())return;
             Object raw=source.get("columnWidthsPoints");if(!(raw instanceof java.util.List<?> widths)||lastColumn>=widths.size())throw new IllegalArgumentException("Source column width proof unavailable");
-            double width=-4;for(int column=firstColumn;column<=lastColumn;column++)if(!state.layout.hiddenColumns().contains(column))width+=sourceNumber(widths.get(column));if(width<=0)return;
+            double width=-4;for(int column=firstColumn;column<=lastColumn;column++){if(!state.layout.hiddenColumns().contains(column))width+=sourceNumber(widths.get(column));}if(width<=0)return;
             var original=cell.getCellStyle();String key="source-complete|"+original.getIndex();cell.setCellStyle(layoutStyles.computeIfAbsent(key,ignored->{var style=workbook.createCellStyle();style.cloneStyleFrom(original);style.setWrapText(true);return style;}));
             double fontSize=workbook.getFontAt(cell.getCellStyle().getFontIndex()).getFontHeightInPoints(),used=0;int lines=1;
             for(int offset=0;offset<value.length();){int cp=value.codePointAt(offset);offset+=Character.charCount(cp);if(cp=='\n'){lines++;used=0;continue;}double advance=fontSize*(cp<128?.65:1.0);if(used>0&&used+advance>width){lines++;used=0;}used+=advance;}
@@ -392,7 +392,7 @@ public class XlsxExportService {
             var layout=state.layout;var footer=layout.footer();int start=layout.headerRow()+1+Math.max(state.dataCount,footer.minimumDataRows());
             int end=start+footer.cells().stream().mapToInt(cell->cell.rowOffset()+cell.rowSpan()).max().orElse(0)-1;
             if(end>=1048576)throw new IllegalStateException("Source footer exceeds Excel row limit");
-            while(state.rowIndex<start){checkpoint.run();Row row=state.sheet.createRow(state.rowIndex++);row.setHeightInPoints(layout.rowHeight());for(int col=0;col<state.columns.size();col++)row.createCell(col).setCellStyle(layoutStyle(text,layout,false,null,HorizontalAlignment.LEFT,true));appendSupplemental(state,row);}
+            while(state.rowIndex<start){checkpoint.run();Row row=state.sheet.createRow(state.rowIndex++);row.setHeightInPoints(layout.rowHeight());for(int col=0;col<state.columns.size();col++){row.createCell(col).setCellStyle(layoutStyle(text,layout,false,null,HorizontalAlignment.LEFT,true));}appendSupplemental(state,row);}
             while(state.rowIndex<=end){Row row=state.sheet.createRow(state.rowIndex++);row.setHeightInPoints(layout.rowHeight());appendSupplemental(state,row);}
             for(var source:footer.cells()){
                 checkpoint.run();int rowNo=start+source.rowOffset();Row row=state.sheet.getRow(rowNo);Cell cell=row.getCell(source.column());if(cell==null)cell=row.createCell(source.column());

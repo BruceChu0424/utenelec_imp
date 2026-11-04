@@ -89,12 +89,8 @@ public class ImpersonationWriteGuardFilter extends OncePerRequestFilter {
     static boolean readOnlyB1Query(String method, String path) {
         return com.uten.imp.common.web.GoodsSearchReadRoutes.matches(method,path)
                 || com.uten.imp.common.web.EmployeeCandidateReadRoutes.matches(method,path)
-                || "POST".equals(method) && (Set.of("/api/master/clients/search-context",
-                "/api/business-references/clients/search-context", "/api/business-references/suppliers/search-context",
-                "/api/business-references/clients/search", "/api/business-references/suppliers/search",
-                "/api/master/suppliers/search-context", "/api/sales/orders/shippable-lines/selection",
-                "/api/quality/pending-disposals/query").contains(path)
-                || com.uten.imp.common.report.ProcurementReadRoutes.printAuthorization(path));
+                || com.uten.imp.common.web.ExactBodyReadRoutes.matches(method,path)
+                || com.uten.imp.common.report.ProcurementReadRoutes.printAuthorization(path);
     }
     static boolean readOnlyFacetCandidate(HttpServletRequest request,String method,String path) {
         var route=com.uten.imp.common.report.NativeFacetRoutes.find(path);

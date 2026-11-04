@@ -852,7 +852,7 @@ class _ConfirmationDetailState extends ConsumerState<_ConfirmationDetail> {
     if (!_current || _busy) return;
     setState(() => _busy = true);
     try {
-      final bytes = await _api.getBytes('$_path/${widget.id}/file');
+      final bytes = await _api.postForBytes('$_path/${widget.id}/file');
       if (_current) {
         await saveBytes(
           bytes,

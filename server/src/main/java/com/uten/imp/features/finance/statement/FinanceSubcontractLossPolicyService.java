@@ -109,7 +109,7 @@ public class FinanceSubcontractLossPolicyService {
         db.update("UPDATE finance_subcontract_loss_policies SET status=?,reviewed_by=?,reviewed_at=now(),review_reason=? WHERE id=?",input.approve()?"APPROVED":"REJECTED",current.requireId(),reason,id);return get(id);
     }
     /** Only rules affecting the actual source rows enter this statement's proof. */
-    @Transactional(readOnly=true)public List<Map<String,Object>> rulesFor(UUID supplier,LocalDate from,LocalDate to){
+    @Transactional(readOnly=true)public List<Map<String,Object>> rulesFor(UUID supplier,LocalDate to){
         read();var rows=db.queryForList("""
             SELECT policy.id,policy.goods_id AS "goodsId",policy.color_id AS "colorId",policy.unit_id AS "unitId",policy.rate,
               policy.effective_from AS "effectiveFrom",policy.effective_to AS "effectiveTo",policy.revision,policy.source_reference AS "sourceReference"

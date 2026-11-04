@@ -43,7 +43,6 @@ public class FinanceApplicationLegacyPolicy {
     }
     /** Canonical employee identities, never displayed names, define separation. */
     public void requireUninvolvedPayer(Map<String,Object> application,UUID actor) {
-        UUID id=(UUID)application.get("id");
         boolean involved=!uninvolvedPayer(application,actor);
         if(involved) throw new ApiException(ErrorCode.FORBIDDEN,"实际付款须由与申请人及本轮所有已实审人员分离的人员登记");
     }

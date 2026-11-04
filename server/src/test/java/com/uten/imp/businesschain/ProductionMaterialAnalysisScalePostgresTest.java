@@ -697,7 +697,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
         scale.put("event","supply-scale"); scale.put("products",size);
         scale.put("initialMaterialRows",view.flatMaterials().size()); scale.put("historicalRows",historyRows);
         scale.put("maxHeapBytes",Runtime.getRuntime().maxMemory());
-        scale.put("migrationHead",jdbc.queryForObject("select max(version::int) from flyway_schema_history where success",Integer.class));
+        scale.put("migrationHead",jdbc.queryForObject("select max(version::numeric) from flyway_schema_history where success",Integer.class));
         scale.put("successfulMigrations",jdbc.queryForObject("select count(*) from flyway_schema_history where success and type='SQL'",Integer.class));
         scale.put("jit",jdbc.queryForObject("SHOW jit",String.class));
         scale.put("databaseProfile",System.getenv().getOrDefault("UTEN_PRODUCTION_STRESS_DATABASE_PROFILE","test-default"));
@@ -794,7 +794,7 @@ class ProductionMaterialAnalysisScalePostgresTest {
             scale.put("processors", Runtime.getRuntime().availableProcessors());
             scale.put("concurrentLoad", System.getProperty("uten.production.concurrentLoad", "unspecified"));
             scale.put("postgres", jdbc.queryForObject("select version()", String.class));
-            scale.put("migrationHead", jdbc.queryForObject("select max(version::int) from flyway_schema_history where success", Integer.class));
+            scale.put("migrationHead", jdbc.queryForObject("select max(version::numeric) from flyway_schema_history where success", Integer.class));
             scale.put("successfulMigrations", jdbc.queryForObject("select count(*) from flyway_schema_history where success and type='SQL'", Integer.class));
             scale.put("jit", jdbc.queryForObject("SHOW jit", String.class));
             scale.put("databaseProfile", System.getenv().getOrDefault("UTEN_PRODUCTION_STRESS_DATABASE_PROFILE", "test-default"));

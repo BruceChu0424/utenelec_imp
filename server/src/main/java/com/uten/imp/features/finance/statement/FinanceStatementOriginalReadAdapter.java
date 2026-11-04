@@ -50,7 +50,7 @@ public class FinanceStatementOriginalReadAdapter implements FinanceStatementOrig
         }
         return new Original(id,template,"SUPPLIER",supplier,currency,LocalDate.parse(context.get("dateFrom").toString()),LocalDate.parse(context.get("dateTo").toString()),fingerprint,Objects.toString(review.get("document_sha256"),""),amount,complete);
     }
-    private static List<Map<String,Object>> rows(Object value){if(!(value instanceof List<?> rows))throw invalid("原件缺少完整来源行");var result=new ArrayList<Map<String,Object>>();for(Object row:rows)result.add(map(row));return result;}
+    private static List<Map<String,Object>> rows(Object value){if(!(value instanceof List<?> rows))throw invalid("原件缺少完整来源行");var result=new ArrayList<Map<String,Object>>();for(Object row:rows){result.add(map(row));}return result;}
     private static Map<String,Object> map(Object value){if(!(value instanceof Map<?,?> map))throw invalid("原件结构无效，请核对原保存版本");var result=new LinkedHashMap<String,Object>();map.forEach((key,cell)->result.put(key.toString(),cell));return result;}
     private static UUID uuid(Object value){try{return value instanceof UUID id?id:UUID.fromString(Objects.toString(value,""));}catch(IllegalArgumentException failure){throw invalid("原件缺少真实业务UUID，不能按名称或金额猜配");}}
     private static ApiException invalid(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}

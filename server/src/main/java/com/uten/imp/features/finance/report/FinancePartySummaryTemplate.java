@@ -27,7 +27,7 @@ final class FinancePartySummaryTemplate {
             String key=keys[i],label=FinanceTemplateContract.header(contract,i);labels.put(key,label);
             ReportColumn column=new ReportColumn(key,label,i<texts?"text":"money",i==2?230:120)
                     .withHeaderGroups(FinanceTemplateContract.headerGroups(contract,i));
-            if(i>=texts)column=column.withUnitLabel("元");columns.add(column);
+            if(i>=texts){column=column.withUnitLabel("元");}columns.add(column);
         }
         var rows=new ArrayList<Map<String,Object>>();
         for(var original:source.rows()) {

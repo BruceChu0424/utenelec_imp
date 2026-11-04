@@ -615,7 +615,7 @@ class LegacyBootstrapSchemaCompatibilityPostgresTest {
     private static void assertFlywayHead(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement();
              ResultSet rows = statement.executeQuery("""
-                     SELECT COUNT(*), COUNT(DISTINCT version), MAX(version::integer)
+                     SELECT COUNT(*), COUNT(DISTINCT version), MAX(version::numeric)
                      FROM flyway_schema_history
                      WHERE version IS NOT NULL AND success
                      """)) {

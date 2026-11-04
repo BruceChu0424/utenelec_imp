@@ -33,14 +33,18 @@ public final class MigrationRehearsalSupport {
     public static final String CURRENT_HEAD_VERSION;
     public static final int CURRENT_MIGRATION_COUNT;
 
-    /** Sorted version numbers of every V*__*.sql found on the test classpath. */
-    private static final java.util.List<Integer> MIGRATION_FILE_VERSIONS = new java.util.ArrayList<>();
+    /** 每个迁移文件的 (主版本, 点分段) 版本对，如 V990__ 为 {990,0}、V990_1__ 为 {990,1}。 */
+    private static final java.util.List<int[]> MIGRATION_FILE_VERSIONS = new java.util.ArrayList<>();
 
     static {
         try {
             Path migrationDir = Paths.get(
                     MigrationRehearsalSupport.class.getResource("/db/migration").toURI());
-            Pattern versioned = Pattern.compile("V(\\d+)__.*\\.sql");
+            // V990_1/V999_13 一类点分文件（Flyway 版本 990.1/999.13）同样是版本迁移，
+            // 必须数进条数与版本推导；本批之前 V(\d+)__ 漏数点分文件，条数比
+            // flyway_schema_history 实际成功行少。头仍是整数主版本（当前头文件非点分；
+            // 若未来头落在点分文件上，latestSuccessfulVersion 的 "990.1" 形式会在此失配报出）。
+            Pattern versioned = Pattern.compile("V(\\d+)(?:_(\\d+))?__.*\\.sql");
             int head = 0;
             int count = 0;
             try (Stream<Path> files = Files.list(migrationDir)) {
@@ -49,10 +53,11 @@ public final class MigrationRehearsalSupport {
                     if (!matcher.matches()) {
                         continue;
                     }
-                    int version = Integer.parseInt(matcher.group(1));
+                    int major = Integer.parseInt(matcher.group(1));
+                    int minor = matcher.group(2) == null ? 0 : Integer.parseInt(matcher.group(2));
                     count++;
-                    MIGRATION_FILE_VERSIONS.add(version);
-                    head = Math.max(head, version);
+                    MIGRATION_FILE_VERSIONS.add(new int[] {major, minor});
+                    head = Math.max(head, major);
                 }
             } catch (IOException failure) {
                 throw new IllegalStateException("无法枚举 db/migration 目录", failure);
@@ -76,8 +81,9 @@ public final class MigrationRehearsalSupport {
      */
     public static int migrationFileCountUpTo(int version) {
         int total = 0;
-        for (int fileVersion : MIGRATION_FILE_VERSIONS) {
-            if (fileVersion <= version) {
+        for (int[] fileVersion : MIGRATION_FILE_VERSIONS) {
+            // 点分版本 990.1 对整数目标只从 991 起计入（990.1 > 990），非点分文件按主版本比较。
+            if (fileVersion[0] < version || (fileVersion[0] == version && fileVersion[1] == 0)) {
                 total++;
             }
         }

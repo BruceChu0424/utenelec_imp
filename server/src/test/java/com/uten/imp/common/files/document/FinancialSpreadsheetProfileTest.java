@@ -46,8 +46,9 @@ class FinancialSpreadsheetProfileTest {
         try(var zip=new ZipOutputStream(out)) {
             for(String part:new String[]{"[Content_Types].xml","xl/workbook.xml"}){zip.putNextEntry(new ZipEntry(part));zip.write("<x/>".getBytes());zip.closeEntry();}
             zip.putNextEntry(new ZipEntry("xl/media/image1.png"));
-            byte[] chunk=new byte[1024*1024];new java.util.Random(994).nextBytes(chunk);
-            for(int n=0;n<17;n++)zip.write(chunk);zip.closeEntry();
+            byte[] chunk=new byte[1024*1024];var random=new java.util.SplittableRandom(994);
+            for(int i=0;i<chunk.length;i+=8){long bits=random.nextLong();for(int j=0;j<8;j++)chunk[i+j]=(byte)(bits>>>(j*8));}
+            for(int n=0;n<17;n++){zip.write(chunk);}zip.closeEntry();
         }
         byte[] bytes=out.toByteArray();assertThat(bytes.length).isGreaterThan(15*1024*1024);
         assertThatThrownBy(()->ZipSafety.inspectSpreadsheet(bytes)).hasMessageContaining("15 MB");

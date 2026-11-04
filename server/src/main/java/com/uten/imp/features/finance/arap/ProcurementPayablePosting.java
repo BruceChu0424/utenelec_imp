@@ -1,7 +1,6 @@
-package com.uten.imp.common.finance;
+package com.uten.imp.features.finance.arap;
 
 import com.uten.imp.application.port.ProcurementPayableRecognitionPort;
-import com.uten.imp.features.finance.arap.ArApLedgerService;
 
 /** One native posting adapter; its return value is the true formal-AP flag, never a candidate flag. */
 public final class ProcurementPayablePosting {

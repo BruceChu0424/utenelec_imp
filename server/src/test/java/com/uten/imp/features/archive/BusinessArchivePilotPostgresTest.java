@@ -88,6 +88,14 @@ class BusinessArchivePilotPostgresTest {
         return id;
     }
 
+    /** V1033 起新单据行按原数量×原换算率落基本量；归档夹具补真实计量单位与 1:1 换算率。 */
+    private UUID unit() {
+        UUID id = UUID.randomUUID();
+        jdbc.update("INSERT INTO units(id, code, name, status) VALUES (?, ?, '个', '使用')",
+                id, "UNT" + masterSeq());
+        return id;
+    }
+
     /** V279 全局单号注册表: 单据标准格式=前缀+YYYYMMDD+6位序列(采购订单 CD/收货 CJ)。 */
     private static final java.util.concurrent.atomic.AtomicLong DOC_SEQ =
             new java.util.concurrent.atomic.AtomicLong(1);
@@ -114,12 +122,12 @@ class BusinessArchivePilotPostgresTest {
                 """, order, billNo, supplierId);
         jdbc.update("""
                 INSERT INTO purchase_order_items(
-                    id, order_id, bill_no, bill_date, goods_id, qty,
+                    id, order_id, bill_no, bill_date, goods_id, qty, unit_id, unit_rate,
                     goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
-                SELECT gen_random_uuid(), ?, ?, CURRENT_DATE - interval '30 months', ?, 10,
+                SELECT gen_random_uuid(), ?, ?, CURRENT_DATE - interval '30 months', ?, 10, ?, 1,
                        g.code, g.name, 'LEGACY_IMPORT', now()
                 FROM goods g WHERE g.id = ?
-                """, order, billNo, goodsId, goodsId);
+                """, order, billNo, goodsId, unit(), goodsId);
         return order;
     }
 
@@ -149,11 +157,11 @@ class BusinessArchivePilotPostgresTest {
         insertConsiderationPart(receipt, itemId, 10, 100);
         jdbc.update("""
                 INSERT INTO purchase_receipt_items(
-                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, qty,
-                    unit_rate, price, amount_original, amount_local, replacement_intent,
+                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, qty, unit_id,
+                    unit_rate, price, amount_original, amount_local, replacement_intent, charged_base_qty, gift_base_qty,
                     goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
-                SELECT ?, ?, CURRENT_DATE - interval '29 months', ?, oi.id, ?, 10,
-                       1, 10, 100, 100, 'NORMAL',
+                SELECT ?, ?, CURRENT_DATE - interval '29 months', ?, oi.id, ?, 10, oi.unit_id,
+                       1, 10, 100, 100, 'NORMAL', 10, 0,
                        g.code, g.name, 'LEGACY_IMPORT', now()
                 FROM purchase_order_items oi JOIN goods g ON g.id = oi.goods_id
                 WHERE oi.order_id = ?
@@ -272,11 +280,11 @@ class BusinessArchivePilotPostgresTest {
                 """, draftReceipt, draftNo, supplierId);
         jdbc.update("""
                 INSERT INTO purchase_receipt_items(
-                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, qty,
-                    unit_rate, price, amount_original, amount_local, replacement_intent,
+                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, qty, unit_id,
+                    unit_rate, price, amount_original, amount_local, replacement_intent, charged_base_qty, gift_base_qty,
                     goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
-                SELECT gen_random_uuid(), ?, CURRENT_DATE, ?, oi.id, ?, 5,
-                       1, 10, 50, 50, 'NORMAL',
+                SELECT gen_random_uuid(), ?, CURRENT_DATE, ?, oi.id, ?, 5, oi.unit_id,
+                       1, 10, 50, 50, 'NORMAL', 5, 0,
                        g.code, g.name, 'LEGACY_IMPORT', now()
                 FROM purchase_order_items oi JOIN goods g ON g.id = oi.goods_id WHERE oi.order_id = ?
                 """, draftNo, draftReceipt, goodsId, draftReceiptOrder);
@@ -299,11 +307,11 @@ class BusinessArchivePilotPostgresTest {
         insertConsiderationPart(unsettledReceipt, unsettledItem, 7, 70);
         jdbc.update("""
                 INSERT INTO purchase_receipt_items(
-                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, qty,
-                    unit_rate, price, amount_original, amount_local, replacement_intent,
+                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, qty, unit_id,
+                    unit_rate, price, amount_original, amount_local, replacement_intent, charged_base_qty, gift_base_qty,
                     goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
-                SELECT ?, ?, CURRENT_DATE - interval '30 months', ?, oi.id, ?, 7,
-                       1, 10, 70, 70, 'NORMAL',
+                SELECT ?, ?, CURRENT_DATE - interval '30 months', ?, oi.id, ?, 7, oi.unit_id,
+                       1, 10, 70, 70, 'NORMAL', 7, 0,
                        g.code, g.name, 'LEGACY_IMPORT', now()
                 FROM purchase_order_items oi JOIN goods g ON g.id = oi.goods_id WHERE oi.order_id = ?
                 """, unsettledItem, unsettledNo, unsettledReceipt, goodsId, unsettledOrder);
@@ -336,11 +344,11 @@ class BusinessArchivePilotPostgresTest {
                 """, lateDraftReceipt, lateNo, supplierId);
         jdbc.update("""
                 INSERT INTO purchase_receipt_items(
-                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, qty,
-                    unit_rate, price, amount_original, amount_local, replacement_intent,
+                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, qty, unit_id,
+                    unit_rate, price, amount_original, amount_local, replacement_intent, charged_base_qty, gift_base_qty,
                     goods_code_snapshot, goods_name_snapshot, goods_snapshot_source, goods_snapshot_locked_at)
-                SELECT gen_random_uuid(), ?, CURRENT_DATE, ?, oi.id, ?, 3,
-                       1, 10, 30, 30, 'NORMAL',
+                SELECT gen_random_uuid(), ?, CURRENT_DATE, ?, oi.id, ?, 3, oi.unit_id,
+                       1, 10, 30, 30, 'NORMAL', 3, 0,
                        g.code, g.name, 'LEGACY_IMPORT', now()
                 FROM purchase_order_items oi JOIN goods g ON g.id = oi.goods_id WHERE oi.order_id = ?
                 """, lateNo, lateDraftReceipt, goodsId, lateBlock);

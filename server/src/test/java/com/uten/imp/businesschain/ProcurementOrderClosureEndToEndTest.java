@@ -91,8 +91,10 @@ class ProcurementOrderClosureEndToEndTest {
         String billNo = db.queryForObject("SELECT bill_no FROM purchase_orders WHERE id=?",String.class,f.order());
         assertThat(reports.expediting(billNo,null,null,null,null,java.util.Map.of(),1,50,null,null).rows())
                 .singleElement().satisfies(row -> {
-                    assertThat(row.get("differenceQtyExact")).isEqualTo("-10.0000");
-                    assertThat(row.get("unreceivedQtyExact")).isEqualTo("10.0000");
+                    // V1011 stores native exact input scale; exact texts keep the recorded
+                    // scale instead of a legacy four-place projection. Compare by value.
+                    assertThat(new BigDecimal(row.get("differenceQtyExact").toString())).isEqualByComparingTo("-10");
+                    assertThat(new BigDecimal(row.get("unreceivedQtyExact").toString())).isEqualByComparingTo("10");
                 });
         for (boolean unknownReceived : List.of(true, false)) {
             // These nullable recorded facts are unknown, not a confirmed zero.
@@ -445,7 +447,7 @@ class ProcurementOrderClosureEndToEndTest {
         assertThat(number("SELECT ordered_qty FROM purchase_request_items WHERE id=?", source)).isEqualByComparingTo("20");
     }
 
-    @Test void mergedSourcesKeepPaidFifoAndGiftProvenanceWhenOnlyTheRemainingSharesAreReordered() {
+    @Test void mergedSourcesKeepPaidFifoAndGiftProvenanceWhenOnlyTheRemainingSharesAreReordered() throws Exception {
         Fixture f = fixture("closure-merged", "2");
         orders.reverse(f.order());
         var source = new com.uten.imp.features.purchase.request.dto.RequestSaveRequest();
@@ -463,7 +465,14 @@ class ProcurementOrderClosureEndToEndTest {
         request.setCurrencyId(db.queryForObject("SELECT id FROM currencies WHERE is_base_currency AND NOT is_deleted", UUID.class));
         request.setExchangeRate(BigDecimal.ONE); request.setTaxRate(BigDecimal.ZERO);
         request.setSettlementMethodId(db.queryForObject("SELECT id FROM settlement_methods WHERE status='使用' AND NOT is_deleted ORDER BY code LIMIT 1", UUID.class));
-        request.setItems(List.of(line)); var merged = orders.create(request);
+        request.setItems(List.of(line));
+        // 22件实物拆20计价+2赠品：各来源计价份额除不尽，按本次明确精度分摊（V1025 无隐含默认位数）。
+        final com.uten.imp.features.purchase.order.dto.OrderDetail[] mergedOut=new com.uten.imp.features.purchase.order.dto.OrderDetail[1];
+        try (var selected = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "quantity.share", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4, "HALF_UP")))) {
+            mergedOut[0]=orders.create(request);
+        }
+        var merged = mergedOut[0];
         Fixture mergedFixture = new Fixture(f.world(),f.reviewer(),f.request(),f.source(),merged.getId(),merged.getItems().getFirst().getId());
         approve(mergedFixture,finance.submit("PURCHASE",merged.getId()));
         List<UUID> fifo = db.queryForList("SELECT request_item_id FROM purchase_order_item_sources WHERE order_item_id=? ORDER BY line_no,id", UUID.class,mergedFixture.item());
@@ -560,6 +569,8 @@ class ProcurementOrderClosureEndToEndTest {
                         w.goodsE(),new BigDecimal("4"),item,null,w.unitId(),BigDecimal.ONE,null,null,null,"CLOSE-SHELF")),true,true));
         UUID inspection = db.queryForObject("SELECT id FROM procurement_inspection_items WHERE receipt_type='SUBCONTRACT' AND receipt_id=?",UUID.class,arrival.receiptId());
         inspections.dispose("SUBCONTRACT",arrival.receiptId(),inspection,new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest("PASS",null,"回厂件已合格，等待结束审批","closure-sc-pass-"+inspection));
+        // 委外自制料成本核对仍在持久队列时，结束审批释放回厂件的实物写入按 40001 被拒；先排空真实工作器。
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(harness,"drainCosts",w);
         assertThat(number("SELECT COALESCE(SUM(qty),0) FROM stock_balances WHERE goods_id=? AND warehouse_id=?",w.goodsE(),w.warehouseId())).isZero();
         assertThat(db.queryForObject("SELECT COUNT(*) FROM subcontract_short_delivery_cases WHERE order_item_id=? AND status='PENDING_OWNER'",Long.class,item)).isEqualTo(1L);
         long wasteBefore = wasteCount(item);

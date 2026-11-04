@@ -13,7 +13,7 @@ public interface FinanceApplicationPaymentAuthorityPort {
     /** APPROVED + exact frozen plan + execution authority + clean proof + payer != final approver/applicant. */
     Permit requirePayrollExecution(FinancePayrollPaymentPort.Execute command);
     /** Exact original posted payment; view and confirmation action, without posting a new amount. */
-    Permit requirePayrollConfirmation(UUID applicationId,UUID batchId,UUID requestId,UUID expectedPaymentVoucherId);
+    Permit requirePayrollConfirmation(UUID applicationId,UUID batchId,UUID expectedPaymentVoucherId);
     /** Exact original posted payment and actual reverse authority; ledger/period checks still belong to the bridge. */
     Permit requirePayrollReversal(UUID applicationId,UUID batchId,FinancePayrollPaymentPort.Reverse command);
 }

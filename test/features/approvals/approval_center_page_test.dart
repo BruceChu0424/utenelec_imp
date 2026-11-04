@@ -439,8 +439,9 @@ Future<GoRouter> _pump(
               BadgeEntry.applicationMine: (3, 3 + api.personalPosting),
             },
             facts: {
-              'expense.departmentPendingByCode.DEPT_SALES':
-                  zeroApprovalTasks ? 0 : 1,
+              'expense.departmentPendingByCode.DEPT_SALES': zeroApprovalTasks
+                  ? 0
+                  : 1,
               'application.departmentPendingByCode.DEPT_SALES':
                   zeroApprovalTasks ? 0 : 3,
               'expense.draftCount': 2,
@@ -586,10 +587,7 @@ void main() {
         zeroApprovalTasks: true,
       );
       expect(find.byType(UtenFilterPlaceholder), findsOneWidget);
-      expect(
-        find.byKey(const Key('expense-approval-segments')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('expense-approval-segments')), findsNothing);
       expect(find.byKey(const Key('application-kind-filter')), findsNothing);
       expect(
         api.queries.where((q) => q.path == '/expense-claims/pending'),
@@ -600,7 +598,11 @@ void main() {
         isEmpty,
       );
       if (_capture) {
-        await saveAuditScreenshot(tester, _captureKey, 'approval-center-placeholder');
+        await saveAuditScreenshot(
+          tester,
+          _captureKey,
+          'approval-center-placeholder',
+        );
       }
       // 点击父分类后子分类行才出现并加载对应队列。
       final main = tester.widget<UtenFilterToolbar<String>>(
@@ -623,7 +625,11 @@ void main() {
       );
       expect(tester.takeException(), isNull);
       if (_capture) {
-        await saveAuditScreenshot(tester, _captureKey, 'approval-center-clicked');
+        await saveAuditScreenshot(
+          tester,
+          _captureKey,
+          'approval-center-clicked',
+        );
       }
     },
   );
@@ -666,16 +672,19 @@ void main() {
         '/approvals/DEPT_SALES?group=expense',
         const Size(1440, 1000),
       );
-      final parent = tester.renderObject(
-        find.byKey(const Key('approval-center-categories')),
-      ) as RenderBox;
-      final child = tester.renderObject(
-        find.byKey(const Key('expense-approval-segments')),
-      ) as RenderBox;
+      final parent =
+          tester.renderObject(
+                find.byKey(const Key('approval-center-categories')),
+              )
+              as RenderBox;
+      final child =
+          tester.renderObject(
+                find.byKey(const Key('expense-approval-segments')),
+              )
+              as RenderBox;
       final parentTopLeft = parent.localToGlobal(Offset.zero);
       final childTopLeft = child.localToGlobal(Offset.zero);
-      expect(childTopLeft.dx, parentTopLeft.dx,
-          reason: '子分类行应与父分类行同左缘');
+      expect(childTopLeft.dx, parentTopLeft.dx, reason: '子分类行应与父分类行同左缘');
       final gap = childTopLeft.dy - (parentTopLeft.dy + parent.size.height);
       expect(gap, UtenFilterRow.rowGap, reason: '父/子分类行间距应为统一 rowGap');
       expect(tester.takeException(), isNull);

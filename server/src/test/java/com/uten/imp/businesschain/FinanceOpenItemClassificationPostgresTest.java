@@ -102,7 +102,7 @@ class FinanceOpenItemClassificationPostgresTest {
         assertThat(db.queryForObject("SELECT count(*) FROM gl_vouchers WHERE source_doc_id=?",Integer.class,payment)).isEqualTo(vouchersBefore);
         fixture.loginAs(world.superAdminUserId());assertThatThrownBy(()->transactions.executeWithoutResult(status->offsets.reverseBatch(offsetBatch,"错误顺序"))).isInstanceOf(ApiException.class).hasMessageContaining("后付款");
         fixture.loginAs(paymentReviewer);payments.reverse(secondPayment);fixture.loginAs(world.superAdminUserId());
-        if(com.uten.imp.common.time.BusinessTime.today().isAfter(statementStart))decimal(report(supplierCode,"2026-09-15"),"totalBalance","560");decimal(report(supplierCode,currentEnd),"totalBalance","770");
+        if(com.uten.imp.common.time.BusinessTime.today().isAfter(statementStart)){decimal(report(supplierCode,"2026-09-15"),"totalBalance","560");}decimal(report(supplierCode,currentEnd),"totalBalance","770");
         transactions.executeWithoutResult(status->offsets.reverseBatch(offsetBatch,"匿名原抵销反向"));
         decimal(report(supplierCode,currentEnd),"goodsBalance","455");decimal(report(supplierCode,currentEnd),"mouldBalance","315");
         fixture.loginAs(paymentReviewer);payments.reverse(payment);fixture.loginAs(world.superAdminUserId());

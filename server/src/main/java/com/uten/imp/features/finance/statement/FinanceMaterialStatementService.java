@@ -306,9 +306,9 @@ public class FinanceMaterialStatementService {
                     FinancialExactAmount.book(p.amountLocal(),"加工本币份额");if(original==null){if(p.amountOriginal()!=null)throw invalid("原GL没有原币证据，不得把本币份额填作原币");}else FinancialExactAmount.require(p.amountOriginal(),"加工原币份额");
                     var part=new LinkedHashMap<String,Object>();part.put("context",grain(target));part.put("sourceKind",p.outboundSource().kind());part.put("sourceId",p.outboundSource().lineId());part.put("movement",effect.sourceSnapshot());part.put("amountLocal",p.amountLocal());part.put("amountOriginal",p.amountOriginal());part.put("quotedProcessingPrice",p.quotedProcessingPrice());part.put("quotationCurrencyId",p.quotationCurrencyId());part.put("quotationReference",p.quotationReference());part.put("quotationTaxBasis",p.quotationTaxBasis());parts.add(part);
                 }
-                var localParts=new ArrayList<BigDecimal>(v.processingParts().stream().map(FeePart::amountLocal).toList());for(var p:v.processingParts())if(p.adjustments()!=null)for(var a:p.adjustments())if(!a.includedInProcessing())localParts.add(FinancialExactAmount.book(a.amountLocal(),"未含入J的附加本币份额"));localParts.add(FinancialExactAmount.book(v.nonprocessingLocal(),"明确非加工本币余项"));conserve(local,localParts);
-                if(original!=null){var originals=new ArrayList<BigDecimal>(v.processingParts().stream().map(FeePart::amountOriginal).toList());for(var p:v.processingParts())if(p.adjustments()!=null)for(var a:p.adjustments())if(!a.includedInProcessing())originals.add(FinancialExactAmount.require(a.amountOriginal(),"未含入J的附加原币份额"));originals.add(FinancialExactAmount.require(v.nonprocessingOriginal(),"明确非加工原币余项"));conserve(original,originals);}else if(v.nonprocessingOriginal()!=null)throw invalid("原币缺证据时非加工原币余项也不能假填0");
-                s.put("adjustments",new FinanceMaterialProcessingAdjustment(this).validate(v,gl,posting,e));s.put("parts",parts);s.put("originalUnit",originalUnit);s.put("nonprocessingLocal",v.nonprocessingLocal());s.put("nonprocessingOriginal",v.nonprocessingOriginal());key=v.source().entryId()+":"+v.source().allocationNo();
+                var localParts=new ArrayList<BigDecimal>(v.processingParts().stream().map(FeePart::amountLocal).toList());for(var p:v.processingParts()){if(p.adjustments()!=null)for(var a:p.adjustments())if(!a.includedInProcessing())localParts.add(FinancialExactAmount.book(a.amountLocal(),"未含入J的附加本币份额"));}localParts.add(FinancialExactAmount.book(v.nonprocessingLocal(),"明确非加工本币余项"));conserve(local,localParts);
+                if(original!=null){var originals=new ArrayList<BigDecimal>(v.processingParts().stream().map(FeePart::amountOriginal).toList());for(var p:v.processingParts()){if(p.adjustments()!=null)for(var a:p.adjustments())if(!a.includedInProcessing())originals.add(FinancialExactAmount.require(a.amountOriginal(),"未含入J的附加原币份额"));}originals.add(FinancialExactAmount.require(v.nonprocessingOriginal(),"明确非加工原币余项"));conserve(original,originals);}else if(v.nonprocessingOriginal()!=null)throw invalid("原币缺证据时非加工原币余项也不能假填0");
+                s.put("adjustments",new FinanceMaterialProcessingAdjustment(this).validate(v,gl,posting));s.put("parts",parts);s.put("originalUnit",originalUnit);s.put("nonprocessingLocal",v.nonprocessingLocal());s.put("nonprocessingOriginal",v.nonprocessingOriginal());key=v.source().entryId()+":"+v.source().allocationNo();
             }
             default->throw invalid("资料类型无效");
         }
@@ -335,11 +335,11 @@ public class FinanceMaterialStatementService {
         if(posting){var configured=chartCurrencies.read(Set.of(v.accountCode())).get(v.accountCode());boolean currentProperty=configured!=null&&Objects.equals(configured.currencyId(),v.accountingCurrencyId());
             if(!currentProperty&&db.queryForObject("SELECT count(*) FROM finance_gl_entry_allocations a JOIN gl_entries e ON e.id=a.entry_id WHERE a.account_code=? AND a.auxiliary_id=? AND a.currency_id=? AND a.party_id_snapshot=? AND a.auxiliary_role=? AND NOT e.is_deleted AND fn_finance_gl_voucher_is_booked(e.voucher_id)",Integer.class,v.accountCode(),v.auxiliaryId(),v.accountingCurrencyId(),ref.partyId(),ref.role())==0)throw invalid("会计币别属性须与科目公共对应一致；历史不同属性须有同科目/辅助的真实已记账来源，不能任填另一币别");
         }
-        if(db.queryForObject("SELECT count(*) FROM finance_chart_code_styles map JOIN payment_styles style ON style.id=map.style_id WHERE map.code=? AND style.category='ACCOUNT'"+(posting?" AND style.status='使用' AND NOT style.is_deleted":"")+" AND EXISTS(SELECT 1 FROM finance_report_line_bindings binding WHERE binding.binding_kind='STYLE' AND binding.style_id=style.id AND binding.line_key IN('BS_4','BS_8'))",Integer.class,v.accountCode())<1)throw invalid("请选择财务已明确对应应收账款/其他应收款的真实资产往来科目，不能用现金代债权");
+        if(db.queryForObject(posting?"SELECT count(*) FROM finance_chart_code_styles map JOIN payment_styles style ON style.id=map.style_id WHERE map.code=? AND style.category='ACCOUNT' AND style.status='使用' AND NOT style.is_deleted AND EXISTS(SELECT 1 FROM finance_report_line_bindings binding WHERE binding.binding_kind='STYLE' AND binding.style_id=style.id AND binding.line_key IN('BS_4','BS_8'))":"SELECT count(*) FROM finance_chart_code_styles map JOIN payment_styles style ON style.id=map.style_id WHERE map.code=? AND style.category='ACCOUNT' AND EXISTS(SELECT 1 FROM finance_report_line_bindings binding WHERE binding.binding_kind='STYLE' AND binding.style_id=style.id AND binding.line_key IN('BS_4','BS_8'))",Integer.class,v.accountCode())<1)throw invalid("请选择财务已明确对应应收账款/其他应收款的真实资产往来科目，不能用现金代债权");
         if(v.amountBasis()==AmountBasis.ORIGINAL&&v.originalCurrencyId()==null)throw invalid("原币口径须明确真实原币单位");
-        if(v.originalCurrencyId()!=null&&db.queryForObject("SELECT count(*) FROM currencies WHERE id=?"+(posting?" AND NOT is_deleted":""),Integer.class,v.originalCurrencyId())!=1)throw invalid("真实原币单位不存在");
-        if(db.queryForObject("SELECT count(*) FROM goods WHERE id=?"+(posting?" AND NOT is_deleted":""),Integer.class,v.goodsId())!=1)throw invalid("请选择真实货品UUID");
-        if(v.colorId()!=null&&db.queryForObject("SELECT count(*) FROM colors WHERE id=?"+(posting?" AND NOT is_deleted":""),Integer.class,v.colorId())!=1)throw invalid("请选择真实颜色UUID；无色与所有颜色不能混用");
+        if(v.originalCurrencyId()!=null&&db.queryForObject(posting?"SELECT count(*) FROM currencies WHERE id=? AND NOT is_deleted":"SELECT count(*) FROM currencies WHERE id=?",Integer.class,v.originalCurrencyId())!=1)throw invalid("真实原币单位不存在");
+        if(db.queryForObject(posting?"SELECT count(*) FROM goods WHERE id=? AND NOT is_deleted":"SELECT count(*) FROM goods WHERE id=?",Integer.class,v.goodsId())!=1)throw invalid("请选择真实货品UUID");
+        if(v.colorId()!=null&&db.queryForObject(posting?"SELECT count(*) FROM colors WHERE id=? AND NOT is_deleted":"SELECT count(*) FROM colors WHERE id=?",Integer.class,v.colorId())!=1)throw invalid("请选择真实颜色UUID；无色与所有颜色不能混用");
     }
     Map<String,Object> feeSource(GlAllocationKey key,boolean posting){
         if(key==null||key.entryId()==null||key.allocationNo()<1)throw invalid("请选择真实GL entry及allocation序号");
@@ -348,11 +348,11 @@ public class FinanceMaterialStatementService {
         if(((Number)source.get("direction")).intValue()!=1||source.get("reversal_of_voucher_id")!=null)throw invalid("请选择真实其他应收原借方及原allocation；普通回款或反向凭证不是新的加工来源");
         var selection=new FinancialAuxiliaryValidationPort.Selection(source.get("account_code").toString(),(UUID)source.get("auxiliary_id"),(UUID)source.get("currency_id"));var ref=posting?auxiliary.inspect(selection):auxiliary.inspectHistorical(selection);
         if(ref==null||ref.partyId()==null||!Objects.equals(ref.partyId(),source.get("party_id_snapshot"))||!Objects.equals(ref.role(),source.get("auxiliary_role")))throw invalid("原GL辅助快照与实际对象不一致");
-        var stable=new TreeMap<String,Object>();for(String field:List.of("entry_id","allocation_no","account_code","auxiliary_id","currency_id","original_currency_id","amount_local","amount_original","entry_date","direction","style_id","voucher_id","voucher_no","party_id_snapshot","auxiliary_role"))stable.put(field,source.get(field));return stable;
+        var stable=new TreeMap<String,Object>();for(String field:List.of("entry_id","allocation_no","account_code","auxiliary_id","currency_id","original_currency_id","amount_local","amount_original","entry_date","direction","style_id","voucher_id","voucher_no","party_id_snapshot","auxiliary_role")){stable.put(field,source.get(field));}return stable;
     }
     private void ownership(Map<String,Object> e,Proof p){
         if(p.kind()==EvidenceKind.SIDEBAR){new FinanceMaterialSidebar(this).claim(e,input(e,SidebarLine.class));return;}
-        if(p.kind()==EvidenceKind.FEE){new FinanceMaterialProcessingAdjustment(this).claim(e,input(e,FeeAssignment.class));return;}
+        if(p.kind()==EvidenceKind.FEE){new FinanceMaterialProcessingAdjustment(this).claim(input(e,FeeAssignment.class));return;}
         if(p.kind()!=EvidenceKind.NATIVE_PARTY&&p.kind()!=EvidenceKind.GOODS)return;
         UUID contextId=(UUID)e.get("context_id");var rules=new ArrayList<>(sourceGoods(contextId,new ReadScope()));
         var links=approved(contextId).stream().filter(row->row.get("kind").equals("NATIVE_PARTY")).map(row->input(row,NativePartyLink.class)).filter(NativePartyLink::enabled).toList();
@@ -393,7 +393,7 @@ public class FinanceMaterialStatementService {
     boolean owns(UUID contextId,Fact fact,ReadScope scope){
         preloadRoutes(List.of(fact.key()),scope);if(scope.invalidRoutes.contains(fact.key()))return false;if(scope.routes.containsKey(fact.key()))return Objects.equals(scope.routes.get(fact.key()),contextId);
         if(fact.supplierId()!=null&&fact.customerId()!=null)return false;
-        var links=scope.nativeLinks.computeIfAbsent(contextId,id->{var values=new HashSet<String>();for(var e:approved(id,scope))if(e.get("kind").equals("NATIVE_PARTY")){var v=input(e,NativePartyLink.class);if(v.enabled())values.add(v.sourceKind()+":"+v.nativeRole()+":"+v.nativePartyId());}return values;});
+        var links=scope.nativeLinks.computeIfAbsent(contextId,id->{var values=new HashSet<String>();for(var e:approved(id,scope)){if(e.get("kind").equals("NATIVE_PARTY")){var v=input(e,NativePartyLink.class);if(v.enabled())values.add(v.sourceKind()+":"+v.nativeRole()+":"+v.nativePartyId());}}return values;});
         return links.contains(fact.key().kind()+":SUPPLIER:"+fact.supplierId())||links.contains(fact.key().kind()+":CUSTOMER:"+fact.customerId());
     }
     Map<Key,Fact> physicalScope(Map<String,Object> c,Kind kind,LocalDate from,LocalDate to,ReadScope scope){return scope.physicalScopes.computeIfAbsent(c.get("id")+":"+kind+":"+from+":"+to,ignored->{var facts=physicalScope(c,kind,from,to);scope.facts.putAll(facts);preloadRoutes(facts.keySet(),scope);return facts;});}
@@ -402,7 +402,7 @@ public class FinanceMaterialStatementService {
         if(rules.isEmpty())throw invalid("请先明确此来源类型的实际原料/产物货品和颜色对应");
         for(var rule:rules)for(int page=1;;page++){
             var result=physical.candidates(new Query(kind,null,null,rule.goodsId(),rule.colorId(),from,to,null,page,200,rule.colorId()==null?ColorMode.NO_COLOR:ColorMode.EXACT,false));
-            for(var f:result.items())all.put(f.key(),f);if(all.size()>20000)throw invalid("实际来源范围超过20000行，请按真实期间分段");if(page>=result.totalPages())break;
+            for(var f:result.items()){all.put(f.key(),f);}if(all.size()>20000)throw invalid("实际来源范围超过20000行，请按真实期间分段");if(page>=result.totalPages())break;
         }return all;
     }
     Fact one(Key key,ReadScope scope){return scope.facts.computeIfAbsent(key,this::one);}
@@ -418,7 +418,7 @@ public class FinanceMaterialStatementService {
         return sourceGoods((UUID)context.get("id"),scope).stream().filter(rule->rule.sourceKind()==f.key().kind()&&Objects.equals(rule.goodsId(),f.goodsId())&&Objects.equals(rule.colorId(),f.colorId())).findFirst().orElseThrow(()->invalid("请先明确该原料/产物货品及颜色与财务原表分组的对应，不按同名猜配"));
     }
 
-    private static Map<String,Object> grain(Map<String,Object> c){var s=new TreeMap<String,Object>();for(String k:List.of("auxiliary_id","account_code","accounting_currency_id","goods_id","color_id","amount_basis","original_currency_id"))s.put(k,Objects.toString(c.get(k),null));return s;}
+    private static Map<String,Object> grain(Map<String,Object> c){var s=new TreeMap<String,Object>();for(String k:List.of("auxiliary_id","account_code","accounting_currency_id","goods_id","color_id","amount_basis","original_currency_id")){s.put(k,Objects.toString(c.get(k),null));}return s;}
     private static Map<String,Object> grain(ContextInput c){var s=new TreeMap<String,Object>();s.put("auxiliary_id",Objects.toString(c.auxiliaryId(),null));s.put("account_code",c.accountCode());s.put("accounting_currency_id",Objects.toString(c.accountingCurrencyId(),null));s.put("goods_id",Objects.toString(c.goodsId(),null));s.put("color_id",Objects.toString(c.colorId(),null));s.put("amount_basis",c.amountBasis().name());s.put("original_currency_id",Objects.toString(c.amountBasis()==AmountBasis.ORIGINAL?c.originalCurrencyId():null,null));return s;}
     private void bump(UUID context){db.update("UPDATE finance_material_contexts SET row_version=row_version+1 WHERE id=?",context);}
     private void lockResource(EvidenceKind kind,String key){lock("resource:"+kind+":"+key);}

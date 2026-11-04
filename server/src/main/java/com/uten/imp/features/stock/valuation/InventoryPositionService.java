@@ -142,6 +142,10 @@ public class InventoryPositionService extends InventoryValueLedger implements In
         Map<UUID,Node> headsById=new HashMap<>(roots);headsById.putAll(moveNodes(extraHeads,true));
         Map<UUID,Node> heads=new HashMap<>();roots.forEach((id,root)->heads.put(id,headsById.get(root.returnHeadId())));
         var writes=new InventoryValueWriteSet(db);
+        // Remainder heads of an earlier command in this window exist only in the
+        // ordered write set. The interval SQL observes them as database facts, so
+        // the pending writes are flushed before a later command re-reads them.
+        Set<UUID> plannedHeads=new HashSet<>();
         Map<MoveIdentity,PlannedMove> plannedEvents=new HashMap<>(),plannedKeys=new HashMap<>();
         List<PlannedMove> plans=new ArrayList<>();List<MoveOutcome> outcomes=new ArrayList<>();
         for(MoveInput input:inputs){
@@ -158,10 +162,12 @@ public class InventoryPositionService extends InventoryValueLedger implements In
                 outcomes.add(new MoveOutcome(null,duplicate,true));continue;
             }
             List<Take> takes=new ArrayList<>();
+            for(Slice slice:input.slices())if(plannedHeads.contains(heads.get(slice.positionRootId()).id())){writes.flush();plannedHeads.clear();break;}
             for(Slice slice:input.slices())takes.add(take(slice,roots.get(slice.positionRootId()),heads.get(slice.positionRootId()),input.key(),false));
             UUID event=UUID.randomUUID();BigDecimal qty=totalQty(takes);Pool pool=pools.get(input.key());
             Node position=newPosition(pool,input.owner(),input.ownerId(),qty,totalValue(takes),totalPending(takes),event,transferContributions(takes),writes);
-            heads.putAll(finishTransfer(takes,position,event,writes));
+            Map<UUID,Node> remainders=finishTransfer(takes,position,event,writes);
+            heads.putAll(remainders);remainders.values().forEach(remainder->plannedHeads.add(remainder.id()));
             PlannedMove plan=new PlannedMove(input,pool,event,position,qty);plans.add(plan);
             plannedEvents.put(eventIdentity,plan);plannedKeys.put(keyIdentity,plan);
             outcomes.add(new MoveOutcome(null,plan,false));

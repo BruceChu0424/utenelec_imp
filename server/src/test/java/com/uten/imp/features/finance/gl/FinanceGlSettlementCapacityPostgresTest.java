@@ -76,7 +76,7 @@ class FinanceGlSettlementCapacityPostgresTest {
             List<Future<Boolean>> futures=new ArrayList<>();
             for(int n=0;n<2;n++)futures.add(executor.submit(()->{login();gate.await();var command=new Reservation(UUID.randomUUID(),owner(UUID.randomUUID()),scope,Mode.AUXILIARY_BALANCE_POOL,before.fingerprint(),new BigDecimal("750"),new BigDecimal("750"),List.of(),"匿名同员工余额池支付");
                 try{var saved=pool.reserve(command);result.set(command);receipt.set(saved);return true;}catch(ApiException conflict){return false;}finally{SecurityContextHolder.clearContext();}}));
-            gate.countDown();int winners=0;for(var future:futures)if(future.get(45,TimeUnit.SECONDS))winners++;assertThat(winners).isEqualTo(1);
+            gate.countDown();int winners=0;for(var future:futures){if(future.get(45,TimeUnit.SECONDS))winners++;}assertThat(winners).isEqualTo(1);
         }
         assertThat(pool.reserve(result.get())).isEqualTo(receipt.get());
         assertThat(pool.preview(scope,Mode.AUXILIARY_BALANCE_POOL,List.of()).availableLocal()).isEqualByComparingTo("250");

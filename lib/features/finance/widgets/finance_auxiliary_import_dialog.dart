@@ -632,7 +632,7 @@ class _AuxiliaryImportState extends ConsumerState<_AuxiliaryImport>
       final scope = await captureFormDraftRequestScope();
       final original = _preview!,
           bytes = await scope.run(
-            () => _api.getBytes(
+            () => _api.postForBytes(
               '/finance/auxiliary-imports/${original['importId']}/file',
             ),
           );

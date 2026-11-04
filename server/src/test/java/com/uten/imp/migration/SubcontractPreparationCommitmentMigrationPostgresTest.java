@@ -28,11 +28,11 @@ class SubcontractPreparationCommitmentMigrationPostgresTest {
                 .locations("classpath:db/migration").target("606").load();
         base.migrate();
         var db = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
-        var checksums = db.queryForList("SELECT version, checksum FROM flyway_schema_history WHERE version::integer<=606 ORDER BY installed_rank");
+        var checksums = db.queryForList("SELECT version, checksum FROM flyway_schema_history WHERE version::numeric<=606 ORDER BY installed_rank");
         var upgraded = com.uten.imp.testsupport.TestFlyway.configure().dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration").load().migrate();
         assertEquals(MigrationRehearsalSupport.expectedMigrationsAfter(606), upgraded.migrationsExecuted);
-        assertEquals(checksums, db.queryForList("SELECT version, checksum FROM flyway_schema_history WHERE version::integer<=606 ORDER BY installed_rank"));
+        assertEquals(checksums, db.queryForList("SELECT version, checksum FROM flyway_schema_history WHERE version::numeric<=606 ORDER BY installed_rank"));
     }
 
     @Test void repairsOnlyProvenProjectionAndDoesNotRewriteSourceFacts() throws Exception {

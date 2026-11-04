@@ -417,6 +417,7 @@ public class SubcontractMaterialReturnService {
         }
         var original=direction<0?com.uten.imp.common.finance.DocumentUnitConversion.originalMovement(em,StockService.SRC_SUBCONTRACT_MATERIAL_RETURN,
                 StockService.TYPE_SUBCONTRACT_MATERIAL_RETURN,r.getId(),it.getId(),it.getGoodsId(),it.getColorId(),r.getWarehouseId(),1):null;
+        if(conversion==null&&original==null)throw new ApiException(ErrorCode.CONFLICT,"原委外退料库存流水缺失，无法确定退回基本数量");
         BigDecimal baseQty=conversion==null?original.quantity():conversion.basicQuantity();
         BigDecimal amt = overrideAmount != null ? overrideAmount : it.getAmountLocal();
         var posted=stockService.recordMovement(new StockService.MovementRequest(

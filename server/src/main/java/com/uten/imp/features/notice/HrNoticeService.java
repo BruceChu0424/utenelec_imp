@@ -163,7 +163,7 @@ public class HrNoticeService implements HrNoticePort {
     // ========================= 报销（审批 → 打款） =========================
 
     @Override public void notifyExpenseClaimStage(UUID claimId,String applicantName,String amountLabel,UUID applicantEmployeeId,
-            UUID departmentId,String stage,String participants) {
+            UUID departmentId,String stage) {
         String permission=switch(stage) {
             case "DEPARTMENT" -> "expense:approve:department";
             case "FINANCE_INITIAL" -> "expense:approve:finance_initial";

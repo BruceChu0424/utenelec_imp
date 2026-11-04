@@ -13,8 +13,11 @@ import 'report_column.dart';
 
 /// Future month cells are intentionally empty; missing source facts remain unknown.
 bool reportCellIsNotApplicable(ReportColumn col, Map<String, dynamic> row) {
-  final fields=row['__notApplicable'];
-  if(fields is String&&fields.split(',').map((field)=>field.trim()).contains(col.key)||fields is List&&fields.contains(col.key))return true;
+  final fields = row['__notApplicable'];
+  if (fields is String &&
+          fields.split(',').map((field) => field.trim()).contains(col.key) ||
+      fields is List && fields.contains(col.key))
+    return true;
   final match = RegExp(r'^[mr](\d{1,2})$').firstMatch(col.key);
   final months = row['__notApplicableMonths'];
   return match != null &&
@@ -42,8 +45,10 @@ String? formatReportCell(
   final sourceUnit = unitKey != null && unitKey.isNotEmpty
       ? row[unitKey]?.toString()
       : col.unitLabel;
-  final retainSourceCurrency = row['__showCurrencyInOriginal'] == true &&
-      col.type == 'money' && unitKey == 'currencyCode';
+  final retainSourceCurrency =
+      row['__showCurrencyInOriginal'] == true &&
+      col.type == 'money' &&
+      unitKey == 'currencyCode';
   final unit = sourceUnit == '%' || includeUnit || retainSourceCurrency
       ? sourceUnit
       : null;

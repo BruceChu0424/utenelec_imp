@@ -127,7 +127,7 @@ class FinanceAccountingContinuationPostgresTest {
         try(var book=new HSSFWorkbook(new ByteArrayInputStream(balance()));var out=new ByteArrayOutputStream()) {
             var sheet=book.getSheetAt(0);double[][] amounts={{595,0,50,0,645,0},{0,500,0,0,0,500},{0,100,0,50,0,150},{5,0,0,0,5,0},{0,0,0,0,0,0}};
             var fee=sheet.createRow(5);fee.createCell(0).setCellValue(2026);fee.createCell(2).setCellValue("560301");fee.createCell(3).setCellValue("匿名损益明细");fee.createCell(4).setCellValue("");
-            for(int index=0;index<5;index++){var row=sheet.getRow(index+1);if(row.getCell(1)==null)row.createCell(1);row.getCell(1).setCellValue("月份：2026.10-2026.10");for(int col=0;col<6;col++){if(row.getCell(col+5)==null)row.createCell(col+5);row.getCell(col+5).setCellValue(amounts[index][col]);}}
+            for(int index=0;index<5;index++){var row=sheet.getRow(index+1);if(row.getCell(1)==null){row.createCell(1);}row.getCell(1).setCellValue("月份：2026.10-2026.10");for(int col=0;col<6;col++){if(row.getCell(col+5)==null){row.createCell(col+5);}row.getCell(col+5).setCellValue(amounts[index][col]);}}
             book.write(out);return out.toByteArray();
         }
     }
@@ -151,7 +151,7 @@ class FinanceAccountingContinuationPostgresTest {
     }
     private static byte[] journals()throws IOException {
         try(var book=new HSSFWorkbook();var out=new ByteArrayOutputStream()) {
-            var sheet=book.createSheet("凭证");var header=sheet.createRow(0);for(int col=0;col<82;col++)header.createCell(col).setCellValue("F"+(col+1)+"原字段");header.createCell(82).setCellValue("凭证输出：V800：T01：匿名：2026");
+            var sheet=book.createSheet("凭证");var header=sheet.createRow(0);for(int col=0;col<82;col++){header.createCell(col).setCellValue("F"+(col+1)+"原字段");}header.createCell(82).setCellValue("凭证输出：V800：T01：匿名：2026");
             String[][] codes={{"1001","5001"},{"560301","1001"},{"3103","560301"}};double[] values={100,5,5};
             for(int voucher=0;voucher<3;voucher++)for(int line=0;line<2;line++){
                 int index=voucher*2+line+1;var row=sheet.createRow(index);

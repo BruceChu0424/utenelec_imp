@@ -47,7 +47,7 @@ public final class BusinessPrecisionContext {
     static void writeCommitted(){var state=CURRENT.get();if(state!=null&&!state.metadataOnly())state.committedWrite().set(true);}
     public static boolean canProveUnwritten(){var state=CURRENT.get();return state==null||!state.committedWrite().get();}
     public static Map<String,Choice> choices(){ensureReady();var state=CURRENT.get();return state==null?Map.of():state.choices();}
-    public static Map<String,Choice> usedChoices(){var state=CURRENT.get();if(state==null)return Map.of();var result=new TreeMap<String,Choice>();for(String key:state.used())result.put(key,state.choices().get(key));return Collections.unmodifiableMap(result);}
+    public static Map<String,Choice> usedChoices(){var state=CURRENT.get();if(state==null)return Map.of();var result=new TreeMap<String,Choice>();for(String key:state.used()){result.put(key,state.choices().get(key));}return Collections.unmodifiableMap(result);}
     public static String json(){try{return JSON.writeValueAsString(Map.of("version",1,"choices",choices()));}catch(Exception e){throw new IllegalStateException("数值选择无法编码",e);}}
     public static BigDecimal divide(BigDecimal numerator,BigDecimal denominator,String key,String label,int maximum){
         ensureReady();

@@ -64,13 +64,14 @@ final class FinanceExpenseTemplateCatalog {
         for(var merge:template.path("merges")) {
             String[] cells=merge.asText().split(":");if(cells.length!=2)continue;
             int firstCol=column(cells[0]),lastCol=column(cells[1]);
-            int firstRow=Integer.parseInt(cells[0].replaceAll("[A-Z]","")),lastRow=Integer.parseInt(cells[1].replaceAll("[A-Z]",""));
+            int firstRow=mergedRow(cells[0]),lastRow=mergedRow(cells[1]);
             // Repeat vertical group context, but never duplicate a horizontal merged caption.
             if(col==firstCol&&col<=lastCol&&row>=firstRow&&row<=lastRow&&rows.containsKey(firstRow))return rows.get(firstRow).path(field).asText("");
         }
         return "";
     }
-    private static int column(String cell){int n=0;for(char c:cell.replaceAll("[0-9]","").toCharArray())n=n*26+c-'A'+1;return n-1;}
+    private static int mergedRow(String cell){try{return Integer.parseInt(cell.replaceAll("[A-Z]",""));}catch(NumberFormatException failure){throw new IllegalArgumentException("Invalid merged source cell row",failure);}}
+    private static int column(String cell){int n=0;for(char c:cell.replaceAll("[0-9]","").toCharArray()){n=n*26+c-'A'+1;}return n-1;}
     static GlReportLine operatingLine(OperatingRow row) {
         var source=switch(row.key()) {
             case "LABOR_DIRECT","LABOR_INDIRECT"->GlReportLine.Source.PAYROLL;

@@ -1780,7 +1780,6 @@ public class SalesShipmentService {
         for (SalesShipmentItem it : items) {
             if (it.getOrderItemId() != null) {
                 validateShippable(it); // 超发硬校验（未发余量 + 链上行预留量）
-                BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
                 // 消耗预留（FIFO + 行锁；链上行才有预留，无预留时实耗 0 不报错——历史单兼容）
                 BigDecimal needBase = requireBaseQuantity(baseQuantities,it);
                 BigDecimal consumed = reservationService.consumeForOrderItem(
@@ -2194,7 +2193,6 @@ public class SalesShipmentService {
         Map<UUID,BigDecimal> baseQuantities=shipmentBaseQuantities(items,false);
         for (SalesShipmentItem it : items) {
             if (it.getOrderItemId() == null || chainStatusOf(it.getOrderItemId()) <= 0) continue;
-            BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
             // 释放该行对应预留（货损/丢失/找不到 → 这批货不再属于该订单）
             reservationService.releaseForOrderItem(it.getOrderItemId(), requireBaseQuantity(baseQuantities,it));
             // reserved_qty 回减 + 行状态回退（V545 统一派生：剩余未排量 > 0 即回 1/2 待排产重走生产）
@@ -2270,7 +2268,6 @@ public class SalesShipmentService {
                 addShippedQty(it.getOrderItemId(), it.getQty().negate()); // -qty
                 // 货退回仓库：链上行重新挂预留（绑定原出货仓），恢复可发货量与行状态
                 if (chainStatusOf(it.getOrderItemId()) > 0) {
-                    BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
                     reservationService.reserve(it.getOrderItemId(), it.getGoodsId(), it.getColorId(),
                             it.getWarehouseId() != null ? it.getWarehouseId() : s.getWarehouseId(),
                             requireBaseQuantity(baseQuantities,it),

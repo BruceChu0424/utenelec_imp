@@ -266,6 +266,16 @@ class PreplanReallocationMakeSupplementEndToEndTest {
                 """,Integer.class,segment,report),"this real batch consumes its exact input once on its own approved report");
         assertTrue(settlements.clearance(plan.planId(),segment).stream().allMatch(row -> row.availableToSettleQty().signum()==0));
         fixture.confirmFinishedInboundFully(fixture.finishedInDocForReport(report));
+        drainValuationCostWork(c);
+    }
+    private void drainValuationCostWork(Scenario c) {
+        // V1025：报工审批把整目标成本核对工作留在持久队列，未应用前同池后续实物写入按 40001 拒绝。
+        // 真实运行由轮询工作器数秒内完成；这里同步驱动同一真实工作器后再继续后续收货/让料。
+        var operator=org.springframework.security.core.context.SecurityContextHolder.getContext();
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        try{InventoryValueWorkTestSupport.drain(beans.getBean(
+                com.uten.imp.features.stock.valuation.InventoryValueWorkService.class),db,List.of(c.raw(),c.child()));}
+        finally{org.springframework.security.core.context.SecurityContextHolder.setContext(operator);}
     }
     private void replenishRaw(Scenario c,UUID analysis,UUID nextPlan) {
         // This scenario waits for the complete replacement batch. The default
@@ -326,6 +336,7 @@ class PreplanReallocationMakeSupplementEndToEndTest {
         fixture.loginAs(ReflectionTestUtils.invokeMethod(fixture,"createIqcWarehouseConfirmer",w,"yield-subcontract-"+receiptId));
         com.uten.imp.features.warehouse.inbound.ProcurementIqcStockInContracts.ConfirmRequest confirmation=ReflectionTestUtils.invokeMethod(fixture,"latestIqcStockInRequest","SUBCONTRACT",receiptId,inspectionId,amount,"yield-iqc-stock-"+receiptId,"SUB-YIELD");
         iqc.confirm("SUBCONTRACT",receiptId,confirmation);fixture.loginAs(w.superAdminUserId());
+        drainValuationCostWork(c);
     }
     private String planHistory(UUID plan) {
         return db.queryForObject("SELECT jsonb_build_array((SELECT jsonb_agg(to_jsonb(item) ORDER BY item.id) FROM production_plan_items item WHERE item.plan_id=?),(SELECT jsonb_agg(to_jsonb(segment) ORDER BY segment.id) FROM production_execution_segments segment WHERE segment.plan_id=?))::text",String.class,plan,plan);

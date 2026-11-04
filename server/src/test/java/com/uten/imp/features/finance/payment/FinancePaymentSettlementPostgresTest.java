@@ -497,7 +497,7 @@ class FinancePaymentSettlementPostgresTest {
         jdbc.update("INSERT INTO goods(id,code,name,unit_id,code_sequence) VALUES(?,?,'付款来源物料',?,(SELECT COALESCE(MAX(code_sequence),0)+1 FROM goods))",goodsId,"G-PAY-"+goodsId,unitId);
         jdbc.update("INSERT INTO warehouses(id,code,name) VALUES(?,?,'付款来源收货仓')",warehouseId,"WH-PAY-"+warehouseId);
         jdbc.update("INSERT INTO purchase_receipts(id,bill_no,bill_date,supplier_id,currency_id,exchange_rate,total_original,total_local,warehouse_id,status) VALUES(?,?,DATE '2026-08-01',?,?,7,100,700,?,1)",receiptId,receiptNo,supplierId,currencyId,warehouseId);
-        jdbc.update("INSERT INTO purchase_receipt_items(id,bill_no,bill_date,receipt_id,goods_id,unit_id,unit_rate,qty,price,amount_original,amount_local,replacement_intent,goods_snapshot_source) VALUES(?,?,DATE '2026-08-01',?,?,?,1,100,1,100,700,'NORMAL','MASTER_AT_SAVE')",receiptItemId,receiptNo,receiptId,goodsId,unitId);
+        jdbc.update("INSERT INTO purchase_receipt_items(id,bill_no,bill_date,receipt_id,goods_id,unit_id,unit_rate,qty,charged_base_qty,gift_base_qty,price,amount_original,amount_local,replacement_intent,goods_snapshot_source) VALUES(?,?,DATE '2026-08-01',?,?,?,1,100,100,0,1,100,700,'NORMAL','MASTER_AT_SAVE')",receiptItemId,receiptNo,receiptId,goodsId,unitId);
         jdbc.update("INSERT INTO procurement_receipt_consideration_parts(id,receipt_type,receipt_id,receipt_item_id,billing_mode,base_qty,nominal_original,nominal_local,payable_original,payable_local,created_by) SELECT ?,'PURCHASE',?,?,'STANDARD',100,100,700,100,700,id FROM users WHERE is_super_admin AND status='active' ORDER BY id LIMIT 1",UUID.randomUUID(),receiptId,receiptItemId);
         jdbc.update("""
                 INSERT INTO ar_ap_ledger (

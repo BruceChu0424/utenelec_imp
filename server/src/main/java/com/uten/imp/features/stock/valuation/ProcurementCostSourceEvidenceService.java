@@ -33,6 +33,10 @@ public class ProcurementCostSourceEvidenceService implements InventoryApprovedCo
     @Transactional(propagation = Propagation.MANDATORY, readOnly = true)
     public Optional<Evidence> approved(UUID evidenceId, long version) {
         if (evidenceId == null || version != 1) return Optional.empty();
+        // First-payable candidates only exist from V999_10. Forward-migration rehearsals run
+        // this reader on earlier schemas, where confirmed payables are already in ar_ap_ledger.
+        boolean pendingCandidatesInstalled = Boolean.TRUE.equals(db.queryForObject(
+                "SELECT to_regclass('public.finance_procurement_payable_candidates') IS NOT NULL", Map.of(), Boolean.class));
         List<Map<String, Object>> rows = db.queryForList("""
                 WITH part AS MATERIALIZED (
                     SELECT * FROM procurement_receipt_consideration_parts
@@ -56,15 +60,19 @@ public class ProcurementCostSourceEvidenceService implements InventoryApprovedCo
                     JOIN subcontract_receipt_items i ON i.id=p.receipt_item_id AND i.receipt_id=r.id
                         AND NOT i.is_deleted
                 )
-                SELECT source.*,CASE WHEN candidate.id IS NULL THEN ap.id END AS ap_id,
-                       candidate.id AS pending_candidate_id,candidate.source_fingerprint AS pending_fingerprint
+                SELECT source.*,%s
                 FROM receipt_source source
                 LEFT JOIN ar_ap_ledger ap ON ap.source_doc_type=source.receipt_type||'_RECEIPT'
                     AND ap.source_doc_id=source.receipt_id AND ap.direction='AP'
                     AND ap.status=1 AND NOT ap.is_deleted
-                LEFT JOIN finance_procurement_payable_candidates candidate ON candidate.source_type=source.receipt_type||'_RECEIPT'
-                    AND candidate.source_id=source.receipt_id AND candidate.status<>'SOURCE_REVERSED'
-                """, Map.of("id", evidenceId));
+                %s
+                """.formatted(pendingCandidatesInstalled
+                        ? "CASE WHEN candidate.id IS NULL THEN ap.id END AS ap_id,candidate.id AS pending_candidate_id,candidate.source_fingerprint AS pending_fingerprint"
+                        : "ap.id AS ap_id",
+                        pendingCandidatesInstalled
+                        ? "LEFT JOIN finance_procurement_payable_candidates candidate ON candidate.source_type=source.receipt_type||'_RECEIPT'\n    AND candidate.source_id=source.receipt_id AND candidate.status<>'SOURCE_REVERSED'"
+                        : ""),
+                Map.of("id", evidenceId));
         if (rows.isEmpty()) return Optional.empty();
         if (rows.size() != 1) throw conflict("收货费用对应多笔有效应付，请先核对来源");
         return evidence(rows.getFirst());

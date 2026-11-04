@@ -77,7 +77,7 @@ BEGIN
         'database_oid',(SELECT oid::bigint FROM pg_database WHERE datname=current_database()),
         'dataset_id',(SELECT business_dataset_id::text FROM authorization_state WHERE singleton_id=1),
         'generation',(SELECT business_reset_generation FROM authorization_state WHERE singleton_id=1),
-        'migration_max',(SELECT max(version::int) FROM flyway_schema_history WHERE success),
+        'migration_max',(SELECT max(version::numeric) FROM flyway_schema_history WHERE success),
         'migration_sha256',(SELECT encode(public.digest(
             COALESCE(jsonb_agg(jsonb_build_array(version,checksum) ORDER BY installed_rank)::text,'[]'),'sha256'),'hex')
             FROM flyway_schema_history WHERE success)) INTO identity;

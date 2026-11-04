@@ -197,9 +197,14 @@ void main() {
           '金额',
         ]);
         expect(detail.values, create.map((column) => column.label));
-        if(type==FinanceDocType.expense){
-          expect(detail['postingPurpose'],'支出类型');
-          expect(table.columns.singleWhere((column)=>column.key=='postingPurpose').value(table.items.single),row.postingPurpose.label);
+        if (type == FinanceDocType.expense) {
+          expect(detail['postingPurpose'], '支出类型');
+          expect(
+            table.columns
+                .singleWhere((column) => column.key == 'postingPurpose')
+                .value(table.items.single),
+            row.postingPurpose.label,
+          );
         }
         expect(
           table.columns

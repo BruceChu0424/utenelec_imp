@@ -14,7 +14,7 @@ public final class BusinessPrecisionRequiredException extends RuntimeException {
     public BusinessPrecisionRequiredException(String key,String label,int maximum,String reason,boolean selectionRejected){
         super("请先选择本次计算保留的小数位及是否四舍五入；本次操作尚未完成");
         var fields=new java.util.LinkedHashMap<String,Object>();fields.put("calculationKey",key);fields.put("groupKey",key);fields.put("label",label);fields.put("maxScale",maximum);fields.put("reason",reason);fields.put("notWritten",BusinessPrecisionContext.canProveUnwritten());
-        if(selectionRejected)fields.put("selectionRejected",true);details=Map.copyOf(fields);
+        if(selectionRejected){fields.put("selectionRejected",true);}details=Map.copyOf(fields);
         // Explicitly mark the surrounding business transaction even when a caller
         // ordinarily preserves other validation failures for a draft preview.
         try{org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();}

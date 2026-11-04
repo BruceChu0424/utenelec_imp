@@ -168,7 +168,7 @@ class FinanceAuxiliaryPostgresTest {
     private static byte[] auxiliaryMixedFile()throws Exception {
         try(var workbook=new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(auxiliaryFile()));var bytes=new java.io.ByteArrayOutputStream()) {
             var row=workbook.getSheetAt(0).createRow(4);row.createCell(0).setCellValue("112202");row.createCell(1).setCellValue("匿名外币用途原科目");row.createCell(2).setCellValue("00099");row.createCell(3).setCellValue("匿名原客户");row.createCell(4).setCellValue("借");
-            for(int col=5;col<=11;col++)row.createCell(col).setCellValue(col==5||col==7||col==10?"20.123456789012345678901":"0");row.createCell(12).setCellValue("借");row.createCell(13).setCellValue("20.123456789012345678901");workbook.write(bytes);return bytes.toByteArray();
+            for(int col=5;col<=11;col++){row.createCell(col).setCellValue(col==5||col==7||col==10?"20.123456789012345678901":"0");}row.createCell(12).setCellValue("借");row.createCell(13).setCellValue("20.123456789012345678901");workbook.write(bytes);return bytes.toByteArray();
         }
     }
 }

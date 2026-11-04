@@ -33,7 +33,7 @@ public final class FinanceAuxiliaryReports {
         if(from==null||to==null||from.isAfter(to))throw invalid("请选择完整且先后正确的会计期间");
         if(java.time.temporal.ChronoUnit.MONTHS.between(from.withDayOfMonth(1),to.withDayOfMonth(1))>120)
             throw invalid("辅助明细的单次核对期间不能超过十年");
-        var openingScope=FinancialLedgerReadScope.asOf(em,from.minusDays(1));var periodScope=FinancialLedgerReadScope.range(em,from,to);
+        var openingScope=FinancialLedgerReadScope.asOf(em,from.minusDays(1));var periodScope=FinancialLedgerReadScope.range(em,from);
         var closingScope=FinancialLedgerReadScope.asOf(em,to);
         String prefix=receivable?"1122":"2202",role=receivable?"CUSTOMER":"SUPPLIER";
         if(accountCode!=null&&!accountCode.isBlank()&&!accountCode.startsWith(prefix))throw invalid("所选科目不属于本张应收/应付账款明细，不能把收入或其他科目混入");
@@ -62,7 +62,7 @@ public final class FinanceAuxiliaryReports {
             String key=keys[i];boolean text=i<4||key.endsWith("Direction");
             ReportColumn column=new ReportColumn(key,FinanceTemplateContract.header(template,i),text?"text":"money",i==1||i==3?230:120)
                     .withHeaderGroups(FinanceTemplateContract.headerGroups(template,i));
-            if(!text)column=column.withUnitLabel("元");result.add(column);
+            if(!text){column=column.withUnitLabel("元");}result.add(column);
         }
         return List.copyOf(result);
     }

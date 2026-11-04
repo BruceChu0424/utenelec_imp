@@ -626,6 +626,21 @@ class ApiClient {
     }
   });
 
+  /// 以 POST 下载原始字节。文档字节端点读取时会落安检/审计记录，属于
+  /// 服务端 CSRF 要求下的写方法端点；语义仍是读取，沿用读安全语义。
+  Future<Uint8List> postForBytes(String path) =>
+      _reloadSafety.trackRead(() async {
+        try {
+          final r = await _dio.post<List<int>>(
+            path,
+            options: Options(responseType: ResponseType.bytes),
+          );
+          return Uint8List.fromList(r.data ?? const []);
+        } on DioException catch (e) {
+          throw _convert(e);
+        }
+      });
+
   /// Client packages stay in a stream instead of retaining a desktop bundle in
   /// memory. Only API-relative paths are accepted; credentials never follow an
   /// update manifest to a different origin.

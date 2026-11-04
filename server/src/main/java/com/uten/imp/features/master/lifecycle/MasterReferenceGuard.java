@@ -104,6 +104,10 @@ public class MasterReferenceGuard {
         RESERVATION("还有没释放的库存预留", "请先释放这些预留"),
         ANALYSIS("还有进行中的物料分析", "请先完成或取消这些物料分析"),
         RD_TASK("还有进行中的研发任务", "请先完成或取消这些研发任务"),
+        FINANCE_AUXILIARY("还有在用的财务辅助核算项目绑定", "请先归档这些辅助核算项目；已过账分录保留原快照"),
+        FINANCE_REVIEW_INPUT("还有未完成复核的财务输入引用它", "请先确认、停用或作废这些财务输入"),
+        SUPPLIER_ADVANCE("还有未冲销的供应商预付资产", "请先按申请、退款或红字处理完这些预付"),
+        PAYABLE_ADJUSTMENT("还有草稿状态的应付费用调整", "请先审核或作废这些调整"),
         /** 同一批里一起删除的父件对它的 BOM 引用；父件删不成时才升级成 BOM_PARENT。 */
         BOM_INTERNAL("", "");
 

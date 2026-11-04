@@ -59,22 +59,22 @@ class GiftUnitRateConservationEndToEndTest {
         F f=fixture();UUID received=receipt(f,"1","1");receipts.approve(received);passAndStock(f,received);
         assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");assertThat(ap(received)).isEqualByComparingTo("10");
         UUID source=receipts.detail(received).getItems().getFirst().getId();
-        assertThat(number("SELECT charged_base_qty FROM purchase_receipt_items WHERE id=?",source)).isEqualByComparingTo("1.0001");
-        assertThat(number("SELECT gift_base_qty FROM purchase_receipt_items WHERE id=?",source)).isEqualByComparingTo("1.0000");
-        evidence(f,received,null,"FULL_SOURCE_STOCKED",Map.of("stockQty","2.0001","stockValue","10","AP","10","closed","true","giftBase","1.0000"));
+        assertThat(number("SELECT charged_base_qty FROM purchase_receipt_items WHERE id=?",source)).isEqualByComparingTo("1.00005");
+        assertThat(number("SELECT gift_base_qty FROM purchase_receipt_items WHERE id=?",source)).isEqualByComparingTo("1.00005");
+        evidence(f,received,null,"FULL_SOURCE_STOCKED",Map.of("stockQty","2.0001","stockValue","10","AP","10","closed","true","giftBase","1.00005"));
         org.assertj.core.api.SoftAssertions checks=new org.assertj.core.api.SoftAssertions();
         checks.assertThat(closed(f)).as("Both actual frozen tranches fully stocked must close").isTrue();
         UUID returned=returned(f,source,"0","1");returns.approve(returned);
-        checks.assertThat(number("SELECT gift_base_qty FROM purchase_return_items WHERE return_id=?",returned)).as("Free return mirrors source's frozen base, not separately rounded rate").isEqualByComparingTo("1.0000");
-        checks.assertThat(stock(f)).as("After original free tranche is returned, original charged base remains").isEqualByComparingTo("1.0001");
+        checks.assertThat(number("SELECT gift_base_qty FROM purchase_return_items WHERE return_id=?",returned)).as("Free return mirrors source's frozen base, not separately rounded rate").isEqualByComparingTo("1.00005");
+        checks.assertThat(stock(f)).as("After original free tranche is returned, original charged base remains").isEqualByComparingTo("1.00005");
         assertThat(ap(returned)).isZero();assertThat(closed(f)).isFalse();
-        evidence(f,received,returned,"FREE_RETURN_APPROVED",Map.of("stockQty","1.0001","stockValue","5.0002","returnAP","0","closed","false","returnGiftBase","1.0000"));
+        evidence(f,received,returned,"FREE_RETURN_APPROVED",Map.of("stockQty","1.00005","stockValue","5","returnAP","0","closed","false","returnGiftBase","1.00005"));
         var returnCommand=new DocumentUnapprovalService.UnapproveRequest("gift-rate-return-unapprove-"+returned,"赠品退货镜像原冻结分量");
         var returnDraft=(com.uten.imp.features.purchase.ret.dto.ReturnDetail)unapproval.unapprove("purchaseReturn",returned,returnCommand);
         assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");
         assertThat(((com.uten.imp.features.purchase.ret.dto.ReturnDetail)unapproval.unapprove("purchaseReturn",returned,returnCommand)).getId()).isEqualTo(returnDraft.getId());
         returns.approve(returnDraft.getId());
-        checks.assertThat(stock(f)).as("New return generation uses the same original free base").isEqualByComparingTo("1.0001");
+        checks.assertThat(stock(f)).as("New return generation uses the same original free base").isEqualByComparingTo("1.00005");
         returns.reverse(returnDraft.getId());assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");
         checks.assertThat(closed(f)).as("Mirrored return reverse restores fulfillment").isTrue();
         // Existing value provenance deliberately blocks erasing a receipt after a
@@ -100,16 +100,16 @@ class GiftUnitRateConservationEndToEndTest {
 
     @Test void paidFirstAndPartialGiftReceiptsCloseByTheirOwnFrozenBasesAndFreeReturnsRemainSeparate(){
         F f=fixture();UUID paid=receipt(f,"1","0");receipts.approve(paid);passAndStock(f,paid);
-        assertThat(stock(f)).isEqualByComparingTo("1.0001");assertThat(closed(f)).isFalse();
-        evidence(f,paid,null,"PAID_COMPLETE_GIFT_NOT_ARRIVED",Map.of("stockQty","1.0001","stockValue","10","AP","10","closed","false"));
+        assertThat(stock(f)).isEqualByComparingTo("1.00005");assertThat(closed(f)).isFalse();
+        evidence(f,paid,null,"PAID_COMPLETE_GIFT_NOT_ARRIVED",Map.of("stockQty","1.00005","stockValue","10","AP","10","closed","false"));
         UUID first=receipt(f,"0","0.375");receipts.approve(first);passAndStock(f,first);assertThat(closed(f)).isFalse();
         UUID last=receipt(f,"0","0.625");receipts.approve(last);passAndStock(f,last);
-        assertThat(number("SELECT SUM(gift_base_qty) FROM purchase_receipt_items WHERE receipt_id IN (?,?)",first,last)).isEqualByComparingTo("1.0000");
+        assertThat(number("SELECT SUM(gift_base_qty) FROM purchase_receipt_items WHERE receipt_id IN (?,?)",first,last)).isEqualByComparingTo("1.00005");
         assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");assertThat(ap(paid)).isEqualByComparingTo("10");
         evidence(f,last,null,"PARTIAL_FREE_375_625_STOCKED",Map.of("stockQty","2.0001","stockValue","10","AP","0","closed","true"));
-        org.assertj.core.api.SoftAssertions checks=new org.assertj.core.api.SoftAssertions();checks.assertThat(closed(f)).as("Partial tranches total exactly one original gift despite receipt rounding").isTrue();
+        org.assertj.core.api.SoftAssertions checks=new org.assertj.core.api.SoftAssertions();checks.assertThat(closed(f)).as("Partial tranches total exactly the original frozen gift base without per-tranche rounding").isTrue();
         UUID source=receipts.detail(last).getItems().getFirst().getId();UUID returned=returned(f,source,"0","0.625");returns.approve(returned);
-        assertThat(stock(f)).isEqualByComparingTo("1.3751");assertThat(ap(returned)).isZero();assertThat(closed(f)).isFalse();
+        assertThat(stock(f)).isEqualByComparingTo("1.37506875");assertThat(ap(returned)).isZero();assertThat(closed(f)).isFalse();
         returns.reverse(returned);assertThat(stock(f)).isEqualByComparingTo("2.0001");assertThat(value(f)).isEqualByComparingTo("10");
         checks.assertThat(closed(f)).as("Free return reverse restores partial fulfillment").isTrue();
         assertThat(number("SELECT received_qty FROM purchase_order_items WHERE id=?",f.orderItem())).isEqualByComparingTo("1");

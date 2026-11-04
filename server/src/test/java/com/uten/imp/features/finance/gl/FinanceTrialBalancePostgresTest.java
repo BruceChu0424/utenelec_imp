@@ -110,7 +110,7 @@ class FinanceTrialBalancePostgresTest {
                 if(q.getMethod().getName().equals("getSingleResult"))return named.queryForObject(sql,args,Object.class);
                 if(q.getMethod().getName().equals("getResultList"))return named.query(sql,args,(rs,n)->{
                     if(rs.getMetaData().getColumnCount()==1)return rs.getObject(1);
-                    Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++)row[i]=rs.getObject(i+1);return row;
+                    Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++){row[i]=rs.getObject(i+1);}return row;
                 });
                 return org.mockito.Answers.RETURNS_DEFAULTS.answer(q);
             });

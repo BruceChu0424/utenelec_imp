@@ -33,7 +33,7 @@ public class FinanceApplicationService {
     private final FinanceApplicationReadAccess reads;private final FinanceApplicationLegacyPolicy legacy;
 
     @Transactional(readOnly=true)
-    public Map<String,Object> catalog(){var user=roles.staff();if(!canEnter(user))throw new ApiException(ErrorCode.FORBIDDEN);List<Map<String,Object>> types=new ArrayList<>();for(Kind kind:Kind.values())types.add(Map.of("key",kind.name(),"label",title(kind),"steps",steps(kind)));return Map.of("types",types,"enabled",roles.enabled(),"payrollReady",payroll.getIfAvailable()!=null,"canConfigure",roles.has(user,FinanceApplicationPermissions.SETTINGS));}
+    public Map<String,Object> catalog(){var user=roles.staff();if(!canEnter(user))throw new ApiException(ErrorCode.FORBIDDEN);List<Map<String,Object>> types=new ArrayList<>();for(Kind kind:Kind.values()){types.add(Map.of("key",kind.name(),"label",title(kind),"steps",steps(kind)));}return Map.of("types",types,"enabled",roles.enabled(),"payrollReady",payroll.getIfAvailable()!=null,"canConfigure",roles.has(user,FinanceApplicationPermissions.SETTINGS));}
     @Transactional(readOnly=true)
     public Map<String,Object> intake(){var user=roles.staff();if(!roles.has(user,"finance_expense:create")&&!roles.has(user,"finance_payment:create")&&!roles.has(user,"expense:apply")&&!roles.has(user,"payroll:generate")&&!roles.has(user,FinanceApplicationPermissions.APPLY))throw new ApiException(ErrorCode.FORBIDDEN);return Map.of("enabled",roles.enabled(),"canApply",roles.has(user,FinanceApplicationPermissions.APPLY));}
 
@@ -65,20 +65,20 @@ public class FinanceApplicationService {
     public Map<String,Object> submit(UUID id,Action input){var user=roles.staff();tx.bind();return operation(id,input.requestId(),"SUBMIT",input,()->{
         var app=lockSourceAndRow(id);owner(app,user);requireApply(user,kind(app.get("kind").toString()));editable(app);legacy.requireNewRound(app);version(app,input.expectedVersion());if(!roles.enabled())throw conflict("请先完成原岗位配置并启用流程，当前草稿已保留");
         if("EXPENSE_CLAIM".equals(app.get("source_kind"))){UUID source=(UUID)app.get("source_id");NativeApplicationContext.run(new NativeApplicationContext.Value(id,source,NativeApplicationContext.Action.SUBMIT),()->expenses.submit(source));}
-        submitLocked(app,user,input.sourceFingerprint());return detail(id);
+        submitLocked(app,input.sourceFingerprint());return detail(id);
     });}
 
     /** Called after the native reimbursement submission has frozen its own invoices and amount. */
     @Transactional
     public boolean submittedExpense(UUID claim){if(NativeApplicationContext.matches(claim,NativeApplicationContext.Action.SUBMIT))return true;
-        var source=expenses.source(claim,true);var linked=db.queryForList("SELECT application_id,kind,travel_application_id FROM finance_expense_application_links WHERE claim_id=?",claim);
+        expenses.source(claim,true);var linked=db.queryForList("SELECT application_id,kind,travel_application_id FROM finance_expense_application_links WHERE claim_id=?",claim);
         if(linked.isEmpty()||linked.getFirst().get("application_id")==null)return false; // New employee submissions keep their native approval authority.
         UUID id=(UUID)linked.getFirst().get("application_id");
         if(legacy.mapped(id))return false;
         throw conflict("这张原报销尚未按当前流程审阅接续，请保留原稿并先完成审阅；本次未提交旧审批");
     }
 
-    private void submitLocked(Map<String,Object> app,AuthUser actor,String expected){
+    private void submitLocked(Map<String,Object> app,String expected){
         legacy.requireNewRound(app);var source=source(app);if(expected!=null&&!Objects.equals(expected,source.fingerprint))throw conflict("原申请内容已变化，请刷新核对");
         UUID id=(UUID)app.get("id");Kind kind=kind(app.get("kind").toString());int round=((Number)app.get("submission_round")).intValue()+1;
         List<List<Assignment>> path=new ArrayList<>();
@@ -93,7 +93,7 @@ public class FinanceApplicationService {
                 """,encode(source.facts),source.fingerprint,source.amount,source.currency,round,current.requireId(),id);
         event(id,round,"SUBMITTED",null,Map.of("sourceFingerprint",source.fingerprint));noticeCurrent(row(id,false));
     }
-    private static boolean distinctPath(List<List<Assignment>> path,int index,Set<UUID> used){if(index==path.size())return true;for(var person:path.get(index))if(used.add(person.employeeId())){if(distinctPath(path,index+1,used))return true;used.remove(person.employeeId());}return false;}
+    private static boolean distinctPath(List<List<Assignment>> path,int index,Set<UUID> used){if(index==path.size())return true;for(var person:path.get(index)){if(used.add(person.employeeId())){if(distinctPath(path,index+1,used))return true;used.remove(person.employeeId());}}return false;}
 
     @Transactional
     public Map<String,Object> review(UUID id,Action input,boolean approved){roles.live(FinanceApplicationPermissions.REVIEW);tx.bind();return operation(id,input.requestId(),approved?"APPROVE":"REJECT",input,()->{
@@ -134,7 +134,7 @@ public class FinanceApplicationService {
         out.put("actions",actions(app,roles.staff()));
         return out;
     }
-    @Transactional(readOnly=true) public Map<String,Object> receipt(UUID id,UUID request){roles.staff();var receipts=db.queryForList("SELECT operation,result::text FROM finance_application_operations WHERE request_id=? AND application_id=? AND actor_id=?",request,id,current.requireId());if(receipts.isEmpty()){readable(row(id,false),roles.staff());return Map.of("found",false);}var receipt=receipts.getFirst();if(!"ASSIGN".equals(receipt.get("operation")))readable(row(id,false),roles.staff());return Map.of("found",true,"result",decode(receipt.get("result").toString()));}
+    @Transactional(readOnly=true) public Map<String,Object> receipt(UUID id,UUID request){roles.staff();var receipts=db.queryForList("SELECT operation,result::text FROM finance_application_operations WHERE request_id=? AND application_id=? AND actor_id=?",request,id,current.requireId());if(receipts.isEmpty()){readable(row(id,false),roles.staff());return Map.of("found",false);}var receipt=receipts.getFirst();if(!"ASSIGN".equals(receipt.get("operation"))){readable(row(id,false),roles.staff());}return Map.of("found",true,"result",decode(receipt.get("result").toString()));}
     private Map<String,Boolean> actions(Map<String,Object> app,AuthUser actor){
         String status=app.get("status").toString();boolean own=same((UUID)app.get("applicant_id"),actor.getEmployeeId()),pending=Set.of("SUBMITTED","REVIEWING").contains(status),editable=Set.of("DRAFT","REJECTED","REVERSED").contains(status);
         List<Map<String,Object>> nodes=pending?db.queryForList("SELECT role_key,action FROM finance_application_nodes n WHERE application_id=? AND submission_round=? AND step_no=? AND status='PENDING' AND EXISTS(SELECT 1 FROM jsonb_array_elements(n.assignees) p WHERE fn_canonical_employee_identity((p->>'employeeId')::uuid)=fn_canonical_employee_identity(?)) AND (action='ARCHIVE' OR (fn_canonical_employee_identity(?)<>fn_canonical_employee_identity(?) AND NOT EXISTS(SELECT 1 FROM finance_application_nodes p WHERE p.application_id=n.application_id AND p.submission_round=n.submission_round AND p.status='APPROVED' AND fn_canonical_employee_identity(p.decided_by)=fn_canonical_employee_identity(?))))",app.get("id"),app.get("submission_round"),app.get("current_step"),actor.getEmployeeId(),actor.getEmployeeId(),app.get("applicant_id"),actor.getEmployeeId()):List.of();
@@ -273,7 +273,7 @@ public class FinanceApplicationService {
     void event(UUID id,int round,String type,Integer step,Map<String,Object> detail){db.update("INSERT INTO finance_application_events(application_id,submission_round,event_type,step_no,actor_id,actor_employee_id,actor_name_snapshot,detail) VALUES(?,?,?,?,?,?,?,?::jsonb)",id,round,type,step,current.requireId(),current.requireEmployeeId(),actorName(),encode(detail));}
     String actorName(){String name=db.queryForObject("SELECT full_name FROM employees WHERE id=fn_canonical_employee_identity(?)",String.class,current.requireEmployeeId());if(name==null||name.isBlank())throw conflict("实际操作人姓名尚未核对");return name;}
     private UUID userId(UUID employee){return db.queryForList("SELECT id FROM users WHERE employee_id=fn_canonical_employee_identity(?) AND NOT is_deleted AND status='active' ORDER BY id",UUID.class,employee).stream().findFirst().orElse(null);}
-    Map<String,Object> operation(UUID id,UUID request,String type,Object payload,Supplier<Map<String,Object>> work){if(request==null)throw invalid("请保留原请求编号");originLock(id);db.query("SELECT pg_advisory_xact_lock(hashtextextended(?,7111))",rs->{},"finance-application-operation:"+request);String hash=digest(List.of(type,id,payload));var previous=db.queryForList("SELECT actor_id,operation,payload_hash,result::text FROM finance_application_operations WHERE request_id=?",request);if(!previous.isEmpty()){var old=previous.getFirst();if(!current.requireId().equals(old.get("actor_id"))||!hash.equals(old.get("payload_hash")))throw conflict("原请求编号已用于不同内容，不能重新解释原请求");if(!"ASSIGN".equals(old.get("operation")))readable(row(id,false),roles.staff());return decode(old.get("result").toString());}var result=work.get();db.update("INSERT INTO finance_application_operations(request_id,application_id,actor_id,operation,payload_hash,result) VALUES(?,?,?,?,?,?::jsonb)",request,id,current.requireId(),type,hash,encode(result));return result;}
+    Map<String,Object> operation(UUID id,UUID request,String type,Object payload,Supplier<Map<String,Object>> work){if(request==null)throw invalid("请保留原请求编号");originLock(id);db.query("SELECT pg_advisory_xact_lock(hashtextextended(?,7111))",rs->{},"finance-application-operation:"+request);String hash=digest(List.of(type,id,payload));var previous=db.queryForList("SELECT actor_id,operation,payload_hash,result::text FROM finance_application_operations WHERE request_id=?",request);if(!previous.isEmpty()){var old=previous.getFirst();if(!current.requireId().equals(old.get("actor_id"))||!hash.equals(old.get("payload_hash")))throw conflict("原请求编号已用于不同内容，不能重新解释原请求");if(!"ASSIGN".equals(old.get("operation"))){readable(row(id,false),roles.staff());}return decode(old.get("result").toString());}var result=work.get();db.update("INSERT INTO finance_application_operations(request_id,application_id,actor_id,operation,payload_hash,result) VALUES(?,?,?,?,?,?::jsonb)",request,id,current.requireId(),type,hash,encode(result));return result;}
     void originLock(UUID id){db.query("SELECT pg_advisory_xact_lock(hashtextextended(?,7111))",rs->{},"finance-application-origin:"+id);}
     String encode(Object value){try{return json.writeValueAsString(value);}catch(Exception e){throw new IllegalStateException("原申请记录无法保存",e);}}
     Map<String,Object> decode(String value){try{return json.readValue(value,new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>(){});}catch(Exception e){throw conflict("原申请记录无法完整读取");}}

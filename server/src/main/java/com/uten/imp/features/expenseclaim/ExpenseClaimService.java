@@ -705,7 +705,7 @@ public class ExpenseClaimService {
     @Transactional
     public ExpenseClaimDto verifyInvoice(UUID claimId,UUID invoiceId,com.uten.imp.features.expenseclaim.dto.ExpenseClaimInvoiceVerifyRequest input) {
         AuthUser user=requireStaff();boolean applicationManaged=applicationControl!=null&&applicationControl.expenseManaged(claimId);
-        if(applicationManaged)applicationControl.requireExpenseInvoiceVerification(claimId);else {if(applicationControl!=null)applicationControl.requireExpenseMainAuthority(claimId);requireApprover(user);}require(user,"attachment:view");require(user,"attachment:download");
+        if(applicationManaged)applicationControl.requireExpenseInvoiceVerification(claimId);else {if(applicationControl!=null){applicationControl.requireExpenseMainAuthority(claimId);}requireApprover(user);}require(user,"attachment:view");require(user,"attachment:download");
         expectedVersion(claimId,input.expectedVersion());
         ExpenseClaim claim=requireClaimForUpdate(claimId);
         if(!applicationManaged){
@@ -906,7 +906,7 @@ public class ExpenseClaimService {
         if(!applicationManaged)hrNotice.notifyExpenseClaimStage(
                 claim.getId(), claim.getApplicantNameSnapshot(),
                 claim.getTotalAmount().toPlainString() + " 元",
-                claim.getApplicantId(), claim.getApplicantDepartmentId(), claim.getApprovalStage(), claim.getApprovalParticipants());
+                claim.getApplicantId(), claim.getApplicantDepartmentId(), claim.getApprovalStage());
         return mapClaimWithItems(claim);
     }
 
@@ -1044,7 +1044,7 @@ public class ExpenseClaimService {
                     userIdOfEmployee(claim.getApplicantId()),
                     claim.getApplicantId(), claim.getApprovedBy());
             else if(!applicationDecision)hrNotice.notifyExpenseClaimStage(claim.getId(),claim.getApplicantNameSnapshot(),
-                    claim.getTotalAmount().toPlainString()+" 元",claim.getApplicantId(),claim.getApplicantDepartmentId(),next,claim.getApprovalParticipants());
+                    claim.getTotalAmount().toPlainString()+" 元",claim.getApplicantId(),claim.getApplicantDepartmentId(),next);
         } else {
             String normalized = reason == null ? "" : reason.trim();
             if (normalized.isEmpty()) {

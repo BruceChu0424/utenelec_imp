@@ -108,6 +108,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         ManualFamily family=manualFamily("adv-dedicated");
         Case c=family.context();UUID[] first=family.first(),second=family.second();
         transferTo(c,first[2],"10");
+        drainValue(List.of(c.child(),db.queryForObject("SELECT goods_id FROM production_material_demands WHERE id=?",UUID.class,first[2])));
         transferTo(c,second[2],"90");
         fixture.loginAs(c.workerUser());
         confirmRoute(first[0],first[1],"CONTINUOUS");
@@ -122,7 +123,9 @@ class WorkshopSupplyAdversarialEndToEndTest {
     void concurrentRecipientsCannotDoubleSpendTheSamePhysicalPool() throws Exception {
         ManualFamily family=manualFamily("adv-parallel");
         Case c=family.context();UUID[] first=family.first(),second=family.second();
-        UUID a=transferTo(c,first[2],"10"),b=transferTo(c,second[2],"90");
+        UUID a=transferTo(c,first[2],"10");
+        drainValue(List.of(c.child(),db.queryForObject("SELECT goods_id FROM production_material_demands WHERE id=?",UUID.class,first[2])));
+        UUID b=transferTo(c,second[2],"90");
         var notices=beans.getBean(com.uten.imp.features.notice.ChainNoticeService.class);
         assertEquals(Boolean.TRUE,org.springframework.test.util.ReflectionTestUtils.invokeMethod(
                 notices,"workshopArrivalCanBenefit",first[1],"DIRECT_REPORT",List.of(a)));
@@ -225,7 +228,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
     }
 
     @Test
-    void laterActualOutboundBlocksCostWithdrawalWithoutChangingThePrivateReturn() {
+    void laterActualOutboundBlocksCostWithdrawalWithoutChangingThePrivateReturn() throws Exception {
         ManualFamily family=manualFamily("adv-return-used-pool");Case c=family.context();
         UUID raw=db.queryForObject("SELECT goods_id FROM production_material_demands WHERE execution_segment_id=?",UUID.class,c.childSegment());
         UUID destination=normalSibling(c,"adv-return-used-normal");receiveAt(c,raw,destination,"10","99");
@@ -239,7 +242,11 @@ class WorkshopSupplyAdversarialEndToEndTest {
         stock.confirmProductionMaterialReturn(request.documentId(),new com.uten.imp.features.stock.dto.ProductionMaterialReturnConfirmRequest(destination,"adv-used-confirm"));
         var outbound=new StockDocSaveRequest();outbound.setDocType("OTHER_OUT");outbound.setWarehouseId(destination);outbound.setBillDate(BusinessTime.today());
         var line=new StockDocItemLine();line.setGoodsId(raw);line.setUnitId(c.world().unitId());line.setUnitRate(BigDecimal.ONE);line.setQty(BigDecimal.ONE);outbound.setItems(List.of(line));
-        stock.approve(stock.create(outbound).getId());
+        // 10件99元池上发1件：库存价值累计切片除不尽，按本次明确精度出库（V1025 无隐含默认位数）。
+        try(var selected=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "stock.value.interval",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"HALF_UP")))){
+            stock.approve(stock.create(outbound).getId());
+        }
         var before=db.queryForMap("SELECT node.id,node.quantity_basis,node.basis_value_local FROM stock_value_pools pool JOIN stock_value_nodes node ON node.id=pool.head_node_id WHERE pool.warehouse_id=? AND pool.goods_id=?",destination,raw);
         Throwable rejected=assertThrows(RuntimeException.class,()->stock.reverse(request.documentId()),"已实际按混合池出库的成本必须先处理真实后继");
         while(rejected.getCause()!=null)rejected=rejected.getCause();
@@ -256,6 +263,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
     void manualMakePegCustodyIsConvertedOnceWhenItsOriginalTaskConfirmsTheRoute() {
         ManualFamily family=manualFamily("adv-legacy-custody");Case c=family.context();UUID[] target=family.first();
         transferTo(c,target[2],"10");
+        drainValue(List.of(c.child(),db.queryForObject("SELECT goods_id FROM production_material_demands WHERE id=?",UUID.class,target[2])));
         var returns=beans.getBean(com.uten.imp.features.stock.allocation.ProductionMaterialReturnRequestService.class);
         fixture.loginAs(c.workerUser());
         var source=returns.sources(target[0],target[1]).stream().filter(row->row.directTransferItemId()!=null).findFirst().orElseThrow();
@@ -295,7 +303,9 @@ class WorkshopSupplyAdversarialEndToEndTest {
         ManualFamily family=manualFamily(incremental?"adv-retired-source":"adv-source-slices",false,true);
         Case c=family.context();UUID[] target=family.first();
         if(incremental)confirmRoute(target[0],target[1],"CONTINUOUS");
-        UUID firstReport=transferTo(c,target[2],"5"),secondReport=transferTo(c,target[2],"5");
+        UUID firstReport=transferTo(c,target[2],"5");
+        drainValue(List.of(c.child(),db.queryForObject("SELECT goods_id FROM production_material_demands WHERE id=?",UUID.class,target[2])));
+        UUID secondReport=transferTo(c,target[2],"5");
         if(!incremental)confirmRoute(target[0],target[1],"CONTINUOUS");
         var slices=db.queryForList("""
                 SELECT allocation.id,allocation.stock_reservation_id,report.report_id
@@ -389,6 +399,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
     void ordinaryTransfersCannotRemoveDedicatedWorkshopSourcesIncludingOldDrafts() {
         ManualFamily family=manualFamily("adv-physical-boundary");Case c=family.context();
         transferTo(c,family.first()[2],"10");
+        drainValue(List.of(c.child(),db.queryForObject("SELECT goods_id FROM production_material_demands WHERE id=?",UUID.class,family.first()[2])));
         fixture.loginAs(c.world().superAdminUserId());
         UUID other=UUID.randomUUID();
         db.update("INSERT INTO warehouses(id,code,name,parent_id,status,is_accountable) VALUES(?,?,?,?,'使用',TRUE)",
@@ -453,6 +464,7 @@ class WorkshopSupplyAdversarialEndToEndTest {
         // but this source plan item now owns only50. Keep the original peg identity.
         db.update("UPDATE production_material_supply_pegs SET released_qty=50,lock_version=lock_version+1 WHERE demand_id=? AND supply_type='PRODUCTION_PLAN_ITEM'",target[2]);
         transferTo(c,target[2],"40");
+        drainValue(List.of(c.child(),db.queryForObject("SELECT goods_id FROM production_material_demands WHERE id=?",UUID.class,target[2])));
         Case other=new Case(c.world(),c.parent(),c.child(),c.secondMaterial(),c.plan(),c.segment(),c.childPlan(),otherSegment,
                 c.workshop(),c.worker(),c.workerUser(),c.leaf(),c.lineSide());
         qty("10",db.queryForObject("SELECT fn_workshop_direct_remaining_for_source(?,?)",BigDecimal.class,otherSegment,target[2]));

@@ -631,15 +631,30 @@ class SalesReturnQualityIdempotencyPostgresTest {
     }
 
     private Fixture seedFixture(boolean resolvedMeasurement) {
+        return transactions.execute(ignored -> seedFixtureInTransaction(resolvedMeasurement));
+    }
+
+    /**
+     * V1038: a quality receipt must prove its actually shipped source. The fixture
+     * seeds that real chain — a historical SHIPPED DIRECT_CUSTOMER dispatch with its
+     * original outbound movement (same transaction-local legacy-import contract as
+     * SalesReturnAmountAuthorityPostgresTest), then the sanctioned return base
+     * adoption — instead of an isolated quarantine row without a source.
+     */
+    private Fixture seedFixtureInTransaction(boolean resolvedMeasurement) {
         UUID returnId = UUID.randomUUID();
         UUID returnItemId = UUID.randomUUID();
         UUID qualityItemId = UUID.randomUUID();
         UUID clientId = UUID.randomUUID();
         UUID warehouseId = UUID.randomUUID();
+        UUID sourceWarehouseId = UUID.randomUUID();
         UUID goodsId = UUID.randomUUID();
         UUID unitId = UUID.randomUUID();
+        UUID shipmentId = UUID.randomUUID();
+        UUID shipmentItemId = UUID.randomUUID();
         String suffix = returnId.toString().substring(0, 8);
         String billNo = businessIdentifier("XT");
+        String shipmentNo = businessIdentifier("XC");
         int clientCodeSequence = CLIENT_CODE_SEQUENCE.incrementAndGet();
 
         jdbc.update(
@@ -654,6 +669,11 @@ class SalesReturnQualityIdempotencyPostgresTest {
                 warehouseId,
                 "QW-" + suffix,
                 "Quality test warehouse " + suffix);
+        jdbc.update(
+                "INSERT INTO warehouses(id, code, name) VALUES (?, ?, ?)",
+                sourceWarehouseId,
+                "QW-SRC-" + suffix,
+                "Quality source warehouse " + suffix);
         jdbc.update("INSERT INTO units(id,code,name) VALUES(?,?,'piece')",
                 unitId,"QU-"+suffix);
         jdbc.update(
@@ -662,6 +682,20 @@ class SalesReturnQualityIdempotencyPostgresTest {
                 goodsId,
                 "QG-" + suffix,
                 "Quality test goods " + suffix, resolvedMeasurement ? unitId : null);
+        if (!resolvedMeasurement) {
+            // The return warehouse stays 计量待核 (V928 hold), while the original
+            // shipment still proves its legacy-resolved base unit at its own warehouse.
+            int legacyUnitNo = 900_000 + CLIENT_CODE_SEQUENCE.incrementAndGet();
+            jdbc.update("INSERT INTO units(id,legacy_id,code,name) VALUES(?,?,?,'个')",
+                    UUID.randomUUID(), legacyUnitNo, "QU-LEGACY-" + suffix);
+            jdbc.update("UPDATE goods SET unit_legacy_id=? WHERE id=?", legacyUnitNo, goodsId);
+            jdbc.update("INSERT INTO stock_balances(id,warehouse_id,goods_id,qty) VALUES(?,?,?,0)",
+                    UUID.randomUUID(), warehouseId, goodsId);
+            jdbc.update("""
+                    INSERT INTO stock_measurement_holds(stock_balance_id,warehouse_id,goods_id,captured_qty,captured_weight,captured_weight_estimated)
+                    SELECT id,warehouse_id,goods_id,0,0,FALSE FROM stock_balances WHERE warehouse_id=? AND goods_id=?
+                    """, warehouseId, goodsId);
+        }
         jdbc.update("""
                 INSERT INTO sales_returns (
                     id, bill_no, bill_date, client_id, warehouse_id,
@@ -674,35 +708,88 @@ class SalesReturnQualityIdempotencyPostgresTest {
                 billNo,
                 clientId,
                 warehouseId);
+        // Same transaction-local import contract as legacy_migration/migrate_sales.sql:
+        // the source is a historical S_Out/S_OutItem dispatch, not a new V2 workflow.
+        jdbc.queryForObject("SELECT set_config('uten.legacy_reference_import','quality-return-source',true)", String.class);
+        jdbc.update("""
+                INSERT INTO sales_shipments (
+                    id, bill_no, bill_date, client_id, warehouse_id,
+                    shipment_kind, direct_purpose, status, warehouse_work_status,
+                    finance_gate_version, finance_audit, total_original, total_local
+                ) VALUES (
+                    ?, ?, CURRENT_DATE, ?, ?,
+                    'DIRECT_CUSTOMER', 'OTHER', 1, 'SHIPPED', 0, 0, 100, 100
+                )
+                """,
+                shipmentId,
+                shipmentNo,
+                clientId,
+                sourceWarehouseId);
+        jdbc.queryForObject("SELECT set_config('uten.legacy_reference_import','',true)", String.class);
+        jdbc.update("""
+                INSERT INTO sales_shipment_items (
+                    id, shipment_id, bill_no, bill_date, line_no,
+                    goods_id, unit_id, unit_rate, qty, price, amount_original, amount_local
+                ) VALUES (
+                    ?, ?, ?, CURRENT_DATE, 1,
+                    ?, ?, 1, 10, 10, 100, 100
+                )
+                """,
+                shipmentItemId,
+                shipmentId,
+                shipmentNo,
+                goodsId,
+                unitId);
+        // The returned line carries its actual shipped source and its unit basis (V1038).
         jdbc.update("""
                 INSERT INTO sales_return_items (
-                    id, bill_no, bill_date, return_id, line_no,
+                    id, bill_no, bill_date, return_id, line_no, out_item_id,
                     goods_id, goods_code_snapshot, goods_name_snapshot,
                     goods_snapshot_source, goods_snapshot_locked_at,
-                    unit_rate, qty, amount_original, amount_local
+                    unit_id, unit_rate, qty, amount_original, amount_local
                 ) VALUES (
                     ?, ?, CURRENT_DATE, ?, 1, ?,
-                    'QUALITY-GOODS', 'Quality test goods', 'MASTER_AT_APPROVAL', now(),
-                    1, 10, 10, 10
+                    ?, 'QUALITY-GOODS', 'Quality test goods', 'MASTER_AT_APPROVAL', now(),
+                    ?, 1, 10, 10, 10
                 )
                 """,
                 returnItemId,
                 billNo,
                 returnId,
-                goodsId);
+                shipmentItemId,
+                goodsId,
+                unitId);
+        jdbc.update("""
+                INSERT INTO stock_movements (
+                    id, transaction_date, movement_type, source_doc_type, source_doc_id,
+                    source_item_id, goods_id, warehouse_id, direction, qty,
+                    unit_id, unit_rate, amount_local
+                ) VALUES (
+                    ?, now(), 3, 'SALES_SHIPMENT', ?, ?, ?, ?, -1, 10, ?, 1, NULL
+                )
+                """,
+                UUID.randomUUID(),
+                shipmentId,
+                shipmentItemId,
+                goodsId,
+                sourceWarehouseId,
+                unitId);
+        // V1038 sanctioned adoption: the return line freezes its actually shipped tranche.
+        jdbc.queryForObject("SELECT fn_sales_return_adopt_base(?)", BigDecimal.class, returnItemId);
         jdbc.update("""
                 INSERT INTO sales_return_quality_items (
                     id, return_id, return_item_id, warehouse_id, goods_id,
-                    unit_rate, received_base_qty
+                    unit_id, unit_rate, received_base_qty
                 ) VALUES (
-                    ?, ?, ?, ?, ?, 1, 10
+                    ?, ?, ?, ?, ?, ?, 1, 10
                 )
                 """,
                 qualityItemId,
                 returnId,
                 returnItemId,
                 warehouseId,
-                goodsId);
+                goodsId,
+                unitId);
         jdbc.update("""
                 INSERT INTO sales_return_quality_events (
                     id, quality_item_id, action, base_qty, reason

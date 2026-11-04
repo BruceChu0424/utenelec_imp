@@ -126,7 +126,7 @@ class ReportExportQueuePostgresTest {
         assertTrue(repository.find(id).isEmpty());
     }
     @Test void explicitPrecisionWaitAndSameJobResumeReachJavaAndSqlWithoutMetadataTaint() throws Exception {
-        UUID id=insert();var request=new ReportExportRequest(id,"sales","ORDER/detail",Map.of(),null,null,null);
+        UUID id=insert();
         // Keep the exact original request while installing the real transaction binder
         // on this lightweight JDBC harness (the production binder delegates to TxSessionVars).
         var mapper=new com.fasterxml.jackson.databind.ObjectMapper();

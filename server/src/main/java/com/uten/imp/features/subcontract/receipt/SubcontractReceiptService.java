@@ -417,7 +417,6 @@ public class SubcontractReceiptService {
             }
         }
         // ③ 立应付（AP, SUBCONTRACT_RECEIPT, +amount）—— 金额为正
-        boolean chargeable=payable.original().signum()!=0||payable.local().signum()!=0;
         boolean formallyPosted=postAp(r,payable.original(),payable.local(),+1);
         r.setStatus(STATUS_APPROVED);
         // 正式生产供给由仓库确认 IQC 合格入库量后推进；整单质检结案只做终态校准。
@@ -484,7 +483,7 @@ public class SubcontractReceiptService {
         }
     }
     private boolean postOrDefer(com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest req){
-        return com.uten.imp.common.finance.ProcurementPayablePosting.post(firstPayables,arApService,req);
+        return com.uten.imp.features.finance.arap.ProcurementPayablePosting.post(firstPayables,arApService,req);
     }
     private void requireReversibleArAp(UUID id,String type){
         if(firstPayables!=null&&firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source(type,id)))return;

@@ -492,6 +492,14 @@ class ProductionExecutionBatchEndToEndTest {
         assertEquals(2,actualUse.size());
         UUID report=fixture.reportAndApproveExecutionSegment(c.world(),planItem,(UUID)allocation.get("sales_order_item_id"),c.root(),batch.batchSegmentId(),(UUID)allocation.get("id"),quantity,false,"0",null,null,actualUse);
         fixture.confirmFinishedInboundFully(fixture.finishedInDocForReport(report));
+        // V1025：报工审批把整目标成本核对留在持久队列；同步驱动真实工作器完成后再继续后续收货/发货。
+        var drainGoods=new java.util.ArrayList<UUID>(List.of(c.root(),c.material()));
+        if(c.secondMaterial()!=null)drainGoods.add(c.secondMaterial());
+        var operator=org.springframework.security.core.context.SecurityContextHolder.getContext();
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        try{InventoryValueWorkTestSupport.drain(beans.getBean(
+                com.uten.imp.features.stock.valuation.InventoryValueWorkService.class),db,drainGoods);}
+        finally{org.springframework.security.core.context.SecurityContextHolder.setContext(operator);}
     }
     private void issueAndReport(Case c,ProductionExecutionBatch.Result batch,String quantity) {
         if(!batch.documentIds().isEmpty()){fixture.loginAs(c.world().superAdminUserId());var request=new StockDocIssueBatchRequest();request.setIdempotencyKey("issue-"+batch.batchSegmentId());request.setDocIds(batch.documentIds());stock.issueFullBatch(request);}

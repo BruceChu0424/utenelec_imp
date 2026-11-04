@@ -262,7 +262,7 @@ public class GlReportService {
         Map<String,BigDecimal[]> data=lineMonthly(definitions,year);
         data.put("MFG_OUTPUT",finishedInMonthly(year));
         var bindings=FinanceManufacturingLabor.apply(em,year,data,lines.bindings(keys(definitions)));
-        var uncovered=FinanceExpenseReports.zero();for(int month:FinanceManufacturingLabor.uncoveredMonths(em,year))uncovered[month]=null;data.put("__MFG_COVERAGE",uncovered);
+        var uncovered=FinanceExpenseReports.zero();for(int month:FinanceManufacturingLabor.uncoveredMonths(em,year)){uncovered[month]=null;}data.put("__MFG_COVERAGE",uncovered);
         applyExpenseLedgerScope(data,definitions,year,throughMonth);
         return FinanceExpenseReports.pivot("manufacturingExpense",year,throughMonth,GlReportLine.MANUFACTURING,GlReportLine.LEGACY_MANUFACTURING,
                 data,bindings,FinanceExpenseAnalysisReader.confirmedPolicies(em,year),options);
@@ -312,7 +312,7 @@ public class GlReportService {
         com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
         requireMonth(throughMonth);
         var report=FinanceSalesExpenseReport.read(em,lines,year,throughMonth,FinancialStatementRevenue.months(em,access,year,throughMonth));
-        return FinanceExpenseReports.filtered("gl/sales-expense",report.columns(),report.rows(),options);
+        return FinanceExpenseReports.filtered(report.columns(),report.rows(),options);
     }
 
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
@@ -341,7 +341,7 @@ public class GlReportService {
     }
     private void applyExpenseLedgerScope(Map<String,BigDecimal[]> data,List<GlReportLine> definitions,int year,int throughMonth){
         var coverage=FinancialLedgerReadScope.months(em,year,throughMonth);
-        var proof=FinanceExpenseReports.zero();for(int m=1;m<=throughMonth;m++)if(!coverage.get(m).complete())proof[m]=null;data.put("__LEDGER_READ_SCOPE",proof);
+        var proof=FinanceExpenseReports.zero();for(int m=1;m<=throughMonth;m++){if(!coverage.get(m).complete())proof[m]=null;}data.put("__LEDGER_READ_SCOPE",proof);
         for(var definition:definitions)if(definition.source()!=GlReportLine.Source.FINISHED_IN){
             var values=data.computeIfAbsent(definition.key(),k->FinanceExpenseReports.zero());
             for(int m=1;m<=12;m++)if(m>throughMonth||!coverage.get(m).complete())values[m]=null;

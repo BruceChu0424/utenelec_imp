@@ -61,7 +61,7 @@ public class FinancePayrollPaymentService implements FinancePayrollPaymentPort {
         if((fee.signum()>0)!=(command.bankFeeStyleId()!=null))throw invalid("实际手续费与明确手续费科目须一致");
         UUID attempt=stable("PAYROLL_PAYMENT",command.applicationId(),command.requestId());
         var entries=new ArrayList<FinanceControlledJournalService.Entry>();var bindings=new ArrayList<Binding>();
-        var allStyles=new ArrayList<UUID>();for(var cost:plan.costs())allStyles.add(cost.style().id());for(var part:plan.parts())allStyles.add(part.style().id());if(plan.wage()!=null)allStyles.add(plan.wage().id());
+        var allStyles=new ArrayList<UUID>();for(var cost:plan.costs()){allStyles.add(cost.style().id());}for(var part:plan.parts()){allStyles.add(part.style().id());}if(plan.wage()!=null)allStyles.add(plan.wage().id());
         UUID cashStyle=null;FinancePayrollAccountingPlan.Style cash=null,feeStyle=null;
         if(source.netIncome().signum()>0){
             if(command.accountId()==null||command.bankBookedAt()==null||command.bankReference()==null||command.bankReference().isBlank()||permit.cleanPaymentEvidence().isEmpty())throw invalid("工资实际出款须有明确账户、回单号/签收依据、带时区的实际入账时间和已核验付款凭据");
@@ -124,7 +124,7 @@ public class FinancePayrollPaymentService implements FinancePayrollPaymentPort {
     @Override @Transactional public Result confirm(UUID applicationId,UUID requestId,UUID expectedVoucher){
         var header=attempt(applicationId,false);sources.read((UUID)header.get("batch_id"),true);requestLock(requestId);String fingerprint=plans.hash(Arrays.asList("CONFIRM",applicationId,expectedVoucher));
         var replay=action(requestId,fingerprint);if(replay!=null)return replay;
-        authority.requirePayrollConfirmation(applicationId,(UUID)header.get("batch_id"),requestId,expectedVoucher);tx.bind();var row=attempt(applicationId,true);expected(row,expectedVoucher);
+        authority.requirePayrollConfirmation(applicationId,(UUID)header.get("batch_id"),expectedVoucher);tx.bind();var row=attempt(applicationId,true);expected(row,expectedVoucher);
         if("REVERSED".equals(row.get("state")))throw conflict("原工资办理回执已经反审");if(!"CONFIRMED".equals(row.get("state")))db.update("UPDATE finance_payroll_payment_attempts SET state='CONFIRMED',confirmed_at=now(),confirmed_by=? WHERE id=?",current.requireId(),row.get("id"));
         Result result=result(db.queryForMap("SELECT * FROM finance_payroll_payment_attempts WHERE id=?",row.get("id")));saveAction(requestId,applicationId,row,"CONFIRM",fingerprint,result);return result;
     }
@@ -160,7 +160,7 @@ public class FinancePayrollPaymentService implements FinancePayrollPaymentPort {
         }
         for(var group:grouped.values())bindings.add(reserve(plan.source(),plan.date(),kind,owner,group,1));
     }
-    private List<Binding> reserveWages(Source source,LocalDate date,UUID owner,List<Wage> lines){var groups=new LinkedHashMap<String,List<Wage>>();for(var line:lines)groups.computeIfAbsent(line.style().id()+":"+(line.auxiliary()==null?null:line.auxiliary().auxiliaryId()),k->new ArrayList<>()).add(line);var out=new ArrayList<Binding>();for(var group:groups.values())out.add(reserve(source,date,"PAYROLL_WAGE_PAYMENT",owner,group,-1));return out;}
+    private List<Binding> reserveWages(Source source,LocalDate date,UUID owner,List<Wage> lines){var groups=new LinkedHashMap<String,List<Wage>>();for(var line:lines){groups.computeIfAbsent(line.style().id()+":"+(line.auxiliary()==null?null:line.auxiliary().auxiliaryId()),k->new ArrayList<>()).add(line);}var out=new ArrayList<Binding>();for(var group:groups.values()){out.add(reserve(source,date,"PAYROLL_WAGE_PAYMENT",owner,group,-1));}return out;}
     private Binding reserve(Source source,LocalDate date,String kind,UUID owner,List<Wage> group,int direction){
         var first=group.getFirst();var scope=new FinanceGlSettlementCapacityPort.Scope(first.style().id(),first.style().code(),first.auxiliary()==null?null:first.auxiliary().auxiliaryId(),first.style().currencyId(),source.currencyId(),direction,date);
         boolean pool=first.source()==null;var mode=pool?FinanceGlSettlementCapacityPort.Mode.AUXILIARY_BALANCE_POOL:first.auxiliary()==null?FinanceGlSettlementCapacityPort.Mode.CONFIRMED_AGGREGATE_LIABILITY:FinanceGlSettlementCapacityPort.Mode.EXPLICIT_GL_SOURCE;

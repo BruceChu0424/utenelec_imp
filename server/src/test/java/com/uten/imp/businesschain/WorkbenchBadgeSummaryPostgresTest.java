@@ -132,6 +132,9 @@ class WorkbenchBadgeSummaryPostgresTest {
         ORIGINAL_ENDPOINTS.put("warehouseSalesOutbound", "/api/warehouse/sales-outbound/counts");
         // ADR-134 报价核价: 新入口, 原端点即本次新增的计数端点。
         ORIGINAL_ENDPOINTS.put("salesQuote", "/api/sales/quotes/counts");
+        // 2026-11 财务复原批次并入: 业务申请/财务申请新来源, 原端点即本次新增的计数端点。
+        ORIGINAL_ENDPOINTS.put("application", "/api/business-applications/counts");
+        ORIGINAL_ENDPOINTS.put("financeApplication", "/api/finance/applications/counts");
         ORIGINAL_ENDPOINTS.put("salesQuoteFinance", "/api/sales/quotes/finance-review/count");
         ORIGINAL_ENDPOINTS.put("salesManagerReview", "/api/sales/manager-review/count");
         ORIGINAL_ENDPOINTS.put("procurementApproval", "/api/finance/procurement-approvals/count");
@@ -193,15 +196,32 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("visitorApproval", List.of("visitorApproval.pending"), List.of("visitorApproval.ongoing"));
         legacy("hrProfileReview", List.of("profileReview.count"), List.of());
         legacy("hrTaskCenter", List.of("hrTask.count"), List.of());
-        legacy("expenseMine", List.of("expense.draftCount", "expense.rejectedCount"), List.of("expense.processingCount"));
+        legacy("expenseMine", List.of("expense.draftCount", "expense.rejectedCount", "expense.mineRoutingStaleCount"), List.of("expense.processingCount"));
         legacy("financeAuditCenter", List.of("salesOrderFinance.count", "shipmentFinance.count",
                 "procurementApproval.count", "financeArrivalException.count",
                 "iqcRejection.open"), List.of());
+        // 2026-11 财务复原批次(V1000): 报销拆出部门/主管两级审批入口; 待审批口径由原
+        // pendingApprovalCount 拆为财务初审 + 财务复核两段。
+        legacy("expenseDepartmentApproval", List.of("expense.departmentPendingApprovalCount"), List.of());
+        legacy("expenseExecutiveApproval", List.of("expense.executivePendingApprovalCount"), List.of());
+        legacy("expenseFinance", List.of("expense.financeInitialPendingApprovalCount",
+                "expense.financeReviewPendingApprovalCount", "expense.pendingPaymentCount"), List.of());
+        // 2026-11 财务复原批次(V1001): 业务申请工作流与财务申请队列, 均为新入口,
+        // 没有迁移前的旧口径, 原端点即本次新增的计数端点。
+        legacy("applicationMine", List.of("application.mineDraftCount", "application.mineRejectedCount",
+                "application.mineRoutingStaleCount"), List.of("application.mineProcessingCount"));
+        legacy("applicationDepartmentApproval", List.of("application.departmentPendingByCode.*"), List.of());
+        legacy("applicationExecutiveApproval", List.of("application.executivePendingCount"), List.of());
+        legacy("applicationProcurement", List.of("application.procurementPendingCount"), List.of());
+        legacy("applicationViceExecutive", List.of("application.viceExecutivePendingCount"), List.of());
+        legacy("applicationFinance", List.of("application.financePendingCount", "application.financeReceivePendingCount",
+                "application.payableCount", "application.prepaymentPostingTodoCount"),
+                List.of("application.prepaymentPostingInProgressCount"));
+        legacy("financeApplications", List.of("financeApplication.todoCount"), List.of("financeApplication.processingCount"));
         legacy("financeQuoteReview", List.of("salesQuoteFinance.pending"), List.of());
         legacy("financeExpenseConfirmation", List.of("financeExpenseConfirmation.count"), List.of());
         // 2026-10-02 盘点审批(ADR/库存盘点)：普通仓交财务审核的入口（红=待审）。
         legacy("financeStockCountReview", List.of("stockCountFinance.count"), List.of());
-        legacy("expenseFinance", List.of("expense.pendingApprovalCount", "expense.pendingPaymentCount"), List.of());
         legacy("financeDrafts", List.of("drafts.financeReceipt", "drafts.financePayment", "drafts.financeExpense",
                 "drafts.financeOtherIncome", "drafts.financeBankTransfer"), List.of());
         legacy("productionSchedule", List.of("productionSchedule.count"), List.of());
@@ -211,17 +231,21 @@ class WorkbenchBadgeSummaryPostgresTest {
         legacy("productionPlanningUrges", List.of("productionPlanningUrge.count"), List.of());
         legacy("productionBatches", List.of(), List.of("productionExecution.count"));
         legacy("productionDrafts", List.of("drafts.productionPlan", "drafts.productionDailyReport"), List.of());
-        legacy("productionWorkshop", List.of("workshopTask.preparing"), List.of("workshopTask.inProgress"));
+        // 2026-11 车间在办桶并入报工送检(在办不归我动手, 两桶互斥相加)。
+        legacy("productionWorkshop", List.of("workshopTask.preparing"),
+                List.of("workshopTask.inProgress", "workshopTask.reportInspection"));
         legacy("rdTaskCenter", List.of("rdTask.open"), List.of("rdTask.inProgress"));
         // 两个实际工作方向含生产领/退料，旧领料入口只保留查询兼容，不再重复贡献模块合计。
+        // 2026-11 车间内料仓实物领退料并入出入库中心(仅计一次), 入库中心同时计入待收退回。
         legacy("warehouseOutboundCenter", List.of("warehouseSalesOutbound.PENDING_PICK",
-                "subcontractOutbound.count", "productionDraw.count"), List.of());
+                "subcontractOutbound.count", "productionDraw.count", "workshopMaterial.pendingIssue"), List.of());
         legacy("warehouseInboundCenter", List.of("warehouseInboundExpectation.count",
-                "warehouseArrivalException.count", "finishedInbound.count", "productionReturn.count"), List.of());
-        legacy("warehouseDrawCenter", List.of("productionDraw.count", "productionReturn.count"), List.of());
-        // ADR-131 车间内料仓: 红 = 待发料 + 待收退回, 黄 = 盘点中 (新入口, 口径即计数端点本身)。
-        legacy("warehouseWorkshopMaterial", List.of("workshopMaterial.pendingIssue", "workshopMaterial.pendingReturn"),
-                List.of("workshopMaterial.counting"));
+                "warehouseArrivalException.count", "finishedInbound.count", "productionReturn.count",
+                "workshopMaterial.pendingReturn"), List.of());
+        legacy("warehouseDrawCenter", List.of("productionDraw.count", "productionReturn.count",
+                "workshopMaterial.pendingIssue", "workshopMaterial.pendingReturn"), List.of());
+        // ADR-131 车间内料仓: 实物领退料归出入库后红数清零, 仅保留盘点中(黄)。
+        legacy("warehouseWorkshopMaterial", List.of(), List.of("workshopMaterial.counting"));
         legacy("warehouseQualityResult", List.of("qualityResult.actionable.*"), List.of("qualityResult.inProgress.*"));
         // 2026-10-02 盘点审批(ADR/库存盘点)：内料仓/仓库侧审核入口（红=待审）。
         legacy("warehouseStockCountReview", List.of("stockCountWarehouse.count"), List.of());
@@ -662,7 +686,9 @@ class WorkbenchBadgeSummaryPostgresTest {
         // (个人收回行 + 全部目录码 + 超管专属码), 一次汇总解析 3 次即 +6, CI 环境方差
         // 另有 ±12(同一提交本地 87 / CI 99)。相对断言(不超旧轮询总和)仍是主护栏;
         // 110 保留「汇总 ≪ 逐端点轮询」的量级约束, 不追平环境噪声。
-        assertThat(summary.logicalStatements).as("语句预算").isLessThanOrEqualTo(110);
+        // 2026-11 财务复原批次并入 application/financeApplication 两个新来源后实测 120:
+        // 各来源仍各读一次自己的计数查询(与原端点同一条), 无重复 SQL 可删, 按实测上调。
+        assertThat(summary.logicalStatements).as("语句预算").isLessThanOrEqualTo(120);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -686,8 +712,10 @@ class WorkbenchBadgeSummaryPostgresTest {
         JsonNode alias = summary.path("entries").path("warehouseDrawCenter");
         if (!alias.isMissingNode()) {
             Map<String, Long> facts = facts(summary);
-            assertThat(alias.path("todo").asLong()).as("旧领料入口仍兼容领料和退料事实")
-                    .isEqualTo(facts.getOrDefault("productionDraw.count", 0L) + facts.getOrDefault("productionReturn.count", 0L));
+            assertThat(alias.path("todo").asLong()).as("旧领料入口仍兼容领料、退料与车间内料仓领退事实")
+                    .isEqualTo(facts.getOrDefault("productionDraw.count", 0L) + facts.getOrDefault("productionReturn.count", 0L)
+                            + facts.getOrDefault("workshopMaterial.pendingIssue", 0L)
+                            + facts.getOrDefault("workshopMaterial.pendingReturn", 0L));
         }
     }
 

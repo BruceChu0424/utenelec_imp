@@ -102,7 +102,7 @@ class SubcontractLossValueEndToEndTest {
     private final java.util.List<UUID> worldGoods=new java.util.ArrayList<>();
     @BeforeEach void fixture(){fixture=new FullChainEndToEndTest();beans.autowireBean(fixture);}
 
-    @Test void normalLossIsSettledIndependentlyAndNeverLetsTheOrderShrinkBelowTheIssuedFive(){
+    @Test void normalLossIsSettledIndependentlyAndNeverLetsTheOrderShrinkBelowTheIssuedFive() throws Exception{
         var c=ready("normal-approved-target","5","5");
         assertThrows(ApiException.class,()->changeQty(c,"3"),"尚无实退或损耗时不能减少已实发五件的商业目标");
         money(decimal("select qty from subcontract_order_items where id=?",c.item()),"5");
@@ -242,7 +242,7 @@ class SubcontractLossValueEndToEndTest {
         assertEquals("VALUED",after.lines().getFirst().valuationStatus());
     }
 
-    @Test void reversingClassifiedNormalLossRestoresTheSameSourceAfterPartialProduction(){
+    @Test void reversingClassifiedNormalLossRestoresTheSameSourceAfterPartialProduction() throws Exception{
         var c=ready("normal-loss-reverse","5","5");UUID loss=loss(c,"2","2");receive(c,"3");drain();
         fixture.loginAs(c.world().superAdminUserId());wastes.reverse(loss);drain();money(stock(c),"153");
         money(decimal("select sum(node.owned_value_local) from stock_value_nodes node where node.owner_kind='SUBCONTRACT_WIP' and node.owner_id=?",c.issueItem()),"2");
@@ -250,7 +250,7 @@ class SubcontractLossValueEndToEndTest {
         money(normalHeld(c),"0");assertTwoChildren();
     }
 
-    @Test void nullOrderWarehouseKeepsOneCostScopeAcrossActualReceiptWarehousesAndReversals(){
+    @Test void nullOrderWarehouseKeepsOneCostScopeAcrossActualReceiptWarehousesAndReversals() throws Exception{
         var c=ready("normal-null-warehouse","3","3",true);
         UUID firstWarehouse=warehouse("loss-first"),secondWarehouse=warehouse("loss-second");
         assertNull(db.queryForObject("select warehouse_id from subcontract_orders where id=?",UUID.class,c.submitted().orderId()));
@@ -277,7 +277,7 @@ class SubcontractLossValueEndToEndTest {
         assertTwoChildren();
     }
 
-    @Test void normalLossBeforeFirstReceiptWaitsForAnActualOutputAndThenCollectsItsOriginalValue(){
+    @Test void normalLossBeforeFirstReceiptWaitsForAnActualOutputAndThenCollectsItsOriginalValue() throws Exception{
         var c=ready("normal-loss-before-output","5","5",true);
         loss(c,"2","2");drain();
         assertEquals(0,integer("select count(*) from stock_value_production_cost_objects where execution_segment_id=?",c.item()));
@@ -355,10 +355,10 @@ class SubcontractLossValueEndToEndTest {
         line.setMaterialIssueItemId(c.issueItem());line.setQty(new BigDecimal(quantity));line.setStandardQty(new BigDecimal(normal));line.setCause("核对实际材料损耗和合同允许数量");command.setItems(List.of(line));
         UUID id=wastes.create(command).getId();wastes.approve(id);return id;
     }
-    private UUID receive(CaseFixture c,String quantity){
+    private UUID receive(CaseFixture c,String quantity) throws Exception{
         return receive(c,quantity,c.world().warehouseId());
     }
-    private UUID receive(CaseFixture c,String quantity,UUID warehouse){
+    private UUID receive(CaseFixture c,String quantity,UUID warehouse) throws Exception{
         fixture.loginAs(c.world().superAdminUserId());var command=new com.uten.imp.features.subcontract.receipt.dto.ReceiptSaveRequest();
         command.setBillDate(BusinessTime.today());command.setSupplierId(c.world().supplierId());command.setWarehouseId(warehouse);
         command.setCurrencyId(c.world().currencyId());command.setExchangeRate(BigDecimal.ONE);command.setTaxRate(BigDecimal.ZERO);
@@ -370,7 +370,12 @@ class SubcontractLossValueEndToEndTest {
         inspections.dispose("SUBCONTRACT",receipt,inspection,new com.uten.imp.features.warehouse.inbound.dto.InspectionDispositionRequest("PASS",null,"确认实际回厂合格量","normal-pass-"+receipt));
         UUID confirmer=fixture.createUserWithPerms(c.world(),"loss-stock-"+receipt,"warehouse_iqc_stock_in:view","warehouse_iqc_stock_in:confirm");fixture.loginAs(confirmer);
         var released=stockIns.detail("SUBCONTRACT",receipt).items().getFirst();
-        stockIns.confirm("SUBCONTRACT",receipt,new ConfirmRequest("normal-stock-"+receipt,List.of(new ConfirmItem(released.passEventId(),new BigDecimal(quantity),released.remainingBaseQty(),"LOSS-TEST"))));
+        // V1039: 补开短交案件的 shortfall_pct 是明确的精度选择(如 2/3=66.6̄%),
+        // 同 ShortDeliveryExactWorkflowPostgresTest 的 choice 契约提供本次选择。
+        try(var ignored=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "subcontract.shortfall.percent",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN")))){
+            stockIns.confirm("SUBCONTRACT",receipt,new ConfirmRequest("normal-stock-"+receipt,List.of(new ConfirmItem(released.passEventId(),new BigDecimal(quantity),released.remainingBaseQty(),"LOSS-TEST"))));
+        }
         fixture.loginAs(c.world().superAdminUserId());return receipt;
     }
     private void changeQty(CaseFixture c,String qty){orders.changeQty(c.submitted().orderId(),new OrderQtyChangeRequest(List.of(new OrderQtyChangeItem(c.item(),new BigDecimal(qty)))));}

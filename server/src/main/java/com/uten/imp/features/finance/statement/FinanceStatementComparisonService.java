@@ -74,13 +74,13 @@ public class FinanceStatementComparisonService {
             try{return new BigDecimal(raw.strip()).compareTo(new BigDecimal(actual.toString()))==0?"EQUAL":"DIFFERENT";}
             catch(NumberFormatException invalid){return "PENDING";}
         }
-        if(type.equals("date")&&!Objects.toString(actual,"").isBlank()&&!Objects.toString(raw,"").isBlank()){
+        if(type.equals("date")&&actual!=null&&raw!=null&&!Objects.toString(actual,"").isBlank()&&!Objects.toString(raw,"").isBlank()){
             LocalDate expected=date(raw),found=date(actual.toString());
             if(expected==null||found==null)return "PENDING";return expected.equals(found)?"EQUAL":"DIFFERENT";
         }
         return Objects.toString(raw,"").strip().equals(Objects.toString(actual,"").strip())?"EQUAL":"DIFFERENT";
     }
-    private static LocalDate date(String text){for(String format:List.of("uuuu-MM-dd","uuuu/M/d","uuuu年M月d日"))try{return LocalDate.parse(text.strip(),DateTimeFormatter.ofPattern(format).withResolverStyle(java.time.format.ResolverStyle.STRICT));}catch(java.time.format.DateTimeParseException ignored){ }return null;}
+    private static LocalDate date(String text){for(String format:List.of("uuuu-MM-dd","uuuu/M/d","uuuu年M月d日")){try{return LocalDate.parse(text.strip(),DateTimeFormatter.ofPattern(format).withResolverStyle(java.time.format.ResolverStyle.STRICT));}catch(java.time.format.DateTimeParseException ignored){ }}return null;}
     private static List<Map<String,Object>> maps(Object value){if(!(value instanceof List<?> rows))throw invalid("原件结构缺少完整原行");var result=new ArrayList<Map<String,Object>>();for(var row:rows){if(!(row instanceof Map<?,?> map))throw invalid("原件行结构无效");var item=new LinkedHashMap<String,Object>();map.forEach((key,cell)->item.put(key.toString(),cell));result.add(item);}return result;}
     private static ApiException invalid(String text){return new ApiException(ErrorCode.VALIDATION_FAILED,text);}
 }

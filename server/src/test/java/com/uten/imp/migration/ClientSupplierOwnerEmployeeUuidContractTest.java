@@ -57,8 +57,15 @@ class ClientSupplierOwnerEmployeeUuidContractTest {
 
         assertEquals(3, count(financeReport, join));
         assertEquals(3, count(financeReport, guard));
-        assertEquals(1, count(financeCost, join));
-        assertEquals(1, count(financeCost, guard));
+        // V1011 精度批次把销售成本表的两个单行 join 合并为一个带 OR 的 LEFT JOIN：
+        // UUID 优先命中 em_sel.id=c.owner_employee_id；仅当 owner_employee_id 为空时，
+        // 才按既有口径用严格九位以内纯数字 emp_id 解析 legacy_id 兜底。
+        String mergedCostJoin = "LEFT JOIN employees em_sel ON (em_sel.id=c.owner_employee_id"
+                + " OR (c.owner_employee_id IS NULL";
+        assertEquals(1, count(financeCost, mergedCostJoin));
+        assertEquals(1, count(financeCost,
+                "AND em_sel.legacy_id=CASE WHEN btrim(COALESCE(c.emp_id,'')) ~ '^[0-9]{1,9}$'"));
+        assertEquals(1, count(financeCost, "THEN btrim(c.emp_id)::int ELSE NULL END"));
         assertFalse(financeReport.contains("REGEXP_REPLACE(COALESCE(c.emp_id"));
         assertFalse(financeCost.contains("REGEXP_REPLACE(COALESCE(c.emp_id"));
     }

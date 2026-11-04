@@ -92,10 +92,10 @@ class FinanceExpenseReportsTest {
         assertThat(find(operating(source,new BigDecimal("100"),BigDecimal.ZERO),"OP_RENT")).containsEntry("averageRatio",null).containsEntry("r2",null);
         assertThat(find(operating(source,new BigDecimal("100"),null),"OP_RENT")).containsEntry("averageRatio",null).containsEntry("r2",null);
     }
-    private static Map<String,BigDecimal[]> operatingInputs(){var source=new HashMap<String,BigDecimal[]>();for(var row:FinanceExpenseTemplateCatalog.operatingRows())if(!row.total()&&row.sourceRow()!=3)source.put(row.key(),FinanceExpenseReports.zero());return source;}
+    private static Map<String,BigDecimal[]> operatingInputs(){var source=new HashMap<String,BigDecimal[]>();for(var row:FinanceExpenseTemplateCatalog.operatingRows()){if(!row.total()&&row.sourceRow()!=3)source.put(row.key(),FinanceExpenseReports.zero());}return source;}
     private static ReportTableResponse operating(Map<String,BigDecimal[]> source,BigDecimal first,BigDecimal second){
         var names=new HashMap<String,List<String>>();source.keySet().forEach(key->names.put(key,List.of("明确来源")));
-        var revenue=new HashMap<Integer,FinancialStatementRevenue.Value>();if(first!=null)revenue.put(1,new FinancialStatementRevenue.Value(first,true,"同源"));if(second!=null)revenue.put(2,new FinancialStatementRevenue.Value(second,true,"同源"));
+        var revenue=new HashMap<Integer,FinancialStatementRevenue.Value>();if(first!=null){revenue.put(1,new FinancialStatementRevenue.Value(first,true,"同源"));}if(second!=null)revenue.put(2,new FinancialStatementRevenue.Value(second,true,"同源"));
         return FinanceExpenseReports.operating(2,source,new GlReportLineSource.Bindings(names),revenue,Set.of(1,2),Map.of(),FinanceReportColumnOptions.NONE,1,200,null);
     }
     private static Map<Integer,FinancialStatementRevenue.Value> revenue(String value){return Map.of(1,new FinancialStatementRevenue.Value(new BigDecimal(value),true,"同源"));}

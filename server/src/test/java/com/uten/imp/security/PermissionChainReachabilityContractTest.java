@@ -26,16 +26,29 @@ class PermissionChainReachabilityContractTest {
     private static final Set<String> CHAIN_ACTION_TYPES = Set.of("EXECUTE", "APPROVE", "CREATE");
     // V886 deliberately adds no department/user grant. Reusing the retired plan action would
     // hide the feature; assigning a department merely to satisfy this test would invent authority.
-    private static final Map<String, String> EXPLICIT_CONFIGURATION_ACTIONS = Map.of(
-            "production_material_analysis:forward_rd", "production.material-analysis",
+    // 值 = 该码允许出现的全部已启用设置面(逐面点名，多一个面就红)。
+    private static final Map<String, Set<String>> EXPLICIT_CONFIGURATION_ACTIONS = Map.of(
+            "production_material_analysis:forward_rd", Set.of("production.material-analysis"),
             // V978 requires a named manager to be configured through the reviewed permission flow.
             // It must not silently grant sales or finance staff the newly introduced approval stage.
-            "sales_quote_manager:confirm", "sales.manager-review",
-            "sales_quote_manager:reject", "sales.manager-review",
-            "sales_quote_manager:reverse", "sales.manager-review",
-            "sales_order_manager:confirm", "sales.manager-review",
-            "sales_order_manager:reject", "sales.manager-review",
-            "sales_order_manager:reverse", "sales.manager-review");
+            // V1000 起原「订单审核」面的全部授权项同时进入统一审批中心(approvals.center)。
+            "sales_quote_manager:confirm", Set.of("sales.manager-review", "approvals.center"),
+            "sales_quote_manager:reject", Set.of("sales.manager-review", "approvals.center"),
+            "sales_quote_manager:reverse", Set.of("sales.manager-review", "approvals.center"),
+            "sales_order_manager:confirm", Set.of("sales.manager-review", "approvals.center"),
+            "sales_order_manager:reject", Set.of("sales.manager-review", "approvals.center"),
+            "sales_order_manager:reverse", Set.of("sales.manager-review", "approvals.center"),
+            // V999_11 财务申请新码: 零默认授权，只经 finance.applications 设置面按需授出。
+            "finance_application:apply", Set.of("finance.applications"));
+    // V1000 报销四级审批码: 刻意零默认授权(由管理员在设置面按需授给部门或具体人)，策略
+    // BULK_EXCLUDED(不可批量授)且高风险，同时暴露在人事/财务/审批中心三个已启用设置面，
+    // 不满足上面单面 NORMAL 的形状；单独登记并钉死零默认授权、策略与受审面清单，
+    // 不据此推导部门授权。
+    private static final Map<String, Set<String>> STAGED_APPROVAL_CONFIGURATION_ACTIONS = Map.of(
+            "expense:approve:department", Set.of("hr.expense", "finance.hub", "approvals.center"),
+            "expense:approve:finance_initial", Set.of("hr.expense", "finance.hub", "approvals.center"),
+            "expense:approve:finance_review", Set.of("hr.expense", "finance.hub", "approvals.center"),
+            "expense:approve:executive", Set.of("hr.expense", "finance.hub", "approvals.center"));
     // V958: company-library write endpoints now gate on the entrance code; their
     // action authority (folder ACL or a global administration code) lives in the
     // service, so these codes no longer appear on write guards.
@@ -50,6 +63,7 @@ class PermissionChainReachabilityContractTest {
 
         Map<String, String> unreachable = new TreeMap<>();
         Set<String> explicitConfigurationSeen = new LinkedHashSet<>();
+        Set<String> stagedApprovalSeen = new LinkedHashSet<>();
         for (Map<String, Object> row : db.queryForList("""
                 SELECT permission.code,
                        permission.action_type,
@@ -76,7 +90,24 @@ class PermissionChainReachabilityContractTest {
                         JOIN permissions p ON p.id=link.permission_id
                         JOIN permission_surfaces surface ON surface.id=link.surface_id
                         WHERE p.code=? AND surface.enabled
-                        """, String.class, code)).containsExactly(EXPLICIT_CONFIGURATION_ACTIONS.get(code));
+                        """, String.class, code)).containsExactlyElementsOf(EXPLICIT_CONFIGURATION_ACTIONS.get(code));
+                continue;
+            }
+            if (STAGED_APPROVAL_CONFIGURATION_ACTIONS.containsKey(code)) {
+                stagedApprovalSeen.add(code);
+                assertThat(reachable).as(code + " must not acquire default authority").isFalse();
+                assertThat(db.queryForObject("SELECT grant_policy::text FROM permissions WHERE code=?", String.class, code))
+                        .as(code + " 分级审批码保持不可批量授予")
+                        .isEqualTo("{BULK_EXCLUDED}");
+                assertThat(db.queryForObject("SELECT high_risk FROM permissions WHERE code=?", Boolean.class, code))
+                        .as(code + " 分级审批码保持高风险标记").isEqualTo(true);
+                assertThat(db.queryForList("""
+                        SELECT surface.surface_key FROM permission_surface_permissions link
+                        JOIN permissions p ON p.id=link.permission_id
+                        JOIN permission_surfaces surface ON surface.id=link.surface_id
+                        WHERE p.code=? AND surface.enabled
+                        """, String.class, code))
+                        .containsExactlyElementsOf(STAGED_APPROVAL_CONFIGURATION_ACTIONS.get(code));
                 continue;
             }
             if (!reachable) {
@@ -87,6 +118,7 @@ class PermissionChainReachabilityContractTest {
                 .as("写端点上的执行/审批/创建码没有任何部门持有，也没标超管专属或个人专属")
                 .isEmpty();
         assertThat(explicitConfigurationSeen).containsExactlyInAnyOrderElementsOf(EXPLICIT_CONFIGURATION_ACTIONS.keySet());
+        assertThat(stagedApprovalSeen).containsExactlyInAnyOrderElementsOf(STAGED_APPROVAL_CONFIGURATION_ACTIONS.keySet());
     }
 
     @Test

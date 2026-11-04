@@ -209,11 +209,7 @@ class _UtenDateRangeSelectionButtonState
                       key:
                           widget.clearButtonKey ??
                           const Key('uten-date-range-clear'),
-                      tooltip: _t(
-                        '清除日期范围',
-                        'Clear date range',
-                        '날짜 범위 지우기',
-                      ),
+                      tooltip: _t('清除日期范围', 'Clear date range', '날짜 범위 지우기'),
                       // 紧凑窗口（<840）里同排 UtenButton 走 padded 命中区，
                       // 视觉高 48；关闭钮跟随同一行高，宽桌面保持标准 40。
                       desktopHitExtent: UtenCompactPresentation.of(context)

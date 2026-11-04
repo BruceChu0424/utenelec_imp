@@ -386,7 +386,7 @@ public class PurchaseReturnService {
         var items=itemRepo.findByReturnIdOrderByLineNoAsc(id);
         requireNonNegativeStoredCommercial(r,items);
         if(r.getTotalOriginal().signum()!=0||r.getTotalLocal().signum()!=0)requireReversibleArAp(id,StockService.SRC_PURCHASE_RETURN);
-        arApService.requireReturnCostProjectionReversible(id,StockService.SRC_PURCHASE_RETURN,r.getBillNo(),r.getBillDate());
+        arApService.requireReturnCostProjectionReversible(id,r.getBillNo(),r.getBillDate());
         List<com.uten.imp.application.port.InventoryValuationPort.IssueReturnSource> sources=new java.util.ArrayList<>();
         for(var item:items){
             var original=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
@@ -400,7 +400,7 @@ public class PurchaseReturnService {
         requireReturnCounterBalances(id);
     }
     private boolean postOrDefer(com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest req){
-        return com.uten.imp.common.finance.ProcurementPayablePosting.post(firstPayables,arApService,req);
+        return com.uten.imp.features.finance.arap.ProcurementPayablePosting.post(firstPayables,arApService,req);
     }
     private void requireReversibleArAp(UUID id,String type){
         if(firstPayables!=null&&firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source(type,id)))return;

@@ -23,7 +23,7 @@ public class ExpenseApplicationSourceAdapter implements FinanceApplicationExpens
         var rows=db.queryForList("SELECT id,claim_no,applicant_id,applicant_name_snapshot,applicant_department_id,title,status,created_at,total_amount,remark FROM expense_claims WHERE id=? AND NOT is_deleted"+(lock?" FOR UPDATE":""),id);
         if(rows.isEmpty())throw new ApiException(ErrorCode.NOT_FOUND,"原报销申请不存在");var h=rows.getFirst();
         var currencies=db.queryForList("SELECT id FROM currencies WHERE is_base_currency AND NOT is_deleted",UUID.class);if(currencies.size()!=1)throw new ApiException(ErrorCode.CONFLICT,"原报销本位币尚未核对");
-        var facts=new LinkedHashMap<String,Object>();for(String key:List.of("id","claim_no","applicant_id","applicant_name_snapshot","applicant_department_id","title","remark"))facts.put(key,h.get(key));facts.put("amountOriginal",((BigDecimal)h.get("total_amount")).toPlainString());
+        var facts=new LinkedHashMap<String,Object>();for(String key:List.of("id","claim_no","applicant_id","applicant_name_snapshot","applicant_department_id","title","remark")){facts.put(key,h.get(key));}facts.put("amountOriginal",((BigDecimal)h.get("total_amount")).toPlainString());
         facts.put("items",db.queryForList("SELECT id,line_no,category,expense_date,description,amount::text FROM expense_claim_items WHERE claim_id=? ORDER BY line_no,id",id));
         // The native snapshot builder includes original invoices and custom columns, and excludes reviewer/lifecycle marks.
         facts.put("submittedFacts",claims.getObject().applicationBusinessSnapshot(id));

@@ -1,4 +1,5 @@
 package com.uten.imp.features.finance.application;
+import com.uten.imp.audit.AuditDetailViewRecorder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -11,6 +12,7 @@ public class FinanceApplicationController {
     private final FinanceApplicationService service;
     private final FinanceApplicationReferences references;
     private final FinanceApplicationContinuationService continuation;
+    private final AuditDetailViewRecorder detailViewAudit;
     @PostMapping("/continuation/review") public Map<String,Object> reviewContinuation(@RequestBody FinanceApplicationContinuationContracts.Review input){return continuation.review(input);}
     @PostMapping("/continuation/confirm") public Map<String,Object> confirmContinuation(@RequestBody FinanceApplicationContinuationContracts.Confirm input){return continuation.confirm(input);}
     @GetMapping("/continuation/{origin}/receipt") public Map<String,Object> continuationReceipt(@PathVariable UUID origin){return continuation.receipt(origin);}
@@ -21,7 +23,8 @@ public class FinanceApplicationController {
     @GetMapping("/catalog") public Map<String,Object> catalog(){return service.catalog();}
     @GetMapping("/counts") public Map<String,Long> counts(){return service.counts();}
     @GetMapping public Map<String,Object> list(@RequestParam(defaultValue="mine")String queue,@RequestParam(required=false)String search,@RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="20")int size){return service.list(queue,search,page,size);}
-    @GetMapping("/{id}") public Map<String,Object> detail(@PathVariable UUID id){return service.detail(id);}
+    @GetMapping("/{id}") public Map<String,Object> detail(@PathVariable UUID id){var result=service.detail(id);
+        detailViewAudit.record("view_finance_application_detail","finance_applications",id,Objects.toString(result.get("application_no"),null),null,"财务申请单");return result;}
     @GetMapping("/{id}/operations/{requestId}") public Map<String,Object> receipt(@PathVariable UUID id,@PathVariable UUID requestId){return service.receipt(id,requestId);}
     @PostMapping public Map<String,Object> save(@RequestBody DraftInput input){return service.save(input);}
     @PostMapping("/{id}/submit") public Map<String,Object> submit(@PathVariable UUID id,@RequestBody Action input){return service.submit(id,input);}

@@ -114,9 +114,8 @@ public final class FinanceAccountingWorkbookParser {
     static List<Issue> reconcile(Parsed vouchers,Parsed balance) {
         var issues=new ArrayList<Issue>();Map<String,BigDecimal[]> totals=new HashMap<>();
         if(!vouchers.kind().equals("VOUCHERS")||!balance.kind().equals("BALANCE"))throw invalid("请选择原凭证及对应期间余额文件");
-        Set<String> sourceCodes=new HashSet<>();
         for(var row:balance.balances()) {
-            sourceCodes.add(row.accountCode());totals.put(row.accountCode(),new BigDecimal[]{BigDecimal.ZERO,BigDecimal.ZERO});
+            totals.put(row.accountCode(),new BigDecimal[]{BigDecimal.ZERO,BigDecimal.ZERO});
         }
         for(var voucher:vouchers.vouchers())for(var entry:voucher.entries()) {
             var original=balance.balances().getFirst();
@@ -137,9 +136,11 @@ public final class FinanceAccountingWorkbookParser {
         String value=required(row,1,"会计期间");
         if(value.matches("[0-9]{1,2}(?:[.]0+)?"))return new BigDecimal(value).intValueExact();
         var match=Pattern.compile("^月份[：:]\\s*([0-9]{4})[.]([0-9]{1,2})-([0-9]{4})[.]([0-9]{1,2})$").matcher(value);
-        if(!match.matches()||Integer.parseInt(match.group(1))!=year||!match.group(1).equals(match.group(3))||Integer.parseInt(match.group(2))!=Integer.parseInt(match.group(4)))
-            throw invalid("原会计期间须是同一年度的一个完整月份");
-        return Integer.parseInt(match.group(2));
+        try{
+            if(!match.matches()||Integer.parseInt(match.group(1))!=year||!match.group(1).equals(match.group(3))||Integer.parseInt(match.group(2))!=Integer.parseInt(match.group(4)))
+                throw invalid("原会计期间须是同一年度的一个完整月份");
+            return Integer.parseInt(match.group(2));
+        }catch(NumberFormatException error){throw invalid("会计期间年份或月份须为有效数字");}
     }
     private static BigDecimal number(DocumentGrid.Row row,int col){var value=nullableNumber(row,col,true);return value==null?BigDecimal.ZERO:value;}
     private static BigDecimal nullableNumber(DocumentGrid.Row row,int col,boolean book){String value=text(row,col);if(value.isBlank())return null;try{var amount=new BigDecimal(value);return book?com.uten.imp.common.util.FinancialExactAmount.book(amount,"原账套本币金额"):com.uten.imp.common.util.FinancialExactAmount.require(amount,"原账套原币/汇率");}catch(NumberFormatException error){throw invalid("金额须为原始精确数字，不能静默舍入");}}

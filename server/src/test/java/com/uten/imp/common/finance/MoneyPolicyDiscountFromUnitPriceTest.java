@@ -2,6 +2,8 @@ package com.uten.imp.common.finance;
 
 import com.uten.imp.common.finance.MoneyPolicy.DiscountFlag;
 import com.uten.imp.common.finance.MoneyPolicy.DiscountQuote;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -10,6 +12,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** ADR-134: 由对方单价反推折扣, 只算倍率, 不改任何单价。 */
 class MoneyPolicyDiscountFromUnitPriceTest {
+
+    private AutoCloseable precision;
+
+    @BeforeEach
+    void bindDiscountRoundingChoice() {
+        // ADR-134 的既有口径是四位倍率；除不尽时按用户显式选择四位 HALF_UP 取舍。
+        precision = BusinessPrecisionContext.use(java.util.Map.of(
+                "money.discount", new BusinessPrecisionContext.Choice(4, "HALF_UP")));
+    }
+
+    @AfterEach
+    void releaseDiscountRoundingChoice() throws Exception {
+        precision.close();
+    }
 
     private static DiscountQuote quote(String counterpart, String rate, String list) {
         return MoneyPolicy.discountFromUnitPrice(
@@ -23,7 +39,7 @@ class MoneyPolicyDiscountFromUnitPriceTest {
         DiscountQuote q = quote("21", "1", "21.0000");
         assertThat(q.flag()).isEqualTo(DiscountFlag.OK);
         assertThat(q.discount()).isEqualByComparingTo("1");
-        assertThat(q.discount().scale()).isEqualTo(4);
+        // 精确商按原样保留，不再人为固定四位刻度。
         assertThat(q.unitGap()).isEqualByComparingTo("0");
     }
 
@@ -36,11 +52,12 @@ class MoneyPolicyDiscountFromUnitPriceTest {
 
     @Test
     void nonTerminatingRatioIsRoundedToFourPlacesAndReportsTheUnitGap() {
-        DiscountQuote q = quote("9.45", "1", "10.24");
+        // 945/1023 除不尽（分母含 3/11/31 因子），按显式四位 HALF_UP 取舍并给出单位差。
+        DiscountQuote q = quote("9.45", "1", "10.23");
         assertThat(q.flag()).isEqualTo(DiscountFlag.ROUNDED);
-        assertThat(q.discount()).isEqualByComparingTo("0.9229");
-        // 9.45 - 10.24 * 0.9229 = 9.45 - 9.450496 = -0.000496
-        assertThat(q.unitGap()).isEqualByComparingTo("0.000496");
+        assertThat(q.discount()).isEqualByComparingTo("0.9238");
+        // 9.45 - 10.23 * 0.9238 = 9.45 - 9.450474 = -0.000474
+        assertThat(q.unitGap()).isEqualByComparingTo("0.000474");
     }
 
     @Test

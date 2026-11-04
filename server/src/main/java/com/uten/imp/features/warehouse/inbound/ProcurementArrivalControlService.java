@@ -2851,9 +2851,25 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                       AND item.is_deleted = FALSE
                     """.formatted(itemTable, receiptTable), row.receiptItemId()));
         } else {
-            requireChanged(jdbc.update("""
+            // V1033: narrowing the accepted quantity also re-adopts the charged and
+            // gift base facts (qty×rate). The subcontract table derives its adopted
+            // base itself; purchase receipt lines must carry both bases explicitly.
+            String purchaseAdoption = PURCHASE.equals(orderType)
+                    ? """
+                        charged_base_qty = ? * item.unit_rate,
+                        gift_base_qty = CASE WHEN item.quantity_semantics = 'CHARGED_PLUS_GIFT_V1'
+                            THEN item.gift_qty * item.unit_rate ELSE 0 END,
+                      """
+                    : "";
+            var narrowingArgs = new java.util.ArrayList<Object>();
+            narrowingArgs.add(acceptedQty);
+            if (PURCHASE.equals(orderType)) narrowingArgs.add(acceptedQty);
+            narrowingArgs.addAll(java.util.List.of(acceptedQty, currentQty,
+                    acceptedQty, currentQty, acceptedQty, currentQty, row.receiptItemId()));
+            requireChanged(jdbc.update(("""
                     UPDATE %s item
                     SET qty = ?,
+                        %s
                         amount_original = CASE WHEN amount_original IS NULL THEN NULL
                             ELSE round(amount_original * ? / NULLIF(?, 0), 4) END,
                         amount_local = CASE WHEN amount_local IS NULL THEN NULL
@@ -2867,15 +2883,8 @@ public class ProcurementArrivalControlService implements ProcurementArrivalContr
                       AND receipt.status = 0 AND receipt.legacy_id IS NULL
                       AND receipt.is_deleted = FALSE
                       AND item.is_deleted = FALSE
-                    """.formatted(itemTable, receiptTable),
-                    acceptedQty,
-                    acceptedQty,
-                    currentQty,
-                    acceptedQty,
-                    currentQty,
-                    acceptedQty,
-                    currentQty,
-                    row.receiptItemId()));
+                    """).formatted(itemTable, purchaseAdoption, receiptTable),
+                    narrowingArgs.toArray()));
             if (SUBCONTRACT.equals(orderType)) {
                 requireChanged(jdbc.update("""
                         UPDATE subcontract_receipt_items item

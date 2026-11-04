@@ -850,7 +850,7 @@ class _EvidenceEditorState extends ConsumerState<_EvidenceEditor>
       final bytes = await guard.run(
         () => ref
             .read(apiClientProvider)
-            .getBytes('$_base/${_record!['id']}/attachment'),
+            .postForBytes('$_base/${_record!['id']}/attachment'),
       );
       if (_current && guard.isCurrent) {
         await saveBytes(

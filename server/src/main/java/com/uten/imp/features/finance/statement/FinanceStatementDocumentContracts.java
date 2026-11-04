@@ -32,7 +32,7 @@ public final class FinanceStatementDocumentContracts {
     }
     public record Settings(BalanceSelection balance,List<Retention> retentions,String printRemark,List<BalanceSelection> additionalBalances) {
         public Settings(BalanceSelection balance,List<Retention> retentions,String printRemark){this(balance,retentions,printRemark,null);}
-        public List<BalanceSelection> balances(){var all=new ArrayList<BalanceSelection>();if(balance!=null)all.add(balance);if(additionalBalances!=null)all.addAll(additionalBalances);return Collections.unmodifiableList(all);}
+        public List<BalanceSelection> balances(){var all=new ArrayList<BalanceSelection>();if(balance!=null){all.add(balance);}if(additionalBalances!=null){all.addAll(additionalBalances);}return Collections.unmodifiableList(all);}
     }
     public record ProfileSave(UUID requestId,long expectedRevision,String kind,String templateKey,String partyRole,
             UUID partyId,UUID currencyId,Organization organization,Settings settings,String sourceReference) { }

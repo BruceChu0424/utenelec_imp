@@ -1,0 +1,11 @@
+-- 补正 MasterReferenceCatalogCoverageTest 的货品终身使用追踪契约(V911)：
+-- V999_6/V1005/V1022/V1027/V1034 等本批迁移新建的 finance_copper_template_inputs、
+-- finance_material_contexts、finance_subcontract_loss_policies、
+-- finance_subcontract_quantity_evidence、goods_bom_material_cost_adoptions、
+-- goods_bom_periodic_quantity_adoptions 等表带 *_goods_id 引用列，建表迁移没有调用
+-- V911 的公共入口 fn_refresh_goods_code_usage_tracking()，导致 fn_goods_code_usage_columns()
+-- 登记的列在真库上缺少 trg_track_goods_code_usage 触发器（「Missing lifetime tracking
+-- trigger on finance_copper_template_inputs」）。已应用迁移字节不可改，此处按同一公共入口
+-- 统一补装：函数按当前目录重算每张受追踪表的列参数，先拆后建同名触发器；对既有表
+-- 生成与 V911/V932/V968 安装形态完全一致的定义，不发明、不改写任何终身使用事实。
+SELECT fn_refresh_goods_code_usage_tracking();

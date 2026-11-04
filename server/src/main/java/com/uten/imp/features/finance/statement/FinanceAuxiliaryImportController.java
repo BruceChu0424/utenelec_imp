@@ -23,7 +23,7 @@ public class FinanceAuxiliaryImportController {
     @GetMapping("/operations/{request}")public Map<String,Object> operation(@PathVariable UUID request){return service.operation(request);}
     @GetMapping("/{id}") public FinanceAuxiliaryImportService.Preview imported(@PathVariable UUID id){return service.imported(id);}
     @PostMapping("/{id}/recheck") @PreAuthorize("hasAuthority('payment_style:edit')") public FinanceAuxiliaryImportService.Preview recheck(@PathVariable UUID id,@RequestParam(required=false)UUID requestId){return service.recheck(id,requestId);}
-    @GetMapping("/{id}/file")public ResponseEntity<byte[]> file(@PathVariable UUID id){return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).header(HttpHeaders.CONTENT_DISPOSITION,ContentDisposition.attachment().filename(service.imported(id).sourceName(),java.nio.charset.StandardCharsets.UTF_8).build().toString()).body(service.sourceBytes(id));}
+    @PostMapping("/{id}/file")public ResponseEntity<byte[]> file(@PathVariable UUID id){return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).header(HttpHeaders.CONTENT_DISPOSITION,ContentDisposition.attachment().filename(service.imported(id).sourceName(),java.nio.charset.StandardCharsets.UTF_8).build().toString()).body(service.sourceBytes(id));}
     @GetMapping("/{id}/comparison") public Map<String,Object> compare(@PathVariable UUID id){return Map.of("items",service.compare(id));}
     @PostMapping(value="/preview",consumes="multipart/form-data")
     @PreAuthorize("hasAuthority('payment_style:edit')")

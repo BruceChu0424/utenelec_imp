@@ -54,7 +54,7 @@ public class FinanceAccountingImportService {
         authorize();var vouchers=stored(id,false);var balances=stored(balanceId,false);
         if(!vouchers.system().equals(balances.system())||!vouchers.actor().equals(balances.actor()))throw invalid("请选择同一提交人、原账套的凭证及余额文件");
         var result=new ArrayList<FinanceAccountingWorkbookParser.Issue>();result.addAll(vouchers.source().issues());result.addAll(balances.source().issues());
-        if(result.isEmpty())result.addAll(FinanceAccountingWorkbookParser.reconcile(vouchers.source(),balances.source()));return List.copyOf(result);
+        if(result.isEmpty()){result.addAll(FinanceAccountingWorkbookParser.reconcile(vouchers.source(),balances.source()));}return List.copyOf(result);
     }
     @Transactional public Preview preview(String kind,String sourceSystem,String filename,byte[] bytes) {
         authorize();if(!Set.of("VOUCHERS","BALANCE").contains(kind))throw invalid("请选择原凭证或科目余额");
@@ -111,7 +111,7 @@ public class FinanceAccountingImportService {
             for(var line:journal.lines()){UUID entryId=UUID.randomUUID();
                 db.update("INSERT INTO gl_entries(id,voucher_id,line_no,style_id,direction,amount,entry_date,period,source_doc_type,source_doc_id,source_bill_no,summary,created_by,updated_by) VALUES(?,?,?,?,?,?,?,?, 'FINANCIAL_SOURCE',?,?,?,?,?)",
                         entryId,voucherId,++lineNo,line.styleId(),line.direction(),line.amount(),journal.date(),YearMonth.from(journal.date()).toString(),id,journal.number(),line.summary(),current.requireId(),current.requireId());
-                allocation(entryId,line,vouchers.system());entries++;
+                allocation(entryId,line);entries++;
                 if(journal.purpose().equals("OPENING")&&line.auxiliary()!=null)openingEvidence(balances,line,entryId,plan.effectiveFrom(),vouchers.submittedBy());
             }
             db.update("INSERT INTO finance_gl_voucher_evidence(voucher_id,import_batch_id,purpose,source_system,source_ledger,source_year,source_period,source_voucher_type,source_voucher_no,source_voucher_id,source_sha256,source_snapshot,submitted_by,approved_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?::jsonb,?,?)",
@@ -341,7 +341,7 @@ public class FinanceAccountingImportService {
         }
         return new FinanceAccountingWorkbookParser.Parsed("BALANCE",List.of(),List.copyOf(added),balances.issues(),balances.headers());
     }
-    private void allocation(UUID entryId,Line line,String system) {
+    private void allocation(UUID entryId,Line line) {
         var ref=line.auxiliary();db.update("INSERT INTO finance_gl_entry_allocations(entry_id,allocation_no,account_code,source_account_code,source_account_name,source_account_path_name,auxiliary_id,currency_id,amount_local,amount_original,exchange_rate,auxiliary_role,party_id_snapshot,source_system,source_code,source_name,source_entry_id,source_row,source_snapshot,created_by,original_currency_id) VALUES(?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?::jsonb,?,?)",
                 entryId,line.accountCode(),line.accountCode(),line.accountName(),line.pathName(),ref==null?null:ref.auxiliaryId(),line.currencyId(),line.amount(),line.original(),line.exchangeRate(),ref==null?null:ref.role(),ref==null?null:ref.partyId(),ref==null?null:ref.sourceSystem(),ref==null?null:ref.sourceCode(),ref==null?null:ref.sourceName(),line.sourceEntryId(),line.sourceRow(),encode(line.source()),current.requireId(),line.originalCurrencyId());
     }

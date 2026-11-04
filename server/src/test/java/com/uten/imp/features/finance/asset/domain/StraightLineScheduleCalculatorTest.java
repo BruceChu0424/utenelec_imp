@@ -1,5 +1,7 @@
 package com.uten.imp.features.finance.asset.domain;
 
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -8,6 +10,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class StraightLineScheduleCalculatorTest {
+    private AutoCloseable explicitUserChoice;
+    @BeforeEach void explicitFourDecimalAllocationChoice(){
+        // 场景输入而非产品默认（MoneyPolicyTest 同范式）：100/3、…/7 除不尽时本次按 4 位四舍五入核对。
+        explicitUserChoice=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "money.cumulative-share",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"HALF_UP")));
+    }
+    @AfterEach void releaseUserChoice()throws Exception{explicitUserChoice.close();}
 
     @Test
     void finalPeriodAbsorbsRoundingRemainder() {

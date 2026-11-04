@@ -116,7 +116,7 @@ public class FinanceStatementDocumentService {
         if(settings!=null)try{
             validateSettings(settings,context.templateKey(),context.partyRole(),context.partyId(),context.currencyId(),context.dateTo());
             BigDecimal combined=BigDecimal.ZERO;boolean known=true;var sourceHashes=new ArrayList<String>();var bases=new ArrayList<String>();
-            for(var selected:settings.balances()){var balance=ledger.read(selected.scope(context.dateFrom(),context.dateTo()));var amounts=selected.originalAmounts()?balance.original():balance.local();if(amounts.closing()==null)known=false;else combined=combined.add(amounts.closing().multiply(BigDecimal.valueOf(selected.normalDirection())));sourceHashes.add(selected.originalAmounts()?balance.originalFingerprint():balance.fingerprint());bases.add(selected.accountCode()+"："+balance.basis());}
+            for(var selected:settings.balances()){var balance=ledger.read(selected.scope(context.dateFrom(),context.dateTo()));var amounts=selected.originalAmounts()?balance.original():balance.local();if(amounts.closing()==null)known=false;else{combined=combined.add(amounts.closing().multiply(BigDecimal.valueOf(selected.normalDirection())));}sourceHashes.add(selected.originalAmounts()?balance.originalFingerprint():balance.fingerprint());bases.add(selected.accountCode()+"："+balance.basis());}
             closing=known?combined:null;sourceFingerprint=hash(sourceHashes);basis=String.join("；",bases)+"；仅合并明确选择的不同账载科目，不加另一套ERP余额";
             retained=settings.retentions()==null?null:sumRetentions(settings,context.dateTo());
             if(closing==null||retained!=null&&retained.compareTo(closing.max(BigDecimal.ZERO))>0)retained=null;
@@ -332,7 +332,7 @@ public class FinanceStatementDocumentService {
             if(first.total()>20000||first.total()!=first.rows().size())throw invalid("材料原件快照未包含完整有界来源，请按原资料重新核对");
             rows.addAll(first.rows());
         }else do{
-                var part=originalPage(context,page,500);if(first==null)first=part;rows.addAll(part.rows());pages=part.totalPages();
+                var part=originalPage(context,page,500);if(first==null){first=part;}rows.addAll(part.rows());pages=part.totalPages();
                 if(rows.size()>20000||part.total()>20000)throw invalid("对账原件超过20000行，请按实际对象/期间分批核对，原报表/任务导出仍可查询完整来源");page++;
             }while(page<=pages);
         BigDecimal total=FinanceStatementTemplate.periodAmount(context.templateKey(),first.totals(),first.total());var meta=new LinkedHashMap<String,Object>(first.documentMetadata());
@@ -383,7 +383,7 @@ public class FinanceStatementDocumentService {
         String period=from.getYear()==to.getYear()&&from.getMonth()==to.getMonth()?to.getYear()+"年"+to.getMonthValue()+"月份":from+"至"+to;
         meta.put("title",owner+"\n"+period+"对账单");
         var headings=new ArrayList<Map<String,Object>>();
-        for(Object raw:(List<?>)meta.get("headerLines")){var line=new LinkedHashMap<>(map(raw));if("customerName".equals(line.get("key")))line.put("label"," TO: ");headings.add(line);}
+        for(Object raw:(List<?>)meta.get("headerLines")){var line=new LinkedHashMap<>(map(raw));if("customerName".equals(line.get("key"))){line.put("label"," TO: ");}headings.add(line);}
         meta.put("headerLines",headings);
         var footer=new ArrayList<Map<String,Object>>();
         BigDecimal adjusted=materialAmount(source.get("processingAdjustedTotal")),weight=materialAmount(source.get("closingWeightKg"));
@@ -440,7 +440,7 @@ public class FinanceStatementDocumentService {
         if(value instanceof Enum<?> e)return e.name();
         if(value instanceof Map<?,?> input){var out=new LinkedHashMap<String,Object>();input.forEach((key,v)->out.put(key.toString(),jsonSafe(v)));return out;}
         if(value instanceof Collection<?> input)return input.stream().map(this::jsonSafe).toList();
-        if(value.getClass().isRecord()){var out=new LinkedHashMap<String,Object>();try{for(var component:value.getClass().getRecordComponents())out.put(component.getName(),jsonSafe(component.getAccessor().invoke(value)));return out;}catch(ReflectiveOperationException error){throw new IllegalStateException("原表记录快照无法读取",error);}}
+        if(value.getClass().isRecord()){var out=new LinkedHashMap<String,Object>();try{for(var component:value.getClass().getRecordComponents()){out.put(component.getName(),jsonSafe(component.getAccessor().invoke(value)));}return out;}catch(ReflectiveOperationException error){throw new IllegalStateException("原表记录快照无法读取",error);}}
         return jsonSafe(json.convertValue(value,new TypeReference<Map<String,Object>>(){}));
     }
 
@@ -459,7 +459,7 @@ public class FinanceStatementDocumentService {
         else if(!Boolean.TRUE.equals(db.queryForObject("SELECT is_base_currency FROM currencies WHERE id=? AND NOT is_deleted",Boolean.class,currency)))throw invalid("本币账面余额只能打印在权威本位币原表，不能贴成外币");
         if(db.queryForObject("SELECT count(*) FROM finance_chart_codes WHERE code=? AND classification IN('ASSET','LIABILITY')",Integer.class,b.accountCode())!=1)throw invalid("往来余额来源须先明确为资产/负债类别，不能把收入或费用当作往来余额");
         }
-        if(value.retentions()!=null){if(value.retentions().size()>100)throw invalid("每个版本最多维护100项质保组成，请按实际协议分组");for(var r:value.retentions()){if(r.effectiveFrom()==null||r.amount()==null||r.amount().signum()<0)throw invalid("质保组成须有实际起点和非负金额");if(value.balance().originalAmounts())FinancialExactAmount.require(r.amount(),"质保原币");else FinancialExactAmount.book(r.amount(),"质保本币");reference(r.sourceReference());}}
+        if(value.retentions()!=null){if(value.retentions().size()>100)throw invalid("每个版本最多维护100项质保组成，请按实际协议分组");for(var r:value.retentions()){if(r.effectiveFrom()==null||r.amount()==null||r.amount().signum()<0)throw invalid("质保组成须有实际起点和非负金额");if(value.balance().originalAmounts())FinancialExactAmount.require(r.amount(),"质保原币");else{FinancialExactAmount.book(r.amount(),"质保本币");}reference(r.sourceReference());}}
         if(value.printRemark()!=null&&value.printRemark().length()>4000)throw invalid("打印备注最多4000字");
     }
     private static BigDecimal sumRetentions(Settings settings,LocalDate asOf){return settings.retentions()==null?BigDecimal.ZERO:settings.retentions().stream().filter(r->!r.effectiveFrom().isAfter(asOf)).map(Retention::amount).reduce(BigDecimal.ZERO,BigDecimal::add);}
@@ -478,12 +478,12 @@ public class FinanceStatementDocumentService {
         if(!Set.of("OWN","COUNTERPART","CONTEXT").contains(Objects.toString(kind,""))||currency==null)throw invalid("请选择打印资料类型和明确币别");
         if("CONTEXT".equals(kind)){if(!TEMPLATES.contains(Objects.toString(template,"")))throw invalid("请选择原对账单入口");}else if(!"ALL".equals(template))throw invalid("组织/收款资料使用共用资料范围，不另造入口名称");
         if("OWN".equals(kind)){if(role!=null||party!=null)throw invalid("本方资料不关联另一往来对象");}
-        else if(party==null||!Set.of("CUSTOMER","SUPPLIER","EMPLOYEE","OTHER").contains(Objects.toString(role,"")))throw invalid("请选择真实往来对象及辅助类别");
+        else if(party==null||role==null||!Set.of("CUSTOMER","SUPPLIER","EMPLOYEE","OTHER").contains(Objects.toString(role,"")))throw invalid("请选择真实往来对象及辅助类别");
         else {String table=switch(role){case "CUSTOMER"->"clients";case "SUPPLIER"->"suppliers";case "EMPLOYEE"->"employees";default->"finance_auxiliary_parties";};String deleted=role.equals("OTHER")?"":" AND NOT is_deleted";if(db.queryForObject("SELECT count(*) FROM "+table+" WHERE id=?"+deleted,Integer.class,party)!=1)throw invalid("所选实际往来对象不存在或已删除");}
         if(db.queryForObject("SELECT count(*) FROM currencies WHERE id=? AND NOT is_deleted",Integer.class,currency)!=1)throw invalid("币别不存在");
     }
     private void context(Context c){if(c==null||c.dateFrom()==null||c.dateTo()==null||c.dateFrom().isAfter(c.dateTo()))throw invalid("请选择完整对账期间");profileIdentity("CONTEXT",c.templateKey(),c.partyRole(),c.partyId(),c.currencyId());if(c.templateKey().equals("otherReceivableStatement")?(c.materialContextId()==null):c.materialContextId()!=null)throw invalid("材料原件须保留自己的已审核资料编号，不能套用其他原表");if(!c.templateKey().equals("otherReceivableStatement")&&!Objects.equals(c.partyRole(),c.templateKey().equals("clientStatement")?"CUSTOMER":"SUPPLIER"))throw invalid("本张原对账单与往来类别不一致");}
-    private static void validateOrganization(Organization o){for(String text:Arrays.asList(o.organizationName(),o.address(),o.phone(),o.fax(),o.bankHolder(),o.bankName(),o.bankAccount(),o.receiver(),o.receiverPhone(),o.printRemark()))if(text!=null&&text.length()>4000)throw invalid("打印资料单项最多4000字");if(o.organizationName()==null||o.organizationName().isBlank())throw invalid("请填写实际组织名称");}
+    private static void validateOrganization(Organization o){for(String text:Arrays.asList(o.organizationName(),o.address(),o.phone(),o.fax(),o.bankHolder(),o.bankName(),o.bankAccount(),o.receiver(),o.receiverPhone(),o.printRemark())){if(text!=null&&text.length()>4000)throw invalid("打印资料单项最多4000字");}if(o.organizationName()==null||o.organizationName().isBlank())throw invalid("请填写实际组织名称");}
     private Map<String,Object> latest(String kind,String template,String role,UUID party,UUID currency){var rows=db.queryForList("SELECT * FROM finance_statement_profiles WHERE kind=? AND template_key=? AND party_role IS NOT DISTINCT FROM ?::text AND party_id IS NOT DISTINCT FROM ?::uuid AND currency_id=? AND status='APPROVED' ORDER BY revision DESC LIMIT 1",kind,template,role,party,currency);return rows.isEmpty()?null:rows.getFirst();}
     private Map<String,Object> profileRow(UUID id,boolean lock){var rows=db.queryForList("SELECT * FROM finance_statement_profiles WHERE id=?"+(lock?" FOR UPDATE":""),id);if(rows.size()!=1)throw invalid("打印资料版本不存在");return rows.getFirst();}
     private Map<String,Object> profileView(Map<String,Object> source){var row=new LinkedHashMap<>(source);Object body=row.remove("body_cipher");row.put("body",decode(body,new TypeReference<Map<String,Object>>(){}));return row;}

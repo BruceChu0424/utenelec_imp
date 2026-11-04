@@ -504,7 +504,7 @@ class SubcontractKitLockEndToEndTest {
     @Test
     void batchWorkbenchKeepsListTotalsStatusFacetsAndActionPermissionsBeforePagination() {
         assertEquals(com.uten.imp.testsupport.FixtureNumbers.integer(com.uten.imp.migration.MigrationRehearsalSupport.CURRENT_HEAD_VERSION),
-                db.queryForObject("SELECT max(version::int) FROM flyway_schema_history WHERE success",Integer.class));
+                db.queryForObject("SELECT max(version::numeric) FROM flyway_schema_history WHERE success",Integer.class));
         String tag="sckit-batch-wb";
         var w=fixture.seedWorld(tag);fixture.loginAs(w.superAdminUserId());
         UUID f=goods(w,tag,"F","自制"),p=goods(w,tag,"P","委外"),m=goods(w,tag,"M","采购");

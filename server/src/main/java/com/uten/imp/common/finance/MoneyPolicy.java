@@ -289,8 +289,8 @@ public final class MoneyPolicy {
         return value == null ? null : FinancialExactAmount.quantity(value,"数量");
     }
 
-    /** 兼容旧展示调用；现在完整保留原值，不再按传入的展示位数取舍。 */
-    public static BigDecimal quantityDisplay(BigDecimal value, int scale) {
+    /** 兼容旧展示调用；现在完整保留原值，不再按展示位数取舍。 */
+    public static BigDecimal quantityDisplay(BigDecimal value) {
         return value;
     }
 

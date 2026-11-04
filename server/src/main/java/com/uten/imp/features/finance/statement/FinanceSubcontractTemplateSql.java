@@ -48,7 +48,7 @@ final class FinanceSubcontractTemplateSql {
                         AND NOT EXISTS(SELECT 1 FROM subcontract_receipt_material_consumptions consumption
                           JOIN subcontract_material_issue_items issued ON issued.id=consumption.issue_item_id
                           WHERE consumption.receipt_item_id=CASE WHEN event.source_kind='PRODUCT_RETURN' THEN(SELECT receipt_item_id FROM subcontract_return_items WHERE id=event.id) ELSE event.id END AND consumption.reversal_of IS NULL
-                            AND(consumption.consumption_basis<>'DIRECT_TARGET' OR(issued.goods_id,issued.color_id,issued.unit_id) IS DISTINCT FROM(event.goods_id,event.color_id,event.unit_id)))) AS comparable
+                            AND(consumption.consumption_basis<>'FROZEN_BOM_ESTIMATE' OR(issued.goods_id,issued.color_id,issued.unit_id) IS DISTINCT FROM(event.goods_id,event.color_id,event.unit_id)))) AS comparable
                     FROM receipt_events event
                 ), receipt_facts AS (
                     SELECT supplier_id,currency_id,goods_id,color_id,unit_id,id,event_order,source_kind,order_item_id,

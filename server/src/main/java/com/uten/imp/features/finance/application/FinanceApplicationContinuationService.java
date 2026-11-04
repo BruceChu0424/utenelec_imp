@@ -248,7 +248,7 @@ public class FinanceApplicationContinuationService {
     private NativeApplicationContinuationPort target(String type){return targets.orderedStream().filter(port->port.targetType().equals(type)).findFirst().orElseThrow(()->conflict("当前来源接续能力尚不可用"));}
     private AuthUser writer(){var actor=roles.staff();if(actor.getImpersonatedBy()!=null)throw new ApiException(ErrorCode.IMPERSONATION_READ_ONLY);tx.bind();return actor;}
     private void requestLock(UUID id){if(id!=null)db.query("SELECT pg_advisory_xact_lock(hashtextextended(?,7111))",rs->{},"finance-application-operation:"+id);}
-    private BigDecimal sum(Map<String,Object> payload){BigDecimal total=BigDecimal.ZERO;for(Object item:(List<?>)payload.get("lines"))total=total.add(new BigDecimal(asMap(item).get("amountOriginal").toString()));return FinancialExactAmount.require(total,"原申请合计");}
+    private BigDecimal sum(Map<String,Object> payload){BigDecimal total=BigDecimal.ZERO;for(Object item:(List<?>)payload.get("lines")){total=total.add(new BigDecimal(asMap(item).get("amountOriginal").toString()));}return FinancialExactAmount.require(total,"原申请合计");}
     private void copy(Map<String,String> fields,String key,Map<String,Object> source,String sourceKey){String value=Objects.toString(source.get(sourceKey),"");if(fields.containsKey(key)&&!value.equals(fields.get(key)))throw invalid("原出差日期和地点须保留，请回原稿修订后重新审阅");fields.put(key,value);}
     private UUID uuid(Object value){return value==null||value.toString().isBlank()?null:UUID.fromString(value.toString());}
     private Map<String,Object> asMap(Object value){if(value==null)return Map.of();return json.convertValue(value,new TypeReference<LinkedHashMap<String,Object>>(){});}

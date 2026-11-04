@@ -82,15 +82,31 @@ class WorkshopPublicSurplusEndToEndTest {
     @Autowired com.uten.imp.features.production.execution.ProductionOverproductionRateService productionRates;
     FullChainEndToEndTest fixture;
 
+    private AutoCloseable precisionChoices;
+
     @BeforeEach
     void prepare() {
         fixture = new FullChainEndToEndTest();
         beans.autowireBean(fixture);
     }
 
+    // V1025 起实际单耗/库存价值切片在库内按原数相除，除不尽时须本次明确精度；
+    // 本类直调服务的链路按生产端同样的显式选择绑定（与 ValuationComponentEndToEndTest 一致）。
+    // 夹具借用方只调用 prepare()，不经本方法，不继承这份选择。
+    @BeforeEach
+    void bindDefaultPrecision() {
+        precisionChoices = com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "goods.bom.actual-usage", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24, "DOWN"),
+                "stock.value.interval", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24, "DOWN"),
+                "workshop.material.waste-rate", new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24, "DOWN")));
+    }
+
     @AfterEach
     void logout() {
         SecurityContextHolder.clearContext();
+        if (precisionChoices != null) {
+            try { precisionChoices.close(); } catch (Exception ignored) { }
+        }
     }
 
     @Test
@@ -103,6 +119,7 @@ class WorkshopPublicSurplusEndToEndTest {
         ReportablePlanLine salesSource = sources(c).stream().filter(row -> c.orderItem().equals(row.orderItemId())).findFirst().orElseThrow();
         UUID salesReport = approveReport(c, salesSource);
         finishInbound(c, salesReport);
+        drainValuation(c);
         assertSalesTotals(c);
         assertEquals("IN_PROGRESS", status(c));
 
@@ -177,6 +194,8 @@ class WorkshopPublicSurplusEndToEndTest {
                     .findFirst().orElseThrow();
             UUID report = approveReport(c, source, Integer.toString(batch.quantity()));
             UUID inbound = finishInbound(c, report);
+            // 上一批报工的整目标成本核对仍排队时，同池下一批实物写入按 40001 被拒；同步排空后再继续。
+            drainValuation(c);
             if (batch.sales()) {
                 salesReported += batch.quantity();
             } else {

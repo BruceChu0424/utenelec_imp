@@ -91,7 +91,7 @@ class HrNoticeServiceTest {
         UUID claim=UUID.randomUUID(),applicant=UUID.randomUUID(),department=UUID.randomUUID();
         when(audience.eligible(eq(eligibleId),eq(eligibleEmployee),any(),eq(claim))).thenReturn(true);
         when(audience.route(eq(eligibleId),eq(eligibleEmployee),any(),eq(department),eq("DEPARTMENT"))).thenReturn("/approvals/DEPT_HR?group=expense");
-        service.notifyExpenseClaimStage(claim,"申请员工","100.00 元",applicant,department,"DEPARTMENT","");
+        service.notifyExpenseClaimStage(claim,"申请员工","100.00 元",applicant,department,"DEPARTMENT");
         verify(notices).publishForUser(eq(eligibleId),eq("报销单待审批"),anyString(),eq("task"),eq("报销"),
                 eq("/approvals/DEPT_HR?group=expense"),eq("EXPENSE_CLAIM_SUBMITTED"),eq("important"),eq(claim));
         verifyNoMoreInteractions(notices);

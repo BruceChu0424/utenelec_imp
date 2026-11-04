@@ -50,11 +50,18 @@ class SystemPostingStyleUuidRoleContractTest {
         // V607+ 重构后的 GL 角色键清单：银行手续费角色已移出 GL——收/付款审核时
         // 解析并持久化 gl_bank_fee_style_id，GL 只消费单据上的 UUID 真源。
         for (String role : new String[]{
-                "ar_control", "sales_revenue", "inventory_asset", "ap_control",
+                "ar_control", "sales_revenue", "ap_control",
                 "customer_advance", "fx_gain_loss",
                 "supplier_claim_receivable", "subcontract_loss_recovery"}) {
             assertThat(java).contains("system_posting_style_id('" + role + "')");
         }
+        // V1009/V1017 原生记账对应重构后，GL 不再按字面量解析 inventory_asset：
+        // 实际成本过账由 ActualInventoryCostGlProjection 按 leg.role_key 解析
+        // （下一用例钉住），GL 删除重建前仅在条件角色清单中登记 inventory_asset，
+        // 与其它条件角色一起经 system_posting_style_id(required.role_key) 统一校验。
+        assertThat(java)
+                .contains("UNION SELECT 'INVENTORY_ASSET' WHERE EXISTS")
+                .contains("system_posting_style_id(required.role_key)");
         assertThat(java)
                 .contains("assertrequiredsystempostingroles(period)")
                 .contains("system_posting_style_id(required.role_key)")

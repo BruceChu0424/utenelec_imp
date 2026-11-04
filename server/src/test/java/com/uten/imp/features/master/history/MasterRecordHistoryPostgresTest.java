@@ -68,6 +68,29 @@ class MasterRecordHistoryPostgresTest {
   void prepare() {
     actor = UUID.randomUUID();
     em = factory.createEntityManager();
+    // V1034 的 BOM 成本采用守卫会把 sourceE 重算落成证据行，actor 必须是真实账号；
+    // 历史恢复的正式入口同样依赖事务内绑定的真实操作人。
+    inTx(
+        () -> {
+          UUID identity = UUID.randomUUID();
+          em.createNativeQuery(
+                  "INSERT INTO"
+                      + " employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)"
+                      + " SELECT :id,:code,'历史恢复操作人','其他',id,current_date,'active','regular' FROM"
+                      + " departments WHERE code='DEPT_FIN'")
+              .setParameter("id", identity)
+              .setParameter("code", "EMP-" + identity)
+              .executeUpdate();
+          em.createNativeQuery(
+                  "INSERT INTO"
+                      + " users(id,employee_id,login_account,password_hash,must_change_password,status,is_super_admin)"
+                      + " VALUES(:id,:employee,:login,'test-only',false,'active',false)")
+              .setParameter("id", actor)
+              .setParameter("employee", identity)
+              .setParameter("login", "restore-" + actor)
+              .executeUpdate();
+          return null;
+        });
     current = mock(SecurityContextCurrentUser.class);
     login(Set.of(), true);
     when(current.requireId()).thenAnswer(call -> actor);
@@ -1624,6 +1647,7 @@ class MasterRecordHistoryPostgresTest {
     var deletion = detail("goods", service.list("goods", parent, null, null).entries().getFirst());
     inTx(
         () -> {
+          provenance();
           em.createNativeQuery("UPDATE goods SET status='禁用' WHERE id=:id")
               .setParameter("id", component)
               .executeUpdate();
@@ -1678,6 +1702,7 @@ class MasterRecordHistoryPostgresTest {
         second = goods("second component");
     inTx(
         () -> {
+          provenance();
           em.createNativeQuery("UPDATE goods SET price=3 WHERE id=:first OR id=:second")
               .setParameter("first", first)
               .setParameter("second", second)

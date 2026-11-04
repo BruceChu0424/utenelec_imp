@@ -110,6 +110,6 @@ class FinanceAssetTemplatePostgresTest {
         Query q=mock(Query.class);Map<String,Object> p=new LinkedHashMap<>();
         when(q.setParameter(anyString(),any())).thenAnswer(c->{p.put(c.getArgument(0),c.getArgument(1));return q;});
         when(q.getSingleResult()).thenAnswer(c->named.queryForObject(sql,p,Long.class));
-        when(q.getResultList()).thenAnswer(c->named.query(sql,p,(r,n)->{Object[] row=new Object[r.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++)row[i]=r.getObject(i+1);return row;}));return q;
+        when(q.getResultList()).thenAnswer(c->named.query(sql,p,(r,n)->{Object[] row=new Object[r.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++){row[i]=r.getObject(i+1);}return row;}));return q;
     }
 }

@@ -69,6 +69,6 @@ public class FinanceApplicationSourceControl implements FinanceApplicationContro
         var app=context(id,action,FinanceApplicationPermissions.EXECUTE);if(!links.contains(app.get("id")))throw conflict("实际资金单未对应原批准申请");approved(app);
     }
     private Map<String,Object> context(UUID source,NativeApplicationContext.Action action,String permission){if(!NativeApplicationContext.matches(source,action))throw conflict("请从原申请的当前授权动作办理，不能绕过申请节点");roles.live(permission);var value=NativeApplicationContext.current();var app=applications.getObject().row(value.applicationId(),true);legacy.requireRound(app);return app;}
-    private void approved(Map<String,Object> app){if(!"APPROVED".equals(app.get("status"))||app.get("approved_by")==null)throw conflict("原申请尚未批准支付或已登记付款");var service=applications.getObject();UUID actor=current.requireEmployeeId();legacy.requireRound(app);legacy.requireUninvolvedPayer(app,actor);}
+    private void approved(Map<String,Object> app){if(!"APPROVED".equals(app.get("status"))||app.get("approved_by")==null)throw conflict("原申请尚未批准支付或已登记付款");applications.getObject();UUID actor=current.requireEmployeeId();legacy.requireRound(app);legacy.requireUninvolvedPayer(app,actor);}
     private static ApiException conflict(String message){return new ApiException(ErrorCode.CONFLICT,message);}
 }

@@ -20,7 +20,9 @@ class TaskReadAllScopeCatalogTest {
 
     @Test void rangeCodesAreOptInReadsWithExplicitDepartmentButNoBulkOrDelegationGrant() {
         var db=PermissionCatalogTestSupport.database();
-        assertThat(PermissionCatalogTestSupport.catalogCodes()).hasSize(525).containsAll(CODES);
+        // 551 = 525 + 财务复原批次新增权限点(V999_11 finance_application:* 6 项、
+        // V1000 报销四级审批 4 项、V1001 业务申请工作流 15 项、V1002 审批代班配置 1 项)。
+        assertThat(PermissionCatalogTestSupport.catalogCodes()).hasSize(551).containsAll(CODES);
         for(String code:CODES) {
             var row=db.queryForMap("SELECT action_type,grant_policy::text,baseline,baseline_pinned,explicit_grant_required FROM permissions WHERE code=?",code);
             assertThat(row.get("action_type")).isEqualTo("VIEW");

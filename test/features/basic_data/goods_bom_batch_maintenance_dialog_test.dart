@@ -599,10 +599,7 @@ void main() {
       );
       await _submit(tester);
       expect(find.text('保存前请确认'), findsOneWidget);
-      expect(
-        repository.previews.single.items.single,
-        isNot(contains('qty')),
-      );
+      expect(repository.previews.single.items.single, isNot(contains('qty')));
       expect(
         repository.previews.single.items.single,
         containsPair('unitWeightGrams', '12.5'),

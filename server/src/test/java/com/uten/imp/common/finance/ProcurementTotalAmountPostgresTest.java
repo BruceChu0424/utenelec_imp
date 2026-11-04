@@ -105,13 +105,21 @@ class ProcurementTotalAmountPostgresTest {
 
     private static Fixture seed(Connection db,String prefix) throws SQLException {
         UUID header=UUID.randomUUID(),item=UUID.randomUUID(); String bill="TOTAL-" + header;
+        exec(db,"INSERT INTO units(id,code,name,status) VALUES(gen_random_uuid(),'TOTAL-U-" + header + "','个','使用')");
         exec(db,"SET session_replication_role=replica");
         try {
             exec(db,"INSERT INTO " + prefix + "_orders(id,bill_no,bill_date,currency_id,settlement_method_id,exchange_rate,tax_rate,total_original,total_local) "
                     + "SELECT '" + header + "','" + bill + "',CURRENT_DATE,(SELECT id FROM currencies WHERE status='使用' AND NOT is_deleted LIMIT 1),"
                     + "(SELECT id FROM settlement_methods WHERE status='使用' AND NOT is_deleted LIMIT 1),1,0,105,105");
-            exec(db,"INSERT INTO " + prefix + "_order_items(id,order_id,bill_no,bill_date,goods_id,line_no,qty,price,total_amount_input,amount_original,amount_local,goods_snapshot_source,goods_code_snapshot,goods_name_snapshot,extra_columns) VALUES('"
-                    + item + "','" + header + "','" + bill + "',CURRENT_DATE,gen_random_uuid(),1,3000,0.0333333333,100,105,105,'MASTER_AT_SAVE','TOTAL','总金额货品','[{\"name\":\"包装费\",\"type\":\"AMOUNT\",\"operation\":\"ADD\",\"value\":\"5\"}]'::jsonb)");
+            // 夹具代表 V1033 前的既有行(quantity_adoption_version=1 只存在于采购行)，带真实计量
+            // 单位与 1:1 换算率；随后经真实触发的改量走正式采用路径。
+            exec(db,"INSERT INTO " + prefix + "_order_items(id,order_id,bill_no,bill_date,goods_id,line_no,qty,price,total_amount_input,amount_original,amount_local,unit_id,unit_rate"
+                    + ("purchase".equals(prefix)?",quantity_adoption_version":"")
+                    + ",goods_snapshot_source,goods_code_snapshot,goods_name_snapshot,extra_columns) VALUES('"
+                    + item + "','" + header + "','" + bill + "',CURRENT_DATE,gen_random_uuid(),1,3000,0.0333333333,100,105,105,"
+                    + "(SELECT id FROM units WHERE code='TOTAL-U-" + header + "'),1"
+                    + ("purchase".equals(prefix)?",1":"")
+                    + ",'MASTER_AT_SAVE','TOTAL','总金额货品','[{\"name\":\"包装费\",\"type\":\"AMOUNT\",\"operation\":\"ADD\",\"value\":\"5\"}]'::jsonb)");
         } finally { exec(db,"SET session_replication_role=origin"); }
         return new Fixture(header,item);
     }

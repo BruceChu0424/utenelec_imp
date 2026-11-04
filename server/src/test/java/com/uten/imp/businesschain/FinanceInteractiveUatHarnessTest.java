@@ -50,7 +50,7 @@ class FinanceInteractiveUatHarnessTest {
  }
  public static class Cleanup extends AbstractTestExecutionListener{
   @Override public int getOrder(){return new DirtiesContextTestExecutionListener().getOrder()-1;}
-  @Override public void afterTestClass(TestContext ignored)throws Exception{if(database!=null)database.close();if(candidateDatabase!=null)candidateDatabase.stop();}
+  @Override public void afterTestClass(TestContext ignored)throws Exception{if(database!=null){database.close();}if(candidateDatabase!=null)candidateDatabase.stop();}
  }
  @Autowired AutowireCapableBeanFactory beans;
  @Autowired JdbcTemplate jdbc;

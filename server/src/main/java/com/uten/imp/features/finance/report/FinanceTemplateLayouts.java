@@ -31,7 +31,7 @@ final class FinanceTemplateLayouts {
         return create(report,query,columns,rows,Map.of(),company);
     }
     static ExportTableLayout create(String report,Map<String,String> query,List<ExportColumn> columns,List<Map<String,Object>> rows,Map<String,Object> documentMetadata,String company) {
-        if(query==null)query=Map.of();String key=key(report,query);if(key==null||columns.isEmpty())return null;
+        if(query==null){query=Map.of();}String key=key(report,query);if(key==null||columns.isEmpty())return null;
         if(Set.of("balanceSheet","monthlyProfit","annualProfit","payableSummary","receivableSummary").contains(key)&&!"template".equals(query.get("layout")))return null;
         var contract=FinanceTemplateContract.template(key);
         if(contract.path("headers").size()!=columns.size()) {
@@ -148,7 +148,7 @@ final class FinanceTemplateLayouts {
     private static ExportTableLayout statement(String key,List<ExportColumn> columns,Map<String,Object> metadata){
         var paper=FinanceStatementPaperLayout.layout(key,metadata);var extra=new ArrayList<ExportTableLayout.SupplementalCell>();
         int sourceHeader=metadata.get("sourceMainHeaderRow") instanceof Number number?number.intValue():paper.headerRow()+1;
-        if(metadata.get("supplementalCells") instanceof List<?> cells)for(Object raw:cells){if(!(raw instanceof Map<?,?> cell))throw new IllegalArgumentException("Invalid supplemental source cell");String address=Objects.toString(cell.get("sourceCell"),"");var match=java.util.regex.Pattern.compile("^([A-Z]{1,2})([1-9][0-9]{0,3})$").matcher(address);if(!match.matches())throw new IllegalArgumentException("Invalid supplemental source address");int col=0;for(char letter:match.group(1).toCharArray())col=col*26+letter-'A'+1;col--;if(col<columns.size()||col>=paper.canvasColumns())throw new IllegalArgumentException("Supplemental source overlaps main table");extra.add(new ExportTableLayout.SupplementalCell(Integer.parseInt(match.group(2))-sourceHeader,col,Objects.toString(cell.get("type"),"text"),cell.get("value"),Boolean.TRUE.equals(cell.get("header"))));}
+        if(metadata.get("supplementalCells") instanceof List<?> cells)for(Object raw:cells){if(!(raw instanceof Map<?,?> cell))throw new IllegalArgumentException("Invalid supplemental source cell");String address=Objects.toString(cell.get("sourceCell"),"");var match=java.util.regex.Pattern.compile("^([A-Z]{1,2})([1-9][0-9]{0,3})$").matcher(address);if(!match.matches())throw new IllegalArgumentException("Invalid supplemental source address");int col=0;for(char letter:match.group(1).toCharArray()){col=col*26+letter-'A'+1;}col--;if(col<columns.size()||col>=paper.canvasColumns())throw new IllegalArgumentException("Supplemental source overlaps main table");extra.add(new ExportTableLayout.SupplementalCell(Integer.parseInt(match.group(2))-sourceHeader,col,Objects.toString(cell.get("type"),"text"),cell.get("value"),Boolean.TRUE.equals(cell.get("header"))));}
         return new ExportTableLayout(FinanceTemplateContract.entryName(key),paper.headerRow(),paper.headerStartRow(),paper.headings(),paper.merges(),paper.widths(),paper.fontName(),(short)paper.fontSize(),paper.rowHeight(),List.of(),List.of(),List.of(),paper.landscape(),extra,paper.hiddenColumns(),paper.footer(),paper.headingRowHeights(),paper.sourcePrint());
     }
     private static String captionLine(Map<?,?> line){
@@ -161,5 +161,5 @@ final class FinanceTemplateLayouts {
         if(firstRow!=lastRow||first!=last)result.add(new ExportTableLayout.Merge(firstRow,lastRow,first,last));
     }
     private static LocalDate date(String value,LocalDate fallback){return value==null||value.isBlank()?fallback:LocalDate.parse(value);}
-    private static int integer(String value,int fallback){return value==null||value.isBlank()?fallback:Integer.parseInt(value);}
+    private static int integer(String value,int fallback){if(value==null||value.isBlank())return fallback;try{return Integer.parseInt(value);}catch(NumberFormatException failure){throw new IllegalArgumentException("Invalid report year or month",failure);}}
 }

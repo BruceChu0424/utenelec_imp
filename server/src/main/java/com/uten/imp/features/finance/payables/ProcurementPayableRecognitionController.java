@@ -28,5 +28,5 @@ public class ProcurementPayableRecognitionController {
     @PostMapping("/{id}/approve")public Map<String,Object> approve(@PathVariable UUID id){return service.approve(id);}
     public record Reason(String reason) { }
     @PostMapping("/{id}/reverse")public Map<String,Object> reverse(@PathVariable UUID id,@RequestBody Reason input){return service.reverse(id,input.reason());}
-    @GetMapping("/{id}/file")public ResponseEntity<byte[]> file(@PathVariable UUID id){var row=service.recognition(id);return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).header(HttpHeaders.CONTENT_DISPOSITION,ContentDisposition.attachment().filename(Objects.toString(row.get("file_name"),"confirmation.bin"),java.nio.charset.StandardCharsets.UTF_8).build().toString()).body(service.confirmationFile(id));}
+    @PostMapping("/{id}/file")public ResponseEntity<byte[]> file(@PathVariable UUID id){var row=service.recognition(id);return ResponseEntity.ok().contentType(MediaType.APPLICATION_OCTET_STREAM).header(HttpHeaders.CONTENT_DISPOSITION,ContentDisposition.attachment().filename(Objects.toString(row.get("file_name"),"confirmation.bin"),java.nio.charset.StandardCharsets.UTF_8).build().toString()).body(service.confirmationFile(id));}
 }

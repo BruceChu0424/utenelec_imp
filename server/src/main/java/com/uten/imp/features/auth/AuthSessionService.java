@@ -52,15 +52,23 @@ public class AuthSessionService {
     private final NamedParameterJdbcTemplate jdbc;
     private final SystemSettingsService settings;
     private final Clock clock;
-    private ApplicationEventPublisher events = event -> { };
+    private SessionEventSink events = event -> { };
 
     @Autowired
-    void setEvents(ApplicationEventPublisher events) {
+    void setSpringEvents(ApplicationEventPublisher publisher) {
+        this.events = publisher::publishEvent;
+    }
+
+    void setEvents(SessionEventSink events) {
         this.events = events;
     }
 
     /** Delivered only after the login transaction commits; contains no credentials. */
     public record ReplacedSessions(List<UUID> sessionIds, String device) { }
+
+    /** 会话事件出口: 单方法接口, 源码 lambda 不直接实现 Spring 重载易混淆的 ApplicationEventPublisher。 */
+    @FunctionalInterface
+    interface SessionEventSink { void replaced(ReplacedSessions event); }
 
     public AuthSessionService(NamedParameterJdbcTemplate jdbc, SystemSettingsService settings, Clock clock) {
         this.jdbc = jdbc;
@@ -139,7 +147,7 @@ public class AuthSessionService {
                 (rs, rowNum) -> rs.getObject("sid", UUID.class));
         if (!replaced.isEmpty()) {
             try {
-                events.publishEvent(new ReplacedSessions(List.copyOf(replaced), device));
+                events.replaced(new ReplacedSessions(List.copyOf(replaced), device));
             } catch (RuntimeException failure) {
                 // Notification availability cannot roll back a valid login. The
                 // authoritative revoked rows are also reconciled by the watcher.

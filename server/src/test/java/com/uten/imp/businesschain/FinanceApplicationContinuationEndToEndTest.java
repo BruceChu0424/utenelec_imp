@@ -83,9 +83,9 @@ class FinanceApplicationContinuationEndToEndTest {
         UUID knownZero=seedTravel(owner,world.superAdminUserId(),false),missingCurrencyZero=seedTravel(owner,world.superAdminUserId(),false);
         db.update("UPDATE finance_applications SET amount_original=0,currency_id=? WHERE id=?",world.currencyId(),knownZero);
         db.update("UPDATE finance_applications SET amount_original=0,currency_id=NULL WHERE id=?",missingCurrencyZero);
-        UUID claim=seedExpense(owner,world.superAdminUserId(),world.departmentId());
+        UUID claim=seedExpense(owner,world.departmentId());
         UUID expenseApp=seedExpenseApplication(claim,owner,world.superAdminUserId(),world.departmentId());
-        UUID oldClaim=seedExpense(owner,world.superAdminUserId(),world.departmentId());
+        UUID oldClaim=seedExpense(owner,world.departmentId());
         UUID oldExpenseApp=seedActiveExpenseApplication(oldClaim,owner,world.superAdminUserId(),world.departmentId());
         String originalItems=db.queryForObject("SELECT jsonb_agg(to_jsonb(item) ORDER BY id)::text FROM expense_claim_items item WHERE claim_id=?",String.class,claim);
         String originalInvoices=db.queryForObject("SELECT jsonb_agg(to_jsonb(invoice) ORDER BY id)::text FROM expense_claim_invoices invoice WHERE claim_id=?",String.class,claim);
@@ -127,7 +127,7 @@ class FinanceApplicationContinuationEndToEndTest {
         assertThat(((Map<?,?>)sourceView.body.get("original")).get("title")).isEqualTo("匿名原出差申请");
         var linkedView=getJson("/api/attachments/linked?ownerType=BUSINESS_APPLICATION&ownerId="+nativeId,auth);
         assertThat(linkedView.status).isEqualTo(200);
-        assertThat(linkedView.body.get("data")).asList().hasSize(1);
+        assertThat(linkedView.body.get("data")).asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.list(Map.class)).hasSize(1);
         var linkedFile=(Map<?,?>)((List<?>)linkedView.body.get("data")).getFirst();
         assertThat(linkedFile.get("id")).isEqualTo(attachment.toString());
         assertThat(linkedFile.get("ownerId")).isEqualTo(draft.toString());
@@ -241,7 +241,7 @@ class FinanceApplicationContinuationEndToEndTest {
             result.add(new Actor(user,employee));
         }return List.copyOf(result);
     }
-    private UUID seedExpense(UUID owner,UUID user,UUID department){
+    private UUID seedExpense(UUID owner,UUID department){
         UUID id=UUID.randomUUID();String full="100.123456789012345678901234";
         db.update("INSERT INTO expense_claims(id,claim_no,applicant_id,applicant_name_snapshot,applicant_department_id,title,total_amount,status,remark) VALUES(?,?,?,'匿名原报销人',?,'匿名原报销草稿',?,'DRAFT','按原票据申请，不改原金额')",id,numbers.nextNumber(com.uten.imp.common.docnumber.DocNumberPrefix.EXPENSE_CLAIM),owner,department,new BigDecimal(full));
         db.update("INSERT INTO expense_claim_items(id,claim_id,line_no,category,amount,expense_date,description) VALUES(?,?,1,'TRAVEL',?,DATE '2026-11-01','匿名原住宿费')",UUID.randomUUID(),id,new BigDecimal(full));

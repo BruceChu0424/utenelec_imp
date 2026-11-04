@@ -65,7 +65,8 @@ class WarehouseWorkshopMaterialHistoryPostgresTest {
                         assertThat(row.get("warehouse_name")).isEqualTo("B仓");
                         assertThat(row.get("line_key")).isEqualTo(line+"~"+postingB);
                         assertThat(row.get("item_id")).isEqualTo(postingB);
-                        assertThat(row.get("quantity").toString()).isEqualTo("5.0000");
+                        // V1011 放开 numeric(18,4) 后数量按原输入刻度读回（5），不再补足 4 位小数。
+                        assertThat(row.get("quantity").toString()).isEqualTo("5");
                     });
             assertThat(badges.badgeCounts(onlyA).pendingIssue()).isZero();
             assertThat(badges.badgeCounts(onlyB).pendingIssue()).isEqualTo(1);
@@ -81,7 +82,7 @@ class WarehouseWorkshopMaterialHistoryPostgresTest {
             UUID postingA=posting(db,line,a,"2");
             assertThat(outbound(db,scope,onlyA)).singleElement().satisfies(row->{
                 assertThat(row.get("item_id")).isEqualTo(postingA);
-                assertThat(row.get("quantity").toString()).isEqualTo("2.0000");
+                assertThat(row.get("quantity").toString()).isEqualTo("2");
             });
             assertThat(requests.list(null,null,null,onlyA,1,50,WarehouseTaskCenterContracts.TaskView.HISTORY).getItems())
                     .singleElement().satisfies(row->{

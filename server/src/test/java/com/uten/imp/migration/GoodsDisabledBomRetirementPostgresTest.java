@@ -30,6 +30,7 @@ class GoodsDisabledBomRetirementPostgresTest {
     private static MigratedSchemaBaseline.ScopedDatabase database;
     private Connection db;
     private UUID unit;
+    private UUID actor;
 
     @BeforeAll
     static void schema() throws Exception {
@@ -46,6 +47,15 @@ class GoodsDisabledBomRetirementPostgresTest {
         db = database.openConnection();
         db.setAutoCommit(false);
         unit = unit(db);
+        // V1034 起停用退役会按采用守卫重算父件 sourceE 并落证据行：事务内必须声明真实操作人。
+        UUID employee = UUID.randomUUID();
+        execute(db, "INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)"
+                + " SELECT ?,?,'停用BOM测试操作人','其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'",
+                employee, "EMP-" + employee);
+        actor = UUID.randomUUID();
+        execute(db, "INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status,is_super_admin)"
+                + " VALUES(?,?,?,?,false,'active',false)", actor, employee, "DISABLED-BOM-ACTOR-" + actor, "test-only");
+        execute(db, "SELECT set_config('app.actor_id',?,true)", actor.toString());
     }
 
     @AfterEach
@@ -409,7 +419,7 @@ class GoodsDisabledBomRetirementPostgresTest {
 
     @Test
     void statusHistoryCapturesOneCoherentOperationAndExplicitUndoRedoPreservesTokens() throws Exception {
-        UUID parent = goods("parent"), child = goods("child"), actor = UUID.randomUUID(), request = UUID.randomUUID();
+        UUID parent = goods("parent"), child = goods("child"), request = UUID.randomUUID();
         execute(db, "UPDATE goods SET price=5 WHERE id=?", child);
         UUID bom = edge(parent, child, 2);
         execute(db, "UPDATE goods SET source_e=10 WHERE id=?", parent);
@@ -442,7 +452,7 @@ class GoodsDisabledBomRetirementPostgresTest {
 
     @Test
     void preMigrationBomHistoryWithoutNewNullKeysCanUndoRedoWithoutRewritingOriginalSnapshots() throws Exception {
-        UUID parent = goods("parent"), child = goods("child"), actor = UUID.randomUUID(), request = UUID.randomUUID();
+        UUID parent = goods("parent"), child = goods("child"), request = UUID.randomUUID();
         execute(db, "UPDATE goods SET price=5 WHERE id=?", child);
         UUID bom = edge(parent, child, 1);
         execute(db, "UPDATE goods SET source_e=5 WHERE id=?", parent);
@@ -507,6 +517,14 @@ class GoodsDisabledBomRetirementPostgresTest {
              var writer = isolated.openConnection();
              var executor = Executors.newSingleThreadExecutor()) {
             UUID raceUnit = unit(writer), parent = goods(writer, raceUnit, "parent"), child = goods(writer, raceUnit, "child");
+            // 退役重算按 V1034 采用守卫需要事务操作人；并发两端共享同一真实账号，先提交使其对竞争连接可见。
+            UUID raceEmployee = UUID.randomUUID(), raceActor = UUID.randomUUID();
+            execute(writer, "INSERT INTO employees(id,code,full_name,id_type,department_id,hire_date,status,employment_type)"
+                    + " SELECT ?,?,'停用BOM并发测试操作人','其他',id,current_date,'active','regular' FROM departments WHERE code='DEPT_FIN'",
+                    raceEmployee, "EMP-" + raceEmployee);
+            execute(writer, "INSERT INTO users(id,employee_id,login_account,password_hash,must_change_password,status,is_super_admin)"
+                    + " VALUES(?,?,?,?,false,'active',false)", raceActor, raceEmployee, "DISABLED-BOM-RACE-" + raceActor, "test-only");
+            writer.commit();
             writer.setAutoCommit(false);
             execute(writer, "INSERT INTO goods_bom_items(goods_id,component_goods_id,qty) VALUES(?,?,1)", parent, child);
             var started = new CountDownLatch(1);
@@ -514,6 +532,7 @@ class GoodsDisabledBomRetirementPostgresTest {
                 try (var contender = isolated.openConnection()) {
                     contender.setAutoCommit(false);
                     execute(contender, "SET LOCAL lock_timeout='5s'");
+                    execute(contender, "SELECT set_config('app.actor_id',?,true)", raceActor.toString());
                     started.countDown();
                     return transactionResult(contender, "UPDATE goods SET status='禁用' WHERE id=?", child);
                 }
@@ -524,6 +543,7 @@ class GoodsDisabledBomRetirementPostgresTest {
             String result = immediate == null ? attempt.get(10, TimeUnit.SECONDS) : immediate;
             assertTrue(result.equals("COMMITTED") || result.equals("55P03"), result);
             if (result.equals("55P03")) {
+                execute(writer, "SELECT set_config('app.actor_id',?,true)", raceActor.toString());
                 execute(writer, "UPDATE goods SET status='禁用' WHERE id=?", child);
                 writer.commit();
             }

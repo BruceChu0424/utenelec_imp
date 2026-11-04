@@ -62,6 +62,7 @@ class FinanceReceiptSettlementTest {
     private static final UUID FEE_ACCOUNT_ID = UUID.fromString("80000000-0000-0000-0000-000000000008");
     private static final UUID ACCOUNT_STYLE_ID = UUID.fromString("90000000-0000-0000-0000-000000000009");
     private static final UUID FEE_ACCOUNT_STYLE_ID = UUID.fromString("a0000000-0000-0000-0000-00000000000a");
+    private static final UUID COUNTER_STYLE_ID = UUID.fromString("b0000000-0000-0000-0000-00000000000b");
 
     private FinanceReceiptRepository receiptRepo;
     private FinanceReceiptLineRepository lineRepo;
@@ -157,6 +158,7 @@ class FinanceReceiptSettlementTest {
         Query flowIntegrity = query();
         Query projectionIntegrity = query();
         Query postingRole = query();
+        Query counterStyle = query();
         when(postingCount.getSingleResult()).thenAnswer(ignored ->
                 postingCounts.isEmpty() ? 0L : postingCounts.removeFirst());
         when(accountLock.getResultList()).thenReturn(List.<Object[]>of(
@@ -168,6 +170,7 @@ class FinanceReceiptSettlementTest {
         when(projectionIntegrity.getResultList()).thenReturn(
                 List.<Object[]>of(new Object[]{1L,1L}));
         when(postingRole.getSingleResult()).thenReturn(EXPENSE_STYLE_ID);
+        when(counterStyle.getSingleResult()).thenReturn(COUNTER_STYLE_ID);
         when(idempotencyLock.getSingleResult()).thenReturn(1L);
         when(clientLookup.getSingleResult()).thenReturn("测试客户");
         when(supplierLookup.getResultList()).thenReturn(List.of("测试外贸公司"));
@@ -236,6 +239,9 @@ class FinanceReceiptSettlementTest {
             }
             if (sql.contains("system_posting_style_id(:roleKey)")) {
                 return postingRole;
+            }
+            if (sql.contains("fn_finance_native_cash_counter_style('RECEIPT',:id,:role,:currency,'CUSTOMER',:party,:day)")) {
+                return counterStyle;
             }
             throw new AssertionError("unexpected SQL: " + sql);
         });
@@ -912,7 +918,7 @@ class FinanceReceiptSettlementTest {
     }
 
     @Test
-    void v2MultipleArLinesKeepTheWholeBankFactAndItsFinalRemainder() {
+    void v2MultipleArLinesKeepTheWholeBankFactAndItsFinalRemainder() throws Exception {
         ArApLedger one=receivable("1","3.333333");
         ArApLedger two=receivable("2","3.333333");
         UUID base=UUID.randomUUID();
@@ -921,7 +927,12 @@ class FinanceReceiptSettlementTest {
         FinanceReceiptSaveRequest req=request(one, "1", "3.333333", "0");
         FinanceReceiptLineInput second=request(two, "2", "3.333333", "0").getItems().getFirst();second.setLineNo(2);
         req.setItems(List.of(req.getItems().getFirst(),second));req.setAccountCurrencyId(base);req.setAccountAmount(BigDecimal.TEN);
-        FinanceReceiptDetail result=service.create(req);
+        // 10/3 账面分摊除不尽：本次按 30 位账面边界的显式选择分摊，末行收回全部银行事实余额。
+        FinanceReceiptDetail result;
+        try(var ignored=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of(
+                "money.book-share",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(30,"HALF_UP")))){
+            result=service.create(req);
+        }
         var lines=linesByReceipt.get(result.getId()).stream().sorted(Comparator.comparing(FinanceReceiptLine::getLineNo)).toList();
         assertMoney(lines.get(0).getAmountLocal(),"3.333333333333333333333333333333");
         assertMoney(lines.get(1).getAmountLocal(),"6.666666666666666666666666666667");

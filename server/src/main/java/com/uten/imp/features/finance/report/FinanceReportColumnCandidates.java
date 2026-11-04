@@ -27,7 +27,9 @@ public final class FinanceReportColumnCandidates implements AutoCloseable {
     public void readSql(EntityManager em,List<ReportColumn> columns,Set<String> excluded,String filtered,
                         Consumer<Query> bind) {
         requireVisibleText(columns,excluded);
-        String value="report.\""+column+"\"";
+        // Build the SQL identifier from the server-owned whitelist entry, never from the request string.
+        String resolved=columns.stream().filter(c->c.key().equals(column)&&c.type().equals("text")).map(ReportColumn::key).findFirst().orElseThrow(FinanceReportColumnCandidates::invalid);
+        String value="report.\""+resolved+"\"";
         var query=NativeFacets.query(em,"value","SELECT CAST("+value+" AS text),COUNT(*) FROM ("+filtered+") report WHERE "+value+" IS NOT NULL AND btrim(CAST("+value+" AS text))<>'' GROUP BY "+value);
         bind.accept(query);NativeFacets.rowsOf(query);completed=true;
     }

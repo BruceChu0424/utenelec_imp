@@ -134,11 +134,11 @@ class LegacyValuationComponentUpgradePostgresTest {
                 UUID orderItem=org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture,"orderItemIdOfPlan",plan);
                 UUID report=org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture,"reportAndApprove",world,planItem,orderItem,world.goodsA(),"3");
                 fixture.confirmFinishedInboundFully(fixture.finishedInDocForReport(report));
-                drainAll(before,fixture,world);
+                drainAll(fixture,world);
                 var policy=before.getBean(InventoryCostPostingService.class).policy();before.getBean(InventoryCostPostingService.class).configure(
                     new InventoryCostPostingService.PolicyChange(true,BusinessTime.today().withDayOfMonth(1),"真实旧双实耗游标与原GL",policy.version()));
                 var shipment=fixture.shipmentRequest(world,orderItem,world.goodsA(),"1");shipment.setBillDate(BusinessTime.today());
-                UUID shipped=before.getBean(SalesShipmentService.class).create(shipment).getId();fixture.shipThroughWarehouse(shipped);drainAll(before,fixture,world);
+                UUID shipped=before.getBean(SalesShipmentService.class).create(shipment).getId();fixture.shipThroughWarehouse(shipped);drainAll(fixture,world);
                 before.getBean(InventoryCostPostingService.class).post(period());
                 var originalGl=glFacts(db,world.goodsA());assertThat(originalGl).isNotEmpty();
                 var consumed=db.queryForMap("""
@@ -152,7 +152,7 @@ class LegacyValuationComponentUpgradePostgresTest {
                     var request=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest();request.setIdempotencyKey("old-actual-partial:"+UUID.randomUUID());request.setReason("真实旧实耗分次退回");
                     var line=new com.uten.imp.features.stock.allocation.dto.ProductionMaterialSettlementRequest.Line();line.setDemandId((UUID)consumed.get("demand_id"));line.setSourcePostingId((UUID)consumed.get("id"));line.setSettlementType("CONSUMED");line.setQtyBase(new BigDecimal(qty));request.setLines(List.of(line));
                     before.getBean(com.uten.imp.features.stock.allocation.ProductionMaterialSettlementService.class).reverse(plan,request,world.superAdminUserId());
-                    drainAll(before,fixture,world);
+                    drainAll(fixture,world);
                 }
                 returns.addAll(db.queryForList("SELECT result_node_id FROM stock_value_events WHERE operation='CONSUMPTION_RETURN' AND source_node_id=? ORDER BY occurred_at,id",UUID.class,consumed.get("result_node_id")));
                 assertThat(returns).hasSize(2);
@@ -172,13 +172,13 @@ class LegacyValuationComponentUpgradePostgresTest {
                 var values=after.getBean(InventoryValuationPort.class);
                 var event=cursorContext(original,"whole-target-after-two-old-cursors");
                 var adjusted=locked(after,original.world().goodsE(),()->values.adjustSource(new InventoryValuationPort.SourceAdjustment(event,original.source(),BigDecimal.ONE,false)));
-                drainAll(after,fixture,original.world());
+                drainAll(fixture,original.world());
                 assertReturnPrefixes(db,original.returns(),"0.06667","0.13334");
                 assertThat(amount(db,"SELECT sum(basis_value_local) FROM stock_value_nodes WHERE id IN (?,?)",original.returns().get(0),original.returns().get(1))).isEqualByComparingTo("0.20001");
                 assertThat(amount(db,"SELECT sum(owned_value_local) FROM stock_value_nodes node JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE pool.goods_id=? AND node.owner_kind='COGS'",original.world().goodsA())).isEqualByComparingTo("20.60003");
                 assertThat(glFacts(db,original.world().goodsA())).containsAllEntriesOf(original.glFacts());
                 inPrecision(Map.of("stock.value.interval",new BusinessPrecisionContext.Choice(0,"HALF_UP")),()->locked(after,original.world().goodsE(),()->values.reverseAdjustment(cursorContext(original,"inverse-two-old-cursors"),adjusted.eventId())));
-                drainAll(after,fixture,original.world());
+                drainAll(fixture,original.world());
                 assertReturnPrefixes(db,original.returns(),"0.0333","0.0667");
                 assertThat(amount(db,"SELECT sum(basis_value_local) FROM stock_value_nodes WHERE id IN (?,?)",original.returns().get(0),original.returns().get(1))).isEqualByComparingTo("0.1");
                 assertThat(amount(db,"SELECT sum(owned_value_local) FROM stock_value_nodes node JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE pool.goods_id=? AND node.owner_kind='COGS'",original.world().goodsA())).isEqualByComparingTo("20.3");
@@ -194,7 +194,7 @@ class LegacyValuationComponentUpgradePostgresTest {
         assertThat(amount(db,"SELECT quantity_basis FROM stock_value_nodes WHERE id=?",returns.get(0))).isEqualByComparingTo("0.1");
         assertThat(amount(db,"SELECT quantity_basis FROM stock_value_nodes WHERE id=?",returns.get(1))).isEqualByComparingTo("0.2");
     }
-    private void drainAll(ConfigurableApplicationContext context,FullChainEndToEndTest fixture,FullChainEndToEndTest.World world){
+    private void drainAll(FullChainEndToEndTest fixture,FullChainEndToEndTest.World world){
         org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture,"drainCostsWithFreshRunnerWithoutSession",world);
     }
     private InventoryValuationPort.EventContext cursorContext(CursorLegacy original,String action){UUID event=UUID.randomUUID();return new InventoryValuationPort.EventContext(event,"LEGACY_PARTIAL_CONSUMPTION_PROOF",original.incoming(),original.item(),1,original.world().superAdminUserId(),original.world().employeeId(),action+":"+event,OffsetDateTime.now());}
@@ -229,7 +229,7 @@ class LegacyValuationComponentUpgradePostgresTest {
                     'allocated',e.allocated_amount_local,'from',e.interval_from,'to',e.interval_to,'denominator',e.denominator) ORDER BY e.id)
                     FROM stock_value_edges e JOIN stock_value_nodes n ON n.id=e.parent_node_id JOIN stock_value_pools p ON p.id=n.pool_id WHERE p.goods_id=?))::text
             """,String.class,goods,goods);}
-    private Map<String,Long> counts(JdbcTemplate db){var result=new TreeMap<String,Long>();for(String table:List.of("stock_value_nodes","stock_value_edges","stock_value_events","stock_value_node_revisions","stock_value_jobs","stock_value_tasks","stock_value_postings","stock_movements","inventory_cost_gl_links","gl_vouchers","gl_entries"))result.put(table,db.queryForObject("SELECT count(*) FROM "+table,Long.class));return result;}
+    private Map<String,Long> counts(JdbcTemplate db){var result=new TreeMap<String,Long>();for(String table:List.of("stock_value_nodes","stock_value_edges","stock_value_events","stock_value_node_revisions","stock_value_jobs","stock_value_tasks","stock_value_postings","stock_movements","inventory_cost_gl_links","gl_vouchers","gl_entries")){result.put(table,db.queryForObject("SELECT count(*) FROM "+table,Long.class));}return result;}
     private Map<String,String> glFacts(JdbcTemplate db,UUID goods){var result=new TreeMap<String,String>();db.query("SELECT link.posting_id::text id,(to_jsonb(link)||jsonb_build_object('voucher',to_jsonb(voucher),'entries',(SELECT jsonb_agg(to_jsonb(entry) ORDER BY line_no) FROM gl_entries entry WHERE entry.voucher_id=voucher.id)))::text fact FROM inventory_cost_gl_links link JOIN gl_vouchers voucher ON voucher.id=link.voucher_id JOIN stock_value_nodes node ON node.id=link.source_node_id JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE pool.goods_id=?",row->{result.put(row.getString("id"),row.getString("fact"));},goods);return result;}
     private BigDecimal glAmount(JdbcTemplate db,UUID goods){return amount(db,"SELECT coalesce(sum(link.amount_local),0) FROM inventory_cost_gl_links link JOIN stock_value_nodes node ON node.id=link.source_node_id JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE pool.goods_id=?",goods);}
     private BigDecimal amount(JdbcTemplate db,String sql,Object...args){return db.queryForObject(sql,BigDecimal.class,args);}

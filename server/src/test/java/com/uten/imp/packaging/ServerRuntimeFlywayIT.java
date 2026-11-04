@@ -37,7 +37,7 @@ class ServerRuntimeFlywayIT {
                      var row = statement.executeQuery("""
                              SELECT to_regprocedure('public.fn_begin_goods_history_request()') IS NOT NULL,
                                     (SELECT count(*) FROM public.flyway_schema_history WHERE success),
-                                    (SELECT max(version::integer) FROM public.flyway_schema_history WHERE success)
+                                    (SELECT max(version::numeric) FROM public.flyway_schema_history WHERE success)
                              """)) {
                     assertThat(row.next()).isTrue();
                     assertThat(row.getBoolean(1)).isTrue();
@@ -110,12 +110,29 @@ class ServerRuntimeFlywayIT {
     private record MigrationInventory(int count, int head) { }
 
     private static MigrationInventory migrationInventory() throws Exception {
-        Pattern migration = Pattern.compile("BOOT-INF/classes/db/migration/V(\\d+)__[^/]+\\.sql");
+        // V990_1/V999_13 一类点分文件（Flyway 版本 990.1/999.13）同样是已应用迁移，
+        // 必须数进清单；此前 V(\d+)__ 漏数点分文件，条数比 flyway_schema_history 实际成功行少。
+        Pattern migration = Pattern.compile("BOOT-INF/classes/db/migration/V(\\d+)(?:_(\\d+))?__[^/]+\\.sql");
         try (var jar = new JarFile(applicationJar().toFile())) {
-            List<Integer> versions = jar.stream().map(entry -> migration.matcher(entry.getName()))
-                    .filter(matcher -> matcher.matches()).map(matcher -> com.uten.imp.testsupport.FixtureNumbers.integer(matcher.group(1))).toList();
-            assertThat(versions).isNotEmpty().doesNotHaveDuplicates();
-            return new MigrationInventory(versions.size(), versions.stream().mapToInt(Integer::intValue).max().orElseThrow());
+            // 版本对 {主版本, 点分段}：唯一性按完整版本判断，仅按主版本去重会把 V990 与 V990_1 误判为重复。
+            List<int[]> versions = jar.stream().map(entry -> migration.matcher(entry.getName()))
+                    .filter(matcher -> matcher.matches())
+                    .map(matcher -> new int[] {
+                            com.uten.imp.testsupport.FixtureNumbers.integer(matcher.group(1)),
+                            matcher.group(2) == null
+                                    ? 0
+                                    : com.uten.imp.testsupport.FixtureNumbers.integer(matcher.group(2))})
+                    .toList();
+            assertThat(versions).isNotEmpty();
+            assertThat(versions.stream().map(version -> version[0] + "." + version[1]).toList())
+                    .doesNotHaveDuplicates();
+            int[] head = versions.stream()
+                    .max(java.util.Comparator.comparingInt((int[] version) -> version[0])
+                            .thenComparingInt(version -> version[1]))
+                    .orElseThrow();
+            // 迁移头不能落在点分文件上，否则 max(version::numeric) 与整数头推导失真；真出现时在此报出。
+            assertThat(head[1]).as("migration head must stay on an integral version").isZero();
+            return new MigrationInventory(versions.size(), head[0]);
         }
     }
 

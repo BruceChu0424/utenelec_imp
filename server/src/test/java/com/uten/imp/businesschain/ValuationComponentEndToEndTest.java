@@ -67,7 +67,7 @@ class ValuationComponentEndToEndTest {
     }
     public static class Cleanup extends AbstractTestExecutionListener {
         @Override public int getOrder(){return new DirtiesContextTestExecutionListener().getOrder()-1;}
-        @Override public void afterTestClass(TestContext ignored)throws Exception{for(var lease:databases)lease.close();databases.clear();}
+        @Override public void afterTestClass(TestContext ignored)throws Exception{for(var lease:databases){lease.close();}databases.clear();}
     }
     @Autowired AutowireCapableBeanFactory beans;
     @Autowired JdbcTemplate db;
@@ -92,7 +92,7 @@ class ValuationComponentEndToEndTest {
         Map<String,String> oldGl=glFacts(c.goods());
         BigDecimal oldCogs=amount("SELECT coalesce(sum(amount_delta_local),0) FROM stock_value_postings WHERE owner_kind='COGS' AND owner_id=?",c.shipmentItem());
         BigDecimal oldSourceInitial=amount("SELECT initial_known_value FROM stock_value_nodes WHERE id=?",c.source());
-        Map<String,Long> before=writeCounts(c.goods());
+        Map<String,Long> before=writeCounts();
         CostChange command=costChange(c,deltaText,"late-cost",new BigDecimal(baseText).signum()==0);
 
         Throwable refusal=catchThrowable(()->adjust(c,command,Map.of()));
@@ -101,7 +101,7 @@ class ValuationComponentEndToEndTest {
         assertThat(required).as("A temporary legacy guard or a worker failure is not precision negotiation; actual=%s",refusal.getClass().getName()).isPresent();
         assertThat(required.orElseThrow().details()).containsEntry("notWritten",true);
         String purpose=required.orElseThrow().details().get("calculationKey").toString();
-        assertThat(writeCounts(c.goods())).isEqualTo(before);
+        assertThat(writeCounts()).isEqualTo(before);
         assertThat(amount("SELECT source_amount_exact FROM stock_value_nodes WHERE id=?",c.source())).isEqualByComparingTo(baseText);
         assertThat(amount("SELECT initial_known_value FROM stock_value_nodes WHERE id=?",c.source())).isEqualByComparingTo(oldSourceInitial);
 
@@ -110,10 +110,10 @@ class ValuationComponentEndToEndTest {
         assertThat(applied.replayed()).isFalse();
         assertThat(values.pool(c.pool()).state()).as("Committed ancestor work must not publish an old known zero as final").isEqualTo(InventoryValuationPort.State.PENDING);
         assertThat(values.pool(c.pool()).propagationPending()).isTrue();
-        Map<String,Long> committed=writeCounts(c.goods());
+        Map<String,Long> committed=writeCounts();
         // Lost response: replay the exact original body/key and original explicit header.
         assertThat(adjust(c,command,explicit).replayed()).isTrue();
-        assertThat(writeCounts(c.goods())).isEqualTo(committed);
+        assertThat(writeCounts()).isEqualTo(committed);
         drain(c);
         BigDecimal delta=new BigDecimal(deltaText),third=delta.divide(new BigDecimal("3"),24,java.math.RoundingMode.DOWN);
         assertThat(amount("SELECT owned_value_local FROM stock_value_nodes WHERE id=?",c.issue())).isEqualByComparingTo(oldCogs.add(third));
@@ -139,10 +139,10 @@ class ValuationComponentEndToEndTest {
         else assertThatThrownBy(this::postReadyCurrentPeriod).isInstanceOf(ApiException.class);
         assertThat(glCogs(c.goods())).isEqualByComparingTo(oldCogs);
         assertThat(glFacts(c.goods())).containsAllEntriesOf(oldGl);
-        Map<String,Long> reversed=writeCounts(c.goods());
+        Map<String,Long> reversed=writeCounts();
         assertThat(inPrecision(Map.of(purpose,new BusinessPrecisionContext.Choice(0,"HALF_UP")),()->locked(c,()->values.reverseAdjustment(reverse,applied.eventId()))).replayed()).isTrue();
-        assertThat(writeCounts(c.goods())).isEqualTo(reversed);
-        assertAllGuardsRestored(c);
+        assertThat(writeCounts()).isEqualTo(reversed);
+        assertAllGuardsRestored();
     }
 
     @Test void committedLateCostBlocksANewPhysicalSuccessorUntilRestartedWorkerDrainsAndRetainsFiniteTwentySixPlaces()throws Exception{
@@ -186,7 +186,7 @@ class ValuationComponentEndToEndTest {
             drain(c);
             assertThat(balance(c)).isZero();
             assertThat(amount("SELECT coalesce(sum(amount_delta_local),0) FROM stock_value_postings posting JOIN stock_value_nodes node ON node.id=posting.node_id JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE pool.goods_id=? AND posting.owner_kind IN('COGS','EXTERNAL')",c.goods())).isZero();
-            assertAllGuardsRestored(c);
+            assertAllGuardsRestored();
         }finally{commitAllowed.countDown();workers.shutdownNow();assertThat(workers.awaitTermination(10,TimeUnit.SECONDS)).isTrue();}
     }
 
@@ -203,7 +203,7 @@ class ValuationComponentEndToEndTest {
         assertThat(glCogs(c.goods())).isZero();
         inPrecision(Map.of(purpose,new BusinessPrecisionContext.Choice(0,"HALF_UP")),()->locked(c,()->values.reverseAdjustment(context(c,"fee-unknown-base-reverse"),applied.eventId())));drain(c);
         assertThat(balance(c)).isZero();assertThat(values.pool(c.pool()).state()).isEqualTo(InventoryValuationPort.State.PENDING);
-        assertAllGuardsRestored(c);
+        assertAllGuardsRestored();
     }
 
     private String requiredPurpose(Case c,CostChange command){
@@ -230,10 +230,10 @@ class ValuationComponentEndToEndTest {
         Case material=new Case(w,incoming,materialSource,null,shipmentItem,new InventoryValuationPort.PoolKey(w.warehouseId(),w.goodsE(),null));
         Case product=new Case(w,made.finishedInId(),productSource,null,shipmentItem,new InventoryValuationPort.PoolKey(w.warehouseId(),w.goodsA(),null));
         markExistingValueFactsAsHistoricalV1(material);markExistingValueFactsAsHistoricalV1(product);
-        Map<String,Long> before=writeCounts(w.goodsE());
+        Map<String,Long> before=writeCounts();
         var command=costChange(material,"1","production-late-delta",false);
         String purpose=requiredPurpose(material,command);
-        assertThat(writeCounts(w.goodsE())).isEqualTo(before);
+        assertThat(writeCounts()).isEqualTo(before);
         assertThat(amount("SELECT source_amount_exact FROM stock_value_nodes WHERE id=?",materialSource)).isEqualByComparingTo("30");
         var applied=adjust(material,command,Map.of(purpose,new BusinessPrecisionContext.Choice(24,"DOWN")));
         drain(material);
@@ -253,14 +253,14 @@ class ValuationComponentEndToEndTest {
                 assertThat(production.apply(preceding.taskId()).applied()).isTrue();
             });
         }
-        Map<String,Long> beforeInterruptedTask=writeCounts(w.goodsE());
+        Map<String,Long> beforeInterruptedTask=writeCounts();
         String originalShare=db.queryForObject("SELECT to_jsonb(share)::text FROM stock_value_production_cost_shares share WHERE input_node_id=(SELECT input_node_id FROM stock_value_production_cost_tasks WHERE id=?) AND output_source_node_id=?",String.class,work.taskId(),productSource);
         assertThatThrownBy(()->new TransactionTemplate(transactions).executeWithoutResult(status->{
             vars.bind();mutex.lockAll(List.of(new InventoryKey(work.inputPool().goodsId(),work.inputPool().colorId()),new InventoryKey(work.outputPool().goodsId(),work.outputPool().colorId())));
             assertThat(production.apply(work.taskId()).applied()).isTrue();
             throw new TaskInterruptedBeforeCommit();
         })).isInstanceOf(TaskInterruptedBeforeCommit.class);
-        assertThat(writeCounts(w.goodsE())).isEqualTo(beforeInterruptedTask);
+        assertThat(writeCounts()).isEqualTo(beforeInterruptedTask);
         assertThat(db.queryForObject("SELECT status FROM stock_value_production_cost_tasks WHERE id=?",String.class,work.taskId())).isEqualTo("PENDING");
         assertThat(db.queryForObject("SELECT to_jsonb(share)::text FROM stock_value_production_cost_shares share WHERE input_node_id=(SELECT input_node_id FROM stock_value_production_cost_tasks WHERE id=?) AND output_source_node_id=?",String.class,work.taskId(),productSource)).isEqualTo(originalShare);
         // A newly constructed real runner resumes the same durable task; no preview or JVM-local result is reused.
@@ -281,7 +281,7 @@ class ValuationComponentEndToEndTest {
         InventoryValueWorkTestSupport.drain(valueWorker,db,List.of(w.goodsA(),w.goodsB(),w.goodsE()));
         postReadyCurrentPeriod();assertThat(glCogs(w.goodsA())).isEqualByComparingTo("30");
         assertThat(amount("SELECT basis_value_local FROM stock_value_nodes WHERE id=?",productSource)).isEqualByComparingTo("90");
-        assertThat(glFacts(w.goodsA())).containsAllEntriesOf(originalGl);assertAllGuardsRestored(material);
+        assertThat(glFacts(w.goodsA())).containsAllEntriesOf(originalGl);assertAllGuardsRestored();
         assertThat(prematureGl).as("An old known output snapshot cannot make the period ready before production dirty work drains").isInstanceOf(ApiException.class);
     }
 
@@ -315,9 +315,9 @@ class ValuationComponentEndToEndTest {
         UUID incoming=db.queryForObject("SELECT event.source_doc_id FROM stock_value_nodes node JOIN stock_value_events event ON event.id=node.creation_event_id WHERE node.id=?",UUID.class,source);
         Case material=new Case(w,incoming,source,null,shipmentItem,new InventoryValuationPort.PoolKey(w.warehouseId(),w.goodsE(),null));
         var command=costChange(material,"3","finite-final-needs-prefix-choice",false);
-        Map<String,Long> before=writeCounts(w.goodsE());
+        Map<String,Long> before=writeCounts();
         String purpose=requiredPurpose(material,command);
-        assertThat(writeCounts(w.goodsE())).isEqualTo(before);
+        assertThat(writeCounts()).isEqualTo(before);
         // 93/3 is finite 31. A real intermediate merged pool still divides by 3.
         var applied=adjust(material,command,Map.of(purpose,new BusinessPrecisionContext.Choice(24,"DOWN")));
         org.springframework.test.util.ReflectionTestUtils.invokeMethod(fixture,"drainCostsWithFreshRunnerWithoutSession",w);
@@ -460,7 +460,7 @@ class ValuationComponentEndToEndTest {
         InventoryValueWorkTestSupport.drain(valueWorker,db,goods);
         var policy=Map.of("stock.value.interval",new BusinessPrecisionContext.Choice(24,"DOWN"),"workshop.material.waste-rate",new BusinessPrecisionContext.Choice(24,"DOWN"),"goods.bom.actual-usage",new BusinessPrecisionContext.Choice(24,"DOWN"));
         UUID count=bench.startCount(bench.firstPeriod,BusinessTime.today().minusDays(1));
-        for(int i=0;i<bench.granules.size();i++)bench.weighed(count,"actual-101-"+i,bench.granules.get(i),"1");inPrecision(policy,()->bench.submit(count));
+        for(int i=0;i<bench.granules.size();i++){bench.weighed(count,"actual-101-"+i,bench.granules.get(i),"1");}inPrecision(policy,()->bench.submit(count));
         var closes=beans.getBean(com.uten.imp.features.warehouse.materialbin.close.WorkshopMaterialCloseService.class);
         assertThat(closes.attempt(bench.firstPeriod,com.uten.imp.features.warehouse.materialbin.close.WorkshopMaterialCloseService.TriggerKind.AFTER_COUNT,bench.admin))
             .isEqualTo(com.uten.imp.features.warehouse.materialbin.close.WorkshopMaterialCloseService.Result.FAILED);
@@ -540,7 +540,7 @@ class ValuationComponentEndToEndTest {
         for(var fact:before.entrySet())assertThat(db.queryForObject("SELECT CAST(? AS jsonb)=CAST(? AS jsonb)",Boolean.class,
                 fact.getValue(),after.get(fact.getKey()))).as("Historical business facts remain identical: %s",fact.getKey()).isTrue();
         assertThat(amount("SELECT count(*) FROM stock_value_nodes node JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE pool.goods_id=? AND (node.value_precision_version<>1 OR node.business_precision_policy IS NOT NULL)",c.goods())).isZero();
-        assertAllGuardsRestored(c);
+        assertAllGuardsRestored();
     }
 
     private Map<String,String> historicalBusinessFacts(Case c){
@@ -551,7 +551,7 @@ class ValuationComponentEndToEndTest {
         }
         facts.putAll(glFacts(c.goods()));return facts;
     }
-    private void assertAllGuardsRestored(Case ignored){
+    private void assertAllGuardsRestored(){
         assertThat(amount("SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid WHERE NOT t.tgisinternal AND c.relname IN('stock_value_nodes','stock_value_edges','stock_value_events','stock_value_node_revisions') AND t.tgenabled='D'")).isZero();
     }
     private StockDocDetail create(FullChainEndToEndTest.World w,String type,String qty,String total){
@@ -580,7 +580,7 @@ class ValuationComponentEndToEndTest {
     private BigDecimal balance(Case c){return amount("SELECT coalesce(sum(amount_local),0) FROM stock_balances WHERE goods_id=?",c.goods());}
     private BigDecimal glCogs(UUID goods){return amount("SELECT coalesce(sum(link.amount_local),0) FROM inventory_cost_gl_links link JOIN stock_value_nodes node ON node.id=link.source_node_id JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE pool.goods_id=?",goods);}
     private Map<String,String> glFacts(UUID goods){var result=new TreeMap<String,String>();db.query("SELECT link.posting_id::text id,(to_jsonb(link)||jsonb_build_object('voucher',to_jsonb(voucher),'entries',(SELECT jsonb_agg(to_jsonb(entry) ORDER BY line_no) FROM gl_entries entry WHERE entry.voucher_id=voucher.id)))::text fact FROM inventory_cost_gl_links link JOIN gl_vouchers voucher ON voucher.id=link.voucher_id JOIN stock_value_nodes node ON node.id=link.source_node_id JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE pool.goods_id=?",row->{result.put(row.getString("id"),row.getString("fact"));},goods);return result;}
-    private Map<String,Long> writeCounts(UUID goods){var counts=new TreeMap<String,Long>();for(String table:List.of("stock_value_nodes","stock_value_edges","stock_value_events","stock_value_jobs","stock_value_tasks","stock_value_node_revisions","stock_value_postings","stock_value_production_cost_revisions","stock_value_production_cost_tasks","stock_value_production_cost_shares","stock_value_production_cost_dirty","stock_movements","gl_vouchers","gl_entries","inventory_cost_gl_links"))counts.put(table,db.queryForObject("SELECT count(*) FROM "+table,Long.class));return counts;}
+    private Map<String,Long> writeCounts(){var counts=new TreeMap<String,Long>();for(String table:List.of("stock_value_nodes","stock_value_edges","stock_value_events","stock_value_jobs","stock_value_tasks","stock_value_node_revisions","stock_value_postings","stock_value_production_cost_revisions","stock_value_production_cost_tasks","stock_value_production_cost_shares","stock_value_production_cost_dirty","stock_movements","gl_vouchers","gl_entries","inventory_cost_gl_links")){counts.put(table,db.queryForObject("SELECT count(*) FROM "+table,Long.class));}return counts;}
     private BigDecimal amount(String sql,Object...args){return db.queryForObject(sql,BigDecimal.class,args);}
     private static String identifier(Object value){String text=value.toString();if(!text.matches("[a-z_][a-z0-9_]*"))throw new AssertionError("Unexpected fixture identifier");return '"'+text+'"';}
     private static void await(CountDownLatch latch){try{if(!latch.await(20,TimeUnit.SECONDS))throw new AssertionError("Concurrent fixture timed out");}catch(InterruptedException failure){Thread.currentThread().interrupt();throw new AssertionError(failure);}}

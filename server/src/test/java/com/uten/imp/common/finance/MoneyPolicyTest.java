@@ -27,10 +27,10 @@ class MoneyPolicyTest {
     @Test
     void quantityDisplayRetainsEveryDigitRegardlessOfOldRequestedDisplayScale() {
         BigDecimal exact = new BigDecimal("1.2345");
-        assertThat(MoneyPolicy.quantityDisplay(exact, 3).toPlainString()).isEqualTo("1.2345");
-        assertThat(MoneyPolicy.quantityDisplay(new BigDecimal("1.2344"), 3).toPlainString()).isEqualTo("1.2344");
-        assertThat(MoneyPolicy.quantityDisplay(BigDecimal.ONE, 3).toPlainString()).isEqualTo("1");
-        assertThat(MoneyPolicy.quantityDisplay(null, 3)).isNull();
+        assertThat(MoneyPolicy.quantityDisplay(exact).toPlainString()).isEqualTo("1.2345");
+        assertThat(MoneyPolicy.quantityDisplay(new BigDecimal("1.2344")).toPlainString()).isEqualTo("1.2344");
+        assertThat(MoneyPolicy.quantityDisplay(BigDecimal.ONE).toPlainString()).isEqualTo("1");
+        assertThat(MoneyPolicy.quantityDisplay(null)).isNull();
         assertThat(exact.toPlainString()).isEqualTo("1.2345");
     }
 

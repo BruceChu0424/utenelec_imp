@@ -110,7 +110,7 @@ class GoodsNativeBudgetEndToEndTest {
         var line=http.perform(post("/api/master/goods/"+goods+"/bom").with(authenticated(actor)).contentType("application/json")
                 .content(json.writeValueAsBytes(Map.of("componentGoodsId",world.goodsD(),"qty","1","price",FULL)))).andReturn().getResponse();
         assertThat(line.getStatus()).as(line.getContentAsString()).isEqualTo(200);
-        var lineJson=json.readTree(line.getContentAsString());if(lineJson.has("data"))lineJson=lineJson.get("data");UUID row=UUID.fromString(lineJson.get("id").asText());
+        var lineJson=json.readTree(line.getContentAsString());if(lineJson.has("data")){lineJson=lineJson.get("data");}UUID row=UUID.fromString(lineJson.get("id").asText());
         assertThat(lineJson.get("priceText").asText()).isEqualTo(FULL);assertThat(lineJson.get("totalText").asText()).isEqualTo(FULL);
         assertThat(db.queryForObject("SELECT count(*) FROM business_numeric_input_evidence WHERE owner_kind='GOODS_BOM_LINE' AND owner_id=? AND source_row_id=?",Integer.class,goods,row)).isEqualTo(3);
         var more=Map.of("componentGoodsId",world.goodsD(),"qty","1.000000000000000000000001","price","1.000000000000000000000001");

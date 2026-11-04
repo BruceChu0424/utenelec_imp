@@ -395,7 +395,11 @@ class MaterialAnalysisSupplyWakeupQueryPostgresTest {
         try(var c=connection()){
             c.setAutoCommit(false);
             execute(c,"INSERT INTO "+prefix+"_receipts(id,bill_no,bill_date,warehouse_id,status,exchange_rate,total_original,total_local) VALUES (?,?,DATE '2026-09-08',?,?,1,0,0)",id,bill,warehouse,status);
-            execute(c,"INSERT INTO "+prefix+"_receipt_items(id,bill_no,bill_date,receipt_id,line_no,goods_id,color_id,unit_id,unit_rate,qty,price,amount_original,amount_local,replacement_intent,goods_snapshot_source) VALUES (?,?,DATE '2026-09-08',?,1,?,?,?,1,10,0,0,0,'NORMAL','MASTER_AT_SAVE')",item,bill,id,goods,color,unit);
+            // V1033 起新收货行按原数量×原换算率落基本量；采购行需给出与采用值一致的
+            // 计费/赠品基本量(数量10×换算率1)，委外表没有这两列。
+            String chargedColumns="PURCHASE".equals(type)?",charged_base_qty,gift_base_qty":"";
+            String chargedValues="PURCHASE".equals(type)?",10,0":"";
+            execute(c,"INSERT INTO "+prefix+"_receipt_items(id,bill_no,bill_date,receipt_id,line_no,goods_id,color_id,unit_id,unit_rate,qty,price,amount_original,amount_local,replacement_intent"+chargedColumns+",goods_snapshot_source) VALUES (?,?,DATE '2026-09-08',?,1,?,?,?,1,10,0,0,0,'NORMAL'"+chargedValues+",'MASTER_AT_SAVE')",item,bill,id,goods,color,unit);
             if(status==1)ProcurementReceiptFixtureSupport.appendStandardReceipt(c,type,id,actor);
             if(quality!=null){
                 execute(c,"INSERT INTO procurement_inspection_items(id,receipt_type,receipt_id,receipt_item_id,warehouse_id,goods_id,color_id,unit_id,unit_rate,received_base_qty,received_amount_local,status) VALUES (?,?,?,?,?,?,?,?,1,10,0,?)",inspection,type,id,item,warehouse,goods,color,unit,quality.equals("REVERSED")?"REVERSED":"PENDING");

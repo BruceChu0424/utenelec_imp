@@ -53,6 +53,11 @@ class FinanceLegacyOpeningSummaryPostgresTest {
                 "customer_open_item_offsets",
                 "customer_open_item_offset_batches",
                 "supplier_open_item_offsets");
+        // The summary SQL embeds FinanceCashEventSql book-rate CASE, which resolves
+        // fn_business_exact_divide at prepare time; projection fixtures carry the
+        // migrated function family explicitly instead of silently widening the table set.
+        MigratedProjectionSchema.createCurrentFunctions(jdbc,
+                "fn_business_decimal_from_integer","fn_business_exact_divide_with_policy","fn_business_exact_divide");
         var fixtureConfiguration = new Configuration()
                 .setProperty("hibernate.hbm2ddl.auto","none");
         fixtureConfiguration.getProperties().put("hibernate.connection.datasource", jdbc.getDataSource());

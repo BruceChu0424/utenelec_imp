@@ -653,9 +653,9 @@ public class BusinessDataResetSqlContractTest {
         return Files.readString(resolve(direct, fallback), StandardCharsets.UTF_8);
     }
 
-    /** {@code V552__xxx.sql} → 捕获版本号；R__/U__ 等非版本迁移不计。 */
+    /** {@code V552__xxx.sql} / {@code V990_1__xxx.sql}（点分 990.1）→ 捕获主版本号；R__/U__ 等非版本迁移不计。 */
     private static final Pattern MIGRATION_FILE =
-            Pattern.compile("^V([0-9]+)__.*\\.sql$");
+            Pattern.compile("^V([0-9]+)(?:_([0-9]+))?__.*\\.sql$");
 
     public static Map<String, String> policy(String sql) {
         Map<String, String> result = new LinkedHashMap<>();

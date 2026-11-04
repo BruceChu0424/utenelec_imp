@@ -412,7 +412,10 @@ void main() {
     test('输入解析：空有效(不提交)，0..100 两位小数，越界或非数字无效', () {
       expect(parsePurchaseOverReceiptPct('  '), (value: null, valid: true));
       expect(parsePurchaseOverReceiptPct('5'), (value: '5', valid: true));
-      expect(parsePurchaseOverReceiptPct('3.456'), (value: '3.456', valid: true));
+      expect(parsePurchaseOverReceiptPct('3.456'), (
+        value: '3.456',
+        valid: true,
+      ));
       expect(parsePurchaseOverReceiptPct('100'), (value: '100', valid: true));
       expect(parsePurchaseOverReceiptPct('100.01').valid, isFalse);
       expect(parsePurchaseOverReceiptPct('-1').valid, isFalse);

@@ -87,7 +87,8 @@ class _MaterialPrecisionDraftState
         _initializing ||
         initialized.isCompleted ||
         !current ||
-        widget.controller.owner._materialPresentedScope != widget.sessionScope) {
+        widget.controller.owner._materialPresentedScope !=
+            widget.sessionScope) {
       return;
     }
     _initializing = true;

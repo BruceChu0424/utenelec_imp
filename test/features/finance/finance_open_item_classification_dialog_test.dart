@@ -107,7 +107,8 @@ void main() {
         isTrue,
       );
       final hint = find.byWidgetPredicate(
-        (w) => w is UtenFieldHintIcon && (w.info?.contains('原币与本币须分别守恒') ?? false),
+        (w) =>
+            w is UtenFieldHintIcon && (w.info?.contains('原币与本币须分别守恒') ?? false),
       );
       expect(hint, findsOneWidget);
       await tester.tap(hint);

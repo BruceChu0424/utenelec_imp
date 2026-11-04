@@ -22,10 +22,15 @@ public class FinanceMaterialStatementReferences {
                 case "accounts"->"SELECT code::text AS id,code,name FROM finance_chart_codes";
                 case "auxiliaries"->"SELECT id::text AS id,source_code AS code,source_name AS name FROM finance_auxiliary_items";
                 case "contexts"->"SELECT id::text AS id,account_code AS code,COALESCE((SELECT e.input->>'productNameCaption' FROM finance_material_evidence e WHERE e.context_id=c.id AND e.kind='CONTEXT' AND e.current_approved),'未审核分组') AS name FROM finance_material_contexts c";
-                case "goods","colors","units","currencies","suppliers","clients"->"SELECT id::text AS id,COALESCE(to_jsonb(native)->>'code','') AS code,name FROM "+request.getKey()+" native";
+                case "goods"->"SELECT id::text AS id,COALESCE(to_jsonb(native)->>'code','') AS code,name FROM goods native";
+                case "colors"->"SELECT id::text AS id,COALESCE(to_jsonb(native)->>'code','') AS code,name FROM colors native";
+                case "units"->"SELECT id::text AS id,COALESCE(to_jsonb(native)->>'code','') AS code,name FROM units native";
+                case "currencies"->"SELECT id::text AS id,COALESCE(to_jsonb(native)->>'code','') AS code,name FROM currencies native";
+                case "suppliers"->"SELECT id::text AS id,COALESCE(to_jsonb(native)->>'code','') AS code,name FROM suppliers native";
+                case "clients"->"SELECT id::text AS id,COALESCE(to_jsonb(native)->>'code','') AS code,name FROM clients native";
                 default->throw invalid("来源名称类型不正确");};
             var ids=request.getValue().stream().filter(Objects::nonNull).distinct().toList();var labels=new LinkedHashMap<String,String>();
-            if(!ids.isEmpty())for(var row:db.queryForList("SELECT * FROM ("+source+") original WHERE id IN("+String.join(",",Collections.nCopies(ids.size(),"?"))+")",ids.toArray()))labels.put(row.get("id").toString(),Objects.toString(row.get("code"),"")+" / "+Objects.toString(row.get("name"),""));result.put(request.getKey(),labels);
+            if(!ids.isEmpty()){for(var row:db.queryForList("SELECT * FROM ("+source+") original WHERE id IN("+String.join(",",Collections.nCopies(ids.size(),"?"))+")",ids.toArray()))labels.put(row.get("id").toString(),Objects.toString(row.get("code"),"")+" / "+Objects.toString(row.get("name"),""));}result.put(request.getKey(),labels);
         }return result;
     }
     @Transactional(readOnly=true)
@@ -34,7 +39,11 @@ public class FinanceMaterialStatementReferences {
             case "auxiliaries"->"SELECT id,source_code AS code,source_name AS name,role FROM finance_auxiliary_items WHERE status='ACTIVE' AND role IN('OTHER','SUPPLIER','CUSTOMER')";
             case "accounts"->"SELECT chart.code AS id,chart.code,chart.name,chart.currency_id FROM finance_chart_codes chart WHERE EXISTS(SELECT 1 FROM finance_chart_code_styles mapped JOIN payment_styles style ON style.id=mapped.style_id WHERE mapped.code=chart.code AND style.category='ACCOUNT' AND style.status='使用' AND NOT style.is_deleted AND EXISTS(SELECT 1 FROM finance_report_line_bindings binding WHERE binding.binding_kind='STYLE' AND binding.style_id=style.id AND binding.line_key IN('BS_4','BS_8')))";
             case "currencies"->"SELECT id,code,name,is_base_currency FROM currencies WHERE NOT is_deleted AND status='使用'";
-            case "goods","colors","units","suppliers","clients"->"SELECT native.id,COALESCE(to_jsonb(native)->>'code','') AS code,native.name FROM "+kind+" native WHERE NOT native.is_deleted";
+            case "goods"->"SELECT native.id,COALESCE(to_jsonb(native)->>'code','') AS code,native.name FROM goods native WHERE NOT native.is_deleted";
+            case "colors"->"SELECT native.id,COALESCE(to_jsonb(native)->>'code','') AS code,native.name FROM colors native WHERE NOT native.is_deleted";
+            case "units"->"SELECT native.id,COALESCE(to_jsonb(native)->>'code','') AS code,native.name FROM units native WHERE NOT native.is_deleted";
+            case "suppliers"->"SELECT native.id,COALESCE(to_jsonb(native)->>'code','') AS code,native.name FROM suppliers native WHERE NOT native.is_deleted";
+            case "clients"->"SELECT native.id,COALESCE(to_jsonb(native)->>'code','') AS code,native.name FROM clients native WHERE NOT native.is_deleted";
             default->throw invalid("原表候选类型不正确");
         };
         var args=new ArrayList<Object>();String where=" WHERE true";
@@ -72,7 +81,7 @@ public class FinanceMaterialStatementReferences {
         s.readAccess();var ar=quote(contextId,receivableEntry,receivableAllocation);String binding=purpose==FinanceMaterialStatementContracts.AdjustmentPurpose.VAT?"BS_36":"PL_22";
         var args=new ArrayList<Object>(List.of(ar.get("voucher_id"),binding));String where=" FROM gl_entries e LEFT JOIN finance_gl_entry_allocations a ON a.entry_id=e.id WHERE e.voucher_id=? AND e.direction=-1 AND NOT e.is_deleted AND NOT fn_finance_entry_is_pnl_closing(e.id) AND EXISTS(SELECT 1 FROM finance_report_line_bindings b JOIN payment_styles ancestor ON ancestor.id=b.style_id JOIN payment_styles actual ON actual.id=e.style_id WHERE b.binding_kind='STYLE' AND b.line_key=? AND (actual.id=ancestor.id OR (ancestor.path IS NOT NULL AND ancestor.path<>'' AND actual.path LIKE ancestor.path||'/%')))";
         for(String term:KeywordSearch.terms(keyword)){where+=" AND e.summary ILIKE ? ESCAPE '\\'";args.add(KeywordSearch.containsPattern(term));}int p=Math.max(1,page),n=Math.max(1,Math.min(100,size));long total=Objects.requireNonNull(db.queryForObject("SELECT count(*)"+where,Long.class,args.toArray()));args.add(n);args.add((long)(p-1)*n);
-        var rows=db.queryForList("SELECT e.id AS entry_id,COALESCE(a.allocation_no,0) AS allocation_no,e.entry_date,e.summary,COALESCE(a.amount_local,e.amount)::text AS amount_local,a.amount_original::text,a.original_currency_id,e.voucher_id"+where+" ORDER BY e.line_no,e.id,a.allocation_no LIMIT ? OFFSET ?",args.toArray());for(var row:rows)row.put("voucher_no",ar.get("voucher_no"));return s.exactMap(Map.of("items",rows,"page",p,"size",n,"total",total,"totalPages",(total+n-1)/n));
+        var rows=db.queryForList("SELECT e.id AS entry_id,COALESCE(a.allocation_no,0) AS allocation_no,e.entry_date,e.summary,COALESCE(a.amount_local,e.amount)::text AS amount_local,a.amount_original::text,a.original_currency_id,e.voucher_id"+where+" ORDER BY e.line_no,e.id,a.allocation_no LIMIT ? OFFSET ?",args.toArray());for(var row:rows){row.put("voucher_no",ar.get("voucher_no"));}return s.exactMap(Map.of("items",rows,"page",p,"size",n,"total",total,"totalPages",(total+n-1)/n));
     }
     @Transactional(readOnly=true)
     public Map<String,Object> adjustmentQuote(UUID contextId,UUID receivableEntry,int receivableAllocation,UUID entry,int allocation,FinanceMaterialStatementContracts.AdjustmentPurpose purpose){

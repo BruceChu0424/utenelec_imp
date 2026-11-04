@@ -73,7 +73,7 @@ class AuditRetentionPostgresTest {
         insertAudit("retention-expired", expiredMonth.plusDays(5));
         originalFunctionIdentity = functionIdentity();
         originalHistory = owner.queryForList("SELECT version||':'||checksum FROM flyway_schema_history "
-                + "WHERE success AND version::integer<=766 ORDER BY installed_rank", String.class);
+                + "WHERE success AND version::numeric<=766 ORDER BY installed_rank", String.class);
         seededSnapshot = allSeededRows();
         // The before switch exists solely to reproduce destructive legacy behavior
         // against this throwaway database with the same preservation assertions.
@@ -94,7 +94,7 @@ class AuditRetentionPostgresTest {
         assertEquals(originalFunctionIdentity, functionIdentity(), "OID, owner and runtime grants survive replacement");
         assertEquals(seededSnapshot, allSeededRows(), "installing protection must not move or remove existing evidence");
         assertEquals(originalHistory, owner.queryForList("SELECT version||':'||checksum FROM flyway_schema_history "
-                + "WHERE success AND version::integer<=766 ORDER BY installed_rank", String.class));
+                + "WHERE success AND version::numeric<=766 ORDER BY installed_rank", String.class));
         assertTrue(owner.queryForObject("SELECT has_function_privilege(?, 'fn_audit_retention_run()', 'EXECUTE')",
                 Boolean.class, RUNTIME_ROLE));
     }

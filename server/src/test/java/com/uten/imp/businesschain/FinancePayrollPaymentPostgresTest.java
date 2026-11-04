@@ -47,7 +47,7 @@ class FinancePayrollPaymentPostgresTest {
   account=UUID.randomUUID();db.update("INSERT INTO accounts(id,code,name,account_type,currency_id,init_balance,receipts_total,payments_total,balance_current,status,style_id) VALUES(?,?,'匿名工资付款账户','BANK',?,10000,0,0,10000,'使用',?)",account,"PR-"+account,base,cash);
   reset(authority);when(authority.requirePayrollPreparation(any(),any(),any())).thenAnswer(call->permit(call.getArgument(0),call.getArgument(1),call.getArgument(2),null));
   when(authority.requirePayrollExecution(any())).thenAnswer(call->{Execute c=call.getArgument(0);return permit(c.applicationId(),c.batchId(),c.sourceFingerprint(),c.instructionFingerprint());});
-  when(authority.requirePayrollConfirmation(any(),any(),any(),any())).thenAnswer(call->permit(call.getArgument(0),call.getArgument(1),null,null));
+  when(authority.requirePayrollConfirmation(any(),any(),any())).thenAnswer(call->permit(call.getArgument(0),call.getArgument(1),null,null));
   when(authority.requirePayrollReversal(any(),any(),any())).thenAnswer(call->permit(call.getArgument(0),call.getArgument(1),null,null));
  }
  @AfterEach void logout(){SecurityContextHolder.clearContext();}

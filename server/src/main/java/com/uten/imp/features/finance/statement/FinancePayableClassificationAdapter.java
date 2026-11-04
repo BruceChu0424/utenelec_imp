@@ -27,7 +27,7 @@ public class FinancePayableClassificationAdapter implements FinancePayableClassi
         if(amount(source.get("amountOriginal")).signum()<=0||amount(source.get("amountLocal")).signum()<0)throw invalid("减免目标须为真实正原币应付和非负账面，不能把贷项当未付金额");
         var balance=db.queryForMap("SELECT amount_balance_original,amount_balance FROM ar_ap_ledger WHERE id=?",id);
         BigDecimal original=nullable(balance.get("amount_balance_original")),local=nullable(balance.get("amount_balance"));
-        if(ownNewOffset!=null){var own=db.queryForList("SELECT amount_original,target_amount_local FROM supplier_open_item_offsets WHERE id=? AND target_ledger_id=? AND status='APPLIED'",ownNewOffset,id);if(!own.isEmpty()){if(original!=null)original=original.add(amount(own.getFirst().get("amount_original")));if(local!=null)local=local.add(amount(own.getFirst().get("target_amount_local")));}}
+        if(ownNewOffset!=null){var own=db.queryForList("SELECT amount_original,target_amount_local FROM supplier_open_item_offsets WHERE id=? AND target_ledger_id=? AND status='APPLIED'",ownNewOffset,id);if(!own.isEmpty()){if(original!=null){original=original.add(amount(own.getFirst().get("amount_original")));}if(local!=null)local=local.add(amount(own.getFirst().get("target_amount_local")));}}
         var remaining=new ArrayList<Part>();
         if(parts.size()==1){var part=parts.getFirst();remaining.add(new Part(part.category(),part.amountOriginal(),part.amountLocal(),original,local));}
         else{

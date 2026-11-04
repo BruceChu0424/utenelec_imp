@@ -1,6 +1,5 @@
 package com.uten.imp.features.production.analysis;
 
-import com.uten.imp.common.finance.MoneyPolicy;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.math.RoundingMode;
@@ -126,7 +125,11 @@ final class AggregateDelegationProjection {
     static Map<UUID,BigDecimal> proportional(BigDecimal total,Map<UUID,BigDecimal> weights) {
         List<UUID> ids=weights.keySet().stream().sorted(Comparator.comparing(UUID::toString)).toList();
         if(ids.isEmpty())return Map.of();
-        BigInteger ticks=MoneyPolicy.quantity(positive(total)).unscaledValue();
+        // Normalize ticks locally to the four-decimal share quantum: MoneyPolicy.quantity
+        // no longer coerces the scale, and unscaledValue()/new BigDecimal(ticks,4) below
+        // only count 1e-4 units when the scale is exactly 4 (250 would yield 0.0025-style
+        // shares). Same tick contract as AggregateQuantityAllocator/AggregatePrivateCoveragePropagation.
+        BigInteger ticks=positive(total).setScale(4).unscaledValue();
         BigDecimal weightTotal=weights.values().stream().map(AggregateDelegationProjection::positive).reduce(BigDecimal.ZERO,BigDecimal::add);
         Map<UUID,BigDecimal> result=new LinkedHashMap<>();
         BigInteger allocated=BigInteger.ZERO;

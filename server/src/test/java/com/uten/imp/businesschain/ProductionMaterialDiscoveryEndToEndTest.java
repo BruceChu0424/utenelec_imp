@@ -111,7 +111,7 @@ class ProductionMaterialDiscoveryEndToEndTest {
         assertEquals(List.of(world.goodsE()),context.rememberedItems().stream().map(SuggestedItem::goodsId).toList());
         assertNull(context.rememberedItems().getFirst().qty());assertFalse(ready());
         assertEquals(0,db.queryForObject("SELECT count(*) FROM goods_bom_actual_usages WHERE goods_id=?",Integer.class,world.goodsC()));
-        db.update("UPDATE goods SET status='禁用' WHERE id=?",world.goodsE());
+        disableAsActor(world.goodsE());
         assertTrue(discovery.context(segment).rememberedItems().isEmpty());
     }
 
@@ -466,7 +466,7 @@ class ProductionMaterialDiscoveryEndToEndTest {
                 List.of(new RequestedMaterial(world.goodsD(),null,world.unitId(),new BigDecimal("0.00001"))));
         long expected=version();
         for(List<RequestedMaterial> items:invalid)assertThrows(ApiException.class,()->discovery.request(segment,new Request(expected,"invalid-suggestion-"+UUID.randomUUID(),items)));
-        db.update("UPDATE goods SET status='禁用' WHERE id=?",world.goodsD());
+        disableAsActor(world.goodsD());
         assertThrows(ApiException.class,()->discovery.request(segment,new Request(expected,"disabled-suggestion-"+segment,List.of(valid))));
         db.update("UPDATE goods SET status='使用',auto_created=TRUE WHERE id=?",world.goodsD());
         assertThrows(ApiException.class,()->discovery.request(segment,new Request(expected,"placeholder-suggestion-"+segment,List.of(valid))));
@@ -488,7 +488,7 @@ class ProductionMaterialDiscoveryEndToEndTest {
         Detail pending=discovery.request(segment,new Request(version(),"master-recheck-request-"+segment));
         long segmentVersion=version();
         switch(change) {
-            case "GOODS_DISABLED" -> db.update("UPDATE goods SET status='禁用' WHERE id=?",world.goodsD());
+            case "GOODS_DISABLED" -> disableAsActor(world.goodsD());
             case "PLACEHOLDER" -> db.update("UPDATE goods SET auto_created=TRUE WHERE id=?",world.goodsD());
             case "UNIT_DISABLED" -> db.update("UPDATE units SET status='禁用' WHERE id=?",world.unitId());
             case "COLOR_DISABLED" -> db.update("UPDATE colors SET status='禁用' WHERE id=?",color);
@@ -806,4 +806,25 @@ class ProductionMaterialDiscoveryEndToEndTest {
     }
     long version(){return db.queryForObject("SELECT lock_version FROM production_execution_segments WHERE id=?",Long.class,segment);}
     boolean ready(){return Boolean.TRUE.equals(db.queryForObject("SELECT fn_execution_start_material_ready(?)",Boolean.class,segment));}
+    /** 停用组件会退役父件配方并按 V1034 采用守卫重算 sourceE；直写夹具在同一事务里声明操作人，与正式入口的事务绑定一致。 */
+    private void disableAsActor(UUID id){
+        db.execute((java.sql.Connection con)->{
+            boolean autocommit=con.getAutoCommit();
+            con.setAutoCommit(false);
+            try(var bind=con.prepareStatement("SELECT set_config('app.actor_id',?,true)");
+                var disable=con.prepareStatement("UPDATE goods SET status='禁用' WHERE id=?")){
+                bind.setString(1,world.superAdminUserId().toString());
+                bind.execute();
+                disable.setObject(1,id);
+                disable.executeUpdate();
+                con.commit();
+            }catch(java.sql.SQLException failure){
+                con.rollback();
+                throw failure;
+            }finally{
+                con.setAutoCommit(autocommit);
+            }
+            return null;
+        });
+    }
 }

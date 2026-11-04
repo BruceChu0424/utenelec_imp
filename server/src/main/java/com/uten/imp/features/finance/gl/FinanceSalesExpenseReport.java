@@ -96,10 +96,10 @@ final class FinanceSalesExpenseReport {
         Map<String,Object> annual=new LinkedHashMap<>();annual.put("month",FinanceExpenseTemplateCatalog.text("salesExpense","yearTotalPattern").replace("{year}",Integer.toString(year)));
         annual.put("item","");annual.put("__lineKey","SALES_YEAR_TOTAL");
         for(String key:java.util.stream.Stream.concat(FEES.stream(),java.util.stream.Stream.of("expenseTotal","salesAmount")).toList()) {
-            BigDecimal sum=BigDecimal.ZERO;for(var row:monthTotals)sum=FinanceExpenseReports.add(sum,FinanceExpenseReports.decimal(row.get(key)));annual.put(key,sum);
+            BigDecimal sum=BigDecimal.ZERO;for(var row:monthTotals){sum=FinanceExpenseReports.add(sum,FinanceExpenseReports.decimal(row.get(key)));}annual.put(key,sum);
         }
         annual.put("salesRatio",FinanceExpenseReports.percent(FinanceExpenseReports.decimal(annual.get("expenseTotal")),FinanceExpenseReports.decimal(annual.get("salesAmount"))));
         annual.put("__pending",monthTotals.stream().anyMatch(row->Boolean.TRUE.equals(row.get("__pending"))));annual.put("__basis","全年比率按全年费用合计÷全年营业收入，不能合计月比率");output.add(annual);
-        return FinanceExpenseReports.filtered("gl/sales-expense",columns(),output,FinanceReportColumnOptions.NONE);
+        return FinanceExpenseReports.filtered(columns(),output,FinanceReportColumnOptions.NONE);
     }
 }

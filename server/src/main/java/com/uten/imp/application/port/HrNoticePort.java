@@ -37,7 +37,7 @@ public interface HrNoticePort {
                                      String amountLabel, UUID applicantEmployeeId);
 
     default void notifyExpenseClaimStage(UUID claimId,String applicantName,String amountLabel,UUID applicantEmployeeId,
-            UUID departmentId,String stage,String participants) {
+            UUID departmentId,String stage) {
         notifyExpenseClaimSubmitted(claimId,applicantName,amountLabel,applicantEmployeeId);
     }
 

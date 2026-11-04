@@ -71,13 +71,13 @@ public class InventoryValueWorkService {
                 ORDER BY execution_segment_id LIMIT 10
                 """,Map.of(),UUID.class);
         for(UUID scope:pendingScopes) {
-            if(withRefreshLocks(scope,()->refreshPendingBusiness(scope)))applied++;
+            if(refreshScope(scope,()->refreshPendingBusiness(scope)))applied++;
         }
         // Discovery is deliberately scope-only authority. Events and versions in
         // this projection can become stale while a worker waits for inventory.
         for(var dirty:production.pendingRecalculations(10)) {
             UUID scope=dirty.executionSegmentId();
-            if(withRefreshLocks(scope,()->recalculatePendingSource(scope)))applied++;
+            if(refreshScope(scope,()->recalculatePendingSource(scope)))applied++;
         }
         for(var work:production.pendingWork(50)){
             Boolean result=tx.execute(status->{
@@ -93,6 +93,21 @@ public class InventoryValueWorkService {
             });if(Boolean.TRUE.equals(result))applied++;
         }
         return applied;
+    }
+
+    /**
+     * One scope's durable precision closure can still belong to another committed
+     * transaction (V1025: its whole-target verification stays queued until the task
+     * loops apply it). That scope answers busy for now; the remaining loops of this
+     * same invocation still apply and complete the blocking work, and the skipped
+     * refresh runs on the next cycle. One busy scope must not starve every queue.
+     */
+    private boolean refreshScope(UUID scope,Supplier<Boolean> operation) {
+        try{
+            return withRefreshLocks(scope,operation);
+        }catch(org.springframework.dao.ConcurrencyFailureException busy){
+            return false;
+        }
     }
 
     private boolean withRefreshLocks(UUID scope,Supplier<Boolean> operation) {

@@ -551,11 +551,12 @@ class ProcurementArrivalGuardPostgresTest {
             receipt.setObject(3, billDate);
             assertEquals(1, receipt.executeUpdate());
         }
+        UUID unitId = insertUnit(connection);
         try (PreparedStatement item = connection.prepareStatement("""
                 insert into purchase_receipt_items(
-                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, qty,
-                    goods_snapshot_source)
-                values (?, ?, ?, ?, ?, ?, 15.0000, 'MASTER_AT_SAVE')
+                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, unit_id, unit_rate, qty,
+                    charged_base_qty, gift_base_qty, goods_snapshot_source)
+                values (?, ?, ?, ?, ?, ?, ?, 1, 15.0000, 15.0000, 0, 'MASTER_AT_SAVE')
                 """)) {
             item.setObject(1, receiptItemId);
             item.setString(2, receiptNo);
@@ -563,6 +564,7 @@ class ProcurementArrivalGuardPostgresTest {
             item.setObject(4, receiptId);
             item.setObject(5, orderItemId);
             item.setObject(6, goodsId);
+            item.setObject(7, unitId);
             assertEquals(1, item.executeUpdate());
         }
         try (PreparedStatement exception = connection.prepareStatement("""
@@ -698,11 +700,12 @@ class ProcurementArrivalGuardPostgresTest {
             receipt.setObject(3, billDate);
             assertEquals(1, receipt.executeUpdate());
         }
+        UUID unitId = insertUnit(connection);
         try (PreparedStatement item = connection.prepareStatement("""
                 insert into purchase_receipt_items(
-                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, qty,
-                    goods_snapshot_source)
-                values (?, ?, ?, ?, ?, ?, 15.0000, 'MASTER_AT_SAVE')
+                    id, bill_no, bill_date, receipt_id, order_item_id, goods_id, unit_id, unit_rate, qty,
+                    charged_base_qty, gift_base_qty, goods_snapshot_source)
+                values (?, ?, ?, ?, ?, ?, ?, 1, 15.0000, 15.0000, 0, 'MASTER_AT_SAVE')
                 """)) {
             item.setObject(1, receiptItemId);
             item.setString(2, receiptNo);
@@ -710,6 +713,7 @@ class ProcurementArrivalGuardPostgresTest {
             item.setObject(4, receiptId);
             item.setObject(5, orderItemId);
             item.setObject(6, goodsId);
+            item.setObject(7, unitId);
             assertEquals(1, item.executeUpdate());
         }
         try (PreparedStatement exception = connection.prepareStatement("""
@@ -784,21 +788,37 @@ class ProcurementArrivalGuardPostgresTest {
             UUID goodsId,
             BigDecimal qty,
             BigDecimal receivedQty) throws Exception {
+        UUID unitId = insertUnit(connection);
         try (PreparedStatement item = connection.prepareStatement("""
                 insert into purchase_order_items(
-                    id, bill_no, bill_date, order_id, goods_id, qty, received_qty,
+                    id, bill_no, bill_date, order_id, goods_id, unit_id, unit_rate, qty, received_qty,
                     goods_snapshot_source)
-                values (?, ?, ?, ?, ?, ?, ?, 'MASTER_AT_SAVE')
+                values (?, ?, ?, ?, ?, ?, 1, ?, ?, 'MASTER_AT_SAVE')
                 """)) {
             item.setObject(1, itemId);
             item.setString(2, "POI-ARR-" + itemId);
             item.setObject(3, LocalDate.of(2026, 8, 2));
             item.setObject(4, orderId);
             item.setObject(5, goodsId);
-            item.setBigDecimal(6, qty);
-            item.setBigDecimal(7, receivedQty);
+            item.setObject(6, unitId);
+            item.setBigDecimal(7, qty);
+            item.setBigDecimal(8, receivedQty);
             return item.executeUpdate();
         }
+    }
+
+    /** V1033 adoption guard: a quantity write must carry its real original unit and positive rate. */
+    private static UUID insertUnit(Connection connection) throws Exception {
+        UUID unitId = UUID.randomUUID();
+        try (PreparedStatement unit = connection.prepareStatement("""
+                insert into units(id, code, name, status)
+                values (?, ?, 'piece', '使用')
+                """)) {
+            unit.setObject(1, unitId);
+            unit.setString(2, "ARR-U-" + unitId);
+            assertEquals(1, unit.executeUpdate());
+        }
+        return unitId;
     }
 
     private static Identity loadIdentity(Connection connection) throws Exception {

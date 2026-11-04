@@ -19,7 +19,7 @@ final class FinanceAssetTemplateReport {
             var field=fields.get(index);
             String label=java.util.regex.Pattern.compile("202[3-6]")
                     .matcher(FinanceTemplateContract.header(template,index))
-                    .replaceAll(match->Integer.toString(Integer.parseInt(match.group())+(completed?0:cutoff.getYear()-2026)));
+                    .replaceAll(match->{try{return Integer.toString(Integer.parseInt(match.group())+(completed?0:cutoff.getYear()-2026));}catch(NumberFormatException failure){throw new IllegalArgumentException("Source template header year is not numeric",failure);}});
             var column=new ReportColumn(field.key,label,field.type,field.type.equals("text")?150:130);
             if(field.type.equals("money"))column=column.withUnitLabel("元");
             columns.add(column.withHeaderGroups(FinanceTemplateContract.headerGroups(template,index)));

@@ -47,6 +47,10 @@ class InventoryCostPostingBridgePostgresTest {
         db.execute(resource("/db/inventory-cost-bridge-fixture.sql"));
         db.execute(resource("/db/migration/V754__inventory_cost_posting_bridge.sql"));
         db.execute(resource("/db/migration/V756__production_cost_frozen_identity.sql"));
+        // Sales-cost ratios call the real migrated precision functions; without them the
+        // class-42 "function does not exist" surfaces as Spring bad SQL grammar.
+        com.uten.imp.support.MigratedProjectionSchema.createCurrentFunctions(db,
+                "fn_business_decimal_from_integer","fn_business_exact_divide_with_policy","fn_business_exact_divide");
         db.update("INSERT INTO users VALUES(?)",ACTOR);
         db.update("INSERT INTO payment_styles VALUES(?,?),(?,?)",UUID.randomUUID(),"SALES_COST",UUID.randomUUID(),"INVENTORY_ASSET");
     }

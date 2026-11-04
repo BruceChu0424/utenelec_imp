@@ -10,8 +10,8 @@ final class FinanceChartClassification {
     static final Map<String,Set<String>> ALLOWED=Map.of("ASSET",Set.of("ACCOUNT"),"COST",Set.of("ACCOUNT"),
             "LIABILITY",Set.of("LIABILITY"),"EQUITY",Set.of("EQUITY"),"PROFIT",Set.of("INCOME","EXPENSE"));
     private static Map<String,String> source() {
-        var result=new LinkedHashMap<String,String>();for(var group:FinanceTemplateContract.template("chartCodes").path("classifications"))
-            for(var code:group.path("codes"))result.put(code.asText(),group.path("id").asText());return Map.copyOf(result);
+        var result=new LinkedHashMap<String,String>();for(var group:FinanceTemplateContract.template("chartCodes").path("classifications")) {
+            for(var code:group.path("codes"))result.put(code.asText(),group.path("id").asText());}return Map.copyOf(result);
     }
     static String resolve(String code,String explicit,String category) {
         String value=explicit==null?SOURCE.get(code):explicit;

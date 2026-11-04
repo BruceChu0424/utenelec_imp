@@ -103,7 +103,7 @@ class FinanceApplicationsPostgresTest {
         Prepared original=prepared.get(kind);World w=original.world();Actor payer=payer();UUID nativeClaim=original.claim();UUID id=original.input().id();
         login(w.department);decide(id,true,null);login(w.finance1);
         var shown=applications.detail(id);UUID invoiceId=db.queryForObject("SELECT id FROM expense_claim_invoices WHERE claim_id=?",UUID.class,nativeClaim);var lease=claims.claim("FINANCE_APPLICATION_REVIEW",id.toString());
-        var verified=applications.verifyExpenseInvoice(id,new InvoiceVerification(UUID.randomUUID(),((Number)shown.get("row_version")).longValue(),shown.get("source_fingerprint").toString(),lease.claimId(),invoiceId,expenseClaims.detail(nativeClaim).version(),"VERIFIED_MANUAL","原票原件及真实查验回执逐项核对一致"));
+        applications.verifyExpenseInvoice(id,new InvoiceVerification(UUID.randomUUID(),((Number)shown.get("row_version")).longValue(),shown.get("source_fingerprint").toString(),lease.claimId(),invoiceId,expenseClaims.detail(nativeClaim).version(),"VERIFIED_MANUAL","原票原件及真实查验回执逐项核对一致"));
         decide(id,true,null);login(w.finance2);decide(id,true,null);login(w.management);decide(id,true,null);
         assertThat(db.queryForObject("SELECT status FROM expense_claims WHERE id=?",String.class,nativeClaim)).isEqualTo("APPROVED");
         login(payer);UUID account=account(),style=expenseStyle();proof(id,"FINANCE_APPLICATION_PAYMENT_PROOF");var approved=applications.detail(id);var paid=applications.execute(id,execute(approved,account,style,"100"));UUID doc=(UUID)paid.get("native_doc_id");
@@ -169,7 +169,7 @@ class FinanceApplicationsPostgresTest {
             var input=new DraftInput(UUID.randomUUID(),UUID.randomUUID(),-1,kind,"原差旅报销申请","附原票据",BusinessTime.today().toString(),claim,trip,null,null,null,null,null,null,null,null);
             prepare(kind,w,input,claim,null,false);
         }
-        World prepayment=world();login(prepayment.owner());UUID supplier=preparePrepaymentSource(prepayment);
+        World prepayment=world();login(prepayment.owner());UUID supplier=preparePrepaymentSource();
         prepare("prepayment",prepayment,payment(UUID.randomUUID(),"PREPAYMENT_APPLICATION","SUPPLIER_PREPAYMENT",supplier,null,null,"100"),null,null,false);
         World scoped=world();login(scoped.owner());UUID inaccessible=UUID.randomUUID();db.update("INSERT INTO suppliers(id,code,name,status,code_sequence) VALUES(?,?,'匿名权限范围供应商','使用',(SELECT COALESCE(MAX(code_sequence),0)+1 FROM suppliers))",inaccessible,"FQ-S-"+inaccessible);
         prepared.put("payableScope",new Prepared(scoped,payment(UUID.randomUUID(),"PAYMENT_APPLICATION","SUPPLIER_AP",inaccessible,UUID.randomUUID(),null,"100"),null,null,null));
@@ -217,7 +217,7 @@ class FinanceApplicationsPostgresTest {
         db.update("UPDATE expense_claims SET submission_snapshot=?::jsonb WHERE id=?",expenseClaims.applicationBusinessSnapshot(claim),claim);
         return claim;
     }
-    private UUID preparePrepaymentSource(World w){
+    private UUID preparePrepaymentSource(){
 Actor accountant=actor("预付科目核对",Set.of("finance_report:view","finance:view:all","payment_style:edit"));login(accountant);
         UUID supplier=UUID.randomUUID(),base=db.queryForObject("SELECT id FROM currencies WHERE is_base_currency AND NOT is_deleted",UUID.class),asset=UUID.randomUUID();
         db.update("INSERT INTO suppliers(id,code,name,status,code_sequence) VALUES(?,?,'匿名预付供应商','使用',(SELECT COALESCE(MAX(code_sequence),0)+1 FROM suppliers))",supplier,"FQ-S-"+supplier);
@@ -245,7 +245,7 @@ Actor accountant=actor("预付科目核对",Set.of("finance_report:view","financ
     private void assertBalanced(UUID doc){assertThat(db.queryForObject("SELECT COALESCE(sum(direction*amount),0) FROM gl_entries WHERE source_doc_id=? AND NOT is_deleted",java.math.BigDecimal.class,doc)).isZero();}
     private UUID proof(UUID owner,String type){UUID id=UUID.randomUUID();db.update("INSERT INTO attachments(id,owner_type,owner_id,storage_key,original_name,content_type,size_bytes,sha256,storage_provider,lifecycle_state,scan_engine,scanned_at,promoted_at) VALUES(?,?,?,?,'匿名原回单.pdf','application/pdf',100,?,'local','CLEAN','fixture',now(),now())",id,type,owner,id+".pdf","a".repeat(64));return id;}
     private UUID account(){return account(null);}
-    private UUID account(UUID suppliedStyle){UUID currency=db.queryForObject("SELECT id FROM currencies WHERE is_base_currency AND NOT is_deleted",UUID.class);UUID bank=suppliedStyle==null?UUID.randomUUID():suppliedStyle;if(suppliedStyle==null)db.update("INSERT INTO payment_styles(id,code,name,category,status) VALUES(?,?,?,'ACCOUNT','使用')",bank,"FQ-B-"+bank,"匿名银行科目-"+bank);UUID id=UUID.randomUUID();db.update("INSERT INTO accounts(id,code,name,account_type,currency_id,init_balance,receipts_total,payments_total,balance_current,status,style_id) VALUES(?,?,'匿名实际银行','BANK',?,1000,0,0,1000,'使用',?)",id,"FQ-B-"+id,currency,bank);return id;}
+    private UUID account(UUID suppliedStyle){UUID currency=db.queryForObject("SELECT id FROM currencies WHERE is_base_currency AND NOT is_deleted",UUID.class);UUID bank=suppliedStyle==null?UUID.randomUUID():suppliedStyle;if(suppliedStyle==null){db.update("INSERT INTO payment_styles(id,code,name,category,status) VALUES(?,?,?,'ACCOUNT','使用')",bank,"FQ-B-"+bank,"匿名银行科目-"+bank);}UUID id=UUID.randomUUID();db.update("INSERT INTO accounts(id,code,name,account_type,currency_id,init_balance,receipts_total,payments_total,balance_current,status,style_id) VALUES(?,?,'匿名实际银行','BANK',?,1000,0,0,1000,'使用',?)",id,"FQ-B-"+id,currency,bank);return id;}
     private UUID expenseStyle(){UUID id=UUID.randomUUID();db.update("INSERT INTO payment_styles(id,code,name,category,status) VALUES(?,?,?,'EXPENSE','使用')",id,"FQ-E-"+id,"匿名原费用科目-"+id);return id;}
     private Actor payer(){return actor("实际支付财务",Set.of("finance_application:view","finance_application:execute","finance_application:confirm","finance_application:reverse","finance_expense:view","finance_expense:create","finance_expense:approve","finance_expense:reverse","finance_expense:gl_confirm","finance_payment:view","finance_payment:create","finance_payment:approve","finance_payment:reverse","finance:view:all","expense:pay","attachment:view","attachment:download"));}
     private Map<String,Object> decide(UUID id,boolean approve,String reason){var shown=applications.detail(id);var lease=claims.claim("FINANCE_APPLICATION_REVIEW",id.toString());return applications.review(id,new Action(UUID.randomUUID(),((Number)shown.get("row_version")).longValue(),shown.get("source_fingerprint").toString(),lease.claimId(),reason),approve);}

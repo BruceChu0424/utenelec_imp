@@ -38,7 +38,7 @@ class GoodsCostPermissionSurfaceMigrationPostgresTest {
             flyway(postgres, null).migrate();
             JdbcTemplate db = database(postgres);
             assertCatalog(db);
-            assertThat(db.queryForObject("SELECT max(version::int) FROM flyway_schema_history WHERE success", Integer.class))
+            assertThat(db.queryForObject("SELECT max(version::numeric) FROM flyway_schema_history WHERE success", Integer.class))
                     .isEqualTo(com.uten.imp.testsupport.FixtureNumbers.integer(MigrationRehearsalSupport.CURRENT_HEAD_VERSION));
             assertThat(db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class))
                     .isEqualTo(MigrationRehearsalSupport.CURRENT_MIGRATION_COUNT);

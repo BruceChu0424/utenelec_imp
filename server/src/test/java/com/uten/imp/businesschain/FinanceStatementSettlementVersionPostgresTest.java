@@ -59,7 +59,7 @@ class FinanceStatementSettlementVersionPostgresTest {
   db.update("INSERT INTO finance_chart_code_styles(code,style_id,created_by)VALUES('2202',?,?) ON CONFLICT(style_id)DO NOTHING",ap,w.superAdminUserId());
   var aux=auxiliaries.save(new FinanceAuxiliaryContracts.Save(null,null,"匿名逐单处理账套","SUP-"+w.supplierId(),"匿名原供应商","SUPPLIER",w.supplierId(),"真实供应商UUID对应，不按名称猜配","2202"));
   var nativeFixture=new SupplierPrepaymentPostgresTest();beans.autowireBean(nativeFixture);UUID target=nativeFixture.receipt(fixture,w,unit);
-  var sourceClass=classifications.classifySource(target,new FinanceOpenItemClassificationContracts.SourceInput(UUID.randomUUID(),-1,null,"原实际应付明确货款20与模具60独立组成",List.of(new FinanceOpenItemClassificationContracts.Part("GOODS",n("20"),n("140")),new FinanceOpenItemClassificationContracts.Part("MOULD",n("60"),n("420")))));
+  classifications.classifySource(target,new FinanceOpenItemClassificationContracts.SourceInput(UUID.randomUUID(),-1,null,"原实际应付明确货款20与模具60独立组成",List.of(new FinanceOpenItemClassificationContracts.Part("GOODS",n("20"),n("140")),new FinanceOpenItemClassificationContracts.Part("MOULD",n("60"),n("420")))));
   gl.generate(YearMonth.from(BusinessTime.today()).toString());
   UUID reviewer=fixture.createUserWithPerms(w,"statement-version-reviewer","finance_report:view","ar_ap_ledger:view","finance:view:all","finance_post:execute","supplier_settlement:confirm","finance_payment:approve","finance_payment:view","finance_payment:reverse");fixture.grantDataScope(reviewer,"finance",w.employeeId());
   for(String kind:List.of("OWN","COUNTERPART","CONTEXT")){

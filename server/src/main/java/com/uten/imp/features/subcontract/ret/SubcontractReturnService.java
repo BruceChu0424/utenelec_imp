@@ -421,7 +421,7 @@ public class SubcontractReturnService {
         if(firstPayables!=null)firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("SUBCONTRACT_RETURN",id));
         var items=itemRepo.findByReturnIdOrderByLineNoAsc(id);
         requireReversibleArAp(id,StockService.SRC_SUBCONTRACT_RETURN);
-        arApService.requireReturnCostProjectionReversible(id,StockService.SRC_SUBCONTRACT_RETURN,r.getBillNo(),r.getBillDate());
+        arApService.requireReturnCostProjectionReversible(id,r.getBillNo(),r.getBillDate());
         List<com.uten.imp.application.port.InventoryValuationPort.IssueReturnSource> sources=new java.util.ArrayList<>();
         for(var item:items){
             var original=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
@@ -435,7 +435,7 @@ public class SubcontractReturnService {
         requireReturnCounterBalances(id);
     }
     private boolean postOrDefer(com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest req){
-        return com.uten.imp.common.finance.ProcurementPayablePosting.post(firstPayables,arApService,req);
+        return com.uten.imp.features.finance.arap.ProcurementPayablePosting.post(firstPayables,arApService,req);
     }
     private void requireReversibleArAp(UUID id,String type){
         if(firstPayables!=null&&firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source(type,id)))return;

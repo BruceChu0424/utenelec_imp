@@ -387,6 +387,12 @@ class InternalTestRuntimeContractTest(unittest.TestCase):
                 # 那样单开 location。改动这两条时请重新做同样的判断。
                 ("GET", "/api/attachments/{id}/preview"),
                 ("PUT", "/api/attachments/{id}/category"),
+                # 2026-11-04 新增一条，已按本测试的用意复核过网关策略：
+                #   linked 是极小的读（按 ownerType/ownerId 返回可见附件清单，
+                #   服务端再核 attachment:view 与归属可见性），落在下方通用
+                #   `location /api/`（不限方法、走同一限流区），不需要单开
+                #   location。改动这条时请重新做同样的判断。
+                ("GET", "/api/attachments/linked"),
             },
         )
         inquiry_controller = read(

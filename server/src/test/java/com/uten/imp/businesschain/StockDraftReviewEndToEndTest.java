@@ -146,7 +146,8 @@ class StockDraftReviewEndToEndTest {
    assertThat(db.queryForList("SELECT result_state FROM stock_value_events WHERE source_doc_id=? AND operation='POSITION_STORE_REVERSE'",String.class,original.getId()))
        .hasSize(multiLine?2:1).containsOnly("FINAL");
    assertThat(db.queryForList("SELECT known_value_local FROM stock_value_events event JOIN stock_document_items item ON item.id=event.source_item_id WHERE event.source_doc_id=? AND event.operation='POSITION_STORE_REVERSE' ORDER BY item.line_no DESC",BigDecimal.class,original.getId()))
-       .containsExactlyElementsOf(multiLine?List.of(new BigDecimal("100.0000"),new BigDecimal("50.0000")):List.of(new BigDecimal("100.0000")));
+       // V1011 放开 numeric(18,4) 后反向事件按原输入的精确刻度记录（100/50），不再补足 4 位小数。
+       .containsExactlyElementsOf(multiLine?List.of(new BigDecimal("100"),new BigDecimal("50")):List.of(new BigDecimal("100")));
    assertThat(number("SELECT count(*) FROM stock_value_nodes node JOIN stock_value_pools pool ON pool.id=node.pool_id WHERE pool.goods_id=? AND node.kind='SOURCE'",w.goodsD())).isEqualByComparingTo(sources);
    BigDecimal events=number("SELECT count(*) FROM stock_value_events WHERE source_doc_id=?",original.getId());
    BigDecimal movements=number("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",original.getId());

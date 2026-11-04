@@ -54,7 +54,7 @@ class FinanceTemplateSourceReaderTest {
             var sheet=workbook.createSheet("匿名金本原表");var header=sheet.createRow(2);for(int col=0;col<10;col++)header.createCell(col).setCellValue(FinanceTemplateContract.header("otherReceivableStatement",col));
             var top=sheet.createRow(3);String[] names={"名称","单位","数量","单价","金额"};for(int col=0;col<5;col++)top.createCell(11+col).setCellValue(names[col]);
             var row=sheet.createRow(4);row.createCell(0).setCellValue("2026-09-01");row.createCell(1).setCellValue("匿名产品原文");row.createCell(9).setCellValue(10);row.createCell(11).setCellValue("匿名旁算原文");var amount=row.createCell(16);amount.setCellFormula("P5/0.87");amount.getCTCell().setV("12345678901234.000000000000000000000001");
-            sheet.createRow(14).createCell(14).setCellErrorValue(org.apache.poi.ss.usermodel.FormulaError.DIV0.getCode());for(int col=11;col<=16;col++)sheet.setColumnHidden(col,true);workbook.write(out);bytes=out.toByteArray();
+            sheet.createRow(14).createCell(14).setCellErrorValue(org.apache.poi.ss.usermodel.FormulaError.DIV0.getCode());for(int col=11;col<=16;col++){sheet.setColumnHidden(col,true);}workbook.write(out);bytes=out.toByteArray();
         }
         var preview=FinanceTemplateSourceReader.read(UUID.randomUUID(),"otherReceivableStatement","2026-09","anonymous.xlsx",ImmutableDocumentStore.digest(bytes),bytes,DocumentIntakeProfile.FINANCIAL_TEMPLATE);
         assertThat(preview.headers()).hasSize(10);assertThat(preview.hiddenIncluded()).isTrue();assertThat(preview.rows()).allSatisfy(row->assertThat(row.cells()).allSatisfy(cell->assertThat(cell.column()).isLessThanOrEqualTo(10)));

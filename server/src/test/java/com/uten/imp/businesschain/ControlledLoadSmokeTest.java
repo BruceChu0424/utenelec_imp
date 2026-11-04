@@ -132,7 +132,7 @@ class ControlledLoadSmokeTest {
             manifest.put("postgresVersion", db.queryForObject("SELECT version()", String.class));
             manifest.put("database", db.queryForObject("SELECT current_database()", String.class));
             assertEquals("uten_load", manifest.get("database"));
-            manifest.put("migrations", db.queryForMap("SELECT count(*) AS count,max(version::int) AS head FROM flyway_schema_history WHERE success AND type='SQL'"));
+            manifest.put("migrations", db.queryForMap("SELECT count(*) AS count,max(version::numeric) AS head FROM flyway_schema_history WHERE success AND type='SQL'"));
             manifest.put("hikari", Map.of("maximumPoolSize", 8, "minimumIdle", 1));
             for (int size : List.of(1, 3, 11)) {
                 var prepared = ControlledDailyReportInputs.prepare(beans, db, size, "load-" + UUID.randomUUID());

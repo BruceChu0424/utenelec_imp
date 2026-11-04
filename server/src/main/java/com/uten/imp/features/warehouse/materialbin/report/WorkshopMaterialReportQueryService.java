@@ -57,6 +57,7 @@ public class WorkshopMaterialReportQueryService {
     public List<BinUsageRow> binUsage(UUID binId, LocalDate from, LocalDate to) {
         requireBin(binId);
         boolean amounts = permissions.has(COST_VIEW);
+        boolean exactDivide = exactDivideInstalled();
         return db.query(WorkshopMaterialCountBasisQuery.WITH + """
                 SELECT report.period_id, report.period_no, report.start_date, report.end_date, report.period_status,
                        report.period_line_id, report.goods_id, goods.code AS goods_code, goods.name AS goods_name,
@@ -67,8 +68,11 @@ public class WorkshopMaterialReportQueryService {
                        report.loss_qty, report.close_no, report.closed_at, report.current_value,
                        report.value_at_close,
                        CASE WHEN report.value_at_close IS NOT NULL AND abs(report.actual_qty) > 0
-                            THEN fn_business_exact_divide(report.value_at_close,abs(report.actual_qty),'workshop.material.unit-cost','本次车间物料单位成本',30) END AS unit_cost
-                """ + WorkshopMaterialCountBasisQuery.columns("report") + """
+                            THEN %s END AS unit_cost
+                """.formatted(exactDivide
+                ? "fn_business_exact_divide(report.value_at_close,abs(report.actual_qty),'workshop.material.unit-cost','本次车间物料单位成本',30)"
+                : "round(report.value_at_close / abs(report.actual_qty), 4)")
+                + WorkshopMaterialCountBasisQuery.columns("report") + """
                 FROM v_workshop_material_period_report report
                 JOIN goods ON goods.id = report.goods_id
                 LEFT JOIN colors color ON color.id = report.color_id
@@ -101,6 +105,7 @@ public class WorkshopMaterialReportQueryService {
     public List<ProductUsageRow> productUsage(UUID binId, LocalDate from, LocalDate to) {
         requireBin(binId);
         boolean amounts = permissions.has(COST_VIEW);
+        boolean exactDivide = exactDivideInstalled();
         return db.query(WorkshopMaterialCountBasisQuery.WITH + """
                 SELECT report.period_id, report.period_no, report.start_date, report.end_date,
                        report.close_material_id, report.cost_basis, report.material_goods_id,
@@ -111,12 +116,21 @@ public class WorkshopMaterialReportQueryService {
                        product.name AS product_name, report.output_qty, report.theory_qty, report.allocated_qty,
                        report.current_value, report.exclusive_period,
                        CASE WHEN report.output_qty > 0 AND report.theory_qty IS NOT NULL
-                            THEN fn_business_exact_divide(report.theory_qty,report.output_qty,'workshop.material.report-unit-weight','本次车间物料报表单重',24) END AS unit_weight,
+                            THEN %s END AS unit_weight,
                        CASE WHEN report.output_qty > 0
-                            THEN fn_business_exact_divide(report.current_value,report.output_qty,'workshop.material.unit-material-cost','本次单位材料成本',30) END AS unit_material_cost,
+                            THEN %s END AS unit_material_cost,
                        CASE WHEN report.exclusive_period AND report.output_qty > 0
-                            THEN fn_business_exact_divide(report.allocated_qty,report.output_qty,'workshop.material.actual-per-unit','本次单位实际耗用',24) END AS actual_per_unit
-                """ + WorkshopMaterialCountBasisQuery.columns("report", "report.material_goods_id", "report.material_color_id") + """
+                            THEN %s END AS actual_per_unit
+                """.formatted(exactDivide
+                        ? "fn_business_exact_divide(report.theory_qty,report.output_qty,'workshop.material.report-unit-weight','本次车间物料报表单重',24)"
+                        : "round(report.theory_qty / report.output_qty, 6)",
+                exactDivide
+                        ? "fn_business_exact_divide(report.current_value,report.output_qty,'workshop.material.unit-material-cost','本次单位材料成本',30)"
+                        : "round(report.current_value / report.output_qty, 4)",
+                exactDivide
+                        ? "fn_business_exact_divide(report.allocated_qty,report.output_qty,'workshop.material.actual-per-unit','本次单位实际耗用',24)"
+                        : "round(report.allocated_qty / report.output_qty, 6)")
+                + WorkshopMaterialCountBasisQuery.columns("report", "report.material_goods_id", "report.material_color_id") + """
                 FROM v_workshop_material_product_report report
                 JOIN goods material ON material.id = report.material_goods_id
                 LEFT JOIN units material_unit ON material_unit.id = report.material_unit_id
@@ -307,6 +321,16 @@ public class WorkshopMaterialReportQueryService {
     }
 
     // ------------------------------------------------------------------ 共用
+
+    /**
+     * 精确除法函数随 V990_1 的精度策略安装。尚未安装该迁移的库 (以及只搭报表表形状的
+     * 隔离投影) 保留原有的 round 比值, 不因此把整张报表变成 bad SQL grammar。
+     */
+    private boolean exactDivideInstalled() {
+        return Boolean.TRUE.equals(db.queryForObject(
+                "SELECT to_regprocedure('public.fn_business_exact_divide(numeric,numeric,text,text,integer)') IS NOT NULL",
+                Map.of(), Boolean.class));
+    }
 
     /** 内料仓身份来自开通记录; 整批领料设置不决定仓库身份。车间成员只看本车间。 */
     private void requireBin(UUID binId) {

@@ -11,7 +11,13 @@ CREATE TABLE clients(id uuid PRIMARY KEY,code text,name text,region text,owner_e
 CREATE TABLE employees(id uuid PRIMARY KEY,legacy_id int,full_name text);
 CREATE VIEW client_director_v AS SELECT id client_id,NULL::text director FROM clients;
 CREATE TABLE ar_ap_ledger(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),client_id uuid,direction text,source_doc_type text,
- status int DEFAULT 1,is_deleted boolean DEFAULT false,bill_date date,amount_original_local numeric,amount_original numeric,currency_id uuid);
+ status int DEFAULT 1,is_deleted boolean DEFAULT false,bill_date date,amount_original_local numeric,amount_original numeric,currency_id uuid,
+ exchange_rate numeric);
+CREATE TABLE finance_sales_cost_inputs(period text,client_id uuid,channel text,tax_rate numeric,freight_local numeric,confirmed boolean,
+ exchange_rate numeric,client_name_snapshot text,seller_name_snapshot text,region_snapshot text,director_snapshot text);
+CREATE VIEW v_finance_sales_expense_client_facts AS
+ SELECT NULL::text period,NULL::uuid client_id,NULL::text fee_key,NULL::numeric amount_local,NULL::boolean pending WHERE FALSE;
+CREATE VIEW v_finance_sales_expense_period_coverage AS SELECT NULL::text period,NULL::boolean pending WHERE FALSE;
 CREATE TABLE production_execution_segments(id uuid PRIMARY KEY,bill_no text);
 CREATE TABLE sales_shipments(id uuid PRIMARY KEY,client_id uuid,bill_date date,status int,is_deleted boolean DEFAULT false);
 CREATE TABLE sales_shipment_items(id uuid PRIMARY KEY,shipment_id uuid,goods_id uuid,is_deleted boolean DEFAULT false);

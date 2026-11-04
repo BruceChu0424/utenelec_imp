@@ -25,7 +25,7 @@ final class FinanceMaterialProcessingAdjustment {
   if(key.allocationNo()==0&&receivable.get("original_currency_id")!=null&&s.db.queryForObject("SELECT count(*) FROM currencies WHERE id=? AND is_base_currency AND NOT is_deleted",Integer.class,receivable.get("original_currency_id"))==1){row.put("amount_original",row.get("amount_local"));row.put("original_currency_id",receivable.get("original_currency_id"));row.put("originalBasis","BASE_BOOK_CURRENCY_SAME_VALUE");}
   return row;
  }
- List<Map<String,Object>> validate(FeeAssignment value,Map<String,Object> receivable,boolean posting,Map<String,Object> evidence){
+ List<Map<String,Object>> validate(FeeAssignment value,Map<String,Object> receivable,boolean posting){
   var sources=value.adjustmentSources()==null?List.<AdjustmentSource>of():value.adjustmentSources();if(sources.size()>2000)throw invalid("附加款来源超过2000条，请分原应收凭证核对");
   var defined=new LinkedHashMap<GlAllocationKey,AdjustmentSource>();var result=new ArrayList<Map<String,Object>>();
   for(var source:sources){if(source==null||source.source()==null||defined.put(source.source(),source)!=null)throw invalid("同一真实附加款来源不能重复定义");reference(source.sourceReference());var fact=credit(source.source(),receivable,source.purpose());if(posting&&!Objects.equals(source.expectedSourceFingerprint(),s.hash(fact)))throw conflict("附加款来源已变化，请重新读取原值");
@@ -51,7 +51,7 @@ final class FinanceMaterialProcessingAdjustment {
   var actual=s.db.queryForList("SELECT fn_finance_credit_occurrence(e.id) occurrence FROM gl_entries e WHERE e.voucher_id=? AND e.style_id=? AND e.line_no=? AND NOT e.is_deleted",eventVoucher,fact.get("style_id"),fact.get("line_no"));
   return actual.size()==1&&decimal(actual.getFirst().get("occurrence"))!=null&&decimal(actual.getFirst().get("occurrence")).compareTo(decimal(fact.get("amount_local")).multiply(BigDecimal.valueOf(sign)))==0;
  }
- void claim(Map<String,Object> evidence,FeeAssignment value){
+ void claim(FeeAssignment value){
   for(var source:(value.adjustmentSources()==null?List.<AdjustmentSource>of():value.adjustmentSources()).stream().sorted(Comparator.comparing(x->x.source().entryId().toString()+":"+x.source().allocationNo())).toList()){
    s.lock("adjustment-credit:"+source.source().entryId()+":"+source.source().allocationNo());
    int others=s.db.queryForObject("SELECT count(*) FROM finance_material_evidence e CROSS JOIN LATERAL jsonb_array_elements(COALESCE(e.source_snapshot->'effectiveInput'->'adjustmentSources',e.input->'adjustmentSources','[]'::jsonb)) credit WHERE e.kind='FEE' AND e.current_approved AND e.resource_key<>? AND credit->'source'->>'entryId'=? AND (credit->'source'->>'allocationNo')::integer=?",Integer.class,value.source().entryId()+":"+value.source().allocationNo(),source.source().entryId().toString(),source.source().allocationNo());

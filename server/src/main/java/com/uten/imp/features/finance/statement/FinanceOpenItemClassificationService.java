@@ -127,7 +127,7 @@ public class FinanceOpenItemClassificationService {
         UUID id=batchId("AP_PAYMENT",lineId,input.requestId());db.update("INSERT INTO finance_payment_classification_batches(id,request_id,payment_line_id,revision,source_classification_id,currency_id,amount_original,cash_local,book_local,source_reference,fingerprint,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                 id,input.requestId(),lineId,revision,input.sourceClassificationId(),source.get("currencyId"),source.get("amountOriginal"),source.get("cashLocal"),source.get("bookLocal"),reference,fingerprint,current.requireId());
         for(var part:values)db.update("INSERT INTO finance_payment_classification_parts(batch_id,category,amount_original,cash_local,book_local) VALUES(?,?,?,?,?)",id,part.category(),part.amountOriginal(),part.cashLocal(),part.bookLocal());
-        if(correctionBatch("AP_PAYMENT",lineId,input.requestId())==null)requireCapacities(Set.of((UUID)source.get("ledgerId")));return new Result(id,revision,"APPLIED");
+        if(correctionBatch("AP_PAYMENT",lineId,input.requestId())==null){requireCapacities(Set.of((UUID)source.get("ledgerId")));}return new Result(id,revision,"APPLIED");
     }
 
     @Transactional(readOnly=true)
@@ -154,7 +154,7 @@ public class FinanceOpenItemClassificationService {
         UUID id=batchId("AP_OFFSET",offsetId,input.requestId());db.update("INSERT INTO finance_supplier_offset_classification_batches(id,request_id,offset_id,revision,source_classification_id,target_classification_id,amount_original,source_local,target_local,source_reference,fingerprint,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                 id,input.requestId(),offsetId,revision,input.sourceClassificationId(),input.targetClassificationId(),source.get("amountOriginal"),source.get("sourceLocal"),source.get("targetLocal"),reference,fingerprint,current.requireId());
         for(var part:values)db.update("INSERT INTO finance_supplier_offset_classification_parts(batch_id,source_category,target_category,amount_original,source_local,target_local) VALUES(?,?,?,?,?,?)",id,part.sourceCategory(),part.targetCategory(),part.amountOriginal(),part.sourceLocal(),part.targetLocal());
-        if(correctionBatch("AP_OFFSET",offsetId,input.requestId())==null)requireCapacities(Set.of((UUID)source.get("sourceLedgerId"),(UUID)source.get("targetLedgerId")));return new Result(id,revision,"APPLIED");
+        if(correctionBatch("AP_OFFSET",offsetId,input.requestId())==null){requireCapacities(Set.of((UUID)source.get("sourceLedgerId"),(UUID)source.get("targetLedgerId")));}return new Result(id,revision,"APPLIED");
     }
 
     Map<String,Object> sourceFact(UUID id) {
@@ -187,7 +187,7 @@ public class FinanceOpenItemClassificationService {
                 """,id);
         if(values.size()!=1)throw invalid("请选择已审核或已反审且具备明确应付项目、对象和币别的原付款行");var value=values.getFirst();
         if(((Number)value.get("authorityVersion")).intValue()<1)throw conflict("历史付款金额尚未经过服务端核验，不能通过分类把未知旧金额认作已确认事实");
-        for(String key:List.of("amountOriginal","cashLocal","bookLocal"))if(value.get(key)==null)throw conflict("原付款现金或账面核销依据缺失，不能猜配");return value;
+        for(String key:List.of("amountOriginal","cashLocal","bookLocal")){if(value.get(key)==null)throw conflict("原付款现金或账面核销依据缺失，不能猜配");}return value;
     }
     Map<String,Object> offsetFact(UUID id) {
         var values=db.queryForList("SELECT off.id AS \"offsetId\",off.source_ledger_id AS \"sourceLedgerId\",off.target_ledger_id AS \"targetLedgerId\",off.supplier_id AS \"partyId\",off.currency_id AS \"currencyId\",off.status,off.reversed_at AS \"reversedAt\",off.effective_date AS \"effectiveDate\",off.amount_original AS \"amountOriginal\",off.source_amount_local AS \"sourceLocal\",off.target_amount_local AS \"targetLocal\",source.bill_no AS \"sourceBillNo\",target.bill_no AS \"targetBillNo\",currency.code AS \"currencyCode\",currency.name AS \"currencyName\" FROM supplier_open_item_offsets off JOIN ar_ap_ledger source ON source.id=off.source_ledger_id JOIN ar_ap_ledger target ON target.id=off.target_ledger_id LEFT JOIN currencies currency ON currency.id=off.currency_id WHERE off.id=? AND off.status IN('APPLIED','REVERSED')",id);

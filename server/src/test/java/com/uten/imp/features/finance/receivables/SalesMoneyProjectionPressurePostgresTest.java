@@ -102,7 +102,7 @@ class SalesMoneyProjectionPressurePostgresTest {
         report.put("databaseCollation",jdbc.getJdbcTemplate().queryForObject(
                 "SELECT datcollate FROM pg_database WHERE datname=current_database()",String.class));
         report.put("migrationHead",jdbc.getJdbcTemplate().queryForObject(
-                "SELECT max(version::integer) FROM flyway_schema_history WHERE success AND version IS NOT NULL",Integer.class));
+                "SELECT max(version::numeric) FROM flyway_schema_history WHERE success AND version IS NOT NULL",Integer.class));
         report.put("migrationCount",jdbc.getJdbcTemplate().queryForObject(
                 "SELECT count(*) FROM flyway_schema_history WHERE success AND version IS NOT NULL",Integer.class));
         report.put("seedBatchRows",500); report.put("seedSeconds",seedSeconds);

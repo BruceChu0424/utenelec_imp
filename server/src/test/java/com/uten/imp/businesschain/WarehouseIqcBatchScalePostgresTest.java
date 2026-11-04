@@ -85,7 +85,7 @@ class WarehouseIqcBatchScalePostgresTest {
 
     @Test
     void actualMixedBatchIsMeasuredAndConservesPhysicalValueApOwnershipAndReplay() throws Exception {
-        assertTrue(jdbc.queryForObject("SELECT max(version::int) FROM flyway_schema_history",Integer.class)>=556,
+        assertTrue(jdbc.queryForObject("SELECT max(version::numeric) FROM flyway_schema_history",Integer.class)>=556,
                 "This regression requires the database-enforced V556 classifier");
         Map<String,Object> environment = environment();
         emit(Map.of("phase","environment","configuration",environment));
@@ -255,7 +255,7 @@ class WarehouseIqcBatchScalePostgresTest {
     private Map<String,Object> environment() {
         Map<String,Object> values=new LinkedHashMap<>();
         for(String key:List.of("server_version","shared_buffers","work_mem","effective_cache_size","max_connections","fsync","synchronous_commit","full_page_writes","wal_buffers","default_statistics_target","jit"))values.put(key,jdbc.queryForObject("SHOW "+key,String.class));
-        values.put("maxHeapBytes",Runtime.getRuntime().maxMemory());values.put("migrationHead",jdbc.queryForObject("SELECT max(version::int) FROM flyway_schema_history",Integer.class));values.put("migrationCount",jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history",Integer.class));return values;
+        values.put("maxHeapBytes",Runtime.getRuntime().maxMemory());values.put("migrationHead",jdbc.queryForObject("SELECT max(version::numeric) FROM flyway_schema_history",Integer.class));values.put("migrationCount",jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history",Integer.class));return values;
     }
     private static long gcMillis() { return java.lang.management.ManagementFactory.getGarbageCollectorMXBeans().stream().mapToLong(b->Math.max(0,b.getCollectionTime())).sum(); }
     private void emit(Map<String,Object> record) throws Exception {

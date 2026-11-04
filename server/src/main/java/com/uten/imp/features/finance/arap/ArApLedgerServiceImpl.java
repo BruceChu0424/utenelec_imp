@@ -240,7 +240,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
 
     @Override
     @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor={com.uten.imp.common.web.ApiException.class,IllegalStateException.class})
-    public void requireReturnCostProjectionReversible(java.util.UUID id,String sourceDocType,String billNo,LocalDate billDate){
+    public void requireReturnCostProjectionReversible(java.util.UUID id,String billNo,LocalDate billDate){
         glPosting.requireRemovableAutoProjection("PROC_RETURN_VARIANCE","PROC_RETURN_VARIANCE",id,billNo,billDate);
     }
 

@@ -199,10 +199,10 @@ class PurchaseOrderAiChatToolPostgresTest extends AiDocumentStatusToolPostgresSu
                         """, receiptId, receiptNo, BILL_DATE, warehouse);
                 execute(connection, """
                         INSERT INTO purchase_receipt_items(id, bill_no, bill_date, receipt_id, line_no, order_item_id,
-                            goods_id, unit_id, unit_rate, qty, price, amount_original, amount_local, replacement_intent,
-                            goods_snapshot_source)
-                        VALUES (?, ?, ?, ?, 1, ?, ?, ?, 1, ?::numeric, 0, 0, 0, 'NORMAL', 'MASTER_AT_SAVE')
-                        """, receiptItemId, receiptNo, BILL_DATE, receiptId, orderItemId, goods, unit, qty);
+                            goods_id, unit_id, unit_rate, qty, charged_base_qty, gift_base_qty, price, amount_original,
+                            amount_local, replacement_intent, goods_snapshot_source)
+                        VALUES (?, ?, ?, ?, 1, ?, ?, ?, 1, ?::numeric, ?::numeric, 0, 0, 0, 0, 'NORMAL', 'MASTER_AT_SAVE')
+                        """, receiptItemId, receiptNo, BILL_DATE, receiptId, orderItemId, goods, unit, qty, qty);
                 execute(connection, "UPDATE purchase_order_items SET received_qty = ?::numeric WHERE id = ?", qty, orderItemId);
                 execute(connection, """
                         INSERT INTO procurement_inspection_items(id, receipt_type, receipt_id, receipt_item_id,

@@ -63,7 +63,7 @@ public class FinanceReceivableClassificationService {
                 fact.get("writeOffOriginal"),fact.get("cashLocal"),fact.get("writeOffLocal"),fact.get("bookLocal"),reference,fingerprint,current.requireId());
         for(var part:values)db.update("INSERT INTO finance_receipt_classification_parts(batch_id,category,amount_original,write_off_original,cash_local,write_off_local,book_local) VALUES(?,?,?,?,?,?,?)",
             id,part.category(),part.amountOriginal(),part.writeOffOriginal(),part.cashLocal(),part.writeOffLocal(),part.bookLocal());
-        if(base.correctionBatch("AR_RECEIPT",lineId,input.requestId())==null)requireCapacities(Set.of((UUID)fact.get("ledgerId")));return new Result(id,revision,"APPLIED");
+        if(base.correctionBatch("AR_RECEIPT",lineId,input.requestId())==null){requireCapacities(Set.of((UUID)fact.get("ledgerId")));}return new Result(id,revision,"APPLIED");
     }
 
     @Transactional(readOnly=true)
@@ -112,7 +112,7 @@ public class FinanceReceivableClassificationService {
             """,id,input.requestId(),offsetId,revision,input.sourceClassificationId(),input.targetClassificationId(),prepay?"PREPAYMENT":"CREDIT",fact.get("amountOriginal"),fact.get("sourceLocal"),fact.get("targetLocal"),reference,fingerprint,current.requireId());
         for(var part:values)db.update("INSERT INTO finance_customer_offset_classification_parts(batch_id,source_category,target_category,amount_original,source_local,target_local) VALUES(?,?,?,?,?,?)",
             id,part.sourceCategory(),part.targetCategory(),part.amountOriginal(),part.sourceLocal(),part.targetLocal());
-        var ledgers=new HashSet<UUID>();ledgers.add((UUID)fact.get("targetLedgerId"));if(!prepay)ledgers.add((UUID)fact.get("sourceLedgerId"));if(base.correctionBatch("AR_OFFSET",offsetId,input.requestId())==null)requireCapacities(ledgers);
+        var ledgers=new HashSet<UUID>();ledgers.add((UUID)fact.get("targetLedgerId"));if(!prepay){ledgers.add((UUID)fact.get("sourceLedgerId"));}if(base.correctionBatch("AR_OFFSET",offsetId,input.requestId())==null)requireCapacities(ledgers);
         return new Result(id,revision,"APPLIED");
     }
     private void requireCapacities(Set<UUID> ledgers){for(UUID id:ledgers)if(Boolean.TRUE.equals(db.queryForObject("SELECT fn_finance_receivable_classification_exceeds(?)",Boolean.class,id)))throw invalid("某一日期的货款或物料清偿超过原币/账面份额，请核对完整关联归属");}
@@ -130,7 +130,7 @@ public class FinanceReceivableClassificationService {
               AND receipt.receipt_kind='AR_SETTLEMENT' AND receipt.settlement_authority_version>0
               AND receipt.legacy_id IS NULL AND receipt.legacy_import_run_id IS NULL
             """,id);
-        if(rows.size()!=1)throw missing("原已核收款行不存在");var result=rows.getFirst();for(String key:List.of("amountOriginal","writeOffOriginal","cashLocal","writeOffLocal","bookLocal"))amount(result,key);return result;
+        if(rows.size()!=1)throw missing("原已核收款行不存在");var result=rows.getFirst();for(String key:List.of("amountOriginal","writeOffOriginal","cashLocal","writeOffLocal","bookLocal")){amount(result,key);}return result;
     }
     Map<String,Object> offsetFact(UUID id){
         var rows=db.queryForList("""

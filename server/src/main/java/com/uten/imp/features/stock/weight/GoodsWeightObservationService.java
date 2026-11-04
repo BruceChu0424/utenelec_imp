@@ -56,8 +56,6 @@ public class GoodsWeightObservationService {
     /** QTY_ECHO 只在估算件数达到这个量级时判断 (件数少时凑巧相等很常见)。 */
     static final double QTY_ECHO_MIN_PIECES = 100.0;
     private static final BigDecimal DEVIATION_LIMIT = new BigDecimal("99999.9999");
-    private static final int QTY_SCALE = 4;
-    private static final int KG_SCALE = 6;
     private static final int UNIT_WEIGHT_SCALE = 12;
 
     private final NamedParameterJdbcTemplate db;
@@ -143,8 +141,8 @@ public class GoodsWeightObservationService {
                 || cmd.captureKey() == null || cmd.captureKey().isBlank()) {
             return Optional.empty();
         }
-        BigDecimal qty = scaled(cmd.qtyBase(), QTY_SCALE);
-        BigDecimal weight = scaled(cmd.weightKg(), KG_SCALE);
+        BigDecimal qty = scaled(cmd.qtyBase());
+        BigDecimal weight = scaled(cmd.weightKg());
         if (skipBeforeLookup(cmd.qtyFromWeight(), qty, weight)) {
             return Optional.empty();
         }
@@ -434,7 +432,7 @@ public class GoodsWeightObservationService {
     }
 
     /** 按列精度取位; 整数位超过 14 位 (NUMERIC(18,4) / NUMERIC(20,6) 放不下) 返回 null, 不让观测挡住过账。 */
-    static BigDecimal scaled(BigDecimal value, int legacyScale) {
+    static BigDecimal scaled(BigDecimal value) {
         return value==null?null:WeightMath.normalizeInput(value);
     }
 
@@ -444,7 +442,7 @@ public class GoodsWeightObservationService {
     }
 
     private static BigDecimal nonNegative(BigDecimal kg) {
-        BigDecimal value = scaled(kg, KG_SCALE);
+        BigDecimal value = scaled(kg);
         return value == null || value.signum() < 0 ? null : value;
     }
 

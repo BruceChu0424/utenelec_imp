@@ -69,7 +69,7 @@ public final class FinanceTemplateSourceReader {
         try{var result=YearMonth.parse(value);if(!result.toString().equals(value))throw new IllegalArgumentException();return result;}
         catch(RuntimeException failure){throw invalid("请选择原表会计月份");}
     }
-    static String shift(String value,int year){return java.util.regex.Pattern.compile("202[3-6]").matcher(value).replaceAll(m->Integer.toString(Integer.parseInt(m.group())+year-2026));}
+    static String shift(String value,int year){try{return java.util.regex.Pattern.compile("202[3-6]").matcher(value).replaceAll(m->Integer.toString(Integer.parseInt(m.group())+year-2026));}catch(NumberFormatException failure){throw new IllegalArgumentException("Source template header year is not numeric",failure);}}
     static boolean equalHeader(String expected,String value) {
         if(normal(expected).equals(normal(value)))return true;
         try {var source=java.time.LocalDate.parse(value);return expected.equals(source.getYear()+"/"+source.getMonthValue()+"/"+source.getDayOfMonth());}catch(RuntimeException ignored){return false;}

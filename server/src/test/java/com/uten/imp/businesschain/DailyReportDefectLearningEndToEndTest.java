@@ -53,8 +53,13 @@ class DailyReportDefectLearningEndToEndTest {
     @Autowired ProductionDailyReportService reports;
     private WorkshopPublicSurplusEndToEndTest fixture;
 
-    @BeforeEach void prepare(){fixture=new WorkshopPublicSurplusEndToEndTest();beans.autowireBean(fixture);fixture.prepare();}
-    @AfterEach void logout(){SecurityContextHolder.clearContext();}
+    private AutoCloseable precisionChoices;
+    @BeforeEach void prepare(){fixture=new WorkshopPublicSurplusEndToEndTest();beans.autowireBean(fixture);fixture.prepare();
+        // 超产/不良学习会产生除不尽的实际单耗(如 10/12)，按生产端显式精度选择绑定。
+        precisionChoices=com.uten.imp.common.finance.BusinessPrecisionContext.use(java.util.Map.of(
+                "goods.bom.actual-usage",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN"),
+                "stock.value.interval",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(24,"DOWN")));}
+    @AfterEach void logout(){SecurityContextHolder.clearContext();if(precisionChoices!=null)try{precisionChoices.close();}catch(Exception ignored){}}
 
     /**
      * Manual design usage 1 per product. 4 good + 1 defective, then 6 good + 2 defective with one unit

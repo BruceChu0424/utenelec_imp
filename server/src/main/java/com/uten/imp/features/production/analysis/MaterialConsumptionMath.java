@@ -49,7 +49,7 @@ public final class MaterialConsumptionMath {
         String normalized = normalizeBasis(basis);
         BigDecimal raw = com.uten.imp.common.finance.BomConsumptionCurve.raw(
                 parentOutputQty, bomQty, normalized, basisOutputQty,
-                allowPartialPackage, 12, RoundingMode.CEILING);
+                allowPartialPackage);
         return raw.setScale(4, RoundingMode.CEILING);
     }
 

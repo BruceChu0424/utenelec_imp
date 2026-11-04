@@ -135,7 +135,7 @@ class ControlledLoadWindowTest {
         summary.put("databaseBefore", db.queryForMap("SELECT current_database() AS name,pg_database_size(current_database()) AS bytes"));
         summary.put("javaVersion", System.getProperty("java.version"));
         summary.put("postgresVersion", db.queryForObject("SELECT version()", String.class));
-        summary.put("migrations", db.queryForMap("SELECT count(*) AS count,max(version::int) AS head FROM flyway_schema_history WHERE success AND type='SQL'"));
+        summary.put("migrations", db.queryForMap("SELECT count(*) AS count,max(version::numeric) AS head FROM flyway_schema_history WHERE success AND type='SQL'"));
 
         AtomicBoolean stop = new AtomicBoolean(), stopObserve = new AtomicBoolean();
         AtomicReference<Throwable> fatal = new AtomicReference<>();

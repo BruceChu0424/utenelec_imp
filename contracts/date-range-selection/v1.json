@@ -3,7 +3,22 @@
   "calendar": "gregorian",
   "dateClock": "Asia/Shanghai wall date; no instant conversion",
   "rangeEntry": "single",
-  "clearPlacement": "inside trailing edge",
+  "clearPlacement": "inside trailing edge; text action without icon",
+  "displayDayCount": "inclusive wall dates; recent only when end equals today",
+  "displayCases": [
+    {"name": "recent-90-days", "today": "2026-11-03", "start": "2026-08-06", "end": "2026-11-03", "label": "近90天", "tooltip": "2026.08.06-2026.11.03"},
+    {"name": "recent-calendar-month", "today": "2026-11-03", "start": "2026-10-03", "end": "2026-11-03", "label": "近1个月", "tooltip": "2026.10.03-2026.11.03"},
+    {"name": "clamped-calendar-month", "today": "2026-03-31", "start": "2026-02-28", "end": "2026-03-31", "label": "近1个月", "tooltip": "2026.02.28-2026.03.31"},
+    {"name": "today", "today": "2026-11-03", "start": "2026-11-03", "end": "2026-11-03", "label": "今天", "tooltip": "2026.11.03-2026.11.03"},
+    {"name": "historic-interval", "today": "2026-11-03", "start": "2024-01-01", "end": "2024-01-31", "label": "共31天", "tooltip": "2024.01.01-2024.01.31"},
+    {"name": "historic-day", "today": "2026-11-03", "start": "2026-10-01", "end": "2026-10-01", "label": "共1天", "tooltip": "2026.10.01-2026.10.01"},
+    {"name": "future-end", "today": "2026-11-03", "start": "2026-10-01", "end": "2026-12-01", "label": "共62天", "tooltip": "2026.10.01-2026.12.01"},
+    {"name": "leap-days", "today": "2026-11-03", "start": "2024-02-28", "end": "2024-03-01", "label": "共3天", "tooltip": "2024.02.28-2024.03.01"},
+    {"name": "cross-year", "today": "2026-11-03", "start": "2025-12-31", "end": "2026-01-01", "label": "共2天", "tooltip": "2025.12.31-2026.01.01"},
+    {"name": "only-start", "today": "2026-11-03", "start": "2026-10-01", "end": null, "label": "2026.10.01起", "tooltip": "2026.10.01起"},
+    {"name": "only-end", "today": "2026-11-03", "start": null, "end": "2026-12-01", "label": "截至2026.12.01", "tooltip": "截至2026.12.01"},
+    {"name": "empty", "today": "2026-11-03", "start": null, "end": null, "label": "选择日期", "tooltip": "全部日期"}
+  ],
   "recentMonthCases": [
     {"today": "2026-11-03", "start": "2026-10-03", "end": "2026-11-03"},
     {"today": "2026-03-31", "start": "2026-02-28", "end": "2026-03-31"},

@@ -21,7 +21,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         }
         private readonly TextBox keyword = new TextBox(), actor = new TextBox();
         private readonly TextBox summaryKeyword = new TextBox();
-        private readonly Button dateRange = new Button { Content = "选择日期" };
+        private readonly UtenDateRangeButton dateRange = new UtenDateRangeButton();
         private readonly Button clearDate = new Button();
         private DateTime? dateFrom, dateTo;
         private readonly ComboBox action = new ComboBox(), sourceType = new ComboBox();
@@ -61,8 +61,8 @@ namespace Uten.Legacy.Desktop.Features.Units
             dateEntry.ColumnDefinitions.Add(new ColumnDefinition()); dateEntry.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             dateRange.HorizontalContentAlignment = HorizontalAlignment.Left;
             dateRange.Click += (sender, args) => ChooseDates(); dateEntry.Children.Add(dateRange);
-            clearDate.Content = "×"; clearDate.ToolTip = "清除日期";
-            clearDate.Style = (Style)FindResource("Uten.CaptionButton"); clearDate.Background = (Brush)FindResource("Uten.Caption.Close");
+            clearDate.Content = "清除"; clearDate.ToolTip = "清除日期";
+            clearDate.Margin = new Thickness(Space("S4"), 0, 0, 0);
             System.Windows.Automation.AutomationProperties.SetName(clearDate, "清除日期");
             clearDate.Click += (sender, args) =>
             {
@@ -155,9 +155,8 @@ namespace Uten.Legacy.Desktop.Features.Units
         }
         private void UpdateDateEntry()
         {
-            string value = (DateText(dateFrom) ?? "不限") + " 至 " + (DateText(dateTo) ?? "不限");
-            dateRange.Content = "选择日期";
-            dateRange.ToolTip = value; clearDate.Visibility = dateFrom.HasValue || dateTo.HasValue ? Visibility.Visible : Visibility.Collapsed;
+            dateRange.SetRange(dateFrom, dateTo);
+            clearDate.Visibility = dateFrom.HasValue || dateTo.HasValue ? Visibility.Visible : Visibility.Collapsed;
         }
         private static string Empty(string value) { return String.IsNullOrWhiteSpace(value) ? null : value; }
         private async Task LoadPageAsync()

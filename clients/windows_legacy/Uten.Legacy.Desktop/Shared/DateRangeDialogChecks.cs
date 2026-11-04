@@ -31,6 +31,14 @@ namespace Uten.Legacy.Desktop.Shared
                     var last = DateTime.ParseExact((string)sample["end"], "yyyy-MM-dd", CultureInfo.InvariantCulture);
                     check(UtenDateRangeDialog.RecentMonthStart(today) == first && today.Date == last, "shared recent month fixture covers month-end, leap-year and year boundary");
                 }
+                foreach (Dictionary<string, object> sample in (object[])fixture["displayCases"])
+                {
+                    var today = DateTime.ParseExact((string)sample["today"], "yyyy-MM-dd", CultureInfo.InvariantCulture);
+                    DateTime? start = sample["start"] == null ? (DateTime?)null : DateTime.ParseExact((string)sample["start"], "yyyy-MM-dd", CultureInfo.InvariantCulture);
+                    DateTime? end = sample["end"] == null ? (DateTime?)null : DateTime.ParseExact((string)sample["end"], "yyyy-MM-dd", CultureInfo.InvariantCulture);
+                    check(UtenDateRangePresentation.Label(start, end, today) == (string)sample["label"], "shared compact label: " + sample["name"]);
+                    check(UtenDateRangePresentation.Tooltip(start, end) == (string)sample["tooltip"], "shared precise tooltip: " + sample["name"]);
+                }
             }
             var dialog = new UtenDateRangeDialog(null, new DateTime(2026, 3, 1), new DateTime(2026, 3, 4), new DateTime(1900, 2, 10), new DateTime(2100, 10, 15));
             try

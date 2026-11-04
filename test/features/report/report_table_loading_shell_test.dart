@@ -478,7 +478,7 @@ void main() {
         of: find.byType(UtenDateRangeButton),
         matching: find.byType(UtenButton),
       );
-      expect(find.text('选择日期'), findsOneWidget);
+      expect(find.text('近1个月'), findsOneWidget);
       await tester.tap(entryButton);
       await tester.pumpAndSettle();
       expect(find.byType(UtenDateRangePickerDialog), findsOneWidget);

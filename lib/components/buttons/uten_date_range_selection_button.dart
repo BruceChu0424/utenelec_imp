@@ -3,13 +3,13 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/uten_tokens.dart';
+import '../../core/utils/date_range_display.dart';
 import '../feedback/uten_busy_overlay.dart';
 import '../feedback/uten_date_range_picker.dart';
+import '../feedback/uten_date_range_tooltip.dart';
 import '../inputs/required_field_decoration.dart';
-import '../inputs/uten_field_hint_icon.dart';
 import '../layout/uten_app_bar_action_scope.dart';
 import 'uten_button.dart';
-import 'uten_close_button.dart';
 
 /// One entry for a calendar interval, including optional unbounded endpoints.
 /// Values stay local to the picker until confirmation; cancellation does not
@@ -73,33 +73,20 @@ class _UtenDateRangeSelectionButtonState
         _ => zh,
       };
 
-  String _date(DateTime value) =>
-      '${value.year.toString().padLeft(4, '0')}-'
-      '${value.month.toString().padLeft(2, '0')}-'
-      '${value.day.toString().padLeft(2, '0')}';
-
-  String get _summary => switch ((widget.from, widget.to)) {
-    (final DateTime start, final DateTime end) =>
-      '${_date(start)} ~ ${_date(end)}',
-    (final DateTime start, null) =>
-      widget.openEndLabel == null
-          ? '${_date(start)} ${_t('起', 'onwards', '이후')}'
-          : '${_date(start)} ~ ${widget.openEndLabel}',
-    (null, final DateTime end) =>
-      widget.openStartLabel == null
-          ? '${_t('截至', 'Until', '까지')} ${_date(end)}'
-          : '${widget.openStartLabel} ~ ${_date(end)}',
-    _ =>
-      widget.openStartLabel == null && widget.openEndLabel == null
-          ? widget.required
-                ? _t('未选择日期', 'No dates selected', '선택한 날짜 없음')
-                : _t('全部日期', 'All dates', '전체 날짜')
-          : '${widget.openStartLabel ?? _t('不限开始', 'No start', '시작 제한 없음')} ~ '
-                '${widget.openEndLabel ?? _t('不限结束', 'No end', '종료 제한 없음')}',
-  };
+  String get _summary => dateRangeTooltip(
+    from: widget.from,
+    to: widget.to,
+    languageCode: Localizations.localeOf(context).languageCode,
+    openStartLabel: widget.openStartLabel,
+    openEndLabel: widget.openEndLabel,
+    emptyLabel: widget.required
+        ? _t('未选择日期', 'No dates selected', '선택한 날짜 없음')
+        : null,
+  );
 
   Future<void> _pick() async {
     if (!widget.enabled || _picking || _applying) return;
+    Tooltip.dismissAllToolTips();
     final owner = UtenActionOwnerScope.identityOf(context);
     final onChanged = widget.onChanged;
     setState(() => _picking = true);
@@ -144,6 +131,7 @@ class _UtenDateRangeSelectionButtonState
   Future<void> _clear() async {
     final action = widget.onClear;
     if (action == null || !widget.enabled || _picking || _applying) return;
+    Tooltip.dismissAllToolTips();
     setState(() => _picking = true);
     try {
       await _apply(action);
@@ -160,7 +148,11 @@ class _UtenDateRangeSelectionButtonState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final choose = _t('选择日期', 'Select dates', '날짜 선택');
+    final choose = compactDateRangeLabel(
+      from: widget.from,
+      to: widget.to,
+      languageCode: Localizations.localeOf(context).languageCode,
+    );
     final label = widget.label;
     final text = label == null || label.isEmpty ? choose : '$label：$choose';
     final invalid =
@@ -170,32 +162,24 @@ class _UtenDateRangeSelectionButtonState
         !widget.required &&
         widget.onClear != null &&
         (widget.from != null || widget.to != null);
-    final button = UtenButton(
-      key: widget.buttonKey,
-      type: canClear || invalid
-          ? UtenButtonType.ghost
-          : UtenButtonType.secondary,
-      icon: Icons.date_range_outlined,
-      semanticLabel: '$text，$_summary',
-      onPressed: widget.enabled && !_picking && !_applying ? _pick : null,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Flexible(
-            child: requiredLabel(text, theme, required: widget.required),
-          ),
-          SizedBox(
-            height: UtenControlMetrics.standardHeight - UtenSpacing.s16,
-            child: UtenFieldHintIcon(
-              info: [
-                _summary,
-                if (widget.info?.isNotEmpty ?? false) widget.info!,
-              ].join('\n\n'),
-              errorMessage: widget.errorMessage,
-              dense: true,
-            ),
-          ),
-        ],
+    final message = <String>{
+      _summary,
+      if (widget.errorMessage?.isNotEmpty ?? false) widget.errorMessage!,
+      if (widget.info?.isNotEmpty ?? false) widget.info!,
+    }.join('\n\n');
+    final button = UtenDateRangeTooltip(
+      message: message,
+      child: UtenButton(
+        key: widget.buttonKey,
+        type: canClear || invalid
+            ? UtenButtonType.ghost
+            : UtenButtonType.secondary,
+        semanticLabel: '$text，$message',
+        onPressed: widget.enabled && !_picking && !_applying ? _pick : null,
+        child: Semantics(
+          liveRegion: widget.errorMessage?.isNotEmpty ?? false,
+          child: requiredLabel(text, theme, required: widget.required),
+        ),
       ),
     );
     return Stack(
@@ -217,14 +201,20 @@ class _UtenDateRangeSelectionButtonState
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Flexible(child: button),
-                    UtenCloseButton(
+                    UtenButton(
                       key:
                           widget.clearButtonKey ??
                           const Key('uten-date-range-clear'),
-                      tooltip: _t('清除日期范围', 'Clear date range', '날짜 범위 지우기'),
+                      type: UtenButtonType.ghost,
+                      semanticLabel: _t(
+                        '清除日期范围',
+                        'Clear date range',
+                        '날짜 범위 지우기',
+                      ),
                       onPressed: widget.enabled && !_picking && !_applying
                           ? _clear
                           : null,
+                      child: Text(_t('清除', 'Clear', '지우기')),
                     ),
                   ],
                 )

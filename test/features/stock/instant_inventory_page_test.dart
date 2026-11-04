@@ -122,7 +122,7 @@ void main() {
     }
   }
 
-  testWidgets('默认近一个月且卡片内红色关闭按钮清除当前范围', (tester) async {
+  testWidgets('默认近一个月且文字清除按钮清除当前范围', (tester) async {
     final stock = _RecordingStockRepository();
     await pumpPage(tester, stock: stock);
     final defaults = recentMonthDateRange();

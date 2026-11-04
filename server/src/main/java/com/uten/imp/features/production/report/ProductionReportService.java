@@ -228,7 +228,7 @@ public class ProductionReportService {
                                             LocalDate dateFrom, LocalDate dateTo, String kw,
                                             String billNoCol, String dateCol) {
         if (billNo != null && !billNo.isBlank()) {
-            w.add(billNoCol + " LIKE :billNo", "billNo", "%" + billNo + "%");
+            w.containsLiteral(billNo, billNoCol, "billNo");
         }
         if (goodsId != null) w.add("i.goods_id = :goodsId", "goodsId", goodsId);
         if (status != null) w.add("p.status = :status", "status", status);
@@ -361,7 +361,7 @@ public class ProductionReportService {
         WhereBuilder w = new WhereBuilder("WHERE COALESCE(p.is_deleted,false)=false"
                 // 汇总只显示父计划：拆分生成的子计划（subplan_links）不出现在汇总，明细报表仍全量
                 + " AND p.id NOT IN (SELECT subplan_id FROM subplan_links WHERE is_deleted = false)");
-        if (billNo != null && !billNo.isBlank()) w.add("p.bill_no LIKE :billNo", "billNo", "%" + billNo + "%");
+        w.containsLiteral(billNo, "p.bill_no", "billNo");
         if (status != null) w.add("p.status = :status", "status", status);
         if (dateFrom != null) w.add("p.bill_date >= :dateFrom", "dateFrom", dateFrom);
         if (dateTo != null) w.add("p.bill_date <= :dateTo", "dateTo", dateTo);

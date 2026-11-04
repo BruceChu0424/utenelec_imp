@@ -87,23 +87,38 @@ Future<CompanyFilePrincipal?> showCompanyFilePrincipalPicker(
     emptyMessage: l.companyFilesNoResults,
     candidateScopeKey: (boundary, scope),
     scopeBuilder: protect,
+    cancelDepartmentTreeReadOnClose: true,
     departmentTreeLoader: () => scope.run(repository.principalDepartments),
-    loader: (keyword) async {
-      final rows = await scope.run(
-        () => repository.principals(type: 'USER', search: keyword ?? ''),
+    pagedLoader: (query) async {
+      final page = await scope.run(
+        () => repository.principalsPage(
+          type: 'USER',
+          search: query.keyword ?? '',
+          page: query.page,
+          departmentId: query.departmentId,
+          includeSubtree: query.includeDepartmentSubtree,
+        ),
       );
-      for (final row in rows) {
+      if (page.page != query.page ||
+          page.items.any((row) => row.type != 'USER' || row.id.isEmpty)) {
+        throw const FormatException('资料库授权主体分页响应无效');
+      }
+      for (final row in page.items) {
         candidates[row.id] = row;
       }
-      return [
-        for (final row in rows)
-          UtenEmployeePickerItem(
-            id: row.id,
-            name: row.name,
-            departmentId: row.departmentId,
-            departmentName: row.detail,
-          ),
-      ];
+      return UtenEmployeePickerPage(
+        page: page.page,
+        totalPages: page.totalPages,
+        items: [
+          for (final row in page.items)
+            UtenEmployeePickerItem(
+              id: row.id,
+              name: row.name,
+              departmentId: row.departmentId,
+              departmentName: row.detail,
+            ),
+        ],
+      );
     },
   );
   if (!scope.isCurrent || selected == null || selected.isEmpty) return null;

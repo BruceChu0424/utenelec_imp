@@ -20,9 +20,33 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class TokenIssuerLogoutAuditTest {
+
+    @Test
+    void closingWithAlreadyRotatedRefreshRevokesOnlyItsOriginalSession() {
+        Fixture fixture = fixture();
+        String raw = "rotated-before-window-close";
+        RefreshToken original = token(raw);
+        original.setRevokedAt(java.time.OffsetDateTime.now());
+        original.setReplacedBy(UUID.randomUUID());
+        when(fixture.tokens.findAndLockByTokenHash(HashUtil.sha256(raw)))
+                .thenReturn(Optional.of(original));
+        when(fixture.sessions.revoke(original.getSessionId(), AuthSessionService.REASON_LOGOUT))
+                .thenReturn(true);
+
+        fixture.issuer.logout(raw);
+
+        verify(fixture.sessions).revoke(original.getSessionId(), AuthSessionService.REASON_LOGOUT);
+        verifyNoMoreInteractions(fixture.sessions);
+        verify(fixture.tokens).findAndLockByTokenHash(HashUtil.sha256(raw));
+        verifyNoMoreInteractions(fixture.tokens);
+        verifyNoInteractions(fixture.tokenService);
+        verify(fixture.audit).logExplicit(original.getUserId(), null, "logout", "refresh_tokens",
+                original.getId().toString(), "success", original.getSessionId());
+    }
 
     @AfterEach
     void clearTransactionSynchronization() {
@@ -119,6 +143,7 @@ class TokenIssuerLogoutAuditTest {
         RefreshTokenRepository tokens = mock(RefreshTokenRepository.class);
         RefreshTokenService tokenService = mock(RefreshTokenService.class);
         AuditService audit = mock(AuditService.class);
+        AuthSessionService sessions = mock(AuthSessionService.class);
         TokenIssuer issuer = new TokenIssuer(
                 mock(UserAccountRepository.class),
                 tokens,
@@ -127,8 +152,8 @@ class TokenIssuerLogoutAuditTest {
                 mock(StaffRefreshCompromiseService.class),
                 mock(StaffTokenResponseFactory.class),
                 audit,
-                mock(AuthSessionService.class));
-        return new Fixture(issuer, tokens, tokenService, audit);
+                sessions);
+        return new Fixture(issuer, tokens, tokenService, audit, sessions);
     }
 
     private RefreshToken token(String rawRefresh) {
@@ -143,6 +168,7 @@ class TokenIssuerLogoutAuditTest {
             TokenIssuer issuer,
             RefreshTokenRepository tokens,
             RefreshTokenService tokenService,
-            AuditService audit) {
+            AuditService audit,
+            AuthSessionService sessions) {
     }
 }

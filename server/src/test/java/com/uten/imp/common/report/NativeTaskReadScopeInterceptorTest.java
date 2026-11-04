@@ -6,6 +6,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class NativeTaskReadScopeInterceptorTest {
     private static final String ID="12345678-1234-1234-1234-123456789abc";
+    @Test void pagedDirectoriesKeepTheirOriginalReadProfileAndDoNotClassifyCommands() {
+        for(String path:List.of("/api/admin/users/provision-candidates", "/api/admin/users/provision-candidates/page",
+                "/api/admin/impersonation/targets", "/api/admin/impersonation/targets/page",
+                "/api/admin/impersonation/targets/departments", "/api/company-files/principals",
+                "/api/company-files/principals/page", "/api/notices/audience/employees/page", "/api/admin/audit-logs/actors"))
+            assertThat(NativeTaskReadScopeInterceptor.profile(path)).isEqualTo("native_feature");
+        for(String path:List.of("/api/admin/impersonation/enter", "/api/admin/impersonation/start",
+                "/api/company-files/principals/page/save", "/api/admin/users/provision-candidates/page/confirm"))
+            assertThat(NativeTaskReadScopeInterceptor.profile(path)).isNull();
+    }
+    @Test void dedicatedEmployeeCandidateReadsKeepAProfileWithoutMatchingAdjacentCommands() {
+        for(String path:List.of("/api/master/clients/access-candidates", "/api/master/clients/access-candidates/query",
+                "/api/admin/data-handovers/candidates", "/api/admin/data-handovers/candidates/query")) {
+            assertThat(NativeTaskReadScopeInterceptor.profile(path)).isEqualTo("native_feature");
+            assertThat(NativeTaskReadScopeInterceptor.profile(path+"/save")).isNull();
+        }
+        assertThat(NativeTaskReadScopeInterceptor.profile("/api/admin/data-handovers")).isNull();
+    }
     @Test void businessReferencesKeepTheOriginalResourceRevocationDomains() {
         for (String path : List.of("/api/business-references/clients", "/api/business-references/clients/search-context"))
             assertThat(NativeTaskReadScopeInterceptor.profile(path)).isEqualTo("client");

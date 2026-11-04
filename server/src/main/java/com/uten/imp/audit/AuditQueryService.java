@@ -3,6 +3,7 @@ package com.uten.imp.audit;
 import com.uten.imp.common.export.ExportColumn;
 import com.uten.imp.common.export.ExportPayload;
 import com.uten.imp.common.time.BusinessTime;
+import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -203,6 +204,13 @@ public class AuditQueryService {
         return actorDirectory.findActors(keyword, page, size);
     }
 
+    @Transactional(readOnly = true)
+    @PreAuthorize("hasAuthority('audit_log:view')")
+    public PageResponse<AuditActorOption> actors(String keyword, int page, int size,
+            UUID departmentId, boolean includeSubtree, String actorType, boolean unassignedOnly) {
+        return actorDirectory.findActors(keyword, page, size, departmentId, includeSubtree, actorType, unassignedOnly);
+    }
+
     /**
      * Exports the exact same filtered online result set as the audit page.
      *
@@ -400,20 +408,18 @@ public class AuditQueryService {
         if (criteria.snapshotId() != null) {
             validateSnapshotId(criteria.snapshotId());
         }
-        java.util.Set<UUID> nameMatchedActorIds = hasText(criteria.keyword())
-                ? actorDirectory.findUserIdsByNameKeyword(criteria.keyword()) : java.util.Set.of();
         Specification<AuditLog> base = (root, q, cb) -> {
             List<Predicate> ps = new ArrayList<>();
             AuditEventHeaderQuery.append(root, cb, ps, criteria.columnSearch());
             if (hasText(criteria.action())) {
                 ps.add(cb.like(cb.lower(root.get("action")),
-                        criteria.action().trim().toLowerCase(Locale.ROOT) + "%"));
+                        KeywordSearch.prefixPattern(criteria.action().trim().toLowerCase(Locale.ROOT)), '\\'));
             }
             if (criteria.actorId() != null) {
                 ps.add(cb.equal(root.get("actorId"), criteria.actorId()));
             } else if (hasText(criteria.actorAccount())) {
                 ps.add(cb.like(cb.lower(root.get("actorAccount")),
-                        "%" + criteria.actorAccount().trim().toLowerCase(Locale.ROOT) + "%"));
+                        KeywordSearch.containsPattern(criteria.actorAccount().trim().toLowerCase(Locale.ROOT)), '\\'));
             }
             if (criteria.activityOnly()) {
                 ps.add(cb.notEqual(cb.lower(root.get("eventSource")), "database"));
@@ -490,7 +496,7 @@ public class AuditQueryService {
                         String.class,
                         root.get("after"),
                         cb.literal("target_legacy_code"));
-                // 操作人支持按"姓名"检索：先解析命中的用户 ID，再并入 OR 组。
+                // Keep historical name matching inside the database; never expand all matching actor IDs into Java/bindings.
                 List<Predicate> keywordOr = new ArrayList<>(List.of(
                         cb.like(cb.lower(root.get("action")), pattern, '!'),
                         cb.like(cb.lower(root.get("actorAccount")), pattern, '!'),
@@ -502,9 +508,12 @@ public class AuditQueryService {
                         cb.like(cb.lower(targetLegacyCode), pattern, '!'),
                         cb.like(cb.lower(root.get("httpPath")), pattern, '!'),
                         cb.like(cb.lower(requestIdText), pattern, '!')));
-                if (nameMatchedActorIds != null && !nameMatchedActorIds.isEmpty()) {
-                    keywordOr.add(root.get("actorId").in(nameMatchedActorIds));
-                }
+                var actorNames = q.subquery(UUID.class);
+                var actorName = actorNames.from(AuditActorNameSearch.class);
+                actorNames.select(actorName.get("actorId")).where(cb.or(
+                        cb.like(cb.lower(actorName.get("actorName")), pattern, '!'),
+                        cb.like(cb.lower(actorName.get("alternateName")), pattern, '!')));
+                keywordOr.add(root.get("actorId").in(actorNames));
                 ps.add(cb.or(keywordOr.toArray(new Predicate[0])));
             }
             if (criteria.dateFrom() != null) {

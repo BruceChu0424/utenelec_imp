@@ -7,7 +7,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
-import 'native_facet_routes.dart';
+import 'request_reload_semantics.dart';
 
 /// 单调递增的本端写修订号。
 final dataWriteRevisionProvider = StateProvider<int>((ref) => 0);
@@ -37,10 +37,6 @@ final _businessReadPostPaths = [
   RegExp(r'^/(?:api/)?(purchase|subcontract)/orders/print-authorization$'),
   RegExp(r'^/(?:api/)?operations/workbench/(purchase|subcontract)/export$'),
   RegExp(r'^/(?:api/)?sales/orders/shippable-lines/selection$'),
-  RegExp(r'^/(?:api/)?master/(clients|suppliers)/search-context$'),
-  RegExp(
-    r'^/(?:api/)?business-references/(clients|suppliers)/(search|search-context)$',
-  ),
   RegExp(
     r'^/(?:api/)?(sales|purchase|subcontract|production|stock|finance)/reports/export$',
   ),
@@ -98,7 +94,9 @@ bool isBusinessWrite(RequestOptions options) {
       (method == 'DELETE' && _automaticClaimReleasePath.hasMatch(path))) {
     return false;
   }
-  if (method == 'POST' && isNativeFacetPath(path)) return false;
+  if (method == 'POST' && isReadOnlyPost(path)) {
+    return false;
+  }
   if (method == 'POST' &&
       (path == '/production/daily-reports/create-receipt' ||
           path == '/api/production/daily-reports/create-receipt')) {

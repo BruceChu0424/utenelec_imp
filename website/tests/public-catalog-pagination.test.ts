@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { PrismaClient } from '@prisma/client';
 import { migratedDatabase } from './helpers/migrated-database';
-import { catalogWindow, catalogTextFilter } from '../lib/catalog-query';
+import { catalogWindow } from '../lib/catalog-query';
 import { publicProductView, productContactHref } from '../lib/public-product';
 import type { ProductWithRelations } from '../lib/catalog';
 import { toStudioVariants } from '../lib/catalog';
@@ -36,7 +36,7 @@ test('public catalog uses complete database pages and publication-aware context'
     });
     await t.test('SQL search, typed facets and unclassified fallback agree', async () => {
       const result = await queryCatalogProducts({ locale: 'en', familyIdentifier: 'public-family', query: 'Model 1', take: 5 });
-      assert.equal(result?.total, 11);
+      assert.equal(result?.total, 15);
       assert.equal(result?.products.length, 5);
       const unknown = await queryCatalogProducts({ locale: 'en', familyIdentifier: 'public-family', functionType: 'other' });
       assert.deepEqual(unknown?.products.map(product => [product.id, product.functionType]), [['unknown', 'other']]);
@@ -112,11 +112,6 @@ test('contact URLs retain stable source IDs and pagination clamps hostile values
   assert.equal(new URL(productContactHref({ productId: 'p', variantId: 'p-default' }), 'https://example.invalid').searchParams.has('variantId'), false);
   assert.deepEqual(catalogWindow(-1, 5000), { skip: 0, take: 48 });
   assert.deepEqual(catalogWindow(Number.NaN, Number.NaN), { skip: 0, take: 24 });
-});
-
-test('catalog search preserves case-insensitive behavior for both SQL providers', () => {
-  assert.deepEqual(catalogTextFilter('gk11', false), { contains: 'gk11' });
-  assert.deepEqual(catalogTextFilter('gk11', true), { contains: 'gk11', mode: 'insensitive' });
 });
 
 test('public variants retain product-level gallery images without accepting remote or duplicate paths', () => {

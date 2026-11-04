@@ -61,6 +61,7 @@ class DepartmentEditDialog extends ConsumerStatefulWidget {
     this.editing,
     this.suggestions = const <String>[],
     this.managerLoader,
+    this.managerPagedLoader,
     this.canEditFields = true,
     this.canMove = true,
     this.canAssignManager = true,
@@ -84,6 +85,7 @@ class DepartmentEditDialog extends ConsumerStatefulWidget {
 
   /// 编辑态的直属在册员工候选，用于设置部门负责人。
   final UtenEmployeePickerLoader? managerLoader;
+  final UtenEmployeePickerPagedLoader? managerPagedLoader;
   final bool canEditFields;
   final bool canMove;
   final bool canAssignManager;
@@ -388,15 +390,19 @@ class _DepartmentEditDialogState extends ConsumerState<DepartmentEditDialog>
                 );
               },
             ),
-            if (_canAssignManager && widget.managerLoader != null) ...[
+            if (_canAssignManager &&
+                (widget.managerLoader != null ||
+                    widget.managerPagedLoader != null)) ...[
               const SizedBox(height: UtenSpacing.s12),
               UtenEmployeePicker(
                 presentation: UtenEmployeePickerPresentation.businessReference,
+                cancelDepartmentTreeReadOnClose: true,
                 departmentTreeLoader: () => ref
                     .read(employeeReferenceRepositoryProvider)
                     .departments(EmployeeReferencePurpose.departmentManager),
                 candidateScopeKey: ('department-manager', widget.editing?.id),
-                loader: widget.managerLoader!,
+                loader: widget.managerLoader,
+                pagedLoader: widget.managerPagedLoader,
                 initial: _manager,
                 label: '部门负责人',
                 hint: '从本部门直属在册员工中选择',

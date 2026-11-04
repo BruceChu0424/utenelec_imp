@@ -135,6 +135,10 @@ class _Repository extends Fake implements AuditLogRepository {
     int page = 1,
     int size = 20,
     String? keyword,
+    String? departmentId,
+    bool includeSubtree = false,
+    String? actorType,
+    bool unassignedOnly = false,
   }) async => const AuditActorPage(
     items: [
       AuditActorOption(

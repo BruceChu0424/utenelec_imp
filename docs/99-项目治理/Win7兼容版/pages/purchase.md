@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PurchaseDocDetailPage @80 (page-class)<br>_PurchaseDocDetailPageState @94 (state-class)<br>_KV @2621 (supporting-class) |
-| 真实路由绑定 | /purchase/:doc/:id；router @1262；builder ['PurchaseDocDetailPage']；redirect _rejectUnknownPurchaseDoc |
+| 真实路由绑定 | /purchase/:doc/:id；router @1277；builder ['PurchaseDocDetailPage']；redirect _rejectUnknownPurchaseDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | purchase_order:create @115；定义 lib/shared/auth/permissions.dart:664<br>purchase_order:decompose @116；定义 lib/shared/auth/permissions.dart:668<br>purchase_request:view @299；定义 lib/shared/auth/permissions.dart:145<br>purchase_order:decompose @300；定义 lib/shared/auth/permissions.dart:668<br>finance_order_approval:view @612；定义 lib/shared/auth/permissions.dart:514<br>purchase_order:change_qty @628；定义 lib/shared/auth/permissions.dart:671<br>purchase_order:submit_finance @643；定义 lib/shared/auth/permissions.dart:151<br>purchase_order:view @1248；定义 lib/shared/auth/permissions.dart:148<br>purchase_order:edit @1252；定义 lib/shared/auth/permissions.dart:149<br>finance_order_approval:view @1254；定义 lib/shared/auth/permissions.dart:514<br>purchase_order:view @1286；定义 lib/shared/auth/permissions.dart:148<br>finance_order_approval:view @1288；定义 lib/shared/auth/permissions.dart:514<br>purchase_order:cancel @2460；定义 lib/shared/auth/permissions.dart:666<br>purchase_order:submit_finance @2474；定义 lib/shared/auth/permissions.dart:151 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PurchaseDocEditPage @112 (page-class)<br>_PurchaseDocEditPageState @122 (state-class) |
-| 真实路由绑定 | /purchase/:doc/new；router @1243；builder ['PurchaseDocEditPage']；redirect _rejectUnknownPurchaseDoc<br>/purchase/:doc/:id/edit；router @1252；builder ['PurchaseDocEditPage']；redirect _rejectUnknownPurchaseDoc |
+| 真实路由绑定 | /purchase/:doc/new；router @1258；builder ['PurchaseDocEditPage']；redirect _rejectUnknownPurchaseDoc<br>/purchase/:doc/:id/edit；router @1267；builder ['PurchaseDocEditPage']；redirect _rejectUnknownPurchaseDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -40,17 +40,17 @@
 
 ## W7-BIZ-123 · lib/features/purchase/pages/purchase_doc_list_page.dart
 
-模块 `purchase`；1093 行；SHA256 `4b309888775a9e0f3bef9991bcf992fcf8499d00bfc344ec4c49c37a91ec91fb`。
+模块 `purchase`；1097 行；SHA256 `fb16201a7155d6a3c053976202b2722848fee197e897e986681c784633d01679`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _PurchaseDocSeg @70 (supporting-class)<br>PurchaseDocListPage @93 (page-class)<br>_PurchaseDocListPageState @111 (state-class) |
-| 真实路由绑定 | /purchase/requests；router @1181；builder ['PurchaseDocListPage']；redirect None<br>/purchase/orders；router @1187；builder ['PurchaseDocListPage']；redirect None<br>/purchase/receipts；router @1196；builder ['PurchaseDocListPage']；redirect None<br>/purchase/returns；router @1204；builder ['PurchaseDocListPage']；redirect None |
+| 真实路由绑定 | /purchase/requests；router @1196；builder ['PurchaseDocListPage']；redirect None<br>/purchase/orders；router @1202；builder ['PurchaseDocListPage']；redirect None<br>/purchase/receipts；router @1211；builder ['PurchaseDocListPage']；redirect None<br>/purchase/returns；router @1219；builder ['PurchaseDocListPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/purchase/repositories/purchase_repository.dart；接口：/purchase/{doc}、/purchase/{doc}/{id}、/purchase/{doc}/{id}/approve |
-| 动作处理 | addPostFrameCallback @282 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @300 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @328 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_draftDeleteButton @374 [action-ui-factory] 提示 ['delete']；Widget _draftDeleteButton() {<br>delete @408 [action-like-invocation] 提示 ['delete']；await repo.delete(id);<br>addPostFrameCallback @582 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_createButton @798 [action-ui-factory] 提示 ['create']；Widget _createButton() => UtenButton(<br>_createButton @850 [action-like-invocation] 提示 ['create']；? UtenFloatingActionGroup(children: [_createButton()])<br>_createButton @999 [action-like-invocation] 提示 ['create']；if (_canCreate) _createButton(),<br>_draftDeleteButton @1000 [action-like-invocation] 提示 ['delete']；_draftDeleteButton(),<br>draftDeleteBusy @994 [callback-reference] 提示 ['delete']；onSelectedIdsChanged |
+| 动作处理 | addPostFrameCallback @282 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @300 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @328 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_draftDeleteButton @374 [action-ui-factory] 提示 ['delete']；Widget _draftDeleteButton() {<br>delete @408 [action-like-invocation] 提示 ['delete']；await repo.delete(id);<br>addPostFrameCallback @582 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_createButton @798 [action-ui-factory] 提示 ['create']；Widget _createButton() => UtenButton(<br>_createButton @850 [action-like-invocation] 提示 ['create']；? UtenFloatingActionGroup(children: [_createButton()])<br>_createButton @1003 [action-like-invocation] 提示 ['create']；if (_canCreate) _createButton(),<br>_draftDeleteButton @1004 [action-like-invocation] 提示 ['delete']；_draftDeleteButton(),<br>draftDeleteBusy @998 [callback-reference] 提示 ['delete']；onSelectedIdsChanged |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/purchase/order/PurchaseOrderController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/purchase/receipt/PurchaseReceiptController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/purchase/report/PurchaseReportController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/purchase/request/PurchaseRequestController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/purchase/ret/PurchaseReturnController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。<br>存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PurchaseHubPage @42 (page-class)<br>_Entry @217 (supporting-class)<br>_EntryTile @245 (supporting-class) |
-| 真实路由绑定 | /purchase；router @1176；builder ['PurchaseHubPage']；redirect None |
+| 真实路由绑定 | /purchase；router @1191；builder ['PurchaseHubPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -81,7 +81,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | PurchaseOrderEditPage @107 (page-class)<br>_PurchaseOrderEditPageState @124 (state-class) |
-| 真实路由绑定 | /purchase/orders/new；router @1221；builder ['PurchaseOrderEditPage']；redirect None<br>/purchase/orders/:id/edit；router @1235；builder ['PurchaseOrderEditPage']；redirect None |
+| 真实路由绑定 | /purchase/orders/new；router @1236；builder ['PurchaseOrderEditPage']；redirect None<br>/purchase/orders/:id/edit；router @1250；builder ['PurchaseOrderEditPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | purchase_order:submit_finance @130；定义 lib/shared/auth/permissions.dart:151<br>attachment:view @1933；定义 lib/shared/auth/permissions.dart:141<br>purchase_order:create @1952；定义 lib/shared/auth/permissions.dart:664<br>purchase_order:create @2273；定义 lib/shared/auth/permissions.dart:664<br>purchase_order:edit @2276；定义 lib/shared/auth/permissions.dart:149 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -99,7 +99,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _Monthly @28 (supporting-class)<br>_Pending @45 (supporting-class)<br>PurchaseReportPage @53 (page-class)<br>_PurchaseReportPageState @60 (state-class) |
-| 真实路由绑定 | /purchase/report；router @1271；builder ['PurchaseReportPage']；redirect None |
+| 真实路由绑定 | /purchase/report；router @1286；builder ['PurchaseReportPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | ApiEndpoints.purchaseReportMonthly @98 → /purchase/reports/monthly<br>ApiEndpoints.purchaseReportPending @106 → /purchase/reports/pending |
@@ -112,18 +112,18 @@
 
 ## W7-BIZ-127 · lib/features/purchase/pages/purchase_report_table_page.dart
 
-模块 `purchase`；627 行；SHA256 `0f30226d21af9067ae0b9c328b4f3efb48bde8f3845a03fb1aa38bbf693f9bfd`。
+模块 `purchase`；593 行；SHA256 `3192c93f074cca107e1c5c054bea597deb5b8212313d01d91e8192818bc40f14`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | PurchaseReportTablePage @59 (page-class)<br>_PurchaseReportTablePageState @68 (state-class) |
-| 真实路由绑定 | /purchase/report/:kind；router @1213；builder ['PurchaseReportTablePage']；redirect None |
+| 页面/状态类 | PurchaseReportTablePage @58 (page-class)<br>_PurchaseReportTablePageState @67 (state-class) |
+| 真实路由绑定 | /purchase/report/:kind；router @1228；builder ['PurchaseReportTablePage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | purchase_report:export @554；定义 lib/shared/auth/permissions.dart:576<br>purchase_report:export @563；定义 lib/shared/auth/permissions.dart:576 |
+| 权限 | purchase_report:export @520；定义 lib/shared/auth/permissions.dart:576<br>purchase_report:export @529；定义 lib/shared/auth/permissions.dart:576 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | addPostFrameCallback @131 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @161 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @206 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>remove @316 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>_printLoader @369 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @373 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @549 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @561 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>copyWith @619 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelLarge?.copyWith( |
+| 动作处理 | addPostFrameCallback @130 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @160 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @205 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>remove @315 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>_printLoader @368 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @372 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @515 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @527 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>copyWith @585 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelLarge?.copyWith( |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
-直接源依赖：`lib/shared/paging/scoped_paged_read.dart` (sharedComponents)；`lib/shared/providers/export_context_epoch_provider.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/inputs/uten_date_range_button.dart` (sharedComponents)；`lib/components/buttons/uten_export_button.dart` (sharedComponents)；`lib/components/print/uten_print_preview.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_list_two_pane.dart` (sharedComponents)；`lib/core/network/api_client.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/components/data_display/paged_list_controller.dart` (sharedComponents)；`lib/shared/models/paged_result.dart` (models)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/core/ui/app_notification.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/features/basic_data/models/master_facet.dart` (models)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/report/shared/report_cell.dart` (other)；`lib/features/report/shared/report_data.dart` (other)；`lib/features/report/shared/report_metadata_reuse.dart` (other)；`lib/features/report/shared/report_paged_read.dart` (other)；`lib/features/report/shared/report_print_preview.dart` (other)；`lib/features/report/shared/report_date_range.dart` (other)；`lib/features/report/shared/report_filter_prefs.dart` (other)；`lib/features/report/shared/report_sort.dart` (other)；`lib/features/report/shared/report_total.dart` (other)；`lib/features/purchase/config/purchase_report_config.dart` (other)。
+直接源依赖：`lib/shared/paging/scoped_paged_read.dart` (sharedComponents)；`lib/shared/providers/export_context_epoch_provider.dart` (sharedComponents)；`lib/components/buttons/uten_back_button.dart` (sharedComponents)；`lib/components/buttons/uten_button.dart` (sharedComponents)；`lib/components/inputs/uten_date_range_button.dart` (sharedComponents)；`lib/components/buttons/uten_export_button.dart` (sharedComponents)；`lib/components/print/uten_print_preview.dart` (sharedComponents)；`lib/components/layout/uten_app_bar.dart` (sharedComponents)；`lib/components/layout/uten_content_container.dart` (sharedComponents)；`lib/components/layout/uten_filter_toolbar.dart` (sharedComponents)；`lib/components/layout/uten_list_two_pane.dart` (sharedComponents)；`lib/core/network/api_client.dart` (core)；`lib/core/network/api_exception.dart` (core)；`lib/components/data_display/paged_list_controller.dart` (sharedComponents)；`lib/shared/models/paged_result.dart` (models)；`lib/core/router/nav_helpers.dart` (core)；`lib/core/router/page_resume_provider.dart` (core)；`lib/core/router/route_names.dart` (core)；`lib/core/theme/uten_tokens.dart` (core)；`lib/shared/auth/permissions.dart` (sharedComponents)；`lib/core/ui/app_notification.dart` (core)；`lib/core/utils/china_datetime.dart` (core)；`lib/features/basic_data/widgets/master_data_table_view.dart` (featureWidgets)；`lib/features/report/shared/report_cell.dart` (other)；`lib/features/report/shared/report_data.dart` (other)；`lib/features/report/shared/report_metadata_reuse.dart` (other)；`lib/features/report/shared/report_paged_read.dart` (other)；`lib/features/report/shared/report_print_preview.dart` (other)；`lib/features/report/shared/report_date_range.dart` (other)；`lib/features/report/shared/report_filter_prefs.dart` (other)；`lib/features/report/shared/report_sort.dart` (other)；`lib/features/report/shared/report_total.dart` (other)；`lib/features/purchase/config/purchase_report_config.dart` (other)。

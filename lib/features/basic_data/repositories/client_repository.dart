@@ -80,6 +80,9 @@ abstract interface class ClientRepository {
     String? search,
     int page = 1,
     int size = 20,
+    String? departmentId,
+    bool includeSubtree = false,
+    Set<String> excludeEmployeeIds = const {},
   });
   Future<void> create(Map<String, dynamic> body);
 
@@ -308,15 +311,25 @@ class DioClientRepository implements ClientRepository {
     String? search,
     int page = 1,
     int size = 20,
+    String? departmentId,
+    bool includeSubtree = false,
+    Set<String> excludeEmployeeIds = const {},
   }) async {
-    final json = await api.get(
-      ApiEndpoints.clientsAccessCandidates,
-      query: {
-        'page': page,
-        'size': size,
-        if (search?.trim().isNotEmpty == true) 'search': search!.trim(),
-      },
-    );
+    final filters = {
+      'page': page,
+      'size': size,
+      if (search?.trim().isNotEmpty == true) 'search': search!.trim(),
+      'departmentId': ?departmentId,
+      if (departmentId != null || includeSubtree)
+        'includeSubtree': includeSubtree,
+    };
+    final excluded = excludeEmployeeIds.toList()..sort();
+    final json = excluded.isEmpty
+        ? await api.get(ApiEndpoints.clientsAccessCandidates, query: filters)
+        : await api.postCancellable(
+            '${ApiEndpoints.clientsAccessCandidates}/query',
+            body: {...filters, 'excludeEmployeeIds': excluded},
+          );
     return PagedResult.fromJsonResponsive(json, ClientAccessCandidate.fromJson);
   }
 

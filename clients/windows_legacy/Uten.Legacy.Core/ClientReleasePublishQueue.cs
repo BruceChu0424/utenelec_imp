@@ -227,6 +227,7 @@ namespace Uten.Legacy.Core
                     try
                     {
                         var json = await gateway.SendAsync("admin/client-releases/" + item.ReleaseId + "/publish", null, true).ConfigureAwait(true);
+                        if (!Current) return;
                         var record = ClientReleaseAdminContract.ParseRecord(json);
                         ClientReleaseAdminContract.ValidateRecord(record, item.Metadata, item.RequestId, item.FileName, item.Sha256, item.SizeBytes);
                         if (record.State != "PUBLISHED") throw new FormatException("服务器未返回明确的已发布状态");
@@ -271,6 +272,7 @@ namespace Uten.Legacy.Core
                 item.Stage = ClientReleaseQueueStage.Validating;
                 Notify();
                 var loaded = await ReadFileAsync(item, cancellationToken).ConfigureAwait(true);
+                if (!Current) return;
                 if (item.Sha256 != null && item.Sha256 != loaded.Sha256)
                     throw new InvalidOperationException("重选文件与原SHA-256不同，不能替换原发布意图。");
                 item.Sha256 = loaded.Sha256;
@@ -283,6 +285,7 @@ namespace Uten.Legacy.Core
             item.Dispatched = true;
             var body = JsonValue.Serialize(item.Metadata.ToRequestBody(item.RequestId, item.FileName, item.Sha256));
             var prepareJson = await gateway.SendAsync("admin/client-releases", body, false).ConfigureAwait(true);
+            if (!Current) return;
             var raw = JsonValue.ParseObject(prepareJson);
             var draft = ClientReleaseRecord.Parse(raw);
             ClientReleaseAdminContract.ValidateRecord(draft, item.Metadata, item.RequestId, item.FileName, item.Sha256, item.SizeBytes);
@@ -331,6 +334,7 @@ namespace Uten.Legacy.Core
             item.Dispatched = true;
             var progress = new UploadProgress(this, item);
             var uploadJson = await gateway.UploadAsync(item.ReleaseId, item.SourcePath, item.SizeBytes, item.Sha256, progress).ConfigureAwait(true);
+            if (!Current) return;
             var uploadedRaw = JsonValue.ParseObject(uploadJson);
             var uploaded = ClientReleaseRecord.Parse(uploadedRaw);
             ClientReleaseAdminContract.ValidateRecord(uploaded, item.Metadata, item.RequestId, item.FileName, item.Sha256, item.SizeBytes);
@@ -433,6 +437,7 @@ namespace Uten.Legacy.Core
             try
             {
                 var json = await gateway.ReadAsync("admin/client-releases/" + (item.ReleaseId ?? item.RequestId)).ConfigureAwait(true);
+                if (!Current) return;
                 var record = ClientReleaseAdminContract.ParseRecord(json);
                 ClientReleaseAdminContract.ValidateRecord(record, item.Metadata, item.RequestId, item.FileName, item.Sha256, item.SizeBytes);
                 if (record.State == "PUBLISHED")
@@ -464,6 +469,7 @@ namespace Uten.Legacy.Core
             }
             catch (ApiException error)
             {
+                if (!Current) return;
                 if (error.HasResponseCode && error.StatusCode == 404
                     && item.Stage == ClientReleaseQueueStage.Unknown && item.PendingOperation == ClientReleaseQueueOperation.Prepare)
                 {
@@ -476,7 +482,7 @@ namespace Uten.Legacy.Core
                 }
                 else item.Error = Describe(error);
             }
-            catch (Exception error) { item.Error = Describe(error); }
+            catch (Exception error) { if (Current) item.Error = Describe(error); }
             finally
             {
                 if (ownsBusy) Busy = false;
@@ -488,6 +494,7 @@ namespace Uten.Legacy.Core
         {
             if (!Current) return;
             var json = await gateway.ReadAsync("admin/client-releases").ConfigureAwait(true);
+            if (!Current) return;
             cancellationToken.ThrowIfCancellationRequested();
             releases = ClientReleaseAdminContract.ParseRecordList(json).ToList();
             Notify();
@@ -510,6 +517,7 @@ namespace Uten.Legacy.Core
                 SaveOrFlag();
                 dispatched = true;
                 var json = await gateway.SendAsync("admin/client-releases/" + record.Id + "/withdraw", null, true).ConfigureAwait(true);
+                if (!Current) return;
                 var response = ClientReleaseAdminContract.ParseRecord(json);
                 if (response.Id != record.Id || response.State != "WITHDRAWN")
                     throw new FormatException("服务器未确认原版本已撤回");
@@ -520,6 +528,7 @@ namespace Uten.Legacy.Core
             catch (Exception error)
             {
                 ClientReleaseWithdrawState state;
+                if (!Current) { SaveOrFlag(); return; }
                 if (!withdrawals.TryGetValue(record.Id, out state) || state != ClientReleaseWithdrawState.Confirmed)
                 {
                     var definite = IsDefinite(error);
@@ -547,6 +556,7 @@ namespace Uten.Legacy.Core
             try
             {
                 var json = await gateway.ReadAsync("admin/client-releases/" + recordId).ConfigureAwait(true);
+                if (!Current) return;
                 var response = ClientReleaseAdminContract.ParseRecord(json);
                 if (response.Id != recordId || (response.State != "PUBLISHED" && response.State != "WITHDRAWN"))
                     throw new FormatException("原撤回记录状态不匹配");
@@ -586,6 +596,7 @@ namespace Uten.Legacy.Core
         /// error and are never re-entered.</summary>
         private void RecordFailure(ClientReleaseQueueItem item, Exception failure)
         {
+            if (!Current) { SaveOrFlag(); return; }
             if (item.Published)
             {
                 item.Error = Describe(failure);

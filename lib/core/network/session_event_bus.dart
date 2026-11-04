@@ -20,10 +20,13 @@ class ImpersonationExpiryNotice {
 
 /// 会话结束的原因说明。目前只有一类：单设备顶号（账号在新设备登录，本设备被下线）。
 class SessionExpiryNotice {
-  const SessionExpiryNotice.replaced(this.message)
-    : replacedByOtherDevice = true;
+  const SessionExpiryNotice.replaced(
+    this.message, {
+    this.sessionLineage,
+    this.intentGeneration,
+  }) : replacedByOtherDevice = true;
 
-  const SessionExpiryNotice.other()
+  const SessionExpiryNotice.other({this.sessionLineage, this.intentGeneration})
     : replacedByOtherDevice = false,
       message = null;
 
@@ -32,6 +35,11 @@ class SessionExpiryNotice {
 
   /// 服务端给出的完整说明（含顶号来源设备名），UI 可直接展示。
   final String? message;
+
+  /// Local request ownership, without credential bytes. An old rejection must
+  /// never dismiss or display a notice over a later sign-in.
+  final String? sessionLineage;
+  final int? intentGeneration;
 }
 
 class SessionEventBus {

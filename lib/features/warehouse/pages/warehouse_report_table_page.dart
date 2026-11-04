@@ -49,7 +49,6 @@ import '../../../shared/measurement/weight_prefs.dart';
 import '../../../shared/measurement/widgets/weight_text.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
-import '../../basic_data/models/master_facet.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/providers/master_name_provider.dart';
 import '../../report/shared/report_cell.dart';
@@ -455,23 +454,6 @@ class _WarehouseReportTablePageState
               _persistAndReload();
             },
           ),
-          const SizedBox(height: UtenSpacing.s12),
-          _filterLabel('日期范围'),
-          UtenDateRangeButton(
-            range: DateTimeRange(start: _from, end: _to),
-            firstDate: DateTime(2010),
-            lastDate: DateTime(2100),
-            onChanged: (range) async {
-              if (!mounted) return;
-              setState(() {
-                _from = range.start;
-                _to = range.end;
-              });
-              _persistPrefs();
-              _page = 1;
-              await _load();
-            },
-          ),
           // DRAW：领料车间筛选（各车间领料单独统计）
           // 间距放在各选填区块的开头：搜索并入工具条后，尾随间距会在区块缺席时
           // 变成悬空留白。
@@ -495,44 +477,13 @@ class _WarehouseReportTablePageState
               },
             ),
           ],
-          if (_filters.isNotEmpty) ...[
-            const SizedBox(height: UtenSpacing.s12),
-            _filterLabel('已选筛选 (${_filters.length})'),
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                for (final e in _filters.entries)
-                  Chip(
-                    label: Text(
-                      '${e.key}: ${e.value == kMasterFilterNullValue ? '(空)' : e.value}',
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
-                    onDeleted: () => _onFilterChanged(e.key, null),
-                    visualDensity: VisualDensity.compact,
-                  ),
-              ],
-            ),
-          ],
         ],
       ),
     );
   }
 
   Widget _buildTable() {
-    final data = _data ?? (_loading ? _reportMetadata.loadingData : null);
-    if (data == null) {
-      final error = _reportPages.error;
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(error ?? '暂无报表数据'),
-            TextButton(onPressed: _load, child: const Text('重试')),
-          ],
-        ),
-      );
-    }
+    final data = _data ?? _reportMetadata.loadingData;
     // 重量列 (type 'weight', 千克) 按用户显示单位换算; 估算行前缀「≈」, 没称留空。
     final weightDisplay = ref.watch(warehouseWeightUnitsPrefsProvider).display;
     final hasWeight = data.columns.any((c) => c.type == 'weight');
@@ -577,6 +528,21 @@ class _WarehouseReportTablePageState
       headerFilterScopeDescription: '查询覆盖当前完整报表；重量按千克（kg）比较。',
       items: data.rows,
       toolbarActions: [
+        UtenDateRangeButton(
+          range: DateTimeRange(start: _from, end: _to),
+          firstDate: DateTime(2010),
+          lastDate: DateTime(2100),
+          onChanged: (range) async {
+            if (!mounted) return;
+            setState(() {
+              _from = range.start;
+              _to = range.end;
+            });
+            _persistPrefs();
+            _page = 1;
+            await _load();
+          },
+        ),
         if (hasWeight) const WeightDisplayUnitButton(),
         UtenPrintPreviewButton(
           title: '仓库${_docType.label}${_kind.shortLabel}报表',

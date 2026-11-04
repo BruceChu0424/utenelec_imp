@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PostMapping;
 
 import java.util.List;
 import java.util.UUID;
@@ -32,9 +33,26 @@ public class ClientAccessController {
     public PageResponse<ClientAccessCandidate> candidates(
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        return service.candidates(search, page, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) UUID departmentId,
+            @RequestParam(defaultValue = "false") boolean includeSubtree,
+            @RequestParam(required = false) List<UUID> excludeEmployeeIds) {
+        return service.candidates(search, page, size, departmentId, includeSubtree, excludeEmployeeIds);
     }
+
+    /** Pure read body keeps legitimate owner-exclusion sets out of request-line size limits. */
+    @PostMapping("/access-candidates/query")
+    @PreAuthorize("hasAuthority('client:assign')")
+    public PageResponse<ClientAccessCandidate> queryCandidates(@Valid @RequestBody CandidateQuery request) {
+        return service.candidates(request.search(), request.page() == null ? 1 : request.page(),
+                request.size() == null ? 20 : request.size(), request.departmentId(),
+                Boolean.TRUE.equals(request.includeSubtree()), request.excludeEmployeeIds());
+    }
+
+    public record CandidateQuery(@jakarta.validation.constraints.Size(max = 100) String search,
+            Integer page, Integer size, UUID departmentId, Boolean includeSubtree,
+            @jakarta.validation.constraints.Size(max = com.uten.imp.common.validation.RequestLimits.ADMIN_SCOPE_OWNERS)
+            List<@jakarta.validation.constraints.NotNull UUID> excludeEmployeeIds) { }
 
     @GetMapping("/{id}/access")
     @PreAuthorize("hasAuthority('client:assign')")

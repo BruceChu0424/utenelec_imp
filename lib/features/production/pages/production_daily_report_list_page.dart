@@ -280,7 +280,7 @@ class _ProductionDailyReportListPageState
     _reload(1);
   }
 
-  Widget _lifecycleFilters(Map<String, int>? counts) =>
+  UtenDocumentLifecycleFilter _lifecycleFilters(Map<String, int>? counts) =>
       UtenDocumentLifecycleFilter(
         selected: _statusFilterSelected,
         history: _historyMode,
@@ -404,6 +404,9 @@ class _ProductionDailyReportListPageState
                   filterPane: _lifecycleFilters(statusCounts),
                   tablePane: _withFormDraftRows(
                     MasterDataTableView<ProductionDailyReportListItem>(
+                      toolbarLeadingActions: [
+                        ?_lifecycleFilters(null).historyToolbarAction,
+                      ],
                       rowsController: _tableRows,
                       tableKey: 'production.daily.list',
                       bottomContentPadding:

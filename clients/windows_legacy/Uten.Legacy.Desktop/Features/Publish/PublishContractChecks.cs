@@ -52,7 +52,46 @@ namespace Uten.Legacy.Desktop.Features.Publish
             CheckBatchDefaults(check, reject);
             CheckPreflightAndBatchRecovery(check);
             CheckTargetEditorChanges(check);
+            CheckRetiredPendingQueue(check);
             return assertions;
+        }
+
+        private static void CheckRetiredPendingQueue(Action<bool, string> check)
+        {
+            Task.Run(async () =>
+            {
+                foreach (var phase in new[] { "prepare", "upload", "publish" })
+                foreach (var fail in new[] { false, true })
+                {
+                    var entered = new TaskCompletionSource<bool>(); var release = new TaskCompletionSource<bool>();
+                    var gateway = new FakeGateway();
+                    gateway.BeforeReply = path =>
+                    {
+                        bool selected = phase == "prepare" ? path == "admin/client-releases" : phase == "upload" ? path.StartsWith("upload:", StringComparison.Ordinal) : path.EndsWith("/publish", StringComparison.Ordinal);
+                        if (!selected) return Task.CompletedTask;
+                        entered.TrySetResult(true); return release.Task;
+                    };
+                    string snapshot = null; ClientReleasePublishQueue queue = null;
+                    queue = new ClientReleasePublishQueue(gateway, () =>
+                    { snapshot = Serializer.Serialize(ClientReleasePublishContract.BuildSnapshot(queue.Items, WindowsUpdate().ToDictionary(), queue.Withdrawals)); return true; });
+                    string sha; long size; var item = AddReadyItem(queue, out sha, out size); var originalFile = item.SourcePath;
+                    try
+                    {
+                        var run = queue.RunAsync(CancellationToken.None); await entered.Task;
+                        var requestId = item.RequestId; var operation = item.PendingOperation;
+                        queue.Retire(); var sends = gateway.SentPaths.Count;
+                        check(item.Stage == ClientReleaseQueueStage.Unknown && item.SourcePath == null, "retirement preserves dispatched " + phase + " as Unknown without a file handle");
+                        if (fail) release.SetException(new ApiException("SESSION_CHANGED", "fixture retired reply")); else release.SetResult(true);
+                        await run; await queue.RunAsync(CancellationToken.None);
+                        var restored = ClientReleasePublishContract.ValidateAndRestore(snapshot).Rows.Single();
+                        check(item.RequestId == requestId && item.PendingOperation == operation && item.Stage == ClientReleaseQueueStage.Unknown,
+                            "late retired " + phase + " reply cannot replace the frozen Unknown intent");
+                        check(restored.RequestId == requestId && restored.PendingOperation == operation && gateway.SentPaths.Count == sends,
+                            "retired " + phase + " is durably reconcilable by original ID and never advances or replays");
+                    }
+                    finally { if (File.Exists(originalFile)) File.Delete(originalFile); }
+                }
+            }).GetAwaiter().GetResult();
         }
 
         private static void CheckBatchDefaults(Action<bool, string> check, Action<Action, string> reject)
@@ -173,10 +212,17 @@ namespace Uten.Legacy.Desktop.Features.Publish
             public string LastPlatform = "windows", LastFamily = "flutter", LastKind = "update", LastInstallMode = "windows_archive", LastContract = "paired_v1", LastArchitecture = "x64";
             public Func<string, Task<string>> OnRead = delegate (string path)
             { throw new InvalidOperationException("unexpected read " + path); };
+            public Func<string, Task> BeforeReply;
 
             public Task<string> ReadAsync(string relativePath) { return OnRead(relativePath); }
 
-            public Task<string> SendAsync(string relativePath, string bodyJson, bool requireStepUp)
+            public async Task<string> SendAsync(string relativePath, string bodyJson, bool requireStepUp)
+            {
+                var result = SendReply(relativePath, bodyJson, requireStepUp);
+                if (BeforeReply != null) await BeforeReply(relativePath);
+                return await result;
+            }
+            private Task<string> SendReply(string relativePath, string bodyJson, bool requireStepUp)
             {
                 SentPaths.Add(bodyJson == null ? relativePath : relativePath + ":prepare");
                 if (bodyJson != null)
@@ -225,7 +271,13 @@ namespace Uten.Legacy.Desktop.Features.Publish
                 throw new InvalidOperationException("unexpected send " + relativePath);
             }
 
-            public Task<string> UploadAsync(string releaseId, string sourcePath, long expectedBytes, string expectedSha256, IProgress<long> progress)
+            public async Task<string> UploadAsync(string releaseId, string sourcePath, long expectedBytes, string expectedSha256, IProgress<long> progress)
+            {
+                var result = UploadReply(releaseId, sourcePath, expectedBytes, expectedSha256, progress);
+                if (BeforeReply != null) await BeforeReply("upload:" + releaseId);
+                return await result;
+            }
+            private Task<string> UploadReply(string releaseId, string sourcePath, long expectedBytes, string expectedSha256, IProgress<long> progress)
             {
                 SentPaths.Add("upload:" + releaseId);
                 LastFileName = Path.GetFileName(sourcePath);

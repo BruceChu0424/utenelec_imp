@@ -170,7 +170,7 @@ namespace Uten.Legacy.Core
                     if (rejected && error.StatusCode == 403 && error.Code == "READ_SCOPE_CHANGED")
                         RetireReader(scope, new ReadRequest(request.Owner.ReadScopeRevision, 0, readLifetime));
                     if (rejected && (error.Code == "ACCOUNT_DISABLED" || error.Code == "ACCOUNT_LOCKED"
-                        || error.Code == "SESSION_REPLACED")) RejectCurrent(scope, owned);
+                        || error.Code == "SESSION_REPLACED")) RejectCurrent(scope, owned, error);
                     return await PersistMutationCompletionAsync(CompleteMutation(request,
                         rejected ? MutationOutcome.Rejected : MutationOutcome.Unknown, error), checkpointCommitted).ConfigureAwait(false);
                 }
@@ -230,7 +230,7 @@ namespace Uten.Legacy.Core
             if (failure != null)
             {
                 if (failure.Code == "REAUTH_LOCKED" || failure.Code == "ACCOUNT_DISABLED" || failure.Code == "SESSION_REPLACED")
-                    RejectCurrent(scope, owned);
+                    RejectCurrent(scope, owned, failure);
                 throw failure;
             }
             try

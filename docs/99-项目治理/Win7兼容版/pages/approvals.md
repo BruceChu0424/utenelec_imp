@@ -4,12 +4,12 @@
 
 ## W7-BIZ-228 · lib/features/approvals/pages/approval_center_page.dart
 
-模块 `approvals`；275 行；SHA256 `8cef816a56010abc06e7035569c4dccecfccbb92879b04e0c3ed2523cc8af45e`。
+模块 `approvals`；275 行；SHA256 `0cf50e8b2039fd753edc9ffd5fe109af0cb554775b145664a57b880758fd21dc`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ApprovalCenterPage @20 (page-class)<br>_ApprovalCenterPageState @35 (state-class) |
-| 真实路由绑定 | /approvals/:departmentCode；router @733；builder ['ApprovalCenterPage']；redirect None<br>/sales/manager-review；router @1893；builder ['ApprovalCenterPage']；redirect None |
+| 真实路由绑定 | /approvals/:departmentCode；router @748；builder ['ApprovalCenterPage']；redirect None<br>/sales/manager-review；router @1908；builder ['ApprovalCenterPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | expense:approve @74；定义 lib/shared/auth/permissions.dart:58<br>expense:approve:finance_initial @75；定义 lib/shared/auth/permissions.dart:60<br>expense:approve:finance_review @76；定义 lib/shared/auth/permissions.dart:61<br>expense:pay @77；定义 lib/shared/auth/permissions.dart:109<br>expense:view @78；定义 lib/shared/auth/permissions.dart:56<br>expense:approve:executive @81；定义 lib/shared/auth/permissions.dart:62<br>expense:approve:department @82；定义 lib/shared/auth/permissions.dart:59<br>application:approve:finance_initial @85；定义 lib/shared/auth/permissions.dart:78<br>application:approve:finance_review @86；定义 lib/shared/auth/permissions.dart:80<br>application:receive @87；定义 lib/shared/auth/permissions.dart:87<br>application:pay @88；定义 lib/shared/auth/permissions.dart:88<br>application:prepayment:link_finance @89；定义 lib/shared/auth/permissions.dart:89<br>application:view @90；定义 lib/shared/auth/permissions.dart:76<br>application:approve:executive @94；定义 lib/shared/auth/permissions.dart:84<br>application:approve:vice_executive @95；定义 lib/shared/auth/permissions.dart:82<br>application:approve:department @99；定义 lib/shared/auth/permissions.dart:77<br>application:approve:procurement @100；定义 lib/shared/auth/permissions.dart:85<br>application:approve:department @102；定义 lib/shared/auth/permissions.dart:77<br>sales_order_manager:view @110；定义 lib/shared/auth/permissions.dart:521<br>sales_quote_manager:view @111；定义 lib/shared/auth/permissions.dart:517<br>approval_policy:manage @218；定义 lib/shared/auth/permissions.dart:63 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -22,12 +22,12 @@
 
 ## W7-BIZ-229 · lib/features/approvals/pages/approval_policy_settings_page.dart
 
-模块 `approvals`；438 行；SHA256 `5d702d14402d990d2a1a1aaf19dc0c278a93201538f7b64fa8a77514838c53f3`。
+模块 `approvals`；442 行；SHA256 `1c9bc3145700c0377f0df8273011c9a2de01a74d8062541bbea53bfd5d898f59`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | ApprovalPolicySettingsPage @32 (page-class)<br>_ApprovalPolicySettingsPageState @39 (state-class)<br>_PolicyEditor @218 (supporting-class)<br>_PolicyEditorState @225 (state-class) |
-| 真实路由绑定 | /approvals/settings；router @728；builder ['ApprovalPolicySettingsPage']；redirect None |
+| 真实路由绑定 | /approvals/settings；router @743；builder ['ApprovalPolicySettingsPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | approval_policy:manage @93；定义 lib/shared/auth/permissions.dart:63<br>approval_policy:manage @276；定义 lib/shared/auth/permissions.dart:63<br>approval_policy:manage @320；定义 lib/shared/auth/permissions.dart:63 |
 | 接口常量 | 未静态确认；不能当作不存在 |

@@ -75,6 +75,9 @@ class _World implements ClientRepository {
     String? search,
     int page = 1,
     int size = 20,
+    String? departmentId,
+    bool includeSubtree = false,
+    Set<String> excludeEmployeeIds = const {},
   }) async => PagedResult(
     items: const [],
     page: page,

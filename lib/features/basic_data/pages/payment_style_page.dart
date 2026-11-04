@@ -7,6 +7,7 @@ import '../../../shared/hierarchy/category_sibling_names.dart';
 // 大屏采用目录树 + 属性检查器，编辑模式复用共享表格批量维护；手机保留分类抽屉。
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 import 'package:flutter/material.dart';
+import '../../../shared/search/keyword_search.dart';
 import '../widgets/master_operation_history_panel.dart';
 import '../widgets/master_record_history_panel.dart';
 import '../widgets/master_status_confirmation.dart';
@@ -100,6 +101,68 @@ bool _hasProtectedSystemName(PaymentStyleDetail detail) =>
 bool _hasActiveDescendant(PaymentStyleNode node) => node.children.any(
   (child) => child.status == '使用' || _hasActiveDescendant(child),
 );
+
+/// Inline document entry uses the same category form, validation, draft and
+/// submission lifecycle as master-data maintenance.
+Future<PaymentStyleDetail?> showPaymentStyleAddDialog({
+  required BuildContext context,
+  required WidgetRef ref,
+  required PaymentStyleCategory category,
+  required List<PaymentStyleNode> tree,
+}) async {
+  final permissions = ref.read(currentPermissionsProvider);
+  if (!permissions.contains(Perm.paymentStyleCreate) ||
+      !permissions.contains(Perm.paymentStyleView)) {
+    return null;
+  }
+  final current = captureReadOwner(ref);
+  PaymentStyleDetail? created;
+  await showReadOwnedDialog<void>(
+    context: context,
+    ref: ref,
+    barrierDismissible: false,
+    builder: (_) => _PaymentStyleEditDialog(
+      draftSpec: FormDraftCatalog.paymentStyle.spec(
+        title: '添加${category.label}项目',
+        categoryId: category.value,
+      ),
+      tree: tree,
+      category: category,
+      canStatus: ref
+          .read(currentPermissionsProvider)
+          .contains(Perm.paymentStyleStatus),
+      onSubmit: (result) async {
+        if (!current() ||
+            !ref
+                .read(currentPermissionsProvider)
+                .contains(Perm.paymentStyleCreate)) {
+          return false;
+        }
+        final response = await ref
+            .read(paymentStyleRepositoryProvider)
+            .create(
+              PaymentStyleSaveInput(
+                code: '',
+                name: result.name,
+                category: category.value,
+                parentId: result.parentId,
+                sortOrder: result.sortOrder,
+                receipt: result.receipt,
+                payment: result.payment,
+                departmental: result.departmental,
+                status: result.status,
+              ),
+            );
+        if (current()) {
+          created = response;
+          ref.read(paymentStyleRevisionProvider.notifier).state++;
+        }
+        return true;
+      },
+    ),
+  );
+  return current() ? created : null;
+}
 
 class PaymentStylePage extends ConsumerStatefulWidget {
   const PaymentStylePage({super.key});
@@ -1064,11 +1127,10 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
   Widget _buildWorkspace() {
     final all = _workspaceRows;
     final keyword = _workspaceKeyword.trim().toLowerCase();
+    final query = KeywordSearchQuery(keyword);
     final rows = all.where((row) {
       if (keyword.isNotEmpty &&
-          !'${row.node.code} ${row.node.name} ${row.path}'
-              .toLowerCase()
-              .contains(keyword)) {
+          !query.matches([row.node.code, row.node.name, row.path])) {
         return false;
       }
       for (final entry in _workspaceFilters.entries) {
@@ -1082,9 +1144,7 @@ class _PaymentStylePageState extends ConsumerState<PaymentStylePage>
         if (column == null || entry.value == null) continue;
         final value = column.value(row);
         if (searching) {
-          if (!(value ?? '').toLowerCase().contains(
-            entry.value!.toLowerCase(),
-          )) {
+          if (!matchesKeywordSearch([value], entry.value!)) {
             return false;
           }
           continue;
@@ -2274,53 +2334,48 @@ class _PaymentStyleEditDialogState
     setState(() => _saving = true);
     try {
       setState(() => _submissionWaiting = true);
-      final ok = await runUtenBlockingTask<bool>(
-        context: context,
-        title: _isEdit ? '正在保存类别' : '正在创建类别',
-        isCurrent: current,
-        invalidation: _ownerChanges,
-        task: () async {
-          final accepted = await runFormDraftSubmission(
-            () => !current()
-                ? Future.value(false)
-                : widget.onSubmit(
-                    _EditResult(
-                      name: name,
-                      nameChanged: editing == null || name != editing.name,
-                      parentId: _parent?.id,
-                      parentChanged: _positionChanged,
-                      moveToRoot:
-                          _positionChanged &&
-                          editing != null &&
-                          editing.parentId != null &&
-                          _parent == null,
-                      sortOrder: sortOrder,
-                      sortOrderChanged:
-                          editing == null || sortOrder != editing.sortOrder,
-                      receipt: _receipt,
-                      receiptChanged:
-                          editing == null || _receipt != editing.receipt,
-                      payment: _payment,
-                      paymentChanged:
-                          editing == null || _payment != editing.payment,
-                      departmental: _departmental,
-                      departmentalChanged:
-                          editing == null ||
-                          _departmental != editing.departmental,
-                      status: _status,
-                      statusChanged:
-                          editing == null || _status != editing.status,
-                    ),
+      // Paint the shared waiting overlay before executing the write.
+      await WidgetsBinding.instance.endOfFrame;
+      final ok = await (() async {
+        final accepted = await runFormDraftSubmission(
+          () => !current()
+              ? Future.value(false)
+              : widget.onSubmit(
+                  _EditResult(
+                    name: name,
+                    nameChanged: editing == null || name != editing.name,
+                    parentId: _parent?.id,
+                    parentChanged: _positionChanged,
+                    moveToRoot:
+                        _positionChanged &&
+                        editing != null &&
+                        editing.parentId != null &&
+                        _parent == null,
+                    sortOrder: sortOrder,
+                    sortOrderChanged:
+                        editing == null || sortOrder != editing.sortOrder,
+                    receipt: _receipt,
+                    receiptChanged:
+                        editing == null || _receipt != editing.receipt,
+                    payment: _payment,
+                    paymentChanged:
+                        editing == null || _payment != editing.payment,
+                    departmental: _departmental,
+                    departmentalChanged:
+                        editing == null ||
+                        _departmental != editing.departmental,
+                    status: _status,
+                    statusChanged: editing == null || _status != editing.status,
                   ),
-          );
-          if (accepted && mounted && current()) {
-            setState(() => _serverCreated = true);
-            await saveFormDraftNow();
-            await completeFormDraft();
-          }
-          return accepted;
-        },
-      );
+                ),
+        );
+        if (accepted && mounted && current()) {
+          setState(() => _serverCreated = true);
+          await saveFormDraftNow();
+          await completeFormDraft();
+        }
+        return accepted;
+      })();
       if (ok && mounted && current()) Navigator.of(context).pop();
     } catch (error) {
       if (mounted && current()) context.appApiError(error);
@@ -2335,7 +2390,15 @@ class _PaymentStyleEditDialogState
   }
 
   @override
-  Widget build(BuildContext context) => withFormDraft(_buildDialog(context));
+  Widget build(BuildContext context) => withFormDraft(
+    Stack(
+      children: [
+        _buildDialog(context),
+        if (_submissionWaiting && _ownerIsCurrent())
+          UtenBusyOverlay(title: _isEdit ? '正在保存类别' : '正在创建类别'),
+      ],
+    ),
+  );
 
   Widget _buildDialog(BuildContext context) {
     final theme = Theme.of(context);
@@ -2366,7 +2429,9 @@ class _PaymentStyleEditDialogState
           UtenFieldHintIcon(
             info: widget.category == PaymentStyleCategory.method
                 ? '结算方式分类目前为预留主档，不会自动绑定收款单或付款单的具体结算方式。'
-                : '实际能否选用还会看大类、启用状态和是否末级；这些开关不能替代业务检查。',
+                : '实际能否选用还会看大类、启用状态和是否末级；这些开关不能替代业务检查。'
+                      '系统编号在保存后自动生成，所属大类创建后不可更改。'
+                      '${protectedName ? '该名称已被财务记账流程使用，不能修改。' : ''}',
             dense: true,
           ),
         ],
@@ -2378,13 +2443,6 @@ class _PaymentStyleEditDialogState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (!_isEdit) ...[
-                const _InlineNotice(
-                  icon: Icons.auto_awesome_outlined,
-                  text: '系统编号将在保存后自动生成，所属大类创建后不可更改。',
-                ),
-                const SizedBox(height: UtenSpacing.s12),
-              ],
               UtenFormGrid(
                 columns: 4,
                 maxColumns: 4,
@@ -2455,13 +2513,6 @@ class _PaymentStyleEditDialogState
                   ),
                 ],
               ),
-              if (protectedName) ...[
-                const SizedBox(height: UtenSpacing.s8),
-                const _InlineNotice(
-                  icon: Icons.lock_outline_rounded,
-                  text: '该名称已被财务记账流程使用，不能修改。',
-                ),
-              ],
               const SizedBox(height: UtenSpacing.s16),
               const UtenSectionHeader(title: '业务属性', icon: Icons.tune_rounded),
               const SizedBox(height: UtenSpacing.s8),

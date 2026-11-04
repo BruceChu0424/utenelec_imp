@@ -3817,6 +3817,7 @@ class _ProductionDailyReportEditPageState
   Widget _workerPicker() {
     return UtenEmployeeMultiPicker(
       presentation: UtenEmployeePickerPresentation.businessReference,
+      cancelDepartmentTreeReadOnClose: true,
       departmentTreeLoader: () => ref
           .read(employeeReferenceRepositoryProvider)
           .departments(EmployeeReferencePurpose.productionReportWorker),
@@ -3836,31 +3837,18 @@ class _ProductionDailyReportEditPageState
       searchHint: '搜索生产部员工姓名 / 工号',
       emptyMessage: '当前生产部门没有匹配的在职或试用员工',
       initialSelection: _workers,
-      loader: (kw) async {
+      pagedLoader: (query) async {
         final deptId = _departmentId ?? _productionDeptId;
-        if (deptId == null) return const <UtenEmployeePickerItem>[];
-        final res = await ref
+        if (deptId == null) return const UtenEmployeePickerPage.empty();
+        return await ref
             .read(employeeReferenceRepositoryProvider)
-            .listPickerCandidates(
+            .listPickerPage(
+              query,
               purpose: EmployeeReferencePurpose.productionReportWorker,
-              search: kw,
               statuses: const {'active', 'probation'},
               departmentId: deptId,
               includeSubtree: true,
             );
-        return [
-          for (final e in res)
-            UtenEmployeePickerItem(
-              id: e.id,
-              name: e.fullName,
-              employeeCode: e.code,
-              accountStatus: e.accountStatus,
-              employmentStatus: e.status,
-              departmentId: e.departmentId,
-              departmentName: e.departmentName,
-              positionName: e.positionName,
-            ),
-        ];
       },
       onChanged: (items) => setState(() {
         _workers = List.unmodifiable(items);

@@ -108,8 +108,8 @@ namespace Uten.Legacy.Core
                     LastNegotiatedCipherSuite = peer.NegotiatedCipherSuite;
                     ValidateRequestOrigin(request);
                     if (request.RequestUri != origin) throw new HttpRequestException("接口请求地址已经变化。");
-                    socket.ReceiveTimeout = (int)ClientReleaseReceiveBudget.ForRequest(request,
-                        configuration.RequestTimeout).TotalMilliseconds;
+                    socket.ReceiveTimeout = (int)SessionWatchContract.ForRequest(request,
+                        ClientReleaseReceiveBudget.ForRequest(request, configuration.RequestTimeout)).TotalMilliseconds;
                     return ManagedHttp11.SendAndReceive(protocol.Stream, request,
                         responseSink == null ? configuration.MaxResponseBytes : responseSink.MaximumBytes,
                         originalCancellation, status =>

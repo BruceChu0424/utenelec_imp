@@ -98,8 +98,8 @@ public class GoodsService {
     /** facet 截断阈值（高基数列如 name 取前 N）。 */
     private static final int FACET_LIMIT = 50;
 
-    /** 选择器一次允许限定的分类根数；防止客户端构造超大集合放大递归 CTE。 */
-    static final int MAX_CATEGORY_ROOT_IDS = 32;
+    /** Bounded body queries cover the full picker scope; all roots share one deduplicating expansion. */
+    static final int MAX_CATEGORY_ROOT_IDS = 4096;
 
     /** facet 字段→物理列名白名单（列名硬编码、非用户输入，可安全拼入 SQL）。
      *  注意：code（全局唯一显示编号，但不是关系 id）不在此列，高基数值筛选意义较小，
@@ -209,12 +209,12 @@ public class GoodsService {
                         .getResultList());
         // 历史只读回显：UUID 缺失时按本页 legacy 快照批量补颜色/单位名，绝不建立新关系。
         Map<Integer, String> colorNames = colorNamesFor(
-                content.stream().map(Goods::getColorLegacyId).toList());
+                content.stream().filter(g -> g.getColor() == null).map(Goods::getColorLegacyId).toList());
         Map<Integer, String> unitNames = unitNamesFor(
-                content.stream().map(Goods::getUnitLegacyId).toList());
+                content.stream().filter(g -> g.getUnit() == null).map(Goods::getUnitLegacyId).toList());
         // 历史只读回显：UUID 缺失时按本页 legacy 快照批量补模具编号（列表「模具编号」列）。
         Map<Integer, Mould> mouldsByLegacy = mouldsByLegacyFor(
-                content.stream().map(Goods::getMouldLegacyId).toList());
+                content.stream().filter(g -> g.getMould() == null).map(Goods::getMouldLegacyId).toList());
         Map<UUID, BigDecimal> stockByGoods = stockQuantitiesFor(
                 content.stream().map(Goods::getId).toList());
         // 所属仓库名 (V587)：一次批量取名，不在拼行时逐行碰关联触发懒加载 (N+1)。
@@ -479,10 +479,9 @@ public class GoodsService {
         List<UUID> selected = f.categoryId() == null ? null : resolveSubtreeIds(f.categoryId());
         if (roots == null || roots.isEmpty()) return selected;
 
-        Set<UUID> scopedIds = new LinkedHashSet<>();
-        for (UUID rootId : roots) {
-            if (rootId != null) scopedIds.addAll(resolveSubtreeIds(rootId));
-        }
+        List<UUID> validRoots = roots.stream().filter(java.util.Objects::nonNull).sorted().toList();
+        Set<UUID> scopedIds = validRoots.isEmpty() ? new LinkedHashSet<>()
+                : new LinkedHashSet<>(categoryRepo.findSubtreeIdsFromRoots(validRoots));
         if (selected != null) scopedIds.retainAll(selected);
         return List.copyOf(scopedIds);
     }

@@ -173,7 +173,10 @@ class ScopedPagedRead<T> {
     bool current() => !_disposed && generation == _generation && isCurrent();
     Future<PagedResult<T>> fetch(int target) async {
       if (!current()) throw StateError('Paged read owner changed');
-      final result = await fetchPage(target);
+      final result = await PagedReadIntent.scopedRead(
+        current,
+        () => fetchPage(target),
+      );
       if (!current()) throw StateError('Paged read owner changed');
       return result;
     }

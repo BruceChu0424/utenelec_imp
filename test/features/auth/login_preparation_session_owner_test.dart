@@ -20,6 +20,7 @@ import 'package:uten_imp/core/security/auth_logout_fence.dart';
 import 'package:uten_imp/core/security/auth_refresh_lock.dart';
 import 'package:uten_imp/core/security/auth_token_issuer.dart';
 import 'package:uten_imp/core/security/secure_storage.dart';
+import 'package:uten_imp/core/security/tab_scoped_store.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/core/web_update/web_update_safety.dart';
 import 'package:uten_imp/features/auth/models/auth_session.dart';
@@ -240,6 +241,7 @@ Future<_Fixture> _open(WidgetTester tester) async {
   // case's process-global lock scope or exercising unrelated legacy adoption.
   final storage = SecureStorage(
     const FlutterSecureStorage(),
+    sessionScope: ProcessSessionScopedStore(),
     staffTokenRecordLock: AuthRefreshLock(
       'login-preparation-session-owner-fixture-$fixtureId',
     ),

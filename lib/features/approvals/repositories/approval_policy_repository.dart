@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/inputs/uten_employee_picker_models.dart';
 import '../../../core/network/api_client.dart';
+import '../../../shared/models/paged_result.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 
 class ApprovalDepartmentPolicy {
@@ -61,26 +62,32 @@ class ApprovalPolicyRepository {
       },
     ),
   );
-  Future<List<UtenEmployeePickerItem>> candidates(
-    String departmentId,
-    String? search,
-  ) async {
+  Future<UtenEmployeePickerPage> candidatesPage(
+    String contextDepartmentId,
+    String? search, {
+    int page = 1,
+    int size = 100,
+  }) async {
     final data = await api.get(
-      '$path/$departmentId/candidates',
-      query: {'search': ?search},
+      '$path/$contextDepartmentId/candidates/page',
+      query: {'search': ?search, 'page': page, 'size': size},
     );
-    return (data['items'] as List)
-        .map((raw) {
-          final row = Map<String, dynamic>.from(raw as Map);
-          return UtenEmployeePickerItem(
-            id: row['id'] as String,
-            name: row['name'] as String,
-            employeeCode: row['employeeCode'] as String?,
-            departmentId: row['departmentId'] as String?,
-            departmentName: row['departmentName'] as String?,
-          );
-        })
-        .toList(growable: false);
+    final result = await PagedResult.fromJsonResponsive(
+      data,
+      (row) => UtenEmployeePickerItem(
+        id: row['id'] as String,
+        name: row['name'] as String,
+        employeeCode: row['employeeCode'] as String?,
+        departmentId: row['departmentId'] as String?,
+        departmentName: row['departmentName'] as String?,
+      ),
+    );
+    if (result.page != page) throw const FormatException('审批候选分页响应无效');
+    return UtenEmployeePickerPage(
+      items: result.items,
+      page: result.page,
+      totalPages: result.totalPages,
+    );
   }
 }
 

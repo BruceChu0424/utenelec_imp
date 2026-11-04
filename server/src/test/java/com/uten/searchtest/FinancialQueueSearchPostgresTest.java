@@ -264,6 +264,61 @@ class FinancialQueueSearchPostgresTest {
         assertThat(ids()).containsExactly(literal);
     }
 
+    @Test void clientCandidateDepartmentPathsAndExclusionsApplyBeforeCountAndPage() {
+        UUID root = insert("departments", Map.of("code", "ROOT", "name", "祖先_%\\", "path", "/ROOT/"));
+        UUID child = insert("departments", Map.of("code", "CHILD", "name", "叶部门", "path", "/ROOT/CHILD/", "parent_id", root));
+        UUID outside = insert("departments", Map.of("code", "OUT", "name", "范围外", "path", "/OUT/"));
+        UUID selected = employee("Z", "张三", child, "active", false, true, false);
+        UUID excluded = employee("A", "张三助理", child, "active", false, true, false);
+        employee("OUT", "张三", outside, "active", false, true, false);
+        var service = service(ClientAccessService.class);
+        assertThat(service.candidates("祖先_%\\ 张三", 1, 1, root, true, List.of(excluded)).getTotal()).isEqualTo(1);
+        assertThat(ids()).containsExactly(selected);
+        assertThat(service.candidates("张三", 1, 1, root, false, List.of()).getTotal()).isZero();
+        executions.clear();
+        assertThat(service.candidates("张三", 1, 1, child, false, List.of(excluded)).getTotal()).isEqualTo(1);
+        assertThat(ids()).containsExactly(selected);
+    }
+
+    @Test void handoverDepartmentAndExclusionCannotExpandManagerScopeOrProtectedTargetRules() {
+        UUID manager = UUID.randomUUID();
+        UUID root = insert("departments", Map.of("code", "ROOT", "name", "祖先_%\\", "path", "/ROOT/",
+                "level", "一级部门", "manager_id", manager));
+        UUID child = insert("departments", Map.of("code", "CHILD", "name", "叶部门", "path", "/ROOT/CHILD/", "parent_id", root));
+        UUID outside = insert("departments", Map.of("code", "OUT", "name", "外部", "path", "/OUT/"));
+        UUID selected = employee("Z", "张三", child, "active", false, true, false);
+        UUID excluded = employee("A", "张三助理", child, "active", false, true, false);
+        employee("SUPER", "张三", child, "active", false, true, true);
+        employee("OFF", "张三", child, "offboarded", false, false, false);
+        employee("OUT", "张三", outside, "active", false, true, false);
+        var authorization = mock(EmployeeHandoverAuthorization.class);
+        when(authorization.candidateScope()).thenReturn(new EmployeeHandoverAuthorization.CandidateScope(false, manager));
+        var service = new DataHandoverCandidateService(em, authorization);
+        assertThat(service.search("target", "祖先_%\\ 张三", 1, 1, root, true, List.of(excluded)).total()).isEqualTo(1);
+        assertThat(ids()).containsExactly(selected);
+        assertThat(service.search("source", "张三", 1, 20, root, true, List.of(excluded)).total()).isEqualTo(2);
+        assertThat(service.search("target", "张三", 1, 20, outside, true, List.of()).total()).isZero();
+    }
+
+    @Test void zeroMatchClientCandidatesExecuteOnlyTheirAuthoritativeCount() {
+        var service=service(ClientAccessService.class);
+        var result=service.candidates("没有符合条件的候选",1,20);
+        assertThat(result.getTotal()).isZero();assertThat(result.getItems()).isEmpty();
+        assertThat(executions).hasSize(1);
+        assertThat(executions.getFirst().sql).contains("SELECT count(*)").doesNotContain("ORDER BY");
+    }
+
+    @Test void zeroMatchHandoverCandidatesKeepScopeValidationButSkipRows() {
+        var authorization=mock(EmployeeHandoverAuthorization.class);
+        when(authorization.candidateScope()).thenReturn(new EmployeeHandoverAuthorization.CandidateScope(true,owner));
+        var service=new DataHandoverCandidateService(em,authorization);
+        var result=service.search("target","没有符合条件的候选",1,20);
+        assertThat(result.total()).isZero();assertThat(result.items()).isEmpty();
+        verify(authorization).candidateScope();
+        assertThat(executions).hasSize(1);
+        assertThat(executions.getFirst().sql).contains("SELECT count(*)").doesNotContain("ORDER BY");
+    }
+
     private UUID iqc(String bill, String name, UUID actor, String status, String type, boolean deleted, int year) {
         UUID goods = insert("goods", Map.of("code", UUID.randomUUID().toString(), "name", name));
         UUID inspection = insert("procurement_inspection_items", Map.of("status", "FAILED"));

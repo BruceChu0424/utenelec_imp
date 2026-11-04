@@ -29,8 +29,10 @@ export 'uten_employee_selection_panel.dart';
 /// 供表格单元格等非表单场景点开即选；返回 null = 用户取消。
 Future<UtenEmployeePickerItem?> showUtenEmployeePickerPanel(
   BuildContext context, {
-  required UtenEmployeePickerLoader loader,
+  UtenEmployeePickerLoader? loader,
+  UtenEmployeePickerPagedLoader? pagedLoader,
   Future<List<DepartmentNode>> Function()? departmentTreeLoader,
+  bool cancelDepartmentTreeReadOnClose = false,
   UtenEmployeePickerPresentation presentation =
       UtenEmployeePickerPresentation.standard,
   String title = '选择员工',
@@ -44,7 +46,9 @@ Future<UtenEmployeePickerItem?> showUtenEmployeePickerPanel(
   final selection = await showUtenEmployeeSelectionPanel(
     context,
     loader: loader,
+    pagedLoader: pagedLoader,
     departmentTreeLoader: departmentTreeLoader,
+    cancelDepartmentTreeReadOnClose: cancelDepartmentTreeReadOnClose,
     presentation: presentation,
     title: title,
     selectedId: selectedId,
@@ -60,15 +64,19 @@ Future<UtenEmployeePickerItem?> showUtenEmployeePickerPanel(
 class UtenEmployeePicker extends StatefulWidget {
   const UtenEmployeePicker({
     super.key,
-    required this.loader,
+    this.loader,
+    this.pagedLoader,
     required this.onChanged,
     this.initial,
+    this.hydrateInitialSelection = true,
     this.enabled = true,
     this.label,
+    this.info,
     this.hint = '员工',
     this.validator,
     this.departmentName,
     this.departmentTreeLoader,
+    this.cancelDepartmentTreeReadOnClose = false,
     this.presentation = UtenEmployeePickerPresentation.standard,
     this.candidateScopeKey,
     this.showDepartmentFilter = true,
@@ -77,10 +85,11 @@ class UtenEmployeePicker extends StatefulWidget {
     this.emptyMessage = '未找到匹配的人员',
     this.emptyDescription,
     this.required = false,
-  });
+  }) : assert(loader != null || pagedLoader != null);
 
   /// 候选加载器（抽屉内搜索时调用）。
-  final UtenEmployeePickerLoader loader;
+  final UtenEmployeePickerLoader? loader;
+  final UtenEmployeePickerPagedLoader? pagedLoader;
 
   /// 选中变化回调。
   final ValueChanged<UtenEmployeePickerItem?> onChanged;
@@ -88,8 +97,13 @@ class UtenEmployeePicker extends StatefulWidget {
   /// 初始选中。
   final UtenEmployeePickerItem? initial;
 
+  /// An owning business wrapper may already resolve the exact ID. Candidate
+  /// search remains available when opening the picker, without a second label query.
+  final bool hydrateInitialSelection;
+
   final bool enabled;
   final String? label;
+  final String? info;
   final String hint;
 
   /// 表单校验（返回错误文案或 null）。
@@ -98,6 +112,10 @@ class UtenEmployeePicker extends StatefulWidget {
   /// 当前选择范围的部门名（抽屉标题下方提示，不参与人员主展示）。
   final String? departmentName;
   final Future<List<DepartmentNode>> Function()? departmentTreeLoader;
+
+  /// Opt in only for a new read owned by this panel. Shared futures/providers
+  /// keep their existing owner and must not be cancelled by one consumer.
+  final bool cancelDepartmentTreeReadOnClose;
   final UtenEmployeePickerPresentation presentation;
 
   /// Stable business scope, e.g. the chosen workshop ID. Loader closures can
@@ -167,6 +185,7 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
       value: selected == null ? null : aiSnapshotValue(selected.displayName),
       state: requiredEmpty ? AiFieldState.requiredEmpty : AiFieldState.normal,
       required: widget.required,
+      info: aiSnapshotValue(widget.info, AiSnapshotLimits.info),
     );
   }
 
@@ -186,7 +205,12 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
         widget.candidateScopeKey != oldWidget.candidateScopeKey ||
         widget.departmentName != oldWidget.departmentName ||
         widget.showDepartmentFilter != oldWidget.showDepartmentFilter;
-    if (initialChanged || scopeChanged || widget.enabled != oldWidget.enabled) {
+    final hydrationChanged =
+        widget.hydrateInitialSelection != oldWidget.hydrateInitialSelection;
+    if (initialChanged ||
+        scopeChanged ||
+        hydrationChanged ||
+        widget.enabled != oldWidget.enabled) {
       _fieldVersion++;
       _hydrateSerial++;
     }
@@ -213,12 +237,15 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
             )
           : next;
     }
-    if (initialChanged || scopeChanged) _hydrateSelectedIfNeeded();
+    if (initialChanged || scopeChanged || hydrationChanged) {
+      _hydrateSelectedIfNeeded();
+    }
   }
 
   /// 历史详情有时只带员工 id/姓名。复用当前 loader 按姓名补查一次工号，
   /// 让既有选中值也能升级为“姓名(工号)”；补查失败不阻塞表单。
   Future<void> _hydrateSelectedIfNeeded() async {
+    if (!widget.hydrateInitialSelection) return;
     final ticket = pickerAccess.capture();
     final request = ++_hydrateSerial;
     final target = _selected;
@@ -227,7 +254,13 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
     }
     try {
       final keyword = target.name.trim();
-      final items = await widget.loader(keyword.isEmpty ? null : keyword);
+      final items = widget.pagedLoader != null
+          ? (await widget.pagedLoader!(
+              UtenEmployeePickerQuery(
+                keyword: keyword.isEmpty ? null : keyword,
+              ),
+            )).items
+          : await widget.loader!(keyword.isEmpty ? null : keyword);
       if (!mounted ||
           !ticket.isCurrent ||
           request != _hydrateSerial ||
@@ -257,7 +290,9 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
     final selection = await showUtenEmployeeSelectionPanel(
       context,
       loader: widget.loader,
+      pagedLoader: widget.pagedLoader,
       departmentTreeLoader: widget.departmentTreeLoader,
+      cancelDepartmentTreeReadOnClose: widget.cancelDepartmentTreeReadOnClose,
       presentation: widget.presentation,
       title: widget.sheetTitle,
       initialSelection: [?_selected],
@@ -317,10 +352,11 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
                   InputDecoration(
                     label: widget.label == null
                         ? null
-                        : requiredLabel(
+                        : fieldLabel(
                             widget.label!,
                             theme,
                             required: widget.required,
+                            info: widget.info,
                             base: theme.inputDecorationTheme.labelStyle,
                           ),
                     hintText: widget.hint,

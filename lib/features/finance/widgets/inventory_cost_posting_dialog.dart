@@ -588,19 +588,6 @@ class _InventoryCostPostingDialogState
                 runSpacing: UtenSpacing.s8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  UtenDateRangeSelectionButton(
-                    from: _from,
-                    to: _to,
-                    enabled: !_busy,
-                    helpText: '选择成本来源日期范围',
-                    onChanged: (start, end) {
-                      setState(() {
-                        _from = ChinaDateTime.dateOnly(start!);
-                        _to = ChinaDateTime.dateOnly(end!);
-                      });
-                      return _load();
-                    },
-                  ),
                   UtenButton(
                     type: UtenButtonType.secondary,
                     onPressed: _busy ? null : _load,
@@ -697,6 +684,21 @@ class _InventoryCostPostingDialogState
                 child: MasterDataTableView<Map<String, dynamic>>(
                   expensiveRowMounts: false,
                   tableKey: 'finance.inventory_cost_posting',
+                  toolbarActions: [
+                    UtenDateRangeSelectionButton(
+                      from: _from,
+                      to: _to,
+                      enabled: !_busy,
+                      helpText: '选择成本来源日期范围',
+                      onChanged: (start, end) {
+                        setState(() {
+                          _from = ChinaDateTime.dateOnly(start!);
+                          _to = ChinaDateTime.dateOnly(end!);
+                        });
+                        return _load();
+                      },
+                    ),
+                  ],
                   columns: columns,
                   items: _rows,
                   facets: const {},

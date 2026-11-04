@@ -4,6 +4,7 @@ import 'package:collection/collection.dart';
 
 import '../../core/network/api_exception.dart';
 import '../../shared/models/paged_result.dart';
+import '../../shared/paging/paged_read_intent.dart';
 import 'paged_read_ahead_policy.dart';
 
 /// Complete response adapters may retire cached pages when their schema or
@@ -105,16 +106,23 @@ class PagedReadCache<T> {
     if (pending != null) return pending;
     final generation = _generation;
     late final Future<PagedResult<T>> request;
-    request = Future<PagedResult<T>>.sync(fetch)
-        .then((result) {
-          if (generation == _generation) accept(result);
-          return result;
-        })
-        .whenComplete(() {
-          if (generation == _generation && identical(_pending[page], request)) {
-            _pending.remove(page);
-          }
-        });
+    request =
+        Future<PagedResult<T>>.sync(
+              () => PagedReadIntent.scopedRead(
+                () => generation == _generation,
+                fetch,
+              ),
+            )
+            .then((result) {
+              if (generation == _generation) accept(result);
+              return result;
+            })
+            .whenComplete(() {
+              if (generation == _generation &&
+                  identical(_pending[page], request)) {
+                _pending.remove(page);
+              }
+            });
     _pending[page] = request;
     return request;
   }

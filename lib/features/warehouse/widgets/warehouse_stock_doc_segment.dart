@@ -735,17 +735,7 @@ class _WarehouseStockDocSegmentState
                 ),
               ),
               // 历史单据段时间行。
-              if (seg?.history == true)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
-                  child: UtenHistoryTimeFilter(
-                    key: Key(
-                      'stock-doc-segment-history-time-${widget.docType.code}',
-                    ),
-                    value: _historyTime,
-                    onChanged: _onHistoryTime,
-                  ),
-                ),
+
               // 总结行：左「共 N 条」右「新建」。
               Padding(
                 padding: const EdgeInsets.only(bottom: UtenSpacing.s8),
@@ -784,9 +774,27 @@ class _WarehouseStockDocSegmentState
                   description: '分类默认不选中；历史单据需先选时间段或「全部」',
                 )
               : seg.history && _historyTime.isNone
-              ? const UtenHistoryTimePlaceholder()
+              ? UtenHistoryTimePlaceholder(
+                  controls: UtenHistoryTimeFilter(
+                    key: Key(
+                      'stock-doc-segment-history-time-${widget.docType.code}',
+                    ),
+                    value: _historyTime,
+                    onChanged: _onHistoryTime,
+                  ),
+                )
               : _withFormDraftRows(
                   MasterDataTableView<StockDocListItem>(
+                    toolbarLeadingActions: [
+                      if (seg.history)
+                        UtenHistoryTimeFilter(
+                          key: Key(
+                            'stock-doc-segment-history-time-${widget.docType.code}',
+                          ),
+                          value: _historyTime,
+                          onChanged: _onHistoryTime,
+                        ),
+                    ],
                     rowsController: _tableRows,
                     paginationRevision: _list.paginationRevision,
                     refreshedPages: _list.refreshedPages,

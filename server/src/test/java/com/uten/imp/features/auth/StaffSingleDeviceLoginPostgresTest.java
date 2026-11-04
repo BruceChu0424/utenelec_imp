@@ -35,6 +35,7 @@ class StaffSingleDeviceLoginPostgresTest {
         jdbc = new JdbcTemplate(ds);
         SystemSettingsService settings = mock(SystemSettingsService.class);
         when(settings.readLong(SystemSettingKey.JWT_REFRESH_TTL_DAYS)).thenReturn(7L);
+        when(settings.readInt(SystemSettingKey.SESSION_IDLE_TIMEOUT_MINUTES)).thenReturn(30);
         sessions = new AuthSessionService(new NamedParameterJdbcTemplate(ds), settings, Clock.systemUTC());
     }
 
@@ -111,5 +112,26 @@ class StaffSingleDeviceLoginPostgresTest {
         assertThat(verdict.replacedByLogin()).isTrue();
         assertThat(verdict.replacedNotice())
                 .isEqualTo("账号已在「网页端 · Chrome」登录，本设备已自动下线");
+    }
+
+    @Test
+    void realReplacementCompletesOldWatchAndOwnerMismatchCannotObserveItsDetails() {
+        UUID account = user("watched");
+        UUID colleague = user("watch-colleague");
+        var first = sessions.openStaffSession(account, "Windows 客户端");
+        var colleagueSession = sessions.openStaffSession(colleague, "另一员工");
+        var watches = new SessionWatchService(sessions);
+        sessions.setEvents(event -> watches.replaced((AuthSessionService.ReplacedSessions) event));
+        var old = watches.watch(first.sid(), account);
+        var kept = watches.watch(colleagueSession.sid(), colleague);
+        assertThat(old.hasResult()).isFalse();
+
+        var replacement = sessions.openStaffSession(account, "Android 客户端");
+
+        assertThat(((SessionWatchService.Response) old.getResult()).code()).isEqualTo("SESSION_REPLACED");
+        assertThat(kept.hasResult()).isFalse();
+        assertThat(sessions.evaluateStaffWatches(java.util.Map.of(first.sid(), colleague))).isEmpty();
+        assertThat(sessions.evaluateStaffWatches(java.util.Map.of(replacement.sid(), account))
+                .get(replacement.sid()).verdict()).isEqualTo(AuthSessionService.Verdict.ACTIVE);
     }
 }

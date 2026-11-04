@@ -99,51 +99,72 @@ void main() {
     expect(captured.data, isNull);
   });
 
-  test('provisionCandidates parses the minimal candidate payload', () async {
-    late RequestOptions captured;
-    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
-    dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (request, handler) {
-          captured = request;
-          handler.resolve(
-            Response<dynamic>(
-              requestOptions: request,
-              statusCode: 200,
-              data: const [
-                {
-                  'employeeId': 'emp-1',
-                  'name': '张三',
-                  'code': 'UT0001',
-                  'departmentName': '生产部',
-                  'hasPhone': true,
+  test(
+    'provisionCandidatesPage keeps readiness facts and reads one bounded department page',
+    () async {
+      late RequestOptions captured;
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            captured = request;
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: const {
+                  'items': [
+                    {
+                      'employeeId': 'emp-1',
+                      'name': '张三',
+                      'code': 'UT0001',
+                      'departmentName': '生产部',
+                      'hasPhone': true,
+                    },
+                    {
+                      'employeeId': 'emp-2',
+                      'name': '李四',
+                      'code': 'UT0002',
+                      'departmentName': null,
+                      'hasPhone': false,
+                    },
+                  ],
+                  'page': 2,
+                  'size': 100,
+                  'total': 6001,
+                  'totalPages': 61,
                 },
-                {
-                  'employeeId': 'emp-2',
-                  'name': '李四',
-                  'code': 'UT0002',
-                  'departmentName': null,
-                  'hasPhone': false,
-                },
-              ],
-            ),
-          );
-        },
-      ),
-    );
+              ),
+            );
+          },
+        ),
+      );
 
-    final repository = DioAdminRepository(ApiClient(dio));
-    final candidates = await repository.provisionCandidates(search: '张');
+      final repository = DioAdminRepository(ApiClient(dio));
+      final candidates = await repository.provisionCandidatesPage(
+        search: ' 张 ',
+        page: 2,
+        departmentId: 'department-1',
+        includeSubtree: true,
+      );
 
-    expect(captured.method, 'GET');
-    expect(captured.uri.path, '/api/admin/users/provision-candidates');
-    expect(captured.uri.queryParameters, const {'search': '张'});
-    expect(candidates, hasLength(2));
-    expect(candidates.first.employeeId, 'emp-1');
-    expect(candidates.first.provisionable, isTrue);
-    expect(candidates.last.provisionable, isFalse);
-    expect(candidates.last.missingHint, '缺手机号');
-  });
+      expect(captured.method, 'GET');
+      expect(captured.uri.path, '/api/admin/users/provision-candidates/page');
+      expect(captured.uri.queryParameters, const {
+        'search': '张',
+        'page': '2',
+        'size': '100',
+        'departmentId': 'department-1',
+        'includeSubtree': 'true',
+      });
+      expect(candidates.totalPages, 61);
+      expect(candidates.items, hasLength(2));
+      expect(candidates.items.first.employeeId, 'emp-1');
+      expect(candidates.items.first.provisionable, isTrue);
+      expect(candidates.items.last.provisionable, isFalse);
+      expect(candidates.items.last.missingHint, '缺手机号');
+    },
+  );
 
   test('resetPassword rejects an empty or missing secret', () async {
     for (final response in <Map<String, dynamic>>[

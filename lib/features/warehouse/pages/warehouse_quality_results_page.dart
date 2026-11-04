@@ -697,12 +697,26 @@ class _WarehouseQualityResultsPageState
         ),
         body: !_shouldLoad
             ? (_statusSeg != null && _statusSeg!.history
-                  ? const UtenHistoryTimePlaceholder()
+                  ? UtenHistoryTimePlaceholder(
+                      controls: UtenHistoryTimeFilter(
+                        key: const Key('warehouse-quality-result-history-time'),
+                        value: _historyTime,
+                        onChanged: _onHistoryTime,
+                      ),
+                    )
                   : const UtenFilterPlaceholder(
                       message: '在上方选择作业阶段后开始办理',
                       description: '采购与委外任务一起显示，可在表头筛选来源类型',
                     ))
             : MasterDataTableView<WarehouseQualityResultTask>(
+                toolbarLeadingActions: [
+                  if (_statusSeg?.history == true)
+                    UtenHistoryTimeFilter(
+                      key: const Key('warehouse-quality-result-history-time'),
+                      value: _historyTime,
+                      onChanged: _onHistoryTime,
+                    ),
+                ],
                 rowsController: _readingRows,
                 expensiveRowMounts: false,
                 tableKey:
@@ -995,14 +1009,6 @@ class _WarehouseQualityResultsPageState
             ),
           ),
         ),
-        if (seg?.history == true) ...[
-          const SizedBox(height: UtenFilterRow.rowGap),
-          UtenHistoryTimeFilter(
-            key: const Key('warehouse-quality-result-history-time'),
-            value: _historyTime,
-            onChanged: _onHistoryTime,
-          ),
-        ],
       ],
     );
   }

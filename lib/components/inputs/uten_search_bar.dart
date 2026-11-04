@@ -45,6 +45,7 @@ class UtenSearchBar extends StatefulWidget {
     this.onInputChanged,
     this.onChanged,
     this.onSubmitted,
+    this.isQueryPending,
     this.autofocus = false,
     this.debounce = const Duration(milliseconds: 300),
     this.controller,
@@ -66,6 +67,11 @@ class UtenSearchBar extends StatefulWidget {
   final ValueChanged<String>? onInputChanged;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
+
+  /// True only while this exact query has an active read owned by the host.
+  /// Text being debounced or a query which already completed is not pending.
+  /// Hosts without this predicate retain explicit submission semantics.
+  final bool Function(String text)? isQueryPending;
   final bool autofocus;
   final Duration debounce;
   final TextEditingController? controller;
@@ -203,14 +209,16 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
   void _onControllerValueChanged() {
     final held = _heldByComposition;
     if (held == null) return;
-    if (_controller.value.composing != TextRange.empty) return;
+    final composing = _controller.value.composing;
+    if (composing.isValid && !composing.isCollapsed) return;
     if (_controller.text != held) return;
     _heldByComposition = null;
     _dispatch(held);
   }
 
   void _onChanged(String value) {
-    if (_controller.value.composing != TextRange.empty) {
+    final composing = _controller.value.composing;
+    if (composing.isValid && !composing.isCollapsed) {
       // 拼音组合中：挂起回调（不清文本），等组合结束统一派发。
       _debounce?.cancel();
       _heldByComposition = value;
@@ -222,6 +230,10 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
   }
 
   void _dispatch(String value) {
+    if (_inputText == value &&
+        (_appliedText == value || (_debounce?.isActive ?? false))) {
+      return;
+    }
     _debounce?.cancel();
     _inputText = value;
     widget.onInputChanged?.call(value);
@@ -232,6 +244,25 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
         widget.onChanged!(value);
       }
     });
+    setState(() {});
+  }
+
+  void _submit(String value) {
+    final composing = _controller.value.composing;
+    if (composing.isValid && !composing.isCollapsed) return;
+    _debounce?.cancel();
+    _heldByComposition = null;
+    if (_inputText != value) {
+      _inputText = value;
+      widget.onInputChanged?.call(value);
+    }
+    if (widget.isQueryPending?.call(value) ?? false) return;
+    _appliedText = value;
+    if (widget.onSubmitted != null) {
+      widget.onSubmitted!(value);
+    } else {
+      widget.onChanged?.call(value);
+    }
     setState(() {});
   }
 
@@ -314,13 +345,9 @@ class _UtenSearchBarState extends State<UtenSearchBar> {
       autofocus: autofocus ?? widget.autofocus,
       onChanged: _onChanged,
       // 回车即查：先取消挂起的防抖回调，避免回车查完 ~300ms 后防抖又重查一次。
-      onSubmitted: widget.onSubmitted == null
+      onSubmitted: widget.onSubmitted == null && widget.onChanged == null
           ? null
-          : (value) {
-              _debounce?.cancel();
-              _appliedText = value;
-              widget.onSubmitted!(value);
-            },
+          : _submit,
       textInputAction: TextInputAction.search,
       decoration: _decoration(context, theme),
       style: widget.dense

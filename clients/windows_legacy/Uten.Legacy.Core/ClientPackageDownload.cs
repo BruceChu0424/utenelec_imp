@@ -93,7 +93,7 @@ namespace Uten.Legacy.Core
                                             owned = await EnsureAccessAsync(scope, true, owned, token).ConfigureAwait(false);
                                             continue; // Safe GET replay only: no package bytes have been written.
                                         }
-                                        if (failure.Code != "VALIDATION_FAILED" && IsDefinitiveRejection(failure)) RejectCurrent(scope, owned);
+                                        if (failure.Code != "VALIDATION_FAILED" && IsDefinitiveRejection(failure)) RejectCurrent(scope, owned, failure);
                                         throw failure;
                                     }
                                     if (!sink.Completed)

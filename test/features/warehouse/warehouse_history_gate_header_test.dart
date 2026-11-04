@@ -14,7 +14,9 @@ void main() {
         home: Scaffold(
           body: WarehouseHistoryGate(
             externalHeader: const Text('分类栏-委外成品退货'),
-            builder: (time) => Text(time.isNone ? '列表-未选' : '列表-已选'),
+            builder: (time, timeAction) => Column(
+              children: [timeAction, Text(time.isNone ? '列表-未选' : '列表-已选')],
+            ),
           ),
         ),
       ),

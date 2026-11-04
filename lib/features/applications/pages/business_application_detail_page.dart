@@ -5,7 +5,8 @@ import '../../../components/buttons/uten_button.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_dialog.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
-import '../../../components/inputs/uten_input_decoration.dart';
+import '../../../components/inputs/uten_search_bar.dart';
+import '../../../shared/paging/paged_read_intent.dart';
 import '../../../components/inputs/uten_date_field.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/models/paged_result.dart';
@@ -995,6 +996,11 @@ class _PaymentRecordPickerState extends ConsumerState<_PaymentRecordPicker>
   bool _loading = false;
   String? _error;
   int _generation = 0;
+  int? _activeSearchGeneration;
+  String? _activeSearchKeyword;
+  bool _isQueryPending(String value) =>
+      _activeSearchGeneration == _generation &&
+      _activeSearchKeyword == value.trim();
   int _page = 1;
   int _pages = 1;
   String? _selectionToRestore;
@@ -1266,51 +1272,60 @@ class _PaymentRecordPickerState extends ConsumerState<_PaymentRecordPicker>
     if (_confirming || _cashPrepayment) return;
     final generation = ++_generation;
     final scope = ref.read(authenticatedScopeProvider);
+    final keyword = _search.text.trim();
+    bool current() =>
+        mounted &&
+        generation == _generation &&
+        scope == ref.read(authenticatedScopeProvider);
+    _activeSearchGeneration = generation;
+    _activeSearchKeyword = keyword;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final PagedResult<FinanceDocListItem> result;
-      if (_linkFinance) {
-        final json = await ref
-            .read(businessApplicationRepositoryProvider)
-            .prepaymentFinanceCandidates(
-              widget.application.id,
-              page: page,
-              keyword: _search.text.trim(),
-            );
-        result = await PagedResult.fromJsonResponsive(json, (row) {
-          // The neutral application candidate DTO supplies an exact text
-          // amount; adapt it to the existing finance row without a double.
-          final value = FinanceDocListItem.fromJson({
-            ...row,
-            'amountLocalExact':
-                row['amountLocalExact'] ?? row['amountLocalText'],
+      final result = await PagedReadIntent.scopedRead(current, () async {
+        final PagedResult<FinanceDocListItem> result;
+        if (_linkFinance) {
+          final json = await ref
+              .read(businessApplicationRepositoryProvider)
+              .prepaymentFinanceCandidates(
+                widget.application.id,
+                page: page,
+                keyword: keyword,
+              );
+          result = await PagedResult.fromJsonResponsive(json, (row) {
+            // The neutral application candidate DTO supplies an exact text
+            // amount; adapt it to the existing finance row without a double.
+            final value = FinanceDocListItem.fromJson({
+              ...row,
+              'amountLocalExact':
+                  row['amountLocalExact'] ?? row['amountLocalText'],
+            });
+            if (value.amountLocalText == null ||
+                value.amountLocalText!.isEmpty) {
+              throw const FormatException('预付账务候选金额未完整返回，暂不能选择');
+            }
+            return value;
           });
-          if (value.amountLocalText == null || value.amountLocalText!.isEmpty) {
-            throw const FormatException('预付账务候选金额未完整返回，暂不能选择');
-          }
-          return value;
-        });
-      } else {
-        result = await ref
-            .read(financeRepositoryProvider(_type))
-            .list(
-              page: page,
-              size: 24,
-              filter: FinanceDocFilter(
-                status: 1,
-                keyword: _search.text.trim(),
-                partyId: _type == FinanceDocType.payment
-                    ? widget.application.fields['supplierId'] as String?
-                    : null,
-              ),
-            );
-      }
-      if (!mounted ||
-          generation != _generation ||
-          scope != ref.read(authenticatedScopeProvider)) {
+        } else {
+          result = await ref
+              .read(financeRepositoryProvider(_type))
+              .list(
+                page: page,
+                size: 24,
+                filter: FinanceDocFilter(
+                  status: 1,
+                  keyword: keyword,
+                  partyId: _type == FinanceDocType.payment
+                      ? widget.application.fields['supplierId'] as String?
+                      : null,
+                ),
+              );
+        }
+        return result;
+      });
+      if (!current()) {
         return;
       }
       setState(() {
@@ -1322,11 +1337,15 @@ class _PaymentRecordPickerState extends ConsumerState<_PaymentRecordPicker>
         _pages = result.totalPages;
       });
     } catch (error) {
-      if (mounted && generation == _generation) {
+      if (current()) {
         setState(() => _error = '财务单据读取失败，请重试');
       }
     } finally {
-      if (mounted && generation == _generation) {
+      if (_activeSearchGeneration == generation) {
+        _activeSearchGeneration = null;
+        _activeSearchKeyword = null;
+      }
+      if (current()) {
         setState(() => _loading = false);
       }
     }
@@ -1435,15 +1454,32 @@ class _PaymentRecordPickerState extends ConsumerState<_PaymentRecordPicker>
                               ],
                             ),
                           const SizedBox(height: UtenSpacing.s12),
-                          TextField(
-                            controller: _search,
-                            enabled: !_confirming,
-                            decoration: const UtenInputDecoration(
-                              InputDecoration(labelText: '搜索财务单号'),
-                              info:
-                                  '仅关联已经审核入账且金额一致的财务记录，不会再次扣款。同一财务单不能重复关联多个申请。',
-                            ),
-                            onSubmitted: (_) => _load(),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: AbsorbPointer(
+                                  absorbing: _confirming,
+                                  child: ExcludeFocus(
+                                    excluding: _confirming,
+                                    child: UtenSearchBar(
+                                      key: const Key(
+                                        'application-finance-candidate-search',
+                                      ),
+                                      controller: _search,
+                                      hint: '搜索财务单号',
+                                      isQueryPending: _isQueryPending,
+                                      onSubmitted: (_) {
+                                        if (!_confirming) _load();
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const UtenFieldHintIcon(
+                                info:
+                                    '仅关联已经审核入账且金额一致的财务记录，不会再次扣款。同一财务单不能重复关联多个申请。',
+                              ),
+                            ],
                           ),
                           const SizedBox(height: UtenSpacing.s8),
                           UtenButton(

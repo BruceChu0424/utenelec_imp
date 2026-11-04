@@ -24,6 +24,25 @@ void main() {
   });
   tearDown(UserActivity.reset);
 
+  test(
+    'session observer never extends idle time even immediately after input',
+    () async {
+      final adapter = _Adapter();
+      final dio = _dio(adapter);
+      UserActivity.record();
+      await dio.get<dynamic>(
+        '/auth/session/watch',
+        options: Options(
+          extra: {AutomaticRequestInterceptor.forceAutomaticKey: true},
+        ),
+      );
+      expect(
+        adapter.sent.single.headers[AutomaticRequestInterceptor.header],
+        '1',
+      );
+    },
+  );
+
   test('没有任何输入: 页面自己发的请求都声明为自动请求', () async {
     final adapter = _Adapter();
     final dio = _dio(adapter);

@@ -39,6 +39,7 @@ import '../../../core/responsive/display_zoom.dart';
 import '../../../core/router/page_resume_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/router/compact_navigation_policy.dart';
+import '../../../core/router/entry_page_scrollbar.dart';
 import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../dashboard/pages/dashboard_page.dart';
 import '../../dashboard/providers/dashboard_overview_provider.dart';
@@ -166,44 +167,47 @@ class _MainShellPageState extends ConsumerState<MainShellPage>
   /// 替代旧 PageView：避免点击非相邻 Tab 时「滚过」中间页闪烁
   /// （工作台→我的 不再闪过通知；工作台→设置 不再闪过中间两页）。
   Widget _slidingTabs({required int? tabIndex}) {
-    return UtenSlidingTabView(
-      index: tabIndex,
-      position: _position,
-      onChanged: _onTabChanged,
-      // compact：横滑手势 + 左右滑动转场（手机 PageView 直觉）；
-      // rail 桌面：都关——点 Tab 即时切换，避免大屏整页横移突兀，也不开横滑手势。
-      swipeEnabled: context.breakpoint.isCompact,
-      animated: context.breakpoint.isCompact,
-      children: [
-        _KeepAlivePage(
-          child: UtenPageLayoutDomainScope(
-            domain: _MainShellTabLayoutDomain.dashboard,
-            active: tabIndex == 0,
-            child: const DashboardPage(),
+    return UtenEntryPageScrollbar(
+      location: RouteName.dashboard,
+      child: UtenSlidingTabView(
+        index: tabIndex,
+        position: _position,
+        onChanged: _onTabChanged,
+        // compact：横滑手势 + 左右滑动转场（手机 PageView 直觉）；
+        // rail 桌面：都关——点 Tab 即时切换，避免大屏整页横移突兀，也不开横滑手势。
+        swipeEnabled: context.breakpoint.isCompact,
+        animated: context.breakpoint.isCompact,
+        children: [
+          _KeepAlivePage(
+            child: UtenPageLayoutDomainScope(
+              domain: _MainShellTabLayoutDomain.dashboard,
+              active: tabIndex == 0,
+              child: const DashboardPage(),
+            ),
           ),
-        ),
-        _KeepAlivePage(
-          child: UtenPageLayoutDomainScope(
-            domain: _MainShellTabLayoutDomain.notice,
-            active: tabIndex == 1,
-            child: const NoticeListPage(),
+          _KeepAlivePage(
+            child: UtenPageLayoutDomainScope(
+              domain: _MainShellTabLayoutDomain.notice,
+              active: tabIndex == 1,
+              child: const NoticeListPage(),
+            ),
           ),
-        ),
-        _KeepAlivePage(
-          child: UtenPageLayoutDomainScope(
-            domain: _MainShellTabLayoutDomain.profile,
-            active: tabIndex == 2,
-            child: const ProfilePage(),
+          _KeepAlivePage(
+            child: UtenPageLayoutDomainScope(
+              domain: _MainShellTabLayoutDomain.profile,
+              active: tabIndex == 2,
+              child: const ProfilePage(),
+            ),
           ),
-        ),
-        _KeepAlivePage(
-          child: UtenPageLayoutDomainScope(
-            domain: _MainShellTabLayoutDomain.settings,
-            active: tabIndex == 3,
-            child: const SettingsPage(),
+          _KeepAlivePage(
+            child: UtenPageLayoutDomainScope(
+              domain: _MainShellTabLayoutDomain.settings,
+              active: tabIndex == 3,
+              child: const SettingsPage(),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 

@@ -7,6 +7,7 @@
 import '../models/uten_tree_node.dart';
 import '../models/paged_result.dart';
 import '../search/keyword_search.dart';
+import '../paging/paged_read_intent.dart';
 
 /// 节点名称或编号含 q 的节点 + 其全部祖先 +（自身命中时）其全部后代 的 id 集合。
 ///
@@ -14,12 +15,13 @@ import '../search/keyword_search.dart';
 /// 也要在集合里，树组件据此自动展开路径。自身命中的节点其整子树都算相关（子分类也显示）。
 /// 名称/编号统一做 trim + 小写比较，避免桌面端输入英文编号时受大小写影响。
 Set<String> categoryHits<T extends UtenTreeNode<T>>(List<T> roots, String q) {
-  if (keywordSearchTerms(q).isEmpty) return <String>{};
+  final query = KeywordSearchQuery(q);
+  if (query.terms.isEmpty) return <String>{};
   final ids = <String>{};
   bool walk(List<T> nodes, bool inheritedHit) {
     var anyHit = false;
     for (final n in nodes) {
-      final selfHit = inheritedHit || matchesKeywordSearch([n.name, n.code], q);
+      final selfHit = inheritedHit || query.matches([n.name, n.code]);
       final childHit = walk(n.children, selfHit);
       if (selfHit || childHit) {
         ids.add(n.id);
@@ -66,13 +68,14 @@ String? shallowestHit<T extends UtenTreeNode<T>>(
   String q,
   Set<String> hits,
 ) {
-  if (keywordSearchTerms(q).isEmpty) return null;
+  final query = KeywordSearchQuery(q);
+  if (query.terms.isEmpty) return null;
   String? found;
   var bestRank = 1 << 20;
   var bestDepth = 1 << 20;
   void walk(List<T> nodes, int depth) {
     for (final node in nodes) {
-      final rank = keywordSearchRank([node.name, node.code], q);
+      final rank = query.rank([node.name, node.code]);
       if (hits.contains(node.id) &&
           rank != null &&
           (rank < bestRank || (rank == bestRank && depth < bestDepth))) {
@@ -224,10 +227,12 @@ Future<Set<String>?> collectPagedHierarchyCategoryIds<T>({
 }) async {
   if (!isCurrent()) return null;
 
-  var firstPage = seedPage;
-  if (firstPage == null) {
-    firstPage = await loadPage(1);
+  final PagedResult<T> firstPage;
+  if (seedPage == null) {
+    firstPage = await PagedReadIntent.scopedRead(isCurrent, () => loadPage(1));
     if (!isCurrent()) return null;
+  } else {
+    firstPage = seedPage;
   }
 
   final ids = <String>{};
@@ -244,7 +249,10 @@ Future<Set<String>?> collectPagedHierarchyCategoryIds<T>({
   for (var page = 1; page <= totalPages; page++) {
     if (page == seedPageNumber) continue;
     if (!isCurrent()) return null;
-    final result = await loadPage(page);
+    final result = await PagedReadIntent.scopedRead(
+      isCurrent,
+      () => loadPage(page),
+    );
     if (!isCurrent()) return null;
     collect(result);
     if (result.totalPages > totalPages) totalPages = result.totalPages;

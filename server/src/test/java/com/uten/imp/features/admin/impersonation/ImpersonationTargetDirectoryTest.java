@@ -13,8 +13,24 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 class ImpersonationTargetDirectoryTest {
+    @Test
+    void pageLoadsOneOriginalHrPageWithoutDroppingAccountFacts() {
+        var query = mock(EmployeeQueryService.class);
+        UUID department = UUID.randomUUID();
+        var row = employee(UUID.randomUUID(), department);
+        when(query.list(3, 20, "张", Set.of("active"), department, true, null, null))
+                .thenReturn(new PageResponse<>(List.of(row), 3, 20, 41, 3));
+        var service = new ImpersonationService(null, null, null, null, null, query);
+        var result = service.targetsPage("张", 3, 20, department, true);
+        assertEquals(41, result.getTotal());
+        assertEquals("locked", result.getItems().getFirst().accountStatus());
+        assertEquals(department, result.getItems().getFirst().departmentId());
+        verify(query).list(3, 20, "张", Set.of("active"), department, true, null, null);
+        verifyNoMoreInteractions(query);
+    }
     @Test
     void directoryLoadsLaterPagesAndRetainsDistinctDepartmentIdentities() {
         var query = mock(EmployeeQueryService.class);

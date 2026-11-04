@@ -1853,7 +1853,7 @@ class _WarehouseKeepersDialogState extends State<_WarehouseKeepersDialog> {
   bool _saving = false;
   String? _error;
 
-  /// 显示「姓名(工号)」; 副行带部门、账号状态与同名提示(重名员工按工号核对)。
+  /// 显示「姓名(工号)」，说明列保留部门、账号与同名事实。
   UtenEmployeePickerItem _itemOf(WarehouseKeeper keeper) {
     final l10n = AppLocalizations.of(context);
     final notes = [
@@ -1872,14 +1872,30 @@ class _WarehouseKeepersDialogState extends State<_WarehouseKeepersDialog> {
     );
   }
 
-  Future<List<UtenEmployeePickerItem>> _load(String? keyword) async {
-    if (!widget.isCurrent()) return const [];
-    final candidates = await widget.repository.candidates(keyword);
-    if (!mounted || !widget.isCurrent()) return const [];
-    for (final candidate in candidates) {
+  Future<UtenEmployeePickerPage> _load(UtenEmployeePickerQuery query) async {
+    if (!widget.isCurrent()) {
+      return UtenEmployeePickerPage.empty(page: query.page);
+    }
+    final candidates = await widget.repository.candidatesPage(
+      query.keyword,
+      page: query.page,
+      departmentId: query.departmentId,
+      includeSubtree: query.includeDepartmentSubtree,
+    );
+    if (!mounted || !widget.isCurrent()) {
+      return UtenEmployeePickerPage.empty(page: query.page);
+    }
+    if (candidates.page != query.page) {
+      throw const FormatException('仓库负责人候选分页已变化，请重新搜索');
+    }
+    for (final candidate in candidates.items) {
       _known[candidate.employeeId] = candidate;
     }
-    return [for (final candidate in candidates) _itemOf(candidate)];
+    return UtenEmployeePickerPage(
+      items: [for (final candidate in candidates.items) _itemOf(candidate)],
+      page: candidates.page,
+      totalPages: candidates.totalPages,
+    );
   }
 
   Future<void> _save() async {
@@ -1911,61 +1927,63 @@ class _WarehouseKeepersDialogState extends State<_WarehouseKeepersDialog> {
         if (_known[item.id]?.warningOf(l10n) case final warning?)
           '${item.name}: $warning',
     ];
-    return UtenAlertDialog(
-      title: Row(
-        children: [
-          Flexible(
-            child: Text(l10n.warehouseKeeperDialogTitle(widget.warehouseName)),
+    return Stack(
+      children: [
+        UtenAlertDialog(
+          title: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  l10n.warehouseKeeperDialogTitle(widget.warehouseName),
+                ),
+              ),
+              UtenFieldHintIcon(
+                info: l10n.warehouseKeeperRolesHint,
+                dense: true,
+              ),
+            ],
           ),
-          UtenFieldHintIcon(info: l10n.warehouseKeeperRolesHint, dense: true),
-        ],
-      ),
-      content: SizedBox(
-        width: 460,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            UtenEmployeeMultiPicker(
-              key: const Key('warehouse-keeper-picker'),
-              label: '负责人',
-              sheetTitle: '选择仓库负责人',
-              initialSelection: _selection,
-              enabled: !_saving,
-              loader: _load,
-              onChanged: (next) => setState(() => _selection = next),
-            ),
-            for (final warning in warnings)
-              Padding(
-                padding: const EdgeInsets.only(top: UtenSpacing.s4),
-                child: Text(
-                  warning,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.error,
+          content: SizedBox(
+            width: 460,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                UtenEmployeeMultiPicker(
+                  key: const Key('warehouse-keeper-picker'),
+                  label: '负责人',
+                  sheetTitle: '选择仓库负责人',
+                  initialSelection: _selection,
+                  enabled: !_saving,
+                  pagedLoader: _load,
+                  info: warnings.isEmpty ? null : warnings.join('\n'),
+                  onChanged: (next) => setState(() => _selection = next),
+                ),
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                    child: Text(
+                      _error!,
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
                   ),
-                ),
-              ),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: UtenSpacing.s8),
-                child: Text(
-                  _error!,
-                  style: TextStyle(color: theme.colorScheme.error),
-                ),
-              ),
+              ],
+            ),
+          ),
+          actionsAlignment: MainAxisAlignment.center,
+          actions: [
+            TextButton(
+              onPressed: _saving ? null : () => Navigator.of(context).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: _saving ? null : _save,
+              child: Text(_saving ? '保存中…' : '保存'),
+            ),
           ],
         ),
-      ),
-      actionsAlignment: MainAxisAlignment.center,
-      actions: [
-        TextButton(
-          onPressed: _saving ? null : () => Navigator.of(context).pop(),
-          child: const Text('取消'),
-        ),
-        FilledButton(
-          onPressed: _saving ? null : _save,
-          child: Text(_saving ? '保存中…' : '保存'),
-        ),
+        if (_saving)
+          const UtenBusyOverlay(title: '正在保存仓库负责人', showDoNotLeaveHint: false),
       ],
     );
   }

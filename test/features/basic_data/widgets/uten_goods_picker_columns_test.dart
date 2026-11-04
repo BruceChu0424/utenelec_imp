@@ -65,51 +65,130 @@ void main() {
   });
 
   test(
-    'column filters survive every bounded root batch for both rows and category location',
+    'large column-search scopes use one full-root POST page and small scopes retain GET',
     () async {
-      final api = _ColumnApi();
-      final repository = DioGoodsRepository(api);
-      final roots = {for (var index = 0; index < 33; index++) 'root-$index'};
+      final requests = <RequestOptions>[];
+      final data = _ColumnApi();
+      final dio = Dio(BaseOptions(baseUrl: 'https://goods.test/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (request, handler) {
+            requests.add(request);
+            final query = <String, dynamic>{...request.queryParameters};
+            if (request.method == 'POST') {
+              final body = Map<String, dynamic>.from(request.data as Map);
+              final filter = Map<String, dynamic>.from(body['filter'] as Map);
+              final columns = Map<String, dynamic>.from(
+                filter.remove('columnSearch') as Map,
+              );
+              query.addAll(filter);
+              for (final entry in columns.entries) {
+                query['search.${entry.key}'] = entry.value;
+              }
+              for (final key in ['page', 'size', 'sort', 'order']) {
+                if (body.containsKey(key)) query[key] = body[key];
+              }
+            }
+            final rows = data._rows(query);
+            final page = query['page'] as int? ?? 1;
+            final size = query['size'] as int? ?? 100;
+            handler.resolve(
+              Response<dynamic>(
+                requestOptions: request,
+                statusCode: 200,
+                data: request.path.endsWith('/search-category-ids')
+                    ? rows
+                          .map((row) => row['categoryId'] as String)
+                          .toSet()
+                          .toList()
+                    : {
+                        'items': rows
+                            .skip((page - 1) * size)
+                            .take(size)
+                            .toList(),
+                        'page': page,
+                        'size': size,
+                        'total': rows.length,
+                        'totalPages': (rows.length / size).ceil(),
+                      },
+              ),
+            );
+          },
+        ),
+      );
+      final repository = DioGoodsRepository(ApiClient(dio));
+      final roots = {
+        'material',
+        for (var index = 0; index < 32; index++) 'root-$index',
+      };
       const filters = {'search.series': '5m', 'search.name': '开关'};
       final result = await repository.searchColumns(
         '开关',
         filters: filters,
         categoryRootIds: roots,
+        page: 2,
+        size: 1,
         excludeDisabled: true,
         excludeStub: true,
+        sort: 'code',
+        order: 'asc',
+      );
+      final locations = await repository.searchColumnCategoryIds(
+        '开关',
+        filters: filters,
+        categoryRootIds: roots,
+        excludeDisabled: true,
+        excludeStub: true,
+      );
+      expect(requests, hasLength(2));
+      expect(requests.map((request) => request.method), everyElement('POST'));
+      expect(requests.map((request) => request.path), [
+        '/master/goods/search',
+        '/master/goods/search-category-ids',
+      ]);
+      for (final request in requests) {
+        expect(request.queryParameters, isEmpty);
+        final filter = Map<String, dynamic>.from(
+          (request.data as Map)['filter'] as Map,
+        );
+        expect(filter['columnSearch'], {'series': '5m', 'name': '开关'});
+        expect(filter['categoryRootIds'], roots.toList()..sort());
+        expect(filter['excludeDisabled'], true);
+        expect(filter['excludeStub'], true);
+      }
+      expect((requests.first.data as Map)['page'], 2);
+      expect((requests.first.data as Map)['size'], 1);
+      expect((requests.first.data as Map)['sort'], 'code');
+      expect((requests.first.data as Map)['order'], 'asc');
+      expect(result.items.single.id, 'white');
+      expect(result.page, 2);
+      expect(result.total, 2);
+      expect(result.totalPages, 2);
+      expect(locations, {'material'});
+      final small = await repository.searchColumns(
+        '开关',
+        filters: filters,
+        categoryRootIds: {'material'},
+        size: 1,
         sort: 'code',
         order: 'asc',
       );
       await repository.searchColumnCategoryIds(
         '开关',
         filters: filters,
-        categoryRootIds: roots,
-        excludeDisabled: true,
-        excludeStub: true,
+        categoryRootIds: {'material'},
       );
-      expect(result.total, 0);
-      expect(api.reads, hasLength(2));
-      expect(api.locations, hasLength(2));
-      for (final request in [...api.reads, ...api.locations]) {
-        expect(request['search.series'], '5m');
-        expect(request['search.name'], '开关');
-        expect(
-          (request['categoryRootIds'] as List).length,
-          inInclusiveRange(1, 32),
-        );
-        expect(request['excludeDisabled'], isTrue);
-        expect(request['excludeStub'], isTrue);
-      }
+      expect(requests, hasLength(4));
       expect(
-        api.reads.expand((query) => query['categoryRootIds'] as List).toSet(),
-        roots,
+        requests.skip(2).map((request) => request.method),
+        everyElement('GET'),
       );
-      expect(
-        api.locations
-            .expand((query) => query['categoryRootIds'] as List)
-            .toSet(),
-        roots,
-      );
+      expect(requests[2].path, '/master/goods');
+      expect(requests[2].queryParameters['categoryRootIds'], ['material']);
+      expect(requests[2].queryParameters['search.series'], '5m');
+      expect(requests[2].queryParameters['search.name'], '开关');
+      expect(small.items.single.id, 'black');
+      dio.close(force: true);
     },
   );
   testWidgets(

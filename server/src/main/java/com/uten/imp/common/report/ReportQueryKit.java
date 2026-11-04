@@ -79,6 +79,12 @@ public final class ReportQueryKit {
 
         public void add(String fragment, String param, Object val) { clauses.add(new Clause(fragment, param, val)); }
 
+        /** Dedicated text filters keep their phrase/case contract; SQL wildcards are ordinary input. */
+        public void containsLiteral(String text, String field, String parameter) {
+            if (text == null || text.isBlank()) return;
+            add(field + " LIKE :" + parameter + " ESCAPE '\\'", parameter, KeywordSearch.containsPattern(text));
+        }
+
         /** Match every word with one shared WHERE/count/facet/total contract. */
         public void search(String text, String... fields) {
             search(text, parameter -> "(" + java.util.Arrays.stream(fields)
@@ -162,9 +168,7 @@ public final class ReportQueryKit {
     public static void addCommonDocFilters(WhereBuilder w, String billNo, UUID supplierId, UUID warehouseId,
                                            Short status, LocalDate dateFrom, LocalDate dateTo, String kw,
                                            String billNoCol, String dateCol) {
-        if (billNo != null && !billNo.isBlank()) {
-            w.add(billNoCol + " LIKE :billNo ESCAPE '\\'", "billNo", KeywordSearch.containsPattern(billNo));
-        }
+        w.containsLiteral(billNo, billNoCol, "billNo");
         if (supplierId != null) w.add("o.supplier_id = :supplierId", "supplierId", supplierId);
         if (warehouseId != null) w.add("o.warehouse_id = :warehouseId", "warehouseId", warehouseId);
         addApprovedByDefault(w, status);

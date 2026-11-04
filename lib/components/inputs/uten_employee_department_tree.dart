@@ -8,6 +8,7 @@ class UtenEmployeeDepartmentDirectory {
   UtenEmployeeDepartmentDirectory({
     required List<DepartmentNode> organization,
     required Iterable<UtenEmployeePickerItem> candidates,
+    bool includeEmptyOrganization = false,
   }) {
     final departments = <String, String>{};
     for (final candidate in candidates) {
@@ -36,7 +37,11 @@ class UtenEmployeeDepartmentDirectory {
     UtenEmployeeDepartmentNode? prune(DepartmentNode node) {
       final children = [for (final child in node.children) ?prune(child)];
       final key = keyForId(node.id);
-      if (!departments.containsKey(key) && children.isEmpty) return null;
+      if (!includeEmptyOrganization &&
+          !departments.containsKey(key) &&
+          children.isEmpty) {
+        return null;
+      }
       return UtenEmployeeDepartmentNode(
         id: key,
         name: node.name,
@@ -59,7 +64,9 @@ class UtenEmployeeDepartmentDirectory {
       for (final root in organization) ?prune(root),
       // Explicit non-org candidates (for example external audit actors) must
       // remain available, without pretending that they belong to the company.
-      if (unmatched.isNotEmpty && organization.isNotEmpty)
+      if (!includeEmptyOrganization &&
+          unmatched.isNotEmpty &&
+          organization.isNotEmpty)
         UtenEmployeeDepartmentNode(
           id: otherDepartments,
           name: '其它候选',

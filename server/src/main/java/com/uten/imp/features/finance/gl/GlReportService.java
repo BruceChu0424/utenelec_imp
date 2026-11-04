@@ -540,11 +540,14 @@ public class GlReportService {
                 cols.stream().map(c -> new com.uten.imp.common.export.ExportColumn(
                         c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(), maximum);
         var condition=GlComputedHeaders.compile(cols,options);
+        var candidates=com.uten.imp.features.finance.report.FinanceReportColumnCandidates.current();
+        if(candidates!=null)candidates.requireVisibleText(cols,java.util.Set.of());
         java.util.function.Consumer<Map<String,Object>> destination = batches == null ? window : batches;
         var matchedCategories=new java.util.HashSet<String>();
         java.util.function.Consumer<Map<String,Object>> output = row -> {
             String category=(String)row.get("category");
             boolean matched=condition.matches(row);
+            if(candidates!=null&&matched)candidates.addRecord(row);
             boolean subtotal=Boolean.TRUE.equals(row.remove("__glSubtotal"));
             if(matched || (subtotal && matchedCategories.contains(category)))destination.accept(row);
             if(matched && !subtotal)matchedCategories.add(category);
@@ -615,6 +618,10 @@ public class GlReportService {
         }
         addOpRow(output, "一般管理费", "管理费合计", "", adminComplete ? adminTotal : null, base,
                 adminComplete ? "" : "组成项目尚未配置完整或来源金额待核实",true);
+        if(candidates!=null) {
+            candidates.finishRecords(cols);
+            return new ReportTableResponse(cols,List.of(),Map.of(),1,1,0,0).withColumnSearchKeys(condition.keys());
+        }
         if (batches != null) {
             int total = batches.finish();
             return new ReportTableResponse(cols, List.of(), Map.of(), 1, 500, total, ReportReadPlan.totalPages(total, 500)).withColumnSearchKeys(condition.keys());

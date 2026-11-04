@@ -95,6 +95,9 @@ namespace Uten.Legacy.Desktop
 
         protected override void OnExit(ExitEventArgs e)
         {
+            // Closing has already cleared local login synchronously. Keep its short issuer
+            // revocation attempt alive before disposing transport; never block exit forever.
+            (MainWindow as MainWindow)?.CloseSessionTask.Wait(TimeSpan.FromSeconds(3.5));
             diagnostics?.Dispose();
             (session as IDisposable)?.Dispose();
             if (ownsInstance) instance.ReleaseMutex();

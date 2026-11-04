@@ -28,6 +28,46 @@ void main() {
       storage = SecureStorage(const FlutterSecureStorage());
     });
 
+    test(
+      'paged impersonation target reads and minimal tree use admin credentials without changing adjacent routes',
+      () async {
+        await storage.saveTokens(
+          issuer: _issuer,
+          accessToken: 'admin-access',
+          refreshToken: 'admin-refresh',
+        );
+        await storage.saveImpersonationRecord(
+          ImpersonationRecord(
+            accessToken: 'target-access',
+            lineage: 'target-lineage',
+            windowExpiresAtEpochMs: DateTime.now()
+                .add(const Duration(minutes: 5))
+                .millisecondsSinceEpoch,
+          ),
+        );
+        final headers = <String, Object?>{};
+        final dio = _staffDio(storage, (request) {
+          headers[request.path] = request.headers['Authorization'];
+          return _jsonResponse(request, 200, {'ok': true});
+        });
+        await dio.get<dynamic>('/admin/impersonation/targets/page');
+        await dio.get<dynamic>('/admin/impersonation/targets/departments');
+        await dio.get<dynamic>('/admin/impersonation/targets/page-extra');
+        await dio.get<dynamic>('/org/departments/employee-picker-tree');
+        expect(headers, {
+          '/admin/impersonation/targets/page': 'Bearer admin-access',
+          '/admin/impersonation/targets/departments': 'Bearer admin-access',
+          '/admin/impersonation/targets/page-extra': 'Bearer target-access',
+          '/org/departments/employee-picker-tree': 'Bearer target-access',
+        });
+        expect(
+          (await storage.getImpersonationRecord())?.lineage,
+          'target-lineage',
+        );
+        expect(await storage.getAccessToken(), 'admin-access');
+      },
+    );
+
     test('refresh 401 明确失效时清理令牌并只发布一次失效事件', () async {
       await storage.saveTokens(
         issuer: _issuer,

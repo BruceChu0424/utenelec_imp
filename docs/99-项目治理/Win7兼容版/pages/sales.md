@@ -9,7 +9,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SalesDocDetailPage @98 (page-class)<br>_SalesDocDetailPageState @113 (state-class)<br>_KV @3314 (supporting-class)<br>_LineActionSheet @3326 (supporting-class)<br>_LineActionSheetState @3348 (state-class) |
-| 真实路由绑定 | /sales/:seg/:id；router @1999；builder ['SalesDocDetailPage']；redirect _rejectUnknownSalesDoc |
+| 真实路由绑定 | /sales/:seg/:id；router @2014；builder ['SalesDocDetailPage']；redirect _rejectUnknownSalesDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_shipment:reject @228；定义 lib/shared/auth/permissions.dart:372<br>sales_order:change_qty @240；定义 lib/shared/auth/permissions.dart:650<br>sales_order:stop @243；定义 lib/shared/auth/permissions.dart:649<br>sales_order:change_planned @247；定义 lib/shared/auth/permissions.dart:361<br>sales_order:cancel @272；定义 lib/shared/auth/permissions.dart:651<br>warehouse_sales_outbound:execute @295；定义 lib/shared/auth/permissions.dart:376<br>sales_return_quality:view @310；定义 lib/shared/auth/permissions.dart:383<br>sales_return_quality:correct @317；定义 lib/shared/auth/permissions.dart:815<br>sales_return_quality:dispose @324；定义 lib/shared/auth/permissions.dart:816<br>sales_quote:view @724；定义 lib/shared/auth/permissions.dart:355<br>sales_order:priority @1171；定义 lib/shared/auth/permissions.dart:366<br>sales_order:reallocate @1175；定义 lib/shared/auth/permissions.dart:369<br>finance:view:all @1404；定义 lib/shared/auth/permissions.dart:555<br>customer_prepayment:view @1405；定义 lib/shared/auth/permissions.dart:537<br>sales_shipment_finance:view @1549；定义 lib/shared/auth/permissions.dart:508<br>sales_quote:view @1823；定义 lib/shared/auth/permissions.dart:355<br>sales_shipment:view @2974；定义 lib/shared/auth/permissions.dart:370<br>purchase_order:view @2978；定义 lib/shared/auth/permissions.dart:148<br>subcontract_order:view @2982；定义 lib/shared/auth/permissions.dart:393<br>production_plan:view @2986；定义 lib/shared/auth/permissions.dart:432<br>production_material_analysis:view @2990；定义 lib/shared/auth/permissions.dart:448<br>sales_quote:view @3008；定义 lib/shared/auth/permissions.dart:355 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -27,7 +27,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SalesDocEditPage @143 (page-class)<br>_SalesDocEditPageState @171 (state-class) |
-| 真实路由绑定 | /sales/:seg/new；router @1966；builder ['SalesDocEditPage']；redirect _rejectUnknownSalesDoc<br>/sales/:seg/:id/edit；router @1989；builder ['SalesDocEditPage']；redirect _rejectUnknownSalesDoc |
+| 真实路由绑定 | /sales/:seg/new；router @1981；builder ['SalesDocEditPage']；redirect _rejectUnknownSalesDoc<br>/sales/:seg/:id/edit；router @2004；builder ['SalesDocEditPage']；redirect _rejectUnknownSalesDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_order:price:view @315；定义 lib/shared/auth/permissions.dart:360<br>sales_quote:view @2892；定义 lib/shared/auth/permissions.dart:355<br>sales_quote:create @2892；定义 lib/shared/auth/permissions.dart:641<br>currency:create @4774；定义 lib/shared/auth/permissions.dart:624<br>settlement_method:create @4777；定义 lib/shared/auth/permissions.dart:637 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -40,17 +40,17 @@
 
 ## W7-BIZ-137 · lib/features/sales/pages/sales_doc_list_page.dart
 
-模块 `sales`；1610 行；SHA256 `12486bf8d7057e4c32bc54d8bae66ebfa7e1a8206c351254b42eb765940895ab`。
+模块 `sales`；1619 行；SHA256 `2e2d654e338eef12584b66529db68bc438f4887e13cbaea11d32255ca2e26487`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _SalesDocSeg @71 (supporting-class)<br>SalesDocListPage @99 (page-class)<br>_SalesDocListPageState @130 (state-class) |
-| 真实路由绑定 | /sales/:seg；router @2011；builder ['SalesDocListPage']；redirect _rejectUnknownSalesDoc |
+| 真实路由绑定 | /sales/:seg；router @2026；builder ['SalesDocListPage']；redirect _rejectUnknownSalesDoc |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_order:price:view @179；定义 lib/shared/auth/permissions.dart:360<br>sales_order:price:view @181；定义 lib/shared/auth/permissions.dart:360<br>sales_quote_finance:view @182；定义 lib/shared/auth/permissions.dart:531<br>sales_order:price:view @184；定义 lib/shared/auth/permissions.dart:360<br>sales_shipment_finance:view @185；定义 lib/shared/auth/permissions.dart:508<br>sales_shipment:create @361；定义 lib/shared/auth/permissions.dart:652<br>sales_quote:convert @366；定义 lib/shared/auth/permissions.dart:644<br>sales_order:create @367；定义 lib/shared/auth/permissions.dart:645 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/sales/repositories/sales_repository.dart；接口：/sales/orders/items/{orderItemId}/priority、/sales/orders/items/{orderItemId}/yield-reservation、/sales/orders/last-terms、/sales/orders/progress、/sales/orders/progress/facets、/sales/orders/reservations/scarce、/sales/orders/shippable-lines/page、/sales/orders/shippable-lines/selection、/sales/shipments/batch、/sales/{type == SalesDocType.customerShipment ? 'shipments' : type.pathSegment}、/warehouse/sales-outbound/{id}/warehouse-work |
-| 动作处理 | _deleteDraft @234 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteDraft(String id) {<br>deleteSalesDraft @237 [action-like-invocation] 提示 ['delete']；return deleteSalesDraft(<br>addPostFrameCallback @280 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @289 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @339 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_batchShip @448 [method-declaration-candidate] 提示 ['ship']；Future<void> _batchShip() async {<br>showSalesBatchShipPanel @449 [action-like-invocation] 提示 ['ship']；final n = await showSalesBatchShipPanel(context, ref);<br>_importFromQuote @458 [method-declaration-candidate] 提示 ['import']；Future<void> _importFromQuote() async {<br>docEdit @542 [action-like-invocation] 提示 ['edit']；SalesRoutePath.docEdit(SalesDocType.order.pathSegment, order.id),<br>addPostFrameCallback @697 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>salesShipmentFinanceAuditLabel @876 [action-like-invocation] 提示 ['audit']；: salesShipmentFinanceAuditLabel(it.financeAudit),<br>_batchShip @997 [callback-reference] 提示 ['ship']；onPressed<br>_importFromQuote @1005 [callback-reference] 提示 ['import']；onPressed<br>draftDeleteBusy @1294 [callback-reference] 提示 ['delete']；onSelectedIdsChanged |
+| 动作处理 | _deleteDraft @234 [method-declaration-candidate] 提示 ['delete']；Future<void> _deleteDraft(String id) {<br>deleteSalesDraft @237 [action-like-invocation] 提示 ['delete']；return deleteSalesDraft(<br>addPostFrameCallback @280 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @289 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @339 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>_batchShip @448 [method-declaration-candidate] 提示 ['ship']；Future<void> _batchShip() async {<br>showSalesBatchShipPanel @449 [action-like-invocation] 提示 ['ship']；final n = await showSalesBatchShipPanel(context, ref);<br>_importFromQuote @458 [method-declaration-candidate] 提示 ['import']；Future<void> _importFromQuote() async {<br>docEdit @542 [action-like-invocation] 提示 ['edit']；SalesRoutePath.docEdit(SalesDocType.order.pathSegment, order.id),<br>addPostFrameCallback @697 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>salesShipmentFinanceAuditLabel @876 [action-like-invocation] 提示 ['audit']；: salesShipmentFinanceAuditLabel(it.financeAudit),<br>_batchShip @997 [callback-reference] 提示 ['ship']；onPressed<br>_importFromQuote @1005 [callback-reference] 提示 ['import']；onPressed<br>draftDeleteBusy @1303 [callback-reference] 提示 ['delete']；onSelectedIdsChanged |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/ai/job/AiInputOriginalController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/sales/SalesManagerReviewController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/sales/learning/SalesLearningReceiptController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/sales/order/SalesOrderController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/sales/order/SalesOrderFinanceConfirmController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/sales/other_shipment/SalesOtherShipmentController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/sales/quote/SalesQuoteController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/sales/quote/SalesQuoteFinanceController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/sales/report/SalesReportController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/sales/ret/SalesReturnController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/sales/shipment/warehouse/WarehouseSalesOutboundController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
@@ -63,7 +63,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SalesHubPage @42 (page-class)<br>_Entry @213 (supporting-class)<br>_EntryTile @240 (supporting-class) |
-| 真实路由绑定 | /sales；router @1916；builder ['SalesHubPage']；redirect None |
+| 真实路由绑定 | /sales；router @1931；builder ['SalesHubPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -76,7 +76,7 @@
 
 ## W7-BIZ-217 · lib/features/sales/pages/sales_manager_review_page.dart
 
-模块 `sales`；751 行；SHA256 `6b4fb269b2890bad6d82808908b22a76ed42f541601916ecfe3b9b8d343627df`。
+模块 `sales`；751 行；SHA256 `249cff3b38c4e8c9a4cf5810f590f5c62b96fc05b300238ff79677692ed68916`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -94,12 +94,12 @@
 
 ## W7-BIZ-139 · lib/features/sales/pages/sales_order_progress_page.dart
 
-模块 `sales`；1035 行；SHA256 `f86e23485f2434e9582ca1dcb11bf25fc40adfa595721be7e154398286043af1`。
+模块 `sales`；1041 行；SHA256 `f1c29dd16e31d6aab077a5a8d4c69d6a0e461bd36c77ca5b462481eaf19acb0b`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _ProgressSeg @85 (supporting-class)<br>SalesOrderProgressPage @133 (page-class)<br>_SalesOrderProgressPageState @153 (state-class) |
-| 真实路由绑定 | /sales/progress；router @1952；builder ['SalesOrderProgressPage']；redirect None |
+| 真实路由绑定 | /sales/progress；router @1967；builder ['SalesOrderProgressPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | sales_order:delete @201；定义 lib/shared/auth/permissions.dart:646<br>sales_order:cancel @417；定义 lib/shared/auth/permissions.dart:651<br>sales_order:edit @490；定义 lib/shared/auth/permissions.dart:359<br>sales_shipment:create @498；定义 lib/shared/auth/permissions.dart:652 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -112,17 +112,17 @@
 
 ## W7-BIZ-140 · lib/features/sales/pages/sales_report_page.dart
 
-模块 `sales`；1080 行；SHA256 `c4426ef59c564551195143709704f2e435d351f8799b64bcf2c4de03c57c228e`。
+模块 `sales`；1024 行；SHA256 `d213605c5e96e5b15f45180da9a0e83c375a665c60541506d61dec27e351055a`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | SalesReportPage @65 (page-class)<br>_SalesReportPageState @73 (state-class)<br>SalesClientDetailDialog @699 (supporting-class)<br>_SalesClientDetailDialogState @730 (state-class) |
-| 真实路由绑定 | detail；router @1930；builder ['SalesReportPage']；redirect None<br>summary；router @1936；builder ['SalesReportPage']；redirect None |
+| 页面/状态类 | SalesReportPage @65 (page-class)<br>_SalesReportPageState @73 (state-class)<br>SalesClientDetailDialog @643 (supporting-class)<br>_SalesClientDetailDialogState @674 (state-class) |
+| 真实路由绑定 | detail；router @1945；builder ['SalesReportPage']；redirect None<br>summary；router @1951；builder ['SalesReportPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
-| 权限 | sales_report:export @617；定义 lib/shared/auth/permissions.dart:385<br>sales_report:export @626；定义 lib/shared/auth/permissions.dart:385 |
+| 权限 | sales_report:export @561；定义 lib/shared/auth/permissions.dart:385<br>sales_report:export @570；定义 lib/shared/auth/permissions.dart:385 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | 未静态确认；不能当作不存在 |
-| 动作处理 | addPostFrameCallback @134 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @164 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @211 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>remove @322 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>_printLoader @433 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @437 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @612 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @624 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>copyWith @680 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelLarge?.copyWith(<br>addPostFrameCallback @760 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load());<br>remove @910 [action-like-invocation] 提示 ['remove']；_headers.remove(key);<br>_printLoader @926 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @930 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @1014 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton( |
+| 动作处理 | addPostFrameCallback @134 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>addPostFrameCallback @164 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) {<br>update @211 [action-like-invocation] 提示 ['update']；ref.read(_prefsProvider.notifier).update(_snapshot());<br>remove @322 [action-like-invocation] 提示 ['remove']；_filters.remove(key);<br>_printLoader @410 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @414 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @556 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton(<br>UtenExportButton @568 [action-like-invocation] 提示 ['export']；UtenExportButton(<br>copyWith @624 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.labelLarge?.copyWith(<br>addPostFrameCallback @704 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load());<br>remove @854 [action-like-invocation] 提示 ['remove']；_headers.remove(key);<br>_printLoader @870 [method-declaration-candidate] 提示 ['print']；Future<UtenPrintTable> _printLoader() async {<br>loadBoundedReportPrintPreview @874 [action-like-invocation] 提示 ['print']；return loadBoundedReportPrintPreview(<br>UtenPrintPreviewButton @958 [action-like-invocation] 提示 ['print']；UtenPrintPreviewButton( |
 | 控制器候选（人工核实） | 未静态确认；不能当作不存在 |
 | 审计限制 | 同页存在多个路由/参数实例；不能据此认定业务、权限或生命周期等价。<br>存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 
@@ -135,7 +135,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | SalesScarcityPage @30 (page-class)<br>_SalesScarcityPageState @43 (state-class) |
-| 真实路由绑定 | /sales/scarcity；router @1944；builder ['SalesScarcityPage']；redirect None |
+| 真实路由绑定 | /sales/scarcity；router @1959；builder ['SalesScarcityPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |
@@ -153,7 +153,7 @@
 | 审计项 | 静态来源/线索 |
 |---|---|
 | 页面/状态类 | _GroupSpec @54 (supporting-class)<br>SalesTaskCenterPage @68 (page-class)<br>_SalesTaskCenterPageState @79 (state-class)<br>_GroupPlaceholder @344 (supporting-class) |
-| 真实路由绑定 | /sales/tasks；router @1959；builder ['SalesTaskCenterPage']；redirect None |
+| 真实路由绑定 | /sales/tasks；router @1974；builder ['SalesTaskCenterPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | 未静态确认；不能当作不存在 |
 | 接口常量 | 未静态确认；不能当作不存在 |

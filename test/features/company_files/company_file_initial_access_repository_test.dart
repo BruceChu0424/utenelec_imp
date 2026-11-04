@@ -40,37 +40,49 @@ class _PrincipalApi extends ApiClient {
   _PrincipalApi() : super(Dio());
   final pages = <int>[];
   @override
-  Future<List<Map<String, dynamic>>> getList(
+  Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    expect(path, '/company-files/principals');
+    expect(path, '/company-files/principals/page');
     expect(query!['type'], 'USER');
     final page = query['page'] as int;
     pages.add(page);
-    return [
-      for (var i = 0; i < (page == 0 ? 100 : 3); i++)
+    final rows = <Map<String, dynamic>>[
+      for (var i = 0; i < (page == 1 ? 100 : 3); i++)
         {
-          'id': 'account-${page * 100 + i}',
+          'id': 'account-${(page - 1) * 100 + i}',
           'name': '测试人员($i)',
           'type': 'USER',
           'departmentId': 'real-department-id',
           'detail': '研发部',
         },
     ];
+    return {
+      'items': rows,
+      'page': page,
+      'size': 100,
+      'total': 103,
+      'totalPages': 2,
+    };
   }
 }
 
 void main() {
   test(
-    'account selection loads every page and retains account and department IDs',
+    'account selection reads one explicit principal page and retains account IDs across continuation',
     () async {
       final api = _PrincipalApi();
-      final people = await CompanyFileRepository(api).principals(type: 'USER');
-      expect(api.pages, [0, 1]);
-      expect(people, hasLength(103));
-      expect(people.last.id, 'account-102');
-      expect(people.last.departmentId, 'real-department-id');
+      final repository = CompanyFileRepository(api);
+      final first = await repository.principalsPage(type: 'USER');
+      expect(api.pages, [1]);
+      expect(first.items, hasLength(100));
+      final last = await repository.principalsPage(type: 'USER', page: 2);
+      expect(api.pages, [1, 2]);
+      expect(last.items, hasLength(3));
+      expect(last.items.last.id, 'account-102');
+      expect(last.items.last.departmentId, 'real-department-id');
+      expect(last.items.last.type, 'USER');
     },
   );
   CompanyFileInitialAccessDraft privateAccess() =>

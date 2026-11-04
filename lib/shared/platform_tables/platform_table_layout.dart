@@ -127,6 +127,13 @@ class PlatformTableLayoutNotifier
     'finance.procurement.review.subcontract.items',
   }.contains(tableKey);
   bool get _instantInventory => instantInventoryTableKeys.contains(tableKey);
+  bool get _financeEntry => const {
+    'finance.receipt.entry.v1',
+    'finance.payment.entry.v1',
+    'finance.expense.entry.v1',
+    'finance.otherIncome.entry.v1',
+    'finance.bankTransfer.entry.v1',
+  }.contains(tableKey);
   @override
   String get cacheKey {
     final scope = ref.read(authenticatedScopeProvider);
@@ -151,7 +158,7 @@ class PlatformTableLayoutNotifier
         ? purchaseOrderColumnLayoutVersion
         : _instantInventory
         ? instantInventoryColumnLayoutVersion
-        : _financeReview || _materialPreparation
+        : _financeReview || _materialPreparation || _financeEntry
         ? 1
         : 0,
   );
@@ -188,6 +195,18 @@ class PlatformTableLayoutNotifier
           decoded.order,
           keyOf: (key) => key,
         ),
+        layoutVersion: 1,
+      );
+    }
+    if (_financeEntry && decoded.layoutVersion < 1) {
+      // Migrate only the trailing remark requirement. Keep the table identity,
+      // custom columns, widths and all unrelated user preferences intact.
+      return decoded.copyWith(
+        order: [
+          ...decoded.order.where((key) => key != 'remark'),
+          if (decoded.order.contains('remark')) 'remark',
+        ],
+        pinned: {...decoded.pinned}..remove('remark'),
         layoutVersion: 1,
       );
     }

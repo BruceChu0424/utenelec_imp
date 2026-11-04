@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 1,
+  "task": "platform-search-20261103",
+  "status": "implemented_and_targeted_local_checks_passed",
+  "productionDeployed": false,
+  "databaseMigrationAdded": false,
+  "scope": "Existing personnel searches and selectors; no task-center, hot/cold table or historical data implementation",
+  "publicEntry": {
+    "query": "UtenEmployeePickerQuery(keyword, page, departmentId, departmentScopeKey, authorized organization metadata)",
+    "loader": "UtenEmployeePickerPagedLoader -> UtenEmployeePickerPage",
+    "panel": "UtenEmployeeSelectionPanel",
+    "behavior": "Initial/search/department read requests one page; existing table scroll continuation requests the next page; duplicate continuation is guarded; selected UUIDs remain an independent local draft",
+    "authorization": "Existing source API, purpose, role, employment/account facts and fixed department/subtree scope remain; tree selection intersects rather than widens fixed workflow scope",
+    "retirement": "Raw input, selected department, query generation and EmployeePickerAccessTicket retire obsolete reads through existing PagedReadIntent.scopedRead; business writes are not canceled or replayed",
+    "metadata": "Paged selectors use authorized organization metadata so departments whose staff are on later pages remain reachable; ancestor/name/position matching and relevance run on the server before pagination",
+    "uiRules": "Affected explanatory copy uses title/field hint icons; manual retry uses one UtenBusyOverlay; automatic continuation retains local loading state",
+    "historicalDepartments": "Only departments present in current organization metadata expand a subtree. Historical/unmatched UUIDs filter exact membership without fetching or reopening a deleted tree; fixed workflow scope intersection remains unchanged.",
+    "paginationIntegrity": "Empty pages with positive remaining metadata, mismatched page identities and invalid page bounds produce a retryable error. Failed continuation retains accepted rows/selection/input and disables automatic retry loops. Denied/read-scope-changed responses hide prior candidates.",
+    "enter": "Only an actual active request with the same raw-input epoch/query/department suppresses repeated Enter. Before debounce, Enter dispatches immediately; after completion the same query refreshes."
+  },
+  "sources": [
+    {
+      "api": "EmployeeReferenceRepository.list",
+      "adapter": "EmployeeReferenceRepository.listPickerPage",
+      "preserved": "purpose/status/departmentId/includeSubtree and minimal reference DTO"
+    },
+    {
+      "api": "EmployeeRepository.list",
+      "adapter": "EmployeeRepository.listPickerPage",
+      "preserved": "HR permission and selected onboarding department/default global keyword scope, statuses and sorting"
+    },
+    {
+      "api": "/master/clients/access-candidates",
+      "bodyRead": "/master/clients/access-candidates/query",
+      "preserved": "client:assign, active-account eligibility, complete owner exclusion; up to 1000 exclusions use a body rather than a long URL"
+    },
+    {
+      "api": "/admin/data-handovers/candidates",
+      "bodyRead": "/admin/data-handovers/candidates/query",
+      "preserved": "source/target role, existing candidate authorization and exclusion of current target/source; legacy DTO page count derives from total/size"
+    },
+    {
+      "api": "/master/warehouses/keeper-candidates/page",
+      "preserved": "warehouse:edit, server member/account ordering, hasAccount/warehouseMember/duplicateName flags and original replacement/notification semantics"
+    },
+    {
+      "api": "/notices/audience/employees/page",
+      "preserved": "notice:publish, active account/non-resigned employee eligibility, EmployeeID identity, celebration/audience sending and preview flow unchanged"
+    },
+    {
+      "api": "/admin/users/provision-candidates/page",
+      "preserved": "account:support, existing no-account/non-resigned candidate eligibility, hasPhone/readiness and disabled-row reasons; no PII decryption or provisioning write changes"
+    },
+    {
+      "api": "/admin/impersonation/targets/page",
+      "managementTree": "/admin/impersonation/targets/departments",
+      "preserved": "Original authorization:manage+superAdmin and active-employee candidate set, including locked/no-account/superAdmin facts; start/enter eligibility and reauthentication untouched; exact management read paths use admin credentials"
+    },
+    {
+      "api": "/admin/audit-logs/actors",
+      "owner": "platform_search_inventory/root",
+      "preserved": "Dedicated staff/visitor/historical-actor identity and unassigned scope; no HR candidate substitution"
+    },
+    {
+      "api": "/company-files/principals/page",
+      "owner": "platform_search_inventory/root",
+      "preserved": "USER principal IDs remain user IDs and original company-file ACL/view authority remains; no EmployeeID substitution"
+    }
+  ],
+  "migratedCallerFiles": [
+    "lib/shared/widgets/business_employee_picker.dart",
+    "lib/shared/widgets/sales_order_picker.dart",
+    "lib/features/department/pages/department_page.dart",
+    "lib/features/finance/widgets/finance_asset_detail.dart",
+    "lib/features/finance/widgets/finance_asset_form_v2.dart",
+    "lib/features/basic_data/pages/mould_category_page.dart",
+    "lib/features/basic_data/widgets/supplier_master_edit.dart",
+    "lib/features/employee/pages/employee_onboarding_page.dart",
+    "lib/features/production/widgets/material_priority_replenishment_dialog.dart",
+    "lib/features/production/widgets/production_execution_segments_card.dart",
+    "lib/features/production/pages/material_analysis_aggregate_table.dart",
+    "lib/features/production/pages/material_analysis_material_table.dart",
+    "lib/features/production/pages/production_daily_report_edit_page.dart",
+    "lib/features/basic_data/widgets/client_access_panel.dart",
+    "lib/features/basic_data/widgets/client_access_batch_dialog.dart",
+    "lib/features/admin/widgets/admin_data_handover_panel.dart",
+    "lib/features/employee/pages/employee_offboarding_workflow_page.dart",
+    "lib/features/basic_data/pages/warehouse_page.dart",
+    "lib/features/notice/pages/notice_publish_page.dart",
+    "lib/features/admin/widgets/provision_account_dialog.dart",
+    "lib/features/admin/widgets/impersonation_actions.dart",
+    "lib/features/admin/widgets/audit_query_scope.dart",
+    "lib/features/company_files/widgets/company_file_access_editor.dart"
+  ],
+  "cleanup": {
+    "removedSymbols": [
+      "loadEmployeePickerCandidates",
+      "EmployeeRepository.listPickerCandidates",
+      "EmployeeReferenceRepository.listPickerCandidates",
+      "loadClientAccessEmployees",
+      "NoticeRepository.searchAudienceEmployees",
+      "AdminRepository.provisionCandidates",
+      "ImpersonationRepository.searchTargets",
+      "WarehouseKeeperRepository.candidates"
+    ],
+    "remainingProductionOrTestReferencesToRemovedSymbols": 0,
+    "removedBehavior": "Upfront all-page loops and arbitrary >5000 candidate rejection from the migrated Dart selector loaders",
+    "retainedDifferences": "The supplied-list loader interface remains for the privacy-bound visitor-host top-5 lookup and in-memory already-held authorized owner configuration metadata. The optional DepartmentEditDialog legacy loader is used by small dialog fixtures; current production DepartmentPage injects managerPagedLoader.",
+    "serverListCompatibility": "Baseline client code used the old list-returning HTTP contracts. Their original authorization/response shape and explicit legacy bounds remain server-side for mixed client versions. Current modified Dart candidate callers use /page; no obsolete full-page wrapper remains in lib/test."
+  },
+  "validation": {
+    "dartFormat": {
+      "files": 53,
+      "remainingChanges": 0
+    },
+    "dartAnalyze": {
+      "files": 53,
+      "exitCode": 0,
+      "issues": 0,
+      "log": "build/search-loading-20261103/employee-picker-final-analyze.log"
+    },
+    "flutterTests": {
+      "files": 27,
+      "passed": 201,
+      "failed": 0,
+      "skipped": 0,
+      "log": "build/search-loading-20261103/employee-picker-final-tests.log"
+    },
+    "checks": [
+      "A 1000-page candidate response loads only the first page until continuation",
+      "Repeated continuation starts one next-page request; duplicate UUIDs do not duplicate selected people",
+      "Selections from different pages remain selected",
+      "Departments absent from the loaded staff page remain selectable and request a narrowed server page",
+      "Fixed workflow scope cannot be widened by choosing another branch or ancestor",
+      "Old search responses cannot publish after raw input, identity, server or permission changes",
+      "Warehouse receiver workflow works with its real 52 permission codes without HR fallback",
+      "1000 owner exclusions remain complete in one read body; a 6001-staff result remains paged",
+      "Handover legacy DTO without totalPages exposes every subsequent page through derived total/size",
+      "Keeper candidate pages retain no-account/outside-department/duplicate-name warning facts",
+      "Existing customer ownership, source/target handover, offboarding drafts and warehouse save/CAS regressions remain covered",
+      "Invalid first/continuation pages are retryable; accepted rows and cross-page selections survive network failures",
+      "Completed same-query Enter refreshes while only a genuinely active same-query request is coalesced",
+      "Unmatched/old departments retain exact UUID membership without expanding an unavailable tree or issuing an extra metadata fetch",
+      "Special notice/provision/impersonation page repositories preserve original DTO facts and do not drain 6001 candidates"
+    ],
+    "gitDiffCheck": {
+      "exitCode": 0,
+      "output": ""
+    },
+    "managementMode": {
+      "passed": 23,
+      "log": "build/search-loading-20261103/impersonation-mode-scope-tests.log",
+      "overlap": "Contains existing auth-interceptor tests also included in the 201-test combined run; do not add these counts.",
+      "behavior": "Current target with no ordinary organization rights can load/select through the explicit management tree; ordinary org and adjacent page-extra routes retain target credentials."
+    },
+    "sourceCallerReview": {
+      "pickerSites": 28,
+      "businessReferenceWrapperSites": 11,
+      "controlledListSites": 2,
+      "removedWholeDirectoryMethodReferences": 0,
+      "inventory": "docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/employee-picker-callers.json"
+    },
+    "otherCallerEvidence": "docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/flutter-search-review.json (audit/company-file owned by platform_search_inventory; not included as additional cases in the 201-test count)"
+  },
+  "limitations": [
+    "These are local component/repository and existing workflow checks; backend HTTP/PostgreSQL evidence is owned by the root and permission-search tasks",
+    "No production latency claim, publication, formal package or target-device acceptance follows from these tests",
+    "Unmigrated WPF business selectors remain unmigrated; WPF goods/unit search evidence is recorded separately"
+  ],
+  "workspaceRoot": "D:/Projects/uten_imp_worktrees/platform-search-20261103",
+  "callerInventory": "docs/99-项目治理/全平台整改交接/evidence/search-loading-20261103/employee-picker-callers.json"
+}

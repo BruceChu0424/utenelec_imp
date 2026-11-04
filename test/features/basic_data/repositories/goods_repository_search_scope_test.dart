@@ -1,535 +1,322 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/repositories/goods_repository.dart';
+import 'package:uten_imp/features/basic_data/repositories/goods_facet_repository.dart';
 import 'package:uten_imp/features/basic_data/models/master_facet.dart';
 
-void main() {
-  test('主体与相关模式和显式分类同源传到列表、分类定位及facet', () async {
-    final requests = <RequestOptions>[];
-    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
-    dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (r, h) {
-          requests.add(r);
-          h.resolve(
-            Response(
-              requestOptions: r,
-              statusCode: 200,
-              data: r.path.endsWith('/search-category-ids')
-                  ? ['child']
-                  : r.path.endsWith('/facets')
-                  ? <String, dynamic>{}
-                  : {
-                      'items': <Object>[],
-                      'page': 1,
-                      'size': 20,
-                      'total': 0,
-                      'totalPages': 0,
-                    },
-            ),
-          );
-        },
-      ),
-    );
-    final repo = DioGoodsRepository(ApiClient(dio));
-    await repo.list(
-      'child',
-      keyword: ' 螺丝 M3 ',
-      includeRelated: true,
-      excludeStub: true,
-    );
-    await repo.search(
-      ' 螺丝 M3 ',
-      categoryRootIds: {'root'},
-      categoryId: 'child',
-      includeRelated: true,
-      excludeStub: true,
-    );
-    await repo.searchCategoryIds(
-      ' 螺丝 M3 ',
-      categoryRootIds: {'root'},
-      categoryId: 'child',
-      includeRelated: true,
-      excludeStub: true,
-    );
-    await repo.facets(
-      'child',
-      keyword: ' 螺丝 M3 ',
-      includeRelated: true,
-      excludeStub: true,
-      filters: {'paper': kMasterFilterNullValue},
-    );
-    expect(
-      requests.map((r) => r.queryParameters['categoryId']),
-      everyElement('child'),
-    );
-    expect(
-      requests.map((r) => r.queryParameters['keyword']),
-      everyElement('螺丝 M3'),
-    );
-    expect(
-      requests.map((r) => r.queryParameters['includeRelated']),
-      everyElement(true),
-    );
-    expect(requests.last.queryParameters['nullFields'], ['paper']);
-    await repo.list(null, keyword: '', includeRelated: true);
-    expect(requests.last.queryParameters, isNot(contains('includeRelated')));
-  });
-
-  test('超过32根仍带显式分类与相关模式，重叠根按UUID去重且相关排主体之后', () async {
-    final requests = <RequestOptions>[];
-    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
-    dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (r, h) {
-          requests.add(r);
-          final first =
-              (r.queryParameters['categoryRootIds'] as List).first == 'root-00';
-          h.resolve(
-            Response(
-              requestOptions: r,
-              statusCode: 200,
-              data: {
-                'items': [
-                  {
-                    ..._goodsJson('overlap'),
-                    'searchRank': 3,
-                    'searchMatchKind': 'PRIMARY',
-                  },
-                  {
-                    ..._goodsJson(first ? 'related' : 'exact'),
-                    'searchRank': first ? 100 : 0,
-                    'searchMatchKind': first ? 'RELATED' : 'PRIMARY',
-                  },
-                ],
-                'page': 1,
-                'size': 100,
-                'total': 2,
-                'totalPages': 1,
-              },
-            ),
-          );
-        },
-      ),
-    );
-    final repo = DioGoodsRepository(ApiClient(dio));
-    final page = await repo.search(
-      '螺丝',
-      categoryRootIds: {
-        for (var i = 0; i < 33; i++) 'root-${i.toString().padLeft(2, '0')}',
-      },
-      categoryId: 'child',
-      includeRelated: true,
-      size: 10,
-    );
-    expect(page.items.map((g) => g.id), ['exact', 'overlap', 'related']);
-    expect(page.total, 3);
-    expect(page.items.last.isRelatedSearchMatch, isTrue);
-    expect(
-      requests.map((r) => r.queryParameters['categoryId']),
-      everyElement('child'),
-    );
-    expect(
-      requests.map((r) => r.queryParameters['includeRelated']),
-      everyElement(true),
-    );
-  });
-  test('跨批价格空值与服务端升序末尾降序前置保持一致', () async {
-    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
-    dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (request, handler) {
-          final first =
-              (request.queryParameters['categoryRootIds'] as List).first ==
-              'root-00';
-          handler.resolve(
-            Response<dynamic>(
-              requestOptions: request,
-              statusCode: 200,
-              data: {
-                'items': [
-                  {
-                    ..._goodsJson(first ? 'aaa-null' : 'zzz-zero'),
-                    'price': first ? null : 0,
-                    'searchRank': 4,
-                  },
-                ],
-                'page': 1,
-                'size': 100,
-                'total': 1,
-                'totalPages': 1,
-              },
-            ),
-          );
-        },
-      ),
-    );
-    final roots = {
-      for (var index = 0; index < 33; index++)
-        'root-${index.toString().padLeft(2, '0')}',
-    };
-    final repository = DioGoodsRepository(ApiClient(dio));
-    expect(
-      (await repository.search(
-        '料',
-        categoryRootIds: roots,
-        sort: 'price',
-        order: 'asc',
-      )).items.first.id,
-      'zzz-zero',
-    );
-    expect(
-      (await repository.search(
-        '料',
-        categoryRootIds: roots,
-        sort: 'price',
-        order: 'desc',
-      )).items.first.id,
-      'aaa-null',
-    );
-  });
-
-  test('超过32根时跨批按服务端相关性再按编号合并分页', () async {
-    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
-    dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (request, handler) {
-          final roots = (request.queryParameters['categoryRootIds'] as List)
-              .cast<String>();
-          final exact = roots.first == 'root-32';
-          handler.resolve(
-            Response<dynamic>(
-              requestOptions: request,
-              statusCode: 200,
-              data: {
-                'items': [
-                  {
-                    ..._goodsJson(exact ? 'exact' : 'hidden'),
-                    'code': exact ? 'Z-精确' : 'A-近似',
-                    'searchRank': exact ? 0 : 5,
-                  },
-                ],
-                'page': 1,
-                'size': 100,
-                'total': 1,
-                'totalPages': 1,
-              },
-            ),
-          );
-        },
-      ),
-    );
-    final roots = {
-      for (var index = 0; index < 33; index++)
-        'root-${index.toString().padLeft(2, '0')}',
-    };
-    final page = await DioGoodsRepository(
-      ApiClient(dio),
-    ).search('螺丝', categoryRootIds: roots, sort: 'code', order: 'asc', size: 1);
-    expect(page.items.single.id, 'exact');
-    expect(page.items.single.searchRank, 0);
-    expect(page.total, 2);
-    expect(page.totalPages, 2);
-  });
-
-  test('多词关键词在货品页、全局结果及轻量分类定位请求中保持一致', () async {
-    final captured = <RequestOptions>[];
-    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
-    dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (request, handler) {
-          captured.add(request);
-          handler.resolve(
-            Response<dynamic>(
-              requestOptions: request,
-              statusCode: 200,
-              data: request.path.endsWith('/search-category-ids')
-                  ? const ['category-a']
-                  : const {
-                      'items': <dynamic>[],
-                      'page': 1,
-                      'size': 20,
-                      'total': 0,
-                      'totalPages': 0,
-                    },
-            ),
-          );
-        },
-      ),
-    );
-    final repository = DioGoodsRepository(ApiClient(dio));
-    const query = ' 螺丝 M3_20% ';
-    await repository.list('category-a', keyword: query);
-    await repository.search(query, categoryRootIds: {'root-a'});
-    await repository.searchCategoryIds(query, categoryRootIds: {'root-a'});
-    expect(
-      captured.map((request) => request.queryParameters['keyword']),
-      everyElement('螺丝 M3_20%'),
-    );
-    expect(captured[0].queryParameters['categoryId'], 'category-a');
-    expect(captured[1].queryParameters['categoryRootIds'], ['root-a']);
-    expect(captured[2].queryParameters['categoryRootIds'], ['root-a']);
-  });
-
-  test(
-    'global goods search forwards deterministic category root scope',
-    () async {
-      late RequestOptions captured;
-      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
-      dio.interceptors.add(
-        InterceptorsWrapper(
-          onRequest: (request, handler) {
-            captured = request;
-            handler.resolve(
-              Response<dynamic>(
-                requestOptions: request,
-                statusCode: 200,
-                data: const {
-                  'items': <dynamic>[],
-                  'page': 2,
-                  'size': 20,
-                  'total': 0,
-                  'totalPages': 0,
-                },
-              ),
-            );
-          },
-        ),
-      );
-
-      final repository = DioGoodsRepository(ApiClient(dio));
-      await repository.search(
-        'G-100',
-        page: 2,
-        categoryRootIds: const {'root-b', 'root-a'},
-        excludeDisabled: true,
-        excludeStub: true,
-      );
-
-      expect(captured.method, 'GET');
-      expect(captured.path, '/master/goods');
-      expect(captured.queryParameters, {
-        'page': 2,
-        'size': 20,
-        'categoryRootIds': ['root-a', 'root-b'],
-        'keyword': 'G-100',
-        'excludeDisabled': true,
-        'excludeStub': true,
-      });
-    },
-  );
-
-  test(
-    'ordinary unscoped search does not send an empty root parameter',
-    () async {
-      late RequestOptions captured;
-      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
-      dio.interceptors.add(
-        InterceptorsWrapper(
-          onRequest: (request, handler) {
-            captured = request;
-            handler.resolve(
-              Response<dynamic>(
-                requestOptions: request,
-                statusCode: 200,
-                data: const {
-                  'items': <dynamic>[],
-                  'page': 1,
-                  'size': 20,
-                  'total': 0,
-                  'totalPages': 0,
-                },
-              ),
-            );
-          },
-        ),
-      );
-
-      await DioGoodsRepository(ApiClient(dio)).search('bolt');
-
-      expect(captured.queryParameters, isNot(contains('categoryRootIds')));
-    },
-  );
-
-  test(
-    'lightweight location search forwards the same fail-closed scope',
-    () async {
-      late RequestOptions captured;
-      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
-      dio.interceptors.add(
-        InterceptorsWrapper(
-          onRequest: (request, handler) {
-            captured = request;
-            handler.resolve(
-              Response<dynamic>(
-                requestOptions: request,
-                statusCode: 200,
-                data: const ['category-a', 'category-b', 'category-a'],
-              ),
-            );
-          },
-        ),
-      );
-
-      final ids = await DioGoodsRepository(ApiClient(dio)).searchCategoryIds(
-        'G-100',
-        categoryRootIds: const {'root-b', 'root-a'},
-        excludeDisabled: true,
-        excludeStub: true,
-      );
-
-      expect(ids, {'category-a', 'category-b'});
-      expect(captured.method, 'GET');
-      expect(captured.path, '/master/goods/search-category-ids');
-      expect(captured.queryParameters, {
-        'categoryRootIds': ['root-a', 'root-b'],
-        'keyword': 'G-100',
-        'excludeDisabled': true,
-        'excludeStub': true,
-      });
-    },
-  );
-
-  test('oversized location scope is split into fail-closed batches', () async {
-    final capturedScopes = <List<String>>[];
-    final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
-    dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (request, handler) {
-          final scope = (request.queryParameters['categoryRootIds'] as List)
-              .cast<String>();
-          capturedScopes.add([...scope]);
-          handler.resolve(
-            Response<dynamic>(
-              requestOptions: request,
-              statusCode: 200,
-              data: [scope.first, 'shared-category'],
-            ),
-          );
-        },
-      ),
-    );
-    final roots = {
-      for (var i = 0; i < 65; i++) 'root-${i.toString().padLeft(2, '0')}',
-    };
-
-    final result = await DioGoodsRepository(ApiClient(dio)).searchCategoryIds(
-      'G-',
-      categoryRootIds: roots,
-      excludeDisabled: true,
-      excludeStub: true,
-    );
-
-    expect(capturedScopes.map((scope) => scope.length), [32, 32, 1]);
-    expect(
-      capturedScopes.expand((scope) => scope).toList(),
-      roots.toList()..sort(),
-    );
-    expect(result, {'root-00', 'root-32', 'root-64', 'shared-category'});
-  });
-
-  test(
-    'oversized goods scope merges all batch pages, de-duplicates, then paginates',
-    () async {
-      final calls = <({List<String> roots, int page, int size})>[];
-      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
-      dio.interceptors.add(
-        InterceptorsWrapper(
-          onRequest: (request, handler) {
-            final roots = (request.queryParameters['categoryRootIds'] as List)
-                .cast<String>();
-            final page = request.queryParameters['page'] as int;
-            final size = request.queryParameters['size'] as int;
-            calls.add((roots: [...roots], page: page, size: size));
-
-            final List<Map<String, dynamic>> items;
-            final int totalPages;
-            if (roots.first == 'root-00') {
-              items = page == 1
-                  ? [_goodsJson('goods-a'), _goodsJson('goods-b')]
-                  : [_goodsJson('goods-b'), _goodsJson('goods-c')];
-              totalPages = 2;
-            } else if (roots.first == 'root-32') {
-              items = [_goodsJson('goods-c'), _goodsJson('goods-d')];
-              totalPages = 1;
-            } else {
-              items = [_goodsJson('goods-e')];
-              totalPages = 1;
-            }
-            handler.resolve(
-              Response<dynamic>(
-                requestOptions: request,
-                statusCode: 200,
-                data: {
-                  'items': items,
-                  'page': page,
-                  'size': size,
-                  'total': items.length,
-                  'totalPages': totalPages,
-                },
-              ),
-            );
-          },
-        ),
-      );
-      final roots = {
-        for (var i = 0; i < 65; i++) 'root-${i.toString().padLeft(2, '0')}',
-      };
-
-      final result = await DioGoodsRepository(ApiClient(dio)).search(
-        'G-',
-        page: 2,
-        size: 2,
-        categoryRootIds: roots,
-        excludeDisabled: true,
-        excludeStub: true,
-      );
-
-      expect(calls.map((call) => call.roots.length), [32, 32, 32, 1]);
-      expect(calls.every((call) => call.roots.length <= 32), isTrue);
-      expect(calls.every((call) => call.size == 100), isTrue);
-      expect(calls.map((call) => (call.roots.first, call.page)), [
-        ('root-00', 1),
-        ('root-00', 2),
-        ('root-32', 1),
-        ('root-64', 1),
-      ]);
-      expect(result.items.map((item) => item.id), ['goods-c', 'goods-d']);
-      expect(result.page, 2);
-      expect(result.size, 2);
-      expect(result.total, 5);
-      expect(result.totalPages, 3);
-    },
-  );
-
-  test(
-    'empty locator scope returns zero matches without unscoped request',
-    () async {
-      var requestCount = 0;
-      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
-      dio.interceptors.add(
-        InterceptorsWrapper(
-          onRequest: (request, handler) {
-            requestCount++;
-            handler.next(request);
-          },
-        ),
-      );
-
-      final result = await DioGoodsRepository(
-        ApiClient(dio),
-      ).searchCategoryIds('G-', categoryRootIds: const {});
-
-      expect(result, isEmpty);
-      expect(requestCount, 0);
-    },
-  );
-}
-
-Map<String, dynamic> _goodsJson(String id) => {
+Set<String> roots(int count) => {
+  for (var i = count - 1; i >= 0; i--) 'root-${i.toString().padLeft(4, '0')}',
+};
+Map<String, dynamic> goods(String id) => {
   'id': id,
   'code': id,
   'name': id,
-  'categoryId': 'category-$id',
+  'categoryId': 'child',
 };
+Map<String, dynamic> page({int page = 1, int size = 20, int total = 2}) => {
+  'items': [goods('server-first'), goods('server-second')],
+  'page': page,
+  'size': size,
+  'total': total,
+  'totalPages': (total + size - 1) ~/ size,
+};
+
+void main() {
+  for (final base in ['/master/goods', '/business-references/goods']) {
+    test('$base small scopes preserve the GET and search contracts', () async {
+      final calls = <RequestOptions>[];
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (r, h) {
+            calls.add(r);
+            h.resolve(
+              Response(
+                requestOptions: r,
+                statusCode: 200,
+                data: r.path.endsWith('/search-category-ids')
+                    ? ['child', 'child']
+                    : page(),
+              ),
+            );
+          },
+        ),
+      );
+      final repo = DioGoodsRepository(ApiClient(dio), queryBasePath: base);
+      await repo.search(
+        ' 螺丝 M3_20% ',
+        page: 2,
+        size: 10,
+        categoryRootIds: {'root-b', 'root-a'},
+        categoryId: 'child',
+        includeRelated: true,
+        excludeDisabled: true,
+        excludeStub: true,
+        sort: 'price',
+        order: 'desc',
+      );
+      expect(calls.single.method, 'GET');
+      expect(calls.single.path, base);
+      expect(calls.single.queryParameters, {
+        'page': 2,
+        'size': 10,
+        'categoryRootIds': ['root-a', 'root-b'],
+        'categoryId': 'child',
+        'keyword': '螺丝 M3_20%',
+        'includeRelated': true,
+        'excludeDisabled': true,
+        'excludeStub': true,
+        'sort': 'price',
+        'order': 'desc',
+      });
+      expect(await repo.searchCategoryIds('螺丝', categoryRootIds: {'root-a'}), {
+        'child',
+      });
+      expect(calls.last.method, 'GET');
+      await repo.search('');
+      expect(calls.last.queryParameters, isNot(contains('categoryRootIds')));
+      expect(calls.last.queryParameters, isNot(contains('keyword')));
+      expect(calls.last.queryParameters, isNot(contains('includeRelated')));
+    });
+
+    for (final count in [33, 200, 4096]) {
+      test(
+        '$base $count roots fetch only the requested authorized server page',
+        () async {
+          final calls = <RequestOptions>[];
+          final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+          dio.interceptors.add(
+            InterceptorsWrapper(
+              onRequest: (r, h) {
+                calls.add(r);
+                h.resolve(
+                  Response(
+                    requestOptions: r,
+                    statusCode: 200,
+                    data: page(page: 20, size: 10, total: 1000000),
+                  ),
+                );
+              },
+            ),
+          );
+          final repo = DioGoodsRepository(ApiClient(dio), queryBasePath: base);
+          final result = await repo.searchColumns(
+            ' 螺丝 M3 ',
+            categoryRootIds: roots(count),
+            categoryId: 'child',
+            page: 20,
+            size: 10,
+            includeRelated: true,
+            excludeDisabled: true,
+            excludeStub: true,
+            filters: {
+              'search.name': '螺 丝',
+              'paper': kMasterFilterNullValue,
+              'colorLegacyId': 'color-uuid',
+              'code': 'M3',
+            },
+            sort: 'price',
+            order: 'desc',
+          );
+          expect(calls, hasLength(1));
+          final request = calls.single;
+          expect(request.method, 'POST');
+          expect(request.path, '$base/search');
+          expect(request.queryParameters, isEmpty);
+          final body = request.data as Map;
+          expect(body['page'], 20);
+          expect(body['size'], 10);
+          expect(body['sort'], 'price');
+          expect(body['order'], 'desc');
+          final filter = body['filter'] as Map;
+          expect(filter['categoryRootIds'], roots(count).toList()..sort());
+          expect(filter['categoryId'], 'child');
+          expect(filter['keyword'], '螺丝 M3');
+          expect(filter['columnSearch'], {'name': '螺 丝'});
+          expect(filter['nullFields'], ['paper']);
+          expect(filter['colorRef'], 'color-uuid');
+          expect(filter['excludeDisabled'], true);
+          expect(filter['excludeStub'], true);
+          expect(filter['includeRelated'], true);
+          expect(result.items.map((item) => item.id), [
+            'server-first',
+            'server-second',
+          ]);
+          expect(result.total, 1000000);
+          expect(result.totalPages, 100000);
+          expect(result.page, 20);
+        },
+      );
+    }
+
+    test('$base locations and metadata keep large scopes in bodies', () async {
+      final calls = <RequestOptions>[];
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (r, h) {
+            calls.add(r);
+            h.resolve(
+              Response(
+                requestOptions: r,
+                statusCode: 200,
+                data: r.path.endsWith('/search-category-ids')
+                    ? ['child', 'child']
+                    : r.path.endsWith('/facet-values')
+                    ? <String, dynamic>{'items': <dynamic>[], 'hasMore': true}
+                    : <String, dynamic>{},
+              ),
+            );
+          },
+        ),
+      );
+      final api = ApiClient(dio);
+      final repo = DioGoodsRepository(api, queryBasePath: base);
+      expect(
+        await repo.searchCategoryIds(
+          '螺',
+          categoryRootIds: roots(65),
+          includeRelated: true,
+          categoryId: 'child',
+        ),
+        {'child'},
+      );
+      await repo.globalFacets(
+        categoryId: 'child',
+        categoryRootIds: roots(65),
+        keyword: '螺',
+        filters: {'search.code': 'M3'},
+      );
+      final values = await GoodsFacetRepository(api, queryBasePath: base)
+          .values(
+            field: 'colorLegacyId',
+            search: '红',
+            page: 3,
+            categoryRootIds: roots(65),
+            categoryId: 'child',
+            filters: {'search.code': 'M3'},
+          );
+      expect(calls, hasLength(3));
+      expect(calls.map((r) => r.method), everyElement('POST'));
+      expect(
+        calls.map(
+          (r) => (((r.data as Map)['filter'] as Map)['categoryRootIds'] as List)
+              .length,
+        ),
+        everyElement(65),
+      );
+      expect(
+        calls.take(2).map((r) => r.queryParameters),
+        everyElement(isEmpty),
+      );
+      expect(calls.last.queryParameters, {
+        'field': 'colorRef',
+        'search': '红',
+        'page': 3,
+        'size': 50,
+      });
+      expect(((calls.last.data as Map)['filter'] as Map)['columnSearch'], {
+        'code': 'M3',
+      });
+      expect(((calls[1].data as Map)['filter'] as Map)['categoryId'], 'child');
+      expect(((calls[2].data as Map)['filter'] as Map)['categoryId'], 'child');
+      expect(values.hasMore, true);
+    });
+  }
+
+  test(
+    'bad scopes fail closed before transport, empty locator never reads the whole catalog',
+    () async {
+      var calls = 0;
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (r, h) {
+            calls++;
+            h.next(r);
+          },
+        ),
+      );
+      final repo = DioGoodsRepository(ApiClient(dio));
+      expect(await repo.searchCategoryIds('螺', categoryRootIds: {}), isEmpty);
+      await expectLater(
+        repo.search('螺', categoryRootIds: {' '}),
+        throwsArgumentError,
+      );
+      await expectLater(
+        repo.search('螺', categoryRootIds: roots(4097)),
+        throwsArgumentError,
+      );
+      expect(calls, 0);
+    },
+  );
+
+  test(
+    'a failed large-scope read never falls back to a broad or partial query',
+    () async {
+      var calls = 0;
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (r, h) {
+            calls++;
+            h.reject(
+              DioException(
+                requestOptions: r,
+                response: Response(
+                  requestOptions: r,
+                  statusCode: 403,
+                  data: {'code': 'FORBIDDEN', 'message': '无权读取'},
+                ),
+              ),
+            );
+          },
+        ),
+      );
+      final repo = DioGoodsRepository(ApiClient(dio));
+      await expectLater(
+        repo.search('螺', categoryRootIds: roots(65)),
+        throwsA(isA<ApiException>().having((e) => e.code, 'code', 'FORBIDDEN')),
+      );
+      expect(calls, 1);
+    },
+  );
+
+  test(
+    'scoped result and location payloads reject missing category identity',
+    () async {
+      final dio = Dio(BaseOptions(baseUrl: 'http://localhost:8080/api'));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (r, h) {
+            h.resolve(
+              Response(
+                requestOptions: r,
+                statusCode: 200,
+                data: r.path.endsWith('/search-category-ids')
+                    ? ['']
+                    : {
+                        ...page(),
+                        'items': [
+                          {'id': 'bad', 'code': 'bad', 'name': 'bad'},
+                        ],
+                      },
+              ),
+            );
+          },
+        ),
+      );
+      final repo = DioGoodsRepository(ApiClient(dio));
+      await expectLater(
+        repo.search('螺', categoryRootIds: roots(65)),
+        throwsStateError,
+      );
+      await expectLater(
+        repo.searchCategoryIds('螺', categoryRootIds: roots(65)),
+        throwsStateError,
+      );
+    },
+  );
+}

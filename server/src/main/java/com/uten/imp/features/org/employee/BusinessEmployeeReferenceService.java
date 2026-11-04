@@ -1,6 +1,8 @@
 package com.uten.imp.features.org.employee;
 
 import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
+import com.uten.imp.common.util.DepartmentSearchSql;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
@@ -41,10 +43,14 @@ public class BusinessEmployeeReferenceService {
             Set<String> statuses,UUID departmentId,boolean includeSubtree,String accountStatus,String employmentStatus) {
         access.require(purpose);
         int safePage=Math.max(1,page),size=Math.min(100,Math.max(1,requestedSize));
+        boolean searched=!KeywordSearch.terms(search).isEmpty();
+        String prefix=DepartmentSearchSql.prefix(searched);
+        String from=FROM+DepartmentSearchSql.joins(searched,"e.department_id");
         List<Object> parameters=new ArrayList<>();
         StringBuilder where=new StringBuilder(" WHERE NOT e.is_deleted\n");
         for(String term:KeywordSearch.terms(search)) {
-            where.append(" AND (LOWER(e.code) LIKE ? ESCAPE '\\' OR LOWER(e.full_name) LIKE ? ESCAPE '\\' OR LOWER(d.name) LIKE ? ESCAPE '\\' OR LOWER(p.name) LIKE ? ESCAPE '\\')\n");
+            where.append(" AND (LOWER(e.code) LIKE ? ESCAPE '\\' OR LOWER(e.full_name) LIKE ? ESCAPE '\\' OR LOWER(")
+                    .append(DepartmentSearchSql.name("d.name")).append(") LIKE ? ESCAPE '\\' OR LOWER(p.name) LIKE ? ESCAPE '\\')\n");
             for(int field=0;field<4;field++) {parameters.add(KeywordSearch.containsPattern(term));}
         }
         if(statuses!=null&&!statuses.isEmpty()) {
@@ -60,10 +66,13 @@ public class BusinessEmployeeReferenceService {
         if(accountStatus!=null) {filters.put("accountStatus",accountStatus);}
         if(employmentStatus!=null) {filters.put("employmentStatus",employmentStatus);}
         EmployeeHeaderQuery.read(filters,HEADERS).append(where,parameters);
-        Long count=jdbc.queryForObject("SELECT count(*) "+FROM+where,Long.class,parameters.toArray());
+        Long count=jdbc.queryForObject(prefix+"SELECT count(*) "+from+where,Long.class,parameters.toArray());
         long total=count==null?0:count;
-        List<Object> paged=new ArrayList<>(parameters);paged.add(size);paged.add(((long)safePage-1)*size);
-        var items=jdbc.query(SELECT+FROM+where+" ORDER BY e.code ASC NULLS LAST,e.id LIMIT ? OFFSET ?",BusinessEmployeeReferenceService::map,paged.toArray());
+        List<Object> paged=new ArrayList<>(parameters);
+        String ranking=searched?TaskKeywordSearch.rankNamesFirstPositional(search,paged,new String[]{"e.full_name"},
+                "e.code",DepartmentSearchSql.name("d.name"),"p.name")+", ":"";
+        paged.add(size);paged.add(((long)safePage-1)*size);
+        var items=jdbc.query(prefix+SELECT+from+where+" ORDER BY "+ranking+"e.code ASC NULLS LAST,e.id LIMIT ? OFFSET ?",BusinessEmployeeReferenceService::map,paged.toArray());
         return new PageResponse<>(items,safePage,size,total,total==0?0:(int)((total+size-1)/size));
     }
 

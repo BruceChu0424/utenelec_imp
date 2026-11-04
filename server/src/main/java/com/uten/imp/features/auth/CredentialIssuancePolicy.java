@@ -25,11 +25,18 @@ public class CredentialIssuancePolicy {
 
     /** Initial UI/target eligibility only; writes also recheck live lifecycle and high-risk authority. */
     public static boolean passwordResetSupportAllowed(AuthUser actor, UserAccount target) {
-        return actor != null && target != null && !target.isDeleted() && target.getEmployeeId() != null
+        return target != null && passwordResetSupportAllowed(actor, target.getId(), target.getEmployeeId(),
+                target.isDeleted(), target.isSuperAdmin());
+    }
+
+    /** The same read-side policy for minimal account projections; no credential entity is needed. */
+    public static boolean passwordResetSupportAllowed(AuthUser actor, java.util.UUID targetId,
+            java.util.UUID employeeId, boolean deleted, boolean superAdmin) {
+        return actor != null && targetId != null && !deleted && employeeId != null
                 && !actor.isVisitor() && !actor.isMustChangePassword() && actor.getImpersonatedBy() == null
                 && actor.getPermissions().contains("account:support")
-                && !actor.getId().equals(target.getId())
-                && (!target.isSuperAdmin() || actor.isSuperAdmin());
+                && !actor.getId().equals(targetId)
+                && (!superAdmin || actor.isSuperAdmin());
     }
 
     private final NamedParameterJdbcTemplate jdbc;

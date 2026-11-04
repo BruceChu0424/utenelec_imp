@@ -1,12 +1,10 @@
 package com.uten.imp.features.admin;
 
 import com.uten.imp.application.port.AccountSecurityNoticePort;
-import com.uten.imp.common.identity.CurrentEmployeeStatusPolicy;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.PageResponse;
 import com.uten.imp.common.web.Pageables;
-import com.uten.imp.common.util.KeywordSearch;
 import com.uten.imp.audit.AuditService;
 import com.uten.imp.features.admin.dto.UserSummary;
 import com.uten.imp.features.admin.dto.ProvisionCandidateDto;
@@ -16,35 +14,22 @@ import com.uten.imp.features.auth.AuthSessionService;
 import com.uten.imp.features.auth.model.RefreshTokenRepository;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
-import com.uten.imp.features.org.department.Department;
 import com.uten.imp.features.org.employee.Employee;
 import com.uten.imp.features.org.employee.EmployeeRepository;
-import com.uten.imp.features.org.employee.EmployeeSensitive;
-import com.uten.imp.features.org.employee.EmployeeSensitiveRepository;
 import com.uten.imp.security.TemporaryPasswordGenerator;
 import com.uten.imp.security.PasswordPolicy;
 import com.uten.imp.security.CurrentStaffWriteGuard;
 import com.uten.imp.security.TxSessionVars;
-import jakarta.persistence.criteria.Predicate;
-import jakarta.persistence.criteria.JoinType;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * 账号支持: 列表、锁定/启停/解锁、设置随机或自定临时密码、开通账号候选 (ADR-110; security-02)。
@@ -62,7 +47,6 @@ public class UserAccountAdminService {
 
     private final UserAccountRepository userRepo;
     private final EmployeeRepository empRepo;
-    private final EmployeeSensitiveRepository sensitiveRepo;
     private final RefreshTokenRepository refreshTokenRepo;
     private final PasswordEncoder passwordEncoder;
     private final TemporaryPasswordGenerator temporaryPasswordGenerator;
@@ -76,88 +60,30 @@ public class UserAccountAdminService {
     private final AccountSecurityNoticePort accountNotice;
     private final AccountLifecycleCoordinator lifecycleCoordinator;
     private final CurrentStaffWriteGuard writeGuard;
+    private final AdminUserSummaryQuery summaryQuery;
+    private final ProvisionCandidateQuery candidateQuery;
 
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional(readOnly = true)
     public PageResponse<UserSummary> list(int page, int size, String search, String status) {
-        Specification<UserAccount> spec = (root, q, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            predicates.add(cb.isFalse(root.get("deleted")));
-            var employee = root.join("employee", JoinType.LEFT);
-            // Deleted historical employee shells are retained for audit, not account administration.
-            predicates.add(cb.or(cb.isNull(employee.get("id")), cb.isFalse(employee.get("deleted"))));
-            if (search != null && !search.isBlank()) {
-                predicates.add(KeywordSearch.allTerms(cb, search,
-                        employee.get("fullName"), employee.get("code"), root.get("loginAccount")));
-                if (!Long.class.equals(q.getResultType()) && !long.class.equals(q.getResultType())) {
-                    var exact=cb.or(KeywordSearch.exact(cb,employee.get("fullName"),search),
-                            KeywordSearch.exact(cb,employee.get("code"),search),
-                            KeywordSearch.exact(cb,root.get("loginAccount"),search));
-                    String phrase=KeywordSearch.phrase(search);
-                    var prefix=cb.or(cb.like(cb.lower(employee.get("fullName")),KeywordSearch.prefixPattern(phrase),'\\'),
-                            cb.like(cb.lower(employee.get("code")),KeywordSearch.prefixPattern(phrase),'\\'),
-                            cb.like(cb.lower(root.get("loginAccount")),KeywordSearch.prefixPattern(phrase),'\\'));
-                    var contains=cb.or(cb.like(cb.lower(employee.get("fullName")),KeywordSearch.containsPattern(phrase),'\\'),
-                            cb.like(cb.lower(employee.get("code")),KeywordSearch.containsPattern(phrase),'\\'),
-                            cb.like(cb.lower(root.get("loginAccount")),KeywordSearch.containsPattern(phrase),'\\'));
-                    q.orderBy(cb.asc(KeywordSearch.rank(cb,exact,prefix,contains)),cb.asc(employee.get("fullName")),
-                            cb.asc(employee.get("code")),cb.asc(root.get("loginAccount")),cb.asc(root.get("id")));
-                }
-            }
-            if (status != null && !status.isBlank()) {
-                predicates.add(cb.equal(root.get("status"), status));
-            }
-            return cb.and(predicates.toArray(new Predicate[0]));
-        };
-        Pageable pageable = Pageables.of(
-                page,
-                size,
-                search == null || search.isBlank() ? Sort.by(Sort.Direction.ASC, "loginAccount") : Sort.unsorted());
-        Page<UserAccount> result = userRepo.findAll(spec, pageable);
-        List<UserSummary> items = result.getContent().stream().map(this::toSummary).toList();
-        return new PageResponse<>(
-                items,
-                page,
-                size,
-                result.getTotalElements(),
-                result.getTotalPages());
+        var result = summaryQuery.list(Pageables.of(page, size), search, status);
+        return new PageResponse<>(result.getContent(), result);
+    }
+
+    @PreAuthorize("hasAuthority('account:support')")
+    @Transactional(readOnly = true)
+    public UserSummary getSummary(UUID userId) {
+        return summaryQuery.byId(userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "账号不存在"));
     }
 
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     @Transactional(readOnly = true)
     public UserSummary getByEmployeeId(UUID employeeId) {
-        UserAccount user = userRepo.findByEmployeeId(employeeId)
-                .filter(row -> !row.isDeleted())
+        return summaryQuery.byEmployeeId(employeeId)
                 .orElseThrow(() -> new ApiException(
                         ErrorCode.NOT_FOUND,
                         "该员工未开通可用账号，无法设置权限"));
-        return toSummary(user);
-    }
-
-    private UserSummary toSummary(UserAccount user) {
-        Employee employee = user.getEmployeeId()==null?null:empRepo.findById(user.getEmployeeId()).orElse(null);
-        Department department = employee == null ? null : employee.getDepartment();
-        return new UserSummary(
-                user.getId(),
-                employee == null ? null : employee.getId(),
-                user.getLoginAccount(),
-                employee == null ? null : employee.getFullName(),
-                employee == null ? null : employee.getCode(),
-                employee == null ? null : employee.getStatus(),
-                employee != null && CurrentEmployeeStatusPolicy.isCurrentEmployee(
-                        employee.getStatus()),
-                department == null ? null : department.getId(),
-                department == null ? null : department.getName(),
-                employee == null || employee.getPosition() == null
-                        ? null
-                        : employee.getPosition().getName(),
-                user.getStatus(),
-                user.isMustChangePassword(),
-                user.getLastLoginAt(),
-                user.isRemoteAccess(),
-                user.getTempPasswordExpiresAt(),
-                support.canSupportTarget(user),
-                support.canResetPasswordTarget(user));
     }
 
     /**
@@ -168,37 +94,18 @@ public class UserAccountAdminService {
     @PreAuthorize("hasAuthority('account:support')")
     @Transactional(readOnly = true)
     public List<ProvisionCandidateDto> provisionCandidates(String search) {
-        String keyword = search == null ? "" : search.trim();
-        List<Employee> employees = empRepo.findProvisionCandidates(
-                keyword, PageRequest.of(0, PROVISION_CANDIDATE_LIMIT + 1));
-        if (employees.size() > PROVISION_CANDIDATE_LIMIT) {
+        var rows = candidateQuery.provisionLegacy(search, PROVISION_CANDIDATE_LIMIT + 1);
+        if (rows.size() > PROVISION_CANDIDATE_LIMIT) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "候选人员过多，请输入姓名或工号缩小范围");
         }
-        if (employees.isEmpty()) {
-            return List.of();
-        }
-        Map<UUID, EmployeeSensitive> sensitiveByEmployee = sensitiveRepo
-                .findAllByEmployeeIdIn(employees.stream().map(Employee::getId).toList())
-                .stream()
-                .collect(Collectors.toMap(EmployeeSensitive::getEmployeeId, Function.identity()));
-        return employees.stream()
-                .map(e -> {
-                    EmployeeSensitive s = sensitiveByEmployee.get(e.getId());
-                    Department department = e.getDepartment();
-                    return new ProvisionCandidateDto(
-                            e.getId(),
-                            e.getFullName(),
-                            e.getCode(),
-                            department == null ? null : department.getName(),
-                            s != null && hasText(s.getPhoneEnc()),
-                            department == null ? null : department.getId(),
-                            "notProvisioned", e.getStatus());
-                })
-                .toList();
+        return rows;
     }
 
-    private static boolean hasText(String value) {
-        return value != null && !value.isBlank();
+    @PreAuthorize("hasAuthority('account:support')")
+    @Transactional(readOnly = true)
+    public PageResponse<ProvisionCandidateDto> provisionCandidatesPage(String search, int page, int size,
+            UUID departmentId, boolean includeSubtree) {
+        return candidateQuery.provisionPage(search, page, size, departmentId, includeSubtree);
     }
 
     @PreAuthorize("hasAuthority('account:support')")

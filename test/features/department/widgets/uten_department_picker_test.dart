@@ -141,6 +141,11 @@ void main() {
     await tester.pumpAndSettle();
 
     final treeView = find.byType(UtenDepartmentTreeView);
+    expect(
+      tester.widget<UtenDepartmentTreeView>(treeView).flatLevelColors,
+      isTrue,
+      reason: '部门选择与部门管理共用层级色、缩进及连线样式',
+    );
     final centerText = find.descendant(
       of: treeView,
       matching: find.text('制造与研发管理中心'),
@@ -244,6 +249,10 @@ void main() {
         await tester.tap(find.text('打开部门'));
         await tester.pumpAndSettle();
         final treeView = find.byType(UtenDepartmentTreeView);
+        expect(
+          tester.widget<UtenDepartmentTreeView>(treeView).flatLevelColors,
+          isTrue,
+        );
         expect(tester.widget<UtenDepartmentTreeView>(treeView).selectedIds, {
           'department',
         });

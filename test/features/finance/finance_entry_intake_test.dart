@@ -349,9 +349,9 @@ Future<TextEditingController> _field(
   final table = _table(tester);
   expect(table.tableKey, 'finance.${type.name}.entry.v1');
   final key = switch (suffix) {
-    'account-amount' => 'entryAccountAmount',
+    'account-amount' => 'entrySettings',
     'bank-reference' => 'entryBankReference',
-    'bank-fee' => 'entryFee',
+    'bank-fee' => 'entrySettings',
     _ => throw StateError('Unsupported entry field $suffix'),
   };
   expect(table.columns.map((column) => column.key), contains(key));

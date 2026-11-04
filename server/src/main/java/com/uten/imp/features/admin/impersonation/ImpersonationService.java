@@ -13,7 +13,6 @@ import com.uten.imp.features.auth.dto.TokenResponse;
 import com.uten.imp.features.auth.model.UserAccount;
 import com.uten.imp.features.auth.model.UserAccountRepository;
 import com.uten.imp.features.org.employee.EmployeeQueryService;
-import com.uten.imp.features.org.employee.dto.EmployeeListItem;
 import com.uten.imp.security.AuthUser;
 import com.uten.imp.security.JwtService;
 import com.uten.imp.security.SecurityContextCurrentUser;
@@ -70,21 +69,23 @@ public class ImpersonationService {
     public List<ImpersonationTargetDto> listTargets(String search) {
         var targets = new java.util.ArrayList<ImpersonationTargetDto>();
         int pageNumber = 1;
-        PageResponse<EmployeeListItem> page;
+        PageResponse<ImpersonationTargetDto> page;
         do {
-            page = employeeQueryService.list(
-                    pageNumber++, 100, search, Set.of("active"), null, false, null, null);
-            for (var employee : page.getItems()) {
-                targets.add(new ImpersonationTargetDto(
-                        employee.getId(), employee.getFullName(), employee.getCode(),
-                        employee.getDepartmentName(), employee.getPositionName(), employee.getDepartmentId(),
-                        employee.getAccountStatus(), employee.getStatus()));
-            }
-            if (targets.size() > 5000) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "候选人员过多，请输入姓名或工号缩小范围");
-            }
+            page = targetsPage(search, pageNumber++, 100, null, false);
+            targets.addAll(page.getItems());
+            if (targets.size() > 5000) throw new ApiException(ErrorCode.VALIDATION_FAILED, "候选人员过多，请输入姓名或工号缩小范围");
         } while (pageNumber <= page.getTotalPages());
         return List.copyOf(targets);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ImpersonationTargetDto> targetsPage(String search, int page, int size,
+            UUID departmentId, boolean includeSubtree) {
+        var source = employeeQueryService.list(page, size, search, Set.of("active"), departmentId, includeSubtree, null, null);
+        var targets = source.getItems().stream().map(employee -> new ImpersonationTargetDto(
+                employee.getId(), employee.getFullName(), employee.getCode(), employee.getDepartmentName(),
+                employee.getPositionName(), employee.getDepartmentId(), employee.getAccountStatus(), employee.getStatus())).toList();
+        return new PageResponse<>(targets, source.getPage(), source.getSize(), source.getTotal(), source.getTotalPages());
     }
 
     /** 进入切换人: 再认证已由控制器核销, 这里签发绑定本人与本会话的限时模式凭证。 */

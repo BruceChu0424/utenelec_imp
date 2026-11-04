@@ -38,6 +38,7 @@ import 'shared/providers/locale_provider.dart';
 import 'shared/providers/session_provider.dart';
 import 'shared/providers/session_keepalive_host.dart';
 import 'shared/providers/session_kick_notice_host.dart';
+import 'shared/providers/session_window_lifecycle_host.dart';
 import 'shared/providers/session_rehydrate_gate.dart';
 import 'shared/providers/theme_provider.dart';
 import 'shared/platform_branding/platform_branding_provider.dart';
@@ -272,7 +273,10 @@ class UtenApp extends ConsumerWidget {
                     session.isLoggedIn || location == RouteName.disasterRecovery
                     ? DesktopWindowMode.main
                     : DesktopWindowMode.login,
-                child: child!,
+                child: SessionWindowLifecycleHost(
+                  router: router,
+                  child: child!,
+                ),
               );
             },
           ),

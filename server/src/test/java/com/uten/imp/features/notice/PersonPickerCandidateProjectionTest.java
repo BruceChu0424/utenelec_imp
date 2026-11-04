@@ -105,8 +105,10 @@ class PersonPickerCandidateProjectionTest {
         assertThat(mapped.departmentId()).isEqualTo(fixture.departmentId);
         assertThat(mapped.departmentName()).isEqualTo("同名部门");
         assertThat(mapped.hasAccount()).isFalse();
-        assertThat(fixture.sql()).contains("e.status <> 'resigned'", "LIMIT 5001")
+        assertThat(fixture.sql()).contains("e.status <> 'resigned'", "LIMIT :candidateLimit")
                 .doesNotContain("LIMIT 50\n");
+        verify(fixture.statement).params(org.mockito.ArgumentMatchers.argThat(
+                (java.util.Map<String, ?> parameters) -> Integer.valueOf(5001).equals(parameters.get("candidateLimit"))));
     }
 
     @Test

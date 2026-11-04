@@ -36,6 +36,7 @@ import 'read_scope_revision.dart';
 import 'interceptors/read_scope_revision_interceptor.dart';
 import 'interceptors/page_read_priority_interceptor.dart';
 import '../diagnostics/diagnostic_request_interceptor.dart';
+import '../../shared/paging/paged_read_intent.dart';
 
 const _clientPackageSendTimeout = Duration(minutes: 30);
 const _clientPackageReceiveTimeout = Duration(minutes: 5);
@@ -57,11 +58,36 @@ class ApiClient {
   final bool streamingDownloads;
   final ApiMutationReloadSafety _reloadSafety;
 
-  Future<T> _trackPost<T>(String path, Future<T> Function() action) =>
-      isReadOnlyPost(path)
-      ? _reloadSafety.trackRead(action)
+  static const _retiredReadReason = 'Uten paged read retired';
+
+  Future<T> _read<T>(
+    Future<T> Function(CancelToken?) action, {
+    CancelToken? cancelToken,
+  }) => _reloadSafety.trackRead(() async {
+    final current = PagedReadIntent.currentRead;
+    if (current == null) return action(cancelToken);
+    ApiException stale() => ApiException('REQUEST_STALE', '搜索条件或读取页面已变化');
+    if (!current()) throw stale();
+    final cancellation = cancelToken ?? CancelToken();
+    final retirement = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      if (!current()) cancellation.cancel(_retiredReadReason);
+    });
+    try {
+      final result = await action(cancellation);
+      if (!current()) throw stale();
+      return result;
+    } finally {
+      retirement.cancel();
+    }
+  });
+
+  Future<T> _trackPost<T>(
+    String path,
+    Future<T> Function(CancelToken?) action,
+  ) => isReadOnlyPost(path)
+      ? _read(action)
       : _reloadSafety.track(
-          action,
+          () => action(null),
           retainUncertainty:
               !isNoticePresentationReceipt(path) && !isEphemeralSignIn(path),
         );
@@ -145,22 +171,56 @@ class ApiClient {
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
-  }) => _reloadSafety.trackRead(() async {
+  }) => _read((cancellation) async {
     try {
-      final r = await _dio.get<dynamic>(path, queryParameters: query);
+      final r = await _dio.get<dynamic>(
+        path,
+        queryParameters: query,
+        cancelToken: cancellation,
+      );
       return _objectResponse(r);
     } on DioException catch (e) {
       throw _convert(e);
     }
   });
 
+  /// One cancellable session watch. The caller owns reconnect/backoff; it must
+  /// not occupy a page-read slot or extend the session's idle deadline.
+  Future<Map<String, dynamic>> watchSession({
+    required CancelToken cancelToken,
+    bool fallbackProbe = false,
+  }) async {
+    try {
+      final response = await _dio.get<dynamic>(
+        fallbackProbe ? '/auth/me' : '/auth/session/watch',
+        cancelToken: cancelToken,
+        options: Options(
+          receiveTimeout: fallbackProbe
+              ? const Duration(seconds: 10)
+              : const Duration(seconds: 35),
+          extra: const {
+            safeRequestRetryDisabledKey: true,
+            AutomaticRequestInterceptor.forceAutomaticKey: true,
+          },
+        ),
+      );
+      return _objectResponse(response);
+    } on DioException catch (error) {
+      throw _convert(error);
+    }
+  }
+
   /// 用于后端直接返回 JSON 数组的接口（如部门树）。
   Future<List<Map<String, dynamic>>> getList(
     String path, {
     Map<String, dynamic>? query,
-  }) => _reloadSafety.trackRead(() async {
+  }) => _read((cancellation) async {
     try {
-      final r = await _dio.get<dynamic>(path, queryParameters: query);
+      final r = await _dio.get<dynamic>(
+        path,
+        queryParameters: query,
+        cancelToken: cancellation,
+      );
       return _asMapList(r.data);
     } on DioException catch (e) {
       throw _convert(e);
@@ -177,12 +237,12 @@ class ApiClient {
     Map<String, dynamic>? query,
     required Duration receiveTimeout,
     CancelToken? cancelToken,
-  }) => _reloadSafety.trackRead(() async {
+  }) => _read((cancellation) async {
     try {
       final r = await _dio.get<dynamic>(
         path,
         queryParameters: query,
-        cancelToken: cancelToken,
+        cancelToken: cancellation,
         options: Options(
           receiveTimeout: receiveTimeout,
           extra: const {safeRequestRetryDisabledKey: true},
@@ -192,7 +252,7 @@ class ApiClient {
     } on DioException catch (e) {
       throw _convert(e);
     }
-  });
+  }, cancelToken: cancelToken);
 
   /// Reads endpoints that return a JSON string array, such as UUID/code lists.
   ///
@@ -201,9 +261,13 @@ class ApiClient {
   Future<List<String>> getStringList(
     String path, {
     Map<String, dynamic>? query,
-  }) => _reloadSafety.trackRead(() async {
+  }) => _read((cancellation) async {
     try {
-      final r = await _dio.get<dynamic>(path, queryParameters: query);
+      final r = await _dio.get<dynamic>(
+        path,
+        queryParameters: query,
+        cancelToken: cancellation,
+      );
       final data = r.data;
       final raw = data is List
           ? data
@@ -228,6 +292,38 @@ class ApiClient {
     }
   });
 
+  /// Typed array counterpart of the two JSON-body goods search reads.
+  /// A strict allowlist keeps commands out of read cancellation/reload policy.
+  Future<List<String>> postStringList(String path, {required Object body}) =>
+      _read((cancellation) async {
+        if (!isGoodsSearchRead(path)) {
+          throw ArgumentError.value(
+            path,
+            'path',
+            'Not a string-array search read',
+          );
+        }
+        try {
+          final response = await _dio.post<dynamic>(
+            path,
+            data: body,
+            cancelToken: cancellation,
+          );
+          final data = response.data;
+          final raw = data is List
+              ? data
+              : data is Map && data['data'] is List
+              ? data['data'] as List<dynamic>
+              : null;
+          if (raw == null || raw.any((item) => item is! String)) {
+            throw const FormatException('Response is not a string array');
+          }
+          return raw.cast<String>().toList(growable: false);
+        } on DioException catch (error) {
+          throw _convert(error);
+        }
+      });
+
   /// Read-only POST computation (a preview that carries a request body) that
   /// the caller can abandon: [cancelToken] aborts the transport when the page
   /// goes away. Never use it for commands; a cancelled command may still have
@@ -237,31 +333,32 @@ class ApiClient {
     Object? body,
     Map<String, dynamic>? query,
     CancelToken? cancelToken,
-  }) => _reloadSafety.trackRead(() async {
+  }) => _read((cancellation) async {
     try {
       final r = await _dio.post<dynamic>(
         path,
         data: body,
         queryParameters: query,
-        cancelToken: cancelToken,
+        cancelToken: cancellation,
       );
       return _objectResponse(r);
     } on DioException catch (e) {
       throw _convert(e);
     }
-  });
+  }, cancelToken: cancelToken);
 
   Future<Map<String, dynamic>> post(
     String path, {
     Object? body,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? query,
-  }) => _trackPost(path, () async {
+  }) => _trackPost(path, (cancellation) async {
     try {
       final r = await _dio.post<dynamic>(
         path,
         data: body,
         queryParameters: query,
+        cancelToken: cancellation,
         options: headers == null ? null : Options(headers: headers),
       );
       return _objectResponse(r);
@@ -274,7 +371,7 @@ class ApiClient {
   Future<Map<String, dynamic>> postForm(
     String path, {
     required Map<String, dynamic> body,
-  }) => _reloadSafety.trackRead(() async {
+  }) => _read((cancellation) async {
     if (!isNativeFacetPath(path)) {
       throw ApiException('VALIDATION_FAILED', '只读候选接口无效');
     }
@@ -287,6 +384,7 @@ class ApiClient {
       final response = await _dio.post<dynamic>(
         path,
         data: frozen,
+        cancelToken: cancellation,
         options: Options(
           contentType: Headers.formUrlEncodedContentType,
           followRedirects: false,
@@ -321,9 +419,13 @@ class ApiClient {
 
   /// POST 且响应为 JSON 数组（如批量生成结果列表）。
   Future<List<Map<String, dynamic>>> postList(String path, {Object? body}) =>
-      _trackPost(path, () async {
+      _trackPost(path, (cancellation) async {
         try {
-          final r = await _dio.post<dynamic>(path, data: body);
+          final r = await _dio.post<dynamic>(
+            path,
+            data: body,
+            cancelToken: cancellation,
+          );
           final data = r.data;
           if (data is List) {
             return data.cast<Map<String, dynamic>>();
@@ -665,6 +767,9 @@ class ApiClient {
   String get baseUrl => _dio.options.baseUrl;
 
   ApiException _convert(DioException e) {
+    if (e.type == DioExceptionType.cancel && e.error == _retiredReadReason) {
+      return ApiException('REQUEST_STALE', '搜索条件或读取页面已变化');
+    }
     final certificateFailure = companyTlsFailure(e);
     if (certificateFailure != null) return certificateFailure;
     final connectionFailure = _connectionException(e);

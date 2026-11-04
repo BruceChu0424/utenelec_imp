@@ -1,6 +1,7 @@
 package com.uten.imp.features.finance;
 import com.uten.imp.application.port.FinanceApplicationReferencePort;
 import com.uten.imp.common.web.*;
+import com.uten.imp.common.util.KeywordSearch;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
@@ -73,7 +74,7 @@ public class FinanceApplicationReferenceAdapter implements FinanceApplicationRef
         var scope=financeScope(actor);var args=new HashMap<String,Object>(scope.parameters());
         args.put("applicationId",applicationId);args.put("supplier",supplier);args.put("amount",amount);args.put("paid",date);
         String where=PREPAYMENT_SOURCE+" AND payment.supplier_id=:supplier AND payment.amount_local=:amount AND payment.bill_date=:paid AND ("+scope.sql()+") AND NOT EXISTS(SELECT 1 FROM business_applications linked WHERE linked.finance_document_type='PAYMENT' AND linked.finance_document_id=payment.id AND linked.id<>:applicationId)";
-        if(keyword!=null&&!keyword.isBlank()){if(keyword.trim().length()>200)throw new ApiException(ErrorCode.VALIDATION_FAILED,"搜索内容过长");where+=" AND payment.bill_no ILIKE :keyword";args.put("keyword","%"+keyword.trim()+"%");}
+        if(keyword!=null&&!keyword.isBlank()){if(keyword.trim().length()>200)throw new ApiException(ErrorCode.VALIDATION_FAILED,"搜索内容过长");where+=" AND payment.bill_no ILIKE :keyword ESCAPE '\\'";args.put("keyword",KeywordSearch.containsPattern(keyword.trim()));}
         var named=new NamedParameterJdbcTemplate(jdbc);long total=named.queryForObject("SELECT count(*) FROM finance_payments payment WHERE "+where,args,Long.class);
         int s=Math.clamp(size,1,100);args.put("limit",s);args.put("offset",(long)(Math.max(1,page)-1)*s);
         var rows=named.query("SELECT payment.id,payment.bill_no,payment.bill_date,payment.amount_local FROM finance_payments payment WHERE "+where+" ORDER BY payment.bill_date,payment.bill_no,payment.id LIMIT :limit OFFSET :offset",args,(r,n)->new Candidate(r.getObject(1,UUID.class),r.getString(2),r.getDate(3).toLocalDate(),r.getBigDecimal(4)));

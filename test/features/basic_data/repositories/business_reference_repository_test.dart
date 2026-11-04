@@ -139,7 +139,7 @@ void main() {
   });
 
   test(
-    'goods list search batches locations and facets share the original query engine on minimal sources',
+    'goods list body search locations and facets share the original query engine on minimal sources',
     () async {
       final api = _Api();
       final repository = DioGoodsRepository(
@@ -184,8 +184,20 @@ void main() {
         api.gets
             .where((entry) => entry.$2.containsKey('categoryRootIds'))
             .length,
-        greaterThanOrEqualTo(2),
+        1,
       );
+      expect(
+        api.posts.single.$1,
+        '${ApiEndpoints.businessReferenceGoods}/search',
+      );
+      expect(
+        ((api.posts.single.$3['filter'] as Map)['categoryRootIds'] as List)
+            .length,
+        33,
+      );
+      expect((api.posts.single.$3['filter'] as Map)['columnSearch'], {
+        'model': 'M1',
+      });
       expect(api.gets.last.$2['field'], 'unitRef');
       expect(
         api.stringLists.single.$1,

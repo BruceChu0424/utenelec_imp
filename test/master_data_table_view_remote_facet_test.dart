@@ -509,7 +509,7 @@ void main() {
   );
 
   testWidgets(
-    'search queries full-scope candidates and pages without changing exact selection',
+    'search pages the full candidate scope and selecting text commits its keyword',
     (tester) async {
       final requests = <(String, String, int)>[];
       String? selected;
@@ -540,7 +540,8 @@ void main() {
       expect(find.text('V4二开 (1)'), findsOneWidget);
       await tester.tap(find.text('V4二开 (1)'));
       await tester.pumpAndSettle();
-      expect(selected, 'V4二开');
+      expect(selected, isNull);
+      expect(find.text('货品名称：V4二开'), findsOneWidget);
       expect(find.textContaining('包含“'), findsNothing);
     },
   );

@@ -338,12 +338,14 @@ void main() {
       final cache = PagedReadCache<String>();
       cache.bind('goods');
       final gates = <int, Completer<PagedResult<String>>>{};
+      final latestEntered = Completer<void>();
       final reads = <int>[];
       var active = 0;
       var maximumActive = 0;
       var current = true;
       Future<PagedResult<String>> fetch(int page) {
         reads.add(page);
+        if (page == 21) latestEntered.complete();
         active++;
         if (active > maximumActive) maximumActive = active;
         final gate = gates[page] = Completer<PagedResult<String>>();
@@ -372,7 +374,7 @@ void main() {
         2,
       ], reason: 'Retiring a center does not free its physical permit');
       gates[2]!.complete(_page(2, total: 200));
-      await Future<void>.delayed(const Duration(milliseconds: 1));
+      await latestEntered.future.timeout(const Duration(seconds: 5));
       expect(reads, [
         2,
         21,

@@ -32,6 +32,8 @@ class WarehouseKeeperControllerContractTest {
     void keeperEndpointsUseWarehousePermissions() throws Exception {
         Method assignments = WarehouseController.class.getDeclaredMethod("keeperAssignments");
         Method candidates = WarehouseController.class.getDeclaredMethod("keeperCandidates", String.class);
+        Method candidatePage = WarehouseController.class.getDeclaredMethod("keeperCandidatesPage", String.class,
+                int.class, int.class, UUID.class, boolean.class);
         Method myScope = WarehouseController.class.getDeclaredMethod("myScope", boolean.class);
         Method legacyMyScope = WarehouseController.class.getDeclaredMethod("myScope");
         Method keepers = WarehouseController.class.getDeclaredMethod("keepers", UUID.class);
@@ -44,6 +46,8 @@ class WarehouseKeeperControllerContractTest {
         assertThat(candidates.getAnnotation(GetMapping.class).value()).containsExactly("/keeper-candidates");
         assertThat(candidates.getAnnotation(PreAuthorize.class).value())
                 .isEqualTo("hasAuthority('warehouse:edit')");
+        assertThat(candidatePage.getAnnotation(GetMapping.class).value()).containsExactly("/keeper-candidates/page");
+        assertThat(candidatePage.getAnnotation(PreAuthorize.class).value()).isEqualTo("hasAuthority('warehouse:edit')");
         // 默认读取本人办理范围；forRead 显式选择只读范围，仍只需登录。
         assertThat(myScope.getAnnotation(GetMapping.class).value()).containsExactly("/my-scope");
         assertThat(myScope.getAnnotation(PreAuthorize.class).value()).isEqualTo("isAuthenticated()");

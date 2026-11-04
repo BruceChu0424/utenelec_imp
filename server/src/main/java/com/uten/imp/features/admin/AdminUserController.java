@@ -43,6 +43,13 @@ public class AdminUserController {
         return userAccountAdmin.list(page, size, search, status);
     }
 
+    /** Exact refresh for a selected account; uses the same visibility as the account list. */
+    @GetMapping("/users/{id}/summary")
+    @PreAuthorize("hasAuthority('account:support')")
+    public UserSummary summary(@PathVariable UUID id) {
+        return userAccountAdmin.getSummary(id);
+    }
+
     @GetMapping("/users/by-employee/{employeeId}")
     @PreAuthorize("hasAuthority('authorization:manage') and principal.superAdmin")
     public UserSummary byEmployee(@PathVariable UUID employeeId) {
@@ -96,6 +103,15 @@ public class AdminUserController {
     public List<ProvisionCandidateDto> provisionCandidates(
             @RequestParam(required = false) String search) {
         return userAccountAdmin.provisionCandidates(search);
+    }
+
+    @GetMapping("/users/provision-candidates/page")
+    @PreAuthorize("hasAuthority('account:support')")
+    public PageResponse<ProvisionCandidateDto> provisionCandidatesPage(
+            @RequestParam(required = false) String search, @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size, @RequestParam(required = false) UUID departmentId,
+            @RequestParam(defaultValue = "false") boolean includeSubtree) {
+        return userAccountAdmin.provisionCandidatesPage(search, page, size, departmentId, includeSubtree);
     }
 
     /** 设置/取消超级管理员（仅超管；降级禁止降本人与最后一位超管）。允许多个超管。 */

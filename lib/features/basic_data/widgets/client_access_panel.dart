@@ -180,24 +180,18 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
     });
   }
 
-  Future<List<UtenEmployeePickerItem>> _loadEmployees(
-    String? keyword, {
+  Future<UtenEmployeePickerPage> _loadEmployees(
+    UtenEmployeePickerQuery query, {
     bool excludeOwner = false,
-  }) async {
-    final employees = await _run(
-      () => loadClientAccessEmployees(
-        ref.read(clientRepositoryProvider),
-        keyword,
-      ),
-    );
-    return excludeOwner
-        ? employees
-              .where(
-                (employee) => !_owners.any((owner) => owner.id == employee.id),
-              )
-              .toList(growable: false)
-        : employees;
-  }
+  }) => _run(
+    () => loadClientAccessEmployeePage(
+      ref.read(clientRepositoryProvider),
+      query,
+      excludeEmployeeIds: excludeOwner
+          ? _owners.map((owner) => owner.id).toSet()
+          : const {},
+    ),
+  );
 
   void _changeOwners(List<UtenEmployeePickerItem> next) {
     final ownerIds = next.map((owner) => owner.id).toSet();
@@ -406,7 +400,7 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
             enabled: !_saving,
             selectedCountLabel: (count) => '负责人 $count 人',
             validator: (selection) => selection.isEmpty ? '请至少选择一位客户负责人' : null,
-            loader: (keyword) => _loadEmployees(keyword),
+            pagedLoader: (query) => _loadEmployees(query),
             onChanged: _changeOwners,
           ),
           const SizedBox(height: UtenSpacing.s16),
@@ -416,7 +410,10 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
               '${_viewers.map((viewer) => viewer.id).join(',')}',
             ),
             label: '额外只读查看人',
-            info: '额外可见人只获得该客户的只读查看，不改变负责人；是否可执行其他操作仍由独立操作权限决定。',
+            info:
+                '额外可见人只获得该客户的只读查看，不改变负责人；是否可执行其他操作仍由独立操作权限决定。\n'
+                '保存后以服务器返回的查看人名单为准。后续要移除查看人时，请先确认对方没有引用该客户的未完成草稿，'
+                '否则草稿可能无法继续打开或提交。',
             hint: '没有额外查看人',
             sheetTitle: '选择额外只读查看人',
             emptyMessage: '未找到匹配的在册员工',
@@ -424,7 +421,7 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
             panelScopeBuilder: widget.submissionOwner?.ownDialog,
             selectedCountLabel: (count) => '额外查看 $count 人',
             enabled: !_saving,
-            loader: (keyword) => _loadEmployees(keyword, excludeOwner: true),
+            pagedLoader: (query) => _loadEmployees(query, excludeOwner: true),
             onChanged: (selection) => setState(() {
               _viewers = selection
                   .where(
@@ -432,15 +429,6 @@ class _ClientAccessPanelState extends ConsumerState<ClientAccessPanel> {
                   )
                   .toList(growable: false);
             }),
-          ),
-          const SizedBox(height: UtenSpacing.s8),
-          Text(
-            '保存后以服务器返回的查看人名单为准。后续要移除查看人时，请先确认对方没有引用该客户的未完成草稿，'
-            '否则草稿可能无法继续打开或提交。',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-              height: 1.5,
-            ),
           ),
           const SizedBox(height: UtenSpacing.s16),
           UtenInput(

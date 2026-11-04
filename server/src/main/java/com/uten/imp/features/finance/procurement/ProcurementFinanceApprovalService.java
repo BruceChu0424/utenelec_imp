@@ -8,6 +8,8 @@ import com.uten.imp.application.port.ProcurementOrderApprovalPort;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.ItemSnapshot;
 import com.uten.imp.application.port.ProcurementOrderApprovalPort.OrderSnapshot;
 import com.uten.imp.common.util.HashUtil;
+import com.uten.imp.common.util.KeywordSearch;
+import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.common.web.NativeFacets;
@@ -451,6 +453,12 @@ public class ProcurementFinanceApprovalService {
         // 列表 / 计数 / facets 共用同一过滤基座（2026-09-25 单号列统一）。
         TaskFilters filters = taskFilters(normalizedType, normalizedKeyword, billNo);
         List<Object> params = new ArrayList<>(filters.args());
+        String ordering = taskOrderBy(sort, order);
+        if ((sort == null || sort.isBlank()) && normalizedKeyword != null) {
+            ordering = " ORDER BY " + TaskKeywordSearch.rankPositional(normalizedKeyword, TASK_SEARCH_FIELDS)
+                    + ", c.submitted_at, c.id\n";
+            TaskKeywordSearch.appendRank(params, normalizedKeyword, TASK_SEARCH_FIELDS.length);
+        }
         params.add(safeSize);
         params.add((safePage - 1) * safeSize);
         List<String> allowedActions = currentReviewerActions();
@@ -512,7 +520,7 @@ public class ProcurementFinanceApprovalService {
                   ON submitter.id = c.submitted_by_employee_id
                 LEFT JOIN currencies currency
                   ON currency.id = CAST(c.submission_snapshot ->> 'currencyId' AS uuid)
-                WHERE """ + queueStatusFilter(normalizedStatus) + filters.sql() + taskOrderBy(sort, order) + """
+                WHERE """ + queueStatusFilter(normalizedStatus) + filters.sql() + ordering + """
                 LIMIT ? OFFSET ?
                 """,
                 (rs, rowNum) -> {
@@ -562,6 +570,9 @@ public class ProcurementFinanceApprovalService {
 
     /** 待审任务过滤基座（2026-09-25 单号列统一）：类型/关键字/订货单号等值筛选的
      *  WHERE 片段与参数。列表 / 计数 / facets 三处共用同一份文本。 */
+    private static final String[] TASK_SEARCH_FIELDS = {"c.bill_no_snapshot",
+            "COALESCE(c.display_snapshot ->> 'supplierName', supplier.name, '')", "submitter.full_name"};
+
     private record TaskFilters(String sql, List<Object> args) {
 
         static TaskFilters of(String normalizedType, String normalizedKeyword,
@@ -573,14 +584,8 @@ public class ProcurementFinanceApprovalService {
                 args.add(normalizedType);
             }
             if (normalizedKeyword != null) {
-                sql.append("""
-                           AND (LOWER(COALESCE(c.bill_no_snapshot, '')) LIKE ?
-                             OR LOWER(COALESCE(c.display_snapshot ->> 'supplierName', supplier.name, '')) LIKE ?
-                             OR LOWER(COALESCE(submitter.full_name, '')) LIKE ?)
-                          """);
-                args.add(normalizedKeyword);
-                args.add(normalizedKeyword);
-                args.add(normalizedKeyword);
+                sql.append(" AND ").append(TaskKeywordSearch.conditionPositional(normalizedKeyword, TASK_SEARCH_FIELDS)).append('\n');
+                TaskKeywordSearch.appendContains(args, normalizedKeyword, TASK_SEARCH_FIELDS.length);
             }
             String trimmedBillNo = billNo == null ? "" : billNo.trim();
             if (!trimmedBillNo.isEmpty()) {
@@ -1238,9 +1243,7 @@ public class ProcurementFinanceApprovalService {
         if (normalized.length() > 100) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "搜索关键词不能超过100字");
         }
-        return normalized.isEmpty()
-                ? null
-                : "%" + normalized.toLowerCase(Locale.ROOT) + "%";
+        return KeywordSearch.terms(normalized).isEmpty() ? null : KeywordSearch.phrase(normalized);
     }
 
     /**

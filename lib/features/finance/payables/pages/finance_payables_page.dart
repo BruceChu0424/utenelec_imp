@@ -917,9 +917,6 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
                         initialSearchValue: _keyword,
                         onSearchChanged: (value) =>
                             _changeFilter(() => _keyword = value),
-                        trailing: _workspace == _PayablesWorkspaceView.payables
-                            ? _dateFilters()
-                            : null,
                       ),
                       const SizedBox(height: UtenSpacing.s12),
                     ],
@@ -1019,6 +1016,7 @@ class _FinancePayablesPageState extends ConsumerState<FinancePayablesPage>
         ),
         Expanded(
           child: MasterDataTableView<FinancePayableItem>(
+            toolbarLeadingActions: [_dateFilters()],
             expensiveRowMounts: false,
             rowsController: _tableRows,
             paginationRevision: _result,

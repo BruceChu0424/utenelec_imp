@@ -29,6 +29,7 @@ public final class PasswordChangeRequiredFilter extends OncePerRequestFilter {
             new AllowedRequest("POST", "/api/auth/change-password"),
             new AllowedRequest("POST", "/api/auth/logout"),
             new AllowedRequest("GET", "/api/auth/me"),
+            new AllowedRequest("GET", "/api/auth/session/watch"),
             // 首登阶段仍可加载会话空闲超时等非敏感运行设置。
             new AllowedRequest("GET", "/api/settings/public"));
 

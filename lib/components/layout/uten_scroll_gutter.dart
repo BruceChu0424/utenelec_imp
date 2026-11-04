@@ -27,6 +27,7 @@ class UtenScrollGutter extends StatelessWidget {
   Widget build(BuildContext context) => _GutterPadding(
     enabled:
         enabled &&
+        !UtenPageScrollbarVisibilityScope.isHiddenOf(context) &&
         !(UtenPageScrollLaneScope.pageOwnedOf(context) &&
             UtenPageScrollRoleScope.isPageOf(context)),
     child: child,

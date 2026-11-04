@@ -100,6 +100,7 @@ import '../widgets/ar_ap_picker_dialog.dart';
 import '../widgets/customer_prepayment_apply_panel.dart';
 import '../widgets/customer_prepayment_receipt_fields.dart';
 import '../widgets/finance_grid_columns.dart';
+import '../widgets/finance_style_picker.dart';
 import '../widgets/finance_entry_l10n.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
 import '../../../core/l10n/gen/app_localizations_zh.dart';
@@ -1985,14 +1986,13 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
                         ),
                       ),
                     if (_feeSettlementMode != _feeModeNone)
-                      _dropdown(
-                        '其它费用项目',
-                        _otherFeeStyleId,
-                        {
-                          for (final style in names.stylesFor('EXPENSE'))
-                            style.id: style.name ?? style.id,
-                        },
-                        (value) => setState(() => _otherFeeStyleId = value),
+                      FinanceStylePicker(
+                        names: names,
+                        category: 'EXPENSE',
+                        label: '其它费用项目',
+                        value: _otherFeeStyleId,
+                        onChanged: (value) =>
+                            setState(() => _otherFeeStyleId = value),
                       ),
                   ],
                 ),
@@ -2970,16 +2970,24 @@ class _FinanceDocEditPageState extends ConsumerState<FinanceDocEditPage>
             );
       final local = financeExactMultiplyTexts([original, _rate.text.trim()]);
       final actual = _accountAmount.text.trim();
-      return Tooltip(
-        message:
-            '货款原币 ${original ?? '—'}；银行实际总扣款 ${actual.isEmpty ? '未填写' : actual}；其中手续费 ${_bankFee.text.trim().isEmpty ? '0' : _bankFee.text.trim()}',
-        child: Text(
-          '货款原币 ${financeExactMoneyDisplay(original)} · ${actual.isEmpty ? '参考本币 ¥${financeExactMoneyDisplay(local)}' : '银行实扣 ${financeExactMoneyDisplay(actual)}'}',
-          textAlign: TextAlign.center,
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
+      final names = ref.read(financeNameServiceProvider);
+      return UtenTotalsSummaryBar(
+        compact: true,
+        rowCount: _grid.length,
+        entries: [
+          UtenTotalEntry(
+            utenAmountTotalLabel(names.currency(_currencyId), base: '本次付款金额'),
+            financeExactMoneyDisplay(original),
+            danger: true,
           ),
-        ),
+          UtenTotalEntry(
+            actual.isEmpty
+                ? '折算金额（人民币）'
+                : '实际扣款（${names.currency(names.accountCurrencyId(_accountId))}）',
+            financeExactMoneyDisplay(actual.isEmpty ? local : actual),
+            danger: true,
+          ),
+        ],
       );
     },
   );

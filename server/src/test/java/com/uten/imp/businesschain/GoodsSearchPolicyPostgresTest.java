@@ -34,6 +34,55 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 class GoodsSearchPolicyPostgresTest extends AuthSessionPostgresTestSupport {
     @Autowired GoodsService service;
 
+    @Test void largeRootBodyQueriesKeepOneGlobalPageAndAllPickerContracts() throws Exception {
+        String token = adminToken();
+        Set<UUID> roots = new java.util.LinkedHashSet<>();
+        for (int index = 0; index < 40; index++) roots.add(category(null, "多根搜索" + index));
+        List<UUID> rootList = new ArrayList<>(roots);
+        UUID child = category(rootList.get(0), "重叠子分类");
+        roots.add(child);
+        UUID first = goods(child, "SCOPE-A-" + UUID.randomUUID(), "接线螺丝", "M3", null);
+        UUID second = goods(rootList.get(39), "SCOPE-B-" + UUID.randomUUID(), "固定螺丝", "M3", null);
+        goods(category(null, "范围外"), "SCOPE-OUT-" + UUID.randomUUID(), "范围外螺丝", "M3", null);
+        goods(rootList.get(2), "SCOPE-WRONG-" + UUID.randomUUID(), "螺丝", "M4", null);
+        Map<String,Object> filter = Map.of("categoryRootIds", roots, "keyword", "螺丝 M3",
+                "excludeDisabled", true, "excludeStub", true);
+        for (String base : List.of("/api/master/goods", "/api/business-references/goods")) {
+            JsonNode page1 = bodySearch(token, base + "/search", Map.of("filter", filter, "page", 1, "size", 1));
+            JsonNode page2 = bodySearch(token, base + "/search", Map.of("filter", filter, "page", 2, "size", 1));
+            assertEquals(2, page1.path("total").asInt());
+            assertEquals(1, page1.path("items").size());
+            assertEquals(Set.of(first.toString(), second.toString()), Set.of(ids(page1).get(0), ids(page2).get(0)));
+            assertEquals(2, page2.path("total").asInt());
+            JsonNode categories = bodySearch(token, base + "/search-category-ids", Map.of("filter", filter));
+            assertEquals(Set.of(child.toString(), rootList.get(39).toString()), Set.copyOf(strings(categories)));
+            JsonNode facets = bodySearch(token, base + "/facets", Map.of("filter", filter));
+            assertEquals(Set.of("M3"), facetValues(facets, "model"));
+            MvcResult candidates = mvc.perform(json(post(base + "/facet-values")
+                    .param("field", "name").param("search", "固定").param("size", "1"),
+                    Map.of("filter", filter), token)).andReturn();
+            assertEquals(200, candidates.getResponse().getStatus(), body(candidates));
+            assertEquals("固定螺丝", json(candidates).path("items").get(0).path("value").asText());
+            assertFalse(candidates.getResponse().getHeader("X-Uten-Read-Scope-Version").isBlank());
+        }
+    }
+
+    @Test void scopedBodyQueriesRejectMissingFiltersAndForbiddenReferenceFields() throws Exception {
+        String token = adminToken();
+        MvcResult invalid = mvc.perform(json(post("/api/master/goods/search"), Map.of(), token)).andReturn();
+        assertEquals(422, invalid.getResponse().getStatus(), body(invalid));
+        MvcResult forbidden = mvc.perform(json(post("/api/business-references/goods/search"),
+                Map.of("filter", Map.of("keyword", "螺丝", "paper", "不可见说明")), token)).andReturn();
+        assertEquals(422, forbidden.getResponse().getStatus(), body(forbidden));
+    }
+
+    private JsonNode bodySearch(String token, String path, Map<String,?> payload) throws Exception {
+        MvcResult result = mvc.perform(json(post(path), payload, token)).andReturn();
+        assertEquals(200, result.getResponse().getStatus(), body(result));
+        assertNotNull(result.getResponse().getHeader("X-Uten-Read-Scope-Version"));
+        return json(result);
+    }
+
     @Test void facetCandidateSearchFindsValuesBeyondPreviewAndPagesWholeAuthorizedScope() throws Exception {
         String token = adminToken();
         UUID root = category(null, "表头全量候选"), outside = category(null, "候选范围之外");

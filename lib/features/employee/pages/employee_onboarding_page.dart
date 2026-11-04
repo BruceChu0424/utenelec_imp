@@ -54,6 +54,7 @@ import '../../department/widgets/uten_position_entry_picker.dart';
 import '../../../shared/widgets/uten_department_picker.dart';
 import '../models/employee_api_models.dart';
 import '../models/employee_id_types.dart';
+import '../providers/employee_picker_department_tree_provider.dart';
 import '../repositories/employee_picker_candidates.dart';
 import '../repositories/employee_repository.dart';
 import '../widgets/employee_credential_dialog.dart';
@@ -934,7 +935,7 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
           sheetTitle: l10n.employeeOnboardSupervisorSheet,
           initial: _supervisor,
           allowClear: true,
-          loader: _supervisorCandidates,
+          pagedLoader: _supervisorCandidates,
           onChanged: (value) => setState(() => _supervisor = value),
         ),
         UtenDateField(
@@ -1032,31 +1033,20 @@ class _EmployeeOnboardingPageState extends ConsumerState<EmployeeOnboardingPage>
   );
 
   /// 直属上级候选：无关键字时收敛到所选部门子树，有关键字时全公司搜。
-  Future<List<UtenEmployeePickerItem>> _supervisorCandidates(
-    String? keyword,
-  ) async {
-    final scoped = keyword == null || keyword.trim().isEmpty;
-    final res = await ref
-        .read(employeeRepositoryProvider)
-        .listPickerCandidates(
-          size: 30,
-          search: keyword,
-          departmentId: scoped ? _departmentId : null,
-          includeSubtree: true,
-        );
-    return [
-      for (final e in res)
-        UtenEmployeePickerItem(
-          id: e.id,
-          name: e.fullName,
-          employeeCode: e.code,
-          accountStatus: e.accountStatus,
-          employmentStatus: e.status,
-          departmentId: e.departmentId,
-          departmentName: e.departmentName,
-        ),
-    ];
-  }
+  Future<UtenEmployeePickerPage> _supervisorCandidates(
+    UtenEmployeePickerQuery query,
+  ) => ref
+      .read(employeeRepositoryProvider)
+      .listPickerPage(
+        query,
+        size: 30,
+        departmentId: query.keyword?.trim().isEmpty != false
+            ? _departmentId
+            : null,
+        includeSubtree: true,
+        loadDepartments: () =>
+            ref.read(employeePickerDepartmentTreeProvider.future),
+      );
 
   // ---------------------------------------------------------------------
   // 第 3 步：教育背景（可选，逐条增删）

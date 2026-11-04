@@ -8,9 +8,11 @@ import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/features/admin/models/admin_models.dart';
 import 'package:uten_imp/features/admin/repositories/admin_repository.dart';
 import 'package:uten_imp/features/admin/widgets/provision_account_dialog.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/features/employee/providers/employee_picker_department_tree_provider.dart';
 import 'package:uten_imp/features/employee/repositories/employee_repository.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
+import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
 
@@ -72,7 +74,11 @@ void main() {
       );
       expect(panel.multiple, isTrue);
       expect(panel.confirmLabel, '开通所选账号');
-      final candidates = await panel.loader(null);
+      final candidates = tester
+          .widget<MasterDataTableView<UtenEmployeePickerItem>>(
+            find.byKey(const Key('uten-employee-picker-candidates')),
+          )
+          .items;
       expect(candidates.last.enabled, isFalse);
       await tester.tap(find.text('员工甲'));
       await tester.tap(find.text('员工乙'));
@@ -92,19 +98,29 @@ void main() {
 
 class _AdminRepository extends Fake implements AdminRepository {
   @override
-  Future<List<AccountProvisionCandidate>> provisionCandidates({
+  Future<PagedResult<AccountProvisionCandidate>> provisionCandidatesPage({
     String? search,
-  }) async => [
-    for (final pair in [('a', '员工甲'), ('b', '员工乙'), ('c', '缺手机员工')])
-      AccountProvisionCandidate(
-        employeeId: pair.$1,
-        name: pair.$2,
-        code: 'UT${pair.$1}',
-        hasPhone: pair.$1 != 'c',
-        accountStatus: 'notProvisioned',
-        employmentStatus: 'active',
-      ),
-  ];
+    int page = 1,
+    int size = 100,
+    String? departmentId,
+    bool includeSubtree = false,
+  }) async => PagedResult(
+    items: [
+      for (final pair in [('a', '员工甲'), ('b', '员工乙'), ('c', '缺手机员工')])
+        AccountProvisionCandidate(
+          employeeId: pair.$1,
+          name: pair.$2,
+          code: 'UT${pair.$1}',
+          hasPhone: pair.$1 != 'c',
+          accountStatus: 'notProvisioned',
+          employmentStatus: 'active',
+        ),
+    ],
+    page: page,
+    size: size,
+    total: 3,
+    totalPages: 1,
+  );
 }
 
 class _EmployeeRepository extends Fake implements EmployeeRepository {

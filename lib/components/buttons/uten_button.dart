@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../layout/uten_app_bar_action_scope.dart';
 import '../layout/uten_app_bar_action_feedback.dart';
 import '../feedback/uten_dialog_action_scope.dart';
+import '../layout/uten_table_action_scope.dart';
 
 import '../../core/theme/uten_colors.dart';
 import '../../core/theme/uten_tokens.dart';
@@ -110,6 +111,33 @@ class UtenButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (UtenTableActionScope.contains(context) &&
+        !UtenAppBarActionPresentation.contains(context) &&
+        !UtenMenuActionPresentation.contains(context) &&
+        !UtenDialogActionScope.contains(context) &&
+        (size != UtenButtonSize.medium ||
+            height != UtenTableToolbar.controlHeight)) {
+      return UtenButton(
+        onPressed: onPressed,
+        type: type,
+        isLoading: isLoading,
+        isExpanded: isExpanded,
+        icon: icon,
+        onLongPress: onLongPress,
+        onDisabledTap: onDisabledTap,
+        height: UtenTableToolbar.controlHeight,
+        compactIcon: compactIcon,
+        compactLabel: compactLabel,
+        semanticLabel: semanticLabel,
+        closeBeforeAction: closeBeforeAction,
+        child: child,
+      )._buildButton(
+        context,
+        loading: isLoading,
+        press: onPressed,
+        longPress: onLongPress,
+      );
+    }
     if (UtenAppBarActionPresentation.contains(context)) {
       return UtenAppBarActionFeedback(
         onPressed: onPressed,

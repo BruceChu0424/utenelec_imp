@@ -242,22 +242,36 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
     super.dispose();
   }
 
-  Future<List<UtenEmployeePickerItem>> _loadEmployees(String? keyword) async {
-    final items = await ref
+  Future<UtenEmployeePickerPage> _loadEmployees(
+    UtenEmployeePickerQuery query,
+  ) async {
+    final result = await ref
         .read(noticeRepositoryProvider)
-        .searchAudienceEmployees(search: keyword);
-    return [
-      for (final item in items)
-        UtenEmployeePickerItem(
-          id: item.id,
-          name: item.name,
-          employeeCode: item.code,
-          departmentId: item.departmentId,
-          departmentName: item.departmentName,
-          accountStatus: item.accountStatus,
-          employmentStatus: item.employmentStatus,
-        ),
-    ];
+        .audienceEmployeesPage(
+          search: query.keyword,
+          page: query.page,
+          departmentId: query.departmentId,
+          includeSubtree: query.includeDepartmentSubtree,
+        );
+    if (result.page != query.page) {
+      throw const FormatException('通知人员候选分页已变化，请重新搜索');
+    }
+    return UtenEmployeePickerPage(
+      items: [
+        for (final item in result.items)
+          UtenEmployeePickerItem(
+            id: item.id,
+            name: item.name,
+            employeeCode: item.code,
+            departmentId: item.departmentId,
+            departmentName: item.departmentName,
+            accountStatus: item.accountStatus,
+            employmentStatus: item.employmentStatus,
+          ),
+      ],
+      page: result.page,
+      totalPages: result.totalPages,
+    );
   }
 
   void _onTypeChanged(NoticeType type) {
@@ -609,7 +623,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
                 if (_type.isCelebratory) ...[
                   const SizedBox(height: UtenSpacing.s12),
                   UtenEmployeePicker(
-                    loader: _loadEmployees,
+                    pagedLoader: _loadEmployees,
                     initial: _celebrationSubject,
                     label: l10n.noticeCelebrationSubjectLabel,
                     hint: l10n.noticeCelebrationSubjectHint,
@@ -835,7 +849,7 @@ class _NoticePublishPageState extends ConsumerState<NoticePublishPage>
                           ),
                           const SizedBox(height: UtenSpacing.s16),
                           UtenEmployeeMultiPicker(
-                            loader: _loadEmployees,
+                            pagedLoader: _loadEmployees,
                             initialSelection: _employees,
                             label: l10n.noticePublishEmployeesLabel,
                             hint: l10n.noticePublishEmployeesHint,

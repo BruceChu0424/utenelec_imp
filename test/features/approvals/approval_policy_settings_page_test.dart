@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_button.dart';
 import 'package:uten_imp/components/inputs/uten_employee_picker.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -48,6 +49,8 @@ class _Api extends ApiClient {
   _Api() : super(Dio(BaseOptions(baseUrl: 'https://policy.test/api')));
   int reads = 0;
   int candidates = 0;
+  bool manyCandidates = false;
+  final candidateQueries = <({String path, Map<String, dynamic> query})>[];
   int version = 0;
   String? substitute;
   String managerId = 'manager';
@@ -78,19 +81,40 @@ class _Api extends ApiClient {
     String path, {
     Map<String, dynamic>? query,
   }) async {
-    if (path.endsWith('/candidates')) {
+    if (path.endsWith('/candidates/page')) {
       candidates++;
+      candidateQueries.add((path: path, query: {...?query}));
+      final page = query?['page'] as int? ?? 1;
       return {
         'items': [
-          {
-            'id': 'substitute',
-            'name': '上级审批人',
-            'employeeCode': 'G001',
-            'departmentName': '总经办',
-          },
+          if (manyCandidates)
+            for (
+              var index = (page - 1) * 100;
+              index < (page == 1 ? 100 : 101);
+              index++
+            )
+              {
+                'id': 'substitute-$index',
+                'name': '候选审批人$index',
+                'employeeCode': 'G$index',
+                'departmentId': 'executive-department',
+                'departmentName': '总经办',
+              }
+          else
+            {
+              'id': 'substitute',
+              'name': '上级审批人',
+              'employeeCode': 'G001',
+              'departmentName': '总经办',
+            },
         ],
+        'page': page,
+        'size': 100,
+        'total': manyCandidates ? 101 : 1,
+        'totalPages': manyCandidates ? 2 : 1,
       };
     }
+
     reads++;
     return {
       'departments': [policy],
@@ -165,6 +189,67 @@ Future<void> _openAndPick(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'avoidance reviewer opens actual bounded pages without mixing policy context and candidate department',
+    (tester) async {
+      final api = _Api()..manyCandidates = true;
+      await _pump(tester, api);
+      await tester.tap(
+        find.byKey(const ValueKey('approval-policy-edit-department-finance')),
+      );
+      await tester.pumpAndSettle();
+      final field = find.byKey(const Key('approval-policy-substitute'));
+      await tester.tap(
+        find.descendant(of: field, matching: find.byType(InkWell)).first,
+      );
+      await tester.pumpAndSettle();
+      expect(api.candidateQueries.map((entry) => entry.query['page']), [1]);
+      final table = find.byKey(const Key('uten-employee-picker-candidates'));
+      tester
+          .widget<MasterDataTableView<UtenEmployeePickerItem>>(table)
+          .onLoadMore!();
+      await tester.pumpAndSettle();
+      expect(api.candidateQueries.map((entry) => entry.query['page']), [1, 2]);
+      expect(
+        api.candidateQueries.every(
+          (entry) =>
+              entry.path ==
+              '/approval-policy/departments/department-finance/candidates/page',
+        ),
+        true,
+      );
+      final last = find.byKey(
+        const ValueKey('employee-picker-item-substitute-100'),
+      );
+      final scrollable = find
+          .descendant(
+            of: table,
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Scrollable &&
+                  widget.axisDirection == AxisDirection.down,
+            ),
+          )
+          .last;
+      await tester.scrollUntilVisible(
+        last,
+        500,
+        scrollable: scrollable,
+        maxScrolls: 30,
+      );
+      await tester.tap(last);
+      await tester.pump();
+      await tester.tap(find.widgetWithText(UtenButton, '确定'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<UtenEmployeePicker>(field).initial?.id,
+        'substitute-100',
+      );
+      expect(api.writes, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets(
     'manual policy example shows department and selected substitute',
     (tester) async {
@@ -268,12 +353,23 @@ void main() {
       final picker = tester.widget<UtenEmployeePicker>(
         find.byKey(const Key('approval-policy-substitute')),
       );
-      final future = picker.loader('上级');
+      final future = picker.pagedLoader!(
+        const UtenEmployeePickerQuery(keyword: '上级'),
+      );
       await tester.pump();
       final values = await future;
       await tester.pumpAndSettle();
       expect(api.candidates, 1);
-      expect(values.single.id, 'substitute');
+      expect(values.items.single.id, 'substitute');
+      expect(
+        api.candidateQueries.single.path,
+        '/approval-policy/departments/department-finance/candidates/page',
+      );
+      expect(api.candidateQueries.single.query, {
+        'search': '上级',
+        'page': 1,
+        'size': 100,
+      });
       expect(tester.takeException(), isNull);
     },
   );

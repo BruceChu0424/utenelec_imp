@@ -153,6 +153,86 @@ void main() {
   );
 
   test(
+    'created UUID and name publish before an older category read finishes',
+    () async {
+      final repository = _FakePaymentStyleRepository(const [])
+        ..deferRequests = true;
+      final service = FinanceNameService(ApiClient(Dio()), repository);
+      addTearDown(service.dispose);
+      final oldRead = service.loadStyleCategory('EXPENSE');
+      service.registerCreatedStyle(
+        const PaymentStyleDetail(
+          id: 'created',
+          code: 'E003',
+          name: '新增费用项目',
+          category: 'EXPENSE',
+          status: '使用',
+          level: 0,
+          path: '/E003/',
+          childCount: 0,
+        ),
+      );
+      expect(service.stylesFor('EXPENSE').single.id, 'created');
+      expect(service.styleName('created', 'EXPENSE'), '新增费用项目');
+      repository.pendingRequests.single.complete(const []);
+      await oldRead;
+      expect(service.stylesFor('EXPENSE').single.id, 'created');
+      expect(service.styleName('created', 'EXPENSE'), '新增费用项目');
+    },
+  );
+
+  test(
+    'creating a child removes the former leaf and updates the next editor tree',
+    () async {
+      final parent = PaymentStyleNode(
+        id: 'parent',
+        code: 'E001',
+        name: '办公费用',
+        category: 'EXPENSE',
+        level: 0,
+        path: '/E001/',
+        status: '使用',
+        receipt: true,
+        payment: true,
+        departmental: true,
+        sortOrder: 5,
+        children: const [],
+      );
+      final repository = _FakePaymentStyleRepository([parent]);
+      final service = FinanceNameService(ApiClient(Dio()), repository);
+      addTearDown(service.dispose);
+      await service.loadStyleCategory('EXPENSE');
+      expect(service.stylesFor('EXPENSE').single.id, 'parent');
+      service.registerCreatedStyle(
+        const PaymentStyleDetail(
+          id: 'child',
+          code: 'E002',
+          name: '会务费用',
+          category: 'EXPENSE',
+          status: '使用',
+          parentId: 'parent',
+          level: 1,
+          path: '/E001/E002/',
+          childCount: 0,
+        ),
+      );
+      expect(service.stylesFor('EXPENSE').map((option) => option.id), [
+        'child',
+      ]);
+      final updated = service.styleTreeFor('EXPENSE').single;
+      expect(updated.id, 'parent');
+      expect(updated.children.single.id, 'child');
+      expect(updated.children.single.parentId, 'parent');
+      expect(updated.receipt, isTrue);
+      expect(updated.payment, isTrue);
+      expect(updated.departmental, isTrue);
+      expect(updated.sortOrder, 5);
+      expect(parent.children, isEmpty);
+      expect(service.styleName('parent', 'EXPENSE'), '办公费用');
+    },
+  );
+
+  test(
     'a category response may finish safely after service disposal',
     () async {
       final repository = _FakePaymentStyleRepository(const [])

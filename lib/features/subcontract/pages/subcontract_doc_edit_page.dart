@@ -1087,7 +1087,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
                                   ),
                                   createBlankRow: () => SubcontractGridRow(),
                                   cloneRow: (r) => r.clone(),
-                                  footer: _gridFooter(theme),
+                                  footer: _gridFooter(),
                                 );
                               },
                             ),
@@ -1128,7 +1128,7 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
   /// 明细表尾（原来挂在页面底部固定操作条里，2026-09-11 底部条改右下角悬浮后
   /// 合计跟着回到表尾）：有金额的单据报「数量+金额」，数量按单位分组绝不相加、
   /// 金额币种取表头；损耗单只有总重，其余单据报行数。
-  Widget _gridFooter(ThemeData theme) {
+  Widget _gridFooter() {
     if (_cfg.hasAmount) {
       return EditableGridTotalsBar<SubcontractGridRow>(
         key: const Key('subcontract-edit-totals'),
@@ -1169,26 +1169,27 @@ class _SubcontractDocEditPageState extends ConsumerState<SubcontractDocEditPage>
         },
       );
     }
-    final style = theme.textTheme.titleMedium?.copyWith(
-      fontWeight: FontWeight.w700,
-    );
     if (_cfg.hasTotalWeight) {
-      return Align(
-        alignment: Alignment.centerRight,
-        child: Text(
-          '总重 ${_totalWeight.text.isEmpty ? "0.00" : _totalWeight.text}',
-          style: style,
-        ),
+      return UtenTotalsSummaryBar(
+        compact: true,
+        entries: [
+          UtenTotalEntry(
+            '总重',
+            _totalWeight.text.isEmpty ? '0.00' : _totalWeight.text,
+          ),
+        ],
       );
     }
     return ListenableBuilder(
       listenable: _grid,
-      builder: (_, _) => Align(
-        alignment: Alignment.centerRight,
-        child: Text(
-          '${_grid.rows.where((r) => r.goods != null).length} 行',
-          style: style,
-        ),
+      builder: (_, _) => UtenTotalsSummaryBar(
+        compact: true,
+        entries: [
+          UtenTotalEntry(
+            '总行数',
+            '${_grid.rows.where((r) => r.goods != null).length} 行',
+          ),
+        ],
       ),
     );
   }

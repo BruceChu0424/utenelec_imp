@@ -1,5 +1,6 @@
 import 'package:uten_imp/features/basic_data/repositories/business_reference_repository.dart';
 import 'dart:async';
+import 'package:dio/dio.dart';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -18,8 +19,296 @@ import 'package:uten_imp/features/basic_data/widgets/uten_category_tree_view.dar
 import 'package:uten_imp/features/basic_data/widgets/uten_goods_picker.dart';
 import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
+import 'package:uten_imp/core/network/api_exception.dart';
+import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/features/basic_data/repositories/goods_facet_repository.dart';
 
 void main() {
+  testWidgets(
+    'completed same-query Enter refreshes category locations after an external category move',
+    (tester) async {
+      final repository = _FakeGoodsRepository()
+        ..searchItemsOverride = const [_goodsA]
+        ..searchCategoryIdsOverride = {'section-a'};
+      await _pumpPicker(tester, repository);
+      await tester.tap(find.byKey(const Key('open-goods-picker')));
+      await tester.pumpAndSettle();
+      await tester.enterText(_searchEditable(), 'G-');
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pumpAndSettle();
+      UtenCategoryTreeView<ProductCategoryNode> tree() =>
+          tester.widget(find.byType(UtenCategoryTreeView<ProductCategoryNode>));
+      expect(repository.searchQueries, ['G-']);
+      expect(repository.searchCategoryIdQueries, ['G-']);
+      expect(tree().visibleFilterIds, {'section-a'});
+      repository.searchItemsOverride = const [_goodsB];
+      repository.searchCategoryIdsOverride = {'section-b'};
+      await tester.showKeyboard(_searchEditable());
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(repository.searchQueries, ['G-', 'G-']);
+      expect(repository.searchCategoryIdQueries, ['G-', 'G-']);
+      expect(repository.globalFacetScopes, hasLength(2));
+      expect(tree().visibleFilterIds, {'section-b'});
+      expect(_goodsName('连接器乙'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'search category facets retain the current category and original business roots',
+    (tester) async {
+      final repository = _FakeGoodsRepository();
+      final facetApi = _FacetApi();
+      await _pumpPicker(
+        tester,
+        repository,
+        facetRepository: GoodsFacetRepository(
+          facetApi,
+          queryBasePath: '/business-references/goods',
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('open-goods-picker')));
+      await tester.pumpAndSettle();
+      await tester.enterText(_searchEditable(), 'G-');
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('分区乙'));
+      await tester.pumpAndSettle();
+      expect(repository.searchCategoryScopes.last, 'section-b');
+      expect(repository.globalFacetCategories, [null, 'section-b']);
+      expect(repository.globalFacetScopes, [
+        {'finished-root'},
+        {'finished-root'},
+      ]);
+      expect(
+        repository.globalFacetScopes.last,
+        repository.searchRootScopes.last,
+      );
+      await tester.tap(find.text('货品名称'));
+      await tester.pumpAndSettle();
+      expect(facetApi.queries, hasLength(1));
+      expect(
+        facetApi.queries.single['categoryId'],
+        repository.searchCategoryScopes.last,
+      );
+      expect(
+        (facetApi.queries.single['categoryRootIds'] as List).toSet(),
+        repository.searchRootScopes.last,
+      );
+      expect(facetApi.queries.single['keyword'], 'G-');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'fresh authorized rows can be selected and confirmed while auxiliary location is pending',
+    (tester) async {
+      final gate = Completer<Set<String>>();
+      final repository = _FakeGoodsRepository()..locationGate = gate;
+      GoodsListItem? selected;
+      await _pumpPicker(
+        tester,
+        repository,
+        onSelected: (value) => selected = value,
+      );
+      await tester.tap(find.byKey(const Key('open-goods-picker')));
+      await tester.pumpAndSettle();
+      await tester.enterText(_searchEditable(), 'G-');
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pump();
+      await tester.pump();
+      final table = tester.widget<MasterDataTableView<GoodsListItem>>(
+        find.byKey(const Key('goods-picker-paged-list')),
+      );
+      expect(table.isLoading, false);
+      expect(table.loadingMore, false);
+      expect(repository.searchQueries, ['G-']);
+      expect(repository.searchCategoryIdQueries, ['G-']);
+      expect(gate.isCompleted, false);
+      await tester.tap(_goodsName('连接器甲'));
+      await tester.pump();
+      await tester.tap(find.text('确定'));
+      await tester.pumpAndSettle();
+      expect(selected?.id, 'goods-a');
+      expect(_widePickerSheet(), findsNothing);
+      gate.complete({'section-a', 'section-b'});
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'cached rows cannot be confirmed before their category metadata gate finishes',
+    (tester) async {
+      final repository = _FakeGoodsRepository(splitAcrossPages: true);
+      GoodsListItem? selected;
+      await _pumpPicker(
+        tester,
+        repository,
+        onSelected: (value) => selected = value,
+      );
+      await tester.tap(find.byKey(const Key('open-goods-picker')));
+      await tester.pumpAndSettle();
+      await tester.enterText(_searchEditable(), 'G-');
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pumpAndSettle();
+      await tester.tap(_goodsName('连接器甲'));
+      await tester.pump();
+      final gate = repository.locationGate = Completer<Set<String>>();
+      tester
+          .widget<MasterDataTableView<GoodsListItem>>(
+            find.byKey(const Key('goods-picker-paged-list')),
+          )
+          .onPageChange!(2);
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(find.text('确定'));
+      await tester.pump();
+      expect(selected, isNull);
+      expect(_widePickerSheet(), findsOneWidget);
+      expect(gate.isCompleted, false);
+      gate.complete({'section-a', 'section-b'});
+      await tester.pumpAndSettle();
+      await tester.tap(_goodsName('连接器乙'));
+      await tester.pump();
+      await tester.tap(find.text('确定'));
+      await tester.pumpAndSettle();
+      expect(selected?.id, 'goods-b');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'clearing raw input cannot confirm an earlier selection during debounce',
+    (tester) async {
+      final repository = _FakeGoodsRepository();
+      GoodsListItem? selected;
+      await _pumpPicker(
+        tester,
+        repository,
+        onSelected: (value) => selected = value,
+      );
+      await tester.tap(find.byKey(const Key('open-goods-picker')));
+      await tester.pumpAndSettle();
+      await tester.enterText(_searchEditable(), 'G-');
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pumpAndSettle();
+      await tester.tap(_goodsName('连接器甲'));
+      await tester.pump();
+      final gate = repository.categoryGate =
+          Completer<PagedResult<GoodsListItem>>();
+      // Row selection unfocuses the real native text input. Re-open its input
+      // connection before sending the replacement editing value, as a user
+      // does by clicking the search field again.
+      await tester.tap(_searchEditable());
+      await tester.pump();
+      expect(
+        tester.widget<EditableText>(_searchEditable()).focusNode.hasFocus,
+        true,
+      );
+      await tester.enterText(_searchEditable(), '');
+      expect(
+        tester.widget<EditableText>(_searchEditable()).controller.text,
+        isEmpty,
+      );
+      await tester.pump();
+      expect(
+        tester
+            .widget<MasterDataTableView<GoodsListItem>>(
+              find.byKey(const Key('goods-picker-paged-list')),
+            )
+            .isLoading,
+        true,
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.tap(find.text('确定'));
+      await tester.pump();
+      expect(selected, isNull);
+      expect(_widePickerSheet(), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pump();
+      expect(repository.listCalls, hasLength(1));
+      expect(repository.listCalls.single, ('section-a', null));
+      expect(
+        tester
+            .widget<MasterDataTableView<GoodsListItem>>(
+              find.byKey(const Key('goods-picker-paged-list')),
+            )
+            .isLoading,
+        true,
+      );
+      await tester.tap(find.text('确定'));
+      await tester.pump();
+      expect(selected, isNull);
+      expect(gate.isCompleted, false);
+      expect(_widePickerSheet(), findsOneWidget);
+      gate.complete(_page(const [_goodsA], page: 1, size: 20));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('确定'));
+      await tester.pumpAndSettle();
+      expect(selected?.id, 'goods-a');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'denied auxiliary category location still retires fresh selected rows',
+    (tester) async {
+      final gate = Completer<Set<String>>();
+      final repository = _FakeGoodsRepository()..locationGate = gate;
+      GoodsListItem? selected;
+      await _pumpPicker(
+        tester,
+        repository,
+        onSelected: (value) => selected = value,
+      );
+      await tester.tap(find.byKey(const Key('open-goods-picker')));
+      await tester.pumpAndSettle();
+      await tester.enterText(_searchEditable(), 'G-');
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pump();
+      await tester.pump();
+      await tester.tap(_goodsName('连接器甲'));
+      await tester.pump();
+      gate.completeError(ApiException('FORBIDDEN', '读取权限已撤回', httpStatus: 403));
+      await tester.pumpAndSettle();
+      expect(_widePickerSheet(), findsNothing);
+      expect(selected, isNull);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'same-query Enter rechecks completed goods results without duplicating an active read',
+    (tester) async {
+      final repository = _FakeGoodsRepository(delayedQuery: 'G-');
+      await _pumpPicker(tester, repository);
+      await tester.tap(find.byKey(const Key('open-goods-picker')));
+      await tester.pumpAndSettle();
+      await tester.enterText(_searchEditable(), 'G-');
+      await tester.pump(const Duration(milliseconds: 301));
+      await tester.pump();
+      await tester.showKeyboard(_searchEditable());
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.showKeyboard(_searchEditable());
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(repository.searchQueries, ['G-']);
+      repository.completeDelayedSearch(const [_goodsA]);
+      await tester.pumpAndSettle();
+      repository.delayedQuery = null;
+      repository.searchItemsOverride = const [_goodsB];
+      await tester.showKeyboard(_searchEditable());
+      await tester.testTextInput.receiveAction(TextInputAction.search);
+      await tester.pumpAndSettle();
+      expect(repository.searchQueries, ['G-', 'G-']);
+      expect(_goodsName('连接器乙'), findsOneWidget);
+      expect(_goodsName('连接器甲'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'default goods picker cannot reopen a stale tree after permission ABA',
     (tester) async {
@@ -171,7 +460,10 @@ void main() {
 
     expect(_goodsName('连接器甲'), findsOneWidget);
     expect(_goodsName('连接器乙'), findsOneWidget);
-    expect(repository.searchCategoryIdQueries, ['G-']);
+    expect(repository.searchCategoryIdQueries, [
+      'G-',
+      'G-',
+    ], reason: '缓存前页重新成为可操作页前，轻量定位须重新验证；业务行不重拉');
     await tester.tap(_goodsName('连接器甲'));
     await tester.pumpAndSettle();
     expect(selected, isNull, reason: '单击仅选中，仍须底部确认');
@@ -394,7 +686,8 @@ void main() {
     expect(goodsRepository.searchPages, [1, 2]);
     expect(goodsRepository.searchCategoryIdQueries, [
       'G-',
-    ], reason: '翻页应复用首次轻量定位结果，不能重扫或缩窄分类树');
+      'G-',
+    ], reason: '缓存分页先重新验证轻量定位，完整分类树不能缩窄');
   });
 
   testWidgets('旧慢请求晚返回不会覆盖较新的搜索结果', (tester) async {
@@ -592,6 +885,7 @@ Future<void> _pumpPicker(
   bool confirmOnDoubleTap = false,
   ProductCategoryRepository? categories,
   _TestPickerEpoch? epoch,
+  GoodsFacetRepository? facetRepository,
 }) async {
   tester.view.devicePixelRatio = 1;
   // Leave enough room for the fixture's longest complete category row and
@@ -605,6 +899,10 @@ Future<void> _pumpPicker(
     ProviderScope(
       overrides: [
         if (epoch != null) exportContextEpochProvider.overrideWith(() => epoch),
+        if (facetRepository != null)
+          businessGoodsFacetRepositoryProvider.overrideWithValue(
+            facetRepository,
+          ),
         businessGoodsCategoryRepositoryProvider.overrideWithValue(
           categories ?? _FakeCategoryRepository(),
         ),
@@ -738,6 +1036,24 @@ class _TestPickerEpoch extends ExportContextEpoch {
   void advance() => state++;
 }
 
+class _FacetApi extends ApiClient {
+  _FacetApi() : super(Dio());
+  final queries = <Map<String, dynamic>>[];
+  @override
+  Future<Map<String, dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    queries.add({...?query});
+    return {
+      'items': <Map<String, dynamic>>[
+        {'value': 'B-value', 'label': 'B-value', 'count': 1},
+      ],
+      'hasMore': false,
+    };
+  }
+}
+
 class _FakeGoodsRepository extends Fake implements GoodsRepository {
   _FakeGoodsRepository({
     this.returnOutOfScopeItem = false,
@@ -749,7 +1065,11 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
 
   final bool returnOutOfScopeItem;
   final bool splitAcrossPages;
-  final String? delayedQuery;
+  String? delayedQuery;
+  List<GoodsListItem>? searchItemsOverride;
+  Set<String>? searchCategoryIdsOverride;
+  Completer<Set<String>>? locationGate;
+  Completer<PagedResult<GoodsListItem>>? categoryGate;
   final String? categoryOnlyQuery;
   final int? delayedPage;
   int? failNextPage;
@@ -766,6 +1086,7 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
   final listSortOrders = <(String?, String?)>[];
   final facetsCalls = <String>[];
   final globalFacetScopes = <Set<String>>[];
+  final globalFacetCategories = <String?>[];
 
   void completeDelayedSearch(List<GoodsListItem> items) {
     _delayedSearch.complete(_page(items, page: 1, size: 100));
@@ -808,6 +1129,9 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
     if (keyword == delayedQuery && categoryId == null) {
       return _delayedSearch.future;
     }
+    if (searchItemsOverride != null) {
+      return _page(searchItemsOverride!, page: page, size: size);
+    }
     if (keyword == categoryOnlyQuery) {
       return _page(const [], page: page, size: size);
     }
@@ -846,6 +1170,8 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
     bool includeRelated = false,
   }) async {
     searchCategoryIdQueries.add(keyword);
+    if (locationGate != null) return locationGate!.future;
+    if (searchCategoryIdsOverride != null) return searchCategoryIdsOverride!;
     if (returnOutOfScopeItem) return const {'raw-root'};
     if (keyword == categoryOnlyQuery) return const <String>{};
     if (categoryId != null) return {categoryId};
@@ -869,6 +1195,7 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
   }) async {
     listCalls.add((categoryId!, keyword));
     listSortOrders.add((sort, order));
+    if (categoryGate != null) return categoryGate!.future;
     final items = categoryId == 'section-b' ? const [_goodsB] : const [_goodsA];
     return _page(items, page: page, size: size);
   }
@@ -893,6 +1220,7 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
 
   @override
   Future<GoodsFacets> globalFacets({
+    String? categoryId,
     String? keyword,
     bool includeRelated = false,
     Map<String, String?> filters = const {},
@@ -901,6 +1229,7 @@ class _FakeGoodsRepository extends Fake implements GoodsRepository {
     Set<String> categoryRootIds = const {},
   }) async {
     globalFacetScopes.add({...categoryRootIds});
+    globalFacetCategories.add(categoryId);
     return const GoodsFacets(
       fields: {
         'name': [MasterFacetBucket(value: '连接器乙', count: 7)],

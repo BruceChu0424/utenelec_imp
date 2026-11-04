@@ -1,61 +1,56 @@
-import '../models/employee_api_models.dart';
+import '../../../components/inputs/uten_employee_picker_models.dart';
+import '../../../shared/models/department_node.dart';
 import 'employee_repository.dart';
 
-/// Load every page of the caller's existing employee query. Department grouping
-/// must not silently omit people beyond the first page or widen its scope.
-Future<List<EmployeeSummary>> loadEmployeePickerCandidates(
-  EmployeeRepository repository, {
-  int size = 100,
-  String? search,
-  Set<String>? statuses,
-  String? departmentId,
-  bool includeSubtree = false,
-  String? sort,
-  String? order,
-}) async {
-  final scopedStatuses = statuses == null ? null : Set<String>.of(statuses);
-  final employees = <String, EmployeeSummary>{};
-  var page = 1;
-  while (true) {
-    final result = await repository.list(
-      page: page,
-      size: size,
-      search: search,
-      statuses: scopedStatuses,
-      departmentId: departmentId,
-      includeSubtree: includeSubtree,
-      sort: sort,
-      order: order,
-    );
-    if (result.page != page) {
-      throw const FormatException('员工候选分页响应与请求不一致');
-    }
-    for (final employee in result.items) {
-      employees[employee.id] = employee;
-    }
-    if (page >= result.totalPages) break;
-    page++;
-  }
-  return employees.values.toList(growable: false);
-}
-
+/// Explicit pages keep the HR selector responsive without widening its query.
 extension EmployeeRepositoryPickerCandidates on EmployeeRepository {
-  Future<List<EmployeeSummary>> listPickerCandidates({
+  Future<UtenEmployeePickerPage> listPickerPage(
+    UtenEmployeePickerQuery query, {
     int size = 100,
-    String? search,
     Set<String>? statuses,
     String? departmentId,
     bool includeSubtree = false,
     String? sort,
     String? order,
-  }) => loadEmployeePickerCandidates(
-    this,
-    size: size,
-    search: search,
-    statuses: statuses,
-    departmentId: departmentId,
-    includeSubtree: includeSubtree,
-    sort: sort,
-    order: order,
-  );
+    required Future<List<DepartmentNode>> Function() loadDepartments,
+  }) async {
+    final statusSnapshot = statuses == null ? null : Set<String>.of(statuses);
+    final scope = await employeePickerDepartmentScope(
+      query,
+      departmentId: departmentId,
+      includeSubtree: includeSubtree,
+      loadDepartments: loadDepartments,
+    );
+    if (scope.empty) return UtenEmployeePickerPage.empty(page: query.page);
+    final result = await list(
+      page: query.page,
+      size: size,
+      search: query.keyword,
+      statuses: statusSnapshot,
+      departmentId: scope.id,
+      includeSubtree: scope.subtree,
+      sort: sort,
+      order: order,
+    );
+    if (result.page != query.page) {
+      throw const FormatException('员工候选分页响应与请求不一致');
+    }
+    return UtenEmployeePickerPage(
+      items: [
+        for (final employee in result.items)
+          UtenEmployeePickerItem(
+            id: employee.id,
+            name: employee.fullName,
+            employeeCode: employee.code,
+            accountStatus: employee.accountStatus,
+            employmentStatus: employee.status,
+            departmentId: employee.departmentId,
+            departmentName: employee.departmentName,
+            positionName: employee.positionName,
+          ),
+      ],
+      page: result.page,
+      totalPages: result.totalPages,
+    );
+  }
 }

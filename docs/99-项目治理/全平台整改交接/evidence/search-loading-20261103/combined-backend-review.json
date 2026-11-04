@@ -1,0 +1,426 @@
+{
+  "schemaVersion": 1,
+  "scope": "Final backend verification of the search batch integrated onto current application/approval main; not production, release, whole-project CI or formal platform acceptance.",
+  "baselineCommit": "c8eb95cb1b2da2847d07665d793230b0b8e3bdaf",
+  "worktree": "D:\\Projects\\uten_imp_worktrees\\platform-search-integration-20261104",
+  "branch": "uimp/platform-search-integration-20261104",
+  "old258ResultsReusedAsThisBaseline": false,
+  "finalInput": {
+    "combinedSha256": "02a4a2f4453fab294b58e421e019298558d7ac7ed895350afb20f1adc2f7077f",
+    "normalization": "Raw file bytes; aggregate sorted relative path NUL sha256 LF",
+    "parts": {
+      "main_java": {
+        "files": 2948,
+        "sha256": "c3fceb43c2894a84b6d479d6144c10353d04749a9312bf8769524bd67d7cbce3"
+      },
+      "test_java": {
+        "files": 2423,
+        "sha256": "461ba708d73907221acbd5075a97e15a2f3472f4b86cc8462cec97ccc2817dfc"
+      },
+      "resources": {
+        "files": 942,
+        "sha256": "e59d4b1cfd4a7cc14e48ce84ea5af5ea6e12be0a17f5a65983da57ce3eb205a4"
+      }
+    },
+    "fullManifest": "server/target-search-combined/input-fingerprint-final.json"
+  },
+  "postVerification": {
+    "combinedSha256": "02a4a2f4453fab294b58e421e019298558d7ac7ed895350afb20f1adc2f7077f",
+    "changedPaths": [],
+    "addedPaths": [],
+    "result": "PASS"
+  },
+  "initialCombinedRun": {
+    "inputSha256": "255db37124740abae404177a4d19e770a1c7029d672b851a46a103a4f411713b",
+    "log": "server/target-search-combined.log",
+    "tests": 47,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "allMainJavaCompiled": 2948,
+    "allTestJavaCompiled": 2422,
+    "interpretation": "Validated the c8 combined baseline before the final four policy-source/test drift paths. Not relabeled as all final-policy behavior passing."
+  },
+  "finalPolicyRun": {
+    "inputSha256": "02a4a2f4453fab294b58e421e019298558d7ac7ed895350afb20f1adc2f7077f",
+    "log": "server/target-search-combined-policy-final.log",
+    "tests": 16,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "allMainJavaRecompiled": 2948,
+    "allTestJavaRecompiled": 2423,
+    "testedAfterDriftPaths": [
+      "server/src/main/java/com/uten/imp/common/report/NativeTaskReadScopeInterceptor.java",
+      "server/src/main/java/com/uten/imp/features/approvalpolicy/DepartmentApprovalPolicyController.java",
+      "server/src/main/java/com/uten/imp/features/approvalpolicy/DepartmentApprovalPolicyService.java",
+      "server/src/test/java/com/uten/imp/businesschain/DepartmentApprovalCandidateSearchPostgresTest.java"
+    ],
+    "scope": "2 new policy SQL/HTTP tests + 3 original department/substitute workflow regressions + 11 architecture gates; other green 47 tests were not rerun."
+  },
+  "database": {
+    "isolation": "Only disposable PostgreSQL 16 Testcontainers/private fixture clones, never company/business datasource",
+    "appliedMigrations": 928,
+    "flywayVersion": 1002,
+    "evidenceLogs": [
+      "server/target-search-combined.log",
+      "server/target-search-combined-policy-final.log"
+    ]
+  },
+  "authorizedBillSearchFix": {
+    "source": "server/src/main/java/com/uten/imp/features/finance/FinanceApplicationReferenceAdapter.java",
+    "testSource": "server/src/test/java/com/uten/imp/features/applications/BusinessApplicationPostgresTest.java",
+    "change": "Existing prepayment bill-number ILIKE now uses KeywordSearch.containsPattern and explicit SQL ESCAPE. Original dedicated phrase/case-insensitive semantics, financeScope, supplier/amount/date/classified-prepayment eligibility and pagination preserved.",
+    "test": "prepaymentCandidateBillNumberSearchTreatsWildcardsLiterallyWithoutChangingEligibilityOrCase",
+    "cases": [
+      "literal percent",
+      "literal underscore",
+      "literal backslash",
+      "case-insensitive full/partial number",
+      "bounded page and total",
+      "finance-scope rejection"
+    ]
+  },
+  "policyAndWorkflowCoverage": {
+    "newPolicyClass": "DepartmentApprovalCandidateSearchPostgresTest",
+    "cases": [
+      "105 eligible candidates remain reachable across pages",
+      "manager and unqualified employees excluded before count/page",
+      "literal symbols/multi-word/exact-name ordering",
+      "403/422 and no-qualification fail-closed"
+    ],
+    "originalWorkflowMethods": [
+      "managerOwnApplicationsUseOnlyTheConfiguredCrossDepartmentSubstituteAndExpireOnConfigurationChange",
+      "managerOwnApplicationWithoutSubstituteDoesNotFallBackToDepartmentCoworkers",
+      "departmentScopeAndQueuesAndCountsAgreeAndWithdrawalRevokesCurrentReview"
+    ]
+  },
+  "newApplicationReadScopeClass": "BusinessApplicationReadScopeTest",
+  "auditNameProof": {
+    "staffPool": 1201,
+    "maxPreparedParameterIndex": 39,
+    "interpretation": "Observed on the current c8+search initial combined run, distinct from prior base results and not a production latency SLA."
+  },
+  "combinedUniqueResults": {
+    "tests": 52,
+    "classes": 9,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "interpretation": "47 + 16 executions minus 11 duplicate architecture cases = 52 unique current-combined-baseline cases."
+  },
+  "cases": [
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "adminWriteEndpointsDeclareStepUpOrReasonedExemption",
+      "seconds": 0.62,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "businessCodeNeverReadsTheAuditLog",
+      "seconds": 0.842,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "controllersDoNotDependDirectlyOnRepositories",
+      "seconds": 0.092,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "employeeIdentityCipherAndCheckResultHaveOneWriterAndOneIssueSource",
+      "seconds": 1.026,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "endpointsReturningPlaintextCredentialsDeclareStepUp",
+      "seconds": 0.644,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "expenseClaimNeverReachesTheSharedAiPlatform",
+      "seconds": 0.017,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "featureDependencyGraphDoesNotGrow",
+      "seconds": 0.517,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "foundationPackagesDoNotDependOnBusinessFeatures",
+      "seconds": 0.086,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "highRiskAuthorizationWritesRequireStepUp",
+      "seconds": 0.012,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "moneyRoundingOnlyLivesInMoneyPolicy",
+      "seconds": 0.687,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.architecture.ArchitectureBoundaryTest",
+      "name": "privateMethodsDoNotCarryTransactional",
+      "seconds": 0.868,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.AuditActorNameSearchPostgresTest",
+      "name": "matchingNamesStayInASubqueryWithBoundedBindingsAndHistoricalLiteralPhraseSemantics",
+      "seconds": 4.527,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.BusinessEmployeeReferenceHttpPostgresTest",
+      "name": "aRevokeBeforePublicationStillBlocksTheAlreadyBuiltMinimalResponse",
+      "seconds": 0.595,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.BusinessEmployeeReferenceHttpPostgresTest",
+      "name": "actual52OperatorGetsOnlyBusinessLabelsWhileHrRosterAndDetailStayForbidden",
+      "seconds": 1.013,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.BusinessEmployeeReferenceHttpPostgresTest",
+      "name": "anonymousAndVisitorAreDeniedButFormalReadOnlySimulationRetainsTargetReads",
+      "seconds": 0.596,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.BusinessEmployeeReferenceHttpPostgresTest",
+      "name": "approvedOtherBusinessCreateEditAndReadEchoUseOnlyTheirOwnAuthorities",
+      "seconds": 0.827,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.BusinessEmployeeReferenceHttpPostgresTest",
+      "name": "eachOtherPurposeUsesItsExactExistingCommandAndNoGenericWriteUnion",
+      "seconds": 0.777,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.BusinessEmployeeReferenceHttpPostgresTest",
+      "name": "existingMinimalOrganizationRolesDoNotOpenHrOrUnrelatedPersonDirectories",
+      "seconds": 0.812,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.BusinessEmployeeReferenceHttpPostgresTest",
+      "name": "narrowArrivalActionNeedsNeitherHrNorFullDepartmentOrCompanyFileAuthority",
+      "seconds": 0.619,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.BusinessEmployeeReferenceHttpPostgresTest",
+      "name": "pagedPersonSearchFindsAncestorPathsWhileKeepingPurposeAndSelectedSubtree",
+      "seconds": 0.649,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.BusinessEmployeeReferenceHttpPostgresTest",
+      "name": "pagingVisibleKeywordAndDepartmentSubtreeUseExactSharedFilters",
+      "seconds": 0.756,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.BusinessEmployeeReferenceHttpPostgresTest",
+      "name": "readOnlyScopeHrOnlyAndAnotherOperationDoNotOpenThePurpose",
+      "seconds": 0.858,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.BusinessEmployeeReferenceHttpPostgresTest",
+      "name": "referencedEmployeeAccountStateDoesNotChangePhysicalPersonLegalityAndEchoIsBounded",
+      "seconds": 0.62,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.BusinessEmployeeReferenceHttpPostgresTest",
+      "name": "workshopDefaultPublicationRejectsAChangedManagerLifecycleAndActorAuthority",
+      "seconds": 0.962,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.BusinessEmployeeReferenceHttpPostgresTest",
+      "name": "workshopManagerFallbackUsesTheOperationPurposeWithoutGoodsLearningOrHrTreeAccess",
+      "seconds": 1.158,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DepartmentApprovalCandidateSearchPostgresTest",
+      "name": "emptyEligibilityAndExcessiveTextDoNotFallBackToAnUnrestrictedDirectory",
+      "seconds": 0.265,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.DepartmentApprovalCandidateSearchPostgresTest",
+      "name": "qualifiedCandidatesRemainReachableAfterOneHundredWithLiteralMultiwordRanking",
+      "seconds": 2.448,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.EmployeeSearchAccuracyPostgresTest",
+      "name": "companyPrincipalPageKeepsAccountIdsAndReadOnlyAuthorityWithoutHrDirectoryAccess",
+      "seconds": 0.647,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.EmployeeSearchAccuracyPostgresTest",
+      "name": "dedicatedCandidateReadBodiesKeepThousandExclusionsDepartmentScopeAndOriginalAuthority",
+      "seconds": 1.024,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.EmployeeSearchAccuracyPostgresTest",
+      "name": "exactAccountSummaryRetainsListVisibilityAndSupportPermissionWithoutCredentialFields",
+      "seconds": 0.505,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.EmployeeSearchAccuracyPostgresTest",
+      "name": "exactNamePrecedesPrefixAndContainsBeforeEmployeeAccountAndStaffPaging",
+      "seconds": 0.249,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.EmployeeSearchAccuracyPostgresTest",
+      "name": "ordinaryEmployeeAndAccountSearchRequireAllWordsAcrossFieldsAndTreatWildcardsLiterally",
+      "seconds": 0.255,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.EmployeeSearchAccuracyPostgresTest",
+      "name": "protectedProvisionAndSimulationPagesKeepOriginalFactsAndAdministrativeIdentity",
+      "seconds": 0.616,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.EmployeeSearchAccuracyPostgresTest",
+      "name": "provisioningCandidatesShareWordAndRankRulesWithoutAdmittingExistingAccountsOrDepartedEmployees",
+      "seconds": 0.165,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.EmployeeSearchAccuracyPostgresTest",
+      "name": "rosterSearchMatchesAncestorDepartmentNamesBeforePaginationWithoutChangingDepartmentScope",
+      "seconds": 0.214,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NoticeAuditSearchPostgresTest",
+      "name": "auditActorPagesRetainDeletedStaffAndBlockedVisitorsWithExplicitUnassignedFilter",
+      "seconds": 0.192,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NoticeAuditSearchPostgresTest",
+      "name": "auditWordsAndDepartmentNarrowingAreAppliedBeforeStablePages",
+      "seconds": 0.494,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.businesschain.NoticeAuditSearchPostgresTest",
+      "name": "noticePagesKeepOnlyCurrentEnabledRecipientsAndFindAncestorWords",
+      "seconds": 0.604,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.BusinessApplicationReadScopeTest",
+      "name": "applicationCommandsAreNeverConvertedIntoAutomaticReadReplays",
+      "seconds": 0.004,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.BusinessApplicationReadScopeTest",
+      "name": "applicationQueuesAndDetailsRejectLatePublicationAfterEmployeeApprovalScopeChanges",
+      "seconds": 0.014,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.common.report.BusinessApplicationReadScopeTest",
+      "name": "classifiedFinancialCandidatesKeepTheFinanceOwnerProofUntilPublication",
+      "seconds": 0.495,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.admin.AdminUserSummaryQueryPostgresTest",
+      "name": "accountWithoutAnEmployeeAndExistingEmployeeDeepLinkKeepTheirDifferentContracts",
+      "seconds": 0.112,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.admin.AdminUserSummaryQueryPostgresTest",
+      "name": "boundedPageReadsExactlyTwoStatementsRegardlessOfReturnedEmployeeCount",
+      "seconds": 3.033,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.admin.AdminUserSummaryQueryPostgresTest",
+      "name": "exactSummaryUsesListVisibilityAndKeepsAllDisplayedAccountFields",
+      "seconds": 0.225,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.admin.AdminUserSummaryQueryPostgresTest",
+      "name": "provisionProjectionKeepsPhoneReadinessEligibilityAndOneSharedLegacyOrder",
+      "seconds": 0.341,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.admin.AdminUserSummaryQueryPostgresTest",
+      "name": "provisioningDirectoryAboveFiveThousandStillReadsOnlyTheRequestedPage",
+      "seconds": 0.113,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.admin.AdminUserSummaryQueryPostgresTest",
+      "name": "wholeIdentityTiersSingleCharactersAndCrossFieldWordsStayAccurateBeforePaging",
+      "seconds": 0.239,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.admin.AdminUserSummaryQueryPostgresTest",
+      "name": "wildcardCharactersAreLiteralAndDepartedAccountsRemainVisible",
+      "seconds": 0.142,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.applications.BusinessApplicationPostgresTest",
+      "name": "departmentScopeAndQueuesAndCountsAgreeAndWithdrawalRevokesCurrentReview",
+      "seconds": 2.805,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.applications.BusinessApplicationPostgresTest",
+      "name": "managerOwnApplicationWithoutSubstituteDoesNotFallBackToDepartmentCoworkers",
+      "seconds": 0.777,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.applications.BusinessApplicationPostgresTest",
+      "name": "managerOwnApplicationsUseOnlyTheConfiguredCrossDepartmentSubstituteAndExpireOnConfigurationChange",
+      "seconds": 2.7,
+      "status": "passed"
+    },
+    {
+      "class": "com.uten.imp.features.applications.BusinessApplicationPostgresTest",
+      "name": "prepaymentCandidateBillNumberSearchTreatsWildcardsLiterallyWithoutChangingEligibilityOrCase",
+      "seconds": 1.984,
+      "status": "passed"
+    }
+  ]
+}

@@ -45,6 +45,7 @@ class PasswordChangeRequiredFilterTest {
             "POST, /api/auth/change-password",
             "POST, /api/auth/logout",
             "GET, /api/auth/me",
+            "GET, /api/auth/session/watch",
             "GET, /api/settings/public"
     })
     void firstLoginUserCanOnlyReachTheCompletionFlow(String method, String path)

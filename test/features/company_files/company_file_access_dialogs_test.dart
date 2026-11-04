@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/models/paged_result.dart';
 import 'package:uten_imp/components/feedback/uten_dialog_modules.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/shared/models/department_node.dart';
@@ -25,6 +26,9 @@ import 'package:uten_imp/features/company_files/models/company_file.dart';
 import 'package:uten_imp/features/company_files/models/company_file_access_draft.dart';
 import 'package:uten_imp/features/company_files/repositories/company_file_repository.dart';
 import 'package:uten_imp/features/company_files/widgets/company_file_dialogs.dart';
+import 'package:uten_imp/features/company_files/widgets/company_file_access_editor.dart';
+import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/components/inputs/uten_employee_picker_models.dart';
 import 'package:uten_imp/shared/attachments/attachment_file_rules.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/sensitive_read_boundary_provider.dart';
@@ -80,12 +84,92 @@ class _Repository extends CompanyFileRepository {
   ];
 
   @override
-  Future<List<CompanyFilePrincipal>> principals({
+  Future<PagedResult<CompanyFilePrincipal>> principalsPage({
     required String type,
     String search = '',
-  }) async => type == 'USER'
-      ? [const CompanyFilePrincipal(id: 'alice', name: '张明', type: 'USER')]
-      : [const CompanyFilePrincipal(id: 'hr', name: '人事部', type: 'DEPARTMENT')];
+    int page = 1,
+    int size = 100,
+    String? departmentId,
+    bool includeSubtree = false,
+  }) async => PagedResult(
+    items: type == 'USER'
+        ? [const CompanyFilePrincipal(id: 'alice', name: '张明', type: 'USER')]
+        : [
+            const CompanyFilePrincipal(
+              id: 'hr',
+              name: '人事部',
+              type: 'DEPARTMENT',
+            ),
+          ],
+    page: page,
+    size: size,
+    total: 1,
+    totalPages: 1,
+  );
+}
+
+class _PagedPrincipals extends _Repository {
+  final pages = <int>[];
+  Completer<PagedResult<CompanyFilePrincipal>>? continuation;
+  static PagedResult<CompanyFilePrincipal> response(int page) => PagedResult(
+    items: [
+      for (var i = (page - 1) * 100; i < (page == 1 ? 100 : 101); i++)
+        CompanyFilePrincipal(
+          id: 'account-$i',
+          name: '资料账号$i',
+          type: 'USER',
+          detail: '人事部',
+          departmentId: 'hr',
+        ),
+    ],
+    page: page,
+    size: 100,
+    total: 101,
+    totalPages: 2,
+  );
+  @override
+  Future<PagedResult<CompanyFilePrincipal>> principalsPage({
+    required String type,
+    String search = '',
+    int page = 1,
+    int size = 100,
+    String? departmentId,
+    bool includeSubtree = false,
+  }) async {
+    pages.add(page);
+    if (page == 2 && continuation != null) return continuation!.future;
+    return response(page);
+  }
+}
+
+class _HistoricalPrincipals extends _Repository {
+  final queries = <({String? departmentId, bool includeSubtree})>[];
+  @override
+  Future<PagedResult<CompanyFilePrincipal>> principalsPage({
+    required String type,
+    String search = '',
+    int page = 1,
+    int size = 100,
+    String? departmentId,
+    bool includeSubtree = false,
+  }) async {
+    queries.add((departmentId: departmentId, includeSubtree: includeSubtree));
+    return PagedResult(
+      items: const [
+        CompanyFilePrincipal(
+          id: 'historical-account',
+          name: '历史账号',
+          type: 'USER',
+          departmentId: 'historical-department',
+          detail: '历史部门',
+        ),
+      ],
+      page: page,
+      size: size,
+      total: 1,
+      totalPages: 1,
+    );
+  }
 }
 
 Future<({ProviderContainer container, AuthenticatedRequestScope scope})> _mount(
@@ -176,6 +260,137 @@ typedef _EntrySwitch =
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  testWidgets(
+    'historical library department selection requests its exact UUID without a deleted-subtree seed',
+    (tester) async {
+      final state = await _mount(tester);
+      final repository = _HistoricalPrincipals();
+      final result = showCompanyFilePrincipalPicker(
+        tester.element(find.byKey(const ValueKey('dialog-launcher'))),
+        repository: repository,
+        scope: state.scope,
+        boundary: state.container.read(_identity),
+      );
+      await tester.pumpAndSettle();
+      final departments = find.byKey(
+        const Key('uten-employee-picker-departments'),
+      );
+      if (!tester.any(departments)) {
+        await tester.tap(find.byIcon(Icons.account_tree_rounded));
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(
+        find.descendant(of: departments, matching: find.text('历史部门')),
+      );
+      await tester.pumpAndSettle();
+      expect(repository.queries.last, (
+        departmentId: 'historical-department',
+        includeSubtree: false,
+      ));
+      final row = find.byKey(
+        const ValueKey('employee-picker-item-historical-account'),
+      );
+      expect(row, findsOneWidget);
+      await tester.tap(row);
+      await tester.pump();
+      await tester.tap(find.widgetWithText(UtenButton, '确定'));
+      await tester.pumpAndSettle();
+      expect((await result)?.id, 'historical-account');
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'library principal picker reads explicit account pages and confirms the last account identity',
+    (tester) async {
+      final state = await _mount(tester);
+      final repository = _PagedPrincipals();
+      final result = showCompanyFilePrincipalPicker(
+        tester.element(find.byKey(const ValueKey('dialog-launcher'))),
+        repository: repository,
+        scope: state.scope,
+        boundary: state.container.read(_identity),
+      );
+      await tester.pumpAndSettle();
+      expect(repository.pages, [1]);
+      final table = find.byKey(const Key('uten-employee-picker-candidates'));
+      tester
+          .widget<MasterDataTableView<UtenEmployeePickerItem>>(table)
+          .onLoadMore!();
+      await tester.pumpAndSettle();
+      expect(repository.pages, [1, 2]);
+      final rows = tester
+          .widget<MasterDataTableView<UtenEmployeePickerItem>>(table)
+          .items;
+      expect(rows, hasLength(101));
+      expect(rows.last.id, 'account-100');
+      final last = find.byKey(
+        const ValueKey('employee-picker-item-account-100'),
+      );
+      final scrollable = find
+          .descendant(
+            of: table,
+            matching: find.byWidgetPredicate(
+              (widget) =>
+                  widget is Scrollable &&
+                  widget.axisDirection == AxisDirection.down,
+            ),
+          )
+          .last;
+      await tester.scrollUntilVisible(
+        last,
+        500,
+        scrollable: scrollable,
+        maxScrolls: 30,
+      );
+      await tester.tap(last);
+      await tester.pump();
+      await tester.tap(find.widgetWithText(UtenButton, '确定'));
+      await tester.pumpAndSettle();
+      final principal = await result;
+      expect(principal?.id, 'account-100');
+      expect(principal?.type, 'USER');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'library identity change rejects a pending principal continuation',
+    (tester) async {
+      final state = await _mount(tester);
+      final repository = _PagedPrincipals()
+        ..continuation = Completer<PagedResult<CompanyFilePrincipal>>();
+      final result = showCompanyFilePrincipalPicker(
+        tester.element(find.byKey(const ValueKey('dialog-launcher'))),
+        repository: repository,
+        scope: state.scope,
+        boundary: state.container.read(_identity),
+      );
+      await tester.pumpAndSettle();
+      tester
+          .widget<MasterDataTableView<UtenEmployeePickerItem>>(
+            find.byKey(const Key('uten-employee-picker-candidates')),
+          )
+          .onLoadMore!();
+      await tester.pump();
+      state.container.read(_identity.notifier).state = _boundary('B');
+      await tester.pump();
+      repository.continuation!.complete(_PagedPrincipals.response(2));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('employee-picker-item-account-100')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('uten-employee-picker-candidates')),
+        findsNothing,
+      );
+      await tester.tap(find.byType(UtenCloseButton).last);
+      await tester.pumpAndSettle();
+      expect(await result, isNull);
+      expect(repository.pages, [1, 2]);
+      expect(tester.takeException(), isNull);
+    },
+  );
   setUpAll(() async {
     await (FontLoader(
       'MaterialIcons',

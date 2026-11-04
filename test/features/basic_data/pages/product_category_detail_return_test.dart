@@ -112,6 +112,7 @@ class _Goods extends Fake implements GoodsRepository {
 
   @override
   Future<GoodsFacets> globalFacets({
+    String? categoryId,
     String? keyword,
     bool includeRelated = false,
     Map<String, String?> filters = const {},

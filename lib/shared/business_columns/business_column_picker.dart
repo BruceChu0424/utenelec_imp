@@ -1,5 +1,6 @@
 import 'package:uten_imp/core/ui/human_error_message.dart';
 import 'dart:async';
+import '../paging/paged_read_intent.dart';
 
 import 'package:flutter/material.dart';
 import '../../components/inputs/uten_input_decoration.dart';
@@ -89,6 +90,7 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
   bool _loading = true;
   bool _saving = false;
   bool _arithmetic = false;
+  (BusinessColumnsRepository, bool)? _capability;
   String _type = 'TEXT';
   String _operation = 'NONE';
   String? _loadError;
@@ -134,10 +136,19 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
       _loadError = null;
     });
     try {
-      final data = await Future.wait<Object>([
-        repository.search(widget.scope, _name.text.trim()),
-        repository.supportsArithmetic(widget.scope),
-      ]);
+      final knownCapability = _capability;
+      final data = await PagedReadIntent.scopedRead(
+        () =>
+            mounted &&
+            generation == _generation &&
+            identical(repository, _repo),
+        () => Future.wait<Object>([
+          repository.search(widget.scope, _name.text.trim()),
+          knownCapability?.$1 == repository
+              ? Future.value(knownCapability!.$2)
+              : repository.supportsArithmetic(widget.scope),
+        ]),
+      );
       if (!mounted ||
           generation != _generation ||
           !identical(repository, _repo)) {
@@ -146,6 +157,7 @@ class _BusinessColumnPickerState extends ConsumerState<_BusinessColumnPicker> {
       setState(() {
         _results = data[0] as List<BusinessColumn>;
         _arithmetic = data[1] == true && !widget.priceMasked;
+        _capability = (repository, data[1] == true);
         _loading = false;
       });
     } catch (error) {

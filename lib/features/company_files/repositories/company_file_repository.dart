@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../shared/models/department_node.dart';
+import '../../../shared/models/paged_result.dart';
 import '../models/company_file.dart';
 import '../models/company_file_access_draft.dart';
 
@@ -157,21 +158,30 @@ class CompanyFileRepository {
         ApiEndpoints.employeePickerDepartmentTree,
       )).map(DepartmentNode.fromJson).toList(growable: false);
 
-  Future<List<CompanyFilePrincipal>> principals({
+  /// Principal identity stays owned by the library ACL directory. One bounded
+  /// page is read at a time, with department narrowing performed before paging.
+  Future<PagedResult<CompanyFilePrincipal>> principalsPage({
     required String type,
     String search = '',
-  }) async {
-    const size = 100;
-    final result = <CompanyFilePrincipal>[];
-    for (var page = 0; ; page++) {
-      final rows = await api.getList(
-        '$base/principals',
-        query: {'type': type, 'search': search, 'page': page, 'size': size},
-      );
-      result.addAll(rows.map(CompanyFilePrincipal.fromJson));
-      if (rows.length < size) return result;
-    }
-  }
+    int page = 1,
+    int size = 100,
+    String? departmentId,
+    bool includeSubtree = false,
+  }) async => PagedResult.fromJsonResponsive(
+    await api.get(
+      '$base/principals/page',
+      query: {
+        'type': type,
+        'search': search,
+        'page': page,
+        'size': size,
+        'departmentId': ?departmentId,
+        if (departmentId != null || includeSubtree)
+          'includeSubtree': includeSubtree,
+      },
+    ),
+    CompanyFilePrincipal.fromJson,
+  );
 }
 
 final companyFileRepositoryProvider = Provider<CompanyFileRepository>(

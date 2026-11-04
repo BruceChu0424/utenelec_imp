@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "evidenceId": "E-LOGIN-SESSION-LIFECYCLE-WPF-20261103",
+  "date": "2026-11-03",
+  "baseline": "8937e02d2",
+  "branch": "uimp/login-session-lifecycle-20261103",
+  "runtimeFamily": "wpf_legacy",
+  "hostOs": "Microsoft Windows NT 10.0.26300.0",
+  "taskIds": [
+    "W7-CORE-005",
+    "W7-CORE-006",
+    "W7-CORE-007",
+    "W7-BIZ-016",
+    "W7-BIZ-215"
+  ],
+  "behavior": [
+    "New process starts unauthenticated. Prior durable refresh records are retired into the original issuer revocation queue, never refreshed into login.",
+    "Main-window close preserves the existing global draft/unknown-submission guards, retires local login before the first network await and grants issuer revocation a three-second bound. Minimize preserves login.",
+    "Authenticated owner maintains one automatic GET /auth/session/watch with a 35-second response budget; authoritative replacement retires current login and shows the server device reason without a manual refresh.",
+    "Automatic watch, fallback me and their token refresh do not renew human activity. A missing watch endpoint falls back to a three-second me probe and retries watch after 60 seconds.",
+    "Read, refresh, mutation, download and watch rejection share one generation-fenced SessionEnded event. Late/cancelled responses cannot clear or notify a new login.",
+    "InputManager lifetime tracking records timestamps only for keyboard/IME/mouse/touch/stylus input in the main owner or owned dialogs. A single-flight 30-second staff me pulse renews activity only when input was observed in the last 30 seconds.",
+    "Session changed/read-scope/ended publication isolates each listener exception and logs only technical event/type metadata; one failing subscriber cannot suppress other cleanup or replacement notices.",
+    "Native publish retirement runs on its Dispatcher. Latest undebounced input and retired/disposed snapshots persist through the immutable original namespace lease. Storage failure retains a global main-window close guard; retry has an owned wait window, repeat-click guard and background DPAPI/disk IO.",
+    "Retired publish queues stop after every read/prepare/upload/publish/withdraw await; delayed success or failure cannot replace Unknown original request IDs or advance the old queue."
+  ],
+  "checks": [
+    {
+      "name": "Debug native build",
+      "architectures": [
+        "x86",
+        "x64"
+      ],
+      "warningAsError": true,
+      "exitCodes": [
+        0,
+        0
+      ]
+    },
+    {
+      "name": "session lifecycle contracts",
+      "architectures": [
+        "x86",
+        "x64"
+      ],
+      "exitCodes": [
+        0,
+        0
+      ],
+      "includes": [
+        "old-issuer startup retirement without refresh",
+        "late logout preserves new login",
+        "automatic watch and refresh activity headers",
+        "active and replaced wire contract",
+        "cancelled and delayed same-account watch fencing",
+        "actual WPF owner minimize and close",
+        "loaded WPF owner receives replacement popup with device reason and no manual refresh",
+        "recent owner/owned-dialog input permits staff activity renewal; idle/expired/unrelated input does not",
+        "30 rapid activity ticks remain single-flight",
+        "one throwing changed/ended subscriber does not suppress subsequent listeners",
+        "watch after unit mutation dispatch retains durable Unknown request ID/raw body and original draft; new account has neither old record nor replay",
+        "actual native publisher background watch retirement retains latest undebounced input in old namespace",
+        "locked publish draft keeps global main-window close guard; real retry button has owned wait UI and repeat-click guard; successful retry releases it",
+        "retired publish prepare/upload/publish retain original Unknown state on delayed success and failure in six scenarios"
+      ]
+    },
+    {
+      "name": "complete native offline runner",
+      "architectures": [
+        "x86",
+        "x64"
+      ],
+      "exitCodes": [
+        0,
+        0
+      ],
+      "suites": "Diagnostics 13, Core, Goods 66, Downloads 39, Publish 113, Units 38, History 31, History UI 14, Print 21, Columns 55, Column UI 9, Drafts 16, Exports 16, Inline 70, Updater 203, Update outcomes 13"
+    },
+    {
+      "name": "shared design tokens",
+      "command": "python -B clients/windows_legacy/tools/sync_design_tokens.py --check",
+      "exitCode": 0
+    },
+    {
+      "name": "final canonical source manifests",
+      "commands": [
+        "python -B clients/windows_legacy/tools/business_inventory.py --write then --check",
+        "python -B clients/windows_legacy/tools/module_coverage.py then --check",
+        "python -B clients/windows_legacy/tools/progress_tracker.py sync then check"
+      ],
+      "exitCodes": [
+        0,
+        0,
+        0
+      ],
+      "taskStatusOwnerAndDoDPreserved": true,
+      "workPackages": 362,
+      "done": 10,
+      "fullErpEquivalent": false,
+      "win7Accepted": false
+    }
+  ],
+  "sourceFiles": [
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/ClientPackageDownload.cs",
+      "sha256": "2ae49a3a52666af8c4cf11aa6c1e0354f997f76aa5da7dd4846ba99b654b3730"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/ClientReleasePublishQueue.cs",
+      "sha256": "eb033dfbbef25742db764b58c0de44f3140a3111a0eb8550e55ae0e7261812a9"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/ManagedTlsHttpHandler.cs",
+      "sha256": "7b341edeb571de8c08d66b0bc47f76152046b8f347921b26ab723cb1a70cd6cb"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/MutationCoordinator.cs",
+      "sha256": "bbae79d7edd983baf946b7767161e7e367ba55a796d4a50cb707efc97d106423"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/SessionCoordinator.cs",
+      "sha256": "54b11dfc40d13008f71f1b67348a0561866f4b0fc6249f1456b0055e76b2bb08"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/SessionWatchContract.cs",
+      "sha256": "f0a03085b649c6bb3dc8d8a8f64fe306ea42fe4205742581dbc0e6577c176b42"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/Tests/CoreContractChecks.cs",
+      "sha256": "b1a7ff4e041b4a5773c4ed337de37cab3395c266594e260426c42d6a1b67ad35"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/UnitExportDownload.cs",
+      "sha256": "0ff29d7887f08495ccf0283648c929e0add68e28b9bd485d321b7f4157692635"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Core/Uten.Legacy.Core.csproj",
+      "sha256": "823109997734a3d76d05d5370770b2874798f674e1b8a0a69366715c16fc0ad7"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/App.xaml.cs",
+      "sha256": "a7bac8745346786177806aea83e49e1b77bd50b833d89c272654a02156ae4210"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/ClientReleasePublishView.cs",
+      "sha256": "6edd70aa04dfb716dd24dd0c9047da1098454ed1eee42b0d06c92434854c1f0a"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/Features/Publish/PublishContractChecks.cs",
+      "sha256": "579fc035ebadb0d1fbddead72ea8bc44d3d075caeddf4dcb81b4308194ab4dc1"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Desktop/MainWindow.xaml.cs",
+      "sha256": "3c86d6b4ac40460b10f12565ad2543ad16c85a2cdeb9360496cf2085a2144232"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/DiagnosticsLogChecks.cs",
+      "sha256": "7f7dba43fd736f38b725f1e40819ebe8bc5b12b34480e291f74b6aa6d69824a9"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/Program.cs",
+      "sha256": "065bab4a7e551e2bfd36ed9b7c0f171b9fed54e8c6b4a5c513ab3b608a8165c2"
+    },
+    {
+      "path": "clients/windows_legacy/Uten.Legacy.Tests/UiContractChecks.cs",
+      "sha256": "c749a68df44829faff2d2933af0e7b55b42b77e31c566161c586417397d0360d"
+    }
+  ],
+  "logFiles": [
+    {
+      "path": "build/windows-wpf/session-lifecycle/logs/x64-build.log",
+      "sha256": "963d5e74effea556df6119810dffb22d34d897d74465df68ad80f0ef9e519798"
+    },
+    {
+      "path": "build/windows-wpf/session-lifecycle/logs/x86-build.log",
+      "sha256": "59c8591995fc64abd60e5847bebdf92474968cad62a40003a6dd3032dfc68a2b"
+    },
+    {
+      "path": "build/windows-wpf/session-lifecycle/logs/x64-session-tests.log",
+      "sha256": "08b97c1cc2d3c40ddbe3e26717181ac512918d95468eb8c344996fd446ab21bc"
+    },
+    {
+      "path": "build/windows-wpf/session-lifecycle/logs/x86-session-tests.log",
+      "sha256": "d660583609dc4ebf5c823af817f8ad830416aecb80fdf53b3581a7e4f8eedbba"
+    },
+    {
+      "path": "build/windows-wpf/session-lifecycle/logs/x64-full-tests.log",
+      "sha256": "5801b2776aa0fd1f04eb4e7b6da6ba4126d002564dfd889c556e6719ac23527f"
+    },
+    {
+      "path": "build/windows-wpf/session-lifecycle/logs/x86-full-tests.log",
+      "sha256": "0f3231ccbc275bdcf09067661df6fc53b17f7ddc6179fa9094f59d0205b43b74"
+    }
+  ],
+  "limitations": [
+    "Offline transport and real local WPF windows only; no live company authentication was exercised.",
+    "A closed/offline/killed process cannot guarantee immediate server-side revocation; issuer-bound pending revocations are retained and never restored into local login.",
+    "Win7 target hardware, full native ERP and formal packages remain unaccepted.",
+    "W7-BIZ-016 remains todo. Existing native login-shell subtitle and waiting-button remediation are not claimed as complete.",
+    "Touch/stylus event handling is compiled; no physical touch/pen device or Win7 hardware acceptance is claimed."
+  ],
+  "fullErpEquivalent": false,
+  "win7Accepted": false,
+  "formalPackageCreated": false,
+  "deployed": false,
+  "canonicalManifests": [
+    {
+      "path": "clients/windows_legacy/progress/business-inventory.json",
+      "sha256": "1bfe5921ceca6c635c411545a1d396befd5b71c6b5b464b92c3948e53cf49760"
+    },
+    {
+      "path": "clients/windows_legacy/migration-coverage.json",
+      "sha256": "f365de266a952e4f447ebf2b73e2b6b9e5142d197c3e8cba5d103a8d609491bd"
+    },
+    {
+      "path": "clients/windows_legacy/progress/work-items.json",
+      "sha256": "e10b8af89f886d9953efdfc45c93a49c038c42fb9cf58d1469ca2ac9cd94cb1a"
+    }
+  ]
+}

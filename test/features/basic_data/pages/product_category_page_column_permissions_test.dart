@@ -650,6 +650,7 @@ class _ScopeFacetRepository extends GoodsFacetRepository {
 class _FakeGoodsRepository implements GoodsRepository {
   @override
   Future<GoodsFacets> globalFacets({
+    String? categoryId,
     String? keyword,
     bool includeRelated = false,
     Map<String, String?> filters = const {},

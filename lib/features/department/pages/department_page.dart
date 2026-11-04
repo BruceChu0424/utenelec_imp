@@ -374,33 +374,17 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
     context.appSuccess(msg);
   }
 
-  Future<List<UtenEmployeePickerItem>> _loadManagerCandidates(
+  Future<UtenEmployeePickerPage> _loadManagerCandidates(
     String departmentId,
-    String? keyword,
-  ) async {
-    final result = await ref
-        .read(employeeReferenceRepositoryProvider)
-        .listPickerCandidates(
-          purpose: EmployeeReferencePurpose.departmentManager,
-          search: keyword,
-          statuses: const {'active', 'probation', 'onLeave'},
-          departmentId: departmentId,
-        );
-    return result
-        .map(
-          (employee) => UtenEmployeePickerItem(
-            id: employee.id,
-            name: employee.fullName,
-            employeeCode: employee.code,
-            accountStatus: employee.accountStatus,
-            employmentStatus: employee.status,
-            departmentId: employee.departmentId,
-            departmentName: employee.departmentName,
-            positionName: employee.positionName,
-          ),
-        )
-        .toList();
-  }
+    UtenEmployeePickerQuery query,
+  ) => ref
+      .read(employeeReferenceRepositoryProvider)
+      .listPickerPage(
+        query,
+        purpose: EmployeeReferencePurpose.departmentManager,
+        statuses: const {'active', 'probation', 'onLeave'},
+        departmentId: departmentId,
+      );
 
   void _showEditDialog(DepartmentInfo detail) {
     final canEditFields = _hasPermission(Perm.departmentEdit);
@@ -416,8 +400,8 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
         canEditFields: canEditFields,
         canMove: canMove,
         canAssignManager: canAssignManager,
-        managerLoader: canAssignManager
-            ? (keyword) => _loadManagerCandidates(detail.id, keyword)
+        managerPagedLoader: canAssignManager
+            ? (query) => _loadManagerCandidates(detail.id, query)
             : null,
         tree: _tree ?? const <DepartmentNode>[],
         editing: detail,

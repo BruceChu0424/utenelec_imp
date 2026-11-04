@@ -1118,6 +1118,23 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
             tableKey:
                 'features.basic_data.pages.account_detail_page.AccountDetailPageState._buildFlowBody.1',
             primary: true,
+            toolbarActions: [
+              UtenDateRangeSelectionButton(
+                from: _from,
+                to: _to,
+                firstDate: DateTime(2000),
+                lastDate: DateTime(2100),
+                enabled: !_flowLoading,
+                helpText: '选择账户流水日期范围',
+                onChanged: (start, end) {
+                  setState(() {
+                    _from = ChinaDateTime.dateOnly(start!);
+                    _to = ChinaDateTime.dateOnly(end!);
+                  });
+                  return _loadFlow(1);
+                },
+              ),
+            ],
             columns: _flowColumns,
             headerFilterScopeDescription: '先按所选日期范围完整计算余额，再筛选展示记录；收支可合计，余额不合计',
             serverColumnSearchKeys: accountStatementSearchKeys,
@@ -1223,21 +1240,6 @@ class _AccountDetailPageState extends ConsumerState<AccountDetailPage>
             runSpacing: UtenSpacing.s8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              UtenDateRangeSelectionButton(
-                from: _from,
-                to: _to,
-                firstDate: DateTime(2000),
-                lastDate: DateTime(2100),
-                enabled: !_flowLoading,
-                helpText: '选择账户流水日期范围',
-                onChanged: (start, end) {
-                  setState(() {
-                    _from = ChinaDateTime.dateOnly(start!);
-                    _to = ChinaDateTime.dateOnly(end!);
-                  });
-                  return _loadFlow(1);
-                },
-              ),
               UtenButton(
                 type: UtenButtonType.secondary,
                 icon: Icons.filter_alt_off_outlined,

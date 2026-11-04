@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:async';
+import 'dart:io';
 
 // 登记实际到货页(ADR-151 §5 单批合一)：双击 = 1 个来源、多选 = N 个来源，进同一个页面。
 //  ① 来源身份走 ?expectationIds=，页面按 id 从服务端读预计到货(与任务中心同一投影)，
@@ -9,6 +11,7 @@ import 'dart:convert';
 //     「订货单 x 入库仓库」分组建收货单，逐组回执(含超量隔离)。
 //  ④ 多选时任务中心选定的路线(?preStock=1|0)只显示这一条提交按钮；双击进来两条并排。
 import 'package:dio/dio.dart';
+import 'package:dio/io.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -17,6 +20,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/api_mutation_reload_safety.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/core/router/route_names.dart';
@@ -55,6 +59,7 @@ final _liveArrivalPermissions = StateProvider<Set<String>>(
 final _liveArrivalScope = StateProvider<AuthenticatedScope?>((ref) => null);
 
 void main() {
+  registerArrivalReceiverHttpCases();
   testWidgets('真实普通仓管52权限可选择收货人并按原数量登记，无HR请求', (tester) async {
     tester.view.physicalSize = const Size(1800, 1600);
     tester.view.devicePixelRatio = 1;
@@ -1717,4 +1722,194 @@ class _BatchApi extends ApiClient {
 class _ArrivalSourceAmbiguityError extends ApiException {
   _ArrivalSourceAmbiguityError()
     : super('CONFLICT', '该订单同时存在正常待到货和已退未补数量，请明确选择到货来源', httpStatus: 409);
+}
+
+class _ReceiverNativeHttp extends HttpOverrides {
+  @override
+  HttpClient createHttpClient(SecurityContext? context) =>
+      super.createHttpClient(context);
+}
+
+Future<void> _waitReceiverHttp(
+  WidgetTester tester,
+  bool Function() ready,
+) async {
+  for (var attempt = 0; attempt < 150; attempt++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    await tester.pump(const Duration(milliseconds: 40));
+    if (ready()) return;
+  }
+  fail('The actual arrival receiver UI did not receive its HTTP fixture');
+}
+
+void registerArrivalReceiverHttpCases() {
+  for (final lateLabel in [false, true]) {
+    testWidgets(
+      'arrival receiver purpose HTTP without HR: ${lateLabel ? 'late label' : 'ready label'}',
+      (tester) async {
+        tester.view.physicalSize = const Size(1800, 1600);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final fixture = _ReceiverApi();
+        final labelGate = Completer<void>();
+        final paths = <String>[];
+        final purposes = <String?>[];
+        final server = (await tester.runAsync(
+          () => HttpServer.bind(InternetAddress.loopbackIPv4, 0),
+        ))!;
+        server.listen((request) async {
+          final path = request.uri.path;
+          final query = <String, dynamic>{...request.uri.queryParameters};
+          paths.add(path);
+          request.response.headers.contentType = ContentType.json;
+          request.response.persistentConnection = false;
+          try {
+            final hr =
+                path.startsWith('/org/employees') ||
+                path.startsWith('/org/departments');
+            if (hr) {
+              request.response.statusCode = 403;
+              request.response.write(
+                jsonEncode({
+                  'code': 'FORBIDDEN',
+                  'message': 'HR archive forbidden in this fixture',
+                }),
+              );
+            } else {
+              if (lateLabel &&
+                  path == '/org/employee-references/by-ids' &&
+                  query['ids'] == 'emp-me') {
+                await labelGate.future;
+              }
+              Object result;
+              if (path.startsWith('/org/employee-references')) {
+                purposes.add(query['purpose'] as String?);
+                if (query['purpose'] != 'WAREHOUSE_ARRIVAL_RECEIVER') {
+                  throw StateError('Wrong business purpose');
+                }
+              }
+              if (path == '/org/employee-references' ||
+                  path.contains('/count')) {
+                result = await fixture.get(path, query: query);
+              } else {
+                result = await fixture.getList(path, query: query);
+              }
+              request.response.write(jsonEncode(result));
+            }
+          } catch (error) {
+            request.response.statusCode = 500;
+            request.response.write(
+              jsonEncode({
+                'code': 'FIXTURE_ERROR',
+                'message': error.toString(),
+              }),
+            );
+          } finally {
+            await request.response.close();
+          }
+        });
+        final dio = Dio(
+          BaseOptions(baseUrl: 'http://127.0.0.1:${server.port}'),
+        );
+        dio.httpClientAdapter = IOHttpClientAdapter(
+          createHttpClient: () =>
+              _ReceiverNativeHttp().createHttpClient(null)
+                ..findProxy = (_) => 'DIRECT',
+        );
+        final readSafety = ApiMutationReloadSafety();
+        final api = ApiClient(dio, reloadSafety: readSafety);
+        addTearDown(() async {
+          dio.close(force: true);
+          await tester.runAsync(() => server.close(force: true));
+        });
+        final router = _router(
+          ids: [_ids.first],
+          route: InboundRoute.inspectFirst,
+        );
+        addTearDown(router.dispose);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              apiClientProvider.overrideWithValue(api),
+              sharedPreferencesProvider.overrideWithValue(preferences),
+              sessionProvider.overrideWith(_TestSessionNotifier.new),
+              currentPermissionsProvider.overrideWithValue(
+                actualWarehouseReceiverPermissions,
+              ),
+              isSuperAdminProvider.overrideWithValue(false),
+              masterNameServiceProvider.overrideWithValue(
+                MasterNameService(api),
+              ),
+            ],
+            child: MaterialApp.router(routerConfig: router),
+          ),
+        );
+        await _waitReceiverHttp(
+          tester,
+          () =>
+              find.byType(BusinessEmployeePicker).evaluate().isNotEmpty &&
+              (lateLabel ||
+                  find.textContaining('000067').evaluate().isNotEmpty),
+        );
+        final receiver = find.byType(BusinessEmployeePicker);
+        await tester.tap(
+          find
+              .descendant(of: receiver, matching: find.byType(InputDecorator))
+              .first,
+        );
+        await _waitReceiverHttp(
+          tester,
+          () => find
+              .byKey(const ValueKey('employee-picker-item-emp-other'))
+              .evaluate()
+              .isNotEmpty,
+        );
+        await tester.pumpAndSettle();
+        if (lateLabel) {
+          labelGate.complete();
+          await _waitReceiverHttp(
+            tester,
+            () => readSafety.pendingReadCount == 0,
+          );
+        }
+        await tester.tap(
+          find.byKey(const ValueKey('employee-picker-item-emp-other')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('确定').last);
+        await tester.pumpAndSettle();
+        final editor =
+            tester.state(find.byType(InboundArrivalRegistrationPage))
+                as FormDraftMixin<InboundArrivalRegistrationPage>;
+        expect(editor.captureFormDraft()['receiverId'], 'emp-other');
+        expect(
+          actualWarehouseReceiverPermissions,
+          isNot(contains('employee:view')),
+        );
+        expect(paths, contains('/org/employee-references'));
+        expect(paths, contains('/org/employee-references/departments'));
+        expect(
+          paths.where(
+            (path) =>
+                path.startsWith('/org/employees') ||
+                path.startsWith('/org/departments'),
+          ),
+          isEmpty,
+        );
+        expect(purposes, everyElement('WAREHOUSE_ARRIVAL_RECEIVER'));
+        expect(tester.takeException(), isNull);
+        // Only request shapes are reported; fixtures contain no real personnel.
+        print('receiver-http-request-paths: ${paths.join(',')}');
+        await tester.pumpWidget(const SizedBox());
+        await _waitReceiverHttp(tester, () => readSafety.pendingReadCount == 0);
+        dio.close(force: true);
+        await tester.runAsync(() => server.close(force: true));
+        await tester.pumpAndSettle();
+      },
+    );
+  }
 }

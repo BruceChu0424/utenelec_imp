@@ -68,6 +68,7 @@ class UtenEmployeePicker extends StatefulWidget {
     this.pagedLoader,
     required this.onChanged,
     this.initial,
+    this.selectedId,
     this.hydrateInitialSelection = true,
     this.enabled = true,
     this.label,
@@ -96,6 +97,10 @@ class UtenEmployeePicker extends StatefulWidget {
 
   /// 初始选中。
   final UtenEmployeePickerItem? initial;
+
+  /// The owning value can be known before its display snapshot arrives.
+  /// Label hydration for this identity must not retire an open selection.
+  final String? selectedId;
 
   /// An owning business wrapper may already resolve the exact ID. Candidate
   /// search remains available when opening the picker, without a second label query.
@@ -207,11 +212,23 @@ class _UtenEmployeePickerState extends State<UtenEmployeePicker>
         widget.showDepartmentFilter != oldWidget.showDepartmentFilter;
     final hydrationChanged =
         widget.hydrateInitialSelection != oldWidget.hydrateInitialSelection;
-    if (initialChanged ||
+    final selectionChanged =
+        (widget.selectedId ?? widget.initial?.id) !=
+            (oldWidget.selectedId ?? oldWidget.initial?.id) ||
+        (widget.initial?.enabled ?? true) !=
+            (oldWidget.initial?.enabled ?? true) ||
+        widget.initial?.disabledReason != oldWidget.initial?.disabledReason;
+    if (selectionChanged ||
         scopeChanged ||
         hydrationChanged ||
         widget.enabled != oldWidget.enabled) {
       _fieldVersion++;
+    }
+    if (initialChanged ||
+        selectionChanged ||
+        scopeChanged ||
+        hydrationChanged ||
+        widget.enabled != oldWidget.enabled) {
       _hydrateSerial++;
     }
     if (initialChanged) {

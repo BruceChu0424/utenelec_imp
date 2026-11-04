@@ -1033,7 +1033,7 @@ public class ExpenseClaimService {
             if(next==null) {claim.setApprovedBy(user.getEmployeeId());claim.setApprovedAt(Instant.now());}
             claimRepository.save(claim);
             appendApprovalEvent(claim, next==null?"APPROVED":"STAGE_APPROVED", stage,user,ExpenseApprovalPolicy.label(stage)+"通过");
-            taskClaim.releaseAfterBusinessResolution(TASK_TYPE_APPROVE,id.toString());
+            if(!applicationDecision)taskClaim.releaseAfterBusinessResolution(TASK_TYPE_APPROVE,id.toString());
             // 审批通过 → 打款人弹卡接棒 + 申请人回执；办结「待审批」卡
             // 先办结「待审批」卡再发「待打款」卡：两卡同聚合 (EXPENSE_CLAIM, claimId)，
             // 顺序反了会把新卡一起撤掉。
@@ -1058,7 +1058,7 @@ public class ExpenseClaimService {
             claim.setApprovedAt(null);
             claimRepository.save(claim);
             appendApprovalEvent(claim,"REJECTED",claim.getApprovalStage(),user,normalized);
-            taskClaim.releaseAfterBusinessResolution(TASK_TYPE_APPROVE,id.toString());
+            if(!applicationDecision)taskClaim.releaseAfterBusinessResolution(TASK_TYPE_APPROVE,id.toString());
             hrNotice.resolveExpenseClaim(claim.getId(), "REJECTED");
             if(!applicationDecision)hrNotice.notifyExpenseClaimRejected(
                     claim.getId(), normalized, userIdOfEmployee(claim.getApplicantId()));

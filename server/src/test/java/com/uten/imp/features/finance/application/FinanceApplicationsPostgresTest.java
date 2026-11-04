@@ -61,7 +61,8 @@ class FinanceApplicationsPostgresTest {
     @Test void withdrawalPreservesOldRoundAndRejectionDoesNotRewriteItsDecisionOrCreateMoney(){
         Prepared original=prepared.get("withdraw");World w=original.world();login(w.owner);UUID id=original.input().id();var submitted=applications.detail(id);
         var withdrawn=applications.withdraw(id,action(submitted));assertThat(withdrawn.get("status")).isEqualTo("DRAFT");
-        assertThatThrownBy(()->applications.submit(id,action(withdrawn))).hasMessageContaining("当前申请流程");
+        assertThatThrownBy(()->applications.submit(id,action(withdrawn))).isInstanceOfSatisfying(com.uten.imp.common.web.ApiException.class,
+            error->assertThat(error.getCode()).isEqualTo(com.uten.imp.common.web.ErrorCode.CONFLICT));
         assertThat(legacy.allowed(id)).isFalse();
         assertThat(db.queryForObject("SELECT count(*) FROM finance_application_nodes WHERE application_id=? AND submission_round=1 AND status='WITHDRAWN'",Integer.class,id)).isEqualTo(3);
         assertThat(db.queryForObject("SELECT count(*) FROM finance_application_nodes WHERE application_id=? AND submission_round>1",Integer.class,id)).isZero();
@@ -213,7 +214,7 @@ class FinanceApplicationsPostgresTest {
         db.update("INSERT INTO expense_claim_items(id,claim_id,line_no,category,amount,expense_date,description) VALUES(?,?,1,'TRAVEL',100,CURRENT_DATE,'真实原差旅事项')",UUID.randomUUID(),claim);
         UUID original=proof(claim,"EXPENSE_CLAIM");
         db.update("INSERT INTO expense_claim_invoices(id,claim_id,line_no,invoice_type,invoice_no,issue_date,seller_name,amount_excl_tax,tax_amount,total_amount,attachment_id) VALUES(?,?,1,'DIGITAL',?,CURRENT_DATE,'原票供应方',94.34,5.66,100,?)",UUID.randomUUID(),claim,new java.math.BigInteger(UUID.randomUUID().toString().replace("-",""),16).toString().substring(0,20),original);
-        db.update("UPDATE expense_claims SET submission_snapshot=? WHERE id=?",expenseClaims.applicationBusinessSnapshot(claim),claim);
+        db.update("UPDATE expense_claims SET submission_snapshot=?::jsonb WHERE id=?",expenseClaims.applicationBusinessSnapshot(claim),claim);
         return claim;
     }
     private UUID preparePrepaymentSource(World w){

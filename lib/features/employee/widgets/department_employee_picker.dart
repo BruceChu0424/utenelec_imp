@@ -607,7 +607,6 @@ class _DeptEmployeePickerSheetState
     final treePane = UtenDepartmentTreeView(
       nodes: widget.tree,
       mode: UtenDepartmentTreeMode.single,
-      flatLevelColors: true,
       expandOnRowTap: true,
       showSearch: false,
       header: Padding(

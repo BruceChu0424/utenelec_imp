@@ -159,7 +159,10 @@ Set<String> unknownFormDraftCommandIdentities(
   Map<String, dynamic> data, {
   required String route,
 }) {
-  if (const {'applicationPayment', 'applicationPrepaymentFinance'}.contains(Uri.tryParse(route)?.queryParameters['draftForm']) &&
+  if (const {
+        'applicationPayment',
+        'applicationPrepaymentFinance',
+      }.contains(Uri.tryParse(route)?.queryParameters['draftForm']) &&
       hasUnknownFormDraftSubmission(data, route: route)) {
     final command = data['_applicationPaymentCommand'];
     if (command is Map && command['fields'] is Map) {

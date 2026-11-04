@@ -10,7 +10,10 @@ class BusinessApplicationProgress extends StatelessWidget {
   Widget build(BuildContext context) {
     if (application.status == 'CANCELLED') {
       return const UtenWorkflowProgress(
-      nodes: [UtenWorkflowNode(title:'已作废', state:UtenWorkflowNodeState.skipped)]);
+        nodes: [
+          UtenWorkflowNode(title: '已作废', state: UtenWorkflowNodeState.skipped),
+        ],
+      );
     }
     final events = application.events
         .where((event) => event.round == application.round)

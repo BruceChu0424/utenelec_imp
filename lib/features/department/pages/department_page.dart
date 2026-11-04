@@ -462,7 +462,6 @@ class _DepartmentPageState extends ConsumerState<DepartmentPage> {
   }) {
     return UtenDepartmentTreeView(
       nodes: _tree ?? const <DepartmentNode>[],
-      flatLevelColors: true,
       showCompanyRoot: true,
       nodeEnabledPredicate: (_) => true,
       selectedIds: {?_selectedId},

@@ -1068,7 +1068,6 @@ class _PagePermissionDrawerState extends ConsumerState<PagePermissionDrawer> {
     final theme = Theme.of(context);
     final tree = UtenDepartmentTreeView(
       nodes: _departmentForest.roots,
-      flatLevelColors: true,
       mode: UtenDepartmentTreeMode.single,
       showSearch: false,
       expandOnRowTap: true,

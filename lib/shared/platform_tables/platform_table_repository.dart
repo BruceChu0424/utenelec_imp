@@ -115,7 +115,9 @@ class PlatformTableRepository {
       ...Map<String, dynamic>.from(value),
       'canWrite': false,
     });
-    if (row.recordId != recordId) throw const FormatException('历史扩展字段不属于当前明细，暂不能显示');
+    if (row.recordId != recordId) {
+      throw const FormatException('历史扩展字段不属于当前明细，暂不能显示');
+    }
     return row;
   }
 

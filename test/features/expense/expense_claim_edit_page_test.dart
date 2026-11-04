@@ -101,7 +101,11 @@ Widget _app(_FakeExpenseRepository repo, SharedPreferences preferences) {
   return ProviderScope(
     overrides: [
       sessionProvider.overrideWith(_Session.new),
-      apiClientProvider.overrideWithValue(ApiClient(Dio(BaseOptions(baseUrl:'https://expense-test.invalid/api')))),
+      apiClientProvider.overrideWithValue(
+        ApiClient(
+          Dio(BaseOptions(baseUrl: 'https://expense-test.invalid/api')),
+        ),
+      ),
       apiBaseUrlProvider.overrideWithValue('https://expense-test.invalid/api'),
       formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
       currentPermissionsProvider.overrideWithValue({Perm.expenseApply}),

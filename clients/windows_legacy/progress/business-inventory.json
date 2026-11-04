@@ -10702,7 +10702,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "d3c43f8a38893b41309ccae7b526af0d9d70fdfcb24d08e3eef1e97df29b5aa8"
+          "targetSha256": "53ad8ad4d8fc23198a8119356d3d48c3dbb6e8fdc8cc4fd6155632d1fbb8db0d"
         },
         {
           "directive": "import",
@@ -16523,7 +16523,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "25a12ee3f2de4e91f8d6a1143707b77f6efc413bbc62dd588f65fbaa841a30f9"
+          "targetSha256": "146b9f8f9c7beafc564d565278c6a21fa168750ea8396dc85ab4904456309b7d"
         }
       ],
       "partUnits": [],
@@ -33845,7 +33845,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "896a9efe822bf2bd28fe94375d6d7e6891a60990b8cd79574d6bf7ca8d7d4cc0"
+          "targetSha256": "07e5836266938c7d4804c2c12026b920acbe00f86ddf13cca3aa4058539b03a7"
         },
         {
           "directive": "import",
@@ -50907,7 +50907,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "3a2d0f68123202735f838cdbb56d592c69363a129a9de4787882731d5f9adb6f"
+          "targetSha256": "6b2bae65a987ee8d5a65e8a5a51c1bee0f8740b6dd8d5cae5009552ffe7882c6"
         },
         {
           "directive": "import",
@@ -53449,8 +53449,8 @@
       "id": "page:department/pages/department_page.dart",
       "feature": "department",
       "source": "lib/features/department/pages/department_page.dart",
-      "sha256": "ce33806d07a04a17a04240560cd18a630f953ab0e8fdfceaac9fd39f914b21a8",
-      "lineCount": 654,
+      "sha256": "094904dcb11de0a011df28c5830e3276eb9381705e214f9b8af075b44dc9ef86",
+      "lineCount": 653,
       "classes": [
         {
           "name": "DepartmentPage",
@@ -53909,56 +53909,56 @@
         {
           "symbol": "Perm.departmentEdit",
           "literal": "department:edit",
-          "line": 580,
+          "line": 579,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 16
         },
         {
           "symbol": "Perm.departmentCreate",
           "literal": "department:create",
-          "line": 581,
+          "line": 580,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 785
         },
         {
           "symbol": "Perm.departmentDelete",
           "literal": "department:delete",
-          "line": 582,
+          "line": 581,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 786
         },
         {
           "symbol": "Perm.departmentMove",
           "literal": "department:move",
-          "line": 583,
+          "line": 582,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 787
         },
         {
           "symbol": "Perm.departmentManagerAssign",
           "literal": "department:manager_assign",
-          "line": 584,
+          "line": 583,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 788
         },
         {
           "symbol": "Perm.employeeView",
           "literal": "employee:view",
-          "line": 586,
+          "line": 585,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 12
         },
         {
           "symbol": "Perm.employeeCreate",
           "literal": "employee:create",
-          "line": 588,
+          "line": 587,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 13
         },
         {
           "symbol": "Perm.employeePiiEdit",
           "literal": "employee:pii:edit",
-          "line": 589,
+          "line": 588,
           "definitionSource": "lib/shared/auth/permissions.dart",
           "definitionLine": 134
         }
@@ -54441,7 +54441,7 @@
         {
           "symbol": "_showCreateDialog",
           "receiver": null,
-          "line": 485,
+          "line": 484,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -54451,7 +54451,7 @@
         {
           "symbol": "_editNodeFromTree",
           "receiver": null,
-          "line": 491,
+          "line": 490,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "edit"
@@ -54461,7 +54461,7 @@
         {
           "symbol": "_delete",
           "receiver": null,
-          "line": 499,
+          "line": 498,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "delete"
@@ -54471,7 +54471,7 @@
         {
           "symbol": "_showCreateDialog",
           "receiver": null,
-          "line": 542,
+          "line": 541,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -54481,7 +54481,7 @@
         {
           "symbol": "_showEditDialog",
           "receiver": null,
-          "line": 543,
+          "line": 542,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "edit"
@@ -54491,7 +54491,7 @@
         {
           "symbol": "_delete",
           "receiver": null,
-          "line": 544,
+          "line": 543,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "delete"
@@ -54501,7 +54501,7 @@
         {
           "symbol": "showPositionCreateDialog",
           "receiver": null,
-          "line": 558,
+          "line": 557,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -54511,7 +54511,7 @@
         {
           "symbol": "_showCreateDialog",
           "receiver": null,
-          "line": 572,
+          "line": 571,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -54521,7 +54521,7 @@
         {
           "symbol": "_showCreateDialog",
           "receiver": null,
-          "line": 609,
+          "line": 608,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "create"
@@ -54539,7 +54539,7 @@
         },
         {
           "symbol": "canCreate",
-          "line": 609,
+          "line": 608,
           "kind": "callback-reference",
           "callback": "onAction",
           "actionNameHints": [
@@ -54817,8 +54817,8 @@
       "id": "page:department/pages/my_department_page.dart",
       "feature": "department",
       "source": "lib/features/department/pages/my_department_page.dart",
-      "sha256": "f7cd630161fd8b26f86129054890cbbcedde17ac3d909617a37297f0671b32d0",
-      "lineCount": 812,
+      "sha256": "606c5f2cbe46dcd80544f7fe4b1d6ee26b54f1ad19b97be0e203236974297140",
+      "lineCount": 811,
       "classes": [
         {
           "name": "MyDepartmentPage",
@@ -54834,25 +54834,25 @@
         },
         {
           "name": "_MyDepartmentDetail",
-          "line": 312,
+          "line": 311,
           "role": "supporting-class",
           "extends": "ConsumerWidget"
         },
         {
           "name": "_ManagerPermissionPanel",
-          "line": 571,
+          "line": 570,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         },
         {
           "name": "_ContactCard",
-          "line": 623,
+          "line": 622,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         },
         {
           "name": "_ContactLine",
-          "line": 733,
+          "line": 732,
           "role": "supporting-class",
           "extends": "StatelessWidget"
         }
@@ -55265,7 +55265,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 514,
+          "line": 513,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -55275,7 +55275,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 561,
+          "line": 560,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -55285,7 +55285,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 687,
+          "line": 686,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -55295,7 +55295,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 721,
+          "line": 720,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -55305,7 +55305,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 761,
+          "line": 760,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -55315,7 +55315,7 @@
         {
           "symbol": "copyWith",
           "receiver": null,
-          "line": 799,
+          "line": 798,
           "kind": "action-like-invocation",
           "actionNameHints": [
             "copy"
@@ -56110,7 +56110,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c5158e26cc029a89eb198c52ee98037b5f12fe4800c0b75d1cb6aac0b700a094"
+          "targetSha256": "f26f84cdf422db21e7afc9ee716eaeb1996219256cd6405a02e5f16ba91795bb"
         },
         {
           "directive": "import",
@@ -93581,7 +93581,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c5158e26cc029a89eb198c52ee98037b5f12fe4800c0b75d1cb6aac0b700a094"
+          "targetSha256": "f26f84cdf422db21e7afc9ee716eaeb1996219256cd6405a02e5f16ba91795bb"
         },
         {
           "directive": "import",
@@ -105734,7 +105734,7 @@
           "showSymbols": [],
           "hideSymbols": [],
           "existsInRepository": true,
-          "targetSha256": "c5158e26cc029a89eb198c52ee98037b5f12fe4800c0b75d1cb6aac0b700a094"
+          "targetSha256": "f26f84cdf422db21e7afc9ee716eaeb1996219256cd6405a02e5f16ba91795bb"
         },
         {
           "directive": "import",
@@ -258435,7 +258435,7 @@
     },
     {
       "source": "lib/core/constants/app_info.dart",
-      "sha256": "3a2d0f68123202735f838cdbb56d592c69363a129a9de4787882731d5f9adb6f",
+      "sha256": "6b2bae65a987ee8d5a65e8a5a51c1bee0f8740b6dd8d5cae5009552ffe7882c6",
       "lineCount": 19
     },
     {
@@ -259005,8 +259005,8 @@
     },
     {
       "source": "lib/features/admin/widgets/admin_department_perm_view.dart",
-      "sha256": "d3c43f8a38893b41309ccae7b526af0d9d70fdfcb24d08e3eef1e97df29b5aa8",
-      "lineCount": 883
+      "sha256": "53ad8ad4d8fc23198a8119356d3d48c3dbb6e8fdc8cc4fd6155632d1fbb8db0d",
+      "lineCount": 882
     },
     {
       "source": "lib/features/admin/widgets/admin_permission_templates.dart",
@@ -259170,8 +259170,8 @@
     },
     {
       "source": "lib/features/applications/widgets/business_application_progress.dart",
-      "sha256": "25a12ee3f2de4e91f8d6a1143707b77f6efc413bbc62dd588f65fbaa841a30f9",
-      "lineCount": 94
+      "sha256": "146b9f8f9c7beafc564d565278c6a21fa168750ea8396dc85ab4904456309b7d",
+      "lineCount": 97
     },
     {
       "source": "lib/features/approvals/pages/approval_center_page.dart",
@@ -260035,13 +260035,13 @@
     },
     {
       "source": "lib/features/department/pages/department_page.dart",
-      "sha256": "ce33806d07a04a17a04240560cd18a630f953ab0e8fdfceaac9fd39f914b21a8",
-      "lineCount": 654
+      "sha256": "094904dcb11de0a011df28c5830e3276eb9381705e214f9b8af075b44dc9ef86",
+      "lineCount": 653
     },
     {
       "source": "lib/features/department/pages/my_department_page.dart",
-      "sha256": "f7cd630161fd8b26f86129054890cbbcedde17ac3d909617a37297f0671b32d0",
-      "lineCount": 812
+      "sha256": "606c5f2cbe46dcd80544f7fe4b1d6ee26b54f1ad19b97be0e203236974297140",
+      "lineCount": 811
     },
     {
       "source": "lib/features/department/providers/my_department_providers.dart",
@@ -260150,8 +260150,8 @@
     },
     {
       "source": "lib/features/employee/widgets/department_employee_picker.dart",
-      "sha256": "896a9efe822bf2bd28fe94375d6d7e6891a60990b8cd79574d6bf7ca8d7d4cc0",
-      "lineCount": 1026
+      "sha256": "07e5836266938c7d4804c2c12026b920acbe00f86ddf13cca3aa4058539b03a7",
+      "lineCount": 1025
     },
     {
       "source": "lib/features/employee/widgets/employee_account_provision_flow.dart",
@@ -263575,8 +263575,8 @@
     },
     {
       "source": "lib/shared/drafts/form_draft.dart",
-      "sha256": "c5158e26cc029a89eb198c52ee98037b5f12fe4800c0b75d1cb6aac0b700a094",
-      "lineCount": 317
+      "sha256": "f26f84cdf422db21e7afc9ee716eaeb1996219256cd6405a02e5f16ba91795bb",
+      "lineCount": 320
     },
     {
       "source": "lib/shared/drafts/form_draft_catalog.dart",

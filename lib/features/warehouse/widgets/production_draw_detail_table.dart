@@ -105,6 +105,7 @@ OutboundWeightEntry drawIssueWeightEntry(
   qtyOf: () => double.tryParse(qty.text.trim()),
   qtyController: qty,
   unitRate: item.unitRate ?? 1,
+  unitRateExact: item.unitRateText,
   unit: unit,
 );
 
@@ -119,6 +120,7 @@ OutboundWeightEntry drawRemainingWeightEntry(
   warehouseId: warehouseId,
   qtyOf: () => double.tryParse(item.remainingQtyText ?? ''),
   unitRate: item.unitRate ?? 1,
+  unitRateExact: item.unitRateText,
   unit: unit,
 );
 
@@ -543,7 +545,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
           info: '各轮出库实称/分摊的重量合计(已扣取消出库); 「≈」为按库存均重或单重估算。',
           value: (row) => _issuedWeightText(row.item),
           exactValueOf: (row) => (row.item?.issuedQty ?? 0) > 0
-              ? row.item?.issuedWeightKg?.toString()
+              ? row.item?.issuedWeightKgText
               : null,
           cellBuilder: (context, row) {
             final item = row.item;
@@ -551,7 +553,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
               return const Text('—');
             }
             return WeightText(
-              kg: item.issuedWeightKg,
+              kg: item.issuedWeightKgText,
               estimated: item.issuedWeightEstimated,
             );
           },
@@ -697,11 +699,11 @@ class ProductionDrawDetailTable extends StatelessWidget {
             type: 'number',
             value: (row) => row.item?.weight == null
                 ? '—'
-                : formatWeightValue(row.item!.weight),
+                : formatWeightValue(row.item!.weightText),
             exactValueOf: (row) => row.item?.weight?.toString(),
             cellBuilder: (context, row) => row.item?.weight == null
                 ? const Text('—')
-                : WeightText(kg: row.item!.weight),
+                : WeightText(kg: row.item!.weightText),
           ),
         if (discoveryRows.isNotEmpty) ...[
           MasterColumnDef(
@@ -798,7 +800,7 @@ class ProductionDrawDetailTable extends StatelessWidget {
   static String _issuedWeightText(StockDocItem? item) {
     if (item == null || (item.issuedQty ?? 0) <= 0) return '—';
     return formatWeightValue(
-      item.issuedWeightKg,
+      item.issuedWeightKgText,
       estimated: item.issuedWeightEstimated,
     );
   }

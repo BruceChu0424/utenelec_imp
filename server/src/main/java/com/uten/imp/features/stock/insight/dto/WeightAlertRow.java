@@ -83,4 +83,16 @@ public record WeightAlertRow(
         String estimateTierUsed,
         String estimateBasisUsed,
         BigDecimal unitWeightKg) {
+
+    @com.fasterxml.jackson.annotation.JsonProperty("weightKgExact")
+    public String getWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(weightKg);}
+
+    @com.fasterxml.jackson.annotation.JsonProperty("expectedUnitWeightKgExact")
+    public String getExpectedUnitWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(expectedUnitWeightKg);}
+
+    @com.fasterxml.jackson.annotation.JsonProperty("expectedWeightKgExact")
+    public String getExpectedWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(expectedWeightKg);}
+
+    @com.fasterxml.jackson.annotation.JsonProperty("unitWeightKgExact")
+    public String getUnitWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(unitWeightKg);}
 }

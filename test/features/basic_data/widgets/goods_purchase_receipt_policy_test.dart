@@ -1,5 +1,5 @@
 // ADR-144 货品主档「采购」区的采购允许超收%：
-//  - 输入解析：空 = 清除记忆；0..100 最多两位小数；
+//  - 输入解析：空 = 清除记忆；0..100 最多24位有效小数；
 //  - 查看格：未设说明不允许超收；没有编辑能力不出修改按钮；
 //  - 弹窗只经专用接口保存这一个值 (带乐观锁版本)，不合法不发请求。
 import 'package:flutter/material.dart';
@@ -11,12 +11,12 @@ import 'package:uten_imp/features/basic_data/repositories/goods_purchase_receipt
 import 'package:uten_imp/features/basic_data/widgets/goods_purchase_receipt_policy_field.dart';
 
 class _PolicyRepository implements GoodsPurchaseReceiptPolicyRepository {
-  final calls = <({String goodsId, double? pct, int version})>[];
+  final calls = <({String goodsId, String? pct, int version})>[];
 
   @override
   Future<void> update(
     String goodsId, {
-    required double? pct,
+    required String? pct,
     required int version,
   }) async {
     calls.add((goodsId: goodsId, pct: pct, version: version));
@@ -72,13 +72,14 @@ Finder _input() => find.descendant(
 void main() {
   test('输入解析', () {
     expect(parseGoodsPurchaseOverReceiptPct(' '), (value: null, valid: true));
-    expect(parseGoodsPurchaseOverReceiptPct('5'), (value: 5.0, valid: true));
+    expect(parseGoodsPurchaseOverReceiptPct('5'), (value: '5', valid: true));
     expect(parseGoodsPurchaseOverReceiptPct('12.5'), (
-      value: 12.5,
+      value: '12.5',
       valid: true,
     ));
     expect(parseGoodsPurchaseOverReceiptPct('100.01').valid, isFalse);
-    expect(parseGoodsPurchaseOverReceiptPct('1.234').valid, isFalse);
+    expect(parseGoodsPurchaseOverReceiptPct('1.234'), (value: '1.234', valid: true));
+    expect(parseGoodsPurchaseOverReceiptPct('0.0000000000000000000000001').valid, isFalse);
     expect(parseGoodsPurchaseOverReceiptPct('-1').valid, isFalse);
   });
 
@@ -110,7 +111,7 @@ void main() {
       find.byKey(const ValueKey('goods-purchase-over-receipt-save')),
     );
     await tester.pumpAndSettle();
-    expect(host.repo.calls, [(goodsId: 'goods-1', pct: 7.5, version: 4)]);
+    expect(host.repo.calls, [(goodsId: 'goods-1', pct: '7.5', version: 4)]);
     expect(host.results, [true]);
   });
 
@@ -138,8 +139,8 @@ void main() {
         matching: find.byType(UtenFieldHintIcon),
       ),
     );
-    expect(hint.errorMessage, '请填写 0 到 100 之间的数，最多两位小数；留空表示不预填');
-    expect(hint.info?.split('\n\n'), contains('0 到 100，最多两位小数'));
+    expect(hint.errorMessage, '请填写 0 到 100 之间的数，最多24位有效小数；留空表示不预填');
+    expect(hint.info?.split('\n\n'), contains('0 到 100，最多24位有效小数'));
     expect(host.results, isEmpty, reason: '弹窗仍开着');
   });
 }

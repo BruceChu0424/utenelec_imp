@@ -45,6 +45,7 @@ import '../../../shared/drafts/identified_platform_drafts.dart';
 import '../../../components/layout/uten_grid_page_scrollbar.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/business_precision.dart';
 import '../../../core/network/authenticated_request_scope.dart';
 import '../../../core/network/server_config.dart';
 import '../../../shared/auth/session_snapshot_provider.dart';
@@ -590,7 +591,6 @@ class _ProductionDailyReportEditPageState
       row.unitRate = (item['unitRate'] as num?)?.toDouble();
       row.unitRateExact = productionExactQuantityText(
         item['unitRateExact'] ?? item['unitRate'],
-        scale: 6,
       );
       row.supplementApprovedActualQtyExact = productionExactQuantityText(
         item['supplementApprovedActualQtyExact'] ??
@@ -993,7 +993,6 @@ class _ProductionDailyReportEditPageState
         final qty = qtyText == null ? null : double.parse(qtyText);
         final rateText = productionExactQuantityText(
           item['unitRateExact'] ?? item['unitRate'],
-          scale: 6,
         );
         if (qty == null ||
             qty <= 0 ||
@@ -1912,6 +1911,62 @@ class _ProductionDailyReportEditPageState
   /// 全部成品行一起重排去向分配子行：合计始终等于完工申报量，系统建议标黄，
   /// 工人定过的条目保留(产量变小时只压低显示，压到 0 的先藏起来，不丢原数)。
   /// 计算只在 [planOutputAllocations] 一处。
+  static const _allocationPrecisionKey = 'production.output.receiver-quantity';
+  String? _allocationPrecisionPrompt;
+  String _allocationInputIdentity() => _productRows
+      .map(
+        (row) => (
+          row.localRowId,
+          row.qty.text,
+          row.unitRateText,
+          row.directTransferRequestVersion,
+          row.allocationManual,
+          row.allocationRows
+              .map(
+                (slot) => (
+                  slot.allocationDemandId,
+                  slot.allocationQty.text,
+                  slot.allocationFixed,
+                ),
+              )
+              .toList(),
+        ),
+      )
+      .toList()
+      .toString();
+
+  Future<bool> _chooseAllocationPrecision(
+    String reason,
+    String identity,
+  ) async {
+    final choice = await chooseFormDraftPrecision(
+      BusinessPrecisionRequirement(
+        key: _allocationPrecisionKey,
+        groupKey: _allocationPrecisionKey,
+        label: '本次报工去向的接收数量换算',
+        maxScale: 24,
+        reason: reason,
+      ),
+      isCurrent: () =>
+          identity == _allocationInputIdentity() &&
+          !_saving &&
+          !_saveOperationActive &&
+          _createdReportId == null,
+    );
+    return choice != null && mounted && identity == _allocationInputIdentity();
+  }
+
+  String _allocationWithinRoom(String current, String base, String rate) {
+    final policy = formDraftPrecisionChoice(_allocationPrecisionKey);
+    return outputAllocationWithinRoomText(
+      current,
+      base,
+      rate,
+      precisionScale: policy?.scale,
+      precisionRounding: policy?.rounding,
+    );
+  }
+
   void _reflowOutputAllocations() {
     if (!mounted) return;
     // Only submitted rows reserve receiver capacity. Unchecked rows retain
@@ -1923,58 +1978,80 @@ class _ProductionDailyReportEditPageState
             (!_isCreate || _grid.isSelected(row)))
           row,
     ];
-    final plans = planOutputAllocations([
-      for (final product in products)
-        OutputAllocationRowInput(
-          sourceKey: product.planItemId ?? product.executionSegmentId!,
-          quantity: double.tryParse(product.qty.text.trim()),
-          quantityExact: product.qty.text.trim().replaceFirst(
-            RegExp(r'\.$'),
-            '',
+    final policy = formDraftPrecisionChoice(_allocationPrecisionKey);
+    final plans = planOutputAllocations(
+      [
+        for (final product in products)
+          OutputAllocationRowInput(
+            sourceKey: product.planItemId ?? product.executionSegmentId!,
+            quantity: double.tryParse(product.qty.text.trim()),
+            quantityExact: product.qty.text.trim().replaceFirst(
+              RegExp(r'\.$'),
+              '',
+            ),
+            unitRate: product.unitRate ?? 1,
+            unitRateExact: product.unitRateText,
+            candidates: product.directTransferCandidates,
+            candidatesKnown: !product.directTransferLoadFailed,
+            declined: product.allocationDeclined,
+            manual: product.allocationManual,
+            // 品质返工/补产的报工整行只能一个去向(服务端同一规则)：不替它拆出转送建议，要转由人自己选。
+            receiverLimit: product.isFqcRecovery
+                ? 0
+                : product.directTransferReceiverLimit,
+            slots: product.isFqcRecovery
+                ? [
+                    if (product.allocationRows.isNotEmpty)
+                      OutputAllocationSlot(
+                        demandId: product
+                            .allocationRows
+                            .firstOrNull
+                            ?.allocationDemandId,
+                        fixed: true,
+                        requestedExact: product.qty.text,
+                      ),
+                  ]
+                : [
+                    for (final allocation in product.allocationRows)
+                      OutputAllocationSlot(
+                        demandId: allocation.allocationDemandId,
+                        fixed: allocation.allocationFixed,
+                        editing: allocation.allocationEditing,
+                        requested: allocation.allocationEditing
+                            ? double.tryParse(
+                                allocation.allocationQty.text.trim(),
+                              )
+                            : allocation.allocationRequested,
+                        requestedExact: allocation.allocationEditing
+                            ? allocation.allocationQty.text.trim().replaceFirst(
+                                RegExp(r'\.$'),
+                                '',
+                              )
+                            : allocation.allocationRequestedExact,
+                      ),
+                  ],
           ),
-          unitRate: product.unitRate ?? 1,
-          unitRateExact: product.unitRateText,
-          candidates: product.directTransferCandidates,
-          candidatesKnown: !product.directTransferLoadFailed,
-          declined: product.allocationDeclined,
-          manual: product.allocationManual,
-          // 品质返工/补产的报工整行只能一个去向(服务端同一规则)：不替它拆出转送建议，要转由人自己选。
-          receiverLimit: product.isFqcRecovery
-              ? 0
-              : product.directTransferReceiverLimit,
-          slots: product.isFqcRecovery
-              ? [
-                  if (product.allocationRows.isNotEmpty)
-                    OutputAllocationSlot(
-                      demandId: product
-                          .allocationRows
-                          .firstOrNull
-                          ?.allocationDemandId,
-                      fixed: true,
-                      requestedExact: product.qty.text,
-                    ),
-                ]
-              : [
-                  for (final allocation in product.allocationRows)
-                    OutputAllocationSlot(
-                      demandId: allocation.allocationDemandId,
-                      fixed: allocation.allocationFixed,
-                      editing: allocation.allocationEditing,
-                      requested: allocation.allocationEditing
-                          ? double.tryParse(
-                              allocation.allocationQty.text.trim(),
-                            )
-                          : allocation.allocationRequested,
-                      requestedExact: allocation.allocationEditing
-                          ? allocation.allocationQty.text.trim().replaceFirst(
-                              RegExp(r'\.$'),
-                              '',
-                            )
-                          : allocation.allocationRequestedExact,
-                    ),
-                ],
-        ),
-    ]);
+      ],
+      precisionScale: policy?.scale,
+      precisionRounding: policy?.rounding,
+    );
+    final precisionReason = plans
+        .map((plan) => plan.precisionReason)
+        .whereType<String>()
+        .firstOrNull;
+    if (precisionReason != null) {
+      final identity = _allocationInputIdentity();
+      final prompt = '$identity:${policy?.scale}:${policy?.rounding}';
+      if (_allocationPrecisionPrompt != prompt) {
+        _allocationPrecisionPrompt = prompt;
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted || identity != _allocationInputIdentity()) return;
+          if (await _chooseAllocationPrecision(precisionReason, identity)) {
+            _reflowOutputAllocations();
+          }
+        });
+      }
+    }
     var layoutChanged = false;
     // 同一子行可能既从本行名单掉出、又在表格里被认作过期：用集合保证只释放一次。
     final dropped = <DailyGridRow>{};
@@ -2085,9 +2162,21 @@ class _ProductionDailyReportEditPageState
   ) {
     final product = allocation.allocationParent;
     if (product == null) return;
+    if (demandId != null) {
+      try {
+        _allocationWithinRoom(
+          allocation.allocationQty.text,
+          product.directTransferRoomBaseExact[demandId] ?? '0',
+          product.unitRateText ?? '0',
+        );
+      } on OutputAllocationPrecisionRequired {
+        context.appWarning('本次接收数量需要选择精度，请先完成分配核对；原分配已保留');
+        return;
+      }
+    }
     if (product.isFqcRecovery && demandId != null) {
       final quantity = productionExactQuantityText(product.qty.text);
-      final allowed = outputAllocationWithinRoomText(
+      final allowed = _allocationWithinRoom(
         quantity ?? '0',
         product.directTransferRoomBaseExact[demandId] ?? '0',
         product.unitRateText ?? '0',
@@ -2111,7 +2200,7 @@ class _ProductionDailyReportEditPageState
     allocation.allocationDemandId = demandId;
     allocation.allocationRequestedExact = demandId == null
         ? current
-        : outputAllocationWithinRoomText(
+        : _allocationWithinRoom(
             current,
             product.directTransferRoomBaseExact[demandId] ?? '0',
             product.unitRateText ?? '0',
@@ -2177,7 +2266,7 @@ class _ProductionDailyReportEditPageState
             .read(masterNameServiceProvider)
             .unitEntries[product.unitId];
         for (final candidate in product.directTransferCandidates) {
-          final cap = outputAllocationWithinRoomText(
+          final cap = _allocationWithinRoom(
             productionQuantityTextFromUnits(available),
             product.directTransferRoomBaseExact[candidate.demandId] ?? '0',
             rate,
@@ -2274,7 +2363,7 @@ class _ProductionDailyReportEditPageState
                   BigInt.zero),
         );
         final currentAvailable = quantity - currentUsed;
-        final currentRoom = outputAllocationWithinRoomText(
+        final currentRoom = _allocationWithinRoom(
           productionQuantityTextFromUnits(
             currentAvailable > BigInt.zero ? currentAvailable : BigInt.zero,
           ),
@@ -2320,6 +2409,11 @@ class _ProductionDailyReportEditPageState
           }
         });
       });
+    } on OutputAllocationPrecisionRequired catch (required) {
+      final identity = _allocationInputIdentity();
+      if (await _chooseAllocationPrecision(required.reason, identity)) {
+        await _addAllocation(product);
+      }
     } on ApiException catch (error) {
       if (mounted && formDraftIdentityIsCurrent) {
         context.appWarning(error.message);
@@ -2435,7 +2529,7 @@ class _ProductionDailyReportEditPageState
       final qtyText = productionExactQuantityText(
         row.qty.text.trim().replaceFirst(RegExp(r'\.$'), ''),
       );
-      final qty = financeExactDecimalUnits(qtyText);
+      final qty = productionExactQuantityUnits(qtyText);
       if (row.directTransferPrecisionIssue != null) {
         issues.add('第 ${index + 1} 行：${row.directTransferPrecisionIssue}');
         onInvalidRow?.call(row);
@@ -2445,8 +2539,8 @@ class _ProductionDailyReportEditPageState
       for (final allocation in row.allocationRows) {
         final issue = allocation.allocationIssue.value;
         if (issue != null) issues.add('第 ${index + 1} 行：$issue');
-        final value = financeExactDecimalUnits(
-          productionExactQuantityText(allocation.allocationQty.text.trim()),
+        final value = productionExactQuantityUnits(
+          allocation.allocationQty.text.trim(),
         );
         if (value == null || value.isNegative) {
           issues.add('第 ${index + 1} 行有一条去向数量无效');
@@ -2456,7 +2550,7 @@ class _ProductionDailyReportEditPageState
       }
       if (row.allocationRows.isNotEmpty && total != qty) {
         issues.add(
-          '第 ${index + 1} 行产出去向合计 ${financeExactDecimalFromUnits(total)} 与完工申报量 '
+          '第 ${index + 1} 行产出去向合计 ${productionQuantityTextFromUnits(total)} 与完工申报量 '
           '${qtyText ?? '未知'} 不一致，请核对',
         );
       }
@@ -2568,6 +2662,8 @@ class _ProductionDailyReportEditPageState
   }
 
   /// 只更新尚未手改的建议，已保存草稿和手工填写的实耗原样保留。
+  static const _materialPrecisionKey = 'production.output.material-quantity';
+  final Set<String> _materialPrecisionPrompts = {};
   bool _autofillMaterialUsage(DailyGridRow row) {
     final material = row.material;
     if (material == null ||
@@ -2589,13 +2685,54 @@ class _ProductionDailyReportEditPageState
       _allMaterialRows,
       participants,
     );
-    final expected = expectedMaterialUsageText(
+    final policy = formDraftPrecisionChoice(_materialPrecisionKey);
+    final calculation = expectedMaterialUsageCalculation(
       reportedQty: parentQty,
       material: material,
       ratioOverride: row.materialManualRatio,
+      precisionScale: policy?.scale,
+      precisionRounding: policy?.rounding,
     );
-    if (expected == null) return false;
-    final text = expected;
+    if (calculation.text == null) {
+      if (calculation.reason case final reason?) {
+        final identity = _allocationInputIdentity();
+        final fingerprint =
+            '$identity:${material.demandId}:$parentQty:${policy?.scale}:${policy?.rounding}';
+        if (_materialPrecisionPrompts.add(fingerprint)) {
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            if (!mounted || identity != _allocationInputIdentity()) return;
+            final choice = await chooseFormDraftPrecision(
+              BusinessPrecisionRequirement(
+                key: _materialPrecisionKey,
+                groupKey: _materialPrecisionKey,
+                label: '本次报工实际用料的数量换算',
+                maxScale: 24,
+                reason: reason,
+              ),
+              isCurrent: () =>
+                  identity == _allocationInputIdentity() &&
+                  !_saving &&
+                  !_saveOperationActive &&
+                  _createdReportId == null &&
+                  _allMaterialRows.contains(row) &&
+                  !row.materialInput.manuallyEdited,
+            );
+            if (choice != null &&
+                mounted &&
+                identity == _allocationInputIdentity()) {
+              for (final materialRow in _allMaterialRows) {
+                if (materialRow.materialEditable) {
+                  _autofillMaterialUsage(materialRow);
+                }
+              }
+              setState(() {});
+            }
+          });
+        }
+      }
+      return false;
+    }
+    final text = calculation.text!;
     row.materialAutofillText = text;
     if (row.materialUsed.text != text) row.materialUsed.text = text;
     row.materialUsageAutofilled.value = true;
@@ -2874,12 +3011,12 @@ class _ProductionDailyReportEditPageState
       );
       final qty = productionExactQuantityUnits(qtyText);
       if (qty == null || qty <= BigInt.zero) {
-        context.appError('第 ${i + 1} 行完工申报量必须大于 0、最多四位小数；数量不对时请重新读取或手动填写');
+        context.appError('第 ${i + 1} 行完工申报量必须大于 0、最多24位小数；数量不对时请重新读取或手动填写');
         await _grid.revealError(r, columnKey: 'qty');
         return;
       }
       if (qty > productionQuantityMaxUnits) {
-        context.appError('第 ${i + 1} 行完工申报量超过系统计量范围，请核对原输入；最多 14 位整数和 4 位小数');
+        context.appError('第 ${i + 1} 行完工申报量超过系统计量范围，请核对原输入；最多40位整数和24位小数');
         await _grid.revealError(r, columnKey: 'qty');
         return;
       }
@@ -2915,7 +3052,7 @@ class _ProductionDailyReportEditPageState
         await _grid.revealError(r, columnKey: 'planNo');
         return;
       }
-      final rate = productionExactQuantityUnits(r.unitRateText, scale: 6)!;
+      final rate = productionExactQuantityUnits(r.unitRateText)!;
       if (rate > productionQuantityMaxUnits) {
         context.appError('第 ${i + 1} 行来源单位换算率超过系统计量范围，请维护来源任务后重试；原输入已保留');
         await _grid.revealError(r, columnKey: 'planNo');
@@ -2924,12 +3061,12 @@ class _ProductionDailyReportEditPageState
       final baseQuantity = financeExactProductUnits(qtyText!, r.unitRateText!)!;
       if (baseQuantity <= BigInt.zero) {
         context.appError(
-          '第 ${i + 1} 行换算后的基本量为 0，请核对完工量和单位换算率；基本量精度为 0.0001，原输入已保留',
+          '第 ${i + 1} 行换算后的基本量为 0，请核对完工量和单位换算率；有限乘积保留完整精度，原输入已保留',
         );
         await _grid.revealError(r, columnKey: 'qty');
         return;
       }
-      if (baseQuantity > productionQuantityMaxUnits) {
+      if (baseQuantity > productionProductMaxUnits) {
         context.appError('第 ${i + 1} 行换算后的基本量超过系统计量范围，请核对数量和单位换算率；原输入已保留');
         await _grid.revealError(r, columnKey: 'qty');
         return;
@@ -3167,7 +3304,7 @@ class _ProductionDailyReportEditPageState
         if (r.colorId != null) 'colorId': r.colorId,
         if (r.unitId != null) 'unitId': r.unitId,
         if (r.unitRateText != null)
-          'unitRate': productionQuantityWire(r.unitRateText, scale: 6),
+          'unitRate': productionQuantityWire(r.unitRateText),
         if (r.planItemId != null) 'planItemId': r.planItemId,
         if (r.executionSegmentId != null)
           'executionSegmentId': r.executionSegmentId,

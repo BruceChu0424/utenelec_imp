@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 // 货品「发料方式」设置弹窗 (ADR-131)：发料方式 / 分摊方式 / 每袋净重 / 回收料。
 //
 // 发料方式或分摊方式一变，先向服务端要预览：用到这种料的 BOM 行怎么处理 (要先改的
@@ -58,14 +59,7 @@ String _periodStatusLabel(String? status) => switch (status) {
   _ => '进行中',
 };
 
-String _qty(double? v) {
-  if (v == null) return '';
-  if (v == v.roundToDouble()) return v.toStringAsFixed(0);
-  return v
-      .toStringAsFixed(4)
-      .replaceFirst(RegExp(r'0+$'), '')
-      .replaceFirst(RegExp(r'\.$'), '');
-}
+String _qty(Object? value) => financeExactTrimmed(value?.toString()) ?? '';
 
 /// 打开「发料方式」设置弹窗；保存成功返回 true。
 Future<bool> showGoodsIssueMethodDialog(
@@ -112,7 +106,7 @@ class _GoodsIssueMethodDialogState
     _method = d.issueMethod;
     _basis = d.periodicCostBasis;
     _recycled = d.recycledMaterial;
-    _bulkCtl.text = _qty(d.bulkPackageQty);
+    _bulkCtl.text = d.bulkPackageQtyText ?? '';
   }
 
   @override
@@ -156,7 +150,10 @@ class _GoodsIssueMethodDialogState
         if (_periodic &&
             _bulkCtl.text.trim().isEmpty &&
             preview.suggestedBulkPackageQty != null) {
-          _bulkCtl.text = _qty(preview.suggestedBulkPackageQty);
+          _bulkCtl.text = _qty(
+            preview.exactValues['suggestedBulkPackageQty'] ??
+                preview.suggestedBulkPackageQty,
+          );
         }
       });
     } on ApiException catch (e) {
@@ -210,10 +207,13 @@ class _GoodsIssueMethodDialogState
   Future<void> _save() async {
     if (!_canConfirm) return;
     final raw = _bulkCtl.text.trim();
-    double? bulk;
+    String? bulk;
     if (raw.isNotEmpty) {
-      bulk = double.tryParse(raw);
-      if (bulk == null || bulk <= 0) {
+      bulk = financeExactDecimal(raw);
+      final units = financeAmountUnits(bulk);
+      if (units == null ||
+          units <= BigInt.zero ||
+          units >= BigInt.from(10).pow(64)) {
         setState(() => _bulkError = '每袋净重要填大于 0 的公斤数，或者留空');
         return;
       }
@@ -228,7 +228,7 @@ class _GoodsIssueMethodDialogState
       expectedVersion: _preview?.version ?? widget.detail.version,
       issueMethod: _method,
       periodicCostBasis: _periodic ? _basis : null,
-      bulkPackageQty: bulk,
+      bulkPackageQtyExact: bulk,
       recycledMaterial: _recycled,
     );
     try {
@@ -555,7 +555,7 @@ class _GoodsIssueMethodDialogState
             Text(
               '· ${d.orderLabel}'
               '${d.productName == null ? '' : '  ${d.productName}'}'
-              '  差 ${_qty(d.unclearedQty)}$unit 没清'
+              '  差 ${_qty(d.exactValues['unclearedQty'] ?? d.unclearedQty)}$unit 没清'
               '${d.note == null ? '' : '  (${d.note})'}',
               style: theme.textTheme.bodySmall,
             ),
@@ -581,7 +581,7 @@ class _GoodsIssueMethodDialogState
           for (final r in changedBom.take(30))
             Text(
               '· ${[r.productCode, r.productName].whereType<String>().join(' ')}'
-              '${r.qty == null ? '' : '  用量 ${_qty(r.qty)}$unit'}'
+              '${r.qty == null ? '' : '  用量 ${_qty(r.exactValues['qty'] ?? r.qty)}$unit'}'
               '  → ${r.actionLabel}'
               '${r.note == null ? '' : '  (${r.note})'}',
               style: theme.textTheme.bodySmall?.copyWith(
@@ -599,7 +599,7 @@ class _GoodsIssueMethodDialogState
         ..addAll([
           for (final b in p.binBalances)
             Text(
-              '· ${b.warehouseName ?? '内料仓'}  ${_qty(b.qty)}$unit',
+              '· ${b.warehouseName ?? '内料仓'}  ${_qty(b.exactValues['qty'] ?? b.qty)}$unit',
               style: theme.textTheme.bodySmall,
             ),
         ])
@@ -627,7 +627,7 @@ class _GoodsIssueMethodDialogState
           for (final t in p.unsettledTheory)
             Text(
               '· ${t.binName ?? '内料仓'}  ${t.productCount} 个产品'
-              '${t.theoryQty == null ? '' : '，共 ${_qty(t.theoryQty)}$unit'}',
+              '${t.theoryQty == null ? '' : '，共 ${_qty(t.exactValues['theoryQty'] ?? t.theoryQty)}$unit'}',
               style: theme.textTheme.bodySmall,
             ),
         ])

@@ -44,7 +44,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -52,6 +51,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -115,6 +115,10 @@ public class ExpenseClaimService {
     private ExpenseApprovalPolicy approvalPolicy;
     @org.springframework.beans.factory.annotation.Autowired
     private com.uten.imp.application.policy.DepartmentApprovalRouting departmentRouting;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.FinanceApplicationControlPort applicationControl;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.NativeApplicationOriginPort nativeOrigins;
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private com.uten.imp.application.port.TaskAudiencePort taskAudience;
 
@@ -368,13 +372,13 @@ public class ExpenseClaimService {
                         var event = events.from(ExpenseClaimEvent.class);
                         events.select(event.get("claimId")).where(cb.equal(event.get("actorEmployeeId"),actor),
                                 event.get("eventType").in(Set.of("STAGE_APPROVED","APPROVED","REJECTED")));
-                        visible.add(root.get("id").in(events));
+                        visible.add(cb.and(cb.isFalse(cb.function("fn_finance_expense_is_application_managed",Boolean.class,root.get("id"))),root.get("id").in(events)));
                     }
-                    if(has(reader,"expense:pay")) visible.add(cb.equal(root.get("status"),"PAID"));
+                    if(has(reader,"expense:pay")) visible.add(cb.and(cb.isFalse(cb.function("fn_finance_expense_is_application_managed",Boolean.class,root.get("id"))),cb.equal(root.get("status"),"PAID")));
                 } else if (statuses.contains("SUBMITTED") && ExpenseApprovalPolicy.hasAny(reader)) {
-                    visible.add(approvalPolicy.context(reader).predicate(root,cb));
+                    visible.add(cb.and(cb.isFalse(cb.function("fn_finance_expense_is_application_managed",Boolean.class,root.get("id"))),approvalPolicy.context(reader).predicate(root,cb)));
                 } else if (statuses.contains("APPROVED") && has(reader,"expense:pay")) {
-                    visible.add(approvalPolicy.paymentPredicate(root,cb,reader));
+                    visible.add(cb.and(cb.isFalse(cb.function("fn_finance_expense_is_application_managed",Boolean.class,root.get("id"))),approvalPolicy.paymentPredicate(root,cb,reader)));
                 }
                 predicates.add(cb.or(visible.toArray(new Predicate[0])));
             }
@@ -481,7 +485,7 @@ public class ExpenseClaimService {
                     List.of(new com.uten.imp.common.history.RetainedRecordReader.DocumentRef(claim.getId(),claim.isDeleted(),claim.getDeletedAt())),
                     historyRead).get(claim.getId()));
         }
-        return result;
+        return withApplicationLinks(List.of(result)).getFirst();
     }
 
     private static ExpenseClaimInvoiceDto toInvoiceDto(ExpenseClaimInvoice invoice) {
@@ -700,15 +704,18 @@ public class ExpenseClaimService {
 
     @Transactional
     public ExpenseClaimDto verifyInvoice(UUID claimId,UUID invoiceId,com.uten.imp.features.expenseclaim.dto.ExpenseClaimInvoiceVerifyRequest input) {
-        AuthUser user=requireStaff(); requireApprover(user); require(user,"attachment:view"); require(user,"attachment:download");
+        AuthUser user=requireStaff();boolean applicationManaged=applicationControl!=null&&applicationControl.expenseManaged(claimId);
+        if(applicationManaged)applicationControl.requireExpenseInvoiceVerification(claimId);else {if(applicationControl!=null)applicationControl.requireExpenseMainAuthority(claimId);requireApprover(user);}require(user,"attachment:view");require(user,"attachment:download");
         expectedVersion(claimId,input.expectedVersion());
         ExpenseClaim claim=requireClaimForUpdate(claimId);
-        approvalPolicy.requireApprove(user,claim);
-        if(!Set.of(ExpenseApprovalPolicy.FINANCE_INITIAL,ExpenseApprovalPolicy.FINANCE_REVIEW).contains(claim.getApprovalStage()))
-            throw new ApiException(ErrorCode.FORBIDDEN,"票据查验由当前财务初核或复核节点办理");
+        if(!applicationManaged){
+            approvalPolicy.requireApprove(user,claim);
+            if(!Set.of(ExpenseApprovalPolicy.FINANCE_INITIAL,ExpenseApprovalPolicy.FINANCE_REVIEW).contains(claim.getApprovalStage()))
+                throw new ApiException(ErrorCode.FORBIDDEN,"票据查验由当前财务初核或复核节点办理");
+        }
         if(user.getEmployeeId().equals(claim.getApplicantId())) throw new ApiException(ErrorCode.FORBIDDEN,"不能核验自己的报销票据");
         if(!Set.of("SUBMITTED","REVIEWING").contains(claim.getStatus())) throw stateConflict(claim);
-        taskClaim.requireNoActiveClaimByOther(TASK_TYPE_APPROVE,claimId.toString());
+        if(!applicationManaged)taskClaim.requireNoActiveClaimByOther(TASK_TYPE_APPROVE,claimId.toString());
         if(input.result()==null || !Set.of("VERIFIED_MANUAL","MISMATCH").contains(input.result())
                 || trimToNull(input.remark())==null || input.remark().trim().length()>500)
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择核对结论并填写查验渠道、日期及结果依据");
@@ -744,7 +751,7 @@ public class ExpenseClaimService {
         BigDecimal total = validated.stream()
                 .map(ValidatedItem::amount)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-        if (total.signum() <= 0 || total.compareTo(new BigDecimal("9999999999999999.99"))>0) {
+        if (total.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "报销合计必须大于零");
         }
 
@@ -754,13 +761,14 @@ public class ExpenseClaimService {
         claim.setApplicantDepartmentId(applicant.departmentId());
         claim.setClaimNo(docNumber.nextNumber(DocNumberPrefix.EXPENSE_CLAIM));
         claim.setTitle(request.title().trim());
-        claim.setExpenseKind(expenseKind(request.expenseKind()));
+        claim.setExpenseKind(expenseKind(request));
         claim.setTotalAmount(total);
         claim.setStatus("DRAFT");
         claim.setRemark(trimToNull(request.remark()));
         claimRepository.save(claim);
         List<ExpenseClaimItem> items = appendItems(claim, validated);
         appendEvent(claim.getId(), "CREATED", user, null);
+        if(applicationControl!=null){claimRepository.flush();itemRepository.flush();registerApplicationSource(claim.getId(),request);}
         return mapClaimWithItems(claim, items);
     }
 
@@ -784,11 +792,11 @@ public class ExpenseClaimService {
         BigDecimal total = validated.stream()
                 .map(ValidatedItem::amount)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
-        if (total.signum() <= 0 || total.compareTo(new BigDecimal("9999999999999999.99"))>0) {
+        if (total.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "报销合计必须大于零");
         }
         claim.setTitle(request.title().trim());
-        claim.setExpenseKind(request.expenseKind()==null?claim.getExpenseKind():expenseKind(request.expenseKind()));
+        claim.setExpenseKind(request.expenseKind()==null&&request.applicationKind()==null?claim.getExpenseKind():expenseKind(request));
         claim.setRemark(trimToNull(request.remark()));
         claim.setTotalAmount(total);
         claimRepository.save(claim);
@@ -797,6 +805,7 @@ public class ExpenseClaimService {
         List<ExpenseClaimItem> items = appendItems(claim, validated);
         appendEvent(claim.getId(), "EDITED", user,
                 "REJECTED".equals(claim.getStatus()) ? "驳回后修订" : null);
+        if(applicationControl!=null){claimRepository.flush();itemRepository.flush();registerApplicationSource(id,request);}
         return mapClaimWithItems(claim, items);
     }
 
@@ -852,11 +861,17 @@ public class ExpenseClaimService {
         if (!Set.of("DRAFT", "REJECTED").contains(claim.getStatus())) {
             throw stateConflict(claim);
         }
+        if(applicationControl!=null)applicationControl.requireExpenseMainAuthority(id);
+        if(nativeOrigins!=null)nativeOrigins.requireReady("EXPENSE_CLAIM",id);
+        if(applicationSources!=null)applicationSources.validateForSubmit(id);
         validateEvidence(claim, false);
         var applicant=applicantQuery.findEligible(user.getEmployeeId()).orElseThrow(()->new ApiException(ErrorCode.FORBIDDEN,"当前员工档案不可申请报销"));
         claim.setApplicantDepartmentId(applicant.departmentId());claim.setApplicantNameSnapshot(applicant.name());
-        claim.setDepartmentApprovalSnapshot(departmentRouting.capture(claim.getApplicantId(),claim.getApplicantDepartmentId()));
-        approvalPolicy.requireNext(claim,ExpenseApprovalPolicy.DEPARTMENT,"");
+        boolean applicationManaged=applicationControl!=null&&applicationControl.expenseManaged(id);
+        if(!applicationManaged){
+            claim.setDepartmentApprovalSnapshot(departmentRouting.capture(claim.getApplicantId(),claim.getApplicantDepartmentId()));
+            approvalPolicy.requireNext(claim,ExpenseApprovalPolicy.DEPARTMENT,"");
+        }
         boolean rejectedResubmit = "REJECTED".equals(claim.getStatus());
         boolean resubmit = claim.getSubmissionSnapshot() != null || claim.getSubmittedAt() != null
                 || rejectedResubmit
@@ -872,7 +887,7 @@ public class ExpenseClaimService {
         hrNotice.resolveExpenseClaim(id, "RESUBMITTED");
         Instant now = Instant.now();
         claim.setStatus("SUBMITTED");
-        claim.setApprovalStage(ExpenseApprovalPolicy.DEPARTMENT);
+        claim.setApprovalStage(applicationManaged?null:ExpenseApprovalPolicy.DEPARTMENT);
         claim.setApprovalRound(claim.getApprovalRound()+1);
         claim.setApprovalParticipants("");
         claim.setApprovedBy(null);
@@ -886,7 +901,9 @@ public class ExpenseClaimService {
         appendEvent(claim.getId(), "SUBMITTED", user,
                 rejectedResubmit ? "驳回后重新提交" : resubmit ? "撤回后重新提交" : null);
         // 提交 → 通知审批人（弹卡 + 通知；2026-09-09 人事通知接入）
-        hrNotice.notifyExpenseClaimStage(
+        claimRepository.flush();invoiceRepository.flush();
+        if(applicationManaged)applicationControl.expenseSubmitted(id);
+        if(!applicationManaged)hrNotice.notifyExpenseClaimStage(
                 claim.getId(), claim.getApplicantNameSnapshot(),
                 claim.getTotalAmount().toPlainString() + " 元",
                 claim.getApplicantId(), claim.getApplicantDepartmentId(), claim.getApprovalStage(), claim.getApprovalParticipants());
@@ -922,6 +939,7 @@ public class ExpenseClaimService {
         appendEvent(claim.getId(), "WITHDRAWN", user, null);
         // 撤回 → 办结审批人弹卡
         hrNotice.resolveExpenseClaim(claim.getId(), "WITHDRAWN");
+        if(applicationControl!=null){claimRepository.flush();applicationControl.expenseWithdrawn(id);}
         return mapClaimWithItems(claim);
     }
 
@@ -979,17 +997,23 @@ public class ExpenseClaimService {
     }
 
     private ExpenseClaimDto decide(AuthUser user, UUID id, boolean approved, String reason) {
+        return decide(user,id,approved,reason,false);
+    }
+    private ExpenseClaimDto decide(AuthUser user, UUID id, boolean approved, String reason,boolean applicationDecision) {
         tx.bind();
-        requireApprover(user);
+        if(applicationDecision)require(user,"finance_application:review");else requireApprover(user);
+        if(applicationDecision){if(applicationControl==null)throw new ApiException(ErrorCode.CONFLICT,"原申请流程尚未准备好");applicationControl.requireExpenseDecisionContext(id);}
+        else if(applicationControl!=null)applicationControl.requireLegacyExpenseDecision(id);
         // 并发认领守卫（show-as-locked 的服务端兜底）：若他人正认领该报销单审批，拒绝重复操作。
         // 认领只是 UX/防碰撞层，下方 requireClaimForUpdate 的悲观锁 + 状态前置条件仍是正确性底线。
-        taskClaim.requireNoActiveClaimByOther(TASK_TYPE_APPROVE, id.toString());
+        if(!applicationDecision)taskClaim.requireNoActiveClaimByOther(TASK_TYPE_APPROVE, id.toString());
         ExpenseClaim claim = requireClaimForUpdate(id);
         if (claim.getApplicantId().equals(user.getEmployeeId())) {
             throw new ApiException(ErrorCode.FORBIDDEN, "申请人不能审批自己的报销单");
         }
-        approvalPolicy.requireApprove(user,claim);
-        if(ExpenseApprovalPolicy.DEPARTMENT.equals(claim.getApprovalStage()))departmentRouting.requireReviewForUpdate(user,claim.getApplicantId(),claim.getApplicantDepartmentId(),claim.getDepartmentApprovalSnapshot());
+        if(!applicationDecision)approvalPolicy.requireApprove(user,claim);
+        if(approved&&nativeOrigins!=null)nativeOrigins.requireReady("EXPENSE_CLAIM",id);
+        if(!applicationDecision&&ExpenseApprovalPolicy.DEPARTMENT.equals(claim.getApprovalStage()))departmentRouting.requireReviewForUpdate(user,claim.getApplicantId(),claim.getApplicantDepartmentId(),claim.getDepartmentApprovalSnapshot());
         if (!Set.of("SUBMITTED", "REVIEWING").contains(claim.getStatus())) {
             throw stateConflict(claim);
         }
@@ -999,9 +1023,9 @@ public class ExpenseClaimService {
             require(user,"attachment:download");
             String stage=claim.getApprovalStage();
             validateEvidence(claim, !ExpenseApprovalPolicy.DEPARTMENT.equals(stage));
-            String next=ExpenseApprovalPolicy.next(stage);
-            approvalPolicy.requireNext(claim,next,(claim.getApprovalParticipants()==null?"":claim.getApprovalParticipants())+user.getEmployeeId()+",");
-            if(next==null)approvalPolicy.requirePaymentOperator(claim,(claim.getApprovalParticipants()==null?"":claim.getApprovalParticipants())+user.getEmployeeId()+",",
+            String next=applicationDecision?null:ExpenseApprovalPolicy.next(stage);
+            if(!applicationDecision)approvalPolicy.requireNext(claim,next,(claim.getApprovalParticipants()==null?"":claim.getApprovalParticipants())+user.getEmployeeId()+",");
+            if(!applicationDecision&&next==null)approvalPolicy.requirePaymentOperator(claim,(claim.getApprovalParticipants()==null?"":claim.getApprovalParticipants())+user.getEmployeeId()+",",
                     !attachmentRepository.findByOwnerTypeAndOwnerIdAndLifecycleStateOrderByCreatedAtAsc(ExpensePaymentProofAttachmentAccessPolicy.OWNER_TYPE,id,AttachmentLifecycleState.CLEAN).isEmpty());
             claim.setApprovalParticipants((claim.getApprovalParticipants()==null?"":claim.getApprovalParticipants())+user.getEmployeeId()+",");
             claim.setApprovalStage(next);
@@ -1014,12 +1038,12 @@ public class ExpenseClaimService {
             // 先办结「待审批」卡再发「待打款」卡：两卡同聚合 (EXPENSE_CLAIM, claimId)，
             // 顺序反了会把新卡一起撤掉。
             hrNotice.resolveExpenseClaim(claim.getId(), "APPROVED_TO_PAY");
-            if(next==null) hrNotice.notifyExpenseClaimApproved(
+            if(!applicationDecision&&next==null) hrNotice.notifyExpenseClaimApproved(
                     claim.getId(), claim.getApplicantNameSnapshot(),
                     claim.getTotalAmount().toPlainString() + " 元",
                     userIdOfEmployee(claim.getApplicantId()),
                     claim.getApplicantId(), claim.getApprovedBy());
-            else hrNotice.notifyExpenseClaimStage(claim.getId(),claim.getApplicantNameSnapshot(),
+            else if(!applicationDecision)hrNotice.notifyExpenseClaimStage(claim.getId(),claim.getApplicantNameSnapshot(),
                     claim.getTotalAmount().toPlainString()+" 元",claim.getApplicantId(),claim.getApplicantDepartmentId(),next,claim.getApprovalParticipants());
         } else {
             String normalized = reason == null ? "" : reason.trim();
@@ -1036,7 +1060,7 @@ public class ExpenseClaimService {
             appendApprovalEvent(claim,"REJECTED",claim.getApprovalStage(),user,normalized);
             taskClaim.releaseAfterBusinessResolution(TASK_TYPE_APPROVE,id.toString());
             hrNotice.resolveExpenseClaim(claim.getId(), "REJECTED");
-            hrNotice.notifyExpenseClaimRejected(
+            if(!applicationDecision)hrNotice.notifyExpenseClaimRejected(
                     claim.getId(), normalized, userIdOfEmployee(claim.getApplicantId()));
         }
         return mapClaimWithItems(claim);
@@ -1056,20 +1080,24 @@ public class ExpenseClaimService {
             if (request.accountId().equals(claim.getPaymentAccountId())
                     && request.expenseStyleId().equals(claim.getPaymentExpenseStyleId())
                     && request.paymentDate().equals(claim.getPaymentDate())
+                    && com.uten.imp.common.finance.AccountingExpensePurpose.parse(request.postingPurpose()).name().equals(claim.getPaymentPostingPurpose())
                     && claim.getFinanceExpenseId() != null) {
                 return mapClaimWithItems(claim);
             }
             throw new ApiException(ErrorCode.CONFLICT, "报销单已使用其他打款参数完成支付");
         }
         assertStatus(claim, "APPROVED");
-        if(!approvalPolicy.canPay(user,claim)) {
-            throw new ApiException(ErrorCode.FORBIDDEN,"本轮所有审批人与打款人必须分离，已审核人员不能再登记本单付款");
+        boolean applicationManaged=applicationControl!=null&&applicationControl.expenseManaged(id);
+        if(applicationManaged)applicationControl.requireExpensePayment(id);else if(applicationControl!=null)applicationControl.requireExpenseMainAuthority(id);
+        if(nativeOrigins!=null)nativeOrigins.requireReady("EXPENSE_CLAIM",id);
+        if(applicationManaged?user.getEmployeeId().equals(claim.getApprovedBy()):!approvalPolicy.canPay(user,claim)) {
+            throw new ApiException(ErrorCode.FORBIDDEN,"本轮审批人与实际打款人须分离");
         }
         if(request.paymentDate()==null || request.paymentDate().isAfter(BusinessTime.today())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"付款日期不能为空或晚于今天");
         }
 
-        if(attachmentRepository.findByOwnerTypeAndOwnerIdAndLifecycleStateOrderByCreatedAtAsc(
+        if(!(applicationControl!=null&&applicationControl.expenseManaged(id)) && attachmentRepository.findByOwnerTypeAndOwnerIdAndLifecycleStateOrderByCreatedAtAsc(
                 ExpensePaymentProofAttachmentAccessPolicy.OWNER_TYPE,id,AttachmentLifecycleState.CLEAN).isEmpty())
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"请先上传银行付款回单或现金签收凭据并等待扫描完成，再登记付款");
 
@@ -1080,7 +1108,7 @@ public class ExpenseClaimService {
                         request.accountId(),
                         request.expenseStyleId(),
                         claim.getApplicantDepartmentId(),
-                        claim.getTotalAmount()));
+                        claim.getTotalAmount(),com.uten.imp.common.finance.AccountingExpensePurpose.parse(request.postingPurpose())));
 
         claim.setStatus("PAID");
         claim.setPaidBy(user.getEmployeeId());
@@ -1088,6 +1116,7 @@ public class ExpenseClaimService {
         claim.setPaymentDate(request.paymentDate());
         claim.setPaymentAccountId(request.accountId());
         claim.setPaymentExpenseStyleId(request.expenseStyleId());
+        claim.setPaymentPostingPurpose(com.uten.imp.common.finance.AccountingExpensePurpose.parse(request.postingPurpose()).name());
         claim.setFinanceExpenseId(financeExpenseId);
         claimRepository.save(claim);
         appendEvent(claim.getId(), "PAID", user, "付款日期 " + request.paymentDate());
@@ -1095,6 +1124,20 @@ public class ExpenseClaimService {
         hrNotice.notifyExpenseClaimPaid(
                 claim.getId(), claim.getTotalAmount().toPlainString() + " 元", userIdOfEmployee(claim.getApplicantId()));
         return mapClaimWithItems(claim);
+    }
+    /** Trusted original-source bridge. External callers cannot mint its application context. */
+    @Transactional
+    public ExpenseClaimDto decideFromFinancialApplication(UUID id,boolean approved,String reason){
+        if(applicationControl==null)throw new ApiException(ErrorCode.CONFLICT,"原申请流程尚未准备好");
+        applicationControl.requireExpenseDecisionContext(id);return decide(requireStaff(),id,approved,reason,true);
+    }
+    @Transactional
+    public void paymentReversedFromFinancialApplication(UUID id,UUID financeExpenseId,String reason){
+        if(applicationControl==null)throw new ApiException(ErrorCode.CONFLICT,"原申请流程尚未准备好");applicationControl.requireExpenseReversalContext(id,financeExpenseId);tx.bind();
+        var claim=requireClaimForUpdate(id);if(!"PAID".equals(claim.getStatus())||!Objects.equals(claim.getFinanceExpenseId(),financeExpenseId))throw new ApiException(ErrorCode.CONFLICT,"原报销付款身份或状态已变化");
+        claim.setStatus("REJECTED");claim.setRejectReason("原付款已反审，请核对后重新提交申请："+Objects.toString(reason,""));claim.setRejectedBy(currentUser.requireEmployeeId());claim.setRejectedAt(Instant.now());
+        claim.setPaidBy(null);claim.setPaidAt(null);claim.setPaymentDate(null);claim.setPaymentAccountId(null);claim.setPaymentExpenseStyleId(null);claim.setFinanceExpenseId(null);claim.setApprovedBy(null);claim.setApprovedAt(null);
+        claimRepository.save(claim);appendEvent(id,"PAYMENT_REVERSED",requireStaff(),"原财务付款已反审；"+Objects.toString(reason,""));
     }
 
     // ---- 发票登记（V608） ---------------------------------------------------------
@@ -1255,7 +1298,7 @@ public class ExpenseClaimService {
         if(input.issueDate()!=null && input.issueDate().isAfter(BusinessTime.today()))
             throw new ApiException(ErrorCode.VALIDATION_FAILED,"开票日期不能晚于今天");
         BigDecimal total = money(input.totalAmount(), "价税合计");
-        if (total.signum() <= 0 || total.compareTo(new BigDecimal("9999999999999999.99"))>0) {
+        if (total.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "价税合计必须大于零");
         }
         BigDecimal excl = input.amountExclTax() == null
@@ -1291,14 +1334,11 @@ public class ExpenseClaimService {
     }
 
     private static BigDecimal money(BigDecimal value, String label) {
-        if(value==null || value.signum()<0 || value.compareTo(new BigDecimal("9999999999999999.99"))>0)
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,label+"无效或超出金额范围");
-        try {
-            return value.setScale(2, RoundingMode.UNNECESSARY);
-        } catch (ArithmeticException exception) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    label + "最多保留两位小数");
-        }
+        BigDecimal exact=com.uten.imp.common.util.FinancialExactAmount.require(value,label);
+        if(exact.signum()<0)throw new ApiException(ErrorCode.VALIDATION_FAILED,label+"不能为负数");
+        // Preserve the existing submitted two-place representation by padding only;
+        // complete fractional facts beyond two places are never shortened.
+        return new BigDecimal(com.uten.imp.common.finance.ExactDecimalText.plain(exact,2));
     }
 
     private static String digitsOrNull(String raw) {
@@ -1330,6 +1370,13 @@ public class ExpenseClaimService {
         if(!ExpenseApprovalPolicy.hasAny(user))throw new ApiException(ErrorCode.FORBIDDEN);
     }
 
+    private static String expenseKind(ExpenseClaimCreateRequest request){
+        String inferred=request.applicationKind()==null?null:switch(request.applicationKind()){
+            case "REIMBURSEMENT"->"GENERAL";case "TRAVEL_REIMBURSEMENT"->"TRAVEL";
+            default->throw new ApiException(ErrorCode.VALIDATION_FAILED,"原报销类型不正确");};
+        if(request.expenseKind()!=null&&inferred!=null&&!request.expenseKind().equals(inferred))throw new ApiException(ErrorCode.VALIDATION_FAILED,"报销类别与原表来源不一致");
+        return expenseKind(request.expenseKind()==null?inferred:request.expenseKind());
+    }
     private static String expenseKind(String kind) {
         if(kind==null || kind.isBlank())return "GENERAL";
         if(!Set.of("GENERAL","TRAVEL").contains(kind))throw new ApiException(ErrorCode.VALIDATION_FAILED,"未知报销类型");
@@ -1365,22 +1412,15 @@ public class ExpenseClaimService {
         if (!CATEGORIES.contains(category)) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报销类别");
         }
-        BigDecimal amount;
-        try {
-            amount = input.amount().setScale(2, RoundingMode.UNNECESSARY);
-        } catch (ArithmeticException exception) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "报销金额最多保留两位小数");
-        }
-        if (amount.signum() <= 0 || amount.compareTo(new BigDecimal("9999999999999999.99"))>0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "报销金额必须大于零");
-        }
+        BigDecimal amount=money(input.amount(),"报销金额");
+        if(amount.signum()<=0)throw new ApiException(ErrorCode.VALIDATION_FAILED,"报销金额必须大于零");
         return new ValidatedItem(
                 category, amount, input.date(), trimToNull(input.description()));
     }
 
     private void assertCanRead(ExpenseClaim claim) {
         AuthUser user = requireStaff();
-        if (!readAccess.canReadWorkflow(user,claim,observerScope(user))) {
+        if (!readAccess.mayRead(user,claim,observerScope(user))) {
             throw new ApiException(ErrorCode.NOT_FOUND, "报销单不存在");
         }
     }
@@ -1410,7 +1450,7 @@ public class ExpenseClaimService {
 
     private ExpenseClaimDto mapClaimWithItems(ExpenseClaim claim, List<ExpenseClaimItem> items) {
         claimRepository.flush();
-        return mapClaim(
+        var mapped=mapClaim(
                 claim,
                 items,
                 new Mapping(
@@ -1421,6 +1461,7 @@ public class ExpenseClaimService {
                         List.of(),
                         List.of(),
                         List.of(),List.of()));
+        return withApplicationLinks(List.of(mapped)).getFirst();
     }
 
     private List<ExpenseClaimDto> mapClaims(List<ExpenseClaim> claims) {
@@ -1444,7 +1485,26 @@ public class ExpenseClaimService {
                     .map(claim -> new com.uten.imp.common.history.RetainedRecordReader.DocumentRef(claim.getId(),claim.isDeleted(),claim.getDeletedAt())).toList(),false);
             for (ExpenseClaimDto view : mapped) view.history().copyHistoryFrom(metadata.get(view.id()));
         }
-        return mapped;
+        return withApplicationLinks(mapped);
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    private ExpenseApplicationSourceService applicationSources;
+    private void registerApplicationSource(UUID id,ExpenseClaimCreateRequest request){
+        if(applicationControl!=null&&applicationControl.expenseManaged(id)){
+            applicationControl.registerExpenseDraft(id,request.applicationKind(),request.travelApplicationId());return;
+        }
+        if(request.applicationKind()!=null||request.travelApplicationId()!=null||request.travelApplicationSourceKind()!=null){
+            if(applicationSources==null)throw new ApiException(ErrorCode.CONFLICT,"原申请来源暂不可保存，请保留输入");
+            applicationSources.save(id,request.applicationKind(),request.expenseKind(),request.travelApplicationId(),request.travelApplicationSourceKind());
+        }
+    }
+    private List<ExpenseClaimDto> withApplicationLinks(List<ExpenseClaimDto> views){
+        if(applicationControl==null||views.isEmpty())return views;
+        @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("SELECT l.claim_id,a.id,a.application_no,a.kind,a.status,n.label_snapshot FROM finance_expense_application_links l JOIN finance_applications a ON a.id=l.application_id LEFT JOIN finance_application_nodes n ON n.application_id=a.id AND n.submission_round=a.submission_round AND n.step_no=a.current_step WHERE l.claim_id IN(:ids)").setParameter("ids",views.stream().map(ExpenseClaimDto::id).toList()).getResultList();
+        var readable=applicationControl.readableApplications(rows.stream().map(row->(UUID)row[1]).toList(),requireStaff());
+        Map<UUID,com.uten.imp.features.expenseclaim.dto.ExpenseClaimFinancialApplication> links=new HashMap<>();for(var row:rows)links.put((UUID)row[0],new com.uten.imp.features.expenseclaim.dto.ExpenseClaimFinancialApplication((UUID)row[1],Objects.toString(row[2],""),Objects.toString(row[3],""),Objects.toString(row[4],""),Objects.toString(row[5],""),readable.contains((UUID)row[1])));
+        var linked=views.stream().map(view->view.withFinancialApplication(links.get(view.id()))).toList();
+        return applicationSources==null?linked:applicationSources.attach(linked);
     }
 
     /** 一页报销单的申请人部门名一次查齐（列表「部门」列，避免逐单查部门）。 */
@@ -1569,6 +1629,14 @@ public class ExpenseClaimService {
                 platformColumns.getObject().freezeForReview("expense_claim",claim.getId(),Map.of(claim.getId(),
                     claim.getTotalAmount()==null?Map.of():Map.of("totalAmount",claim.getTotalAmount()))).get(claim.getId()));
     }
+    /** Same native commercial facts before and after submit; verification/lifecycle fields never alter the fingerprint. */
+    @Transactional(readOnly=true)
+    public Map<String,Object> originalApplicationSource(UUID id){
+        var claim=requireClaim(id);assertCanRead(claim);
+        return nativeOrigins==null?Map.of():nativeOrigins.originalView("EXPENSE_CLAIM",id);
+    }
+    @Transactional(readOnly=true)
+    public String applicationBusinessSnapshot(UUID id){var claim=requireClaim(id);assertCanRead(claim);return submissionSnapshot(claim);}
 
     private String visibleSubmissionSnapshot(String snapshot) {
         return platformColumns==null?snapshot:platformColumns.getObject().maskReviewSnapshot("expense_claim_item",snapshot);

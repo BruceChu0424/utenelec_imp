@@ -1,3 +1,5 @@
+import '../../core/formatters/exact_number_text.dart';
+
 /// Shared quantity aggregation that never adds values from different units.
 ///
 /// [unitId] is the grouping authority. Display names are labels only: two rows
@@ -96,6 +98,6 @@ String measurementTotalsText(
 }
 
 String formatMeasurementValue(double value, {int scale = 4}) {
-  final fixed = value.toStringAsFixed(scale);
+  final fixed = value.toExactString(minimumFractionDigits: scale);
   return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
 }

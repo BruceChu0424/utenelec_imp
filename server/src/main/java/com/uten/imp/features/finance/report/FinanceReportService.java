@@ -76,6 +76,10 @@ public class FinanceReportService {
     private final com.uten.imp.features.finance.gl.GlReportService glReportService;
     private final com.uten.imp.features.finance.asset.FixedAssetService fixedAssetService;
     private final PartyMonthlySummaryService partySummaries;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.CompanyBrandingReadPort> branding;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.features.finance.statement.FinanceStatementDocumentService> statementDocuments;
 
     // ======================== 通用执行器（镜像销售/采购） ========================
 
@@ -606,6 +610,19 @@ public class FinanceReportService {
         return receivableSummaryAuthorized(keyword, from, to, page, size);
     }
 
+    /** Original 17/15-column presentation retains reconciliation facts outside the source table. */
+    @Transactional(readOnly=true)
+    public ReportTableResponse arApSummaryTemplate(String direction,LocalDate from,LocalDate to,String keyword,int page,int size,FinanceReportColumnOptions options) {
+        requireCompanyWideReportAccess();boolean ar="AR".equals(direction);
+        if(from==null||to==null||from.isAfter(to))throw new ApiException(ErrorCode.VALIDATION_FAILED,"请选择完整且先后正确的核对期间");
+        if(!ar&&!"AP".equals(direction))throw new ApiException(ErrorCode.VALIDATION_FAILED,"应收应付方向无效");
+        if(!ar){assertOpeningWindowReplayable("AP",keyword,from,to);return FinanceClassifiedPayableSummary.read(em,keyword,from,to,page,size,options);}
+        FinancePartySummaryTemplate.requireOptions(true,options);
+        var source=ar?receivableSummaryAuthorized(keyword,from,to,page,size,options.filters(),options.sort(),options.order()):
+                payableSummaryAuthorized(keyword,from,to,page,size,options.filters(),options.sort(),options.order());
+        return FinancePartySummaryTemplate.present(ar,source);
+    }
+
     private ReportTableResponse receivableSummaryAuthorized(
             String keyword, LocalDate from, LocalDate to, int page, int size) {
         return receivableSummaryAuthorized(keyword,from,to,page,size,Map.of(),null,null);
@@ -639,7 +656,7 @@ public class FinanceReportService {
                 // 超出铺底额可正可负（V443 起保留负数）：相加会让超限客户与未用满额度的客户互相抵销，
                 // 得出一个「看着没有风险」的假数，不声明合计。
                 ReportColumn.money("overFloor", "超出铺底额"),
-                // 物料金额当前投影为字面量 NULL（无数据源），不声明合计。
+                // 财务确认：期末仍欠的物料款。缺分类/清偿依据时保留未知。
                 ReportColumn.money("materialAmount", "物料金额"),
                 ReportColumn.number("unverifiedOriginalCount", "币种/原币待核验项数").totaled("合计待核验项数"));
         // 已证明的迁入期初取不可变余额；当前立帐仍取原额（按 bill_date 归期）。有引用明细的收款按行拆成：
@@ -653,23 +670,27 @@ public class FinanceReportService {
                            CASE WHEN %s THEN 1 ELSE 0 END AS unverified_original
                     FROM ar_ap_ledger ledger %s
                 ), posting_events AS (
-                    SELECT client_id,bill_date,source_doc_type,reporting_amount_local,unverified_original
+                    SELECT id AS ledger_id,1 AS event_sign,client_id,bill_date,source_doc_type,reporting_amount_local,unverified_original
                     FROM ledger_origin WHERE direction='AR' AND client_id IS NOT NULL
-                      AND (open_item_kind='RECEIVABLE' OR legacy_import_run_id IS NOT NULL)
+                      AND (open_item_kind<>'CUSTOMER_PREPAYMENT' OR legacy_import_run_id IS NOT NULL)
                       AND ((status=1 AND NOT is_deleted) OR (status=-1 AND is_deleted AND deleted_at IS NOT NULL))
                     UNION ALL
-                    SELECT client_id,(deleted_at AT TIME ZONE 'Asia/Shanghai')::date,
+                    SELECT id,-1,client_id,(deleted_at AT TIME ZONE 'Asia/Shanghai')::date,
                            source_doc_type,-reporting_amount_local,0
                     FROM ledger_origin WHERE direction='AR' AND client_id IS NOT NULL
                       AND legacy_import_run_id IS NULL AND status=-1 AND is_deleted AND deleted_at IS NOT NULL
-                      AND open_item_kind='RECEIVABLE'
+                      AND open_item_kind<>'CUSTOMER_PREPAYMENT'
                 ), posting AS (
                     SELECT client_id,
                         SUM(CASE WHEN bill_date<:from THEN reporting_amount_local ELSE 0 END) AS prior_posted,
                         SUM(CASE WHEN bill_date BETWEEN :from AND :to AND source_doc_type='SALES_SHIPMENT' THEN reporting_amount_local ELSE 0 END) AS shipped,
                         SUM(CASE WHEN bill_date BETWEEN :from AND :to AND source_doc_type='SALES_RETURN' THEN reporting_amount_local ELSE 0 END) AS returned,
                         SUM(CASE WHEN bill_date<=:to THEN reporting_amount_local ELSE 0 END) AS total_posted,
-                        SUM(CASE WHEN bill_date<=:to THEN unverified_original ELSE 0 END) AS unverified_original
+                        SUM(CASE WHEN bill_date<=:to THEN unverified_original ELSE 0 END) AS unverified_original,
+                        bool_or(bill_date<:from AND reporting_amount_local IS NULL) AS unknown_prior,
+                        bool_or(bill_date<=:to AND reporting_amount_local IS NULL) AS unknown_total,
+                        bool_or(bill_date BETWEEN :from AND :to AND source_doc_type='SALES_SHIPMENT' AND reporting_amount_local IS NULL) AS unknown_shipped,
+                        bool_or(bill_date BETWEEN :from AND :to AND source_doc_type='SALES_RETURN' AND reporting_amount_local IS NULL) AS unknown_returned
                     FROM posting_events GROUP BY client_id
                 ),
                 """.formatted(LegacyOpeningBalanceSql.localAmount("ledger.amount_original_local"),
@@ -679,12 +700,19 @@ public class FinanceReportService {
                     SELECT party_id AS client_id,event_date AS bill_date,cash_local,write_off_local,
                            book_local AS applied_local,exchange_diff FROM cash_events
                     UNION ALL
-                    SELECT batch.client_id,allocation.effective_date,0::numeric,0::numeric,allocation.target_amount_local,0::numeric
+                    SELECT batch.client_id,allocation.effective_date,0::numeric,0::numeric,
+                           allocation.target_amount_local-CASE WHEN source.open_item_kind<>'CUSTOMER_PREPAYMENT' OR source.legacy_import_run_id IS NOT NULL THEN allocation.source_amount_local ELSE 0 END,
+                           CASE WHEN source.open_item_kind<>'CUSTOMER_PREPAYMENT' OR source.legacy_import_run_id IS NOT NULL THEN allocation.source_amount_local-allocation.target_amount_local ELSE 0 END
                     FROM customer_open_item_offsets allocation JOIN customer_open_item_offset_batches batch ON batch.id=allocation.offset_batch_id
+                    JOIN ledger_origin source ON source.id=allocation.source_ledger_id
+                    WHERE allocation.status IN('APPLIED','REVERSED')
                     UNION ALL
                     SELECT batch.client_id,(allocation.reversed_at AT TIME ZONE 'Asia/Shanghai')::date,
-                           0::numeric,0::numeric,-allocation.target_amount_local,0::numeric
+                           0::numeric,0::numeric,
+                           -allocation.target_amount_local+CASE WHEN source.open_item_kind<>'CUSTOMER_PREPAYMENT' OR source.legacy_import_run_id IS NOT NULL THEN allocation.source_amount_local ELSE 0 END,
+                           CASE WHEN source.open_item_kind<>'CUSTOMER_PREPAYMENT' OR source.legacy_import_run_id IS NOT NULL THEN allocation.target_amount_local-allocation.source_amount_local ELSE 0 END
                     FROM customer_open_item_offsets allocation JOIN customer_open_item_offset_batches batch ON batch.id=allocation.offset_batch_id
+                    JOIN ledger_origin source ON source.id=allocation.source_ledger_id
                     WHERE allocation.status='REVERSED' AND allocation.reversed_at IS NOT NULL
                 ), coll AS (
                     SELECT client_id,
@@ -693,9 +721,16 @@ public class FinanceReportService {
                         SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN write_off_local ELSE 0 END) AS period_write_off,
                         SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN exchange_diff ELSE 0 END) AS period_exchange_diff,
                         SUM(CASE WHEN bill_date BETWEEN :from AND :to THEN applied_local ELSE 0 END) AS period_applied,
-                        SUM(CASE WHEN bill_date<=:to THEN applied_local ELSE 0 END) AS total_applied
+                        SUM(CASE WHEN bill_date<=:to THEN applied_local ELSE 0 END) AS total_applied,
+                        bool_or(bill_date<:from AND applied_local IS NULL) AS unknown_prior,
+                        bool_or(bill_date<=:to AND applied_local IS NULL) AS unknown_total,
+                        bool_or(bill_date BETWEEN :from AND :to AND cash_local IS NULL) AS unknown_cash,
+                        bool_or(bill_date BETWEEN :from AND :to AND write_off_local IS NULL) AS unknown_write_off,
+                        bool_or(bill_date BETWEEN :from AND :to AND exchange_diff IS NULL) AS unknown_exchange,
+                        bool_or(bill_date BETWEEN :from AND :to AND applied_local IS NULL) AS unknown_applied
                     FROM collection_events GROUP BY client_id
                 )
+                """+FinanceReceivableMaterialSql.CTES+"""
                 SELECT c.code AS "partyCode", c.name AS "partyName", c.full_name AS "partyFull",
                     COALESCE(em_sel.full_name,'') AS "sellerName", d.director AS "director",
                     COALESCE(c.region,'') AS "region", COALESCE(c.place_id,'') AS "district",
@@ -711,21 +746,21 @@ public class FinanceReportService {
                         ELSE CASE WHEN c.tday IS NOT NULL AND c.tday > 0 THEN '月结' || c.tday || '天' ELSE '' END
                     END AS "settlement",
                     COALESCE(c.credit_floor,0) AS "creditFloor",
-                    (COALESCE(p.prior_posted,0) - COALESCE(co.prior_applied,0)) AS "prevBalance",
-                    COALESCE(p.shipped,0) AS "shippedAmount",
-                    COALESCE(co.period_cash,0) AS "receivedAmount",
-                    COALESCE(p.returned,0) AS "returnAmount",
-                    COALESCE(co.period_write_off,0) AS "offsetAmount",
-                    COALESCE(co.period_exchange_diff,0) AS "exchangeDiff",
-                    COALESCE(co.period_applied,0) AS "arReductionAmount",
-                    (COALESCE(p.total_posted,0) - COALESCE(co.total_applied,0)) AS "balance",
-                    (COALESCE(p.total_posted,0) - COALESCE(co.total_applied,0))
-                        - COALESCE(c.credit_floor,0) AS "overFloor",
-                    NULL AS "materialAmount",
+                    CASE WHEN p.unknown_prior OR co.unknown_prior THEN NULL ELSE COALESCE(p.prior_posted,0)-COALESCE(co.prior_applied,0) END AS "prevBalance",
+                    CASE WHEN p.unknown_shipped THEN NULL ELSE COALESCE(p.shipped,0) END AS "shippedAmount",
+                    CASE WHEN co.unknown_cash THEN NULL ELSE COALESCE(co.period_cash,0) END AS "receivedAmount",
+                    CASE WHEN p.unknown_returned THEN NULL ELSE COALESCE(p.returned,0) END AS "returnAmount",
+                    CASE WHEN co.unknown_write_off THEN NULL ELSE COALESCE(co.period_write_off,0) END AS "offsetAmount",
+                    CASE WHEN co.unknown_exchange THEN NULL ELSE COALESCE(co.period_exchange_diff,0) END AS "exchangeDiff",
+                    CASE WHEN co.unknown_applied THEN NULL ELSE COALESCE(co.period_applied,0) END AS "arReductionAmount",
+                    CASE WHEN p.unknown_total OR co.unknown_total THEN NULL ELSE COALESCE(p.total_posted,0)-COALESCE(co.total_applied,0) END AS "balance",
+                    CASE WHEN p.unknown_total OR co.unknown_total THEN NULL ELSE COALESCE(p.total_posted,0)-COALESCE(co.total_applied,0)-COALESCE(c.credit_floor,0) END AS "overFloor",
+                    material.material_local AS "materialAmount",
                     COALESCE(p.unverified_original,0) AS "unverifiedOriginalCount"
                 FROM clients c
                 JOIN posting p ON p.client_id=c.id
                 LEFT JOIN coll co ON co.client_id=c.id
+                LEFT JOIN material_balance material ON material.client_id=c.id
                 LEFT JOIN client_director_v d ON d.client_id=c.id
                 LEFT JOIN employees em_sel
                   ON (em_sel.id = c.owner_employee_id
@@ -734,7 +769,7 @@ public class FinanceReportService {
                               WHEN BTRIM(COALESCE(c.emp_id,'')) ~ '^[0-9]{1,9}$'
                               THEN BTRIM(c.emp_id)::int ELSE NULL END))
                 """;
-        return executeRawPaged(cols, core, keyword, from, to, page, size, "c", documentScope,headers,sort,order,java.util.Set.of("materialAmount"));
+        return executeRawPaged(cols, core, keyword, from, to, page, size, "c", documentScope,headers,sort,order);
     }
 
     /** D 应付款汇总（按供应商；附件 3 口径，2026-07-29 重做）：
@@ -2566,6 +2601,25 @@ public class FinanceReportService {
      */
     @Transactional(readOnly = true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
     public ExportPayload export(String report, Map<String, String> p, String sort, String order) {
+        Map<String,String> query=p==null?Map.of():new LinkedHashMap<>(p);
+        if(report==null||FinanceTemplateLayouts.key(report,query)==null)return exportRaw(report,p,sort,order);
+        var identity=branding==null?null:branding.getIfAvailable();String company=identity==null?"":identity.currentIdentity().companyName();
+        var sink=com.uten.imp.common.export.ExportPageSink.current();
+        if(sink==null) {
+            var result=exportRaw(report,p,sort,order);
+            return result.withLayout(FinanceTemplateLayouts.create(report,query,result.columns(),result.rows(),result.documentMetadata(),company));
+        }
+        final com.uten.imp.common.export.ExportTableLayout[] layout={null};final boolean[] emitted={false};
+        try(var ignored=com.uten.imp.common.export.ExportPageSink.open(page->{
+            if(!emitted[0])layout[0]=FinanceTemplateLayouts.create(report,query,page.columns(),page.rows(),page.documentMetadata(),company);
+            emitted[0]=true;sink.accept(page.withLayout(layout[0]));
+        })) {
+            var result=exportRaw(report,p,sort,order);
+            if(!emitted[0]){layout[0]=FinanceTemplateLayouts.create(report,query,result.columns(),result.rows(),result.documentMetadata(),company);sink.accept(result.withLayout(layout[0]));}
+            return result.withLayout(layout[0]);
+        }
+    }
+    private ExportPayload exportRaw(String report,Map<String,String> p,String sort,String order) {
         var loader = reportLoader(report,p,sort,order);
         LocalDate dateTo=ReportQueryKit.parseDate(p==null?null:p.get("dateTo"));
         if ("gl/operating-pl".equals(report) && com.uten.imp.common.export.ExportPageSink.current() != null) {
@@ -2573,13 +2627,13 @@ public class FinanceReportService {
                     settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS),FinanceReportColumnOptions.from(p,sort,order));
             return new ExportPayload(result.columns().stream().map(c ->
                     new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),
-                    List.of(), Math.toIntExact(result.total()));
+                    List.of(), Math.toIntExact(result.total())).withDocumentMetadata(result.documentMetadata());
         }
         return ReportQueryKit.paginateAll(settings.readInt(SystemSettingKey.EXPORT_MAX_ROWS), loader,
                 ReportTableResponse::total,
                 r -> r.columns() == null ? null : r.columns().stream()
                         .map(c -> new ExportColumn(c.key(), c.label(), c.type(), null, c.unitLabel(), c.unitKey())).toList(),
-                ReportTableResponse::rows);
+                ReportTableResponse::rows,ReportTableResponse::documentMetadata);
     }
 
     @Transactional(readOnly=true,isolation=org.springframework.transaction.annotation.Isolation.REPEATABLE_READ)
@@ -2619,6 +2673,12 @@ public class FinanceReportService {
         UUID accountId = ReportQueryKit.parseUuid(p == null ? null : p.get("accountId"));
         UUID departmentId = ReportQueryKit.parseUuid(p == null ? null : p.get("departmentId"));
         UUID partyId = ReportQueryKit.parseUuid(p == null ? null : p.get("partyId"));
+        UUID currencyId = ReportQueryKit.parseUuid(p == null ? null : p.get("currencyId"));
+        UUID binWarehouseId = ReportQueryKit.parseUuid(p == null ? null : p.get("binWarehouseId"));
+        UUID statementReviewId = ReportQueryKit.parseUuid(p == null ? null : p.get("statementReviewId"));
+        UUID materialContextId = ReportQueryKit.parseUuid(p == null ? null : p.get("materialContextId"));
+        boolean allMaterialContexts=com.uten.imp.features.finance.statement.FinanceStatementRequest.allMaterialContexts(p==null?null:p.get("allMaterialContexts"));
+        boolean statementTemplate=p!=null&&"template".equals(p.get("layout"));
         UUID categoryId = ReportQueryKit.parseUuid(p == null ? null : p.get("categoryId"));
         Short status = ReportQueryKit.parseShort(p == null ? null : p.get("status"));
         LocalDate dateFrom = ReportQueryKit.parseDate(p == null ? null : p.get("dateFrom"));
@@ -2631,7 +2691,14 @@ public class FinanceReportService {
         Boolean settled = parseBool(p == null ? null : p.get("settled"));
         int year = parseIntOrZero(p == null ? null : p.get("year"));
         Map<String, String> facets = FinanceReportHeaderRequest.filters(p==null?Map.of():p);
-        BiFunction<Integer, Integer, ReportTableResponse> loader = switch (report) {
+        if(statementReviewId!=null&&FinanceReportColumnCandidates.current()!=null)
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"冻结原件保留原范围和完整明细，不支持列候选搜索");
+        if(statementReviewId!=null&&(!facets.isEmpty()||sort!=null&&!sort.isBlank()||order!=null&&!order.isBlank()||keyword!=null&&!keyword.isBlank()))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"冻结原件须按原范围、列序和完整明细输出，请先清除搜索、列筛选和排序");
+        if(statementReviewId!=null&&!java.util.Set.of("statements/subcontract","statements/supplier","statements/client","statements/other-receivable").contains(report))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"所选原件只适用于其原对账单，不能套用其他报表");
+        BiFunction<Integer, Integer, ReportTableResponse> loader = statementReviewId!=null?
+                (pg,sz)->statementDocuments.getObject().originalTableFor(report.substring("statements/".length()),statementReviewId,dateFrom,dateTo,partyId,currencyId,pg,sz,materialContextId,report.equals("statements/other-receivable")?allMaterialContexts:null):switch (report) {
             case "ar-ap/overview"    -> (pg, sz) -> arApOverviewAuthorized(dateFrom, dateTo, displayMode, keyword, categoryType, categoryId, pg, sz, facets, sort, order);
             case "ar-ap/detail"      -> (pg, sz) -> arApDetailAuthorized(direction, billNo, partyId, settled, dateFrom, dateTo, keyword, facets, pg, sz, sort, order);
             case "ar-ap/order-plan"  -> (pg, sz) -> salesOrderReceivablePlanAuthorized(billNo, clientId, dateFrom, dateTo, keyword, pg, sz, sort, order,facets);
@@ -2652,31 +2719,40 @@ public class FinanceReportService {
             case "bank/detail", "bank/summary" -> (pg,sz) -> bankReportAuthorized(report.substring("bank/".length()),accountId,dateFrom,dateTo,keyword,status,facets,pg,sz,sort,order);
             case "customer-prepayment/events", "statement/customer-prepayments" -> (pg,sz) -> customerPrepaymentEvents(clientId,dateFrom,dateTo,pg,sz,keyword,FinanceReportColumnOptions.from(p,sort,order));
             // C2 对账单（FinanceStatementService；lossRate 仅 subcontract 用，默认 0.03）
-            case "statements/subcontract" -> (pg, sz) -> statementService.subcontractStatement(
-                    keyword, dateFrom, dateTo, parseBigDecimal(p == null ? null : p.get("lossRate")), pg, sz,FinanceReportColumnOptions.from(p,sort,order));
-            case "statements/supplier" -> (pg, sz) -> statementService.supplierStatement(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
-            case "statements/other-receivable" -> (pg, sz) -> statementService.otherReceivableStatement(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
-            case "statements/client" -> (pg, sz) -> statementService.clientStatement(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "statements/subcontract" -> (pg, sz) -> statementTemplate?statementService.subcontractStatement(
+                    keyword,dateFrom,dateTo,parseBigDecimal(p==null?null:p.get("lossRate")),partyId,currencyId,pg,sz,FinanceReportColumnOptions.from(p,sort,order)):
+                    statementService.subcontractStatement(keyword,dateFrom,dateTo,parseBigDecimal(p==null?null:p.get("lossRate")),pg,sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "statements/supplier" -> (pg, sz) -> statementTemplate?statementService.supplierStatement(keyword,dateFrom,dateTo,partyId,currencyId,pg,sz,FinanceReportColumnOptions.from(p,sort,order)):statementService.supplierStatement(keyword,dateFrom,dateTo,pg,sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "statements/other-receivable" -> (pg, sz) -> statementTemplate||materialContextId!=null?
+                    statementDocuments.getObject().currentMaterialTable(materialContextId,partyId,currencyId,keyword,dateFrom,dateTo,pg,sz,FinanceReportColumnOptions.from(p,sort,order),allMaterialContexts):
+                    statementService.otherReceivableStatement(keyword,dateFrom,dateTo,pg,sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "statements/client" -> (pg, sz) -> statementTemplate?statementService.clientStatement(keyword,dateFrom,dateTo,partyId,currencyId,pg,sz,FinanceReportColumnOptions.from(p,sort,order)):statementService.clientStatement(keyword,dateFrom,dateTo,pg,sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "auxiliary/receivable","auxiliary/payable" -> (pg,sz)->com.uten.imp.features.finance.statement.FinanceAuxiliaryReports.balances(em,access,report.equals("auxiliary/receivable"),dateFrom,dateTo,p==null?null:p.get("accountCode"),ReportQueryKit.parseUuid(p==null?null:p.get("auxiliaryId")),currencyId,p==null?null:p.get("sourceSystem"),pg,sz,FinanceReportColumnOptions.from(p,sort,order));
             // C4 成本核算（FinanceCostService）
             case "cost/product" -> (pg, sz) -> costService.productCost(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
             case "cost/sales-summary" -> (pg, sz) -> costService.salesCostSummary(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
-            case "cost/copper-fee" -> (pg, sz) -> costService.copperFee(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
-            case "cost/copper-pickling" -> (pg, sz) -> costService.copperPickling(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
-            case "cost/plastic" -> (pg, sz) -> costService.plasticUsage(keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
+            case "cost/copper-fee" -> (pg, sz) -> costService.copperFee(keyword,dateFrom,dateTo,pg,sz,FinanceReportColumnOptions.from(p,sort,order),supplierId);
+            case "cost/copper-pickling" -> (pg, sz) -> costService.copperPickling(keyword,dateFrom,dateTo,pg,sz,FinanceReportColumnOptions.from(p,sort,order),supplierId);
+            case "cost/plastic" -> (pg, sz) -> costService.plasticUsage(keyword,dateFrom,dateTo,pg,sz,FinanceReportColumnOptions.from(p,sort,order),binWarehouseId);
             case "cost/plastic-detail" -> (pg, sz) -> costService.plasticDetail(
                     p == null ? null : p.get("kind"), keyword, dateFrom, dateTo, pg, sz,FinanceReportColumnOptions.from(p,sort,order));
             // C3 总账（GlReportService；year/month 缺省取 dateTo 年/月）
+            case "gl/chart-codes", "gl/chart-template" -> (pg,sz) -> {
+                com.uten.imp.features.finance.FinanceCompanyReportAccess.require(access);
+                return com.uten.imp.features.finance.gl.FinanceChartReports.read(em,report.equals("gl/chart-template"),pg,sz,FinanceReportColumnOptions.from(p,sort,order));
+            };
             case "gl/trial-balance" -> (pg, sz) -> glReportService.trialBalance(dateFrom,dateTo,pg,sz,FinanceReportColumnOptions.from(p,sort,order));
-            case "gl/balance-sheet" -> (pg, sz) -> com.uten.imp.features.finance.gl.FinancialStatementPresentation.apply("BALANCE",p==null?null:p.get("layout"),glSnapshotReport(report,dateTo,0,1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.balanceSheet(dateTo,FinanceReportColumnOptions.from(p,sort,order))));
-            case "gl/profit-annual" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.profitAnnual(yearOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
-            case "gl/profit-monthly" -> (pg, sz) -> com.uten.imp.features.finance.gl.FinancialStatementPresentation.apply("PROFIT",p==null?null:p.get("layout"),glSnapshotReport(report,dateTo,yearOf(p,dateTo),monthOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order),()->glReportService.profitMonthly(yearOf(p,dateTo),monthOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order))));
-            case "gl/manufacturing-expense" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.manufacturingExpense(yearOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
-            case "gl/admin-expense" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.adminExpense(yearOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
-            case "gl/sales-expense" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.salesExpense(yearOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
+            case "gl/balance-sheet" -> (pg, sz) -> com.uten.imp.features.finance.gl.FinancialStatementPresentation.forExport("BALANCE",p==null?null:p.get("layout"),glSnapshotReport(report,dateTo,0,1,FinanceReportColumnOptions.from(p,sort,order),()->glReportService.balanceSheet(dateTo,FinanceReportColumnOptions.from(p,sort,order))));
+            case "gl/profit-annual" -> (pg, sz) -> com.uten.imp.features.finance.gl.FinancialStatementPresentation.forExport("ANNUAL",p==null?null:p.get("layout"),glSnapshotReport(report,dateTo,yearOf(p,dateTo),statementThroughMonth(p,dateTo),FinanceReportColumnOptions.from(p,sort,order),()->glReportService.profitAnnual(yearOf(p,dateTo),statementThroughMonth(p,dateTo),FinanceReportColumnOptions.from(p,sort,order))));
+            case "gl/profit-monthly" -> (pg, sz) -> com.uten.imp.features.finance.gl.FinancialStatementPresentation.forExport("PROFIT",p==null?null:p.get("layout"),glSnapshotReport(report,dateTo,yearOf(p,dateTo),monthOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order),()->glReportService.profitMonthly(yearOf(p,dateTo),monthOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order))));
+            case "gl/manufacturing-expense" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),statementThroughMonth(p,dateTo),FinanceReportColumnOptions.from(p,sort,order),()->glReportService.manufacturingExpense(yearOf(p,dateTo),statementThroughMonth(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
+            case "gl/admin-expense" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),statementThroughMonth(p,dateTo),FinanceReportColumnOptions.from(p,sort,order),()->glReportService.adminExpense(yearOf(p,dateTo),statementThroughMonth(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
+            case "gl/sales-expense" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),statementThroughMonth(p,dateTo),FinanceReportColumnOptions.from(p,sort,order),()->glReportService.salesExpense(yearOf(p,dateTo),statementThroughMonth(p,dateTo),FinanceReportColumnOptions.from(p,sort,order)));
             case "gl/operating-pl" -> (pg, sz) -> glSnapshotReport(report,dateTo,yearOf(p,dateTo),monthOf(p,dateTo),FinanceReportColumnOptions.from(p,sort,order),()->glReportService.operatingPlPage(yearOf(p,dateTo),monthOf(p,dateTo),pg,sz,FinanceReportColumnOptions.from(p,sort,order)));
             // C5 固定资产/长期待摊清单
             case "fa/depreciation-schedule" -> (pg, sz) -> fixedAssetService.depreciationSchedule(pg,sz,FinanceReportColumnOptions.from(p,sort,order),dateTo);
             case "fa/amortization-schedule" -> (pg, sz) -> fixedAssetService.amortizationSchedule(pg,sz,FinanceReportColumnOptions.from(p,sort,order),dateTo);
+            case "fa/completed-depreciation-schedule" -> (pg,sz)->fixedAssetService.completedDepreciationSchedule(pg,sz,FinanceReportColumnOptions.from(p,sort,order),dateTo);
             default -> throw new ApiException(ErrorCode.VALIDATION_FAILED, "未知报表: " + report);
         };
         return loader;
@@ -2721,6 +2797,10 @@ public class FinanceReportService {
         String y = p == null ? null : p.get("year");
         if (y != null && !y.isBlank()) return parseInt(y, "年份");
         return (dateTo != null ? dateTo : BusinessTime.today()).getYear();
+    }
+    private static int statementThroughMonth(Map<String,String> p,LocalDate dateTo) {
+        if(dateTo==null&&(p==null||p.get("month")==null)&&yearOf(p,null)<BusinessTime.today().getYear())return 12;
+        return monthOf(p,dateTo);
     }
     private static int monthOf(Map<String, String> p, LocalDate dateTo) {
         String m = p == null ? null : p.get("month");

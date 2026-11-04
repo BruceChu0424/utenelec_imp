@@ -11,6 +11,12 @@ public interface BlobStore {
     /** 将字节与确认长度落盘；媒体类型由上传授权和附件元数据保存。 */
     void store(String storageKey, InputStream in, long contentLength);
 
+    default void store(String storageKey,InputStream in,long contentLength,
+            com.uten.imp.common.files.document.DocumentIntakeProfile profile) {
+        if(profile==null||contentLength<1||contentLength>profile.maxBytes())throw new IllegalArgumentException("文件大小无效");
+        store(storageKey,in,contentLength);
+    }
+
     /** 打开对象的输入流用于下载（调用方负责关闭）。 */
     InputStream read(String storageKey);
 

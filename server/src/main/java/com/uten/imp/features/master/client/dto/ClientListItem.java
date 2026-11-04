@@ -22,8 +22,10 @@ import java.util.UUID;
  */
 @Getter
 public class ClientListItem {
-    public String getCreditDisplayText() { return credit==null?null:credit.setScale(2,java.math.RoundingMode.HALF_UP).toPlainString(); }
-    public String getCreditFloorDisplayText() { return (creditFloor==null?java.math.BigDecimal.ZERO:creditFloor).setScale(2,java.math.RoundingMode.HALF_UP).toPlainString(); }
+    public String getCreditExact() { return com.uten.imp.common.util.DecimalText.of(credit); }
+    public String getCreditFloorExact() { return com.uten.imp.common.util.DecimalText.of(creditFloor); }
+    public String getCreditDisplayText() { return com.uten.imp.common.finance.ExactDecimalText.plain(credit,2); }
+    public String getCreditFloorDisplayText() { return com.uten.imp.common.finance.ExactDecimalText.plain(creditFloor==null?BigDecimal.ZERO:creditFloor,2); }
     private UUID id;
     private String code;                // 客户编码（Number）
     private String name;                // 客户简称（Client_Name）

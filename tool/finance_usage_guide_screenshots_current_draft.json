@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 1,
+  "purpose": "用户要求立即交当前进度版 仅使用实际应用初检截图",
+  "minimumVerifiedImages": 0,
+  "groups": [
+    {
+      "id": "home",
+      "images": [
+        {
+          "path": "D:\\Projects\\uten_imp_worktrees\\finance-latest-integration-20261103\\tmp\\finance-interactive\\ui20261104a\\screenshots\\01-home-web.jpg",
+          "caption": "钱流管理的设置台账与报表中心入口",
+          "actualApp": true,
+          "verifiedBy": "整合负责人 实际本地应用初检",
+          "captureContext": "匿名隔离环境 非最终业务验收"
+        }
+      ]
+    },
+    {
+      "id": "accounts",
+      "images": [
+        {
+          "path": "D:\\Projects\\uten_imp_worktrees\\finance-latest-integration-20261103\\tmp\\finance-interactive\\ui20261104a\\screenshots\\02-accounts-web.jpg",
+          "caption": "科目余额表代码的新增 导入与业务科目对应入口 局部",
+          "actualApp": true,
+          "verifiedBy": "整合负责人 实际本地应用初检",
+          "captureContext": "匿名隔离环境 非最终业务验收",
+          "crop": [
+            0.055,
+            0.105,
+            0.055,
+            0.57
+          ]
+        }
+      ]
+    },
+    {
+      "id": "opening",
+      "images": [
+        {
+          "path": "D:\\Projects\\uten_imp_worktrees\\finance-latest-integration-20261103\\tmp\\finance-interactive\\ui20261104a\\screenshots\\03-opening-web.jpg",
+          "caption": "原账套接续的两份原表导入与七个核对页签 画面尚未选择批次",
+          "actualApp": true,
+          "verifiedBy": "整合负责人 实际本地应用初检",
+          "captureContext": "匿名隔离环境 非最终业务验收",
+          "crop": [
+            0.125,
+            0.105,
+            0.125,
+            0.1
+          ]
+        },
+        {
+          "path": "D:\\Projects\\uten_imp_worktrees\\finance-latest-integration-20261103\\tmp\\finance-interactive\\ui20261104a\\screenshots\\03a-auxiliary-web.jpg",
+          "caption": "辅助核算项目的查询 添加与原编号对应列头 局部",
+          "actualApp": true,
+          "verifiedBy": "整合负责人 实际本地应用初检",
+          "captureContext": "匿名隔离环境 非最终业务验收",
+          "crop": [
+            0.07,
+            0.105,
+            0.07,
+            0.57
+          ]
+        }
+      ]
+    },
+    {
+      "id": "trial",
+      "images": [
+        {
+          "path": "D:\\Projects\\uten_imp_worktrees\\finance-latest-integration-20261103\\tmp\\finance-interactive\\ui20261104a\\screenshots\\04-trial-web.jpg",
+          "caption": "科目余额表的原列与科目 期初 辅助入口 局部",
+          "actualApp": true,
+          "verifiedBy": "整合负责人 实际本地应用初检",
+          "captureContext": "匿名隔离环境 非最终业务验收",
+          "crop": [
+            0.07,
+            0.075,
+            0.02,
+            0.44
+          ]
+        }
+      ]
+    },
+    {
+      "id": "balance",
+      "images": [
+        {
+          "path": "D:\\Projects\\uten_imp_worktrees\\finance-latest-integration-20261103\\tmp\\finance-interactive\\ui20261104a\\screenshots\\05-balance-source-layout-native.png",
+          "caption": "月度资产负债表左右同表 原灰格与子项缩进 原生布局初检",
+          "actualApp": true,
+          "verifiedBy": "整合负责人 实际本地应用初检",
+          "captureContext": "匿名隔离环境 非最终业务验收"
+        }
+      ]
+    },
+    {
+      "id": "profit",
+      "images": [
+        {
+          "path": "D:\\Projects\\uten_imp_worktrees\\finance-latest-integration-20261103\\tmp\\finance-interactive\\ui20261104a\\screenshots\\06-profit-web.jpg",
+          "caption": "月度利润表的会计月份 原行次和本月与本年累计列",
+          "actualApp": true,
+          "verifiedBy": "整合负责人 实际本地应用初检",
+          "captureContext": "匿名隔离环境 非最终业务验收"
+        },
+        {
+          "path": "D:\\Projects\\uten_imp_worktrees\\finance-latest-integration-20261103\\tmp\\finance-interactive\\ui20261104a\\screenshots\\06-profit-template-web.jpg",
+          "caption": "利润表模板预览中的打印与下载Excel入口",
+          "actualApp": true,
+          "verifiedBy": "整合负责人 实际本地应用初检",
+          "captureContext": "匿名隔离环境 非最终业务验收",
+          "crop": [
+            0.075,
+            0.105,
+            0.075,
+            0.1
+          ]
+        }
+      ]
+    },
+    {
+      "id": "applications",
+      "images": [
+        {
+          "path": "D:\\Projects\\uten_imp_worktrees\\finance-latest-integration-20261103\\tmp\\finance-interactive\\ui20261104a\\screenshots\\07-applications-six-web.jpg",
+          "caption": "各部门申请流程 新增时仍按六个原名称选择",
+          "actualApp": true,
+          "verifiedBy": "整合负责人 实际本地应用初检",
+          "captureContext": "匿名隔离环境 非最终业务验收",
+          "crop": [
+            0.28,
+            0.21,
+            0.28,
+            0.21
+          ]
+        },
+        {
+          "path": "D:\\Projects\\uten_imp_worktrees\\finance-latest-integration-20261103\\tmp\\finance-interactive\\ui20261104a\\screenshots\\07c-native-expense-form.png",
+          "caption": "出差报销实际原生表单的来源选择 费用明细与审批流程 仅布局初检",
+          "actualApp": true,
+          "verifiedBy": "整合负责人 实际本地应用初检",
+          "captureContext": "匿名隔离环境 非最终业务验收"
+        }
+      ]
+    },
+    {
+      "id": "payable",
+      "images": [
+        {
+          "path": "D:\\Projects\\uten_imp_worktrees\\finance-latest-integration-20261103\\tmp\\finance-interactive\\ui20261104a\\screenshots\\08a-statement-web.jpg",
+          "caption": "供应商对账单的对象 币别 原八列与原件及打印资料入口",
+          "actualApp": true,
+          "verifiedBy": "整合负责人 实际本地应用初检",
+          "captureContext": "匿名隔离环境 非最终业务验收"
+        }
+      ]
+    },
+    {
+      "id": "financial_precision",
+      "images": [
+        {
+          "path": "D:\\Projects\\uten_imp_worktrees\\finance-latest-integration-20261103\\tmp\\finance-interactive\\ui20261104a\\screenshots\\08-counterparty-web.jpg",
+          "caption": "实际明细中原币小额与反向金额的完整显示 局部",
+          "actualApp": true,
+          "verifiedBy": "整合负责人 实际本地应用初检",
+          "captureContext": "匿名隔离环境 非最终业务验收",
+          "crop": [
+            0.53,
+            0.36,
+            0.02,
+            0.18
+          ]
+        }
+      ]
+    }
+  ]
+}

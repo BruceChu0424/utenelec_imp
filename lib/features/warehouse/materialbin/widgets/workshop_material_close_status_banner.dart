@@ -102,6 +102,13 @@ class WmCloseStatusBanner extends StatelessWidget {
           trailing: retryButton(l10n.wmSettleAgain),
         );
       case WmCloseState.failed:
+        if (s.precisionRequirement != null) {
+          return notice(
+            '本次结算需要选择保留的小数位和取舍方式；原盘点、已结算历史与实际用量保持原值。',
+            level: UtenInlineNoticeLevel.warning,
+            trailing: retryButton('选择本次精度并重试'),
+          );
+        }
         final reason = s.lastErrorMessage;
         final head = s.failures >= 3 ? l10n.wmCloseFailing : '结算没成功, 系统会自动再试。';
         return notice(

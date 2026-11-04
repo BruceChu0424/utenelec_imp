@@ -66,10 +66,13 @@ public final class ReportTotalsCalculator {
      * @param groupKey 展示名称列 key；null = 不分组(重量、计数和固定本币恒不分组)
      * @param groupIdentityKey 真实单位/币种身份列 key；名称不提供可相加的证明，缺少身份的分组只返回待核验
      */
-    public record Spec(String key, String label, String type, String groupKey, String groupIdentityKey) {
+    public record Spec(String key, String label, String type, String groupKey, String groupIdentityKey, boolean requireComplete) {
+        public Spec(String key,String label,String type,String groupKey,String groupIdentityKey) {
+            this(key,label,type,groupKey,groupIdentityKey,false);
+        }
         /** Legacy grouped specifications lack identity evidence and produce pending totals. */
         public Spec(String key,String label,String type,String groupKey) {
-            this(key,label,type,groupKey,null);
+            this(key,label,type,groupKey,null,false);
         }
     }
 
@@ -130,7 +133,10 @@ public final class ReportTotalsCalculator {
                 if (groupKey != null) sql.append("CASE WHEN NULLIF(BTRIM(").append(identity)
                         .append("::text),'') IS NULL OR NULLIF(BTRIM(").append(display)
                         .append("::text),'') IS NULL THEN NULL ELSE ");
+                if(cols.get(i).requireComplete())sql.append("CASE WHEN COUNT(*) FILTER(WHERE t.\"")
+                        .append(cols.get(i).key()).append("\" IS NULL)>0 THEN NULL ELSE ");
                 sql.append("SUM(t.\"").append(cols.get(i).key()).append("\")");
+                if(cols.get(i).requireComplete())sql.append(" END");
                 if (groupKey != null) sql.append(" END");
             }
             sql.append(" FROM (").append(inner).append(") t");
@@ -162,7 +168,10 @@ public final class ReportTotalsCalculator {
                         continue;
                     }
                     BigDecimal v = toDecimal(row[idx]);
-                    if (v == null) continue;
+                    if (v == null) {
+                        if(cols.get(i).requireComplete())groups.computeIfAbsent(cols.get(i).key(),key->new java.util.TreeMap<>(GROUP_ORDER)).put(group,null);
+                        continue;
+                    }
                     groups.computeIfAbsent(cols.get(i).key(),key->new java.util.TreeMap<>(GROUP_ORDER)).put(group,v);
                 }
             }
@@ -207,6 +216,7 @@ public final class ReportTotalsCalculator {
             String groupKey = safe(s.groupKey()) ? s.groupKey() : null;
             // null 分组值排在最后，与 SQL 版的 ORDER BY 1 NULLS LAST 一致。
             Map<Group, BigDecimal> sums = new java.util.TreeMap<>(GROUP_ORDER);
+            java.util.Set<Group> incomplete=new java.util.HashSet<>();
             boolean any = false;
             for (Map<String, Object> row : rows) {
                 if (row == null) continue;
@@ -218,7 +228,11 @@ public final class ReportTotalsCalculator {
                     continue;
                 }
                 BigDecimal v = toDecimal(row.get(s.key()));
-                if (v == null) continue;
+                if (v == null) {
+                    if(s.requireComplete()){incomplete.add(group);sums.put(group,null);any=true;}
+                    continue;
+                }
+                if(incomplete.contains(group))continue;
                 sums.merge(group, v, BigDecimal::add);
                 any = true;
             }

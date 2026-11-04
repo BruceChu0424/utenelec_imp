@@ -158,6 +158,40 @@ class WorkshopMaterialClosePostgresTest {
     // =============================================================================================
 
     @Test
+    void backgroundPrecisionWaitResumesOnlyWithExplicitFrozenPolicyAndReversalKeepsIt() throws Exception {
+        CloseBench bench=CloseBench.create(beans,"precision");
+        UUID own=bench.granule("明确精度主料","OWN");
+        bench.edge(bench.world.goodsA(),own,"0.3");bench.stockIn(own,"10","10");
+        bench.enable(List.of());bench.issue(own,"3",null);
+        UUID first=bench.firstPeriod,count=bench.startCount(first,BusinessTime.today().minusDays(1));
+        bench.weighed(count,"own",own,"2");bench.submit(count);
+        assertEquals(Result.FAILED,closes.attempt(first,TriggerKind.AFTER_COUNT,bench.admin));
+        var waiting=closes.status(first);assertNotNull(waiting.precisionRequirement());
+        assertEquals("workshop.material.waste-rate",waiting.precisionRequirement().get("calculationKey"));
+        assertEquals(0,db.queryForObject("SELECT count(*) FROM workshop_material_period_closes WHERE period_id=?",Integer.class,first));
+        bench.login();
+        assertThrows(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class,
+            ()->closes.retry(first,new RetryRequest(key("choice-missing"))));
+        try(var chosen=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("workshop.material.waste-rate",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(5,"DOWN")))){
+            closes.retry(first,new RetryRequest(key("choice-confirmed")));
+        }
+        long deadline=System.nanoTime()+java.time.Duration.ofSeconds(20).toNanos();
+        while(!"CLOSED/NONE".equals(state(first))&&System.nanoTime()<deadline)Thread.sleep(50);
+        assertEquals("CLOSED/NONE",state(first));
+        money("-0.33333",material(first,own).get("waste_rate"));
+        String frozen=db.queryForObject("SELECT business_precision_policy::text FROM workshop_material_period_closes WHERE period_id=? AND status='ACTIVE'",String.class,first);
+        assertEquals(5,json.readTree(frozen).path("choices").path("workshop.material.waste-rate").path("scale").asInt());
+        assertEquals(2,db.queryForObject("SELECT precision_version FROM workshop_material_period_closes WHERE period_id=? AND status='ACTIVE'",Integer.class,first));
+        bench.login();
+        try(var unrelated=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("workshop.material.waste-rate",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(1,"HALF_UP")))){
+            closes.reopen(first,new ReopenRequest(bench.periodVersion(first),"原精度反向验证",key("precision-reverse")));
+        }
+        assertEquals(frozen,db.queryForObject("SELECT business_precision_policy::text FROM workshop_material_period_closes WHERE period_id=?",String.class,first));
+        money("2",balance(bench.bin,own));
+        assertTrue(com.uten.imp.common.finance.BusinessPrecisionContext.choices().isEmpty());
+    }
+
+    @Test
     void closeClassifiesEveryMaterialAndMovesItsValueIntoTheProductCost() {
         CloseBench bench = CloseBench.create(beans, "classify");
         bench.confirmInboundAndDrain();

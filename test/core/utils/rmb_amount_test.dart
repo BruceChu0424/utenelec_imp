@@ -17,8 +17,10 @@ void main() {
       );
       expect(rmbCapitalExact('0.01'), '人民币壹分');
       expect(rmbCapitalExact('000.50'), '人民币伍角');
-      for (final value in ['1e5', '-1', '1.005', '99999999999999999']) {
-        expect(rmbCapitalExact(value), '');
+      expect(rmbCapitalExact('1e5'), '人民币壹拾万元整');
+      expect(rmbCapitalExact('-1'), '人民币负壹元整');
+      for (final value in ['1.005', '99999999999999999']) {
+        expect(rmbCapitalExact(value), '人民币$value元（大写待核对）');
       }
     },
   );
@@ -66,14 +68,14 @@ void main() {
     expect(rmbCapital(11009), '人民币壹万壹仟零玖元整');
   });
 
-  test('万亿段与四舍五入到分', () {
+  test('万亿段与分以下原值保留', () {
     expect(rmbCapital(1234567890.12), '人民币壹拾贰亿叁仟肆佰伍拾陆万柒仟捌佰玖拾元壹角贰分');
-    expect(rmbCapital(0.005), '人民币壹分');
-    expect(rmbCapital(1.004), '人民币壹元整');
+    expect(rmbCapital(0.005), '人民币0.005元（大写待核对）');
+    expect(rmbCapital(1.004), '人民币1.004元（大写待核对）');
   });
 
   test('非法输入返回空串', () {
-    expect(rmbCapital(-1), '');
+    expect(rmbCapital(-1), '人民币负壹元整');
     expect(rmbCapital(double.nan), '');
     expect(rmbCapital(double.infinity), '');
   });

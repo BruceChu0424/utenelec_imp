@@ -15,7 +15,8 @@ class ProcurementConsiderationBasisTest {
                 new BigDecimal("0.000000000000000000000003"),BigDecimal.ONE,new BigDecimal("3")));
         assertNull(ProcurementConsiderationBasis.finitePortion(new BigDecimal("0.000000000000000000000001"),BigDecimal.ONE,new BigDecimal("10")));
     }
-    @Test void reviewedCaseBookAllocationsRetainEveryLastSourceUnit(){
+    @Test void reviewedCaseBookAllocationsRetainEveryLastSourceUnit()throws Exception{
+        try(var choice=BusinessPrecisionContext.use(java.util.Map.of("money.book-share",new BusinessPrecisionContext.Choice(30,"DOWN")))){
         var ten=new BigDecimal("10");var three=new BigDecimal("3");
         var first=ProcurementConsiderationBasis.bookAllocation(ten,BigDecimal.ONE,three);
         var second=ProcurementConsiderationBasis.bookAllocation(ten.subtract(first),BigDecimal.ONE,new BigDecimal("2"));
@@ -25,5 +26,6 @@ class ProcurementConsiderationBasisTest {
         assertEquals(new BigDecimal("3.333333333333333333333333333334"),last);
         assertEquals(new BigDecimal("0.000000000000000000000000000001"),
                 ProcurementConsiderationBasis.finiteBookPortion(new BigDecimal("0.000000000000000000000000000001"),BigDecimal.ONE,BigDecimal.ONE));
+        }
     }
 }

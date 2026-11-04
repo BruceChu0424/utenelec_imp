@@ -19,6 +19,7 @@ import '../../../core/network/api_exception.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../shared/attachments/attachment_section.dart';
 import '../../../shared/attachments/attachment_service.dart';
+import '../../finance/widgets/finance_native_original_section.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/auth/sensitive_write.dart';
@@ -667,7 +668,7 @@ class _BusinessApplicationDetailPageState
                             ),
                           _fact(
                             value.kind == 'TRAVEL' ? '预计费用' : '申请金额',
-                            '${value.amount} 元',
+                            value.amountLabel,
                           ),
                           if (value.rejectReason != null)
                             _fact('驳回原因', value.rejectReason!),
@@ -706,6 +707,13 @@ class _BusinessApplicationDetailPageState
                       ),
                     ),
                     const SizedBox(height: UtenSpacing.s16),
+                    if (value.continuedOriginal) ...[
+                      FinanceNativeOriginalSection(
+                        ownerType: 'BUSINESS_APPLICATION',
+                        ownerId: value.id,
+                      ),
+                      const SizedBox(height: UtenSpacing.s16),
+                    ],
                     attachments.when(
                       loading: () => const LinearProgressIndicator(),
                       error: (e, s) => UtenButton(
@@ -1299,11 +1307,19 @@ class _PaymentRecordPickerState extends ConsumerState<_PaymentRecordPicker>
             // amount; adapt it to the existing finance row without a double.
             final value = FinanceDocListItem.fromJson({
               ...row,
-              'amountLocalExact':
-                  row['amountLocalExact'] ?? row['amountLocalText'],
+              if (row['amountBasis'] == 'ORIGINAL')
+                'amountOriginalExact': row['amountText']
+              else
+                'amountLocalExact':
+                    row['amountText'] ??
+                    row['amountLocalExact'] ??
+                    row['amountLocalText'],
             });
-            if (value.amountLocalText == null ||
-                value.amountLocalText!.isEmpty) {
+            if ((widget.application.originalAmount
+                        ? value.amountOriginalText
+                        : value.amountLocalText)
+                    ?.isNotEmpty !=
+                true) {
               throw const FormatException('预付账务候选金额未完整返回，暂不能选择');
             }
             return value;
@@ -1358,7 +1374,7 @@ class _PaymentRecordPickerState extends ConsumerState<_PaymentRecordPicker>
         '收款供应商  ${widget.application.fields['supplierName'] ?? widget.application.fields['payee'] ?? '—'}',
       ),
       const SizedBox(height: UtenSpacing.s16),
-      Text('预付金额  ${widget.application.amount} 元'),
+      Text('预付金额  ${widget.application.amountLabel}'),
       const SizedBox(height: UtenSpacing.s16),
       UtenDateField(
         label: '实际付款日期',
@@ -1508,7 +1524,7 @@ class _PaymentRecordPickerState extends ConsumerState<_PaymentRecordPicker>
                                   '${row.billNo ?? '未编号财务单'}  ${row.billDate ?? ''}',
                                 ),
                                 trailing: Text(
-                                  '${row.amountLocalText ?? row.amountLocal?.toStringAsFixed(2) ?? '—'} 元',
+                                  '${widget.application.originalAmount ? row.amountOriginalText ?? '—' : row.amountLocalText ?? '—'} ${widget.application.amountUnit}',
                                 ),
                                 onTap: () {
                                   if (!_confirming) {

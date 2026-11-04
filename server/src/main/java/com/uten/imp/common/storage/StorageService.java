@@ -62,6 +62,13 @@ public interface StorageService {
     /** 为一次上传生成 storageKey + 客户端直传目标 URL。 */
     PresignedUpload presignUpload(UploadRequest request);
 
+    /** Server-only intake policy; public upload contracts cannot supply a profile. */
+    default PresignedUpload presignUpload(UploadRequest request,
+            com.uten.imp.common.files.document.DocumentIntakeProfile profile) {
+        if(profile==null||request.contentLength()<1||request.contentLength()>profile.maxBytes())throw new IllegalArgumentException("文件大小无效");
+        return presignUpload(request);
+    }
+
     /** 校验对象已上传到位并返回其实际元信息（OSS HEAD / 本地读文件大小）。 */
     StoredObject describe(String storageKey);
 

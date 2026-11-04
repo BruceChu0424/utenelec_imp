@@ -91,7 +91,7 @@ void main() {
     final body = controller.buildBody();
     expect(body, isNotNull);
     expect(body!['bank'], '新开户行');
-    expect(body['initTotal'], 100);
+    expect(body['initTotal'], '100');
     expect(body.containsKey('name'), isFalse);
     expect(body.containsKey('status'), isFalse);
     expect(body.containsKey('defaultShipmentPolicy'), isFalse);

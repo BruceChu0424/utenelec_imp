@@ -34,9 +34,12 @@ class BusinessApplicationPostgresTest {
     JdbcTemplate jdbc;TransactionTemplate tx;BusinessApplicationService service;
     final ThreadLocal<AuthUser> principal=new ThreadLocal<>();
     UUID dept,otherDept,applicant,reviewer,finance,executive,initialReviewer,secondaryReviewer,viceExecutive;
+    final UUID fixtureCurrency=UUID.randomUUID();
+    com.uten.imp.application.port.NativeApplicationOriginPort origins;
     ApprovalCandidateDirectoryPort candidates;
     com.uten.imp.application.port.AttachmentEvidencePort evidence;
     FinanceDocumentAccessPolicy financeAccess;
+    com.uten.imp.features.finance.FinanceApplicationReferenceAdapter referenceAdapter;
     @BeforeAll static void start(){postgres=new PostgreSQLContainer("postgres:16-alpine");postgres.start();}
     @AfterAll static void stop(){if(postgres!=null)postgres.stop();}
     @BeforeEach void setup(){
@@ -53,7 +56,17 @@ class BusinessApplicationPostgresTest {
         jdbc.execute("CREATE TABLE finance_payments(LIKE finance_expenses INCLUDING ALL)");jdbc.execute("ALTER TABLE finance_payments ADD COLUMN supplier_id uuid");
         jdbc.execute("ALTER TABLE finance_payments ADD COLUMN bill_no text, ADD COLUMN legacy_id int, ADD COLUMN legacy_import_run_id uuid, ADD COLUMN amount_authority_version smallint DEFAULT 1");
         jdbc.execute("CREATE TABLE ar_ap_ledger(id uuid PRIMARY KEY,source_doc_id uuid,source_doc_type text,direction text,open_item_kind text,status smallint,is_deleted boolean DEFAULT false,legacy_id int,legacy_import_run_id uuid,supplier_id uuid,amount_original_local numeric(18,4),amount_received_local numeric(18,4))");
-        jdbc.execute("CREATE TABLE finance_payment_lines(payment_id uuid)");
+        jdbc.execute("CREATE TABLE finance_payment_lines(payment_id uuid,applied_ledger_id uuid,amount_original numeric)");
+        jdbc.execute("CREATE TABLE finance_application_executions(application_id uuid,doc_type text,doc_id uuid,state text)");
+        jdbc.execute("ALTER TABLE finance_payments ADD COLUMN currency_id uuid,ADD COLUMN amount_original numeric");
+        jdbc.execute("ALTER TABLE finance_expenses ADD COLUMN currency_id uuid,ADD COLUMN amount_original numeric");
+        jdbc.execute("ALTER TABLE ar_ap_ledger ADD COLUMN currency_id uuid,ADD COLUMN amount_original numeric DEFAULT 0,ADD COLUMN amount_received_original numeric");
+        jdbc.execute("ALTER TABLE finance_payments ADD COLUMN gl_ap_style_id uuid");
+        jdbc.execute("CREATE TABLE finance_supplier_advances(payment_id uuid PRIMARY KEY,supplier_id uuid,currency_id uuid,style_id uuid,account_code text,accounting_currency_id uuid,auxiliary_id uuid,amount_original numeric,amount_local numeric,effective_date date,status text,reversed_at timestamptz)");
+        jdbc.execute("CREATE TABLE gl_vouchers(id uuid PRIMARY KEY,source text,source_type text,source_doc_id uuid,status int,is_deleted boolean DEFAULT false)");
+        jdbc.execute("CREATE TABLE gl_entries(id uuid PRIMARY KEY,voucher_id uuid,line_no int,direction int,amount numeric,style_id uuid,is_deleted boolean DEFAULT false)");
+        jdbc.execute("CREATE TABLE finance_gl_entry_allocations(entry_id uuid,allocation_no int,account_code text,auxiliary_id uuid,party_id_snapshot uuid,original_currency_id uuid,currency_id uuid,amount_original numeric,amount_local numeric)");
+        jdbc.execute("CREATE TABLE finance_native_application_payment_proofs(application_id uuid,submission_round int,payment_id uuid,source_branch text,amount_basis text,source_fingerprint text,source_facts jsonb,actor_id uuid,actor_employee_id uuid,PRIMARY KEY(application_id,submission_round,payment_id))");
         jdbc.execute("CREATE TABLE expense_claims(id uuid,finance_expense_id uuid,paid_at timestamptz,status text,applicant_id uuid,applicant_department_id uuid,approval_stage text,approval_participants text,approval_round int DEFAULT 0,is_deleted boolean DEFAULT false)");
         jdbc.execute("CREATE TABLE expense_claim_events(event_type text,CONSTRAINT expense_claim_events_type_chk CHECK(event_type IN('CREATED')))");
         jdbc.execute("CREATE TABLE business_identifier_namespaces(namespace_key text,identifier_family text,fixed_prefix text,source_table text,identifier_column text,discriminator_value text)");
@@ -87,7 +100,28 @@ class BusinessApplicationPostgresTest {
         var numbers=mock(com.uten.imp.common.docnumber.DocNumberService.class);var sequence=new java.util.concurrent.atomic.AtomicInteger();when(numbers.nextNumber(any())).thenAnswer(invocation->"SQ20261103"+String.format("%06d",sequence.incrementAndGet()));
         var scope=new DepartmentApprovalScope(jdbc);var routing=new com.uten.imp.application.policy.DepartmentApprovalRouting(new org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate(jdbc),scope,new ObjectMapper());
         financeAccess=mock(FinanceDocumentAccessPolicy.class);when(financeAccess.nativeReadScope(anyString(),anyString())).thenReturn(new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope("1=1",null,Set.of()));
-        service=new BusinessApplicationService(jdbc,new ObjectMapper(),current,mock(TxSessionVars.class),scope,evidence,new com.uten.imp.features.finance.FinanceApplicationReferenceAdapter(jdbc,financeAccess),mock(com.uten.imp.application.port.EmployeeApplicationNoticePort.class),candidates,mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),numbers,routing);
+        origins=mock(com.uten.imp.application.port.NativeApplicationOriginPort.class);
+        jdbc.execute("CREATE TABLE finance_application_native_mappings(native_kind text,native_id uuid,amount_basis text,original_currency_id uuid)");
+        referenceAdapter=new com.uten.imp.features.finance.FinanceApplicationReferenceAdapter(jdbc,financeAccess,origins);
+        service=new BusinessApplicationService(jdbc,new ObjectMapper(),current,mock(TxSessionVars.class),scope,evidence,referenceAdapter,origins,mock(com.uten.imp.application.port.EmployeeApplicationNoticePort.class),candidates,mock(com.uten.imp.application.port.MasterReferenceValidationPort.class),numbers,routing);
+    }
+    @Test void originalCurrencyAndEveryPayableObligationAreVerifiedWithoutLocalSubstitution(){
+        UUID document=UUID.randomUUID(),supplier=UUID.randomUUID(),currency=UUID.randomUUID(),ledger=UUID.randomUUID();
+        var date=java.time.LocalDate.of(2026,11,1);var original=new java.math.BigDecimal("100.123456789012345678901234");
+        jdbc.update("INSERT INTO finance_payments(id,maker_id,status,amount_local,amount_original,currency_id,bill_date,supplier_id,bill_no) VALUES(?,?,1,700.25,?,?,?,?,'ANON-ORIGINAL')",document,finance,original,currency,date,supplier);
+        jdbc.update("INSERT INTO ar_ap_ledger(id,supplier_id,currency_id,direction,open_item_kind,status) VALUES(?,?,?,'AP','PAYABLE',1)",ledger,supplier,currency);
+        jdbc.update("INSERT INTO finance_payment_lines(payment_id,applied_ledger_id,amount_original) VALUES(?,?,?)",document,ledger,original);
+        var user=actor(finance,"finance_payment:view");
+        var obligations=List.of(new com.uten.imp.application.port.NativeApplicationOriginPort.Obligation(ledger,original));
+        var reference=new com.uten.imp.application.port.FinanceApplicationReferencePort.Reference("PAYMENT",document,original,date,supplier,user,com.uten.imp.application.port.NativeApplicationOriginPort.AmountBasis.ORIGINAL,currency,obligations);
+        call(user,()->{referenceAdapter.requireApprovedMatch(reference);return Map.of();});
+        assertThrows(ApiException.class,()->call(user,()->{referenceAdapter.requireApprovedMatch(new com.uten.imp.application.port.FinanceApplicationReferencePort.Reference("PAYMENT",document,original,date,supplier,user));return Map.of();}));
+        assertThrows(ApiException.class,()->call(user,()->{referenceAdapter.requireApprovedMatch(new com.uten.imp.application.port.FinanceApplicationReferencePort.Reference("PAYMENT",document,original,date,supplier,user,com.uten.imp.application.port.NativeApplicationOriginPort.AmountBasis.ORIGINAL,UUID.randomUUID(),obligations));return Map.of();}));
+        jdbc.update("UPDATE finance_payment_lines SET amount_original=amount_original-0.000000000000000000000001 WHERE payment_id=?",document);
+        assertThrows(ApiException.class,()->call(user,()->{referenceAdapter.requireApprovedMatch(reference);return Map.of();}));
+        jdbc.update("UPDATE finance_payment_lines SET amount_original=? WHERE payment_id=?",original,document);
+        jdbc.update("INSERT INTO finance_payment_lines(payment_id,applied_ledger_id,amount_original) VALUES(?,?,1)",document,UUID.randomUUID());
+        assertThrows(ApiException.class,()->call(user,()->{referenceAdapter.requireApprovedMatch(reference);return Map.of();}));
     }
     AuthUser actor(UUID employee,String... permissions){return new AuthUser(UUID.randomUUID(),employee,"fixture",Set.of(permissions),false,true,false);}
     Map<String,Object> call(AuthUser u,java.util.function.Supplier<Map<String,Object>> operation){principal.set(u);try{return tx.execute(s->operation.get());}finally{principal.remove();}}
@@ -263,9 +297,10 @@ class BusinessApplicationPostgresTest {
         principal.set(admin);try{assertEquals(0L,service.counts().get("pendingCount"));assertTrue(((Map<?,?>)service.counts().get("departmentScopeByCode")).isEmpty());}finally{principal.remove();}
     }
     record Prepayment(UUID id,UUID supplier,AuthUser owner,Map<String,Object> approved){}
-    private Prepayment prepayment(){
+    private Prepayment prepayment(){return prepayment("123.45");}
+    private Prepayment prepayment(String exactAmount){
         UUID supplier=UUID.randomUUID();jdbc.update("INSERT INTO suppliers(id,name) VALUES(?,'真实预付供应商')",supplier);
-        var owner=actor(applicant,"application:apply:prepayment");var in=new Input(UUID.randomUUID(),"PREPAYMENT","供应商材料预付款","123.45",Map.of("supplierId",supplier.toString(),"reason","采购材料预付款"),null);
+        var owner=actor(applicant,"application:apply:prepayment");var in=new Input(UUID.randomUUID(),"PREPAYMENT","供应商材料预付款",exactAmount,Map.of("supplierId",supplier.toString(),"reason","采购材料预付款"),null);
         var created=call(owner,()->service.create(in));Map<String,Object> state=call(owner,()->service.act(in.id(),"submit",version(created)));
         for(var step:List.of(Map.entry(reviewer,"DEPARTMENT"),Map.entry(initialReviewer,"FINANCE_INITIAL"),Map.entry(secondaryReviewer,"FINANCE_REVIEW"),Map.entry(executive,"EXECUTIVE"))){var before=state;state=call(actor(step.getKey(),BusinessApplicationWorkflow.permission(step.getValue()),"attachment:view","attachment:download"),()->service.act(in.id(),"approve",version(before)));}
         return new Prepayment(in.id(),supplier,owner,state);
@@ -302,6 +337,7 @@ class BusinessApplicationPostgresTest {
         jdbc.update("DELETE FROM finance_payment_lines WHERE payment_id=?",document);jdbc.update("UPDATE finance_payments SET legacy_import_run_id=? WHERE id=?",UUID.randomUUID(),document);
         assertEquals(false,call(keeper,()->service.detail(app.id())).get("canLinkFinance"));
         jdbc.update("UPDATE finance_payments SET legacy_import_run_id=NULL WHERE id=?",document);
+        legacyProof(document);
         assertEquals(true,call(keeper,()->service.detail(app.id())).get("canLinkFinance"));
         principal.set(keeper);try{assertEquals(1L,service.counts().get("prepaymentPostingTodoCount"));assertEquals(0L,service.counts().get("prepaymentPostingInProgressCount"));assertEquals(document,service.prepaymentFinanceCandidates(app.id(),1,24,null).getItems().getFirst().get("id"));}finally{principal.remove();}
         var linked=call(keeper,()->service.act(app.id(),"link-finance",new Action(viewed,null,link)));
@@ -316,11 +352,70 @@ class BusinessApplicationPostgresTest {
         var app=prepayment();cashPay(app);var keeper=bookkeeper();
         UUID document=UUID.randomUUID();jdbc.update("INSERT INTO finance_payments(id,maker_id,bill_no,status,amount_local,bill_date,account_id,supplier_id) VALUES(?,?,'CF-PRIVATE',1,123.45,'2026-11-01',?,?)",document,executive,UUID.randomUUID(),app.supplier());
         jdbc.update("INSERT INTO ar_ap_ledger(id,source_doc_id,source_doc_type,direction,open_item_kind,status,supplier_id,amount_original_local,amount_received_local) VALUES(?,?,'DIRECT_PAYMENT','AP','PREPAYMENT',1,?,0,123.45)",UUID.randomUUID(),document,app.supplier());
+        legacyProof(document);
         when(financeAccess.nativeReadScope(anyString(),anyString())).thenReturn(new com.uten.imp.security.DocumentAccessPolicy.NativeReadScope("1=0",null,Set.of()));
         // No financial source visibility does not erase the separately granted
         // workflow read or uploaded proof owner access while waiting for books.
         assertEquals("PENDING",call(keeper,()->service.detail(app.id())).get("postingStatus"));
         principal.set(keeper);try{assertEquals(0,service.prepaymentFinanceCandidates(app.id(),1,24,null).getTotal());new BusinessApplicationAttachmentPolicy(service).applicationPaymentEvidence().requireCanView(app.id(),keeper);}finally{principal.remove();}
+    }
+    private UUID balancedPaymentGl(UUID document){
+        UUID voucher=UUID.randomUUID(),asset=UUID.randomUUID(),bank=UUID.randomUUID(),style=UUID.randomUUID();
+        jdbc.update("UPDATE finance_payments SET gl_ap_style_id=? WHERE id=?",style,document);
+        jdbc.update("INSERT INTO gl_vouchers(id,source,source_type,source_doc_id,status) VALUES(?,'AUTO','PAYMENT',?,1)",voucher,document);
+        jdbc.update("INSERT INTO gl_entries(id,voucher_id,line_no,direction,amount,style_id) SELECT ?,?,1,1,amount_local,? FROM finance_payments WHERE id=?",asset,voucher,style,document);
+        jdbc.update("INSERT INTO gl_entries(id,voucher_id,line_no,direction,amount,style_id) SELECT ?,?,2,-1,amount_local,? FROM finance_payments WHERE id=?",bank,voucher,UUID.randomUUID(),document);
+        return asset;
+    }
+    private void legacyProof(UUID document){
+        jdbc.update("UPDATE finance_payments SET amount_original=amount_local,currency_id=? WHERE id=?",fixtureCurrency,document);
+        jdbc.update("UPDATE ar_ap_ledger SET currency_id=?,amount_original=0,amount_received_original=amount_received_local WHERE source_doc_id=?",fixtureCurrency,document);
+        balancedPaymentGl(document);
+    }
+    @Test void currentAdvanceBranchNeedsItsExactAssetAllocationAndBalancedOriginalGl(){
+        jdbc.execute("ALTER TABLE business_applications ALTER COLUMN amount TYPE numeric");
+        String exact="10.123456789012345678901234";var amount=new java.math.BigDecimal(exact);
+        var app=prepayment(exact);var paid=cashPay(app);var keeper=bookkeeper();
+        UUID document=UUID.randomUUID(),currency=UUID.randomUUID(),accountingCurrency=UUID.randomUUID(),auxiliary=UUID.randomUUID();
+        jdbc.update("INSERT INTO finance_payments(id,maker_id,bill_no,status,amount_authority_version,amount_local,amount_original,currency_id,bill_date,supplier_id) VALUES(?,?,'NATIVE-ADVANCE',1,2,123.45,?,?,DATE '2026-11-01',?)",document,viceExecutive,amount,currency,app.supplier());
+        UUID asset=balancedPaymentGl(document);
+        jdbc.update("INSERT INTO finance_supplier_advances(payment_id,supplier_id,currency_id,style_id,account_code,accounting_currency_id,auxiliary_id,amount_original,amount_local,effective_date,status) SELECT id,supplier_id,currency_id,gl_ap_style_id,'1123',?,?,amount_original,amount_local,bill_date,'OPEN' FROM finance_payments WHERE id=?",accountingCurrency,auxiliary,document);
+        jdbc.update("INSERT INTO finance_application_native_mappings(native_kind,native_id,amount_basis,original_currency_id) VALUES('BUSINESS_APPLICATION',?,'ORIGINAL',?)",app.id(),currency);
+        var origin=new com.uten.imp.application.port.NativeApplicationOriginPort.Origin(UUID.randomUUID(),"原稿","PREPAYMENT_APPLICATION","2026-11-01",currency,"USD","美元",false,com.uten.imp.application.port.NativeApplicationOriginPort.AmountBasis.ORIGINAL,amount,List.of(),Map.of());
+        when(origins.origin("BUSINESS_APPLICATION",app.id())).thenReturn(origin);
+        assertEquals(false,call(keeper,()->service.detail(app.id())).get("canLinkFinance"));
+        jdbc.update("INSERT INTO finance_gl_entry_allocations(entry_id,allocation_no,account_code,auxiliary_id,party_id_snapshot,original_currency_id,currency_id,amount_original,amount_local) VALUES(?,1,'1123',?,?,?,?,?,123.45)",asset,auxiliary,app.supplier(),currency,accountingCurrency,amount);
+        assertEquals(true,call(keeper,()->service.detail(app.id())).get("canLinkFinance"));
+        principal.set(keeper);try{var candidate=service.prepaymentFinanceCandidates(app.id(),1,24,null).getItems().getFirst();assertEquals(exact,candidate.get("amountText"));assertEquals("ORIGINAL",candidate.get("amountBasis"));assertNull(candidate.get("amountLocalText"));}finally{principal.remove();}
+        jdbc.update("UPDATE finance_supplier_advances SET amount_original=amount_original+0.000000000000000000000001 WHERE payment_id=?",document);
+        assertEquals(false,call(keeper,()->service.detail(app.id())).get("canLinkFinance"));
+        jdbc.update("UPDATE finance_supplier_advances SET amount_original=? WHERE payment_id=?",amount,document);
+        jdbc.update("UPDATE gl_entries SET amount=amount+0.01 WHERE voucher_id IN(SELECT id FROM gl_vouchers WHERE source_doc_id=?) AND direction=-1",document);
+        assertEquals(false,call(keeper,()->service.detail(app.id())).get("canLinkFinance"));
+        jdbc.update("UPDATE gl_entries SET amount=123.45 WHERE voucher_id IN(SELECT id FROM gl_vouchers WHERE source_doc_id=?) AND direction=-1",document);
+        var link=Map.<String,Object>of("financeDocumentType","PAYMENT","financeDocumentId",document.toString());
+        var linked=call(keeper,()->service.act(app.id(),"link-finance",new Action(((Number)paid.get("version")).longValue(),null,link)));
+        assertEquals("POSTED",linked.get("postingStatus"));
+        assertEquals("NATIVE_ADVANCE_V2",jdbc.queryForObject("SELECT source_branch FROM finance_native_application_payment_proofs WHERE application_id=?",String.class,app.id()));
+        assertEquals(exact,jdbc.queryForObject("SELECT source_facts->'payment'->>'amountOriginal' FROM finance_native_application_payment_proofs WHERE application_id=?",String.class,app.id()));
+        assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM finance_payments",Integer.class));assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM ar_ap_ledger",Integer.class));
+    }
+    @Test void anOriginalApplicationExecutionCannotBecomeANewApplicationsPaymentOrExpense(){
+        var app=prepayment();var paid=cashPay(app);var keeper=bookkeeper();UUID document=UUID.randomUUID();
+        jdbc.update("INSERT INTO finance_payments(id,maker_id,bill_no,status,amount_local,bill_date,supplier_id) VALUES(?,?,'OLD-EXECUTION',1,123.45,'2026-11-01',?)",document,executive,app.supplier());
+        jdbc.update("INSERT INTO ar_ap_ledger(id,source_doc_id,source_doc_type,direction,open_item_kind,status,supplier_id,amount_original_local,amount_received_local) VALUES(?,?,'DIRECT_PAYMENT','AP','PREPAYMENT',1,?,0,123.45)",UUID.randomUUID(),document,app.supplier());
+        legacyProof(document);
+        assertEquals(true,call(keeper,()->service.detail(app.id())).get("canLinkFinance"));
+        jdbc.update("INSERT INTO finance_application_executions VALUES(?,'PAYMENT',?,'CONFIRMED')",UUID.randomUUID(),document);
+        assertEquals(false,call(keeper,()->service.detail(app.id())).get("canLinkFinance"));
+        principal.set(keeper);try{assertEquals(0,service.prepaymentFinanceCandidates(app.id(),1,24,null).getTotal());}finally{principal.remove();}
+        assertThrows(ApiException.class,()->call(keeper,()->service.act(app.id(),"link-finance",new Action(((Number)paid.get("version")).longValue(),null,Map.of("financeDocumentType","PAYMENT","financeDocumentId",document.toString())))));
+        UUID expense=UUID.randomUUID();jdbc.update("INSERT INTO finance_expenses(id,maker_id,status,amount_local,bill_date) VALUES(?,?,1,123.45,'2026-11-01')",expense,finance);
+        jdbc.update("INSERT INTO finance_application_executions VALUES(?,'EXPENSE',?,'CONFIRMED')",UUID.randomUUID(),expense);
+        var reader=actor(finance,"finance_expense:view");
+        assertThrows(ApiException.class,()->call(reader,()->{referenceAdapter.requireApprovedMatch(new com.uten.imp.application.port.FinanceApplicationReferencePort.Reference("EXPENSE",expense,new java.math.BigDecimal("123.45"),java.time.LocalDate.of(2026,11,1),null,reader));return Map.of();}));
+        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM finance_native_application_payment_proofs",Integer.class));
+        assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM finance_payments",Integer.class));
     }
     @Test void prepaymentCandidateBillNumberSearchTreatsWildcardsLiterallyWithoutChangingEligibilityOrCase(){
         var app=prepayment();cashPay(app);var keeper=bookkeeper();
@@ -329,6 +424,7 @@ class BusinessApplicationPostgresTest {
             jdbc.update("INSERT INTO finance_payments(id,maker_id,bill_no,status,amount_local,bill_date,account_id,supplier_id) VALUES(?,?,?,1,123.45,'2026-11-01',?,?)",
                 entry.getKey(),executive,entry.getValue(),UUID.randomUUID(),app.supplier());
             jdbc.update("INSERT INTO ar_ap_ledger(id,source_doc_id,source_doc_type,direction,open_item_kind,status,supplier_id,amount_original_local,amount_received_local) VALUES(?,?,'DIRECT_PAYMENT','AP','PREPAYMENT',1,?,0,123.45)",UUID.randomUUID(),entry.getKey(),app.supplier());
+            legacyProof(entry.getKey());
         }
         principal.set(keeper);
         try{

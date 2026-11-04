@@ -373,9 +373,9 @@ public class WorkshopMachineService {
     }
 
     private static void requireCapacity(BigDecimal capacity) {
-        if (capacity == null || capacity.signum() <= 0
-                || capacity.stripTrailingZeros().scale() > MoneyPolicy.QUANTITY_SCALE) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "容器容量 (公斤) 必须大于 0, 最多 4 位小数");
+        if (capacity == null || capacity.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "容器容量 (公斤) 必须大于 0, 最多 24 位小数，请核对原值");
         }
+        com.uten.imp.common.util.FinancialExactAmount.quantity(capacity,"容器容量 (公斤)");
     }
 }

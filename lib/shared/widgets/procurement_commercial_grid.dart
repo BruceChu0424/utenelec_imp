@@ -124,7 +124,7 @@ mixin CommercialTermsRowMixin on EditableGridRow
           colorId: currentColorId(),
           unitId: currentUnitId(),
           currencyId: currencyId,
-          taxRate: double.tryParse(taxRate.text.trim()),
+          taxRate: taxRate.text,
         );
     void check() {
       if (!termsAutofilled.contains('price')) return;
@@ -195,7 +195,7 @@ mixin CommercialTermsRowMixin on EditableGridRow
         'colorId': context.colorId,
         'unitId': context.unitId,
         'currencyId': context.currencyId,
-        'taxRate': context.taxRate,
+        'taxRate': context.taxRateText,
       },
     'priceGoodsId': _defaultPriceGoodsId,
   };

@@ -21,6 +21,8 @@ import '../models/expense_payment.dart';
 import '../../../shared/platform_tables/platform_table_repository.dart';
 import '../repositories/expense_repository.dart';
 import '../../../shared/badges/badge_registry.dart';
+import '../../../shared/models/accounting_expense_purpose.dart';
+import '../../../core/network/api_client.dart';
 
 // Riverpod 3 将 copyWithPrevious 标记为 @internal；跨 family 实例手动保页/保旧值是既有架构，等上游公开等价 API 后再迁移。
 // ignore_for_file: invalid_use_of_internal_member
@@ -404,6 +406,9 @@ Future<ExpenseClaim> createExpense(
   required String title,
   required List<ExpenseItem> items,
   String? remark,
+  String? applicationKind,
+  String? travelApplicationId,
+  String? travelApplicationSourceKind,
   String expenseKind = 'GENERAL',
 }) async {
   final claim = await ref
@@ -413,6 +418,9 @@ Future<ExpenseClaim> createExpense(
           title: title,
           items: items,
           remark: remark,
+          applicationKind: applicationKind,
+          travelApplicationId: travelApplicationId,
+          travelApplicationSourceKind: travelApplicationSourceKind,
           expenseKind: expenseKind,
         ),
       );
@@ -429,6 +437,9 @@ Future<ExpenseClaim> updateExpense(
   required String title,
   required List<ExpenseItem> items,
   String? remark,
+  String? applicationKind,
+  String? travelApplicationId,
+  String? travelApplicationSourceKind,
   String expenseKind = 'GENERAL',
 }) async {
   final claim = await ref
@@ -441,6 +452,9 @@ Future<ExpenseClaim> updateExpense(
           remark: remark,
           expectedVersion: expectedVersion,
           expenseKind: expenseKind,
+          applicationKind: applicationKind,
+          travelApplicationId: travelApplicationId,
+          travelApplicationSourceKind: travelApplicationSourceKind,
         ),
       );
   refreshBadges(ref);
@@ -868,6 +882,38 @@ final expensePaymentOptionsProvider =
       final styles = await styleFuture;
       return buildExpensePaymentOptions(accounts, styles);
     });
+final expensePaymentOptionsForPurposeProvider = FutureProvider.autoDispose
+    .family<ExpensePaymentOptions, AccountingExpensePurpose>((
+      ref,
+      purpose,
+    ) async {
+      ref.watch(masterDataSessionKeyProvider);
+      final values = await Future.wait([
+        ref.watch(accountRepositoryProvider).dict(),
+        ref
+            .watch(apiClientProvider)
+            .get(
+              '/finance/accounting-expense-styles',
+              query: {'postingPurpose': purpose.apiValue},
+            ),
+      ]);
+      final base = buildExpensePaymentOptions(
+        values[0] as List<AccountListItem>,
+        const [],
+      );
+      final data = values[1] as Map<String, dynamic>;
+      return ExpensePaymentOptions(
+        accounts: base.accounts,
+        styles: [
+          for (final row in data['items'] as List? ?? const [])
+            if (row is Map)
+              ExpenseStyleOption(
+                id: row['id'].toString(),
+                label: '${row['code'] ?? ''} ${row['name'] ?? ''}',
+              ),
+        ],
+      );
+    });
 
 Future<void> approveExpense(
   WidgetRef ref,
@@ -947,6 +993,9 @@ ExpensePaymentOptions buildExpensePaymentOptions(
           id: account.id,
           label: _accountLabel(account),
           balanceCurrent: account.balanceCurrent,
+          balanceCurrentText: account.balanceCurrentText,
+          currencyName: account.currencyName,
+          currencyCode: account.currencyCode,
         ),
       )
       .toList(growable: false);
@@ -960,6 +1009,7 @@ ExpensePaymentOptions buildExpensePaymentOptions(
           node.category!.isEmpty ||
           node.category!.toUpperCase() == 'EXPENSE';
       if (isExpense &&
+          !node.hasChildren &&
           _isSelectableMasterStatus(node.status) &&
           seenStyleIds.add(node.id)) {
         styleOptions.add(

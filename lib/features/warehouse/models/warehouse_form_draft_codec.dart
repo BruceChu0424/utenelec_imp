@@ -1,3 +1,6 @@
+import '../../../shared/formatters/exact_decimal.dart';
+import '../../../core/network/business_precision.dart';
+import '../../../shared/measurement/weight_unit.dart';
 import 'stock_doc.dart';
 import '../../../components/inputs/uten_autofill_text_controller.dart';
 import '../../../shared/measurement/widgets/weight_grid_column.dart';
@@ -11,11 +14,21 @@ Map<String, dynamic> weightEntryDraft(
   WeightEntryController weight, {
   UtenAutofillTextController? qty,
 }) => {
-  'kg': weight.kg,
+  'kg': weight.kgText,
+  'kgExact': weight.kgText,
+  'enteredText': weight.enteredText,
+  'enteredUnit': weight.enteredUnit.code,
+  'displayText': weight.text.text,
+  'displayUnit': weight.unit.code,
+  if (weight.displayPrecision != null)
+    'displayPrecision': weight.displayPrecision!.toJson(),
   'userEdited': weight.userEdited,
   if (weight.hasError) 'inputText': weight.text.text,
   'qtyFromWeight': weight.qtyFromWeight,
   'qtyNote': weight.qtyEstimateNote,
+  'quantityPendingReason': weight.quantityPendingReason,
+  'quantityPrecision': weight.quantityPrecision?.toJson(),
+  'quantityPrecisionSource': weight.quantityPrecisionSource,
   if (qty != null)
     'qtyDerived':
         qty.autofilled &&
@@ -33,12 +46,22 @@ void restoreWeightEntryDraft(
   final kg = raw['kg'];
   final fromWeight = raw['qtyFromWeight'] == true;
   final note = raw['qtyNote'];
-  weight.setKg(
-    kg is num ? kg.toDouble() : null,
+  final exact = financeExactDecimal(raw['kgExact'] ?? kg);
+  weight.setKgText(
+    exact,
     qtyFromWeight: fromWeight,
-    userEdited: raw['userEdited'] == true || kg is num,
+    userEdited: raw['userEdited'] == true || exact != null,
   );
-  if (kg == null && raw['inputText'] is String) {
+  final sameUnit = raw['displayUnit'] == weight.unit.code;
+  weight.restoreInputEvidence(
+    rawText: raw['enteredText'] as String?,
+    originalUnit: WeightUnit.parse(raw['enteredUnit']?.toString()),
+    displayedText: sameUnit ? raw['displayText'] as String? : null,
+    displayPrecision: sameUnit
+        ? BusinessPrecisionChoice.parse(raw['displayPrecision'])
+        : null,
+  );
+  if (exact == null && raw['inputText'] is String) {
     weight.text.text = raw['inputText'] as String;
   }
   if (qty != null && raw['qtyDerived'] == true && qty.text.isNotEmpty) {
@@ -47,6 +70,13 @@ void restoreWeightEntryDraft(
     weight.markQtyDerived(text, note: note is String ? note : null);
   } else if (fromWeight && note is String) {
     weight.qtyEstimateNote = note;
+  }
+  weight.quantityPrecision = BusinessPrecisionChoice.parse(
+    raw['quantityPrecision'],
+  );
+  weight.quantityPrecisionSource = raw['quantityPrecisionSource'] as String?;
+  if (raw['quantityPendingReason'] case final String reason) {
+    weight.markQtyPending(reason);
   }
 }
 
@@ -97,7 +127,13 @@ Map<String, dynamic> stockDocumentDraftFacts(StockDocDetail doc) => {
         'baseQty': item.baseQty,
         'price': item.price,
         'amountLocal': item.amountLocal,
-        'weight': item.weight,
+        'weight': item.weightText,
+        'weightExact': item.weightText,
+        'weightInputEvidence': item.weightInputEvidence,
+        'countWeight': item.countWeightText,
+        'countWeightExact': item.countWeightText,
+        'bookWeightExact': item.bookWeightText,
+        'issuedWeightKgExact': item.issuedWeightKgText,
         'surplusQty': item.surplusQty,
         'countQty': item.countQty,
         'place': item.place,
@@ -115,7 +151,6 @@ Map<String, dynamic> stockDocumentDraftFacts(StockDocDetail doc) => {
         'requestedQty': item.requestedQty,
         'requestedQtyExact': item.requestedQtyText,
         'qtyFromWeight': item.qtyFromWeight,
-        'countWeight': item.countWeight,
         'bookWeight': item.bookWeight,
         'issuedWeightKg': item.issuedWeightKg,
         'issuedWeightEstimated': item.issuedWeightEstimated,

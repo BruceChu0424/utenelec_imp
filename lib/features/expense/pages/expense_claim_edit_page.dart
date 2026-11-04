@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 // 新建/编辑报销页（V608 合并：claimId 为空 = 新建，非空 = 编辑 DRAFT/REJECTED）
 // 文档：docs/03-页面/新建报销页.md · docs/03-页面/报销列表页.md（编辑入口）
 //
@@ -55,6 +56,8 @@ import '../repositories/expense_repository.dart';
 import '../widgets/expense_guided_invoice_preview.dart';
 import '../widgets/expense_invoice_section.dart';
 import '../widgets/expense_editable_items.dart';
+import '../../finance/pages/finance_applications_page.dart'
+    show pickFinanceApplicationSource;
 import '../widgets/expense_approval_progress.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 
@@ -64,7 +67,13 @@ class ExpenseClaimEditPage extends ConsumerStatefulWidget {
     this.claimId,
     this.initialGuidedPlan,
     this.initialKind,
+    this.applicationKind,
+    this.travelApplicationId,
+    this.travelApplicationSourceKind,
   });
+  final String? applicationKind,
+      travelApplicationId,
+      travelApplicationSourceKind;
 
   /// 空 = 新建；非空 = 编辑（DRAFT/REJECTED）。
   final String? claimId;
@@ -93,8 +102,14 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
   }
 
   bool _busy = false;
+  late String? _applicationKind = widget.applicationKind;
+  late String? _travelApplicationId = widget.travelApplicationId;
+  late String? _travelApplicationSourceKind =
+      widget.travelApplicationSourceKind;
   bool _networkBusy = false;
   String _expenseKind = 'GENERAL';
+  String? _travelApplicationLabel;
+  bool _choosingTravelSource = false;
   bool _initialized = false;
   bool _documentIdentityChanged = false;
   late final Key _openedDocumentIdentity;
@@ -102,6 +117,9 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
     Uri(path: 'expense-editor'),
     sourceIdentity: {
       'claimId': widget.claimId,
+      'applicationKind': widget.applicationKind,
+      'travelApplicationId': widget.travelApplicationId,
+      'travelApplicationSourceKind': widget.travelApplicationSourceKind,
       'kind': widget.initialKind ?? 'GENERAL',
       'guidedFile': widget.initialGuidedPlan?.result.sha256Hex,
     },
@@ -129,8 +147,16 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
   @override
   bool get formDraftBusy => _busy;
   @override
-  FormDraftSpec get formDraftSpec =>
-      FormDraftCatalog.expense.spec(title: '新建报销', route: '/expense/new');
+  FormDraftSpec get formDraftSpec => FormDraftCatalog.expense.spec(
+    title: '新建报销',
+    route: '/expense/new',
+    routeParameters: {
+      'kind': _expenseKind,
+      'applicationKind': ?_applicationKind,
+      'travelApplicationId': ?_travelApplicationId,
+      'travelApplicationSourceKind': ?_travelApplicationSourceKind,
+    },
+  );
   @override
   Iterable<Listenable> get formDraftListenables => [
     _titleController,
@@ -140,6 +166,10 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
   ];
   @override
   Map<String, dynamic> captureFormDraft() => {
+    'applicationKind': _applicationKind,
+    'travelApplicationId': _travelApplicationId,
+    'travelApplicationSourceKind': _travelApplicationSourceKind,
+    'travelApplicationLabel': _travelApplicationLabel,
     'title': _titleController.text,
     'remark': _remarkController.text,
     'expenseKind': _expenseKind,
@@ -153,6 +183,18 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
   };
   @override
   Future<void> restoreFormDraft(Map<String, dynamic> data) async {
+    if (widget.applicationKind != null &&
+        data['applicationKind'] != widget.applicationKind) {
+      throw const FormatException('草稿对应不同申请类型，请从原草稿入口恢复');
+    }
+    _applicationKind =
+        data['applicationKind']?.toString() ?? widget.applicationKind;
+    _travelApplicationId =
+        data['travelApplicationId']?.toString() ?? widget.travelApplicationId;
+    _travelApplicationSourceKind =
+        data['travelApplicationSourceKind']?.toString() ??
+        widget.travelApplicationSourceKind;
+    _travelApplicationLabel = data['travelApplicationLabel']?.toString();
     // Confirmed create/upload identities survive even when the source blob is
     // damaged. Never downgrade an already-created claim into a fresh create.
     _createdGuidedClaimId = data['createdDocId'] is String
@@ -182,7 +224,12 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
     }
     _titleController.text = draftText(data, 'title');
     _remarkController.text = draftText(data, 'remark');
-    _expenseKind = data['expenseKind'] == 'TRAVEL' ? 'TRAVEL' : 'GENERAL';
+    _expenseKind =
+        data['expenseKind'] == 'TRAVEL' ||
+            data['expenseKind'] == null &&
+                _applicationKind == 'TRAVEL_REIMBURSEMENT'
+        ? 'TRAVEL'
+        : 'GENERAL';
     final rows = <ExpenseGridRow>[];
     final localIds = <String>{};
     for (final raw in draftMaps(data['items'])) {
@@ -232,7 +279,12 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
     startFormDraftIdentityGuard();
     _grid.addListener(_gridChanged);
     _grid.totalListenable.addListener(_gridChanged);
-    _expenseKind = widget.initialKind == 'TRAVEL' ? 'TRAVEL' : 'GENERAL';
+    _expenseKind =
+        widget.initialKind == 'TRAVEL' ||
+            widget.initialKind == null &&
+                widget.applicationKind == 'TRAVEL_REIMBURSEMENT'
+        ? 'TRAVEL'
+        : 'GENERAL';
     _guidedPlan = widget.initialGuidedPlan;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await initializeFormDraft();
@@ -448,8 +500,8 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
     }
   }
 
-  double get _total =>
-      _grid.rows.fold<int>(0, (sum, row) => sum + (row.amountCents ?? 0)) / 100;
+  String? get _totalText =>
+      financeExactSumTexts(_grid.rows.map((row) => row.amount.text));
 
   /// 编辑模式：草稿就绪即预填一次（明细拷贝成可变副本，避免动到 provider 缓存）。
   void _prefillOnce(ExpenseClaim? claim) {
@@ -458,6 +510,10 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
     _initialized = true;
     _editVersion = claim.version;
     _expenseKind = claim.expenseKind;
+    _applicationKind = claim.applicationKind ?? _applicationKind;
+    _travelApplicationId = claim.travelApplicationId ?? _travelApplicationId;
+    _travelApplicationSourceKind =
+        claim.travelApplicationSourceKind ?? _travelApplicationSourceKind;
     _titleController.text = claim.title;
     _remarkController.text = claim.remark ?? '';
     _grid.replaceAll(
@@ -550,9 +606,15 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
         return;
       }
     }
-    if (_grid.rows.fold<int>(0, (sum, row) => sum + (row.amountCents ?? 0)) >
-        999999999999) {
-      context.appWarning('报销合计不能超过9,999,999,999.99元');
+    final totalUnits = financeAmountUnits(_totalText);
+    if (totalUnits == null || totalUnits >= BigInt.from(10).pow(64)) {
+      context.appWarning('报销合计超出可无损保存范围，请核对原数；明细已保留');
+      return;
+    }
+    if (_applicationKind == 'TRAVEL_REIMBURSEMENT' &&
+        _travelApplicationId == null) {
+      context.appWarning('请选择本人已批准并由财务保管的出差申请');
+      await _chooseTravelSource();
       return;
     }
     final remark = _remarkController.text.trim();
@@ -604,6 +666,9 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
             claimId,
             expectedVersion: _editVersion!,
             expenseKind: _expenseKind,
+            applicationKind: _applicationKind,
+            travelApplicationId: _travelApplicationId,
+            travelApplicationSourceKind: _travelApplicationSourceKind,
             title: title,
             items: itemsSnapshot,
             remark: remark.isEmpty ? null : remark,
@@ -626,6 +691,9 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
         () => createExpense(
           ref,
           title: title,
+          applicationKind: _applicationKind,
+          travelApplicationId: _travelApplicationId,
+          travelApplicationSourceKind: _travelApplicationSourceKind,
           expenseKind: _expenseKind,
           items: itemsSnapshot,
           remark: remark.isEmpty ? null : remark,
@@ -758,7 +826,7 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
               filledFields: [
                 if (_titleController.text.isNotEmpty) _titleController.text,
                 if (_items.isNotEmpty)
-                  '${aiChatText(context, 'invoice_totalAmount')}: ${_items.first.amount.toStringAsFixed(2)}',
+                  '${aiChatText(context, 'invoice_totalAmount')}: ${financeExactMoneyDisplay(_items.first.amountText)}',
               ],
             ),
             if (_guidedValidated) ExpenseGuidedInvoicePreview(plan: plan),
@@ -1079,35 +1147,87 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
     );
   }
 
+  Future<void> _chooseTravelSource() async {
+    if (_busy || _choosingTravelSource) return;
+    _choosingTravelSource = true;
+    try {
+      final source = await pickFinanceApplicationSource(
+        context,
+        kind: 'TRAVEL_APPLICATION',
+      );
+      if (source == null || !mounted || !formDraftIdentityIsCurrent) return;
+      final kind = source['sourceKind']?.toString();
+      if (!const {
+            'BUSINESS_APPLICATION',
+            'FINANCE_APPLICATION',
+          }.contains(kind) ||
+          source['id'] == null) {
+        context.appWarning('出差来源类型尚未明确，请刷新来源后重新选择');
+        return;
+      }
+      setState(() {
+        _travelApplicationId = source['id'].toString();
+        _travelApplicationSourceKind = kind;
+        _travelApplicationLabel = [
+          source['code'],
+          source['name'],
+        ].whereType<String>().where((text) => text.isNotEmpty).join(' ');
+      });
+      markFormDraftChanged();
+    } finally {
+      _choosingTravelSource = false;
+    }
+  }
+
   Widget _headerCard(ThemeData theme) {
-    return UtenFormGrid(
-      columns: 2,
-      maxColumns: 2,
-      minFieldWidth: 300,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TextField(
-          controller: _titleController,
-          textInputAction: TextInputAction.next,
-          maxLength: 200,
-          decoration: UtenInputDecoration(
-            InputDecoration(
-              labelText: l10n.expenseFlowTitle,
-              hintText: l10n.expenseFlowTitleHint,
+        if (_applicationKind == 'TRAVEL_REIMBURSEMENT')
+          Padding(
+            padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+            child: UtenButton(
+              type: UtenButtonType.secondary,
+              onPressed: _busy ? null : _chooseTravelSource,
+              child: Text(
+                _travelApplicationId == null
+                    ? '选择已保管出差申请'
+                    : (_travelApplicationLabel?.isNotEmpty == true
+                          ? _travelApplicationLabel!
+                          : '已关联出差申请'),
+              ),
             ),
-            info: l10n.expenseFlowTitleInfo,
           ),
-        ),
-        TextField(
-          controller: _remarkController,
-          maxLines: 2,
-          maxLength: 2000,
-          decoration: UtenInputDecoration(
-            InputDecoration(
-              labelText: l10n.expenseFlowRemark,
-              hintText: l10n.expenseFlowRemarkHint,
+        UtenFormGrid(
+          columns: 2,
+          maxColumns: 2,
+          minFieldWidth: 300,
+          children: [
+            TextField(
+              controller: _titleController,
+              textInputAction: TextInputAction.next,
+              maxLength: 200,
+              decoration: UtenInputDecoration(
+                InputDecoration(
+                  labelText: l10n.expenseFlowTitle,
+                  hintText: l10n.expenseFlowTitleHint,
+                ),
+                info: l10n.expenseFlowTitleInfo,
+              ),
             ),
-            info: l10n.expenseFlowNoInvoiceGuide,
-          ),
+            TextField(
+              controller: _remarkController,
+              maxLines: 2,
+              maxLength: 2000,
+              decoration: UtenInputDecoration(
+                InputDecoration(
+                  labelText: l10n.expenseFlowRemark,
+                  hintText: l10n.expenseFlowRemarkHint,
+                ),
+                info: l10n.expenseFlowNoInvoiceGuide,
+              ),
+            ),
+          ],
         ),
       ],
     );
@@ -1160,7 +1280,7 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
 
   /// 合计卡：小写（tabular）+ 人民币大写（打印报销单同款口径）。
   Widget _totalCard(ThemeData theme) {
-    final capital = rmbCapital(_total);
+    final capital = rmbCapital(_totalText ?? '');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1177,7 +1297,7 @@ class _ExpenseClaimEditPageState extends ConsumerState<ExpenseClaimEditPage>
               ),
             ),
             Text(
-              '${_total.toStringAsFixed(2)} 元',
+              '${financeExactMoneyDisplay(_totalText)} 元',
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: theme.colorScheme.primary,

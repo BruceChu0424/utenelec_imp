@@ -19,6 +19,7 @@ import '../../../components/cards/uten_card.dart';
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/data_display/uten_revision_table.dart';
 import '../../../components/feedback/uten_dialog.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/inputs/required_field_decoration.dart';
 import '../../../components/inputs/uten_date_field.dart';
@@ -42,6 +43,7 @@ import '../../../shared/drafts/form_draft_store.dart';
 import '../../../shared/drafts/form_draft_catalog.dart';
 import '../../../shared/auth/cost_workbench_capability.dart';
 import '../../../shared/formatters/money_display.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/hierarchy/uten_default_collapsed_tree_state.dart';
 import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../../../shared/widgets/uten_tree_table_cell.dart';
@@ -76,12 +78,10 @@ class GoodsCostTab extends ConsumerStatefulWidget {
     super.key,
     required this.detail,
     required this.canEdit,
-    this.materialTotal,
     this.onSaved,
   });
   final GoodsDetail detail;
   final bool canEdit;
-  final double? materialTotal;
   final VoidCallback? onSaved;
   @override
   ConsumerState<GoodsCostTab> createState() => _GoodsCostTabState();
@@ -266,7 +266,7 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
   String? _actualExecutionScope;
   bool _busy = false, _loading = true, _calculating = false, _dirty = false;
   bool _booting = false, _startupFailed = false;
-  bool _replacingFees = false;
+  bool _replacingFees = false, _lossPolicySaving = false;
   bool _showSettings = false,
       _showAdvancedSettings = false,
       _settingsLoaded = false,
@@ -1008,6 +1008,11 @@ class _GoodsCostTabState extends ConsumerState<GoodsCostTab>
     return withFormDraft(
       Column(
         children: [
+          if (_lossPolicySaving)
+            const UtenBusyOverlay(
+              title: '正在保存委外损耗默认值',
+              showDoNotLeaveHint: false,
+            ),
           if (_tab != 0)
             Padding(
               padding: const EdgeInsets.all(UtenSpacing.s12),

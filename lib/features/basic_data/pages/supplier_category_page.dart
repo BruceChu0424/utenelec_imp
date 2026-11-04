@@ -511,9 +511,9 @@ class _SupplierCategoryPageState extends ConsumerState<SupplierCategoryPage>
       // 搜索/排序复用同一加权读模型，在完整供应商范围分页前应用；比例不求和。
       columnSearchEnabled: true,
       sortable: true,
-      exactValueOf: (s) => s.lossRate?.toStringAsFixed(2),
+      exactValueOf: (s) => s.lossRateText,
       info: '已结清委外行的加权损耗百分比，可输入精确值、比较或范围；没有结清记录不是零。',
-      value: (s) => s.lossRate?.toStringAsFixed(2),
+      value: (s) => s.lossRateText,
     ),
     MasterColumnDef(
       key: 'place',

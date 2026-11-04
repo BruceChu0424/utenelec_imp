@@ -62,4 +62,10 @@ public record LearningRow(
         BigDecimal qty,
         long observations,
         boolean learningEnabled) {
+
+    @com.fasterxml.jackson.annotation.JsonProperty("unitWeightKgExact")
+    public String getUnitWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(unitWeightKg);}
+
+    @com.fasterxml.jackson.annotation.JsonProperty("masterUnitWeightKgExact")
+    public String getMasterUnitWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(masterUnitWeightKg);}
 }

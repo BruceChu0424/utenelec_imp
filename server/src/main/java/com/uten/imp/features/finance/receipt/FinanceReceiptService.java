@@ -79,6 +79,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class FinanceReceiptService {
+    @org.springframework.beans.factory.annotation.Autowired private com.uten.imp.application.port.NativeFinancialPostingAccountPort nativePostingAccounts;
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
     @org.springframework.beans.factory.annotation.Autowired
     public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
@@ -345,6 +346,8 @@ public class FinanceReceiptService {
         // Account-balance adjustment already uses this order; taking account
         // locks first here would create a real deadlock cycle.
         glPosting.lockAutoProjectionPeriod(r.getBillDate());
+        com.uten.imp.application.concurrency.FinanceClassificationLock.lock(em);
+        if(nativePostingAccounts!=null)nativePostingAccounts.lockCashSources("RECEIPT",r.getId());
         validateReceiptShape(r, lineRepo.findByReceiptIdOrderByLineNoAsc(r.getId()), true);
         finalizeSettlementAuthority(r, r.getAccountCurrencyId(),
                 r.getAccountAmount(), true);
@@ -357,6 +360,8 @@ public class FinanceReceiptService {
         r.setApproverLegacyId(null);
         r.setApproverName(nameResolver.nameOf(approver));
         settleReceipt(r);
+        em.flush();
+        if(nativePostingAccounts!=null&&r.getSettlementAuthorityVersion()>=SETTLEMENT_AUTHORITY_V1)r.setGlCounterStyleId(nativePostingAccounts.prepareCash("RECEIPT",r.getId()));
         r.setStatus(STATUS_APPROVED);
         r.setCancelDate(OffsetDateTime.now());
         receiptRepo.saveAndFlush(r);
@@ -375,6 +380,8 @@ public class FinanceReceiptService {
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_receipts",r);
         requireUnapprovalHeader(r);
         assertCompletePosting(r); // 红冲前确认收款与另付费用流水完整
+        glPosting.lockAutoProjectionPeriod(com.uten.imp.common.time.BusinessTime.today());
+        com.uten.imp.application.concurrency.FinanceClassificationLock.lock(em);
         OffsetDateTime reversedAt = OffsetDateTime.now();
         glPosting.reverseReceiptDoc(r.getId(), reversedAt);
         // Allocation reversal is database-guarded against a reversed receipt header.
@@ -1270,9 +1277,9 @@ public class FinanceReceiptService {
                 .findByReceiptIdOrderByLineNoAsc(receipt.getId()).stream()
                 .map(line->nz(line.getExchangeDiff()))
                 .reduce(BigDecimal.ZERO,BigDecimal::add);
-        UUID counterStyle=requiredPostingStyle(
-                "CUSTOMER_PREPAYMENT".equals(receipt.getReceiptKind())
-                        ?"CUSTOMER_ADVANCE":"AR_CONTROL");
+        UUID counterStyle=(UUID)em.createNativeQuery("SELECT fn_finance_native_cash_counter_style('RECEIPT',:id,:role,:currency,'CUSTOMER',:party,:day)")
+                .setParameter("id",receipt.getId()).setParameter("role","CUSTOMER_PREPAYMENT".equals(receipt.getReceiptKind())?"CUSTOMER_ADVANCE":"AR_CONTROL")
+                .setParameter("currency",receipt.getCurrencyId()).setParameter("party",receipt.getClientId()).setParameter("day",receipt.getBillDate()).getSingleResult();
         UUID bankFeeStyle=bankFeeLocal.signum()==0
                 ?null:requiredPostingStyle("BANK_FEE_EXPENSE");
         UUID fxStyle=exchangeDifference.signum()==0

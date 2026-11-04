@@ -1,3 +1,5 @@
+import 'finance_requirement_names.dart';
+
 // 钱流报表配置（财税部 → 钱流报表：5 张卡，镜像销售/采购「明细+汇总+单独卡」范式）。
 //
 // 5 张卡（finance_hub_page「钱流报表」分区）：
@@ -87,12 +89,12 @@ const FinanceReportCard financeSummaryCard = FinanceReportCard(
   title: '钱流汇总报表',
   variants: [
     FinanceReportVariant(
-      label: '应收款汇总',
+      label: FinanceRequirementNames.receivableSummary,
       endpoint: '/finance/reports/ar-ap/summary',
       fixedParams: {'direction': 'AR'},
     ),
     FinanceReportVariant(
-      label: '应付款汇总',
+      label: FinanceRequirementNames.payableSummary,
       endpoint: '/finance/reports/ar-ap/summary',
       fixedParams: {'direction': 'AP'},
     ),
@@ -112,6 +114,14 @@ const FinanceReportCard financeSummaryCard = FinanceReportCard(
       label: '其它收入汇总',
       endpoint: '/finance/reports/income/summary',
     ),
+    FinanceReportVariant(
+      label: FinanceRequirementNames.receivableAuxiliaryDetail,
+      endpoint: '/finance/reports/auxiliary/receivable',
+    ),
+    FinanceReportVariant(
+      label: FinanceRequirementNames.payableAuxiliaryDetail,
+      endpoint: '/finance/reports/auxiliary/payable',
+    ),
   ],
 );
 
@@ -122,7 +132,7 @@ const FinanceReportCard financeReconCard = FinanceReportCard(
   title: '对账单',
   variants: [
     FinanceReportVariant(
-      label: '委外加工对账单',
+      label: FinanceRequirementNames.subcontractStatement,
       endpoint: '/finance/reports/statements/subcontract',
     ),
     FinanceReportVariant(
@@ -130,15 +140,15 @@ const FinanceReportCard financeReconCard = FinanceReportCard(
       endpoint: '/finance/reports/statements/subcontract',
     ),
     FinanceReportVariant(
-      label: '供应商对账单',
+      label: FinanceRequirementNames.supplierStatement,
       endpoint: '/finance/reports/statements/supplier',
     ),
     FinanceReportVariant(
-      label: '其他应收款对账单',
+      label: FinanceRequirementNames.otherReceivableStatement,
       endpoint: '/finance/reports/statements/other-receivable',
     ),
     FinanceReportVariant(
-      label: '客户对账单',
+      label: FinanceRequirementNames.clientStatement,
       endpoint: '/finance/reports/statements/client',
     ),
   ],
@@ -166,33 +176,33 @@ const FinanceReportCard financeCostCard = FinanceReportCard(
       endpoint: '/finance/reports/cost/product',
     ),
     FinanceReportVariant(
-      label: '销售成本核算汇总',
+      label: FinanceRequirementNames.salesCostSummary,
       endpoint: '/finance/reports/cost/sales-summary',
     ),
     FinanceReportVariant(
-      label: '铜柱加工费核算',
+      label: FinanceRequirementNames.copperFee,
       endpoint: '/finance/reports/cost/copper-fee',
     ),
     FinanceReportVariant(
-      label: '插套酸洗入库明细',
+      label: FinanceRequirementNames.copperDetail,
       endpoint: '/finance/reports/cost/copper-pickling',
     ),
     FinanceReportVariant(
-      label: '塑料耗用明细',
+      label: FinanceRequirementNames.plasticUsage,
       endpoint: '/finance/reports/cost/plastic',
     ),
     FinanceReportVariant(
-      label: '塑料领料明细',
+      label: FinanceRequirementNames.plasticIssue,
       endpoint: '/finance/reports/cost/plastic-detail',
       fixedParams: {'kind': 'issue'},
     ),
     FinanceReportVariant(
-      label: '塑料退料明细',
+      label: FinanceRequirementNames.plasticReturn,
       endpoint: '/finance/reports/cost/plastic-detail',
       fixedParams: {'kind': 'return'},
     ),
     FinanceReportVariant(
-      label: '产品入库明细',
+      label: FinanceRequirementNames.plasticFinished,
       endpoint: '/finance/reports/cost/plastic-detail',
       fixedParams: {'kind': 'finished'},
     ),
@@ -205,45 +215,49 @@ const FinanceReportCard financeGlCard = FinanceReportCard(
   title: '总账报表',
   variants: [
     FinanceReportVariant(
-      label: '科目余额表',
+      label: FinanceRequirementNames.trialBalance,
       endpoint: '/finance/reports/gl/trial-balance',
     ),
     FinanceReportVariant(
-      label: '资产负债表',
+      label: FinanceRequirementNames.balanceSheet,
       endpoint: '/finance/reports/gl/balance-sheet',
     ),
     FinanceReportVariant(
-      label: '年度利润汇总表',
+      label: FinanceRequirementNames.annualProfit,
       endpoint: '/finance/reports/gl/profit-annual',
     ),
     FinanceReportVariant(
-      label: '月度利润表',
+      label: FinanceRequirementNames.monthlyProfit,
       endpoint: '/finance/reports/gl/profit-monthly',
     ),
     FinanceReportVariant(
-      label: '制造费用明细表',
+      label: FinanceRequirementNames.manufacturingExpense,
       endpoint: '/finance/reports/gl/manufacturing-expense',
     ),
     FinanceReportVariant(
-      label: '管理费用明细表',
+      label: FinanceRequirementNames.adminExpense,
       endpoint: '/finance/reports/gl/admin-expense',
     ),
     FinanceReportVariant(
-      label: '销售费用明细表',
+      label: FinanceRequirementNames.salesExpense,
       endpoint: '/finance/reports/gl/sales-expense',
     ),
     FinanceReportVariant(
-      label: '经营损益表',
+      label: FinanceRequirementNames.operatingProfit,
       endpoint: '/finance/reports/gl/operating-pl',
     ),
     // C5 固定资产/长期待摊清单（管理 CRUD 走 /api/finance/fixed-assets|deferred-expenses，前端管理页待补）
     FinanceReportVariant(
-      label: '固定资产折旧清单',
+      label: FinanceRequirementNames.depreciation,
       endpoint: '/finance/reports/fa/depreciation-schedule',
     ),
     FinanceReportVariant(
-      label: '长期待摊摊销清单',
+      label: FinanceRequirementNames.amortization,
       endpoint: '/finance/reports/fa/amortization-schedule',
+    ),
+    FinanceReportVariant(
+      label: FinanceRequirementNames.depreciationCompleted,
+      endpoint: '/finance/reports/fa/completed-depreciation-schedule',
     ),
   ],
 );

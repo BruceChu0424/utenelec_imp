@@ -7,7 +7,6 @@ import com.uten.imp.features.master.unit.Unit;
 import org.postgresql.util.PSQLException;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -17,7 +16,7 @@ import java.util.Set;
  *
  * <p>期间边 = 组件发料方式为整批领料的 BOM 行, 只填单个重量: 形状固定为开工前、按每件、基准产量 1、
  * 不设齐套门槛 (数据库 {@code fn_guard_periodic_bom_edge} 兜底)。界面按克输入, 库里存组件基本单位
- * (千克时 /1000, 5 位小数 = 0.01 克); 只有名称为千克/公斤/kg 或克/g 的单位能按克换算, 其它质量单位按原单位填。
+ * (千克时 /1000，保可存原数); 只有名称为千克/公斤/kg 或克/g 的单位能按克换算, 其它质量单位按原单位填。
  * 单个重量小于 0.1 克或大于 5000 克要人确认; 与货品资料单重相差 20% 以上只提醒。
  */
 public final class GoodsPeriodicMaterialRules {
@@ -77,9 +76,19 @@ public final class GoodsPeriodicMaterialRules {
         return qty.multiply(gramsPerUnit).stripTrailingZeros();
     }
 
-    /** 克换回基本单位用量 (5 位小数)。 */
+    /** 克换回基本单位用量（保原数，超出native小数容量时明确采用）。 */
     public static BigDecimal fromGrams(BigDecimal grams, BigDecimal gramsPerUnit) {
-        return grams.divide(gramsPerUnit, QTY_SCALE, RoundingMode.HALF_UP);
+        return asPerPiece(grams,gramsPerUnit);
+    }
+
+    /** Shared preview/import contract; actual writes use the same SQL precision purpose and freeze their source packet. */
+    public static BigDecimal asPerPiece(BigDecimal quantity,BigDecimal basis) {
+        com.uten.imp.common.util.FinancialExactAmount.quantity(quantity,"BOM原数量");
+        com.uten.imp.common.util.FinancialExactAmount.quantity(basis,"BOM原基准产量");
+        if(quantity.signum()<=0 || basis.signum()<=0) throw new ApiException(ErrorCode.VALIDATION_FAILED,"BOM原数量和基准产量须大于0");
+        var adopted=com.uten.imp.common.finance.BusinessPrecisionContext.divide(quantity,basis,
+                "goods.bom.periodic-per-piece","本次BOM单个用量",24);
+        return com.uten.imp.common.util.FinancialExactAmount.quantity(adopted,"BOM单个用量");
     }
 
     public static boolean unusual(BigDecimal grams) {
@@ -125,11 +134,9 @@ public final class GoodsPeriodicMaterialRules {
     /** 单个重量与货品资料单重相差 20% 以上时的提醒; 不拦保存。 */
     public static String differenceWarning(String productLabel, BigDecimal edgeGrams, BigDecimal goodsGrams) {
         if (edgeGrams == null || goodsGrams == null || goodsGrams.signum() <= 0) return null;
-        BigDecimal ratio = edgeGrams.subtract(goodsGrams).abs().divide(goodsGrams, 4, RoundingMode.HALF_UP);
-        if (ratio.compareTo(WARN_RATIO) <= 0) return null;
+        if (edgeGrams.subtract(goodsGrams).abs().compareTo(goodsGrams.multiply(WARN_RATIO)) <= 0) return null;
         return "「" + productLabel + "」的单个重量 " + gramsText(edgeGrams) + " 克与货品资料单重 "
-                + gramsText(goodsGrams) + " 克相差 " + ratio.movePointRight(2).setScale(0, RoundingMode.HALF_UP)
-                .toPlainString() + "%, 请核对";
+                + gramsText(goodsGrams) + " 克相差超过20%, 请核对";
     }
 
     public static String label(Goods goods) {

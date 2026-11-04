@@ -22,9 +22,9 @@ public record ExpenseClaimInvoiceInput(
         @Size(max = 200) String sellerName,
         @Size(max = 20) String sellerTaxNo,
         @Size(max = 200) String buyerName,
-        @DecimalMin("0.00") @Digits(integer = 16, fraction = 2) BigDecimal amountExclTax,
-        @DecimalMin("0.00") @Digits(integer = 16, fraction = 2) BigDecimal taxAmount,
-        @NotNull @DecimalMin(value = "0.01") @Digits(integer = 16, fraction = 2)
+        @DecimalMin("0.00") @Digits(integer = 40, fraction = 24) BigDecimal amountExclTax,
+        @DecimalMin("0.00") @Digits(integer = 40, fraction = 24) BigDecimal taxAmount,
+        @NotNull @DecimalMin(value = "0", inclusive = false) @Digits(integer = 40, fraction = 24)
         BigDecimal totalAmount,
         UUID attachmentId,
         @Size(max = 500) String remark, Long expectedVersion, @Size(max=20) String buyerTaxNo) {

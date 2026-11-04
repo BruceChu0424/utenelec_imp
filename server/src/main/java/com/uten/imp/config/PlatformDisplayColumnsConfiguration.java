@@ -356,7 +356,7 @@ public class PlatformDisplayColumnsConfiguration {
     @Bean PlatformColumnResourceAdapter payrollDisplayColumns(){return view("payroll","工资显示计算",
         new String[]{"payroll:view:self","payroll:view:all"},new String[]{"payroll:view:self","payroll:view:all"});}
     @Bean PlatformColumnResourceAdapter expenseDisplayColumns(){return view("expense","报销显示计算",
-        new String[]{"expense:view","expense:apply","expense:approve","expense:approve:department","expense:approve:finance_initial","expense:approve:finance_review","expense:approve:executive","expense:pay"},new String[]{"expense:view","expense:apply","expense:approve","expense:approve:department","expense:approve:finance_initial","expense:approve:finance_review","expense:approve:executive","expense:pay"});}
+        new String[]{"expense:view","expense:apply","expense:approve","expense:approve:department","expense:approve:finance_initial","expense:approve:finance_review","expense:approve:executive","expense:pay","finance_application:view"},new String[]{"expense:view","expense:apply","expense:approve","expense:approve:department","expense:approve:finance_initial","expense:approve:finance_review","expense:approve:executive","expense:pay","finance_application:view"});}
     @Bean PlatformColumnResourceAdapter qualityDisplayColumns(){return view("quality","品质显示计算",
         new String[]{"production_quality_inspection:view","procurement_iqc_rejection:view","warehouse_iqc_stock_in:view","sales_return_quality:view","stock_doc:view"},new String[]{});}
     @Bean PlatformColumnResourceAdapter visitorDisplayColumns(){return view("visitor","访客显示计算",

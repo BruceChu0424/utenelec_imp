@@ -24,7 +24,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.YearMonth;
@@ -55,6 +54,7 @@ public class FinanceAssetWorkflowService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public AssetWorkbenchResponses.WorkflowResult createFixed(AssetWorkbenchRequests.FixedAssetDraft request) {
+        com.uten.imp.common.util.FinancialExactAmount.require(request.originalValue(),"资产原值");
         tx.bind();
         UUID actor = authorization.requireActorId(FinanceAssetAuthorization.EDIT);
         BigDecimal salvage = residual(request.categoryId(), request.salvageRate());
@@ -96,6 +96,7 @@ public class FinanceAssetWorkflowService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public AssetWorkbenchResponses.WorkflowResult createDeferred(AssetWorkbenchRequests.DeferredExpenseDraft request) {
+        com.uten.imp.common.util.FinancialExactAmount.require(request.totalAmount(),"待摊原额");
         tx.bind();
         UUID actor = authorization.requireActorId(FinanceAssetAuthorization.EDIT);
         AssetPeriod.parse(request.startPeriod());
@@ -132,6 +133,7 @@ public class FinanceAssetWorkflowService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public AssetWorkbenchResponses.WorkflowResult updateFixed(UUID id, AssetWorkbenchRequests.FixedAssetDraft request) {
+        com.uten.imp.common.util.FinancialExactAmount.require(request.originalValue(),"资产原值");
         tx.bind();
         UUID actor = authorization.requireActorId(FinanceAssetAuthorization.EDIT);
         Locked locked = lock(false, id);
@@ -177,6 +179,7 @@ public class FinanceAssetWorkflowService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:edit')")
     public AssetWorkbenchResponses.WorkflowResult updateDeferred(UUID id, AssetWorkbenchRequests.DeferredExpenseDraft request) {
+        com.uten.imp.common.util.FinancialExactAmount.require(request.totalAmount(),"待摊原额");
         tx.bind();
         UUID actor = authorization.requireActorId(FinanceAssetAuthorization.EDIT);
         Locked locked = lock(true, id);
@@ -288,10 +291,15 @@ public class FinanceAssetWorkflowService {
         UUID actor = authorization.requireActorId(FinanceAssetAuthorization.POST);
         // Initial recognition now has a dedicated maker/checker reversal lifecycle.
         String table = deferred ? "deferred_expenses" : "fixed_assets";
-        var opening = deferred ? null : new AssetOpeningBalanceSupport(em).read(id);
+        String objectType=deferred?"DEFERRED_EXPENSE":"FIXED_ASSET";
+        boolean grouped=AssetOpeningGroupSupport.hasGroup(em,objectType,id);
+        if(grouped)lockPostingStream(deferred ? "AMORTIZATION" : "DEPRECIATION");
+        AssetOpeningGroupSupport.lock(em,objectType,id);
+        var opening = deferred ? AssetOpeningGroupSupport.deferred(em,id) : new AssetOpeningBalanceSupport(em).read(id);
+        UUID groupVoucher=AssetOpeningGroupSupport.voucher(em,objectType,id);
         LocalDate date = opening==null?LocalDate.now(SHANGHAI):opening.asOf(); String period = YearMonth.from(date).toString();
-        periods.ensureOpen(period, FinanceAssetAuthorization.POST);
-        lockPostingStream(deferred ? "AMORTIZATION" : "DEPRECIATION");
+        if(!grouped&&(opening==null||opening.existingVoucherId()==null))periods.ensureOpen(period, FinanceAssetAuthorization.POST);
+        if(!grouped)lockPostingStream(deferred ? "AMORTIZATION" : "DEPRECIATION");
         Locked locked = lock(deferred, id); FinanceAssetStateMachine.requireObjectTransition(locked.status(), "ACTIVE");
         version(locked.version(), expectedVersion); AssetPostingPolicy.requireDifferentActor(actor, locked.submittedBy(), "过账");
         requireStartAfterLatestRun(id,deferred);
@@ -299,9 +307,9 @@ public class FinanceAssetWorkflowService {
                 .setParameter("id", id).getSingleResult();
         BigDecimal amount = (BigDecimal) row[1];
         requireSnapshotAccounts(deferred,NativeValueConverters.uuid(row[2]),NativeValueConverters.uuid(row[3]),NativeValueConverters.uuid(row[4]),NativeValueConverters.uuid(row[5]));
-        UUID voucher=opening==null?null:new AssetOpeningBalanceSupport(em).verifyExisting(opening,amount,
+        UUID voucher=grouped?groupVoucher:opening==null?null:new AssetOpeningBalanceSupport(em).verifyExisting(opening,amount,
                 NativeValueConverters.uuid(row[2]),NativeValueConverters.uuid(row[3]),NativeValueConverters.uuid(row[5]));
-        if(voucher==null) {
+        if(voucher==null&&!grouped) {
             List<FinanceAssetLedgerPostingService.Entry> entries=new ArrayList<>();
             entries.add(new FinanceAssetLedgerPostingService.Entry(NativeValueConverters.uuid(row[2]),1,amount,"初始确认原值"));
             BigDecimal accumulated=opening==null?BigDecimal.ZERO:opening.accumulatedAmount();
@@ -316,13 +324,20 @@ public class FinanceAssetWorkflowService {
         if (deferred) {
             changed(em.createNativeQuery("UPDATE deferred_expenses SET lifecycle_status='ACTIVE', status='摊销中', recognized_on=:date, expense_style_id=expense_style_snapshot_id, row_version=row_version+1, updated_at=now(), updated_by=:actor WHERE id=:id AND lifecycle_status='APPROVED' AND row_version=:version")
                     .setParameter("date", date).setParameter("actor", actor).setParameter("id", id).setParameter("version", locked.version()).executeUpdate());
+            if(opening!=null&&opening.remainingMonths()==0){
+                FinanceAssetStateMachine.requireObjectTransition("ACTIVE","COMPLETED");
+                changed(em.createNativeQuery("UPDATE deferred_expenses SET lifecycle_status='COMPLETED',status='已摊完',completed_on=:date,row_version=row_version+1,updated_at=now(),updated_by=:actor WHERE id=:id AND lifecycle_status='ACTIVE' AND opening_amortized_amount=total_amount")
+                    .setParameter("date",date).setParameter("actor",actor).setParameter("id",id).executeUpdate());
+            }
         } else {
             changed(em.createNativeQuery("UPDATE fixed_assets SET lifecycle_status='ACTIVE', status='在用', operating_status='IN_USE', capitalized_on=:date, expense_style_id=expense_style_snapshot_id, row_version=row_version+1, updated_at=now(), updated_by=:actor WHERE id=:id AND lifecycle_status='APPROVED' AND row_version=:version")
                     .setParameter("date", date).setParameter("actor", actor).setParameter("id", id).setParameter("version", locked.version()).executeUpdate());
             em.createNativeQuery("UPDATE finance_asset_books SET status=CASE WHEN accumulated_amount>=depreciable_amount THEN 'FULLY_DEPRECIATED' ELSE 'ACTIVE' END, posting_enabled=true, activated_at=now(), activated_by=:actor, row_version=row_version+1, updated_at=now(), updated_by=:actor WHERE asset_id=:id AND book_type='CORPORATE' AND status='DRAFT' AND is_deleted=false")
                     .setParameter("actor", actor).setParameter("id", id).executeUpdate();
         }
-        event(deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET", id, "ACTIVATED", "Initial recognition posted", date, null, Map.of("voucherId", voucher.toString()), actor);
+        boolean linked=grouped||opening!=null&&opening.existingVoucherId()!=null;
+        Map<String,Object> recognition=new LinkedHashMap<>();if(voucher!=null)recognition.put("voucherId",voucher.toString());recognition.put("existingGlLinked",linked);recognition.put("zeroBalanceEvidence",grouped&&voucher==null);
+        event(deferred ? "DEFERRED_EXPENSE" : "FIXED_ASSET", id, "ACTIVATED", linked?(voucher==null?"原账零余额已核对，不新增凭证":"已关联原有凭证，不重复入账"):"初始确认已记账", date, null, recognition, actor);
         return result(id, deferred);
     }
 
@@ -360,6 +375,8 @@ public class FinanceAssetWorkflowService {
     @Transactional
     @PreAuthorize("hasAuthority('finance_asset:dispose')")
     public AssetWorkbenchResponses.WorkflowResult requestDisposal(UUID id, AssetWorkbenchRequests.DisposalCommand command) {
+        com.uten.imp.common.util.FinancialExactAmount.require(command.proceedsAmount(),"处置预计收入");
+        if(command.proceedsAmount().signum()<0)throw validation("处置预计收入不能为负数");
         tx.bind(); UUID actor = authorization.requireActorId(FinanceAssetAuthorization.DISPOSE);
         featureGate.requirePostedWorkflowsEnabled("固定资产处置");
         Locked locked = lock(false, id); if (!"ACTIVE".equals(locked.status())) throw conflict("只有启用（在用）状态的资产才能申请处置");
@@ -455,7 +472,7 @@ public class FinanceAssetWorkflowService {
         requireWorkflowEffectiveDate(id,true,request.effectiveDate());
         requireEffectiveRun("AMORTIZATION",period);
         requireNoLaterRun("AMORTIZATION",period);
-        Object[] row=(Object[])em.createNativeQuery("SELECT d.total_amount,d.cost_style_snapshot_id,d.expense_style_snapshot_id,COALESCE((SELECT SUM(l.amount) FROM da_amortization_log l WHERE l.deferred_id=d.id AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false),0),s.start_period,d.clearing_style_snapshot_id FROM deferred_expenses d JOIN finance_deferral_schedule_versions s ON s.deferred_id=d.id AND s.status='APPROVED' AND s.is_deleted=false WHERE d.id=:id FOR UPDATE").setParameter("id",id).getSingleResult();
+        Object[] row=(Object[])em.createNativeQuery("SELECT d.total_amount-d.opening_amortized_amount,d.cost_style_snapshot_id,d.expense_style_snapshot_id,COALESCE((SELECT SUM(l.amount) FROM da_amortization_log l WHERE l.deferred_id=d.id AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false),0),s.start_period,d.clearing_style_snapshot_id FROM deferred_expenses d JOIN finance_deferral_schedule_versions s ON s.deferred_id=d.id AND s.status='APPROVED' AND s.is_deleted=false WHERE d.id=:id FOR UPDATE").setParameter("id",id).getSingleResult();
         BigDecimal remaining=decimal(row[0]).subtract(decimal(row[3]));
         requireSnapshotAccounts(true,NativeValueConverters.uuid(row[1]),null,NativeValueConverters.uuid(row[2]),NativeValueConverters.uuid(row[5]));
         if(remaining.signum()<0)throw conflict("这笔长期待摊费用的剩余金额是负数，请先核对摊销记录");
@@ -500,7 +517,7 @@ public class FinanceAssetWorkflowService {
         Locked locked=lock(true,id); version(locked.version(),command.expectedVersion());
         RequestEvidence request=latestRequest("DEFERRED_EXPENSE",id,"TERMINATION_REQUESTED");
         AssetPostingPolicy.requireDifferentActor(actor,request.maker(),"驳回终止");
-        Object[] balance=(Object[])em.createNativeQuery("SELECT d.total_amount,COALESCE(SUM(l.amount),0) FROM deferred_expenses d LEFT JOIN da_amortization_log l ON l.deferred_id=d.id AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false WHERE d.id=:id GROUP BY d.total_amount")
+        Object[] balance=(Object[])em.createNativeQuery("SELECT d.total_amount-d.opening_amortized_amount,COALESCE(SUM(l.amount),0) FROM deferred_expenses d LEFT JOIN da_amortization_log l ON l.deferred_id=d.id AND l.entry_kind='NORMAL' AND l.status='ACTIVE' AND l.is_deleted=false WHERE d.id=:id GROUP BY d.total_amount,d.opening_amortized_amount")
                 .setParameter("id",id).getSingleResult();
         String target=decimal(balance[0]).subtract(decimal(balance[1])).signum()==0?"COMPLETED":"ACTIVE";
         FinanceAssetStateMachine.requireObjectTransition(locked.status(),target);
@@ -525,8 +542,15 @@ public class FinanceAssetWorkflowService {
                 FROM fixed_assets WHERE id=:id
                 """).setParameter("id", id).getSingleResult();
         if (deferred) {
+            var opening=AssetOpeningGroupSupport.deferred(em,id);
+            if(opening!=null) {
+                AssetOpeningBalanceSupport.validate(opening,decimal(row[0]),BigDecimal.ZERO,NativeValueConverters.toLocalDate(row[3]),NativeValueConverters.text(row[2]));
+                AssetOpeningGroupSupport.voucher(em,"DEFERRED_EXPENSE",id);
+                if(opening.remainingMonths()>0&&!YearMonth.from(opening.asOf()).plusMonths(opening.remainingMonths()).equals(YearMonth.from(NativeValueConverters.toLocalDate(row[4]))))
+                    throw validation("剩余摊销月数与原受益结束月份不一致，请核对本组接续");
+            }
             AssetSubmissionPolicy.validateDeferredExpense(new AssetSubmissionPolicy.DeferredInput(
-                    policy(category), decimal(row[0]), number(row[1]).intValue(), NativeValueConverters.text(row[2]), NativeValueConverters.toLocalDate(row[3]), NativeValueConverters.toLocalDate(row[4])));
+                    policy(category), decimal(row[0]), number(row[1]).intValue(), opening==null?NativeValueConverters.text(row[2]):YearMonth.from(NativeValueConverters.toLocalDate(row[3])).toString(), NativeValueConverters.toLocalDate(row[3]), NativeValueConverters.toLocalDate(row[4])));
             requireSource(id,true,NativeValueConverters.text(row[5]),NativeValueConverters.uuid(row[6]),NativeValueConverters.text(row[7]),NativeValueConverters.text(row[8]),category.documents());
             requireNotFuture(NativeValueConverters.toLocalDate(row[3]),"benefitStartDate");
             requireNotFuture(NativeValueConverters.toLocalDate(row[9]),"sourceDocumentDate");
@@ -535,6 +559,7 @@ public class FinanceAssetWorkflowService {
             var opening=new AssetOpeningBalanceSupport(em).read(id);
             if(opening!=null) {
                 AssetOpeningBalanceSupport.validate(opening,decimal(row[0]),decimal(row[1]),NativeValueConverters.toLocalDate(row[6]),NativeValueConverters.text(row[3]));
+                AssetOpeningGroupSupport.voucher(em,"FIXED_ASSET",id);
             }
             AssetSubmissionPolicy.validateFixedAsset(new AssetSubmissionPolicy.FixedAssetInput(
                     policy(category), decimal(row[0]), decimal(row[1]), number(row[2]).intValue(), opening==null?NativeValueConverters.text(row[3]):CorporateAssetBookPolicy.deriveDepreciationStart(NativeValueConverters.toLocalDate(row[6])).toString(),
@@ -572,8 +597,8 @@ public class FinanceAssetWorkflowService {
     private void createCorporateBook(UUID id, Category category, UUID actor) {
         Object[] r=(Object[])em.createNativeQuery("SELECT original_value,salvage_rate,useful_months,ready_for_use_on FROM fixed_assets WHERE id=:id")
                 .setParameter("id",id).getSingleResult();
-        BigDecimal original=decimal(r[0]).setScale(4,RoundingMode.HALF_UP);
-        BigDecimal residual=original.multiply(decimal(r[1])).setScale(4,RoundingMode.HALF_UP);
+        BigDecimal original=com.uten.imp.common.util.FinancialExactAmount.require(decimal(r[0]),"资产原值");
+        BigDecimal residual=com.uten.imp.common.util.FinancialExactAmount.book(original.multiply(decimal(r[1])),"残值金额");
         var opening=new AssetOpeningBalanceSupport(em).read(id);
         String start=opening==null?CorporateAssetBookPolicy.deriveDepreciationStart(NativeValueConverters.toLocalDate(r[3])).toString():YearMonth.from(opening.asOf()).plusMonths(1).toString();
         BigDecimal accumulated=opening==null?BigDecimal.ZERO:opening.accumulatedAmount();
@@ -581,12 +606,13 @@ public class FinanceAssetWorkflowService {
                 INSERT INTO finance_asset_books
                     (asset_id,book_type,method,original_value,residual_rate,residual_amount,depreciable_amount,
                      useful_months,start_period,net_book_value,cost_style_id,accumulated_style_id,expense_style_id,
-                     clearing_style_id,policy_snapshot,status,posting_enabled,created_by,updated_by,accumulated_amount,opening_accumulated_amount)
+                     clearing_style_id,policy_snapshot,status,posting_enabled,created_by,updated_by,accumulated_amount,opening_accumulated_amount,regular_monthly_amount)
                 VALUES (:id,'CORPORATE',:method,:original,:rate,:residual,:depreciable,:months,:start,:net,
-                        :cost,:accumulated,:expense,:clearing,CAST(:policy AS jsonb),'DRAFT',false,:actor,:actor,:openingAccumulated,:openingAccumulated)
+                        :cost,:accumulated,:expense,:clearing,CAST(:policy AS jsonb),'DRAFT',false,:actor,:actor,:openingAccumulated,:openingAccumulated,:regular)
                 """).setParameter("id",id).setParameter("method",category.method()).setParameter("original",original)
                 .setParameter("rate",decimal(r[1])).setParameter("residual",residual).setParameter("depreciable",original.subtract(residual))
                 .setParameter("months",opening==null?number(r[2]).intValue():Math.max(1,opening.remainingMonths())).setParameter("net",original.subtract(accumulated))
+                .setParameter("regular",StraightLineScheduleCalculator.regularAmount(original.subtract(residual).subtract(accumulated),opening==null?number(r[2]).intValue():Math.max(1,opening.remainingMonths())))
                 .setParameter("openingAccumulated",accumulated).setParameter("start",start).setParameter("cost",category.cost())
                 .setParameter("accumulated",category.accumulated()).setParameter("expense",category.expense())
                 .setParameter("clearing",category.clearing()).setParameter("policy",accountSnapshot(category)).setParameter("actor",actor).executeUpdate();
@@ -595,27 +621,31 @@ public class FinanceAssetWorkflowService {
     private void createDeferredSchedule(UUID id, Category category, UUID actor) {
         Object[] r=(Object[])em.createNativeQuery("SELECT total_amount,useful_months,start_period,service_start_on,benefit_end_on FROM deferred_expenses WHERE id=:id")
                 .setParameter("id",id).getSingleResult();
-        BigDecimal amount=decimal(r[0]); int months=number(r[1]).intValue(); String start=NativeValueConverters.text(r[2]); UUID versionId=UUID.randomUUID();
+        var opening=AssetOpeningGroupSupport.deferred(em,id);
+        BigDecimal amount=decimal(r[0]); int months=opening==null?number(r[1]).intValue():opening.remainingMonths();
+        BigDecimal accumulated=opening==null?BigDecimal.ZERO:opening.accumulatedAmount();
+        String start=NativeValueConverters.text(r[2]); UUID versionId=UUID.randomUUID();
         em.createNativeQuery("""
                 INSERT INTO finance_deferral_schedule_versions
                     (id,deferred_id,version,method,total_amount,useful_months,start_period,end_period,
                      benefit_start_on,benefit_end_on,expense_style_id,cost_style_id,clearing_style_id,
-                     policy_snapshot,status,created_by,updated_by)
-                VALUES (:id,:deferred,1,:method,:amount,:months,:start,:end,:benefitStart,:benefitEnd,
-                        :expense,:cost,:clearing,CAST(:policy AS jsonb),'DRAFT',:actor,:actor)
+                     policy_snapshot,status,created_by,updated_by,opening_amortized_amount,nominal_monthly_amount)
+                VALUES (:id,:deferred,(SELECT COALESCE(max(v.version),0)+1 FROM finance_deferral_schedule_versions v WHERE v.deferred_id=:deferred),:method,:amount,:months,:start,:end,:benefitStart,:benefitEnd,
+                        :expense,:cost,:clearing,CAST(:policy AS jsonb),'DRAFT',:actor,:actor,:openingAccumulated,:nominal)
                 """).setParameter("id",versionId).setParameter("deferred",id).setParameter("method",category.method())
                 .setParameter("amount",amount).setParameter("months",months).setParameter("start",start)
-                .setParameter("end",AssetPeriod.parse(start).value().plusMonths(months-1L).toString())
+                .setParameter("end",AssetPeriod.parse(start).value().plusMonths(Math.max(0,months-1L)).toString())
                 .setParameter("benefitStart",NativeValueConverters.toLocalDate(r[3])).setParameter("benefitEnd",NativeValueConverters.toLocalDate(r[4]))
                 .setParameter("expense",category.expense()).setParameter("cost",category.cost()).setParameter("clearing",category.clearing())
-                .setParameter("policy",accountSnapshot(category)).setParameter("actor",actor).executeUpdate();
-        var schedule=StraightLineScheduleCalculator.calculateDeferred(amount,months,AssetPeriod.parse(start));
-        for(var line:schedule.lines()) em.createNativeQuery("""
+                .setParameter("policy",accountSnapshot(category)).setParameter("actor",actor).setParameter("openingAccumulated",accumulated)
+                .setParameter("nominal",StraightLineScheduleCalculator.regularAmount(amount,number(r[1]).intValue())).executeUpdate();
+        var lines=months==0?List.<StraightLineScheduleCalculator.ScheduleLine>of():StraightLineScheduleCalculator.calculateOpening(amount,BigDecimal.ZERO,months,AssetPeriod.parse(start),accumulated).lines();
+        for(var line:lines) em.createNativeQuery("""
                 INSERT INTO finance_deferral_schedule_lines
                     (schedule_version_id,sequence,period,opening_balance,amount,accumulated_amount,closing_balance,created_by,updated_by)
                 VALUES (:version,:sequence,:period,:opening,:amount,:accumulated,:closing,:actor,:actor)
                 """).setParameter("version",versionId).setParameter("sequence",line.sequence()).setParameter("period",line.period())
-                .setParameter("opening",schedule.originalAmount().subtract(line.openingAccumulated())).setParameter("amount",line.amount())
+                .setParameter("opening",amount.subtract(line.openingAccumulated())).setParameter("amount",line.amount())
                 .setParameter("accumulated",line.closingAccumulated()).setParameter("closing",line.closingNetAmount())
                 .setParameter("actor",actor).executeUpdate();
         em.createNativeQuery("UPDATE finance_deferral_schedule_versions SET status='APPROVED',approved_at=now(),approved_by=:actor,updated_at=now(),updated_by=:actor WHERE id=:id")
@@ -624,6 +654,10 @@ public class FinanceAssetWorkflowService {
 
     private void requireSource(UUID objectId,boolean deferred,String type,UUID sourceId,String ref,String line,String documents){
         String normalizedType=normalizeType(type),normalizedRef=normalizeRef(ref),normalizedLine=normalizeRef(line);
+        if("FINANCE_TEMPLATE".equals(normalizedType)) {
+            if(!AssetOpeningGroupSupport.hasGroup(em,deferred?"DEFERRED_EXPENSE":"FIXED_ASSET",objectId))throw validation("财务原表来源须先由本组接续核对既有GL并认领，不能另行重复初始入账");
+            AssetOpeningGroupSupport.voucher(em,deferred?"DEFERRED_EXPENSE":"FIXED_ASSET",objectId);
+        }
         if(normalizedType==null||normalizedRef==null||normalizedLine==null){
             throw validation("提交前请先填写来源单据类型、来源单号和来源行号；来源是整单时行号填 HEADER");
         }
@@ -733,7 +767,7 @@ public class FinanceAssetWorkflowService {
         }
         requirePostableStyle(cost,"ACCOUNT","成本科目");
         if(!deferred)requirePostableStyle(accumulated,"ACCOUNT","累计折旧科目");
-        requirePostableStyle(expense,"EXPENSE","费用科目");
+        FinanceAssetExpenseStyles.requireActive(em,expense);
         requirePostableStyle(clearing,"ACCOUNT","清理科目");
     }
     private void requirePostableStyle(UUID styleId,String expectedCategory,String role){

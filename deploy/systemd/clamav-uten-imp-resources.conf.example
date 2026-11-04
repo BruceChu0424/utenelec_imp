@@ -1,6 +1,8 @@
 # /etc/systemd/system/clamav-daemon.service.d/uten-imp-resources.conf
 # clamd.conf must set LocalSocket /run/clamav/clamd.ctl, LocalSocketGroup uten-imp,
 # LocalSocketMode 660, MaxThreads 2 and StreamMaxLength at least UTEN_STORAGE_MAX_BYTES.
+# The explicit financial-asset original intake also requires StreamMaxLength >= 64M;
+# keep the ordinary attachment limit unchanged. Scanner refusals remain fail-closed.
 # Remove TCPAddr/TCPSocket only in the reviewed application Unix-socket cutover.
 # Ubuntu socket activation also needs clamav-uten-imp-unix.socket.conf.example.
 [Service]

@@ -10,17 +10,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * 一种料一期实际用量按成本范围分摊 (ADR-131 §5.8, 纯函数)。
- *
- * <p>每个成本范围 {@code allocated = MoneyPolicy.quantityShare(consumed, T_s, T)} (数量 4 位); 理论最大的一行
- * (并列取成本范围 id 最小, 按 id 文字比较, 与库里 uuid 排序一致) 承担尾差 = consumed - 其余之和, 所以合计恒等于
- * consumed。极小用量分给很多成本范围时, 其余各行按 4 位取整之和可能超过 consumed; 这时从理论最小的行起逐行
- * 让出 0.0001, 直到尾差行不为负。本类不自己写舍入, 数量取位一律经 {@link MoneyPolicy}。
- */
+/** Actual use allocated by exact proportions. The original largest basis row
+ * (UUID ascending tie break) takes the exact remainder. No hidden tick correction;
+ * a user choice that over-allocates fails without changing the original amount. */
 public final class WorkshopMaterialAllocationCalculator {
 
-    private static final BigDecimal STEP = new BigDecimal("0.0001");
 
     private WorkshopMaterialAllocationCalculator() {}
 
@@ -31,7 +25,7 @@ public final class WorkshopMaterialAllocationCalculator {
     public record Share(UUID costScopeSegmentId, BigDecimal basisQty, BigDecimal allocatedQty, boolean tail) {}
 
     /**
-     * @param consumed 要分摊的实际用量 (大于 0, 4 位)
+     * @param consumed 要分摊的实际用量 (大于 0，支持24位小数)
      * @param bases    各成本范围的理论用量; 同一成本范围出现多次时合并, 不大于 0 的忽略
      * @return 每个理论大于 0 的成本范围一行, 按成本范围 id 排序; 没有可分的基数时为空
      */
@@ -65,22 +59,8 @@ public final class WorkshopMaterialAllocationCalculator {
             others = others.add(allocated[index]);
         }
         if (others.compareTo(total) > 0) {
-            List<Integer> smallestFirst = new ArrayList<>();
-            for (int index = 0; index < rows.size(); index++) if (index != tailIndex) smallestFirst.add(index);
-            smallestFirst.sort(Comparator.<Integer, BigDecimal>comparing(index -> rows.get(index).getValue())
-                    .thenComparing(index -> rows.get(index).getKey().toString()));
-            while (others.compareTo(total) > 0) {
-                boolean reduced = false;
-                for (int index : smallestFirst) {
-                    if (others.compareTo(total) <= 0) break;
-                    if (allocated[index].compareTo(STEP) >= 0) {
-                        allocated[index] = allocated[index].subtract(STEP);
-                        others = others.subtract(STEP);
-                        reduced = true;
-                    }
-                }
-                if (!reduced) break;
-            }
+            throw new com.uten.imp.common.finance.BusinessPrecisionRequiredException("quantity.share",
+                "本次车间用量分配：上次精度超出原用量，请明确重新选择",24,"PRECISION_LIMIT",true);
         }
         allocated[tailIndex] = total.subtract(others);
 

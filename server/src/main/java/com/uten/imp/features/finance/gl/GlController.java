@@ -89,7 +89,7 @@ public class GlController {
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
         var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
-        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.profitAnnual(yearOf(year,dateTo)):reports.profitAnnual(yearOf(year,dateTo),options);
+        return reports.profitAnnual(yearOf(year,dateTo),throughMonth(year,dateTo),options);
     }
 
     /** 附 11 月度利润表（本月+本年累计）。year/month 缺省取 dateTo 年/月。 */
@@ -110,7 +110,7 @@ public class GlController {
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
         var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
-        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.manufacturingExpense(yearOf(year,dateTo)):reports.manufacturingExpense(yearOf(year,dateTo),options);
+        return reports.manufacturingExpense(yearOf(year,dateTo),throughMonth(year,dateTo),options);
     }
 
     /** 附 13 管理费用明细。 */
@@ -120,7 +120,7 @@ public class GlController {
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
         var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
-        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.adminExpense(yearOf(year,dateTo)):reports.adminExpense(yearOf(year,dateTo),options);
+        return reports.adminExpense(yearOf(year,dateTo),throughMonth(year,dateTo),options);
     }
 
     /** 附 14 销售费用明细（按费用科目；费用单据无业务员维度，按人拆分不可推导）。 */
@@ -130,7 +130,7 @@ public class GlController {
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo) {
         var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
-        return options.filters().isEmpty()&&options.sort()==null&&options.order()==null?reports.salesExpense(yearOf(year,dateTo)):reports.salesExpense(yearOf(year,dateTo),options);
+        return reports.salesExpense(yearOf(year,dateTo),throughMonth(year,dateTo),options);
     }
 
     /** 附 16 经营损益表（占销售比口径）。 */
@@ -177,6 +177,10 @@ public class GlController {
     private static int yearOf(Integer year, LocalDate dateTo) {
         if (year != null) return year;
         return (dateTo != null ? dateTo : BusinessTime.today()).getYear();
+    }
+    private static int throughMonth(Integer year,LocalDate dateTo) {
+        if(dateTo!=null)return dateTo.getMonthValue();
+        var today=BusinessTime.today();return year!=null&&year<today.getYear()?12:today.getMonthValue();
     }
 
     private static int monthOf(Integer month, LocalDate dateTo) {

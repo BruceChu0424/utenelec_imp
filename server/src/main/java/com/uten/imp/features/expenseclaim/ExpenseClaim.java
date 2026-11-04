@@ -37,7 +37,7 @@ public class ExpenseClaim extends SoftDeletableEntity {
     @Column(nullable = false)
     private String title;
 
-    @Column(name = "total_amount", nullable = false, precision = 18, scale = 2)
+    @Column(name = "total_amount", nullable = false)
     private BigDecimal totalAmount;
 
     @Column(nullable = false)
@@ -100,6 +100,8 @@ public class ExpenseClaim extends SoftDeletableEntity {
 
     @Column(name = "payment_expense_style_id")
     private UUID paymentExpenseStyleId;
+    @Column(name="payment_posting_purpose",nullable=false)
+    private String paymentPostingPurpose="ORDINARY_EXPENSE";
 
     @Column(name = "finance_expense_id")
     private UUID financeExpenseId;

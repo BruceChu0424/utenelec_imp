@@ -261,7 +261,7 @@ public class GoodsIssueMethodService {
                     UPDATE goods_bom_items
                     SET component_goods_id = component_goods_id,
                         control_stage = 'START', consumption_basis = 'PER_UNIT',
-                        qty = round(qty / basis_output_qty, 5), basis_output_qty = 1,
+                        qty = fn_goods_bom_periodic_quantity(id,goods_id,component_goods_id,qty,basis_output_qty,'BASIS_OUTPUT'), basis_output_qty = 1,
                         hard_gate = FALSE, allow_partial_package = TRUE,
                         audited_at = NULL, audited_by = NULL,
                         updated_at = now(), updated_by = :actor
@@ -374,7 +374,7 @@ public class GoodsIssueMethodService {
             String action;
             String note;
             BigDecimal each = qty;
-            BigDecimal converted = periodicTarget && "PER_UNIT".equals(consumption) ? perUnit(qty, basis) : null;
+            BigDecimal converted = periodicTarget && !toShared && "PER_UNIT".equals(consumption) ? perUnit(qty, basis) : null;
             if (periodicTarget && toShared) {
                 action = ACTION_REMOVE;
                 note = "辅料不写进 BOM, 切换时从这个产品的 BOM 里去掉, 按当期主料用量分到各产品";
@@ -410,8 +410,8 @@ public class GoodsIssueMethodService {
     /** 每件用量 = 用量 / 基准产量; 5 位小数内除不尽返回 null (要人工改)。 */
     private static BigDecimal perUnit(BigDecimal qty, BigDecimal basis) {
         if (qty == null || basis == null || basis.signum() <= 0) return null;
-        BigDecimal value = qty.divide(basis, MathContext.DECIMAL128).stripTrailingZeros();
-        if (value.signum() <= 0 || value.scale() > GoodsPeriodicMaterialRules.QTY_SCALE) return null;
+        BigDecimal value = GoodsPeriodicMaterialRules.asPerPiece(qty,basis);
+        if (value.signum() <= 0 || value.stripTrailingZeros().scale() > 24) return null;
         return value;
     }
 
@@ -659,9 +659,10 @@ public class GoodsIssueMethodService {
 
     private static void requireBulkPackageQty(GoodsRow goods, BigDecimal value) {
         if (value == null) return;
-        if (value.signum() <= 0 || value.stripTrailingZeros().scale() > 4 || value.precision() - value.scale() > 14) {
+        com.uten.imp.common.util.FinancialExactAmount.quantity(value,"每袋净重");
+        if (value.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED,
-                    "「" + goods.label() + "」的每袋净重必须大于 0, 最多 4 位小数");
+                    "「" + goods.label() + "」的每袋净重必须大于 0，保原始数值");
         }
     }
 

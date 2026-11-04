@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 import '../../../components/layout/uten_section_header.dart';
@@ -68,7 +69,9 @@ class _StockBalanceDetailSheet extends ConsumerWidget {
     final display = ref.watch(warehouseWeightUnitsPrefsProvider).display;
     final qty = balance.qty == null
         ? '未知'
-        : balance.qty!.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
+        : balance.qty!
+              .toExactString(minimumFractionDigits: 4)
+              .replaceFirst(RegExp(r'\.?0+$'), '');
     return SafeArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

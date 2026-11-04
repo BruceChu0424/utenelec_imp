@@ -1,3 +1,4 @@
+import '../../features/finance/config/finance_requirement_names.dart';
 // 页面内权限入口使用的权限范围。
 //
 // 此文件只负责把当前员工业务路由映射到稳定的页面 surfaceKey 与标题。
@@ -111,6 +112,13 @@ PagePermissionScope? pagePermissionScopeFor(String location) {
   if (path == '/finance/customers') return _clientScope;
   if (path == '/finance/suppliers') return _supplierScope;
   if (path == '/finance/accounts') return _accountScope;
+  if (path == '/finance/applications' ||
+      _isDescendant(path, '/finance/applications')) {
+    return const PagePermissionScope(
+      surfaceKey: 'finance.applications',
+      title: FinanceRequirementNames.financeApplications,
+    );
+  }
   if (path == '/finance/audits' || _isDescendant(path, '/finance/audits')) {
     // 业务审核中心（V812 补挂）：六个审核队列的合并工作台。
     return _financeAuditCenterScope;
@@ -1083,7 +1091,7 @@ const _salesFinanceScope = PagePermissionScope(
 );
 const _financeShipmentAuditScope = PagePermissionScope(
   surfaceKey: 'finance.sales-shipment-audit',
-  title: '出货财务审核',
+  title: FinanceRequirementNames.customerShipmentReview,
 );
 // 销售报价财务核价(ADR-134，V742 播种的权限面)。
 const _financeQuoteReviewScope = PagePermissionScope(

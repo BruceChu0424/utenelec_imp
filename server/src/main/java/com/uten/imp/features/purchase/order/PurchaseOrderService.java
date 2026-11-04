@@ -542,7 +542,14 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             BigDecimal purchasePrice,
             com.uten.imp.features.purchase.common.ProcurementDefaultPriceContext priceContext,
             BigDecimal allowedOverReceiptPct,
-            String allowedOverReceiptPctSource) {}
+            String allowedOverReceiptPctSource) {
+        @com.fasterxml.jackson.annotation.JsonProperty("exchangeRateExact") public String exchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }
+        @com.fasterxml.jackson.annotation.JsonProperty("taxRateExact") public String taxRateExact() { return com.uten.imp.common.util.DecimalText.of(taxRate); }
+        @com.fasterxml.jackson.annotation.JsonProperty("purchasePriceExact") public String purchasePriceExact() { return com.uten.imp.common.util.DecimalText.of(purchasePrice); }
+
+        @com.fasterxml.jackson.annotation.JsonProperty("allowedOverReceiptPctExact")
+        public String allowedOverReceiptPctExact() { return com.uten.imp.common.util.DecimalText.of(allowedOverReceiptPct); }
+    }
 
     @Transactional
     @PreAuthorize("hasAuthority('purchase_order:edit')")
@@ -1140,7 +1147,7 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
         BigDecimal totalOriginal = BigDecimal.ZERO;
         BigDecimal totalLocal = BigDecimal.ZERO;
         for (PurchaseOrderItem item : items) {
-            ProcurementQuantities.of(item.getQuantitySemantics(),item.getQty(),item.getGiftQty(),item.getUnitRate());
+            ProcurementQuantities.validateOriginal(item.getQuantitySemantics(),item.getQty(),item.getGiftQty(),item.getUnitRate());
             if (!java.util.Objects.equals(order.getQuantitySemantics(),item.getQuantitySemantics()))
                 throw new ApiException(ErrorCode.CONFLICT,"采购订货数量语义与表头不一致");
             if (item.getQty() == null || item.getQty().signum() < 0
@@ -1438,12 +1445,14 @@ public class PurchaseOrderService implements ProcurementOrderApprovalPort {
             if(source.requestItemId()==null||source.physicalQty().signum()<=0)
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,"来源实物分配必须关联真实来源及正数量");
             futurePhysical=futurePhysical.subtract(source.physicalQty());
-            // Rounding each paid share down can accumulate a remainder larger
-            // than the final tiny source. Reserve no more than the capacity of
-            // every future source, while retaining the exact four-place totals.
+            // Source ownership and both commercial totals stay exact. A chosen
+            // precision must leave a feasible remainder; it is not silently
+            // clamped or increased beyond the user's explicit selection.
             BigDecimal paid=index==sources.size()-1?paidRemaining
-                    : charged.multiply(source.physicalQty()).divide(physical,4,java.math.RoundingMode.DOWN)
-                        .max(paidRemaining.subtract(futurePhysical)).min(source.physicalQty()).min(paidRemaining);
+                    : com.uten.imp.common.finance.MoneyPolicy.quantityShare(charged,source.physicalQty(),physical);
+            if(paid.compareTo(paidRemaining.subtract(futurePhysical).max(BigDecimal.ZERO))<0
+                    ||paid.compareTo(source.physicalQty().min(paidRemaining))>0)
+                throw new com.uten.imp.common.finance.BusinessPrecisionRequiredException("quantity.share","来源计价数量分配：所选精度不能在各来源实物容量内守恒，请增加位数或更改取舍方式",24,"PRECISION_LIMIT",true);
             if(paid.signum()<0||paid.compareTo(source.physicalQty())>0)
                 throw new ApiException(ErrorCode.VALIDATION_FAILED,"来源计价分配不合法");
             out.add(new SourceSplit(source.requestItemId(),paid,source.physicalQty().subtract(paid)));

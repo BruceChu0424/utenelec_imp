@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../components/layout/uten_section_header.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
@@ -768,6 +769,6 @@ String _actionHint(SalesReturnQualityAction action) => switch (action) {
 };
 
 String _qty(double value) {
-  final fixed = value.toStringAsFixed(4);
+  final fixed = value.toExactString(minimumFractionDigits: 4);
   return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
 }

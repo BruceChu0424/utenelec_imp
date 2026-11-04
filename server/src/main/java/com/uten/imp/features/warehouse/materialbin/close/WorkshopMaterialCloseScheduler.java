@@ -54,6 +54,7 @@ public class WorkshopMaterialCloseScheduler {
                             ORDER BY counted.version DESC LIMIT 1) AS actor
                     FROM workshop_material_periods period
                     WHERE period.status = 'COUNTED'
+                      AND period.close_precision_requirement IS NULL
                       AND (period.close_state IN ('QUEUED', 'BLOCKED')
                            OR (period.close_state = 'FAILED'
                                AND (period.close_failures < :backoff

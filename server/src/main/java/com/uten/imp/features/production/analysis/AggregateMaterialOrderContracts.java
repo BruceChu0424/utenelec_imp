@@ -1,5 +1,6 @@
 package com.uten.imp.features.production.analysis;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import com.uten.imp.common.validation.RequestLimits;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -32,13 +33,13 @@ public final class AggregateMaterialOrderContracts {
             @NotBlank @Size(max=250) String clientGroupKey,
             @NotEmpty @Size(max=RequestLimits.MATERIAL_AGGREGATE_SOURCE_PATHS) List<@NotNull UUID> materialLineIds,
             @NotBlank @Pattern(regexp="BUY|MAKE|SUBCONTRACT") String route,
-            @NotNull @DecimalMin("0") @Digits(integer=14,fraction=4) BigDecimal qty,
+            @NotNull @DecimalMin("0") @DocumentQuantity BigDecimal qty,
             boolean allowPublicExtra,
             UUID departmentId, UUID workerId, UUID teamDepartmentId,
             LocalDate billDate, LocalDate deliveryDate,
             @Size(max=100) String productNo,
             @DecimalMin("0") @Digits(integer=3,fraction=6) BigDecimal allowedOverproductionRate,
-            @DecimalMin("0") @Digits(integer=14,fraction=4) BigDecimal safetyQty,
+            @DecimalMin("0") @DocumentQuantity BigDecimal safetyQty,
             Map<UUID,BigDecimal> sourceRequestedQtyByMaterialLineId) {
         public GroupInput {
             materialLineIds=materialLineIds==null?List.of():List.copyOf(materialLineIds);

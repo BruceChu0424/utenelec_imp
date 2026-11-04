@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 // 库存分析 (ADR-135 §7.4, review/product.md §1.6) 的数据模型。
 //
 // 四个分段对应四个接口 (GET /stock/insights/health | cycle-count | weight-alerts | learning,
@@ -37,6 +38,7 @@ class WarehouseInsightOverview {
   const WarehouseInsightOverview({
     this.skuWithStock,
     this.knownWeightKg,
+    this.knownWeightKgExact,
     this.weightUnknownRows,
     this.weighedCoveragePct,
     this.deadSku,
@@ -53,6 +55,9 @@ class WarehouseInsightOverview {
 
   /// 已知库存重量合计 (千克; 未称的不计入, 另见 [weightUnknownRows])。
   final double? knownWeightKg;
+  final String? knownWeightKgExact;
+  String? get knownWeightKgText =>
+      financeExactDecimal(knownWeightKgExact ?? knownWeightKg);
   final int? weightUnknownRows;
 
   /// 称重覆盖率 (%): 有库存的余额行里重量是实称 (已知且不是估算) 的占比。
@@ -80,7 +85,12 @@ class WarehouseInsightOverview {
   factory WarehouseInsightOverview.fromJson(Map<String, dynamic> j) =>
       WarehouseInsightOverview(
         skuWithStock: _int(j['skuWithStock']),
-        knownWeightKg: _num(j['knownWeightKg']),
+        knownWeightKg: double.tryParse(
+          (j['knownWeightKgExact'] ?? j['knownWeightKg'])?.toString() ?? '',
+        ),
+        knownWeightKgExact: financeExactDecimal(
+          j['knownWeightKgExact'] ?? j['knownWeightKg'],
+        ),
         weightUnknownRows: _int(j['weightUnknownRows']),
         weighedCoveragePct: _num(j['weighedCoveragePct']),
         deadSku: _int(j['deadSku']),
@@ -113,6 +123,7 @@ class InsightHealthRow {
     this.unitName,
     this.qty,
     this.weightKg,
+    this.weightKgExact,
     this.weightEstimated = false,
     this.lastInAt,
     this.lastOutAt,
@@ -146,6 +157,8 @@ class InsightHealthRow {
 
   /// 库存重量 (千克); null = 有没称的部分。
   final double? weightKg;
+  final String? weightKgExact;
+  String? get weightKgText => financeExactDecimal(weightKgExact ?? weightKg);
   final bool weightEstimated;
 
   /// 最后入库 (仍有存量的最新入库批次)。
@@ -193,7 +206,10 @@ class InsightHealthRow {
     colorName: _str(j['colorName']),
     unitName: _str(j['unitName']),
     qty: _num(j['qty']),
-    weightKg: _num(j['weightKg']),
+    weightKg: double.tryParse(
+      (j['weightKgExact'] ?? j['weightKg'])?.toString() ?? '',
+    ),
+    weightKgExact: financeExactDecimal(j['weightKgExact'] ?? j['weightKg']),
     weightEstimated: j['weightEstimated'] == true,
     lastInAt: _date(j['lastInAt']),
     lastOutAt: _date(j['lastOutAt']),
@@ -268,6 +284,7 @@ class InsightCycleCountRow {
     this.score,
     this.qty,
     this.weightKg,
+    this.weightKgExact,
     this.weightEstimated = false,
   });
 
@@ -290,6 +307,8 @@ class InsightCycleCountRow {
   final double? score;
   final double? qty;
   final double? weightKg;
+  final String? weightKgExact;
+  String? get weightKgText => financeExactDecimal(weightKgExact ?? weightKg);
   final bool weightEstimated;
 
   /// 勾选键 (仓 + 货品 + 颜色)。
@@ -328,7 +347,10 @@ class InsightCycleCountRow {
         ],
         score: _num(j['score']),
         qty: _num(j['qty']),
-        weightKg: _num(j['weightKg']),
+        weightKg: double.tryParse(
+          (j['weightKgExact'] ?? j['weightKg'])?.toString() ?? '',
+        ),
+        weightKgExact: financeExactDecimal(j['weightKgExact'] ?? j['weightKg']),
         weightEstimated: j['weightEstimated'] == true,
       );
 }
@@ -358,10 +380,13 @@ class InsightWeightAlertRow {
     this.billNo,
     this.qtyBase,
     this.weightKg,
+    this.weightKgExact,
     this.estimatedQty,
     this.deviationQty,
     this.expectedWeightKg,
+    this.expectedWeightKgExact,
     this.expectedUnitWeightKg,
+    this.expectedUnitWeightKgExact,
     this.deviationPct,
     this.alertLevel = WeightAlertLevel.none,
     this.tierUsed,
@@ -400,6 +425,8 @@ class InsightWeightAlertRow {
   /// 登记数量 (基本单位)。
   final double? qtyBase;
   final double? weightKg;
+  final String? weightKgExact;
+  String? get weightKgText => financeExactDecimal(weightKgExact ?? weightKg);
 
   /// 称重折算数量 (实称 / 记录当时的单重)。
   final double? estimatedQty;
@@ -407,7 +434,13 @@ class InsightWeightAlertRow {
   /// 折算数量 - 登记数量 (负 = 称重显示偏少)。
   final double? deviationQty;
   final double? expectedWeightKg;
+  final String? expectedWeightKgExact;
+  String? get expectedWeightKgText =>
+      financeExactDecimal(expectedWeightKgExact ?? expectedWeightKg);
   final double? expectedUnitWeightKg;
+  final String? expectedUnitWeightKgExact;
+  String? get expectedUnitWeightKgText =>
+      financeExactDecimal(expectedUnitWeightKgExact ?? expectedUnitWeightKg);
   final double? deviationPct;
   final WeightAlertLevel alertLevel;
 
@@ -447,11 +480,26 @@ class InsightWeightAlertRow {
       sourceDocCode: _str(j['sourceDocCode']),
       billNo: _str(j['billNo']),
       qtyBase: _num(j['qtyBase']),
-      weightKg: _num(j['weightKg']),
+      weightKg: double.tryParse(
+        (j['weightKgExact'] ?? j['weightKg'])?.toString() ?? '',
+      ),
+      weightKgExact: financeExactDecimal(j['weightKgExact'] ?? j['weightKg']),
       estimatedQty: _num(j['estimatedQty']),
       deviationQty: _num(j['deviationQty']),
-      expectedWeightKg: _num(j['expectedWeightKg']),
-      expectedUnitWeightKg: _num(j['expectedUnitWeightKg']),
+      expectedWeightKg: double.tryParse(
+        (j['expectedWeightKgExact'] ?? j['expectedWeightKg'])?.toString() ?? '',
+      ),
+      expectedWeightKgExact: financeExactDecimal(
+        j['expectedWeightKgExact'] ?? j['expectedWeightKg'],
+      ),
+      expectedUnitWeightKg: double.tryParse(
+        (j['expectedUnitWeightKgExact'] ?? j['expectedUnitWeightKg'])
+                ?.toString() ??
+            '',
+      ),
+      expectedUnitWeightKgExact: financeExactDecimal(
+        j['expectedUnitWeightKgExact'] ?? j['expectedUnitWeightKg'],
+      ),
       deviationPct: _num(j['deviationPct']),
       alertLevel: WeightAlertLevel.parse(j['alertLevel']?.toString()),
       tierUsed: WeightTier.parse(j['estimateTierUsed']?.toString()),
@@ -559,12 +607,14 @@ class InsightLearningRow {
     this.evidence,
     this.tier,
     this.unitWeightKg,
+    this.unitWeightKgExact,
     this.relHalfWidth,
     this.nInliers,
     this.nRef,
     this.nDraw,
     this.lastObservedAt,
     this.masterUnitWeightKg,
+    this.masterUnitWeightKgExact,
     this.masterDiffPct,
     this.suggestedSampleSize,
     this.stale = false,
@@ -588,6 +638,9 @@ class InsightLearningRow {
 
   /// 当前单重 (千克/基本单位)。
   final double? unitWeightKg;
+  final String? unitWeightKgExact;
+  String? get unitWeightKgText =>
+      financeExactDecimal(unitWeightKgExact ?? unitWeightKg);
   final double? relHalfWidth;
   final int? nInliers;
 
@@ -598,6 +651,9 @@ class InsightLearningRow {
 
   /// 货品资料设计单重 (已折算成千克/基本单位)。
   final double? masterUnitWeightKg;
+  final String? masterUnitWeightKgExact;
+  String? get masterUnitWeightKgText =>
+      financeExactDecimal(masterUnitWeightKgExact ?? masterUnitWeightKg);
 
   /// 学到的单重与设计单重的差异 %。
   final double? masterDiffPct;
@@ -654,6 +710,7 @@ class InsightLearningRow {
     nDraw: nDraw,
     lastObservedAt: lastObservedAt ?? this.lastObservedAt,
     masterUnitWeightKg: masterUnitWeightKg,
+    masterUnitWeightKgExact: masterUnitWeightKgExact,
     masterDiffPct: masterDiffPct,
     suggestedSampleSize: suggestedSampleSize ?? this.suggestedSampleSize,
     stale: stale ?? this.stale,
@@ -670,13 +727,25 @@ class InsightLearningRow {
         basis: _str(j['basis']),
         evidence: _str(j['evidence']),
         tier: WeightTier.parse(j['tier']?.toString()),
-        unitWeightKg: _num(j['unitWeightKg']),
+        unitWeightKg: double.tryParse(
+          (j['unitWeightKgExact'] ?? j['unitWeightKg'])?.toString() ?? '',
+        ),
+        unitWeightKgExact: financeExactDecimal(
+          j['unitWeightKgExact'] ?? j['unitWeightKg'],
+        ),
         relHalfWidth: _num(j['relHalfWidth']),
         nInliers: _int(j['nInliers']),
         nRef: _int(j['nRef']),
         nDraw: _int(j['nDraw']),
         lastObservedAt: _date(j['lastObservedAt']),
-        masterUnitWeightKg: _num(j['masterUnitWeightKg']),
+        masterUnitWeightKg: double.tryParse(
+          (j['masterUnitWeightKgExact'] ?? j['masterUnitWeightKg'])
+                  ?.toString() ??
+              '',
+        ),
+        masterUnitWeightKgExact: financeExactDecimal(
+          j['masterUnitWeightKgExact'] ?? j['masterUnitWeightKg'],
+        ),
         masterDiffPct: _num(j['masterDiffPct']),
         suggestedSampleSize: _int(j['suggestedSampleSize']),
         stale: j['stale'] == true,

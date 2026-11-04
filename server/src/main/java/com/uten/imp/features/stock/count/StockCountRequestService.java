@@ -19,6 +19,7 @@ import com.uten.imp.common.util.TaskKeywordSearch;
 import com.uten.imp.common.web.*;
 import com.uten.imp.features.stock.StockDocService;
 import com.uten.imp.features.stock.weight.WeightMath;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
 import com.uten.imp.security.SecurityContextCurrentUser;
 import com.uten.imp.security.TxSessionVars;
 import org.springframework.jdbc.core.namedparam.*;
@@ -319,7 +320,7 @@ public class StockCountRequestService {
     @Transactional @PreAuthorize("hasAuthority('stock:count:submit')")
     public Map<String,Object> submit(StockCountDtos.Submit request) {
         require(SUBMIT);
-        if(request==null||!validator.validate(request).isEmpty())throw invalid("盘点输入不完整，数量和重量最多14位整数、4位小数");
+        if(request==null||!validator.validate(request).isEmpty())throw invalid("盘点输入不完整，数量和重量最多40位整数、24位小数");
         // 盘点说明选填(2026-10-02 用户口径, V795 只留 500 字上限): 不填/null/空白统一存成 ""。
         // 指纹也按归一化后的内容算, 同一次提交 null 与 "" 重放不被当成不同盘点。
         String reason=request.reason()==null?"":request.reason().strip();
@@ -344,8 +345,8 @@ public class StockCountRequestService {
             if(line.targetQty().signum()==0&&line.weightChanged()&&line.targetWeightKg()!=null&&line.targetWeightKg().signum()>0)
                 throw invalid("实盘数量为0时，实盘重量不能大于0");
             BigDecimal target=factor!=null?WeightMath.times(line.targetQty(),factor)
-                    :line.targetQty().signum()==0?BigDecimal.ZERO:line.weightChanged()?line.targetWeightKg():line.expectedWeightKg();
-            if(line.weightChanged()&&factor!=null&&line.targetWeightKg()!=null&&!same(target,line.targetWeightKg()))
+                    :line.targetQty().signum()==0?BigDecimal.ZERO:line.weightChanged()?WeightMath.normalizeInput(line.targetWeightKg()):line.expectedWeightKg();
+            if(line.weightChanged()&&factor!=null&&line.targetWeightKg()!=null&&!same(line.targetQty().multiply(factor),line.targetWeightKg()))
                 throw invalid("重量单位货品的数量与重量不一致，请按该物料单位填写数量");
             if((line.weightChanged()||factor!=null)&&line.targetQty().signum()>0&&(target==null||target.signum()<=0))
                 throw invalid("有库存时实盘重量须大于0；未知重量请留空不修改");
@@ -565,11 +566,33 @@ public class StockCountRequestService {
                 """,new MapSqlParameterSource("status",status).addValue("version",version).addValue("actor",user.requireId())
                 .addValue("reason",reason).addValue("event","APPROVE".equals(action)?event:null).addValue("id",id));
         if("APPROVE".equals(action)) {
-            Object posted="WAREHOUSE".equals(h.get("review_route"))?workshop.postApproved(id,event):stockDocs.applyApprovedStockCount(id,event);
+            Object posted=postFrozenCount(h,()->"WAREHOUSE".equals(h.get("review_route"))?workshop.postApproved(id,event):stockDocs.applyApprovedStockCount(id,event));
             db.update("UPDATE stock_count_requests SET posting_result=CAST(:result AS jsonb) WHERE id=:id",Map.of("result",encode(posted),"id",id));
         }
         publish(header(id,false));return detail(id);
     }
+    private Object postFrozenCount(Map<String,Object> header,java.util.function.Supplier<Object> post) {
+        Object frozen=header.get("business_precision_policy");
+        if(frozen==null){
+            // A pre-upgrade pending proposal may contain an old rounded derived
+            // mass, rather than a scale reading. Never silently change its paper
+            // value during approval. Approved historic movements still reverse
+            // by their original facts through the existing source chain.
+            Boolean incompatible=db.queryForObject("SELECT EXISTS(SELECT 1 FROM stock_count_request_lines WHERE request_id=:id AND kg_per_base_unit IS NOT NULL AND target_weight_kg IS DISTINCT FROM target_qty*kg_per_base_unit)",Map.of("id",header.get("id")),Boolean.class);
+            if(Boolean.TRUE.equals(incompatible))throw conflict("这份待审盘点采用原四位重量换算；请退回并保留原输入重新送审，不能在审核时改写原重量");
+            return post.get();
+        }
+        var policy=BusinessPrecisionContext.parse(java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(frozen.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        String original=BusinessPrecisionContext.json();
+        try(var ignored=BusinessPrecisionContext.use(policy)){
+            tx.bindBusinessPrecision(BusinessPrecisionContext.json());
+            Object result=post.get();
+            tx.bindBusinessPrecision(original);
+            return result;
+        }catch(RuntimeException failure){throw failure;}
+        catch(Exception failure){throw new IllegalStateException("Count precision context could not be restored",failure);}
+    }
+
     private UUID insertEvent(UUID id,String action,long version,String key,String reason) {
         UUID event=UUID.randomUUID();db.update("""
                 INSERT INTO stock_count_request_events(id,request_id,action,actor_id,reason,request_version,command_key)

@@ -36,6 +36,16 @@ import org.postgresql.util.ServerErrorMessage;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(com.uten.imp.common.finance.BusinessPrecisionRequiredException.class)
+    public ResponseEntity<ApiError> handlePrecision(com.uten.imp.common.finance.BusinessPrecisionRequiredException ex){
+        return precisionResponse(ex.details());
+    }
+    private ResponseEntity<ApiError> precisionResponse(java.util.Map<String,Object> details){
+        return ResponseEntity.status(422).body(ApiError.of(ErrorCode.PRECISION_CHOICE_REQUIRED,null).withDetails(details));
+    }
+    private java.util.Map<String,Object> precisionDetails(Throwable root){
+        return com.uten.imp.common.finance.BusinessPrecisionRequiredException.from(root).map(com.uten.imp.common.finance.BusinessPrecisionRequiredException::details).orElse(null);
+    }
 
     /** PostgreSQL 等锁超时(lock_timeout)。 */
     static final String LOCK_NOT_AVAILABLE = "55P03";
@@ -152,6 +162,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiError> handleUnreadableBody(HttpMessageNotReadableException ex) {
+        var precision=precisionDetails(ex);if(precision!=null)return precisionResponse(precision);
         Throwable cause = ex;
         while (cause != null) {
             if (cause instanceof JsonBodyTooLargeException) {
@@ -198,6 +209,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiError> handleDataIntegrity(DataIntegrityViolationException ex) {
+        var precision=precisionDetails(ex);if(precision!=null)return precisionResponse(precision);
         return integrityResponse(integrityOutcome(ex.getMostSpecificCause()));
     }
 
@@ -209,6 +221,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(org.hibernate.exception.ConstraintViolationException.class)
     public ResponseEntity<ApiError> handleHibernateConstraint(
             org.hibernate.exception.ConstraintViolationException ex) {
+        var precision=precisionDetails(ex);if(precision!=null)return precisionResponse(precision);
         return integrityResponse(integrityOutcome(ex));
     }
 
@@ -587,6 +600,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> handleOther(Exception ex) {
+        var precision=precisionDetails(ex);if(precision!=null)return precisionResponse(precision);
         // Hibernate/JPA 在 @Service 里抛出的原生异常类型各不相同, 按根因 SQLState 统一识别截止时间类。
         String deadline = deadlineMessage(ex);
         if (deadline != null) return retryableConflict(ex, deadline);

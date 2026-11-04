@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
@@ -27,9 +28,7 @@ import '../models/subcontract_outbound.dart';
 import 'outbound_weight_columns.dart';
 
 String subcontractOutboundQuantity(double value) =>
-    value == value.roundToDouble()
-    ? value.toStringAsFixed(0)
-    : value.toString();
+    value == value.roundToDouble() ? value.toExactString() : value.toString();
 
 /// 本次出库数量不合法(空 / 非数字 / 负数 / 超过委外提交的领料数量)。0 = 本次不发。
 const String subcontractOutboundQuantityInvalid =
@@ -73,7 +72,9 @@ class SubcontractOutboundLineDraft {
       qtyOf: () => double.tryParse(qty.text.trim()),
       qtyController: qty,
       unitRate: item.unitRate ?? 1,
+      unitRateExact: item.unitRateText,
       kg: item.weight,
+      kgExact: item.weightText,
       qtyFromWeight: item.qtyFromWeight,
       unit: weightUnit,
     );
@@ -145,7 +146,7 @@ class SubcontractOutboundLineDraft {
       'unitId': item.unitId,
       'unitRate': item.unitRateText,
       'qty': quantityText!,
-      'weight': ?weight.kg,
+      'weight': ?weight.kgText,
       'qtyFromWeight': weight.qtyFromWeight,
       'orderItemId': item.orderItemId,
       'planItemId': line.planItemId,
@@ -604,6 +605,7 @@ class _SubcontractOutboundDetailTableState
           qtyAutofill: WeightQtyAutofill<SubcontractOutboundTableRow>(
             qtyControllerOf: (row) => row.draft.qty,
             unitRateOf: (row) => row.draft.item.unitRate ?? 1,
+            unitRateTextOf: (row) => row.draft.item.unitRateText,
             enabledOf: rowEditable,
           ),
           onWeighCount: (context, row) => weighOutboundEntry(

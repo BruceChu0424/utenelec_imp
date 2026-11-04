@@ -36,11 +36,22 @@ void main() {
     'zero charged plus positive gift is allowed while negative precision overflow and zero physical fail',
     () {
       expect(procurementQuantityError('0', '1', extraGift: true), isNull);
+      expect(
+        procurementQuantityError(
+          '12345678901234567890.000000000000000000000001',
+          '0.000000000000000000000001',
+          extraGift: true,
+        ),
+        isNull,
+      );
       for (final pair in [
         ('0', '0'),
         ('10', '-0.0001'),
-        ('10', '0.00001'),
-        ('99999999999999.9999', '0.0001'),
+        ('10', '0.0000000000000000000000001'),
+        (
+          '9999999999999999999999999999999999999999.999999999999999999999999',
+          '0.000000000000000000000001',
+        ),
       ]) {
         expect(
           procurementQuantityError(pair.$1, pair.$2, extraGift: true),

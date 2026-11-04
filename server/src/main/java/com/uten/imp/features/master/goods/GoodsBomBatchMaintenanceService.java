@@ -74,6 +74,7 @@ public class GoodsBomBatchMaintenanceService {
         int changedTargets() { return (int)targets.stream().filter(target->target.changes()>0).count(); }
     }
     private static final class Ticket {
+        final Map<String,com.uten.imp.common.finance.BusinessPrecisionContext.Choice> precision=GoodsBomPreviewPrecision.snapshot();
         final BomBatchMaintenanceRequest request;
         final Scope scope;
         final String fingerprint;
@@ -124,7 +125,7 @@ public class GoodsBomBatchMaintenanceService {
                     return ticket.receipt;
                 });
             }
-            BomBatchMaintenanceResult result=transactions.execute(status->{
+            BomBatchMaintenanceResult result=GoodsBomPreviewPrecision.confirm(ticket.precision,()->transactions.execute(status->{
                 State state=lockedState(ticket.request);
                 if(!state.fingerprint().equals(ticket.fingerprint))
                     throw conflict("组装信息、相关资料或共享引用范围已变化，请重新预览；本次未保存");
@@ -136,7 +137,7 @@ public class GoodsBomBatchMaintenanceService {
                 return new BomBatchMaintenanceResult(ticket.request.action(),ticket.request.targetGoodsIds().size(),
                         outcome.changedTargets(),outcome.added(),outcome.updated(),outcome.removed(),outcome.skipped(),
                         outcome.targets(),outcome.affectedCount(),outcome.warnings());
-            });
+            }));
             ticket.receipt=Objects.requireNonNull(result);
             return result;
         }

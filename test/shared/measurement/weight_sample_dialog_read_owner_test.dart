@@ -1,3 +1,6 @@
+import 'package:uten_imp/shared/drafts/form_draft_store.dart';
+import 'package:uten_imp/shared/providers/session_provider.dart';
+import '../drafts/memory_form_draft_storage.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -15,6 +18,11 @@ import 'package:uten_imp/shared/measurement/weight_prefs.dart';
 import 'package:uten_imp/shared/measurement/widgets/weight_sample_dialog.dart';
 import 'package:uten_imp/shared/providers/authenticated_scope_provider.dart';
 import 'package:uten_imp/shared/providers/export_context_epoch_provider.dart';
+
+class _Session extends SessionNotifier {
+  @override
+  SessionState build() => const SessionState();
+}
 
 class _Owner extends Notifier<AuthenticatedScope?> {
   @override
@@ -109,6 +117,8 @@ Future<(_DelayedApi, _Harness, ProviderContainer)> _open(
   WidgetTester tester, {
   bool loadParams = false,
   bool changeBeforeFirstFrame = false,
+  MemoryFormDraftStorage? storage,
+  String? resumeDraftId,
 }) async {
   tester.view.physicalSize = const Size(1400, 1000);
   tester.view.devicePixelRatio = 1;
@@ -118,6 +128,11 @@ Future<(_DelayedApi, _Harness, ProviderContainer)> _open(
   final harness = _Harness();
   final container = ProviderContainer(
     overrides: [
+      apiClientProvider.overrideWithValue(api),
+      sessionProvider.overrideWith(_Session.new),
+      formDraftStorageProvider.overrideWithValue(
+        storage ?? MemoryFormDraftStorage(),
+      ),
       authenticatedScopeProvider.overrideWith((ref) => ref.watch(_owner)),
       currentPermissionsProvider.overrideWith((ref) => ref.watch(_permissions)),
       apiBaseUrlProvider.overrideWith((ref) => ref.watch(_server)),
@@ -137,6 +152,7 @@ Future<(_DelayedApi, _Harness, ProviderContainer)> _open(
               onPressed: () async {
                 harness.result = await showWeightSampleDialog(
                   context,
+                  resumeDraftId: resumeDraftId,
                   goodsId: 'private-goods',
                   goodsTitle: '敏感货品',
                   supplierId: 'private-supplier',
@@ -195,7 +211,12 @@ Future<void> _startSave(WidgetTester tester) async {
     await tester.pump();
   }
   await tester.tap(find.byKey(const ValueKey('weight-sample-save')));
-  await tester.pump();
+  for (var i = 0; i < 25; i++) {
+    await tester.pump(const Duration(milliseconds: 20));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 2)),
+    );
+  }
 }
 
 void _expectScrubbed() {
@@ -209,6 +230,78 @@ void _expectScrubbed() {
 }
 
 void main() {
+  testWidgets(
+    'exact sample unknown survives hard close and replays identical body/key',
+    (tester) async {
+      final storage = MemoryFormDraftStorage();
+      final (first, _, container) = await _open(tester, storage: storage);
+      await tester.enterText(
+        find.byKey(const ValueKey('weight-sample-qty')),
+        '1.000000000000000000000001',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('weight-sample-weight')),
+        '123456789012345678901234567890.123456789012345678901234 kg',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const ValueKey('weight-sample-save')));
+      for (var i = 0; i < 40 && first.saves.isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 2)),
+        );
+      }
+      expect(first.saves, hasLength(1));
+      expect(
+        first.bodies.single['weight'],
+        '123456789012345678901234567890.123456789012345678901234',
+      );
+      expect(first.bodies.single['qty'], '1.000000000000000000000001');
+      first.saves.single.completeError(NetworkTimeoutException());
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 1));
+      final draft = container.read(formDraftsProvider).single;
+      expect(draft.hasUnknownSubmission, isTrue);
+      final original = Map<String, Object?>.from(first.bodies.single);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      final (second, result, _) = await _open(
+        tester,
+        storage: storage,
+        resumeDraftId: draft.id,
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('weight-sample-weight')),
+            )
+            .enabled,
+        isFalse,
+      );
+      expect(
+        tester
+            .widget<TextField>(
+              find.byKey(const ValueKey('weight-sample-weight')),
+            )
+            .controller!
+            .text,
+        '123456789012345678901234567890.123456789012345678901234 kg',
+      );
+      await tester.tap(find.byKey(const ValueKey('weight-sample-save')));
+      for (var i = 0; i < 40 && second.saves.isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 2)),
+        );
+      }
+      expect(second.bodies.single, original);
+      second.saves.single.complete(_detail());
+      await tester.pumpAndSettle();
+      expect(result.closed, isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('owner ABA before the dialog first frame never shows old data', (
     tester,
   ) async {
@@ -296,7 +389,13 @@ void main() {
     await _startSave(tester);
     api.saves.single.completeError(ApiException('RETRY', '请重试'));
     await tester.pumpAndSettle();
-    expect(find.text('请重试'), findsOneWidget);
+    expect(find.textContaining('结果待核对'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('weight-sample-weight')))
+          .enabled,
+      isFalse,
+    );
     await tester.tap(find.byKey(const ValueKey('weight-sample-save')));
     await tester.pump();
     expect(api.saves, hasLength(2));

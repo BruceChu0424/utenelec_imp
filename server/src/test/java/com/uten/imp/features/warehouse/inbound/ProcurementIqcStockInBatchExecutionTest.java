@@ -60,6 +60,7 @@ class ProcurementIqcStockInBatchExecutionTest {
         assertThat(result.confirmedReceipts()).isEqualTo(2);
         assertThat(result.confirmedItemCount()).isEqualTo(2);
         assertThat(f.movements).extracting(StockService.MovementRequest::qty)
+                .usingElementComparator(BigDecimal::compareTo)
                 .containsExactly(new BigDecimal("2.0000"), new BigDecimal("3.0000"));
         verify(f.locks, times(1)).stockIn(any());
         verify(f.guard, times(1)).verifyUnchanged();
@@ -154,7 +155,7 @@ class ProcurementIqcStockInBatchExecutionTest {
         assertThat(f.stockItemWarehouses).containsExactly(actual);
         verify(f.warehouses).require(actual,"入库仓库",com.uten.imp.application.port.WarehouseUse.GOOD_IN);
         verify(f.peg).attributeInspectionStockIn(eq("SUBCONTRACT"),eq(seed.receiptId()),any(),
-                eq(original.passEventId()),any(),eq(new BigDecimal("2.0000")),eq(actual));
+                eq(original.passEventId()),any(),argThat(q->q!=null&&q.compareTo(new BigDecimal("2"))==0),eq(actual));
         assertThat(f.slices.get(seed.receiptId())[2]).isEqualTo(WAREHOUSE);
     }
 
@@ -306,7 +307,7 @@ class ProcurementIqcStockInBatchExecutionTest {
                     BigDecimal.ONE, quantity, new BigDecimal("10"), null, quantity, BigDecimal.ZERO,
                     quantity, new BigDecimal("10"), null, BigDecimal.ZERO, quantity, "合格",
                     OffsetDateTime.now(), "G001", "货品", null, "件", "A1", "检验员", "PO001", unit,
-                    UUID.randomUUID(),"原建议仓","LEGACY"});
+                    UUID.randomUUID(),"原建议仓","LEGACY",BigDecimal.ZERO,null});
             return new BatchConfirmEntry("PURCHASE", receipt, key,
                     List.of(new ConfirmItem(event, quantity, quantity, "A1")));
         }

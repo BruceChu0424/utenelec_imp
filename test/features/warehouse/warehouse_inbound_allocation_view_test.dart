@@ -1,3 +1,4 @@
+import 'package:uten_imp/core/formatters/exact_number_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/warehouse/models/warehouse_iqc_stock_in.dart';
@@ -331,6 +332,4 @@ WarehouseInboundAllocation _allocation(
       : '继续备料',
 );
 
-String _qty(double value) => value == value.roundToDouble()
-    ? value.toStringAsFixed(0)
-    : value.toStringAsFixed(1);
+String _qty(Object value) => exactNumberDisplay(value) ?? '待核对';

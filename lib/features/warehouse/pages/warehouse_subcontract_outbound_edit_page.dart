@@ -194,7 +194,7 @@ class _WarehouseSubcontractOutboundEditPageState
             'sourceIdentity': _draftSourceIdentity(row),
             'qty': row.qty.text,
             'qtyAutofilled': row.qty.autofilled,
-            'weightKg': row.weight.kg,
+            'weightKg': row.weight.kgText,
             'weightEntry': weightEntryDraft(row.weight.weight, qty: row.qty),
             'qtyFromWeight': row.weight.qtyFromWeight,
             'remark': row.remarkController.text,

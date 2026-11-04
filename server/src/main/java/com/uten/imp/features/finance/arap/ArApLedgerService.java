@@ -25,6 +25,11 @@ public interface ArApLedgerService {
      */
     void postArAp(ArApPostingRequest req);
 
+    /** A financial confirmation has its own immutable posting number; the original source document number stays unchanged. */
+    default void postReconciledArAp(ArApPostingRequest req,String financialPostingNo){
+        throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.CONFLICT,"当前立账服务尚未接入独立对账确认编号");
+    }
+
     /**
      * 预收直收立账：INSERT 即写入到账金额与负余额终态。
      * V379 的客户预收 shape 检查是立即 CHECK 约束，"先插零值行再 UPDATE 到账额"

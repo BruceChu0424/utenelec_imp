@@ -1,3 +1,5 @@
+import '../models/warehouse_form_draft_codec.dart';
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/uten_tokens.dart';
@@ -54,8 +56,8 @@ class WarehouseSalesPickingDraft {
   final Map<String, OutboundWeightEntry> weights = {};
 
   /// 随确认出库提交的逐行实称千克(没称的行不带)。
-  Map<String, double> get lineWeights => {
-    for (final entry in weights.entries) entry.key: ?entry.value.kg,
+  Map<String, String> get lineWeights => {
+    for (final entry in weights.entries) entry.key: ?entry.value.kgText,
   };
 
   /// 实称明显偏离应发数量(ALERT)的行：确认出库前请复核拣货(不拦截)。
@@ -92,7 +94,8 @@ class WarehouseSalesPickingDraft {
           'warehouseConfirmed': confirmedWarehouses.contains(line.id),
           'place': places[line.id]?.text ?? '',
           if (weights[line.id] case final entry?) ...{
-            'weightKg': entry.kg,
+            'weightKg': entry.kgText,
+            'weightEntry': weightEntryDraft(entry.weight),
             'weightText': entry.weight.userEdited ? entry.weight.text.text : '',
             'weightUnit': entry.weight.unit.name,
             'weightUserEdited': entry.weight.userEdited,
@@ -135,16 +138,20 @@ class WarehouseSalesPickingDraft {
       places[line.id]?.text = row['place'] as String? ?? '';
       final weight = weights[line.id]?.weight;
       if (weight != null) {
-        final unit = WeightUnit.values
-            .where((item) => item.name == row['weightUnit'])
-            .firstOrNull;
-        if (unit != null) weight.switchUnit(unit);
-        weight.setKg(
-          (row['weightKg'] as num?)?.toDouble(),
-          userEdited: row['weightUserEdited'] == true,
-        );
-        if (row['weightUserEdited'] == true && row['weightKg'] == null) {
-          weight.text.text = row['weightText'] as String? ?? '';
+        if (row['weightEntry'] is Map) {
+          restoreWeightEntryDraft(weight, row['weightEntry']);
+        } else {
+          final unit = WeightUnit.values
+              .where((item) => item.name == row['weightUnit'])
+              .firstOrNull;
+          if (unit != null) weight.switchUnit(unit);
+          weight.setKgText(
+            row['weightKg']?.toString(),
+            userEdited: row['weightUserEdited'] == true,
+          );
+          if (row['weightUserEdited'] == true && row['weightKg'] == null) {
+            weight.text.text = row['weightText'] as String? ?? '';
+          }
         }
       }
     }
@@ -244,7 +251,9 @@ String warehouseSalesWeightAlertText(
   WeightCheck check,
 ) {
   final pct = check.deviationPct;
-  final amount = ((pct.abs() * 10).roundToDouble() / 10).toStringAsFixed(1);
+  final amount = ((pct.abs() * 10).roundToDouble() / 10).toExactString(
+    minimumFractionDigits: 1,
+  );
   final lineNo = line.lineNumber == null ? '' : '第 ${line.lineNumber} 行 ';
   return '$lineNo${line.goodsName ?? line.goodsCode ?? ''}：'
       '${pct < 0 ? '少' : '多'} $amount%, 请复核拣货';

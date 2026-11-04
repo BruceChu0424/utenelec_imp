@@ -3,6 +3,8 @@ package com.uten.imp.features.master.goods.dto;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSetter;
+import com.uten.imp.common.validation.DocumentQuantity;
+import com.uten.imp.common.validation.DocumentAmount;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -67,9 +69,9 @@ public class GoodsSaveRequest {
     public boolean hasClientGoodsName() { return clientGoodsNamePresent; }
 
     private String spec;         // Standard 规格
-    @Digits(integer = 14, fraction = 4)
-    private BigDecimal price;    // Price（NUMERIC(18,4)）
-    @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0") @DocumentAmount
+    private BigDecimal price;    // Native finite original decimal; no scale coercion
+    @DecimalMin("0") @DocumentAmount
     private BigDecimal discount; // 折扣倍率 1.00=原价 0.90=9折（复用老库 B_Goods.zk；改需 goods:price:edit 权限）
     @JsonIgnore private boolean pricePresent;
     @JsonIgnore private boolean discountPresent;
@@ -82,10 +84,12 @@ public class GoodsSaveRequest {
     public boolean hasCurrencyId() { return currencyIdPresent; }
     public boolean hasDiscount() { return discountPresent; }
     private String material;     // Material 材质
+    @DocumentAmount
     private BigDecimal thickness;
     private UUID thicknessUnitId;
     private Integer thicknessUnitLegacyId; // 旧库厚度单位主键快照；不能单独建立关系
     @JsonProperty("mWeight")
+    @DocumentAmount
     private BigDecimal mWeight;  // MWeight 单重（防 Jackson 连续大写 quirk）
     private UUID mWeightUnitId;
     private Integer mWeightUnitLegacyId;   // 旧库单重单位主键快照；不能单独建立关系
@@ -93,13 +97,13 @@ public class GoodsSaveRequest {
     private Integer pieces;      // Pieces 件数
     // ===== 采购批量口径（V575；软约束，只决定下达采购的默认数量，服务端不硬拦） =====
     /** 最小起订量（供应商 MOQ，基本单位）；留空=未登记，0=已确认无起订量。 */
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0.0000") @DocumentQuantity
     private BigDecimal minOrderQty;
     @JsonIgnore private boolean minOrderQtyPresent;
     @JsonSetter("minOrderQty") public void setMinOrderQty(BigDecimal value) { minOrderQty=value; minOrderQtyPresent=true; }
     public boolean hasMinOrderQty() { return minOrderQtyPresent; }
     /** 订货倍数/整包装量（基本单位，整箱 50 填 50）；留空或 0=无倍数要求（服务端归一为 null）。 */
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0.0000") @DocumentQuantity
     private BigDecimal orderMultipleQty;
     @JsonIgnore private boolean orderMultipleQtyPresent;
     @JsonSetter("orderMultipleQty") public void setOrderMultipleQty(BigDecimal value) { orderMultipleQty=value; orderMultipleQtyPresent=true; }
@@ -261,34 +265,55 @@ public class GoodsSaveRequest {
     public boolean hasMWeightUnitReference() { return mWeightUnitReferencePresent; }
     public boolean hasOwningWarehouseReference() { return owningWarehouseReferencePresent; }
 
-    // ===== 成本预算（「成本预算」页签；可空，留空不清已有值时传 null 即覆盖为 null，前端表单始终全量回传） =====
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @JsonIgnore private final java.util.Set<String> costFieldsPresent = new java.util.HashSet<>();
+    public boolean hasCostField(String field) { return costFieldsPresent.contains(field); }
+    @JsonSetter("sourceE") public void setSourceE(BigDecimal value) { sourceE=value; costFieldsPresent.add("sourceE"); }
+    @JsonSetter("machiningE") public void setMachiningE(BigDecimal value) { machiningE=value; costFieldsPresent.add("machiningE"); }
+    @JsonSetter("incidentalE") public void setIncidentalE(BigDecimal value) { incidentalE=value; costFieldsPresent.add("incidentalE"); }
+    @JsonSetter("lacquerE") public void setLacquerE(BigDecimal value) { lacquerE=value; costFieldsPresent.add("lacquerE"); }
+    @JsonSetter("platingE") public void setPlatingE(BigDecimal value) { platingE=value; costFieldsPresent.add("platingE"); }
+    @JsonSetter("casingE") public void setCasingE(BigDecimal value) { casingE=value; costFieldsPresent.add("casingE"); }
+    @JsonSetter("polishE") public void setPolishE(BigDecimal value) { polishE=value; costFieldsPresent.add("polishE"); }
+    @JsonSetter("total") public void setTotal(BigDecimal value) { total=value; costFieldsPresent.add("total"); }
+    @JsonSetter("workRate") public void setWorkRate(BigDecimal value) { workRate=value; costFieldsPresent.add("workRate"); }
+    @JsonSetter("workE") public void setWorkE(BigDecimal value) { workE=value; costFieldsPresent.add("workE"); }
+    @JsonSetter("lostRate") public void setLostRate(BigDecimal value) { lostRate=value; costFieldsPresent.add("lostRate"); }
+    @JsonSetter("lostE") public void setLostE(BigDecimal value) { lostE=value; costFieldsPresent.add("lostE"); }
+    @JsonSetter("rentRate") public void setRentRate(BigDecimal value) { rentRate=value; costFieldsPresent.add("rentRate"); }
+    @JsonSetter("rentE") public void setRentE(BigDecimal value) { rentE=value; costFieldsPresent.add("rentE"); }
+    @JsonSetter("makeRate") public void setMakeRate(BigDecimal value) { makeRate=value; costFieldsPresent.add("makeRate"); }
+    @JsonSetter("makeE") public void setMakeE(BigDecimal value) { makeE=value; costFieldsPresent.add("makeE"); }
+    @JsonSetter("cTotal") public void setCTotal(BigDecimal value) { cTotal=value; costFieldsPresent.add("cTotal"); }
+    @JsonSetter("gTotal") public void setGTotal(BigDecimal value) { gTotal=value; costFieldsPresent.add("gTotal"); }
+
+    // ===== 成本预算（「成本预算」页签；可空；字段未出现保留原值，显式 null 清空） =====
+    @DecimalMin("0.0000") @DocumentAmount
     private BigDecimal sourceE;      // SourceE 材料合计
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0.0000") @DocumentAmount
     private BigDecimal machiningE;   // MachiningE 加工费
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0.0000") @DocumentAmount
     private BigDecimal incidentalE;  // IncidentalE 杂费
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0.0000") @DocumentAmount
     private BigDecimal lacquerE;     // LacquerE 喷漆、朔费
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0.0000") @DocumentAmount
     private BigDecimal platingE;     // PlatingE 电镀费
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0.0000") @DocumentAmount
     private BigDecimal casingE;      // CasingE 包装费
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0.0000") @DocumentAmount
     private BigDecimal polishE;      // PolishE 抛光费
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0.0000") @DocumentAmount
     private BigDecimal total;        // Total 成品价
-    @DecimalMin("0.0000") @DecimalMax("100.0000") @Digits(integer = 3, fraction = 4)
+    @DecimalMin("0.0000") @DecimalMax("100.0000") @DocumentAmount
     private BigDecimal workRate;     // WorkRate 人工比率(%)
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0.0000") @DocumentAmount
     private BigDecimal workE;        // WorkE 人工费
-    @DecimalMin("0.0000") @DecimalMax("100.0000") @Digits(integer = 3, fraction = 4)
+    @DecimalMin("0.0000") @DecimalMax("100.0000") @DocumentAmount
     private BigDecimal lostRate;     // LostRate 损耗比率(%)
     /**
-     * 委外允许损耗默认值(%)(ADR-098): 0 到 100, 最多 2 位小数。请求体带了这个键才改
+     * 委外允许损耗默认值(%)(ADR-098): 0 到 100, 原数最多 24 位有效小数。请求体带了这个键才改
      * (带 null = 清空记忆), 没带 = 保持, 老客户端保存货品不会误清。
      */
-    @DecimalMin("0.00") @DecimalMax("100.00") @Digits(integer = 3, fraction = 2)
+    @DecimalMin("0.00") @DecimalMax("100.00") @com.uten.imp.common.validation.DocumentAmount
     private BigDecimal subcontractAllowedLossPct;
     private boolean subcontractAllowedLossPctPresent;
 
@@ -301,21 +326,21 @@ public class GoodsSaveRequest {
     public boolean hasSubcontractAllowedLossPct() {
         return subcontractAllowedLossPctPresent;
     }
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0.0000") @DocumentAmount
     private BigDecimal lostE;        // LostE 损耗费
-    @DecimalMin("0.0000") @DecimalMax("100.0000") @Digits(integer = 3, fraction = 4)
+    @DecimalMin("0.0000") @DecimalMax("100.0000") @DocumentAmount
     private BigDecimal rentRate;     // RentRate 厂租比率(%)
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0.0000") @DocumentAmount
     private BigDecimal rentE;        // RentE 厂房租金
-    @DecimalMin("0.0000") @DecimalMax("100.0000") @Digits(integer = 3, fraction = 4)
+    @DecimalMin("0.0000") @DecimalMax("100.0000") @DocumentAmount
     private BigDecimal makeRate;     // MakeRate 生产利率(%)
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0.0000") @DocumentAmount
     private BigDecimal makeE;        // MakeE 生产利润
     @JsonProperty("cTotal")
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0.0000") @DocumentAmount
     private BigDecimal cTotal;       // CTotal 成本价（防 Jackson 连续大写 quirk）
     @JsonProperty("gTotal")
-    @DecimalMin("0.0000") @DecimalMax("99999999999999.9999") @Digits(integer = 14, fraction = 4)
+    @DecimalMin("0.0000") @DocumentAmount
     private BigDecimal gTotal;       // GTotal 出厂价（防 Jackson 连续大写 quirk）
 
     private String sourceType;   // 来源（自制/采购/委外）

@@ -265,6 +265,7 @@ Map<String, dynamic> previewTaskJson(
   'drawableQty': drawableQty,
   'batchDrawableQty': batchDrawableQty,
   'qty': qty ?? batchDrawableQty,
+  'qtyExact': (qty ?? batchDrawableQty).toString(),
 };
 
 /// 预览物料行。
@@ -290,5 +291,6 @@ Map<String, dynamic> previewLineJson(
   'unitId': 'unit-kg',
   'unitName': 'kg',
   'qty': qty,
+  'qtyExact': qty.toString(),
   'warehouseAvailableQty': warehouseAvailableQty,
 };

@@ -1,6 +1,7 @@
 package com.uten.imp.features.master.goods;
 
 import com.uten.imp.common.web.ApiException;
+import com.uten.imp.common.util.FinancialExactAmount;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.master.goods.dto.GoodsSaveRequest;
 
@@ -9,18 +10,20 @@ import java.math.BigDecimal;
 /**
  * 货品成本预算的服务端数值边界。
  *
- * <p>金额对应 {@code NUMERIC(18,4)}，必须为非负有限值；百分比费率按业务语义限制在
+ * <p>金额为 native 40 位整数、24 位有效小数的原值，必须为非负有限值；百分比费率按业务语义限制在
  * 0-100。请求校验保护 HTTP/导入入口，实体校验覆盖未在线开放但仍由旧库保留的
- * {@code manage_e}/{@code electric_e}，数据库 V421 作为最终写入守卫。
+ * {@code manage_e}/{@code electric_e}，数据库 V1034 作为最终写入守卫。
  */
 final class GoodsCostValuePolicy {
 
-    static final BigDecimal MAX_AMOUNT = new BigDecimal("99999999999999.9999");
+    static final BigDecimal MAX_AMOUNT = new BigDecimal("9999999999999999999999999999999999999999.999999999999999999999999");
     static final BigDecimal MAX_RATE = new BigDecimal("100.0000");
 
     private GoodsCostValuePolicy() {}
 
     static void validateRequest(GoodsSaveRequest request) {
+        amount("价格", request.getPrice());
+        amount("折扣倍率", request.getDiscount());
         amount("材料合计", request.getSourceE());
         amount("加工费", request.getMachiningE());
         amount("杂费", request.getIncidentalE());
@@ -65,10 +68,12 @@ final class GoodsCostValuePolicy {
     }
 
     private static void amount(String field, BigDecimal value) {
+        if (value != null) FinancialExactAmount.require(value, field);
         range(field, value, MAX_AMOUNT, "金额");
     }
 
     private static void rate(String field, BigDecimal value) {
+        if (value != null) FinancialExactAmount.rate(value, field);
         range(field, value, MAX_RATE, "百分比");
     }
 

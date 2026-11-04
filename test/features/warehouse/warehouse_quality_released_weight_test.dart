@@ -1,5 +1,5 @@
 // IQC 合格入库的「放行重量」(ADR-135 §3.10): 只读, 本次实收按到货实称的放行重量累计分摊
-// (与服务端入库切片同口径: 4 位四舍五入、末批取余); 到货没称显示「未称」。
+// 有限值保全文，非终止值提交时明确选择；已入库重量保留真实事实。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/components/layout/uten_editable_grid.dart';
@@ -13,6 +13,7 @@ WarehouseQualityReleasedSlice _slice({
   double? releasedWeight,
   double released = 3,
   double stocked = 0,
+  String? stockedWeight,
 }) => WarehouseQualityReleasedSlice(
   passEventId: id,
   inspectionItemId: 'line-$id',
@@ -26,6 +27,15 @@ WarehouseQualityReleasedSlice _slice({
   stockedForReleaseBaseQty: stocked,
   remainingBaseQty: released - stocked,
   releasedWeight: releasedWeight,
+  exactQuantities: {
+    'receivedBaseQty': released.toString(),
+    'qualityPassedBaseQty': released.toString(),
+    'warehouseStockedBaseQty': stocked.toString(),
+    'releasedBaseQty': released.toString(),
+    'stockedForReleaseBaseQty': stocked.toString(),
+    'remainingBaseQty': (released - stocked).toString(),
+    'stockedForReleaseWeight': ?stockedWeight,
+  },
   warehouseId: 'wh-1',
   warehouseName: '五金仓库',
 );
@@ -41,46 +51,47 @@ WarehouseQualityInspectionLine _line(String id) =>
       warehouseStockedBaseQty: 0,
       pendingStockBaseQty: 3,
       lineStatus: 'DONE',
+      exactQuantities: {
+        'receivedBaseQty': '3',
+        'passedBaseQty': '3',
+        'failedBaseQty': '0',
+        'warehouseStockedBaseQty': '0',
+        'pendingStockBaseQty': '3',
+      },
     );
 
 void main() {
-  test('放行重量按累计份额差分摊, 末批取余, 合计等于放行重量', () {
-    // 放行 3 个共 1 kg: 分 1 + 1 + 1 三批入库。
-    final first = WarehouseQualitySliceDraft(
-      _slice(id: 'a', releasedWeight: 1),
-    );
-    first.quantity.text = '1';
-    expect(first.previewWeightKg, 0.3333);
-
-    final second = WarehouseQualitySliceDraft(
-      _slice(id: 'a', releasedWeight: 1, stocked: 1),
-    );
-    second.quantity.text = '1';
-    expect(second.previewWeightKg, 0.3334);
-
-    final last = WarehouseQualitySliceDraft(
-      _slice(id: 'a', releasedWeight: 1, stocked: 2),
-    );
-    expect(last.quantity.text, '1'); // 默认 = 剩余量
-    expect(last.previewWeightKg, 0.3333);
-    expect(
-      roundKgLine(
-        first.previewWeightKg! +
-            second.previewWeightKg! +
-            last.previewWeightKg!,
-      ),
-      1,
-    );
-
-    // 到货没称 / 本次数量无效: 没有预览重量。
-    final unweighed = WarehouseQualitySliceDraft(_slice(id: 'b'));
-    expect(unweighed.previewWeightKg, isNull);
-    first.quantity.text = '';
-    expect(first.previewWeightKg, isNull);
-    for (final draft in [first, second, last, unweighed]) {
-      draft.dispose();
-    }
-  });
+  test(
+    'weight preview retains actual before and leaves repeating projections for explicit submit choice',
+    () {
+      final first = WarehouseQualitySliceDraft(
+        _slice(id: 'a', releasedWeight: 1),
+      );
+      first.quantity.text = '1';
+      expect(first.previewWeightText, isNull);
+      expect(first.previewWeightPendingText, '提交时核定精度');
+      final middle = WarehouseQualitySliceDraft(
+        _slice(id: 'a', releasedWeight: 1, stocked: 1, stockedWeight: '0.3333'),
+      );
+      middle.quantity.text = '0.5';
+      expect(middle.previewWeightText, '0.1667');
+      final last = WarehouseQualitySliceDraft(
+        _slice(id: 'a', releasedWeight: 1, stocked: 2, stockedWeight: '0.6667'),
+      );
+      expect(last.quantity.text, '1');
+      expect(last.previewWeightText, '0.3333');
+      final unknownBefore = WarehouseQualitySliceDraft(
+        _slice(id: 'a', releasedWeight: 1, stocked: 2),
+      );
+      expect(unknownBefore.previewWeightText, isNull);
+      final unweighed = WarehouseQualitySliceDraft(_slice(id: 'b'));
+      expect(unweighed.previewWeightText, isNull);
+      expect(unweighed.previewWeightPendingText, '未称');
+      for (final draft in [first, middle, last, unknownBefore, unweighed]) {
+        draft.dispose();
+      }
+    },
+  );
 
   testWidgets('「放行重量」只读列紧跟本次实收, 随实收重算; 没称显示「未称」', (tester) async {
     tester.view.physicalSize = const Size(2200, 1000);
@@ -155,7 +166,11 @@ void main() {
         columns.singleWhere((column) => column.key == key).exactValueOf!(
           firstRow,
         ),
-        key == 'failed' ? '0.0' : '3.0',
+        key == 'failed'
+            ? '0'
+            : key == 'remaining'
+            ? '3.0'
+            : '3',
       );
     }
 
@@ -177,5 +192,19 @@ void main() {
       tester.widget<Text>(weightOf('a')).data,
       formatWeight(0.5, display: WeightDisplay.kg),
     );
+    const longRaw =
+        '9999999999999999999999999999999999999999.000000000000000000000001';
+    await tester.enterText(
+      find.byKey(const Key('quality-slice-qty-a')),
+      longRaw,
+    );
+    await tester.pump();
+    expect(
+      weighed.quantity.text,
+      longRaw,
+      reason:
+          'the input field must not cut a valid 40/24 scalar before validation',
+    );
+    expect(quantity.exactValueOf!(firstRow), longRaw);
   });
 }

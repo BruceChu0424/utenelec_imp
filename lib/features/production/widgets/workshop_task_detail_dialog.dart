@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
@@ -34,7 +35,9 @@ class WorkshopTaskDetailDialog extends StatelessWidget {
   final List<Widget> notices;
 
   String _qty(double value) {
-    final number = value.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
+    final number = value
+        .toExactString(minimumFractionDigits: 4)
+        .replaceFirst(RegExp(r'\.?0+$'), '');
     final unit = task.productUnitName?.trim() ?? '';
     return unit.isEmpty ? number : '$number $unit';
   }

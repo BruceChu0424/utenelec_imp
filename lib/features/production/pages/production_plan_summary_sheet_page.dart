@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // 生产备料计划汇总单（生产计划单一键生成与全链路溯源设计 §五 末项）。
 //
 // 一张汇总单 = 公司头 + 缺车间清单 + 三分区（自制件/采购件/委外件）+ 署名区，
@@ -1177,9 +1178,9 @@ class _SignatureCell extends StatelessWidget {
 
 String _qty(double? value) {
   if (value == null) return '—';
-  if (value == value.roundToDouble()) return value.toStringAsFixed(0);
+  if (value == value.roundToDouble()) return value.toExactString();
   return value
-      .toStringAsFixed(4)
+      .toExactString(minimumFractionDigits: 4)
       .replaceFirst(RegExp(r'0+$'), '')
       .replaceFirst(RegExp(r'\.$'), '');
 }

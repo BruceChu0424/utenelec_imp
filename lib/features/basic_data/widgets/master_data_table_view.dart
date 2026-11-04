@@ -11,6 +11,7 @@ import '../../../components/layout/uten_table_action_scope.dart';
 import '../../../components/inputs/uten_search_bar.dart';
 import '../../../components/layout/uten_vertical_scrollbar.dart';
 import '../../../components/data_display/uten_table_surface.dart';
+import '../../../components/data_display/uten_table_header_group.dart';
 import '../../../components/data_display/uten_table_read_status.dart';
 import '../../../components/data_display/uten_table_text_selection.dart';
 import '../../../components/data_display/uten_selection_lifecycle.dart';
@@ -223,10 +224,12 @@ class MasterColumnDef<T> {
     this.legendOf,
     this.aiSensitive = false,
     this.exportable = true,
+    this.headerGroups = const [],
   });
 
   final String key;
   final String label;
+  final List<UtenTableHeaderGroup> headerGroups;
   final bool defaultVisible;
 
   /// 状态图例「值 -> 含义」(ADR-150, 可选)：AI 助手读页面时, 本列每种底色/状态
@@ -8168,7 +8171,13 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
   }
 
   Widget _buildHeaderRow(ThemeData theme) {
-    final row = _buildHeaderRowBody(theme);
+    final flatRow = _buildHeaderRowBody(theme);
+    final indices=_visibleIndices;
+    final depth=indices.fold<int>(0,(count,index)=>math.max(count,_columns[index].headerGroups.length));
+    final row=depth==0?flatRow:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+      for(int level=0;level<depth;level++)_buildHeaderGroupBand(theme,indices,level),
+      flatRow,
+    ]);
     return UtenTableRowRightEdge(
       child: !widget.showColumnChooser
           ? row
@@ -8189,6 +8198,21 @@ class _MasterDataTableViewState<T> extends State<MasterDataTableView<T>>
               row: row,
             ),
     );
+  }
+  Widget _buildHeaderGroupBand(ThemeData theme,List<int> indices,int level) {
+    Widget band(List<int> visible,{bool trailing=false}) {
+      final cells=<Widget>[];
+      if(_hasSelectionColumn)cells.add(const SizedBox(width:_selectionColWidth));
+      final paths=[for(final column in _columns)column.headerGroups];
+      for(final span in buildUtenTableHeaderGroupBand(paths,visible,level)) {
+        final width=span.columnIndices.fold<double>(0,(total,index)=>total+_widths[index]);
+        cells.add(SizedBox(width:width,child:UtenTableCellFrame(insetBorder:true,border:Border(right:BorderSide(color:theme.colorScheme.outline),bottom:BorderSide(color:theme.colorScheme.outline)),child:ConstrainedBox(constraints:const BoxConstraints(minHeight:32),child:Padding(padding:const EdgeInsets.symmetric(horizontal:8,vertical:6),child:Center(child:Text(span.label,textAlign:TextAlign.center,style:theme.textTheme.labelLarge)))))));
+      }
+      if(trailing&&widget.showColumnChooser)cells.add(const SizedBox(width:48));
+      return IntrinsicHeight(child:Row(crossAxisAlignment:CrossAxisAlignment.stretch,children:cells));
+    }
+    final pinned=_pinnedVisibleIndices;
+    return ColoredBox(color:theme.colorScheme.surfaceContainerHigh,child:_withFrozenLeadingRegion(controller:_headerH,width:_pinnedLeadingWidth(pinned),cell:ColoredBox(color:theme.colorScheme.surfaceContainerHigh,child:band(pinned)),row:band(indices,trailing:true)));
   }
 
   Widget _buildHeaderRowBody(ThemeData theme) {

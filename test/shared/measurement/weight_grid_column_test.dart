@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'package:uten_imp/core/network/business_precision.dart';
+import 'package:uten_imp/core/network/business_precision_coordinator.dart';
+import 'package:uten_imp/features/warehouse/models/warehouse_form_draft_codec.dart';
 // 采集表格「实称重量」列契约 (ADR-135 §6.2):
 //  1. 带单位后缀输入 (850g) 换成千克, 失焦后规范成列单位;
 //  2. 勾选多行后改一行重量只改这一行 (重量是一次物理称重, 永不批量);
@@ -95,6 +99,8 @@ Future<UtenEditableGridController<_Row>> _pump(
   ValueNotifier<WeightParams?>? paramsNotifier,
   bool enabled = true,
   bool weighButton = false,
+  String unitRate = '1',
+  bool wrapParams = false,
 }) async {
   tester.view.physicalSize = const Size(1400, 900);
   tester.view.devicePixelRatio = 1;
@@ -141,7 +147,10 @@ Future<UtenEditableGridController<_Row>> _pump(
                         controllerOf: (r) => r.weight,
                         entryUnit: units.entry,
                         mode: mode,
-                        paramsOf: (r) => paramsNotifier?.value ?? r.params,
+                        paramsOf: (r) => wrapParams
+                            ? (paramsNotifier?.value ?? r.params)
+                                  ?.withStockBalance(null)
+                            : paramsNotifier?.value ?? r.params,
                         paramsListenable: paramsNotifier,
                         enabledOf: (_) => enabled,
                         onWeighCount: weighButton ? (_, _) async {} : null,
@@ -151,6 +160,7 @@ Future<UtenEditableGridController<_Row>> _pump(
                         qtyAutofill: autofill
                             ? WeightQtyAutofill<_Row>(
                                 qtyControllerOf: (r) => r.qty,
+                                unitRateTextOf: (_) => unitRate,
                               )
                             : null,
                       ),
@@ -196,6 +206,155 @@ void _expectSuggestedDecoration(WidgetTester tester) {
 }
 
 void main() {
+  const oneKgModel = WeightParams(
+    goodsId: 'g1',
+    basis: WeightBasis.manual,
+    logMean: 0,
+    lotPrior: 0.00000001,
+    gamma: 0.00001,
+    df: 15,
+    tier: WeightTier.yellow,
+  );
+
+  testWidgets(
+    'automatic unresolved ratio retains original weight, survives draft, and actual input unblocks',
+    (tester) async {
+      final row = _Row(params: oneKgModel);
+      await _pump(tester, [row], autofill: true, unitRate: '3');
+      await tester.enterText(_inputs.first, '1.000000000000000000000000');
+      await tester.pump();
+      expect(row.qty.text, isEmpty);
+      expect(row.weight.hasError, isTrue);
+      expect(row.weight.quantityPendingReason, 'NON_TERMINATING');
+      final restored = WeightEntryController();
+      addTearDown(restored.dispose);
+      restoreWeightEntryDraft(
+        restored,
+        weightEntryDraft(row.weight, qty: row.qty),
+      );
+      expect(restored.quantityPendingReason, 'NON_TERMINATING');
+      expect(restored.kgText, '1');
+      final pending = Completer<BusinessPrecisionChoice?>();
+      final unregister = BusinessPrecisionCoordinator.instance.register(
+        (r) => pending.future,
+      );
+      addTearDown(unregister);
+      await tester.tap(
+        find.byKey(const ValueKey('weight-cell-quantity-precision')),
+      );
+      await tester.pump();
+      pending.complete(null);
+      await tester.pumpAndSettle();
+      expect(row.qty.text, isEmpty);
+      expect(row.weight.hasError, isTrue);
+      await tester.enterText(
+        find.byKey(const ValueKey('qty-input')),
+        '0.333333333333333333333333',
+      );
+      await tester.pumpAndSettle();
+      expect(row.weight.hasError, isFalse);
+      expect(row.qty.autofilled, isFalse);
+      expect(row.weight.qtyFromWeight, isTrue);
+      await tester.enterText(_inputs.first, '2');
+      await tester.pumpAndSettle();
+      expect(row.qty.text, '0.333333333333333333333333');
+    },
+  );
+
+  testWidgets(
+    'precision choice works with newly wrapped cache parameters on every read',
+    (tester) async {
+      final row = _Row(params: oneKgModel);
+      await _pump(
+        tester,
+        [row],
+        autofill: true,
+        unitRate: '3',
+        wrapParams: true,
+      );
+      final unregister = BusinessPrecisionCoordinator.instance.register(
+        (r) async => const BusinessPrecisionChoice(3, 'DOWN'),
+      );
+      addTearDown(unregister);
+      await tester.enterText(_inputs.first, '1');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey('weight-cell-quantity-precision')),
+      );
+      await tester.pumpAndSettle();
+      expect(row.qty.text, '0.333');
+      expect(row.weight.hasError, isFalse);
+      expect(row.weight.qtyFromWeight, isTrue);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('profile ABA invalidates a pending automatic quantity choice', (
+    tester,
+  ) async {
+    final row = _Row(params: oneKgModel);
+    final profile = ValueNotifier<WeightParams?>(oneKgModel);
+    addTearDown(profile.dispose);
+    await _pump(
+      tester,
+      [row],
+      autofill: true,
+      unitRate: '3',
+      paramsNotifier: profile,
+    );
+    final pending = Completer<BusinessPrecisionChoice?>();
+    final unregister = BusinessPrecisionCoordinator.instance.register(
+      (r) => pending.future,
+    );
+    addTearDown(unregister);
+    await tester.enterText(_inputs.first, '1');
+    await tester.pump();
+    await tester.tap(
+      find.byKey(const ValueKey('weight-cell-quantity-precision')),
+    );
+    await tester.pump();
+    profile.value = _red;
+    await tester.pump();
+    profile.value = oneKgModel;
+    await tester.pump();
+    pending.complete(const BusinessPrecisionChoice(3, 'DOWN'));
+    await tester.pumpAndSettle();
+    expect(row.qty.text, isEmpty);
+    expect(row.weight.quantityPendingReason, 'NON_TERMINATING');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'automatic precision decision after row ABA cannot overwrite either row',
+    (tester) async {
+      final first = _Row(params: oneKgModel),
+          second = _Row(params: oneKgModel, qty: '7.000000000000000000000001');
+      final grid = await _pump(tester, [first], autofill: true, unitRate: '3');
+      final pending = Completer<BusinessPrecisionChoice?>();
+      final unregister = BusinessPrecisionCoordinator.instance.register(
+        (r) => pending.future,
+      );
+      addTearDown(unregister);
+      await tester.enterText(_inputs.first, '1');
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey('weight-cell-quantity-precision')),
+      );
+      await tester.pump();
+      grid.swapRows([second]);
+      await tester.pump();
+      grid.swapRows([first]);
+      await tester.pump();
+      pending.complete(const BusinessPrecisionChoice(3, 'HALF_UP'));
+      await tester.pumpAndSettle();
+      expect(first.qty.text, isEmpty);
+      expect(second.qty.text, '7.000000000000000000000001');
+      expect(first.weight.hasError, isTrue);
+      second.dispose();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test(
     'header candidates retain entry units while formula facts remain kg',
     () {
@@ -413,11 +572,11 @@ void main() {
       void capture() => observed.add(column.exactValueOf!(row));
       final changes = column.exactListenableOf!(row)!;
       changes.addListener(capture);
-      expect(column.exactValueOf!(row), '25.0');
+      expect(column.exactValueOf!(row), '25');
       row.qty.text = '26.0001';
       expect(observed.last, '26.0001');
       params.value = _learned;
-      expect(observed.last, '7.0');
+      expect(observed.last, '7');
       row.weight.text.text = 'invalid';
       expect(observed.last, isNull);
       changes.removeListener(capture);
@@ -556,7 +715,7 @@ void main() {
   testWidgets('可信单重实际预填且黄框待核对，未学准保持可选空值', (tester) async {
     final inbound = _Row(params: _learned, qty: '10000');
     await _pump(tester, [inbound]);
-    expect(inbound.weight.text.text, '19.9926');
+    expect(inbound.weight.text.text, '19.99257400392371');
     expect(inbound.weight.kg, isNull);
     expect(inbound.weight.isSuggested, isTrue);
     _expectSuggestedDecoration(tester);
@@ -579,7 +738,7 @@ void main() {
     final row = _Row(params: _learned, qty: '10');
     await _pump(tester, [row], mode: WeightCaptureMode.outbound);
     expect(_input(tester).decoration!.hintText, '重量');
-    expect(_tooltip(tester), contains('应称 0.02'));
+    expect(_tooltip(tester), contains('应称 0.01999257400392371'));
     expect(_tooltip(tester), contains('尚未实称'));
     expect(row.weight.kg, isNull);
     expect(row.qty.text, '10');
@@ -588,14 +747,14 @@ void main() {
     await tester.enterText(_inputs, 'not-a-weight');
     await tester.pump();
     expect(_tooltip(tester), contains(weightInputErrorText));
-    expect(_tooltip(tester), contains('应称 0.02'));
+    expect(_tooltip(tester), contains('应称 0.01999257400392371'));
     expect(row.weight.kg, isNull);
     expect(row.qty.text, '10');
     expect(identical(tester.element(_inputs), fieldElement), isTrue);
 
     await tester.enterText(_inputs, '30g');
     await tester.pump();
-    expect(_tooltip(tester), contains('应称 0.02'));
+    expect(_tooltip(tester), contains('应称 0.01999257400392371'));
     expect(_tooltip(tester), contains('数值可能有问题'));
     expect(row.weight.kg, 0.03);
     expect(row.qty.text, '10');
@@ -625,7 +784,7 @@ void main() {
     await tester.pump();
     expect(_input(tester).decoration!.errorText, isNull);
     expect(_cellMessage(tester), '数值可能有问题');
-    expect(_tooltip(tester), contains('(-3.5%)'));
+    expect(_tooltip(tester), contains('(-3.4641562601583242%)'));
 
     await tester.enterText(_inputs.first, '20');
     await tester.pump();
@@ -651,8 +810,8 @@ void main() {
 
     await tester.enterText(_inputs.first, '20');
     await tester.pump();
-    // 20 kg / 2.0 g ≈ 10003.7 -> 按件取整 10004。
-    expect(row.qty.text, '10004');
+    // 20 kg / 模型单重；完整估值直接采用，不按 COUNT 偏好取整。
+    expect(row.qty.text, '10003.714377185664');
     expect(row.qty.autofilled, isTrue);
     expect(row.weight.qtyFromWeight, isTrue);
     expect(row.weight.qtyEstimateNote, startsWith('按称重推算 '));
@@ -661,7 +820,7 @@ void main() {
     // 重量再变: 仍是称重预填的数量 -> 跟着重算。
     await tester.enterText(_inputs.first, '10');
     await tester.pump();
-    expect(row.qty.text, '5002');
+    expect(row.qty.text, '5001.857188592832');
     expect(row.weight.qtyFromWeight, isTrue);
 
     // 用户改数量: 黄框消失, 但这行仍不参与学习。

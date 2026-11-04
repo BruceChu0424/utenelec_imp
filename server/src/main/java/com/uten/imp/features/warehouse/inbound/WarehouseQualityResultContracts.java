@@ -114,6 +114,11 @@ public final class WarehouseQualityResultContracts {
             /** 建议库位(仓库×货品×颜色学习偏好，回落货品主档)；先入库上架页预填用。 */
             String placeHint,
             String quantityTranche) {
+        @com.fasterxml.jackson.annotation.JsonProperty("receivedBaseQtyExact") public String receivedBaseQtyExact(){return com.uten.imp.common.util.DecimalText.of(receivedBaseQty);}
+        @com.fasterxml.jackson.annotation.JsonProperty("passedBaseQtyExact") public String passedBaseQtyExact(){return com.uten.imp.common.util.DecimalText.of(passedBaseQty);}
+        @com.fasterxml.jackson.annotation.JsonProperty("failedBaseQtyExact") public String failedBaseQtyExact(){return com.uten.imp.common.util.DecimalText.of(failedBaseQty);}
+        @com.fasterxml.jackson.annotation.JsonProperty("warehouseStockedBaseQtyExact") public String warehouseStockedBaseQtyExact(){return com.uten.imp.common.util.DecimalText.of(warehouseStockedBaseQty);}
+        @com.fasterxml.jackson.annotation.JsonProperty("pendingStockBaseQtyExact") public String pendingStockBaseQtyExact(){return com.uten.imp.common.util.DecimalText.of(pendingStockBaseQty);}
         public InspectionLineItem(UUID inspectionItemId, UUID goodsId, String goodsCode, String goodsName, String colorName, UUID unitId, String unitName, String lineStatus, BigDecimal receivedBaseQty, BigDecimal passedBaseQty, BigDecimal failedBaseQty, BigDecimal warehouseStockedBaseQty, BigDecimal pendingStockBaseQty, UUID warehouseId, String warehouseName, PreStockedLocation preStocked, String placeHint) {
             this(inspectionItemId, goodsId, goodsCode, goodsName, colorName, unitId, unitName, lineStatus, receivedBaseQty, passedBaseQty, failedBaseQty, warehouseStockedBaseQty, pendingStockBaseQty, warehouseId, warehouseName, preStocked, placeHint, "LEGACY");
         }

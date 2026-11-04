@@ -32,9 +32,10 @@ public final class AssetWorkbenchRequests {
             @Size(max = 160) String serialNumber,
             @Size(max = 100) String assetTag,
             @Size(max = 100) String costCenterCode,
-            @NotNull @DecimalMin("0.01") @Digits(integer = 16, fraction = 2) BigDecimal originalValue,
+            @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)
+            @NotNull @DecimalMin("0.000000000000000000000001") @Digits(integer = 40, fraction = 24) BigDecimal originalValue,
             @DecimalMin("0.0000") @DecimalMax("1.000000")
-            @Digits(integer = 1, fraction = 6) BigDecimal salvageRate,
+            @Digits(integer = 1, fraction = 24) BigDecimal salvageRate,
             @NotNull @Min(1) @Max(1200) Integer usefulMonths,
             @NotBlank @Pattern(regexp = PERIOD) String startPeriod,
             LocalDate acquisitionDate,
@@ -71,8 +72,10 @@ public final class AssetWorkbenchRequests {
 
     public record OpeningBalance(@NotNull LocalDate asOf,
             @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)
-            @NotNull @DecimalMin("0.0000") @Digits(integer=14,fraction=4) BigDecimal accumulatedAmount,
-            @NotNull @Min(0) @Max(1200) Integer remainingMonths,UUID existingVoucherId) {}
+            @NotNull @DecimalMin("0.0000") @Digits(integer=40,fraction=30) BigDecimal accumulatedAmount,
+            @NotNull @Min(0) @Max(1200) Integer remainingMonths,UUID existingVoucherId,UUID groupId) {
+        public OpeningBalance(LocalDate asOf,BigDecimal accumulatedAmount,Integer remainingMonths,UUID existingVoucherId){this(asOf,accumulatedAmount,remainingMonths,existingVoucherId,null);}
+    }
 
     public record DeferredExpenseDraft(
             @Size(max = 64) String code,
@@ -82,7 +85,8 @@ public final class AssetWorkbenchRequests {
             UUID responsibleEmployeeId,
             @Size(max = 300) String location,
             @Size(max = 100) String costCenterCode,
-            @NotNull @DecimalMin("0.01") @Digits(integer = 16, fraction = 2) BigDecimal totalAmount,
+            @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)
+            @NotNull @DecimalMin("0.000000000000000000000001") @Digits(integer = 40, fraction = 24) BigDecimal totalAmount,
             @NotNull @Min(1) @Max(1200) Integer usefulMonths,
             @NotBlank @Pattern(regexp = PERIOD) String startPeriod,
             LocalDate benefitStartDate,
@@ -124,7 +128,8 @@ public final class AssetWorkbenchRequests {
             @NotNull @Min(0) Long expectedVersion,
             @NotBlank @Size(max = 2000) String reason,
             @NotNull LocalDate effectiveDate,
-            @NotNull @DecimalMin("0.00") @Digits(integer = 16, fraction = 2) BigDecimal proceedsAmount,
+            @com.fasterxml.jackson.annotation.JsonFormat(shape=com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING)
+            @NotNull @DecimalMin("0.00") @Digits(integer = 40, fraction = 24) BigDecimal proceedsAmount,
             @Size(max = 1000) String evidenceReference) {}
 
     public record TerminationCommand(

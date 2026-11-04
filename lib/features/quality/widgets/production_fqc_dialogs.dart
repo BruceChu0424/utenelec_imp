@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // 生产成品质检（FQC）共享文案口径。
 //
 // 2026-09-12 起 FQC 的详情/决定/检查单办理从弹窗改为独立页面
@@ -20,6 +21,6 @@ String fqcStatusCodeLabel(String status) => switch (status) {
 
 /// 数量展示（去尾零，保留实际精度）。
 String fqcQtyText(double value) => value
-    .toStringAsFixed(4)
+    .toExactString(minimumFractionDigits: 4)
     .replaceFirst(RegExp(r'0+$'), '')
     .replaceFirst(RegExp(r'\.$'), '');

@@ -46,7 +46,7 @@ public class WarehouseWorkTransitionRequest {
             @Size(max = 200) String stockPlace,
             UUID warehouseId,
             @DecimalMin(value = "0", inclusive = true)
-            @Digits(integer = 14, fraction = 4) BigDecimal weightKg) {
+            @Digits(integer = 40, fraction = 48) BigDecimal weightKg) {
         public StockPlace(UUID shipmentItemId, String stockPlace, UUID warehouseId) {
             this(shipmentItemId, stockPlace, warehouseId, null);
         }

@@ -312,9 +312,42 @@ void main() {
         'warehouse-a',
         'warehouse-b',
       ]);
-      expect(batch.items.map((item) => item.baseQty), [3, 5]);
+      expect(batch.items.map((item) => item.baseQty), ['3', '5']);
       expect(batch.items.map((item) => item.place), ['SL-02', 'A-01']);
-      expect(batch.items.map((item) => item.expectedRemainingBaseQty), [5, 5]);
+      expect(batch.items.map((item) => item.expectedRemainingBaseQty), [
+        '5.0',
+        '5.0',
+      ]);
+    },
+  );
+
+  testWidgets(
+    'a precision response after a possible commit preserves the original batch command for explicit recovery',
+    (tester) async {
+      final gateway = _Gateway(precisionUncertainOnce: true);
+      await _pump(tester, gateway, _WarehouseApi());
+      await _pickFirstWarehouse(tester);
+      await tester.enterText(
+        find.byKey(const Key('quality-slice-place-pass-a')),
+        'EXACT-RESTORE-01',
+      );
+      await tester.tap(
+        find.byKey(const Key('warehouse-quality-batch-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(gateway.commands, hasLength(1));
+      final original = gateway.commands.single;
+      await tester.tap(find.byType(UtenCloseButton).last);
+      await tester.pumpAndSettle();
+      expect(find.text('核对原批量入库提交'), findsWidgets);
+      final field = _field(tester, 'quality-slice-qty-pass-a');
+      expect(field.enabled, isFalse);
+      await tester.tap(
+        find.byKey(const Key('warehouse-quality-batch-confirm')),
+      );
+      await tester.pumpAndSettle();
+      expect(gateway.commands, hasLength(2));
+      expect(gateway.commands.last, same(original));
     },
   );
 
@@ -365,7 +398,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       final second = gateway.commands.last.batches.single;
-      expect(second.items.first.expectedRemainingBaseQty, 2);
+      expect(second.items.first.expectedRemainingBaseQty, '2.0');
       expect(second.items.first.warehouseId, 'warehouse-a');
       expect(second.items.first.place, 'B-09');
       expect(
@@ -708,9 +741,14 @@ class _WarehouseApi extends ApiClient {
 }
 
 class _Gateway implements WarehouseQualityResultGateway {
-  _Gateway({this.conflictOnce = false, this.visualFixture = false});
+  _Gateway({
+    this.conflictOnce = false,
+    this.visualFixture = false,
+    this.precisionUncertainOnce = false,
+  });
   final bool conflictOnce;
   final bool visualFixture;
+  final bool precisionUncertainOnce;
   final commands = <WarehouseQualityBatchConfirmCommand>[];
   int detailCalls = 0;
   double remaining = 5;
@@ -731,9 +769,23 @@ class _Gateway implements WarehouseQualityResultGateway {
     WarehouseQualityBatchConfirmCommand command,
   ) async {
     commands.add(command);
+    if (precisionUncertainOnce && commands.length == 1) {
+      throw ApiException(
+        'PRECISION_CHOICE_REQUIRED',
+        '原提交结果需要核对',
+        httpStatus: 422,
+        hasResponseCode: true,
+        details: {'notWritten': false},
+      );
+    }
     if (conflictOnce && commands.length == 1) {
       remaining = 2;
-      throw ApiException('CONFLICT', '放行余量已经变化');
+      throw ApiException(
+        'CONFLICT',
+        '放行余量已经变化',
+        httpStatus: 409,
+        hasResponseCode: true,
+      );
     }
     return WarehouseQualityBatchConfirmResult(
       confirmedReceipts: command.batches.length,
@@ -797,10 +849,15 @@ Map<String, dynamic> _detail({double remaining = 5}) => {
         'goodsName': '部件$id',
         'unitName': '件',
         'receivedBaseQty': 5,
+        'receivedBaseQtyExact': '5',
         'passedBaseQty': 5,
+        'passedBaseQtyExact': '5',
         'failedBaseQty': 0,
+        'failedBaseQtyExact': '0',
         'warehouseStockedBaseQty': 0,
+        'warehouseStockedBaseQtyExact': '0',
         'pendingStockBaseQty': id == 'a' ? remaining : 5,
+        'pendingStockBaseQtyExact': (id == 'a' ? remaining : 5).toString(),
         'lineStatus': 'RESOLVED',
       },
   ],
@@ -814,11 +871,17 @@ Map<String, dynamic> _slice(String id, String? warehouseId, double remaining) =>
       'goodsName': '部件$id',
       'unitName': '件',
       'receivedBaseQty': 5,
+      'receivedBaseQtyExact': '5',
       'qualityPassedBaseQty': 5,
+      'qualityPassedBaseQtyExact': '5',
       'warehouseStockedBaseQty': 0,
+      'warehouseStockedBaseQtyExact': '0',
       'releasedBaseQty': 5,
+      'releasedBaseQtyExact': '5',
       'stockedForReleaseBaseQty': 0,
+      'stockedForReleaseBaseQtyExact': '0',
       'remainingBaseQty': remaining,
+      'remainingBaseQtyExact': (remaining).toString(),
       'placeHint': 'A-01',
       'warehouseId': warehouseId,
       'warehouseName': warehouseId == 'warehouse-b' ? '五金叶仓' : null,
@@ -855,10 +918,15 @@ Map<String, dynamic> _visualDetail() {
       'goodsCode': 'WL-$id',
       'unitName': '件',
       'receivedBaseQty': 5,
+      'receivedBaseQtyExact': '5',
       'passedBaseQty': pending || rejected ? 0 : 5,
+      'passedBaseQtyExact': (pending || rejected ? 0 : 5).toString(),
       'failedBaseQty': rejected ? 5 : 0,
+      'failedBaseQtyExact': (rejected ? 5 : 0).toString(),
       'warehouseStockedBaseQty': 0,
+      'warehouseStockedBaseQtyExact': '0',
       'pendingStockBaseQty': pending || rejected ? 0 : 5,
+      'pendingStockBaseQtyExact': (pending || rejected ? 0 : 5).toString(),
       'lineStatus': pending ? 'PENDING' : 'RESOLVED',
     });
     if (!pending && !rejected) {

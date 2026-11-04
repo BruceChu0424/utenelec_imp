@@ -236,7 +236,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       for (final row in _grid.rows)
         {
           'goods': draftGoods(row.goods),
-          'unitRate': row.unitRate,
+          'unitRate': row.unitRateText,
           'qty': row.qty.text,
           'weight': weightEntryDraft(row.weight, qty: row.qty),
           'bookQty': row.bookQty.text,
@@ -285,7 +285,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         (() {
           final row = StockGridRow(isCheck: _isCheck)
             ..goods = restoreDraftGoods(item['goods'])
-            ..unitRate = (item['unitRate'] as num?)?.toDouble() ?? 1;
+            ..unitRateText = financeExactDecimal(item['unitRate']) ?? '1';
           row.upstreamItemId = item['upstreamItemId'] as String?;
           row.executionSegmentId = item['executionSegmentId'] as String?;
           row.executionSegmentSalesAllocationId =
@@ -309,7 +309,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
             qty: row.checkQty,
           );
           row.bookWeightEstimated = item['bookWeightEstimated'] == true;
-          row.bookWeightKg.value = (item['bookWeightKg'] as num?)?.toDouble();
+          row.bookWeightKg.value = financeExactDecimal(item['bookWeightKg']);
           return row;
         })(),
     ]);
@@ -362,18 +362,18 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
   }
 
   /// 货品或行单位按重量计时由数量精确换算(只读、不提交重量)；需要实称时为 null。
-  double? _exactKg(StockGridRow row) => warehouseExactLineKg(
-    lineQty: double.tryParse(row.activeQty.text.trim()),
+  String? _exactKg(StockGridRow row) => warehouseExactLineKg(
+    lineQty: row.activeQty.text.trim(),
     lineMassUnit:
         (ref.read(warehouseUnitMassUnitsProvider).value ??
         const {})[row.unitId],
-    unitRate: row.isCheck ? 1 : row.unitRate,
+    unitRate: row.isCheck ? '1' : row.unitRateText,
     params: _paramsOf(row),
   );
 
   /// 随明细提交的重量(千克)：精确换算行与没称的行不带。
-  double? _sentKg(StockGridRow row) =>
-      _exactKg(row) == null ? row.activeWeight.kg : null;
+  String? _sentKg(StockGridRow row) =>
+      _exactKg(row) == null ? row.activeWeight.kgText : null;
 
   String _goodsTitle(StockGridRow row) => warehouseWeighGoodsTitle(
     row.goods?.name ?? '',
@@ -389,6 +389,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       return;
     }
     final outbound = _weightMode == WeightCaptureMode.outbound;
+    final warehouse = _rowWarehouseOf(row), rate = row.unitRateText;
     await warehouseWeighCount(
       context,
       request: WeighCountRequest(
@@ -402,6 +403,9 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         unitRate: row.isCheck ? 1 : row.unitRate,
         currentQty: double.tryParse(row.activeQty.text.trim()),
         initialNetKg: row.activeWeight.kg,
+        initialNetKgExact: row.activeWeight.kgText,
+        unitRateExact: row.isCheck ? '1' : row.unitRateText,
+        currentQtyExact: row.activeQty.text.trim(),
         sampleRemark: _billNo.text.trim().isEmpty
             ? widget.docType.label
             : '${widget.docType.label} ${_billNo.text.trim()}',
@@ -410,6 +414,14 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       qty: outbound ? null : row.activeQty,
       cache: _weightCache,
       refetch: _weightParamsLines(),
+      sourceChanges: [_weightCache, row.goodsNotifier],
+      isCurrent: () =>
+          mounted &&
+          formDraftIdentityIsCurrent &&
+          _grid.rows.contains(row) &&
+          identical(row.goods, goods) &&
+          _rowWarehouseOf(row) == warehouse &&
+          row.unitRateText == rate,
     );
   }
 
@@ -603,7 +615,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
             ..upstreamItemId = it.upstreamItemId
             ..colorId = it.colorId
             ..unitId = it.unitId
-            ..unitRate = it.unitRate ?? 1
+            ..unitRateText = it.unitRateText ?? '1'
             // 行级仓库类型回显行仓（空沿用表头）；调拨/盘点行不带仓。
             ..warehouseId = _usesLineWarehouse
                 ? it.warehouseId ?? d.warehouseId
@@ -628,12 +640,12 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
             // 盘点：账面 = items.qty，实盘 = items.countQty；账面重量 = 保存时快照，
             // 实盘重量 = items.countWeight(按称重推算的实盘数量保留黄框)。
             row.bookQty.text = it.qtyText ?? it.qty?.toString() ?? '';
-            row.bookWeightKg.value = it.bookWeight;
+            row.bookWeightKg.value = it.bookWeightText;
             _restoreSavedWeight(
               row.countWeight,
               row.checkQty,
               it.countQtyText ?? it.countQty?.toString() ?? '',
-              it.countWeight,
+              it.countWeightText,
               it.qtyFromWeight,
             );
           } else {
@@ -641,7 +653,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
               row.weight,
               row.qty,
               it.qtyText ?? it.qty?.toString() ?? '',
-              it.weight,
+              it.weightText,
               it.qtyFromWeight,
             );
           }
@@ -668,11 +680,11 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
     WeightEntryController weight,
     UtenAutofillTextController qty,
     String qtyText,
-    double? kg,
+    String? kg,
     bool qtyFromWeight,
   ) {
     qty.text = qtyText;
-    weight.setKg(kg, qtyFromWeight: qtyFromWeight, userEdited: kg != null);
+    weight.setKgText(kg, qtyFromWeight: qtyFromWeight, userEdited: kg != null);
     if (qtyFromWeight && qtyText.isNotEmpty) {
       qty.setAutomaticText(qtyText);
       weight.markQtyDerived(qtyText, note: '保存时按称重折算的数量');
@@ -852,13 +864,13 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       }
       // 没有余额行 = 账面 0 个、0 重量。
       String? qty = '0';
-      double? weightKg = 0;
+      String? weightKg = '0';
       var estimated = false;
       var found = false;
       for (final balance in result.items) {
         if (balance.colorId == row.colorId) {
           qty = balance.qtyText ?? balance.qty?.toString();
-          weightKg = balance.weight;
+          weightKg = balance.weightText;
           estimated = balance.weightEstimated;
           found = true;
           break;
@@ -869,7 +881,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
         final balance = result.items.single;
         row.colorId = balance.colorId;
         qty = balance.qtyText ?? balance.qty?.toString();
-        weightKg = balance.weight;
+        weightKg = balance.weightText;
         estimated = balance.weightEstimated;
       }
       row.bookQty.text = financeExactTrimmed(qty) ?? '';
@@ -1019,7 +1031,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       };
       if (r.colorId != null) m['colorId'] = r.colorId;
       if (r.unitId != null) m['unitId'] = r.unitId;
-      m['unitRate'] = r.unitRate;
+      m['unitRate'] = r.unitRateText;
       if (_usesLineWarehouse) {
         m['warehouseId'] = r.warehouseId;
         final place = r.place.text.trim();
@@ -1027,10 +1039,7 @@ class _StockDocEditPageState extends ConsumerState<StockDocEditPage>
       }
       // 重量(ADR-135)：可选，千克 4 位；看不懂的输入拦下，没称不带，货品按重量计不带。
       if (r.activeWeight.hasError) {
-        context.appError(
-          '${r.goods!.name} 的${_isCheck ? '实盘重量' : '实称重量'}看不懂，'
-          '例：850g、1.2t、3斤、12',
-        );
+        context.appError('${r.goods!.name}：${r.activeWeight.errorText}');
         await _grid.revealError(
           r,
           columnKey: _isCheck ? 'countWeight' : 'weight',

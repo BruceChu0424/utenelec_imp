@@ -78,10 +78,13 @@ public class ShipmentDetail extends com.uten.imp.common.history.DocumentHistoryM
     public void setSellerName(String value) { historicalWorkerNames.sellerName = value; }
     public String getSenderName() { return historicalWorkerNames.senderName; }
     public void setSenderName(String value) { historicalWorkerNames.senderName = value; }
+    public String getFinanceAuditorName() { return historicalWorkerNames.financeAuditorName; }
+    public void setFinanceAuditorName(String value) { historicalWorkerNames.financeAuditorName = value; }
 
     private static final class HistoricalWorkerNames {
         private String sellerName;
         private String senderName;
+        private String financeAuditorName;
     }
 
     // Exact text is derived after permission masking; null stays null.

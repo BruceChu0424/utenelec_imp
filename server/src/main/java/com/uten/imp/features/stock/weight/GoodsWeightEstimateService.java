@@ -33,7 +33,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -61,6 +60,9 @@ import java.util.UUID;
 @Slf4j
 @Service
 public class GoodsWeightEstimateService implements UnitWeightLookup {
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.uten.imp.application.port.BusinessNumericInputEvidencePort> numericInputs;
+
 
     public static final String PERMISSION_REPORT_VIEW = "stock_report:view";
     public static final String PERMISSION_WEIGHT_MANAGE = "stock:weight:manage";
@@ -446,7 +448,7 @@ public class GoodsWeightEstimateService implements UnitWeightLookup {
                     rs.getObject("id", UUID.class), observedAt, rs.getString("source_kind"), rs.getString("role"),
                     qty, weight,
                     qty == null || qty.signum() <= 0 || weight == null ? null
-                            : weight.divide(qty, UNIT_WEIGHT_SCALE, RoundingMode.HALF_EVEN),
+                            : com.uten.imp.common.finance.BusinessPrecisionContext.divide(weight,qty,"weight.observation-unit","本次称重记录单重换算",24),
                     rs.getBigDecimal("gross_kg"), rs.getBigDecimal("tare_kg"),
                     rs.getObject("warehouse_id", UUID.class), rs.getString("warehouse_name"),
                     rs.getObject("color_id", UUID.class), rs.getString("color_name"),
@@ -467,6 +469,10 @@ public class GoodsWeightEstimateService implements UnitWeightLookup {
                     rs.getString("remark"), rs.getObject("recorded_by", UUID.class),
                     rs.getString("recorded_by_name"), status);
         });
+        if(numericInputs!=null&&!items.isEmpty()){
+            var evidence=numericInputs.getObject().readForAuthorizedOwner("GOODS_WEIGHT_OBSERVATION",goodsId,items.stream().map(WeightObservationRow::id).toList());
+            items=items.stream().map(item->item.withInputEvidence(evidence.getOrDefault(item.id(),List.of()).stream().filter(value->java.util.Set.of("WEIGHT_KG","TARE_KG").contains(value.fieldKey())).toList())).toList();
+        }
         int totalPages = (int) ((count + pageable.getPageSize() - 1) / pageable.getPageSize());
         return new PageResponse<>(items, pageable.getPageNumber() + 1, pageable.getPageSize(), count, totalPages);
     }
@@ -475,12 +481,8 @@ public class GoodsWeightEstimateService implements UnitWeightLookup {
         String sourceName = "CASE WHEN observed.source_doc_id IS NOT NULL AND observed.source_doc_type IN ("
                 + "'PURCHASE_RECEIPT','SUBCONTRACT_RECEIPT','STOCK_DOC','SUBCONTRACT_MATERIAL_ISSUE','SALES_SHIPMENT','PRODUCTION_FINISHED_ARRIVAL') "
                 + "AND NOT coalesce(observed.source_hit,false) THEN '来源单据已清空' ELSE observed.bill_no END";
-        String ratio = "(observed.weight_kg/NULLIF(observed.qty_base,0))";
-        String scaled = "(" + ratio + "*1000000000000)";
-        // Match weight.divide(qty,12,HALF_EVEN), including exact halfway values.
-        String unitWeight = "CASE WHEN observed.qty_base>0 AND observed.weight_kg IS NOT NULL THEN "
-                + "CASE WHEN abs(" + scaled + "-trunc(" + scaled + "))=0.5 AND mod(abs(trunc(" + scaled + ")),2)=0 "
-                + "THEN trunc(" + ratio + ",12) ELSE round(" + ratio + ",12) END END";
+        String unitWeight="CASE WHEN observed.qty_base>0 AND observed.weight_kg IS NOT NULL THEN "
+                + "fn_business_exact_divide(observed.weight_kg,observed.qty_base,'weight.observation-unit','本次称重记录单重换算',24) END";
         return Map.of(
                 "observedAt", com.uten.imp.common.util.SqlColumnSearch.Field.instant("observed.observed_at"),
                 "billNo", com.uten.imp.common.util.SqlColumnSearch.Field.text(sourceName),
@@ -696,10 +698,18 @@ public class GoodsWeightEstimateService implements UnitWeightLookup {
                         """, List.of(p.manualSetBy())).get(p.manualSetBy());
         boolean manualActive = p.manualUnitWeightKg() != null && goods.goodsUnitId() != null
                 && goods.goodsUnitId().equals(p.manualUnitId());
-        return new GoodsWeightView.Profile(p.exists(), p.defaultTareKg(), p.effectiveTolerancePct(),
+        var view=new GoodsWeightView.Profile(p.exists(), p.defaultTareKg(), p.effectiveTolerancePct(),
                 p.effectivePieceCvPct(), p.manualUnitWeightKg(), manualActive, p.manualReason(), p.manualSetBy(),
                 setByName, p.manualSetAt(), p.learningEnabled(), p.regimeMode(), p.manualRegimeStartAt(),
                 p.version(), p.updatedAt());
+        if(numericInputs!=null){
+            var history=numericInputs.getObject().readForAuthorizedOwner("GOODS_WEIGHT_PROFILE",goods.goodsId(),List.of(goods.goodsId())).getOrDefault(goods.goodsId(),List.of());
+            var latest=new java.util.LinkedHashMap<String,com.uten.imp.application.port.BusinessNumericInputEvidencePort.Value>();
+            for(var evidence:history)latest.put(evidence.fieldKey(),evidence);
+            var current=new java.util.HashMap<String,BigDecimal>();current.put("DEFAULT_TARE_KG",p.defaultTareKg());current.put("MANUAL_UNIT_WEIGHT_KG",p.manualUnitWeightKg());current.put("TOLERANCE_PCT",p.tolerancePct());current.put("PIECE_CV_PCT",p.pieceCvPct());
+            view=view.withInputEvidence(latest.values().stream().filter(evidence->current.get(evidence.fieldKey())!=null&&new BigDecimal(evidence.recordedDecimal()).compareTo(current.get(evidence.fieldKey()))==0).toList());
+        }
+        return view;
     }
 
     private static GoodsWeightView.EstimateRowView estimateView(EstimateRow row) {

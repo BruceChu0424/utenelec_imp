@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // 货品组装信息(BOM)行模型(对应后端 BomItemView)+ 「BOM 学习记录」模型。
 //
 // 展示/计算保留 double API；复制与未改动回写优先使用服务端的精确十进制文本伴随字段。
@@ -575,7 +576,7 @@ double? periodicGramsPerBaseUnit(String? unitName) {
 
 /// 单个重量 (克) 的显示文本：最多 3 位小数，去掉补齐的 0。
 String periodicGramsText(double grams) {
-  final fixed = grams.toStringAsFixed(3);
+  final fixed = grams.toExactString(minimumFractionDigits: 3);
   return fixed.contains('.')
       ? fixed.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '')
       : fixed;

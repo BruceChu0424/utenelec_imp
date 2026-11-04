@@ -46,12 +46,15 @@ public final class ZipSafety {
 
     /** 检查通过返回全部条目名; 不通过抛 422(用户能看懂的中文)。 */
     public static List<String> inspectSpreadsheet(byte[] zip) {
-        return inspectSpreadsheet(zip, false);
+        return inspectSpreadsheet(zip, false,DocumentIntakeProfile.DEFAULT);
+    }
+    public static List<String> inspectSpreadsheet(byte[] zip,DocumentIntakeProfile profile) {
+        return inspectSpreadsheet(zip,false,profile);
     }
 
     /** Only evidence readers may retain external-link metadata; they must never evaluate formulas or open links. */
     public static List<String> inspectSpreadsheetEvidence(byte[] zip) {
-        return inspectSpreadsheet(zip, true);
+        return inspectSpreadsheet(zip, true,DocumentIntakeProfile.DEFAULT);
     }
 
     /**
@@ -101,9 +104,10 @@ public final class ZipSafety {
         if (names.isEmpty()) throw rejected("文档压缩结构无效");
     }
 
-    private static List<String> inspectSpreadsheet(byte[] zip, boolean evidenceOnly) {
-        if (zip.length > MAX_COMPRESSED_BYTES) {
-            throw BoundedBodyReader.tooLarge(MAX_COMPRESSED_BYTES);
+    private static List<String> inspectSpreadsheet(byte[] zip, boolean evidenceOnly,DocumentIntakeProfile profile) {
+        if (profile==null)throw new IllegalArgumentException("profile");
+        if (zip.length > profile.maxBytes()) {
+            throw BoundedBodyReader.tooLarge(profile.maxBytes());
         }
         Set<String> names = new HashSet<>();
         List<String> ordered = new ArrayList<>();

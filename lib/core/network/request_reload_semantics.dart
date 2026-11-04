@@ -11,7 +11,15 @@ bool isPlatformValuesRead(String path) =>
 bool isReadOnlyPost(String path) =>
     isNativeFacetPath(path) ||
     isPlatformValuesRead(path) ||
-    isSearchReadPost(path);
+    isSearchReadPost(path) ||
+    _materialAggregatePreview.hasMatch(_apiPath(Uri.parse(path).path)) ||
+    _materialOperationVerify.hasMatch(_apiPath(Uri.parse(path).path)) ||
+    const {
+      '/finance/statement-documents/metadata',
+      '/finance/statement-documents/preview',
+      '/finance/statement-documents/settlement-preview',
+      '/finance/statement-documents/reviews/query',
+    }.contains(_apiPath(Uri.parse(path).path));
 
 /// Reviewed query handlers only. Body-carried contact/bank terms remain out of
 /// URLs, while searches retain the same read lifecycle as their GET versions.
@@ -73,4 +81,14 @@ final _platformValuesRead = RegExp(
 
 final _noticePresentationReceipt = RegExp(
   r'^/notices/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/(read|popup-ack)$',
+);
+
+// Audited read-only services; adjacent submit/cancel routes remain writes.
+const _semanticUuid =
+    r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
+final _materialAggregatePreview = RegExp(
+  '^/production/material-analyses/$_semanticUuid/aggregate-orders/preview\$',
+);
+final _materialOperationVerify = RegExp(
+  '^/finance/material-statements/operations/$_semanticUuid/verify\$',
 );

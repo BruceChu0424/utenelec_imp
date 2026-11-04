@@ -35,7 +35,7 @@ public class ExpenseApplicantQuery {
             case "history" -> "("+(approve?"EXISTS(SELECT 1 FROM expense_claim_events e WHERE e.claim_id=c.id AND e.actor_employee_id=:actor AND e.event_type IN ('STAGE_APPROVED','APPROVED','REJECTED'))":"FALSE")+") OR "+(pay?"c.status='PAID'":"FALSE");
             default -> "FALSE";
         };
-        return "("+visible+" OR ("+legacy+"))";
+        return "("+visible+" OR (NOT fn_finance_expense_is_application_managed(c.id) AND ("+legacy+")))";
     }
 
     private jakarta.persistence.Query observerQuery(String sql, com.uten.imp.security.AuthUser actor,
@@ -236,7 +236,7 @@ public class ExpenseApplicantQuery {
                         FROM expense_claims c
                         JOIN departments d ON d.id = c.applicant_department_id
                         WHERE c.is_deleted = false AND c.status IN (:statuses)
-                          AND c.applicant_id<>:actor
+                          AND NOT fn_finance_expense_is_application_managed(c.id) AND c.applicant_id<>:actor
                           AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
                           AND (:payment=false OR POSITION(CAST(:actor AS text) IN COALESCE(c.approval_participants,''))=0)
                         GROUP BY c.applicant_department_id, d.name
@@ -267,7 +267,7 @@ public class ExpenseApplicantQuery {
                                COUNT(*)
                         FROM expense_claims c
                         WHERE c.is_deleted = false AND c.status IN (:statuses)
-                          AND c.applicant_id<>:actor
+                          AND NOT fn_finance_expense_is_application_managed(c.id) AND c.applicant_id<>:actor
                           AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
                           AND (:payment=false OR POSITION(CAST(:actor AS text) IN COALESCE(c.approval_participants,''))=0)
                         GROUP BY ym
@@ -299,7 +299,7 @@ public class ExpenseApplicantQuery {
                         FROM expense_claim_items i
                         JOIN expense_claims c ON c.id = i.claim_id
                         WHERE c.is_deleted = false AND c.status IN (:statuses)
-                          AND c.applicant_id<>:actor
+                          AND NOT fn_finance_expense_is_application_managed(c.id) AND c.applicant_id<>:actor
                           AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
                           AND (:payment=false OR POSITION(CAST(:actor AS text) IN COALESCE(c.approval_participants,''))=0)
                         GROUP BY i.category
@@ -329,7 +329,7 @@ public class ExpenseApplicantQuery {
                         SELECT c.claim_no, COUNT(*)
                         FROM expense_claims c
                         WHERE c.is_deleted = false AND c.status IN (:statuses)
-                          AND c.applicant_id<>:actor
+                          AND NOT fn_finance_expense_is_application_managed(c.id) AND c.applicant_id<>:actor
                           AND (:payment=false OR c.approved_by IS NULL OR c.approved_by<>:actor)
                           AND (:payment=false OR POSITION(CAST(:actor AS text) IN COALESCE(c.approval_participants,''))=0)
                         GROUP BY c.claim_no
@@ -441,10 +441,10 @@ public class ExpenseApplicantQuery {
                               AND c.status IN ('SUBMITTED','REVIEWING','APPROVED')),
                           (SELECT COUNT(*) FROM expense_claims c
                             WHERE c.is_deleted = false AND :approve = true AND c.status IN ('SUBMITTED','REVIEWING')
-                              AND c.applicant_id <> :actor),
+                              AND NOT fn_finance_expense_is_application_managed(c.id) AND c.applicant_id <> :actor),
                           (SELECT COUNT(*) FROM expense_claims c
                             WHERE c.is_deleted = false AND :pay = true AND c.status = 'APPROVED'
-                              AND c.applicant_id <> :actor
+                              AND NOT fn_finance_expense_is_application_managed(c.id) AND c.applicant_id <> :actor
                               AND (c.approved_by IS NULL OR c.approved_by <> :actor)
                               AND POSITION(CAST(:actor AS text) IN COALESCE(c.approval_participants,''))=0)
                         """)

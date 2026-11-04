@@ -1,6 +1,7 @@
 package com.uten.imp.features.subcontract.material_return.dto;
 
 import com.uten.imp.common.finance.ServerDerivedAmounts;
+import com.uten.imp.common.validation.DocumentQuantity;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -23,6 +24,7 @@ public class MaterialReturnItemLine extends com.uten.imp.common.platformcolumns.
     private BigDecimal unitRate;
 
     @NotNull
+    @DocumentQuantity
     private BigDecimal qty;
 
     private BigDecimal price;

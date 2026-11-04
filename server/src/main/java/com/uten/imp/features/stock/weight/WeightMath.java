@@ -1,53 +1,51 @@
 package com.uten.imp.features.stock.weight;
 
 import java.math.BigDecimal;
-import java.math.MathContext;
-import java.math.RoundingMode;
 
-/**
- * 仓库重量账的取位口径(ADR-135): 流水、余额、调整行的重量都是千克, 统一四舍五入到 4 位(0.1 克)。
- *
- * <p>重量是数量口径, 不是金额(ArchitectureBoundaryTest 对 features/stock/weight/ 豁免 HALF_UP)。
- * 比例先按 34 位有效数字算完再取 4 位, 避免中间步骤先舍入造成的尾差。
- */
+/** Exact kilogram facts and proration. Non-terminating or stored-field precision
+ * limits require this operation's explicit BusinessPrecisionContext choice. */
 public final class WeightMath {
 
-    public static final int SCALE = 4;
-    private static final MathContext PRECISE = MathContext.DECIMAL128;
+    public static final int SCALE = 24;
 
     private WeightMath() {
     }
 
-    /** 4 位四舍五入; 空值原样返回。 */
+    /** Legacy method name: exact kilogram field boundary; null remains unknown. */
     public static BigDecimal round4(BigDecimal kg) {
-        return kg == null ? null : kg.setScale(SCALE, RoundingMode.HALF_UP);
+        return kg==null?null:com.uten.imp.common.util.FinancialExactAmount.quantity(
+            com.uten.imp.common.finance.BusinessPrecisionContext.divide(kg,BigDecimal.ONE,
+                "weight.kg-field","本次千克重量记录",SCALE),"千克重量");
     }
 
-    /** qty x 每单位千克数, 取 4 位。 */
+    /** qty x 每单位千克数, 保留有限原值或明确选择24位边界。 */
     public static BigDecimal times(BigDecimal qty, BigDecimal kgPerUnit) {
-        return round4(qty.multiply(kgPerUnit, PRECISE));
+        return round4(qty.multiply(kgPerUnit));
     }
 
-    /** total x part / whole, 取 4 位; whole 必须大于 0。 */
+    /** total x part / whole, 保留有限原值或明确选择24位边界; whole 必须大于 0。 */
     public static BigDecimal prorate(BigDecimal total, BigDecimal part, BigDecimal whole) {
         if (whole == null || whole.signum() <= 0) {
             throw new IllegalArgumentException("weight proration needs a positive whole");
         }
-        return round4(total.multiply(part, PRECISE).divide(whole, PRECISE));
+        BigDecimal result=com.uten.imp.common.util.FinancialExactAmount.quantity(
+            com.uten.imp.common.finance.BusinessPrecisionContext.divide(total.multiply(part),whole,
+                "weight.prorate","本次重量分摊",SCALE),"分摊重量");
+        if(total.signum()>=0&&part.signum()>=0&&part.compareTo(whole)<=0&&result.compareTo(total)>0)
+            throw new com.uten.imp.common.finance.BusinessPrecisionRequiredException("weight.prorate","本次重量分摊：上次精度超出原来源，请明确重新选择",SCALE,"PRECISION_LIMIT",true);
+        return result;
     }
 
-    /** 行单位本身是重量单位: 基本数量 / 换算率 = 行数量, 再乘该重量单位的千克数, 取 4 位。 */
+    /** 行单位本身是重量单位: 基本数量 / 换算率 = 行数量, 再乘该重量单位的千克数, 保留有限原值或明确选择24位边界。 */
     public static BigDecimal lineUnitWeight(BigDecimal baseQty, BigDecimal unitRate, BigDecimal kgPerLineUnit) {
         BigDecimal rate = unitRate == null || unitRate.signum() <= 0 ? BigDecimal.ONE : unitRate;
-        return round4(baseQty.divide(rate, PRECISE).multiply(kgPerLineUnit, PRECISE));
+        return com.uten.imp.common.util.FinancialExactAmount.quantity(
+            com.uten.imp.common.finance.BusinessPrecisionContext.divide(baseQty.multiply(kgPerLineUnit),rate,
+                "weight.line-unit","本次行单位重量换算",SCALE),"行单位重量");
     }
 
-    /** 小数位超过 4 位的输入先去掉尾零, 仍超过则四舍五入到 4 位(重量永远不挡数量过账)。 */
-    public static BigDecimal normalizeInput(BigDecimal kg) {
-        if (kg == null || kg.scale() <= SCALE) return kg;
-        BigDecimal stripped = kg.stripTrailingZeros();
-        return stripped.scale() <= SCALE ? stripped : round4(kg);
-    }
+    /** 有限输入完整保留；超过支持范围由本次明确选择处理，不默认取舍。 */
+    public static BigDecimal normalizeInput(BigDecimal kg) { return round4(kg); }
 
     public static boolean positive(BigDecimal value) {
         return value != null && value.signum() > 0;

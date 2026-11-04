@@ -13,6 +13,12 @@ extension type _PdfRequest._(JSObject _) implements JSObject {
     required JSNumber version,
     required JSString title,
     required JSString? subtitle,
+    required JSString? pageHeader,
+    required JSString? pageFooter,
+    required JSArray<JSArray<_HeaderGroup>>? headerGroups,
+    required JSArray<JSString>? documentHeader,
+    required JSArray<JSString>? documentFooter,
+    required JSBoolean repeatColumnHeaders,
     required JSArray<JSString> headers,
     required JSArray<JSArray<JSString>> rows,
     required JSArray<JSNumber>? widths,
@@ -20,6 +26,12 @@ extension type _PdfRequest._(JSObject _) implements JSObject {
     required JSArray<_OutlineLine>? outline,
     required JSString? kind,
     required JSString? payload,
+  });
+}
+extension type _HeaderGroup._(JSObject _) implements JSObject {
+  external factory _HeaderGroup({
+    required JSString id,
+    required JSString label,
   });
 }
 
@@ -117,6 +129,31 @@ class IsolatedPrintPdfGenerator {
           version: version.toJS,
           title: request.title.toJS,
           subtitle: request.subtitle?.toJS,
+          pageHeader: request.pageHeader?.toJS,
+          pageFooter: request.pageFooter?.toJS,
+          headerGroups: request.headerGroups.isEmpty
+              ? null
+              : request.headerGroups
+                    .map(
+                      (path) => path
+                          .map(
+                            (group) => _HeaderGroup(
+                              id: group.id.toJS,
+                              label: group.label.toJS,
+                            ),
+                          )
+                          .toList()
+                          .toJS,
+                    )
+                    .toList()
+                    .toJS,
+          documentHeader: request.documentHeader.isEmpty
+              ? null
+              : request.documentHeader.map((line) => line.toJS).toList().toJS,
+          documentFooter: request.documentFooter.isEmpty
+              ? null
+              : request.documentFooter.map((line) => line.toJS).toList().toJS,
+          repeatColumnHeaders: request.repeatColumnHeaders.toJS,
           headers: request.headers.map((value) => value.toJS).toList().toJS,
           rows: rows,
           widths: request.columnWidths

@@ -89,7 +89,7 @@ class ReportablePlanLine {
       remainingActualSurplusQtyExact,
       pendingSupplementQtyExact;
   String? get unitRateText =>
-      productionExactQuantityText(unitRateExact ?? unitRate, scale: 6);
+      productionExactQuantityText(unitRateExact ?? unitRate);
   String? get maxReportQtyText =>
       productionExactQuantityText(maxReportQtyExact ?? maxReportQty);
   String? get remainingActualSurplusQtyText => productionExactQuantityText(
@@ -195,7 +195,6 @@ class ReportablePlanLine {
     unitRate: _asDouble(json['unitRate']),
     unitRateExact: productionExactQuantityText(
       json['unitRateExact'] ?? json['unitRate'],
-      scale: 6,
     ),
     maxReportQtyExact: productionExactQuantityText(
       json['maxReportQtyExact'] ?? json['maxReportQty'],

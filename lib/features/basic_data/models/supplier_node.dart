@@ -11,6 +11,7 @@
 // 已 @JsonProperty 钉死；前端 fromJson 兼容大小写两种写法兜底。
 
 import 'master_facet.dart';
+import '../../../core/formatters/exact_number_text.dart';
 
 /// 供应商列表项（覆盖表格 19 个有数据列 + id/legacyId）。
 class SupplierListItem {
@@ -42,6 +43,7 @@ class SupplierListItem {
     this.defaultSettlementMethodId,
     this.defaultSettlementMethodName,
     this.lossRate,
+    this.lossRateExact,
     this.status,
     this.version,
   });
@@ -84,10 +86,19 @@ class SupplierListItem {
 
   /// 委外损耗率(%)（ADR-098）：已结清委外订货行的加权损耗率；没有结清行为空，显示「—」。
   final double? lossRate;
+  final String? lossRateExact;
+  String? get lossRateText =>
+      exactNumberDisplay(lossRateExact ?? lossRate, minimumFractionDigits: 2);
 
   factory SupplierListItem.fromJson(Map<String, dynamic> json) =>
       SupplierListItem(
-        lossRate: (json['lossRate'] as num?)?.toDouble(),
+        lossRate: json['lossRate'] is num
+            ? (json['lossRate'] as num).toDouble()
+            : double.tryParse(json['lossRate']?.toString() ?? ''),
+        lossRateExact:
+            (json['lossRateExact'] ??
+                    (json['lossRate'] is String ? json['lossRate'] : null))
+                as String?,
         id: json['id'] as String,
         code: json['code'] as String?,
         legacyId: (json['legacyId'] as num?)?.toInt(),

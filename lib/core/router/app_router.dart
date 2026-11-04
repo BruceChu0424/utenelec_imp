@@ -1,3 +1,6 @@
+import '../../shared/measurement/widgets/weigh_count_recovery_page.dart';
+import '../../features/warehouse/materialbin/widgets/workshop_material_close_retry_dialog.dart';
+import '../../shared/measurement/widgets/weight_sample_recovery_page.dart';
 import '../../shared/history/record_history_page.dart';
 import '../../shared/history/record_revision_page.dart';
 import '../../shared/history/record_history_area.dart';
@@ -100,6 +103,11 @@ import '../../features/finance/pages/finance_doc_edit_page.dart';
 import '../../features/finance/pages/finance_doc_list_page.dart';
 import '../../features/finance/pages/finance_audit_center_page.dart';
 import '../../features/finance/pages/finance_hub_page.dart';
+import '../../features/finance/pages/finance_applications_page.dart';
+import '../../features/finance/config/finance_application_routes.dart';
+import '../../features/finance/pages/finance_application_edit_page.dart';
+import '../../features/finance/pages/finance_application_continuation_page.dart';
+import '../../features/finance/pages/finance_application_settings_page.dart';
 import '../../features/finance/payables/pages/finance_payables_page.dart';
 import '../../features/finance/pages/finance_procurement_approval_review_page.dart';
 import '../../features/finance/pages/finance_procurement_approval_tasks_page.dart';
@@ -771,6 +779,10 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
                     : null,
               ),
               initialKind: s.uri.queryParameters['kind'],
+              applicationKind: s.uri.queryParameters['applicationKind'],
+              travelApplicationId: s.uri.queryParameters['travelApplicationId'],
+              travelApplicationSourceKind:
+                  s.uri.queryParameters['travelApplicationSourceKind'],
               initialGuidedPlan: s.extra is AiGuidedFilePlan
                   ? s.extra as AiGuidedFilePlan
                   : null,
@@ -1618,6 +1630,27 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
             ),
           ),
           DraftAwareGoRoute(
+            path: '/workshop-material/close-retry',
+            name: 'workshop-material-close-retry',
+            builder: (_, state) => WmCloseRetryRecoveryPage(
+              draftId: state.uri.queryParameters['draftId'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/measurement/weigh-count-recovery',
+            name: 'weigh-count-recovery',
+            builder: (_, state) => WeighCountRecoveryPage(
+              draftId: state.uri.queryParameters['draftId'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/measurement/weight-sample',
+            name: 'weight-sample-recovery',
+            builder: (_, state) => WeightSampleRecoveryPage(
+              draftId: state.uri.queryParameters['draftId'],
+            ),
+          ),
+          DraftAwareGoRoute(
             path: RouteName.warehouseWeighCount,
             name: 'warehouse-weigh-count',
             builder: (_, _) => const WarehouseWeighCountPage(),
@@ -2151,6 +2184,50 @@ GoRouter _createAppRouter(Ref ref, {BusinessWindow? window}) {
               initialSegment: state.uri.queryParameters['segment'],
               initialSalesState: state.uri.queryParameters['state'],
               initialProcurementStatus: state.uri.queryParameters['status'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/finance/applications',
+            builder: (_, _) => const FinanceApplicationsPage(),
+          ),
+          DraftAwareGoRoute(
+            path: '/finance/applications/new',
+            redirect: (_, state) => redirectFreshFinanceApplication(state.uri),
+            builder: (_, s) => FinanceApplicationEditPage(
+              kind: s.uri.queryParameters['kind'] ?? 'TRAVEL_APPLICATION',
+              resumeDraftId: s.uri.queryParameters['draftId'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/finance/applications/settings',
+            builder: (_, _) => const FinanceApplicationSettingsPage(),
+          ),
+          DraftAwareGoRoute(
+            path: '/finance/applications/:id/continue',
+            builder: (_, s) => FinanceApplicationContinuationPage(
+              originId: s.pathParameters['id']!,
+              kind: s.uri.queryParameters['kind'] ?? 'TRAVEL_APPLICATION',
+              resumeDraftId: s.uri.queryParameters['draftId'],
+              originalCommand: s.extra is Map
+                  ? (s.extra as Map)['originalCommand'] as String?
+                  : null,
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/finance/applications/:id/edit',
+            builder: (_, s) => FinanceApplicationEditPage(
+              applicationId: s.pathParameters['id'],
+              kind: s.uri.queryParameters['kind'] ?? 'TRAVEL_APPLICATION',
+              resumeDraftId: s.uri.queryParameters['draftId'],
+            ),
+          ),
+          DraftAwareGoRoute(
+            path: '/finance/applications/:id',
+            builder: (_, s) => FinanceApplicationsPage(
+              applicationId: s.pathParameters['id'],
+              draftAction: s.uri.queryParameters['action'],
+              invoiceId: s.uri.queryParameters['invoiceId'],
+              resumeDraftId: s.uri.queryParameters['draftId'],
             ),
           ),
           DraftAwareGoRoute(

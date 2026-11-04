@@ -36,7 +36,7 @@ class GoodsBomStubIsolationTest {
     /** 看不到的归属人(组件可见性按归属人一次判定，口径同 canViewGoods)。 */
     private final UUID hiddenOwner = UUID.randomUUID();
     private final com.uten.imp.features.master.lifecycle.MasterObjectAccess access = accessHiding(hiddenOwner);
-    private final GoodsBomService service = new GoodsBomService(
+    private final GoodsBomService service = new GoodsBomService(org.mockito.Mockito.mock(com.uten.imp.application.port.BusinessNumericInputEvidencePort.class),
             goodsRepo, bomRepo, colorRepo, unitRepo, tx,
             mock(com.uten.imp.security.SecurityContextCurrentUser.class),
             references, relationships,

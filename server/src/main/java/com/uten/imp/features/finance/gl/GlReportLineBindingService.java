@@ -40,7 +40,8 @@ public class GlReportLineBindingService {
 
     /** 报表行绑定一览。 */
     public record LineBinding(String lineKey, String label, String bindingKind, List<Target> targets,
-                              String category, String sheet, boolean confirmedZero, String defaultBasis) {
+                              String category, String sheet, boolean confirmedZero, String defaultBasis,
+                              List<String> allowedCategories,String requiredFinanceCodePrefix) {
     }
 
     /** 绑定目标(科目或部门)。 */
@@ -70,8 +71,10 @@ public class GlReportLineBindingService {
                     var statement=FinancialStatementCatalog.find(line.key());
                     return new LineBinding(line.key(), line.label(), line.bindingKind(),
                         List.copyOf(targets.getOrDefault(line.key(), List.of())),
-                        statement==null?"EXPENSE":statement.category(),statement==null?null:statement.sheet(),zero.contains(line.key()),
-                        statement!=null&&!statement.roots().isEmpty()?"未单独绑定时沿用已证明的总账来源，实际状态见报表取数口径":null);
+                        statement==null?"EXPENSE":statement.category(),statement==null?GlReportLine.sheetFor(line.key()):statement.sheet(),zero.contains(line.key()),
+                        statement!=null&&!statement.roots().isEmpty()?"未单独绑定时沿用已证明的总账来源，实际状态见报表取数口径":null,
+                        statement!=null?List.of(statement.category()):GlReportLine.costExpenseLine(line.key())?List.of("EXPENSE","ACCOUNT"):List.of("EXPENSE"),
+                        statement==null&&GlReportLine.costExpenseLine(line.key())?line.key().equals("MFG_LABOR_CONTROL")?"410106":"4101":null);
                 })
                 .toList();
     }
@@ -97,8 +100,8 @@ public class GlReportLineBindingService {
         }
         boolean department = "DEPARTMENT".equals(line.bindingKind());
         var statement=FinancialStatementCatalog.find(line.key());
-        if(confirmedZero&&(statement==null||!ids.isEmpty()))
-            throw new ApiException(ErrorCode.VALIDATION_FAILED,"确认无业务仅适用于未绑定科目的财务报表项目");
+        if(confirmedZero&&!ids.isEmpty())
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"确认无业务的项目不能同时绑定科目或部门");
         if (!department) {
             // 与类别层级维护同一把锁(V265 协议): 校验到写入之间科目不会被挂上下级。
             // 加锁顺序固定为「类别层级 → 报表设置」, 与默认补齐、老库导入一致, 不会互等。
@@ -111,17 +114,23 @@ public class GlReportLineBindingService {
                     WHERE id IN (:ids) AND COALESCE(is_deleted, FALSE) = FALSE
                     """ : """
                     SELECT count(*) FROM payment_styles style
-                    WHERE style.id IN (:ids) AND style.category = :category
+                    WHERE style.id IN (:ids) AND (style.category = :category OR (:allowCost AND style.category='ACCOUNT' AND fn_finance_cost_expense_style_allowed(style.id)))
                       AND COALESCE(style.is_deleted, FALSE) = FALSE
                       AND NOT EXISTS (
                           SELECT 1 FROM payment_styles child
                           WHERE child.parent_id = style.id AND COALESCE(child.is_deleted, FALSE) = FALSE)
                     """).setParameter("ids", ids);
-            if(!department)validationQuery.setParameter("category",statement==null?"EXPENSE":statement.category());
+            if(!department)validationQuery.setParameter("category",statement==null?"EXPENSE":statement.category())
+                    .setParameter("allowCost",statement==null&&GlReportLine.costExpenseLine(line.key()));
             long valid=((Number)validationQuery.getSingleResult()).longValue();
             if (valid != ids.size()) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, department
                         ? "所选部门不存在或已删除" : statement==null||"EXPENSE".equals(statement.category())?"只能绑定费用类的末级科目":"只能绑定本项目指定类别的末级科目");
+            }
+            if(line.key().equals("MFG_LABOR_CONTROL")) {
+                long matching=((Number)em.createNativeQuery("SELECT count(*) FROM finance_chart_code_styles m JOIN finance_chart_codes c ON c.code=m.code WHERE m.style_id IN(:ids) AND c.code LIKE '410106%'")
+                        .setParameter("ids",ids).getSingleResult()).longValue();
+                if(matching!=ids.size())throw new ApiException(ErrorCode.VALIDATION_FAILED,"职工薪酬费来源须明确对应财务410106科目及其细目");
             }
             if (department) requireNoLaborOverlap(line.key(), ids);
             else requireOneLinePerStyleInSheet(line.key(), ids);
@@ -129,7 +138,7 @@ public class GlReportLineBindingService {
         em.createNativeQuery("DELETE FROM finance_report_line_bindings WHERE line_key = :key")
                 .setParameter("key", line.key()).executeUpdate();
         UUID actor = currentUser.requireId();
-        if(statement!=null)em.createNativeQuery("""
+        em.createNativeQuery("""
                 INSERT INTO finance_report_line_confirmations(line_key,confirmed_zero,updated_by)
                 VALUES(:key,:zero,:actor) ON CONFLICT(line_key) DO UPDATE
                 SET confirmed_zero=excluded.confirmed_zero,updated_by=excluded.updated_by,updated_at=now()

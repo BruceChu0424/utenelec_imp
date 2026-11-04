@@ -243,8 +243,8 @@ void main() {
     expect(samples, hasLength(1));
     expect(samples.single.$1, '/stock/weight/goods/g-w1/samples');
     final body = samples.single.$2! as Map<String, Object?>;
-    expect(body['qty'], 20);
-    expect(body['weight'], 46.2);
+    expect(body['qty'], '20');
+    expect(body['weight'], '46.2');
     expect(body['weightUnit'], 'G');
     // 只动了单重参数与称样两个接口, 没有任何库存过账请求。
     expect(api.posts.map((p) => p.$1).toSet(), {

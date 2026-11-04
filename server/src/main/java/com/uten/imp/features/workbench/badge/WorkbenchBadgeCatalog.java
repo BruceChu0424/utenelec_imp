@@ -54,6 +54,7 @@ enum WorkbenchBadgeCatalog {
     applicationFinance(Module.finance,facts("application.financePendingCount","application.financeReceivePendingCount","application.payableCount","application.prepaymentPostingTodoCount"),facts("application.prepaymentPostingInProgressCount")),
     applicationProcurement(Module.people,facts("application.procurementPendingCount"),none()),
     applicationViceExecutive(Module.people,facts("application.viceExecutivePendingCount"),none()),
+    financeApplications(Module.finance,facts("financeApplication.todoCount"),facts("financeApplication.processingCount")),
     /** 销售报价核价(ADR-134): 待核价的报价(只算有核价权限的人的待办)。挂在财务「销售报价核价」卡。 */
     financeQuoteReview(Module.finance, facts("salesQuoteFinance.pending"), none()),
     /** 财务侧盘点审核: 待财务复核的盘点差异。 */

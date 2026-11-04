@@ -274,7 +274,7 @@ public class GoodsBomImportService {
     }
 
     private static BigDecimal effectiveQty(ParsedRow row) {
-        return row.periodic ? row.qty.divide(row.basisOutputQty, GoodsPeriodicMaterialRules.QTY_SCALE, RoundingMode.HALF_UP) : row.qty;
+        return row.periodic ? GoodsPeriodicMaterialRules.asPerPiece(row.qty,row.basisOutputQty) : row.qty;
     }
 
     private static BigDecimal effectiveBasisOutputQty(ParsedRow row) {
@@ -748,16 +748,15 @@ public class GoodsBomImportService {
             }
             if (row.qty == null || row.qty.signum() <= 0 || row.basisOutputQty == null
                     || row.basisOutputQty.signum() <= 0) continue;
-            BigDecimal perUnit = row.qty.divide(row.basisOutputQty, GoodsPeriodicMaterialRules.QTY_SCALE,
-                    RoundingMode.HALF_UP);
-            if (perUnit.precision() - perUnit.scale() > 13) {
+            BigDecimal perUnit = GoodsPeriodicMaterialRules.asPerPiece(row.qty,row.basisOutputQty);
+            if (perUnit.precision() - perUnit.scale() > 40) {
                 errors.add(new GoodsImportError(row.rowNum, "数量", "折算后的每件用量超出可保存范围"));
                 continue;
             }
             BigDecimal grams = GoodsPeriodicMaterialRules.toGrams(perUnit,
                     GoodsPeriodicMaterialRules.gramsPerUnit(component.getUnit()));
             if (perUnit.signum() <= 0) {
-                errors.add(new GoodsImportError(row.rowNum, "数量", "「" + row.code + "」的单个重量太小, 最少 0.01 克"));
+                errors.add(new GoodsImportError(row.rowNum, "数量", "「" + row.code + "」的单个用量须为可保存的正原数，请核对本次采用选择"));
                 continue;
             }
             if (GoodsPeriodicMaterialRules.unusual(grams)) {
@@ -834,7 +833,7 @@ public class GoodsBomImportService {
         if (cell == null) return null;
         if (cell.getCellType() == CellType.NUMERIC) {
             // 读取原生数值与受限浮点尾差；显示格式不能舍入实际用量。
-            String raw = com.uten.imp.common.importing.ExcelImportNumbers.numericText(cell, "basisOutputQty".equals(key) ? 6 : 5);
+            String raw = com.uten.imp.common.importing.ExcelImportNumbers.numericText(cell, 24);
             return raw == null ? null : boundedNumber(new BigDecimal(raw), key);
         }
         String raw = trim(df, row, col, key);
@@ -844,14 +843,10 @@ public class GoodsBomImportService {
     }
 
     private static BigDecimal boundedNumber(BigDecimal value, String key) {
-        int scale = "basisOutputQty".equals(key) ? 6 : 5;
-        // 先查表示范围，再做去尾零/乘除，阻断科学计数法的极端指数导致巨大内存分配。
-        if (value.precision() > 64 || value.scale() < -18 || value.scale() > 64
-                || (long) value.precision() - value.scale() > 18 - scale
-                || value.stripTrailingZeros().scale() > scale) {
-            throw new NumericRangeException("最多支持 " + (18 - scale) + " 位整数和 " + scale
-                    + " 位小数，请修正数值（不能把正用量舍入为零）");
-        }
+        if (value.precision()>1100 || value.scale() < -1000 || value.scale()>1000)
+            throw new NumericRangeException("原数超出可审计表示范围，请核对原文件");
+        try { com.uten.imp.common.util.FinancialExactAmount.quantity(value,"BOM导入原数"); }
+        catch(ApiException outsideNativeRange){ throw new NumericRangeException("原数最多支持40位整数、24位有效小数，请核对原文件；本次未写入"); }
         return value;
     }
 

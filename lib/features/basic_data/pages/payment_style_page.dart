@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../shared/auth/read_owner_fence.dart';
 import '../../../shared/widgets/read_owned_dialog.dart';
 import '../../../components/feedback/uten_task_progress_dialog.dart';
@@ -1842,7 +1843,9 @@ class _MigrationSection extends StatelessWidget {
               if (detail.initBalance != null)
                 _InfoField(
                   label: '迁移期初金额',
-                  value: detail.initBalance!.toStringAsFixed(2),
+                  value: detail.initBalance!.toExactString(
+                    minimumFractionDigits: 2,
+                  ),
                 ),
             ],
           ),

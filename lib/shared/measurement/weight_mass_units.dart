@@ -1,3 +1,4 @@
+import '../formatters/exact_decimal.dart';
 // 按重量计的单位与精确重量 (ADR-135 §1): 业务单位登记了「等于哪种重量单位」时,
 // 这类行的重量由数量精确换算 (EXACT), 采集表格只读显示「=25 kg」, 提交不带重量
 // (服务端按数量算)。仓库各采集页 (到货/产成品登记、仓库单据、领料/销售/委外出库) 共用。
@@ -25,21 +26,28 @@ final warehouseUnitMassUnitsProvider = FutureProvider<Map<String, WeightUnit>>((
   };
 });
 
-/// 行的精确重量 (千克, HALF_UP 4 位); 需要实称时返回 null。
+/// 行的精确重量 (千克完整有限乘积，不固定取位); 需要实称时返回 null。
 ///
 /// - 行单位是重量单位: 行数量 x 该单位千克数;
 /// - 货品按重量计 ([WeightParams.isExact]): 基本数量 (行数量 x [unitRate]) x 系数。
-double? warehouseExactLineKg({
-  required double? lineQty,
+String? warehouseExactLineKg({
+  required Object? lineQty,
   WeightUnit? lineMassUnit,
-  double unitRate = 1,
+  Object unitRate = 1,
   WeightParams? params,
 }) {
-  if (lineQty == null || !lineQty.isFinite || lineQty <= 0) return null;
-  if (lineMassUnit != null) return lineMassUnit.toKgLine(lineQty);
+  final qty = financeExactTrimmed(financeExactDecimal(lineQty));
+  if (qty == null || qty == '0' || qty.startsWith('-')) return null;
+  if (lineMassUnit != null) return lineMassUnit.toKgText(qty);
   if (params != null && params.isExact) {
-    final rate = unitRate.isFinite && unitRate > 0 ? unitRate : 1;
-    return roundKgLine(lineQty * rate * params.massFactorKg!);
+    final rawRate = financeExactTrimmed(financeExactDecimal(unitRate));
+    if (rawRate == null || rawRate == '0' || rawRate.startsWith('-')) {
+      return null;
+    }
+    final rate = rawRate;
+    return financeExactTrimmed(
+      financeExactMultiplyTexts([qty, rate, params.massFactorKgText]),
+    );
   }
   return null;
 }

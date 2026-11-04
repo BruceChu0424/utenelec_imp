@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // 货架目视化清单：仓库×货品×颜色独立成行，库位是主档存放建议。
 // 库存是该仓货色的参考总量，不代表某个库位的盘点数量。
 // 多仓不拼成一张物理货架图；单仓布局由当前行集推导，复用 UtenRackGrid。
@@ -203,7 +204,7 @@ class _ShelfLabelPageState extends ConsumerState<ShelfLabelPage> {
 
   /// 数字格式化：最多 2 位小数，去掉无意义的尾随 0（1.50→1.5；0→0）。
   static String _num(double v) {
-    final s = v.toStringAsFixed(2);
+    final s = v.toExactString(minimumFractionDigits: 2);
     return s.contains('.')
         ? s.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '')
         : s;

@@ -20,6 +20,7 @@ import '../../../shared/providers/master_party_lookup.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 import '../../basic_data/repositories/payment_style_repository.dart';
+import '../../../shared/models/accounting_expense_purpose.dart';
 import '../../../shared/models/department_node.dart';
 import '../models/finance_doc.dart' show financeDepartmentReferenceLabel;
 
@@ -368,6 +369,28 @@ class FinanceNameService extends ChangeNotifier {
     final requestId = (_styleRequestIds[category] ?? 0) + 1;
     _styleRequestIds[category] = requestId;
     try {
+      if (category == AccountingExpensePurpose.manufacturingCost.apiValue) {
+        final data = await api.get(
+          '/finance/accounting-expense-styles',
+          query: {'postingPurpose': category},
+        );
+        if (_disposed || _styleRequestIds[category] != requestId) return;
+        final values = [
+          for (final row in data['items'] as List? ?? const [])
+            if (row is Map)
+              FinanceStyleOption(
+                id: row['id'].toString(),
+                code: row['code']?.toString(),
+                name: row['name']?.toString(),
+              ),
+        ];
+        _stylesByCategory[category] = values;
+        _styleNamesByCategory[category] = {
+          for (final value in values) value.id: value,
+        };
+        notifyListeners();
+        return;
+      }
       final tree = await _paymentStyleRepo.tree(category: category);
       final flat = <FinanceStyleOption>[];
       final names = <String, FinanceStyleOption>{};
@@ -498,6 +521,19 @@ class FinanceNameService extends ChangeNotifier {
 
   List<FinanceStyleOption> stylesFor(String category) =>
       _stylesByCategory[category] ?? const [];
+  List<FinanceStyleOption> expenseStylesFor(AccountingExpensePurpose purpose) =>
+      stylesFor(
+        purpose == AccountingExpensePurpose.ordinaryExpense
+            ? 'EXPENSE'
+            : purpose.apiValue,
+      );
+  String expenseStyleName(String? id, AccountingExpensePurpose purpose) =>
+      styleName(
+        id,
+        purpose == AccountingExpensePurpose.ordinaryExpense
+            ? 'EXPENSE'
+            : purpose.apiValue,
+      );
   String styleName(String? id, String category) {
     if (id == null || id.isEmpty) return '—';
     final hit = _styleNamesByCategory[category]?[id];

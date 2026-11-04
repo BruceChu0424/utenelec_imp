@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.ret.dto;
 
 import com.uten.imp.common.finance.ServerDerivedAmounts;
+import com.uten.imp.common.validation.DocumentQuantity;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -29,6 +30,7 @@ public class ReturnItemLine extends com.uten.imp.common.platformcolumns.Platform
     private BigDecimal unitRate;
 
     @NotNull
+    @DocumentQuantity
     private BigDecimal qty;
 
     private BigDecimal price;

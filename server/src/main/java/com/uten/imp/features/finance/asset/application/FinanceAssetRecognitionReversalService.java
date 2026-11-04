@@ -27,6 +27,7 @@ public class FinanceAssetRecognitionReversalService {
     @Transactional @PreAuthorize("hasAuthority('finance_asset:reverse')")
     public AssetWorkbenchResponses.WorkflowResult request(UUID id,boolean deferred,AssetWorkbenchRequests.ReasonCommand command) {
         UUID actor=begin(deferred,FinanceAssetAuthorization.REVERSE,false);
+        AssetOpeningGroupSupport.requireNoSingleReversal(em,type(deferred),id);
         var object=lock(id,deferred,command.expectedVersion());requireStatus(object,"ACTIVE");requireNoPostedFacts(id,deferred);
         if(object.voucher()==null)throw conflict("此资产缺少可追溯的初始确认凭证，请先完成历史账务核对");
         UUID request=UUID.randomUUID();
@@ -59,6 +60,7 @@ public class FinanceAssetRecognitionReversalService {
     @Transactional @PreAuthorize("hasAuthority('finance_asset:reverse')")
     public AssetWorkbenchResponses.WorkflowResult post(UUID id,boolean deferred,AssetWorkbenchRequests.VersionCommand command) {
         UUID actor=begin(deferred,FinanceAssetAuthorization.REVERSE,true);
+        AssetOpeningGroupSupport.requireNoSingleReversal(em,type(deferred),id);
         var object=lock(id,deferred,command.expectedVersion());requireStatus(object,"RECOGNITION_REVERSAL_APPROVED");
         var request=request(id,deferred);different(actor,request.maker());requireNoPostedFacts(id,deferred);
         String period=YearMonth.from(BusinessTime.today()).toString();

@@ -969,7 +969,7 @@ class _Gateway implements WarehouseSalesOutboundGateway {
   final List<String?> reasons = [];
   final Map<String, Map<String, String?>?> warehouses = {};
   final Map<String, Map<String, String>?> places = {};
-  final Map<String, Map<String, double>?> weights = {};
+  final Map<String, Map<String, Object?>?> weights = {};
   String? failId;
   final unreadable = <String>{};
   final missing = <String>{};
@@ -1041,7 +1041,7 @@ class _Gateway implements WarehouseSalesOutboundGateway {
     String? reason,
     Map<String, String>? stockPlaces,
     Map<String, String?>? lineWarehouses,
-    Map<String, double>? lineWeights,
+    Map<String, Object?>? lineWeights,
     List<String>? itemIds,
   }) async {
     commands.add('$id:$targetStatus');

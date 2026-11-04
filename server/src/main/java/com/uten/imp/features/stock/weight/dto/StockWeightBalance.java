@@ -14,4 +14,6 @@ import java.util.UUID;
  */
 public record StockWeightBalance(UUID warehouseId, UUID goodsId, UUID colorId, BigDecimal qtyBase,
                                  BigDecimal weightKg, boolean estimated) {
+        public String getQtyBaseExact(){return com.uten.imp.common.util.DecimalText.of(qtyBase);}
+        public String getWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(weightKg);}
 }

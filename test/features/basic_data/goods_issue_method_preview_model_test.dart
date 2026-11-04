@@ -112,6 +112,6 @@ void main() {
       bulkPackageQty: 25,
     );
     expect(periodic.toJson()['periodicCostBasis'], 'SHARED');
-    expect(periodic.toJson()['bulkPackageQty'], 25);
+    expect(periodic.toJson()['bulkPackageQty'], '25.0');
   });
 }

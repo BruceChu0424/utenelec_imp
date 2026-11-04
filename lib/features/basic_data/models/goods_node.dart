@@ -1,3 +1,5 @@
+import '../../../shared/formatters/exact_decimal.dart';
+import '../../../core/formatters/exact_number_text.dart';
 // 货品主档模型（对应后端 GoodsListItem / GoodsDetail / GoodsFacets）。
 //
 // 数值字段一律走 (json['x'] as num?)?.toInt()/toDouble()，避免 int/double 被后端
@@ -7,7 +9,6 @@
 
 import 'master_facet.dart';
 import '../../../core/utils/currency_display.dart';
-import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/stock_inventory/measurement_hold.dart';
 
 /// Where goods.name_en came from (ADR-134): typed by a person, or learned when
@@ -66,7 +67,9 @@ class GoodsListItem {
     this.stockQty,
     this.stockPlace,
     this.minOrderQty,
+    this.minOrderQtyExact,
     this.orderMultipleQty,
+    this.orderMultipleQtyExact,
     this.owningWarehouseId,
     this.owningWarehouseName,
     this.owningWorkshopId,
@@ -75,6 +78,7 @@ class GoodsListItem {
     this.issueMethod = GoodsIssueMethod.order,
     this.periodicCostBasis,
     this.bulkPackageQty,
+    this.bulkPackageQtyExact,
     this.recycledMaterial = false,
     this.writable = false,
   });
@@ -103,6 +107,8 @@ class GoodsListItem {
 
   /// Safe default for base-currency documents and BOM rows; [price] retains
   /// its original currency for the goods master itself.
+  String? get baseCurrencyPriceText =>
+      currencyId == null || currencyIsBase == true ? priceText : null;
   double? get baseCurrencyPrice => baseCurrencyPricePreview(
     price: price,
     currencyId: currencyId,
@@ -116,6 +122,8 @@ class GoodsListItem {
   String? get priceText =>
       financeExactTrimmed(priceDisplayText ?? price?.toString());
   final String? discountDisplayText;
+  String? get discountText =>
+      financeExactTrimmed(discountDisplayText ?? discount?.toString());
   final String? stockQtyDisplayText;
   final String? status;
   final int? legacyId;
@@ -155,8 +163,16 @@ class GoodsListItem {
   final String? stockPlace; // 库位号（goods.stock_place；选择器拣货/上架指引）
 
   // ===== 采购批量口径（V575；软约束，下达采购按此预填默认数量，可人工改） =====
-  final double? minOrderQty; // 最小起订量（供应商 MOQ，基本单位）；null=未登记，0=已确认无起订量
-  final double? orderMultipleQty; // 订货倍数/整包装量（基本单位，整箱 50 即 50）；null=无倍数要求
+  final double? minOrderQty;
+  final String? minOrderQtyExact;
+  String? get minOrderQtyText => financeExactTrimmed(
+    (minOrderQtyExact ?? minOrderQty)?.toString(),
+  ); // 最小起订量（供应商 MOQ，基本单位）；null=未登记，0=已确认无起订量
+  final double? orderMultipleQty;
+  final String? orderMultipleQtyExact;
+  String? get orderMultipleQtyText => financeExactTrimmed(
+    (orderMultipleQtyExact ?? orderMultipleQty)?.toString(),
+  ); // 订货倍数/整包装量（基本单位，整箱 50 即 50）；null=无倍数要求
 
   // ===== 所属仓库 (V587；货品主档归属，不是单据落点仓，也不是分析范围仓) =====
   final String? owningWarehouseId; // 这批货平时归哪个仓管；null=未登记归属
@@ -175,6 +191,9 @@ class GoodsListItem {
 
   /// 每袋净重 (基本单位，公斤)；发料、盘点「袋数 × 每袋」的默认值。
   final double? bulkPackageQty;
+  final String? bulkPackageQtyExact;
+  String? get bulkPackageQtyText =>
+      financeExactTrimmed((bulkPackageQtyExact ?? bulkPackageQty)?.toString());
 
   /// 回收料 (水口料、破碎料)：其它入库按 0 成本进仓。
   final bool recycledMaterial;
@@ -230,7 +249,11 @@ class GoodsListItem {
     stockPlace: json['stockPlace'] as String?,
     // 后端 NUMERIC(18,4)，Jackson 可能发 int 或 double；统一走 num? 再 toDouble。
     minOrderQty: (json['minOrderQty'] as num?)?.toDouble(),
+    minOrderQtyExact: (json['minOrderQtyExact'] ?? json['minOrderQty'])
+        ?.toString(),
     orderMultipleQty: (json['orderMultipleQty'] as num?)?.toDouble(),
+    orderMultipleQtyExact:
+        (json['orderMultipleQtyExact'] ?? json['orderMultipleQty'])?.toString(),
     owningWarehouseId: json['owningWarehouseId'] as String?,
     owningWarehouseName: json['owningWarehouseName'] as String?,
     owningWorkshopId: json['owningWorkshopId'] as String?,
@@ -239,6 +262,8 @@ class GoodsListItem {
     issueMethod: goodsIssueMethodFromJson(json['issueMethod']),
     periodicCostBasis: json['periodicCostBasis'] as String?,
     bulkPackageQty: (json['bulkPackageQty'] as num?)?.toDouble(),
+    bulkPackageQtyExact: (json['bulkPackageQtyExact'] ?? json['bulkPackageQty'])
+        ?.toString(),
     recycledMaterial: goodsRecycledMaterialFromJson(json),
   );
 }
@@ -287,6 +312,7 @@ class GoodsPeriodicBomWeight {
     this.qty,
     this.unitName,
     this.unitWeightGrams,
+    this.unitWeightGramsExact,
   });
 
   final String materialGoodsId;
@@ -303,6 +329,9 @@ class GoodsPeriodicBomWeight {
 
   /// 单个重量 (克)；料的基本单位不能按克换算时为 null，按 [qty] + [unitName] 显示。
   final double? unitWeightGrams;
+  final String? unitWeightGramsExact;
+  String? get unitWeightGramsText =>
+      financeExactDecimal(unitWeightGramsExact ?? unitWeightGrams);
 
   factory GoodsPeriodicBomWeight.fromJson(Map<String, dynamic> json) =>
       GoodsPeriodicBomWeight(
@@ -313,7 +342,14 @@ class GoodsPeriodicBomWeight {
         colorName: json['colorName'] as String?,
         qty: (json['qty'] as num?)?.toDouble(),
         unitName: json['unitName'] as String?,
-        unitWeightGrams: (json['unitWeightGrams'] as num?)?.toDouble(),
+        unitWeightGrams: double.tryParse(
+          (json['unitWeightGramsExact'] ?? json['unitWeightGrams'])
+                  ?.toString() ??
+              '',
+        ),
+        unitWeightGramsExact: financeExactDecimal(
+          json['unitWeightGramsExact'] ?? json['unitWeightGrams'],
+        ),
       );
 }
 
@@ -323,8 +359,10 @@ class GoodsPeriodicBomWeight {
 /// 而不是「500.0」。非整数保留有效小数位，去掉补齐的 0。null → null（显「—」）。
 String? goodsQtyText(double? v) {
   if (v == null) return null;
-  if (v == v.roundToDouble()) return v.toStringAsFixed(0);
-  return v.toStringAsFixed(4).replaceFirst(RegExp(r'0+$'), '');
+  if (v == v.roundToDouble()) return v.toExactString();
+  return v
+      .toExactString(minimumFractionDigits: 4)
+      .replaceFirst(RegExp(r'0+$'), '');
 }
 
 /// 货品详情（列表字段 + 关键业务字段，够看即可）。
@@ -347,6 +385,8 @@ class GoodsDetail {
     this.currencyIsBase,
     this.priceDisplayText,
     this.discount,
+    this.discountDisplayText,
+    this.budgetExact = const {},
     this.status,
     this.legacyId,
     this.shortName,
@@ -355,11 +395,13 @@ class GoodsDetail {
     this.pack,
     this.material,
     this.thickness,
+    this.thicknessExact,
     this.thicknessUnitLegacyId,
     this.thicknessUnitId,
     this.unitId,
     this.unitLegacyId,
     this.mWeight,
+    this.mWeightExact,
     this.mWeightUnitLegacyId,
     this.mWeightUnitId,
     this.pieces,
@@ -398,7 +440,9 @@ class GoodsDetail {
     this.cTotal,
     this.gTotal,
     this.subcontractAllowedLossPct,
+    this.subcontractAllowedLossPctExact,
     this.purchaseAllowedOverReceiptPct,
+    this.purchaseAllowedOverReceiptPctExact,
     this.sourceType,
     this.costMasked = false,
     this.discountMasked = false,
@@ -406,6 +450,7 @@ class GoodsDetail {
     this.stockQty,
     this.stockDefectiveQty,
     this.stockWeightKg,
+    this.stockWeightKgExact,
     this.stockWeightUnknown = 0,
     this.stockWeightEstimated = false,
     this.stockByWarehouse = const [],
@@ -415,18 +460,23 @@ class GoodsDetail {
     this.quantityUnitLocked = false,
     this.writable = false,
     this.minOrderQty,
+    this.minOrderQtyExact,
     this.orderMultipleQty,
+    this.orderMultipleQtyExact,
     this.owningWarehouseId,
     this.owningWarehouseName,
     this.owningWorkshopId,
     this.owningWorkshopName,
     this.defaultPurchasePrice,
+    this.defaultPurchasePriceExact,
     this.defaultSubcontractPrice,
+    this.defaultSubcontractPriceExact,
     this.defaultPurchasePriceInfo,
     this.defaultSubcontractPriceInfo,
     this.issueMethod = GoodsIssueMethod.order,
     this.periodicCostBasis,
     this.bulkPackageQty,
+    this.bulkPackageQtyExact,
     this.recycledMaterial = false,
     this.periodicBomWeights = const [],
   });
@@ -468,6 +518,13 @@ class GoodsDetail {
       ? null
       : financeExactTrimmed(priceDisplayText ?? price?.toString());
 
+  final String? discountDisplayText;
+  String? get discountText => discountMasked
+      ? null
+      : financeExactTrimmed(discountDisplayText ?? discount?.toString());
+  final Map<String, String?> budgetExact;
+  String? budgetText(String key) => costMasked ? null : budgetExact[key];
+
   final double? discount; // 折扣倍率 1.0=原价 0.9=9折（复用老库 B_Goods.zk）
   final String? status;
   final int? legacyId;
@@ -477,11 +534,16 @@ class GoodsDetail {
   final String? pack;
   final String? material;
   final double? thickness;
+  final String? thicknessExact;
+  String? get thicknessText =>
+      financeExactTrimmed((thicknessExact ?? thickness)?.toString());
   final int? thicknessUnitLegacyId;
   final String? thicknessUnitId;
   final String? unitId;
   final int? unitLegacyId;
   final double? mWeight;
+  final String? mWeightExact;
+  String? get mWeightText => financeExactDecimal(mWeightExact ?? mWeight);
   final int? mWeightUnitLegacyId;
   final String? mWeightUnitId;
   final int? pieces;
@@ -524,10 +586,19 @@ class GoodsDetail {
 
   /// 委外允许损耗默认值(%)（ADR-098）：委外订货明细预填记忆；不是成本字段，不随成本脱敏。
   final double? subcontractAllowedLossPct;
+  final String? subcontractAllowedLossPctExact;
+  String? get subcontractAllowedLossPctText => financeExactTrimmed(
+    (subcontractAllowedLossPctExact ?? subcontractAllowedLossPct)?.toString(),
+  );
 
   /// 采购允许超收默认值(%)（ADR-144）：采购订货明细预填记忆；空 = 不预填(按 0%)。
   /// 不是价格或成本字段，不随成本脱敏；只经 PUT purchase-receipt-policy 修改。
   final double? purchaseAllowedOverReceiptPct;
+  final String? purchaseAllowedOverReceiptPctExact;
+  String? get purchaseAllowedOverReceiptPctText => financeExactTrimmed(
+    (purchaseAllowedOverReceiptPctExact ?? purchaseAllowedOverReceiptPct)
+        ?.toString(),
+  );
 
   final String? sourceType; // 来源（自制/采购/委外）
 
@@ -552,6 +623,9 @@ class GoodsDetail {
   /// 已知库存重量合计 (千克, 服务端按参与核算且非线边的仓库算好; 前端不再逐行相加)。
   /// null = 有量的维度重量全都未知; 与 [stockWeightUnknown] 一起显示「≈28.9 kg (另有 2 处未称)」。
   final double? stockWeightKg;
+  final String? stockWeightKgExact;
+  String? get stockWeightKgText =>
+      financeExactDecimal(stockWeightKgExact ?? stockWeightKg);
 
   /// 有库存但重量未知的维度数 (仓库 x 颜色, 不含线边仓)。
   final int stockWeightUnknown;
@@ -576,8 +650,16 @@ class GoodsDetail {
   final int? version; // 乐观锁版本（编辑时原样回传）
 
   // ===== 采购批量口径（V575；软约束，下达采购按此预填默认数量，采购员可改） =====
-  final double? minOrderQty; // 最小起订量（供应商 MOQ，基本单位）；null=未登记，0=已确认无起订量
-  final double? orderMultipleQty; // 订货倍数/整包装量（基本单位，整箱 50 即 50）；null=无倍数要求
+  final double? minOrderQty;
+  final String? minOrderQtyExact;
+  String? get minOrderQtyText => financeExactTrimmed(
+    (minOrderQtyExact ?? minOrderQty)?.toString(),
+  ); // 最小起订量（供应商 MOQ，基本单位）；null=未登记，0=已确认无起订量
+  final double? orderMultipleQty;
+  final String? orderMultipleQtyExact;
+  String? get orderMultipleQtyText => financeExactTrimmed(
+    (orderMultipleQtyExact ?? orderMultipleQty)?.toString(),
+  ); // 订货倍数/整包装量（基本单位，整箱 50 即 50）；null=无倍数要求
 
   // ===== 所属仓库 (V587) =====
   // 货品平时归哪个仓管的主档归属，既不是单据落点仓，也不是物料分析的分析范围仓。
@@ -591,7 +673,15 @@ class GoodsDetail {
 
   // ===== 采购/委外单价 (V593；由订单保存自动写回，只读展示) =====
   final double? defaultPurchasePrice;
+  final String? defaultPurchasePriceExact;
+  String? get defaultPurchasePriceText => financeExactTrimmed(
+    (defaultPurchasePriceExact ?? defaultPurchasePrice)?.toString(),
+  );
   final double? defaultSubcontractPrice;
+  final String? defaultSubcontractPriceExact;
+  String? get defaultSubcontractPriceText => financeExactTrimmed(
+    (defaultSubcontractPriceExact ?? defaultSubcontractPrice)?.toString(),
+  );
   final GoodsLearnedPriceInfo? defaultPurchasePriceInfo;
   final GoodsLearnedPriceInfo? defaultSubcontractPriceInfo;
 
@@ -606,6 +696,9 @@ class GoodsDetail {
 
   /// 每袋净重 (基本单位，公斤)。
   final double? bulkPackageQty;
+  final String? bulkPackageQtyExact;
+  String? get bulkPackageQtyText =>
+      financeExactTrimmed((bulkPackageQtyExact ?? bulkPackageQty)?.toString());
 
   /// 回收料 (水口料、破碎料)。
   final bool recycledMaterial;
@@ -634,7 +727,13 @@ class GoodsDetail {
     currencyName: json['currencyName'] as String?,
     currencyIsBase: json['currencyIsBase'] as bool?,
     priceDisplayText: (json['priceDisplayText'] ?? json['price'])?.toString(),
-    discount: (json['discount'] as num?)?.toDouble(),
+    discount: double.tryParse(json['discount']?.toString() ?? ''),
+    discountDisplayText: (json['discountDisplayText'] ?? json['discount'])
+        ?.toString(),
+    budgetExact: {
+      for (final entry in (json['budgetExact'] as Map? ?? const {}).entries)
+        entry.key.toString(): entry.value?.toString(),
+    },
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
     shortName: json['shortName'] as String?,
@@ -643,13 +742,17 @@ class GoodsDetail {
     pack: json['pack'] as String?,
     material: json['material'] as String?,
     thickness: (json['thickness'] as num?)?.toDouble(),
+    thicknessExact: (json['thicknessExact'] ?? json['thickness'])?.toString(),
     thicknessUnitLegacyId: (json['thicknessUnitLegacyId'] as num?)?.toInt(),
     thicknessUnitId: json['thicknessUnitId'] as String?,
     unitId: json['unitId'] as String?,
     unitLegacyId: (json['unitLegacyId'] as num?)?.toInt(),
     // 后端 Jackson 对连续大写字段 mWeight（getter getMWeight）序列化为 "mweight"，
     // 与字段名不符；兼容两种写法，避免"单重"始终取不到值。
-    mWeight: ((json['mWeight'] ?? json['mweight']) as num?)?.toDouble(),
+    mWeight: double.tryParse(
+      (json['mWeightExact'] ?? json['mWeight'])?.toString() ?? '',
+    ),
+    mWeightExact: financeExactDecimal(json['mWeightExact'] ?? json['mWeight']),
     mWeightUnitLegacyId: (json['mWeightUnitLegacyId'] as num?)?.toInt(),
     mWeightUnitId: json['mWeightUnitId'] as String?,
     pieces: (json['pieces'] as num?)?.toInt(),
@@ -692,13 +795,26 @@ class GoodsDetail {
         ?.toDouble(),
     purchaseAllowedOverReceiptPct:
         (json['purchaseAllowedOverReceiptPct'] as num?)?.toDouble(),
+    subcontractAllowedLossPctExact:
+        (json['subcontractAllowedLossPctExact'] ??
+                json['subcontractAllowedLossPct'])
+            ?.toString(),
+    purchaseAllowedOverReceiptPctExact:
+        (json['purchaseAllowedOverReceiptPctExact'] ??
+                json['purchaseAllowedOverReceiptPct'])
+            ?.toString(),
     sourceType: json['sourceType'] as String?,
     costMasked: json['costMasked'] as bool? ?? false,
     discountMasked: json['discountMasked'] as bool? ?? false,
     priceMasked: json['priceMasked'] as bool? ?? false,
     writable: json['writable'] == true,
     stockQty: (json['stockQty'] as num?)?.toDouble(),
-    stockWeightKg: (json['stockWeightKg'] as num?)?.toDouble(),
+    stockWeightKg: double.tryParse(
+      (json['stockWeightKgExact'] ?? json['stockWeightKg'])?.toString() ?? '',
+    ),
+    stockWeightKgExact: financeExactDecimal(
+      json['stockWeightKgExact'] ?? json['stockWeightKg'],
+    ),
     stockWeightUnknown: (json['stockWeightUnknown'] as num?)?.toInt() ?? 0,
     stockWeightEstimated: json['stockWeightEstimated'] == true,
     stockDefectiveQty: (json['stockDefectiveQty'] as num?)?.toDouble(),
@@ -713,7 +829,11 @@ class GoodsDetail {
     quantityUnitLocked: json['quantityUnitLocked'] == true,
     // 后端 NUMERIC(18,4)，Jackson 可能发 int 或 double；统一走 num? 再 toDouble。
     minOrderQty: (json['minOrderQty'] as num?)?.toDouble(),
+    minOrderQtyExact: (json['minOrderQtyExact'] ?? json['minOrderQty'])
+        ?.toString(),
     orderMultipleQty: (json['orderMultipleQty'] as num?)?.toDouble(),
+    orderMultipleQtyExact:
+        (json['orderMultipleQtyExact'] ?? json['orderMultipleQty'])?.toString(),
     owningWarehouseId: json['owningWarehouseId'] as String?,
     owningWarehouseName: json['owningWarehouseName'] as String?,
     owningWorkshopId: json['owningWorkshopId'] as String?,
@@ -730,12 +850,21 @@ class GoodsDetail {
             json['defaultSubcontractPriceInfo'] as Map<String, dynamic>,
           )
         : null,
+    defaultPurchasePriceExact:
+        (json['defaultPurchasePriceExact'] ?? json['defaultPurchasePrice'])
+            ?.toString(),
     defaultPurchasePrice: (json['defaultPurchasePrice'] as num?)?.toDouble(),
+    defaultSubcontractPriceExact:
+        (json['defaultSubcontractPriceExact'] ??
+                json['defaultSubcontractPrice'])
+            ?.toString(),
     defaultSubcontractPrice: (json['defaultSubcontractPrice'] as num?)
         ?.toDouble(),
     issueMethod: goodsIssueMethodFromJson(json['issueMethod']),
     periodicCostBasis: json['periodicCostBasis'] as String?,
     bulkPackageQty: (json['bulkPackageQty'] as num?)?.toDouble(),
+    bulkPackageQtyExact: (json['bulkPackageQtyExact'] ?? json['bulkPackageQty'])
+        ?.toString(),
     recycledMaterial: goodsRecycledMaterialFromJson(json),
     periodicBomWeights:
         (json['periodicBomWeights'] as List?)
@@ -857,6 +986,7 @@ class GoodsStockRow {
     this.colorName,
     this.qty,
     this.weight,
+    this.weightExact,
     this.weightEstimated = false,
     this.lineSide = false,
     this.defective = false,
@@ -874,6 +1004,8 @@ class GoodsStockRow {
 
   /// 当前库存重量 (千克); null = 未知 (没称过)。
   final double? weight;
+  final String? weightExact;
+  String? get weightText => financeExactDecimal(weightExact ?? weight);
 
   /// 重量含估算 (显示「≈」)。
   final bool weightEstimated;
@@ -895,7 +1027,10 @@ class GoodsStockRow {
     colorId: json['colorId'] as String?,
     colorName: json['colorName'] as String?,
     qty: (json['qty'] as num?)?.toDouble(),
-    weight: (json['weight'] as num?)?.toDouble(),
+    weight: double.tryParse(
+      (json['weightExact'] ?? json['weight'])?.toString() ?? '',
+    ),
+    weightExact: financeExactDecimal(json['weightExact'] ?? json['weight']),
     weightEstimated: json['weightEstimated'] == true,
     lineSide: json['lineSide'] == true,
     defective: json['defective'] == true,
@@ -978,25 +1113,34 @@ class GoodsFacets {
 class GoodsLearnedPriceInfo {
   const GoodsLearnedPriceInfo({
     required this.price,
+    this.priceExact,
     this.supplierName,
     this.colorName,
     this.unitName,
     this.currencyName,
     this.taxRate,
+    this.taxRateExact,
     this.contextComplete = false,
   });
   factory GoodsLearnedPriceInfo.fromJson(Map<String, dynamic> json) =>
       GoodsLearnedPriceInfo(
-        price: (json['price'] as num).toDouble(),
+        price: double.parse(json['price'].toString()),
+        priceExact: (json['priceExact'] ?? json['price'])?.toString(),
         supplierName: json['supplierName'] as String?,
         colorName: json['colorName'] as String?,
         unitName: json['unitName'] as String?,
         currencyName: json['currencyName'] as String?,
-        taxRate: (json['taxRate'] as num?)?.toDouble(),
+        taxRate: double.tryParse(json['taxRate']?.toString() ?? ''),
+        taxRateExact: (json['taxRateExact'] ?? json['taxRate'])?.toString(),
         contextComplete: json['contextComplete'] == true,
       );
   final double price;
+  final String? priceExact;
+  String get priceText => financeExactTrimmed(priceExact ?? price.toString())!;
   final String? supplierName, colorName, unitName, currencyName;
   final double? taxRate;
+  final String? taxRateExact;
+  String? get taxRateText =>
+      financeExactTrimmed((taxRateExact ?? taxRate)?.toString());
   final bool contextComplete;
 }

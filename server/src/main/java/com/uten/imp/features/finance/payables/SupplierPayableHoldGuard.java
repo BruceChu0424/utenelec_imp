@@ -79,11 +79,11 @@ public class SupplierPayableHoldGuard {
         if (caseId == null || sourceCreditLedgerId == null
                 || targetLedgerIds == null || targetLedgerIds.isEmpty()) return false;
         long covered=((Number)em.createNativeQuery("""
-                SELECT COUNT(DISTINCT funding.source_ap_ledger_id)
+                SELECT COUNT(DISTINCT fn_finance_iqc_funding_ap(funding.id))
                 FROM procurement_iqc_credit_slices credit
                 JOIN procurement_iqc_funding_slices funding ON funding.id=credit.funding_slice_id
-                WHERE credit.case_id=:caseId AND funding.source_ap_ledger_id IN (:targets)
-                  AND fn_procurement_iqc_slice_offset_authorized(:caseId,:source,funding.source_ap_ledger_id)
+                WHERE credit.case_id=:caseId AND fn_finance_iqc_funding_ap(funding.id) IN (:targets)
+                  AND fn_procurement_iqc_slice_offset_authorized(:caseId,:source,fn_finance_iqc_funding_ap(funding.id))
                 """).setParameter("caseId",caseId).setParameter("source",sourceCreditLedgerId)
                 .setParameter("targets",targetLedgerIds).getSingleResult()).longValue();
         if(covered==new java.util.HashSet<>(targetLedgerIds).size())return true;
@@ -128,7 +128,7 @@ public class SupplierPayableHoldGuard {
                 LEFT JOIN LATERAL (
                     SELECT SUM(fn_procurement_iqc_funding_unresolved(id)) unresolved
                     FROM procurement_iqc_funding_slices
-                    WHERE source_ap_ledger_id=ledger.id AND parent_funding_slice_id IS NULL
+                    WHERE fn_finance_iqc_funding_ap(id)=ledger.id AND parent_funding_slice_id IS NULL
                       AND fn_procurement_consideration_active('FUNDING',id)
                 ) funding ON TRUE
                 WHERE ledger.id IN (:ledgerIds)

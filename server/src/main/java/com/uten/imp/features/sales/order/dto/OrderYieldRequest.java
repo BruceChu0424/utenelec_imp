@@ -1,6 +1,7 @@
 package com.uten.imp.features.sales.order.dto;
 
 import jakarta.validation.constraints.DecimalMin;
+import com.uten.imp.common.validation.DocumentQuantity;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -19,7 +20,8 @@ import java.math.BigDecimal;
 public class OrderYieldRequest {
     /** 让单数量（行单位，≤该行生效预留 reserved_qty）。 */
     @NotNull
-    @DecimalMin(value = "0.0001", message = "让单数量必须大于 0")
+    @DecimalMin(value = "0", inclusive=false, message = "让单数量必须大于 0")
+    @DocumentQuantity
     private BigDecimal qty;
 
     /** 让单原因（必填，记审计 + 通知被让单销售）。 */

@@ -1,3 +1,5 @@
+import '../../../shared/formatters/exact_decimal.dart';
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'package:flutter/material.dart';
 
@@ -19,7 +21,7 @@ class WarehouseInboundAllocationSection {
 
   final String id;
   final String goodsLabel;
-  final double quantity;
+  final Object quantity;
   final String? unitName;
   final String? sourceOrderNo;
   final List<WarehouseInboundAllocation> allocations;
@@ -38,14 +40,21 @@ class WarehouseInboundAllocationSummary extends StatelessWidget {
   });
 
   final List<WarehouseInboundAllocation> allocations;
-  final double? previewQty;
-  final String Function(double value) qtyText;
+  final Object? previewQty;
+  final String Function(Object value) qtyText;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final visible = previewQty == null
-        ? allocations.where((item) => item.qty > 0).toList(growable: false)
+        ? allocations
+              .where(
+                (item) =>
+                    (warehouseInboundQuantityUnits(item.quantityText) ??
+                        BigInt.zero) >
+                    BigInt.zero,
+              )
+              .toList(growable: false)
         : warehouseInboundAllocationPreview(allocations, previewQty!);
     final text = warehouseInboundAllocationSummaryText(visible, qtyText);
     final mismatch = visible.any((item) => item.isCrossWarehouse);
@@ -102,18 +111,36 @@ class WarehouseInboundAllocationSummary extends StatelessWidget {
 
 String warehouseInboundAllocationSummaryText(
   Iterable<WarehouseInboundAllocation> allocations,
-  String Function(double value) qtyText,
+  String Function(Object value) qtyText,
 ) {
-  final values = allocations.where((item) => item.qty > 0).toList();
+  final source = allocations.toList(growable: false);
+  if (source.any(
+    (item) => warehouseInboundQuantityUnits(item.quantityText) == null,
+  )) {
+    return '去向数量待核对';
+  }
+  final values = source
+      .where(
+        (item) =>
+            warehouseInboundQuantityUnits(item.quantityText)! > BigInt.zero,
+      )
+      .toList(growable: false);
   if (values.isEmpty) return '未返回预定去向';
   if (values.any((item) => item.isCrossWarehouse)) {
-    final mismatchQty = values
+    final mismatch = values
         .where((item) => item.isCrossWarehouse)
-        .fold<double>(0, (sum, item) => sum + item.qty);
-    final total = values.fold<double>(0, (sum, item) => sum + item.qty);
-    return mismatchQty + 0.0000001 >= total
-        ? '跨仓 · 本次全量 ${qtyText(mismatchQty)} 不绑定计划'
-        : '跨仓部分 ${qtyText(mismatchQty)} 不绑定计划 · 其余按预定分配';
+        .fold(
+          BigInt.zero,
+          (sum, item) =>
+              sum + warehouseInboundQuantityUnits(item.quantityText)!,
+        );
+    final total = values.fold(
+      BigInt.zero,
+      (sum, item) => sum + warehouseInboundQuantityUnits(item.quantityText)!,
+    );
+    return mismatch == total
+        ? '跨仓 · 本次全量 ${qtyText(warehouseInboundQuantityText(mismatch))} 不绑定计划'
+        : '跨仓部分 ${qtyText(warehouseInboundQuantityText(mismatch))} 不绑定计划 · 其余按预定分配';
   }
   const order = [
     WarehouseInboundAllocationKind.formalDemand,
@@ -122,19 +149,23 @@ String warehouseInboundAllocationSummaryText(
     WarehouseInboundAllocationKind.publicStock,
     WarehouseInboundAllocationKind.unknown,
   ];
-  final totals = <WarehouseInboundAllocationKind, double>{};
+  final totals = <WarehouseInboundAllocationKind, BigInt>{};
   for (final item in values) {
     totals.update(
       item.kind,
-      (value) => value + item.qty,
-      ifAbsent: () => item.qty,
+      (v) => v + warehouseInboundQuantityUnits(item.quantityText)!,
+      ifAbsent: () => warehouseInboundQuantityUnits(item.quantityText)!,
     );
   }
   return [
     for (final kind in order)
-      if ((totals[kind] ?? 0) > 0) '${kind.label} ${qtyText(totals[kind]!)}',
+      if ((totals[kind] ?? BigInt.zero) > BigInt.zero)
+        '${kind.label} ${qtyText(warehouseInboundQuantityText(totals[kind]!))}',
   ].join(' · ');
 }
+
+String _sumQuantities(Iterable<WarehouseInboundAllocation> items) =>
+    financeExactSumTexts(items.map((item) => item.quantityText)) ?? '待核对';
 
 Future<void> showWarehouseInboundAllocationDetails(
   BuildContext context, {
@@ -385,7 +416,12 @@ class _AllocationSectionCard extends StatelessWidget {
     final theme = Theme.of(context);
     final allocations = actual
         ? section.allocations
-              .where((item) => item.qty > 0)
+              .where(
+                (item) =>
+                    (warehouseInboundQuantityUnits(item.quantityText) ??
+                        BigInt.zero) >
+                    BigInt.zero,
+              )
               .toList(growable: false)
         : section.previewAllocations();
     final unit = section.unitName?.trim().isNotEmpty == true
@@ -394,11 +430,13 @@ class _AllocationSectionCard extends StatelessWidget {
     final mismatch = allocations
         .where((item) => item.isCrossWarehouse)
         .toList();
-    final allocationTotal = allocations.fold<double>(
-      0,
-      (sum, item) => sum + item.qty,
-    );
-    final conservationDelta = section.quantity - allocationTotal;
+    final allocationTotal = _sumQuantities(allocations);
+    final sourceUnits = warehouseInboundQuantityUnits(section.quantity),
+        allocationUnits = warehouseInboundQuantityUnits(allocationTotal);
+    final conservationComplete =
+        sourceUnits != null &&
+        allocationUnits != null &&
+        sourceUnits == allocationUnits;
     return Semantics(
       container: true,
       label:
@@ -438,7 +476,7 @@ class _AllocationSectionCard extends StatelessWidget {
                 unit: unit,
               ),
             ],
-            if (actual && conservationDelta.abs() > 0.0000001) ...[
+            if (actual && !conservationComplete) ...[
               const SizedBox(height: UtenSpacing.s8),
               _AllocationConservationWarning(
                 actualQty: section.quantity,
@@ -535,7 +573,7 @@ class _AllocationRow extends StatelessWidget {
                 ),
               ),
               Text(
-                '数量 ${_qty(allocation.qty)}$unit',
+                '数量 ${_qty(allocation.quantityText ?? '待核对')}$unit',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
@@ -580,7 +618,7 @@ class _CrossWarehouseWarning extends StatelessWidget {
 
   final List<WarehouseInboundAllocation> allocations;
   final List<WarehouseInboundAllocation> allAllocations;
-  final double sectionQuantity;
+  final Object sectionQuantity;
   final String unit;
 
   @override
@@ -597,16 +635,17 @@ class _CrossWarehouseWarning extends StatelessWidget {
       for (final item in allocations) ...item.intendedWarehouseNames,
       for (final item in allocations) ?item.targetWarehouseName,
     }.where((name) => name.isNotEmpty).join(' / ');
-    final mismatchQty = allocations.fold<double>(
-      0,
-      (sum, item) => sum + item.qty,
+    final mismatchQty = _sumQuantities(allocations);
+    final matchingQty = warehouseInboundQuantityUnits(
+      _sumQuantities(allAllocations.where((item) => !item.isCrossWarehouse)),
     );
-    final matchingQty = allAllocations
-        .where((item) => !item.isCrossWarehouse)
-        .fold<double>(0, (sum, item) => sum + item.qty);
-    final scope = matchingQty > 0
+    final mismatchUnits = warehouseInboundQuantityUnits(mismatchQty),
+        sectionUnits = warehouseInboundQuantityUnits(sectionQuantity);
+    final scope = matchingQty != null && matchingQty > BigInt.zero
         ? '跨仓部分 ${_qty(mismatchQty)}$unit 不绑定计划，按实际仓进入公共库存；其余按上方预定分配'
-        : mismatchQty + 0.0000001 >= sectionQuantity
+        : mismatchUnits != null &&
+              sectionUnits != null &&
+              mismatchUnits >= sectionUnits
         ? '本次全量 ${_qty(mismatchQty)}$unit 不绑定计划，按实际仓进入公共库存'
         : '跨仓部分 ${_qty(mismatchQty)}$unit 不绑定计划，按实际仓进入公共库存；其余去向待确认';
     final message =
@@ -651,19 +690,25 @@ class _AllocationConservationWarning extends StatelessWidget {
     required this.unit,
   });
 
-  final double actualQty;
-  final double allocationQty;
+  final Object actualQty;
+  final Object allocationQty;
   final String unit;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final delta = actualQty - allocationQty;
-    final message = delta > 0
+    final actualUnits = warehouseInboundQuantityUnits(actualQty),
+        allocatedUnits = warehouseInboundQuantityUnits(allocationQty);
+    final delta = actualUnits == null || allocatedUnits == null
+        ? null
+        : actualUnits - allocatedUnits;
+    final message = delta == null
+        ? '实际去向缺少完整精确数量，请核对原入库记录。'
+        : delta > BigInt.zero
         ? '实际去向合计 ${_qty(allocationQty)}$unit，小于本次入库 '
-              '${_qty(actualQty)}$unit；差额 ${_qty(delta)}$unit 去向待确认。'
+              '${_qty(actualQty)}$unit；差额 ${_qty(warehouseInboundQuantityText(delta))}$unit 去向待确认。'
         : '实际去向合计 ${_qty(allocationQty)}$unit，超过本次入库 '
-              '${_qty(actualQty)}$unit；超出 ${_qty(-delta)}$unit，请立即复核。';
+              '${_qty(actualQty)}$unit；超出 ${_qty(warehouseInboundQuantityText(-delta))}$unit，请立即复核。';
     return Semantics(
       liveRegion: true,
       label: message,
@@ -697,10 +742,4 @@ Color _kindColor(ThemeData theme, WarehouseInboundAllocationKind kind) =>
       WarehouseInboundAllocationKind.unknown => theme.colorScheme.error,
     };
 
-String _qty(double value) {
-  if (value == value.roundToDouble()) return value.toStringAsFixed(0);
-  return value
-      .toStringAsFixed(4)
-      .replaceFirst(RegExp(r'0+$'), '')
-      .replaceFirst(RegExp(r'\.$'), '');
-}
+String _qty(Object value) => exactNumberDisplay(value) ?? '待核对';

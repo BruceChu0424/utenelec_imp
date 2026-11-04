@@ -32,6 +32,7 @@ public enum ErrorCode {
     ARRIVAL_EXCEPTION_PENDING(409, "到货数量超出已批准范围，请在业务审核中心完成超量到货审批"),
     SUBCONTRACT_SHORT_DELIVERY_UNACKNOWLEDGED(409, "到货数量明显少于订货量，需仓库确认后登记并通知委外判定"),
     VALIDATION_FAILED(422, "填写内容未通过校验，请按字段提示修正后提交"),
+    PRECISION_CHOICE_REQUIRED(422, "请先选择本次计算保留的小数位及是否四舍五入"),
     PASSWORD_TOO_WEAK(422, "密码强度不足"),
     PASSWORD_REUSE(422, "不能与最近用过的密码相同"),
     RATE_LIMITED(429, "请求过于频繁，请稍后再试"),

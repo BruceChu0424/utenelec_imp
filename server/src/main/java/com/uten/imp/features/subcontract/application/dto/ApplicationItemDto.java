@@ -31,4 +31,5 @@ public class ApplicationItemDto {
     private BigDecimal weight;
     private String sourceDocNo;
     private String remark;
+    public String getWeightExact(){return com.uten.imp.common.util.DecimalText.of(weight);}
 }

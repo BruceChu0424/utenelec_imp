@@ -31,6 +31,22 @@ class StraightLineScheduleCalculatorTest {
     }
 
     @Test
+    void exactProductsAndMoreThanFourDigitsAreConservedAndOldFrozenInstallmentsStayFrozen() {
+        var amount=new BigDecimal("1234567890123456789012345.123456789012345678901234");
+        var schedule=StraightLineScheduleCalculator.calculate(amount,new BigDecimal(".000001"),7,AssetPeriod.parse("2026-01"));
+        assertThat(schedule.originalAmount()).isEqualByComparingTo(amount);
+        assertThat(schedule.residualAmount()).isEqualByComparingTo(amount.multiply(new BigDecimal(".000001")));
+        assertThat(schedule.lines().stream().map(StraightLineScheduleCalculator.ScheduleLine::amount).reduce(BigDecimal.ZERO,BigDecimal::add))
+                .isEqualByComparingTo(schedule.depreciableAmount());
+        var exact=StraightLineScheduleCalculator.calculateDeferred(new BigDecimal("100.000001"),2,AssetPeriod.parse("2026-01"));
+        assertThat(exact.lines().getFirst().amount()).isEqualByComparingTo("50.0000005");
+        var old=StraightLineScheduleCalculator.calculateFrozen(new BigDecimal("100.0001"),new BigDecimal("5.0000"),2,AssetPeriod.parse("2026-01"),BigDecimal.ZERO,new BigDecimal("47.5001"));
+        assertThat(old.residualAmount()).isEqualByComparingTo("5");
+        assertThat(old.lines().getFirst().amount()).isEqualByComparingTo("47.5001");
+        assertThat(old.lines().getLast().amount()).isEqualByComparingTo("47.5000");
+    }
+
+    @Test
     void rejectsMalformedOrNonCalendarPeriods() {
         assertThatThrownBy(() -> AssetPeriod.parse("2026-1")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> AssetPeriod.parse("2026-13")).isInstanceOf(IllegalArgumentException.class);

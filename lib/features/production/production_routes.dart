@@ -173,7 +173,11 @@ final List<RouteBase> productionRoutes = [
           : linkedAnalysisId != null && _uuidPattern.hasMatch(linkedAnalysisId)
           ? ProductionMaterialAnalysisSeed(analysisId: linkedAnalysisId)
           : const ProductionMaterialAnalysisSeed();
-      return ProductionMaterialAnalysisPage(seed: seed);
+      return ProductionMaterialAnalysisPage(
+        seed: seed,
+        planCreateEntry: state.uri.queryParameters['planCreateEntry'] == 'true',
+        preparationDraftId: state.uri.queryParameters['draftId'],
+      );
     },
   ),
   DraftAwareGoRoute(

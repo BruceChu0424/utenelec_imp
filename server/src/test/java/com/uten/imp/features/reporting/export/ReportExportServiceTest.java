@@ -47,6 +47,34 @@ class ReportExportServiceTest {
         verify(repository,never()).insert(any(),any(),anyLong(),anyLong(),anyString(),anyString(),anyString());
         verify(repository,never()).active(any());
     }
+    private ReportExportRepository.Job waiting(ReportExportRequest request,String choices)throws Exception{
+        var source=job(request);return new ReportExportRepository.Job(source.id(),owner,1,1,source.request(),"WAITING_PRECISION",false,1,0,source.createdAt(),OffsetDateTime.now(),source.snapshotAt(),OffsetDateTime.now().plusHours(1),"请选择精度",null,0,source.contract(),source.buildIdentity(),source.accessStamp(),choices,"{\"calculationKey\":\"ratio\",\"groupKey\":\"ratio\",\"label\":\"本次报表比率\",\"maxScale\":30,\"reason\":\"NON_TERMINATING\",\"notWritten\":true}");
+    }
+    @Test void precisionReceiptIsPrivateAndCannotReturnRetiredPolicyLabels()throws Exception{
+        var request=request(UUID.randomUUID());when(repository.find(request.id())).thenReturn(Optional.of(waiting(request,"{\"version\":1,\"choices\":{}}")));
+        assertEquals("ratio",service.get(request.id()).precisionRequirement().get("calculationKey"));
+        when(readScopes.scopeFor(anyString(),any())).thenReturn("b".repeat(64));assertNull(service.get(request.id()).precisionRequirement());assertNull(service.get(request.id()).precisionChoices());
+    }
+    @Test void precisionResumeRequiresAnExplicitChoiceAndDoesNotAcceptChangedAttempts()throws Exception{
+        var request=request(UUID.randomUUID());var row=waiting(request,"{\"version\":1,\"choices\":{}}");when(repository.find(request.id())).thenReturn(Optional.of(row));when(repository.precisionReceipt(any())).thenReturn(Optional.empty());
+        assertEquals(ErrorCode.VALIDATION_FAILED,assertThrows(ApiException.class,()->service.resumePrecision(request.id(),new ReportExportService.PrecisionResume(UUID.randomUUID(),1))).getCode());
+        try(var choice=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("ratio",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"DOWN")))){
+            assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->service.resumePrecision(request.id(),new ReportExportService.PrecisionResume(UUID.randomUUID(),2))).getCode());
+        }
+        verify(repository,never()).resumePrecision(any(),any(),any(),anyString());
+    }
+    @Test void lostPrecisionResumeAcknowledgementReturnsTheSameTaskOnlyForOriginalNonceAndPolicy()throws Exception{
+        var request=request(UUID.randomUUID());var row=waiting(request,"{\"version\":1,\"choices\":{}}");when(repository.find(request.id())).thenReturn(Optional.of(row));UUID nonce=UUID.randomUUID();
+        String snapshot="{\"version\":1,\"choices\":{\"ratio\":{\"scale\":4,\"rounding\":\"DOWN\"}}}";
+        when(repository.precisionReceipt(nonce)).thenReturn(Optional.of(Map.of("job_id",request.id(),"actor_id",owner,"expected_attempt",1,"precision_choices",snapshot)));
+        try(var choice=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("ratio",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"DOWN")))){
+            assertEquals(request.id(),service.resumePrecision(request.id(),new ReportExportService.PrecisionResume(nonce,1)).id());assertEquals(true,service.precisionReceipt(request.id(),nonce).get("found"));
+        }
+        try(var changed=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("ratio",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(5,"HALF_UP")))){
+            assertEquals(ErrorCode.CONFLICT,assertThrows(ApiException.class,()->service.resumePrecision(request.id(),new ReportExportService.PrecisionResume(nonce,1))).getCode());
+        }
+        verify(repository,never()).resumePrecision(any(),any(),any(),anyString());
+    }
     @Test void unitReceiptCarriesTheExactPersistedRequestOnlyForItsCurrentOwnerAndScope() throws Exception {
         var unitUser=new AuthUser(owner,user.getEmployeeId(),"unit-export",Set.of("unit:export"),false,true,false);
         when(users.get()).thenReturn(Optional.of(unitUser));when(restorer.restore(owner,1,1L)).thenReturn(unitUser);

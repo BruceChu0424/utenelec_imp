@@ -1,0 +1,63 @@
+{
+  "kind": "finance-latest-integration-root-checkpoint",
+  "recordedAt": "2026-11-04T05:57:21.448047+00:00",
+  "baseRevision": "8937e02d2f9b4ae1f5a4ff63ad79673cbd3ad149",
+  "frozenFinalRevision": null,
+  "files": {
+    "lib/core/network/interceptors/business_precision_interceptor.dart": "e8f5a4a539508d39036d8fa31c573e2f6118152d0a017b998b658e2841d1b3b6",
+    "lib/features/report/shared/report_print_preview.dart": "5719cd9a2c6359062fc801472a6a9ab07152745f8095745dbea24c00d3e8d3d0",
+    "lib/core/print/source_table_paper.dart": "7c4f9d7a69df4fadcde7816d16f658ea1b7aeb8cd4b3b53bbbf9f1c5b11a473d",
+    "lib/core/print/print_bounds.dart": "548403768be9fe9f67f6cea3d8516a5040bed9c1b482c5860f703a42c6d4e0a2",
+    "assets/workers/uten_pdf_worker.js": "77715b6e998b0e3821614b9d42dbd9db4552644957e25138236339ce962f1ac4",
+    "assets/workers/uten_pdf_worker.build.json": "795f8d9c7174675bb0c838be232ebd5fef0713a730864de8cab9ee2f7c5d4f8f",
+    "lib/features/finance/pages/finance_hub_page.dart": "331033cca9e9443828c06cc9605f94ff3c8fe92281555279f3f1dab442957c97",
+    "lib/features/finance/pages/finance_report_table_page.dart": "b901c2a69981dcbfbfccc98100a81d7498282221e9f02484ca01f4186855ef3e",
+    "test/core/network/business_precision_interceptor_test.dart": "b1ef32b86a3d9261852f0349abce7903469973efe05bf0937183dbd4a18df456",
+    "test/features/report/report_print_preview_test.dart": "e7767c0f061de18b659c9a791db44697dc417de47a42b42aa2bfcc7fffd3affb",
+    "test/components/print/source_table_paper_test.dart": "f3a0a29c2c3a92efd6e6d6d83500e2fc71c33408462ae5c8d4d7cf5e9f92247b"
+  },
+  "verifiedBatches": [
+    {
+      "tests": 37,
+      "failed": 0,
+      "scope": "source sheet UI callers, root print complete-read flags, Hub draft count/localization",
+      "log": "tmp/finance-interactive/final-root-widget-v1.log"
+    },
+    {
+      "tests": 17,
+      "failed": 0,
+      "scope": "complete print final row limit, huge-row rejection, cancellation/isolate and paging metadata",
+      "log": "tmp/finance-interactive/complete-original-final-v2.log"
+    },
+    {
+      "tests": 51,
+      "failed": 0,
+      "scope": "precision/auth real interceptor integration, existing auth destination/issuer and session races",
+      "log": "tmp/finance-interactive/precision-auth-boundary-v1.log"
+    },
+    {
+      "tests": 4,
+      "failed": 0,
+      "skipped": 0,
+      "scope": "original provided 19MB fixed-asset workbook three sheets, exact source/header reader",
+      "log": "old-private/tmp/finance-research/latest-integration/provided-asset-and-source-sheet-reader-v11.log"
+    }
+  ],
+  "notAdditive": true,
+  "pending": [
+    "final whole-source compile/regression after cost and V1032 stabilization",
+    "real Web/Flutter interaction and screenshot acceptance",
+    "source print scaling fidelity review",
+    "independent reimbursement refactor completion and semantic integration",
+    "Word author/render/visual verification"
+  ],
+  "reimbursementDependency": {
+    "threadId": "01a1a4c0-3d02-7412-ab09-76d433266951",
+    "title": "重构报销流程与审批中心",
+    "lastObservedState": "inProgress",
+    "policy": "wait until stable; do not overwrite ongoing workflow edits"
+  },
+  "companyDataWrites": 0,
+  "deployed": false,
+  "formalPackageBuilt": false
+}

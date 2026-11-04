@@ -42,12 +42,24 @@ class FinanceProjectedReportTablePostgresTest {
                 "ar_ap_ledger","ar_ap_source_refs","employees","departments","payment_styles","client_director_v","sales_orders","supplier_open_item_offsets",
                 "legacy_finance_import_sources","sales_shipments","sales_shipment_items","sales_returns","sales_return_items","purchase_receipts","purchase_receipt_items",
                 "purchase_returns","purchase_return_items","subcontract_material_issues","subcontract_material_issue_items","subcontract_receipts","subcontract_receipt_items",
-                "goods","units","colors","warehouses","customer_open_item_offset_batches","customer_open_item_offsets",
+                "goods","units","colors","warehouses","stock_movements","customer_open_item_offset_batches","customer_open_item_offsets",
+                "subcontract_loss_resolutions","subcontract_loss_case_lines",
+                "subcontract_material_returns","subcontract_material_return_items","subcontract_returns","subcontract_return_items",
+                "subcontract_wastes","subcontract_waste_items","subcontract_receipt_material_consumptions","subcontract_loss_fulfillment_allocations","stock_value_events","document_unapprovals",
+                "procurement_receipt_consideration_parts","procurement_iqc_consideration_reversals",
+                "finance_open_item_classification_batches","finance_open_item_classification_parts","v_finance_open_item_classification_current",
+                "finance_payable_statement_adjustments","finance_payable_statement_adjustment_lines",
+                "finance_receipt_classification_batches","finance_receipt_classification_parts","v_finance_receipt_classification_current",
+                "finance_customer_offset_classification_batches","finance_customer_offset_classification_parts","v_finance_customer_offset_classification_current",
+                "finance_sales_cost_inputs","v_finance_sales_expense_client_facts","v_finance_sales_expense_period_coverage",
+                "finance_material_order_references","finance_plastic_template_inputs",
+                "finance_copper_template_inputs",
                 "v_stock_actual_finished_receipts","v_stock_actual_cogs_postings","v_stock_actual_sales_cost_coverage","v_workshop_material_period_report",
                 "v_workshop_material_bin_ledger","workshop_material_requisition_postings","workshop_material_requisition_lines","workshop_material_requisitions",
                 "workshop_material_other_issues","workshop_material_count_postings","workshop_material_count_adjustment_postings",
                 "stock_documents","stock_document_items","workshop_material_close_theory_lines","workshop_material_period_closes","workshop_material_close_materials",
                 "workshop_material_period_lines","workshop_material_periods","production_daily_reports","production_daily_report_items","production_execution_segments");
+        MigratedProjectionSchema.createCurrentFunctions(db,"fn_business_decimal_from_integer","fn_business_exact_divide_with_policy","fn_business_exact_divide");
         em=mock(EntityManager.class);when(em.createNativeQuery(anyString())).thenAnswer(call->query(call.getArgument(0)));
         var access=mock(FinanceDocumentAccessPolicy.class);when(access.scope()).thenReturn(new OwnerScope(true,Set.of()));when(access.hasAuthority(anyString())).thenReturn(true);
         when(access.nativeReadScope(anyString(),anyString(),any(OwnerScope.class))).thenReturn(new NativeReadScope("1=1",null,Set.of()));
@@ -61,7 +73,7 @@ class FinanceProjectedReportTablePostgresTest {
         db.update("INSERT INTO goods(id,code,name,unit_id) VALUES(?,'GOODS','货品%_',?)",GOODS,UNIT);
     }
     @AfterAll static void stop(){PG.stop();}
-    @BeforeEach void clean(){db.execute("TRUNCATE finance_receipts,finance_receipt_lines,finance_payments,finance_payment_lines,finance_expenses,finance_expense_items,finance_other_incomes,finance_other_income_items,ar_ap_ledger,ar_ap_source_refs,sales_orders,subcontract_material_issues,subcontract_material_issue_items,subcontract_receipts,subcontract_receipt_items,v_workshop_material_period_report,v_workshop_material_bin_ledger,workshop_material_requisition_postings,workshop_material_requisition_lines,workshop_material_requisitions,stock_documents,stock_document_items,workshop_material_close_theory_lines,workshop_material_period_closes,workshop_material_close_materials,workshop_material_period_lines,workshop_material_periods,production_daily_reports,production_daily_report_items");
+    @BeforeEach void clean(){db.execute("TRUNCATE stock_movements,purchase_receipts,purchase_receipt_items,purchase_returns,purchase_return_items,sales_shipments,sales_shipment_items,sales_returns,sales_return_items,finance_receipts,finance_receipt_lines,finance_payments,finance_payment_lines,finance_expenses,finance_expense_items,finance_other_incomes,finance_other_income_items,ar_ap_ledger,ar_ap_source_refs,sales_orders,subcontract_material_issues,subcontract_material_issue_items,subcontract_receipts,subcontract_receipt_items,v_workshop_material_period_report,v_workshop_material_bin_ledger,workshop_material_requisition_postings,workshop_material_requisition_lines,workshop_material_requisitions,stock_documents,stock_document_items,workshop_material_close_theory_lines,workshop_material_period_closes,workshop_material_close_materials,workshop_material_period_lines,workshop_material_periods,production_daily_reports,production_daily_report_items");
         db.execute("TRUNCATE production_execution_segments");
         db.execute("TRUNCATE sales_shipments,sales_shipment_items,sales_returns,sales_return_items");
         db.update("UPDATE units SET name='同名单位'");db.update("UPDATE goods SET unit_id=? WHERE id=?",UNIT,GOODS);
@@ -104,17 +116,41 @@ class FinanceProjectedReportTablePostgresTest {
     @ParameterizedTest @ValueSource(strings={"order-plan","ar-detail","ap-detail","ar-summary","ap-summary","receipt-detail","receipt-summary","payment-detail","payment-summary","expense-detail","expense-summary","income-detail","income-summary","fee-offset"})
     void everyOrdinaryReportExecutesItsDeclaredTypedProjectionBeforeCountAndPaging(String kind){
         var initial=ordinary(kind,Map.of());var filters=new LinkedHashMap<String,String>();
-        if(kind.equals("ar-summary"))assertThat(initial.columnSearchKeys()).doesNotContain("materialAmount");
+        if(kind.equals("ar-summary"))assertThat(initial.columnSearchKeys()).contains("materialAmount");
         if(kind.equals("payment-detail"))assertThat(initial.columnSearchKeys()).doesNotContain("incomeItem");
         for(var column:initial.columns())if(initial.columnSearchKeys().contains(column.key()))filters.put("search."+column.key(),switch(column.type()){case "date"->"2026-10";case "money","number"->">=0";default->"literal%_";});
         if(initial.facets().containsKey("currencyCode"))filters.put("currencyCode",CURRENCY.toString());
         var result=ordinary(kind,filters);assertThat(result.rows()).isEmpty();assertThat(result.total()).isZero();
         assertThat(result.columnSearchKeys()).containsAll(initial.columnSearchKeys());assertThat(result.columns()).noneMatch(column->column.key().startsWith("__"));
     }
+    @Test void supplierOriginalAndActualReversalKeepDifferentPeriodsAndFrozenNamesAndSourceAmount(){
+        UUID document=UUID.randomUUID(),line=UUID.randomUUID();
+        db.update("INSERT INTO purchase_receipts(id,bill_no,bill_date,supplier_id,currency_id,status,is_deleted) VALUES(?,'ANON-RECEIPT','2026-10-10',?,?,-1,false)",document,SUPPLIER,CURRENCY);
+        db.update("INSERT INTO purchase_receipt_items(id,receipt_id,bill_date,goods_id,unit_id,qty,price,amount_original,goods_name_snapshot,is_deleted) VALUES(?,?,'2026-10-10',?,?,2,4,7.9999,'原始货品名',false)",line,document,GOODS,UNIT);
+        db.update("INSERT INTO ar_ap_ledger(id,direction,business_type,source_doc_type,source_doc_id,bill_no,bill_date,supplier_id,currency_id,status,is_deleted,deleted_at) VALUES(?,'AP','PURCHASE','PURCHASE_RECEIPT',?,'ANON-AP','2026-10-10',?,?,-1,true,'2026-11-02T12:00:00+08:00')",UUID.randomUUID(),document,SUPPLIER,CURRENCY);
+        var original=statements.supplierStatement(null,FROM,TO,SUPPLIER,CURRENCY,1,50,FinanceReportColumnOptions.NONE);
+        assertThat(original.rows()).singleElement().satisfies(row->{assertThat(row.get("goodsName")).isEqualTo("原始货品名");assertThat((BigDecimal)row.get("amount")).isEqualByComparingTo("7.9999");assertThat((BigDecimal)row.get("qty")).isEqualByComparingTo("2");});
+        var reversed=statements.supplierStatement(null,LocalDate.parse("2026-11-01"),LocalDate.parse("2026-11-30"),SUPPLIER,CURRENCY,1,50,FinanceReportColumnOptions.NONE);
+        assertThat(reversed.rows()).singleElement().satisfies(row->{assertThat((BigDecimal)row.get("amount")).isEqualByComparingTo("-7.9999");assertThat((BigDecimal)row.get("qty")).isEqualByComparingTo("-2");assertThat(row.get("remark").toString()).contains("反审");});
+    }
+    @Test void unknownNativeReversalDatePreservesAPendingRowInsteadOfErasingOrInventingZero(){
+        UUID document=UUID.randomUUID();db.update("INSERT INTO purchase_receipts(id,bill_no,bill_date,supplier_id,currency_id,status,is_deleted) VALUES(?,'ANON-UNKNOWN-REV','2026-10-10',?,?,-1,false)",document,SUPPLIER,CURRENCY);
+        db.update("INSERT INTO purchase_receipt_items(id,receipt_id,bill_date,goods_id,unit_id,qty,price,amount_original,is_deleted) VALUES(?,?,'2026-10-10',?,?,2,4,8,false)",UUID.randomUUID(),document,GOODS,UNIT);
+        var report=statements.supplierStatement(null,FROM,TO,SUPPLIER,CURRENCY,1,50,FinanceReportColumnOptions.NONE);
+        assertThat(report.rows()).singleElement().satisfies(row->{assertThat(row.get("__pending")).isEqualTo(true);assertThat(row.get("amount")).isNull();assertThat(row.get("qty")).isNull();assertThat(row.get("__basis").toString()).contains("反向时间");});
+        assertThat(report.totals()).anySatisfy(total->{assertThat(total.key()).isEqualTo("amount");assertThat(total.groups().getFirst().value()).isNull();});
+    }
+    @Test void clientActualFrozenReversalTimestampIsIndependentOfLaterHeaderUpdates(){
+        UUID document=UUID.randomUUID();db.update("INSERT INTO sales_shipments(id,bill_no,bill_date,client_id,currency_id,status,is_deleted,reversed_at,updated_at) VALUES(?,'ANON-SALES','2026-10-10',?,?,-1,false,'2026-11-02T12:00:00+08:00','2026-12-01T12:00:00+08:00')",document,CLIENT,CURRENCY);
+        db.update("INSERT INTO sales_shipment_items(id,shipment_id,bill_date,goods_id,unit_id,qty,price,amount_original,goods_name_snapshot,is_deleted) VALUES(?,?,'2026-10-10',?,?,2,4,7.9999,'原销售名称',false)",UUID.randomUUID(),document,GOODS,UNIT);
+        var october=statements.clientStatement(null,FROM,TO,CLIENT,CURRENCY,1,50,FinanceReportColumnOptions.NONE);assertThat(october.rows()).hasSize(1);assertThat(october.rows().getFirst().get("goodsName")).isEqualTo("原销售名称");
+        var november=statements.clientStatement(null,LocalDate.parse("2026-11-01"),LocalDate.parse("2026-11-30"),CLIENT,CURRENCY,1,50,FinanceReportColumnOptions.NONE);assertThat(november.rows()).hasSize(1);assertThat((BigDecimal)november.rows().getFirst().get("amount")).isEqualByComparingTo("-7.9999");
+        assertThat(statements.clientStatement(null,LocalDate.parse("2026-12-01"),LocalDate.parse("2026-12-31"),CLIENT,CURRENCY,1,50,FinanceReportColumnOptions.NONE).rows()).isEmpty();
+    }
     @ParameterizedTest @ValueSource(strings={"product","sales-summary","copper-fee","copper-pickling","plastic","issue","return","finished","subcontract","supplier","client","other-receivable"})
     void costAndTemplateQueriesExecuteAllActualColumnExpressionsAtTheirCompletedGrain(String kind){
         var initial=template(kind,FinanceReportColumnOptions.NONE);var filters=new LinkedHashMap<String,String>();
-        if(kind.equals("sales-summary"))assertThat(initial.columnSearchKeys()).doesNotContain("manageFee","saleFee","taxFee","freight","netProfit","profitRate");
+        if(kind.equals("sales-summary"))assertThat(initial.columnSearchKeys()).contains("manageFee","saleFee","taxFee","freight","netProfit","profitRate");
         for(var column:initial.columns())if(initial.columnSearchKeys().contains(column.key()))filters.put("search."+column.key(),switch(column.type()){case "date"->"2026-10";case "money","number"->"!=0";default->"literal%_";});
         if(initial.facets().containsKey("currencyCode"))filters.put("currencyCode",CURRENCY.toString());
         var result=template(kind,new FinanceReportColumnOptions(filters,null,null));assertThat(result.total()).isZero();assertThat(result.rows()).isEmpty();
@@ -146,9 +182,45 @@ class FinanceProjectedReportTablePostgresTest {
         assertThat(filtered.total()).isEqualTo(1);var row=filtered.rows().getFirst();
         assertThat((BigDecimal)row.get("issueQty")).isEqualByComparingTo("100");assertThat((BigDecimal)row.get("receiptQty")).isEqualByComparingTo("16");assertThat((BigDecimal)row.get("balance")).isEqualByComparingTo("81");
         assertThat((BigDecimal)row.get("processQty")).isEqualByComparingTo("5");assertThat(row.get("materialPrice")).isNull();assertThat(row.get("materialAmount")).isNull();
-        assertThat(full.rows()).anySatisfy(value->{assertThat(value.get("__currencyId")).isEqualTo(CURRENCY.toString());assertThat(value.get("__unitId")).isEqualTo(UNIT.toString());assertThat((BigDecimal)value.get("processPrice")).isZero();assertThat((BigDecimal)value.get("processAmount")).isZero();});
+        assertThat(full.rows()).anySatisfy(value->{assertThat(value.get("__currencyId")).isEqualTo(CURRENCY.toString());assertThat(value.get("__unitId")).isEqualTo(UNIT.toString());assertThat(value.get("processPrice")).isNull();assertThat((BigDecimal)value.get("processAmount")).isEqualByComparingTo("20");});
         assertThat(full.rows().stream().map(value->value.get("__physicalGroupKey")).distinct()).hasSize(2);
-        assertThat(costs.copperFee(null,FROM,TO,1,50).rows()).hasSize(3);
+        assertThat(costs.copperFee(null,FROM,TO,1,50).rows()).hasSize(4);
+    }
+    @Test void subcontractUsesTheOriginalTransactionAmountsAndNeverRepricesTheMonthAtItsLastPrice(){
+        issue(UNIT,"100","0","2026-10-01");
+        receipt(UNIT,CURRENCY,"10","2","2026-10-10");
+        receipt(UNIT,CURRENCY,"10","3","2026-10-11");
+        db.update("UPDATE subcontract_receipt_items SET amount_original=29.9999 WHERE price=3");
+        var row=statements.subcontractStatement(null,FROM,TO,null,1,50).rows().getFirst();
+        assertThat((BigDecimal)row.get("processQty")).isEqualByComparingTo("20");
+        assertThat(row.get("processPrice")).isNull();
+        assertThat((BigDecimal)row.get("processAmount")).isEqualByComparingTo("49.9999");
+        db.update("UPDATE subcontract_receipt_items SET amount_original=NULL WHERE price=3");
+        assertThat(statements.subcontractStatement(null,FROM,TO,null,1,50).rows().getFirst().get("processAmount")).isNull();
+    }
+    @Test void originalNineteenColumnSubcontractZipsSourcesWithoutMultiplicationAndNeverLabelsBoxesAsPcs(){
+        issue(UNIT,"10","0","2026-09-30");receipt(UNIT,CURRENCY,"2","2","2026-09-30");
+        issue(UNIT,"100","0","2026-10-01");issue(UNIT,"50","0","2026-10-02");issue(UNIT,"25","0","2026-10-03");
+        receipt(UNIT,CURRENCY,"10","2","2026-10-10");receipt(UNIT,CURRENCY,"20","3","2026-10-11");
+        var result=statements.subcontractStatement("GOODS",FROM,TO,null,SUPPLIER,CURRENCY,1,50,FinanceReportColumnOptions.NONE);
+        assertThat(result.columns()).hasSize(19);assertThat(result.rows()).hasSize(3);
+        assertThat(result.rows().stream().map(r->r.get("__issueItemId")).distinct()).hasSize(3);
+        assertThat(result.rows().stream().filter(r->r.get("__receiptItemId")!=null).map(r->r.get("__receiptItemId")).distinct()).hasSize(2);
+        var first=result.rows().getFirst();assertThat((BigDecimal)first.get("prevStock")).isEqualByComparingTo("8");
+        assertThat((BigDecimal)first.get("issueTotalQty")).isEqualByComparingTo("175");
+        assertThat((BigDecimal)first.get("receiptTotalQty")).isEqualByComparingTo("30");
+        assertThat((BigDecimal)first.get("balance")).isEqualByComparingTo("147.75");
+        assertThat(result.rows().stream().map(r->(BigDecimal)r.get("processAmount")).filter(Objects::nonNull).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo("80");
+        issue(SECOND_UNIT,"20","0","2026-10-04");
+        var boxes=statements.subcontractStatement(null,FROM,TO,null,SUPPLIER,CURRENCY,1,50,FinanceReportColumnOptions.NONE).rows().stream()
+                .filter(r->SECOND_UNIT.toString().equals(r.get("__unitId"))).findFirst().orElseThrow();
+        assertThat(boxes.get("issueQty")).isNull();assertThat(boxes.get("balance")).isNull();assertThat(boxes.get("__pending")).isEqualTo(true);
+    }
+    @Test void originalAllowedLossFormulaKeepsItsCompleteProductInsteadOfRoundingTheoreticalQuantityToMoneyCents(){
+        issue(UNIT,"1.2345","0","2026-10-01");
+        var original=statements.subcontractStatement(null,FROM,TO,null,SUPPLIER,CURRENCY,1,50,FinanceReportColumnOptions.NONE).rows().getFirst();
+        assertThat((BigDecimal)original.get("lossAllowed")).isEqualByComparingTo("0.037035");assertThat((BigDecimal)original.get("balance")).isEqualByComparingTo("1.197465");
+        var legacy=statements.subcontractStatement(null,FROM,TO,null,1,50).rows().getFirst();assertThat((BigDecimal)legacy.get("lossAllowed")).isEqualByComparingTo("0.037035");
     }
     @Test void prepaymentHeadersAndTheNewExportKeepExactCurrencyIdentityAndOriginalEventFacts(){
         UUID target=cash("PREPAY-TARGET",BigDecimal.TEN),other=cash("PREPAY-OTHER",BigDecimal.TEN);
@@ -200,7 +272,7 @@ class FinanceProjectedReportTablePostgresTest {
         db.update("INSERT INTO production_execution_segments(id,product_goods_id,product_unit_id,product_unit_rate) VALUES(?,?,?,2)",segment,GOODS,SECOND_UNIT);
         db.update("INSERT INTO workshop_material_close_theory_lines(id,close_id,close_material_id,report_id,report_item_id,product_goods_id,business_date,execution_segment_id,theory_qty,output_qty_base) VALUES(?,?,?,?,?,?,?,?,2,3)",theory,close,material,report,reportItem,GOODS,FROM,segment);
         var output=costs.plasticDetail("finished",null,FROM,TO,1,10);assertThat(output.rows()).hasSize(1);
-        assertThat(output.rows().getFirst().get("materialUnit")).isEqualTo("历史千克");assertThat(output.rows().getFirst().get("productUnit")).isNull();
+        assertThat(output.rows().getFirst().get("materialUnit")).isNull();assertThat(output.rows().getFirst().get("weight")).isNull();assertThat(output.rows().getFirst().get("productUnit")).isNull();
         db.update("UPDATE production_execution_segments SET product_unit_rate=1 WHERE id=?",segment);
         db.update("UPDATE production_daily_report_items SET unit_rate=1,qty=3 WHERE id=?",reportItem);
         db.update("UPDATE goods SET unit_id=? WHERE id=?",UNIT,GOODS);
@@ -238,9 +310,9 @@ class FinanceProjectedReportTablePostgresTest {
         for(String bill:db.queryForList("SELECT bill_no FROM subcontract_receipts",String.class))assertThat(row.get("receiptBillNo").toString()).contains(bill);
         assertThat(row.get("receiptDate")).isNotNull();assertThat(row.get("unit")).isNull();
         assertThat(result.columnSearchKeys()).doesNotContain("materialPrice","materialAmount");
-        var copper=costs.copperFee(null,FROM,TO,1,20);assertThat(copper.total()).isEqualTo(1);
-        for(String field:List.of("qty","price","amount"))assertThat(copper.rows().getFirst().get(field)).as("unproved copper "+field).isNull();
-        for(String bill:db.queryForList("SELECT bill_no FROM subcontract_receipts",String.class))assertThat(copper.rows().getFirst().get("sourceBillNos").toString()).contains(bill);
+        var copper=costs.copperFee(null,FROM,TO,1,20);assertThat(copper.total()).isEqualTo(2);
+        for(var copperRow:copper.rows())for(String field:List.of("qty","price","amount"))assertThat(copperRow.get(field)).as("unproved copper "+field).isNull();
+        for(String bill:db.queryForList("SELECT bill_no FROM subcontract_receipts",String.class))assertThat(copper.rows()).anySatisfy(value->assertThat(value.get("sourceBillNos").toString()).contains(bill));
         assertThatThrownBy(()->statements.subcontractStatement(null,FROM,TO,null,1,20,new FinanceReportColumnOptions(Map.of(),"materialAmount","asc")))
                 .isInstanceOf(ApiException.class).hasMessageContaining("尚无可检索");
         db.update("UPDATE subcontract_material_issue_items SET unit_rate=1");db.update("UPDATE subcontract_receipt_items SET unit_rate=1");
@@ -249,7 +321,7 @@ class FinanceProjectedReportTablePostgresTest {
         var proved=statements.subcontractStatement(null,FROM,TO,null,1,20).rows().getFirst();
         assertThat(proved.get("__unitId")).isEqualTo(UNIT.toString());assertThat((BigDecimal)proved.get("issueQty")).isEqualByComparingTo("10");
         assertThat((BigDecimal)proved.get("receiptQty")).isEqualByComparingTo("5");
-        assertThat((BigDecimal)costs.copperFee(null,FROM,TO,1,20).rows().getFirst().get("qty")).isEqualByComparingTo("5");
+        assertThat(costs.copperFee(null,FROM,TO,1,20).rows().stream().map(value->(BigDecimal)value.get("qty")).reduce(BigDecimal.ZERO,BigDecimal::add)).isEqualByComparingTo("5");
     }
     private static ReportTableResponse ordinary(String kind,Map<String,String> filters){return switch(kind){
         case "order-plan"->reports.salesOrderReceivablePlan(null,null,FROM,TO,null,1,1,null,null,filters);
@@ -274,6 +346,6 @@ class FinanceProjectedReportTablePostgresTest {
     };}
     private static UUID cash(String no,BigDecimal amount){UUID id=UUID.randomUUID();db.update("INSERT INTO finance_receipts(id,bill_no,bill_date,client_id,currency_id,amount_original,amount_local,exchange_rate,bank_fee,other_fee,status,is_deleted) VALUES(?,?,? ,?,?,?,?*7,7,9,2,1,false)",id,no,FROM,CLIENT,CURRENCY,amount,amount);return id;}
     private static void issue(UUID unit,String quantity,String weight,String date){UUID id=UUID.randomUUID();db.update("INSERT INTO subcontract_material_issues(id,bill_no,bill_date,supplier_id,status,is_deleted) VALUES(?,?,?::date,?,1,false)",id,"ISS-"+id,date,SUPPLIER);db.update("INSERT INTO subcontract_material_issue_items(id,issue_id,bill_no,bill_date,goods_id,unit_id,qty,weight,price,wasted_qty,is_deleted) VALUES(?,?,?,?::date,?,?,?::numeric,?::numeric,99,0,false)",UUID.randomUUID(),id,"ISS-"+id,date,GOODS,unit,quantity,weight);}
-    private static void receipt(UUID unit,UUID currency,String quantity,String price,String date){UUID id=UUID.randomUUID();db.update("INSERT INTO subcontract_receipts(id,bill_no,bill_date,supplier_id,currency_id,status,is_deleted) VALUES(?,?,?::date,?,?,1,false)",id,"RCV-"+id,date,SUPPLIER,currency);db.update("INSERT INTO subcontract_receipt_items(id,receipt_id,bill_no,bill_date,goods_id,unit_id,qty,price,is_deleted) VALUES(?,?,?,?::date,?,?,?::numeric,?::numeric,false)",UUID.randomUUID(),id,"RCV-"+id,date,GOODS,unit,quantity,price);}
+    private static void receipt(UUID unit,UUID currency,String quantity,String price,String date){UUID id=UUID.randomUUID();db.update("INSERT INTO subcontract_receipts(id,bill_no,bill_date,supplier_id,currency_id,status,is_deleted) VALUES(?,?,?::date,?,?,1,false)",id,"RCV-"+id,date,SUPPLIER,currency);db.update("INSERT INTO subcontract_receipt_items(id,receipt_id,bill_no,bill_date,goods_id,unit_id,qty,price,amount_original,is_deleted) VALUES(?,?,?,?::date,?,?,?::numeric,?::numeric,?::numeric,false)",UUID.randomUUID(),id,"RCV-"+id,date,GOODS,unit,quantity,price,new BigDecimal(quantity).multiply(new BigDecimal(price)));}
     private static Query query(String sql){Query query=mock(Query.class);var parameters=new LinkedHashMap<String,Object>();when(query.setParameter(anyString(),any())).thenAnswer(call->{parameters.put(call.getArgument(0),call.getArgument(1));return query;});when(query.getResultList()).thenAnswer(call->named.query(sql,parameters,(rs,index)->{Object[] row=new Object[rs.getMetaData().getColumnCount()];for(int i=0;i<row.length;i++) { row[i]=rs.getObject(i+1); } return row;}));when(query.getSingleResult()).thenAnswer(call->named.queryForObject(sql,parameters,Long.class));return query;}
 }

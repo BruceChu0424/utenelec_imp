@@ -461,8 +461,8 @@ void main() {
     await saveBomEdit(tester);
     expect(repo.updates, hasLength(1));
     final body = repo.updates.single;
-    expect(body['unitWeightGrams'], 11);
-    expect(body['qty'], closeTo(0.011, 1e-9));
+    expect(body['unitWeightGrams'], '11');
+    expect(body.containsKey('qty'), isFalse);
     expect(body.containsKey('controlStage'), isFalse);
     expect(body.containsKey('consumptionBasis'), isFalse);
     expect(body.containsKey('hardGate'), isFalse);
@@ -526,7 +526,7 @@ void main() {
 
     await saveBomEdit(tester);
     expect(repo.updates, hasLength(1));
-    expect(repo.updates.single['unitWeightGrams'], 0.05);
+    expect(repo.updates.single['unitWeightGrams'], '0.05');
     expect(repo.updates.single['confirmUnusualWeight'], isTrue);
     expect(tester.takeException(), isNull);
   });
@@ -573,8 +573,8 @@ void main() {
     expect(repo.pastes, hasLength(1));
     final item = repo.pastes.single.single;
     expect(item['componentGoodsId'], 'abs');
-    expect(item['unitWeightGrams'], 8);
-    expect(item['qty'], closeTo(0.008, 1e-9));
+    expect(item['unitWeightGrams'], '8');
+    expect(item.containsKey('qty'), isFalse);
     expect(item['confirmSecondPeriodicMaterial'], isTrue);
     expect(tester.takeException(), isNull);
   });
@@ -643,7 +643,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.updates, hasLength(1));
     expect(repo.updates.single['confirmSecondPeriodicMaterial'], isTrue);
-    expect(repo.updates.single['unitWeightGrams'], 11);
+    expect(repo.updates.single['unitWeightGrams'], '11');
     expect(tester.takeException(), isNull);
   });
 
@@ -682,7 +682,7 @@ void main() {
     await saveBomEdit(tester);
     expect(repo.updates, hasLength(1));
     final body = repo.updates.single;
-    expect(body['qty'], closeTo(0.00003, 1e-12));
+    expect(body['qty'], '0.00003');
     expect(body.containsKey('unitWeightGrams'), isFalse);
     expect(tester.takeException(), isNull);
   });

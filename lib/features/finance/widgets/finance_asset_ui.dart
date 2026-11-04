@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 
+export '../../../shared/formatters/financial_amount_validation.dart';
+
 class FinanceAssetCapabilities {
   const FinanceAssetCapabilities({
     required this.canView,
@@ -32,6 +34,7 @@ String financeAssetSourceTypeLabel(String? type) =>
       'AP' => '应付单据',
       'CONTRACT' => '合同',
       'MANUAL' => '手工录入',
+      'FINANCE_TEMPLATE' => '财务原表',
       'OTHER' => '其他来源',
       null || '' => '—',
       _ => type!,
@@ -133,26 +136,6 @@ String? validateMaxLength(String? value, int maxLength, String label) {
 String? validateRequiredMaxLength(String? value, int maxLength, String label) {
   return validateRequired(value, label) ??
       validateMaxLength(value, maxLength, label);
-}
-
-String? validateFinanceAmount(String? value, {String label = '金额'}) {
-  final raw = value?.trim() ?? '';
-  if (raw.isEmpty) return '请填写$label';
-  if (!RegExp(r'^\d{1,16}(?:\.\d{1,2})?$').hasMatch(raw)) {
-    return '$label应为不超过 16 位整数、2 位小数的正数';
-  }
-  final digits = raw.replaceAll('.', '').replaceFirst(RegExp(r'^0+'), '');
-  if (digits.isEmpty) return '$label必须大于 0';
-  return null;
-}
-
-String? validateNonNegativeFinanceAmount(String? value, {String label = '金额'}) {
-  final raw = value?.trim() ?? '';
-  if (raw.isEmpty) return '请填写$label';
-  if (!RegExp(r'^\d{1,16}(?:\.\d{1,2})?$').hasMatch(raw)) {
-    return '$label不能是负数，最多 16 位整数、2 位小数';
-  }
-  return null;
 }
 
 String? validateSalvageRate(String? value) {

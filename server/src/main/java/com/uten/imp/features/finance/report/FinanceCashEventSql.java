@@ -20,15 +20,18 @@ final class FinanceCashEventSql {
                            t.exchange_rate,t.status,t.remark,
                            CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.applied_original ELSE t.amount_original END AS book_original,
                            CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.applied_local ELSE t.amount_local END AS book_local,
-                           CASE WHEN COALESCE(lines.line_count,0)>0 THEN ROUND(lines.applied_local/NULLIF(lines.applied_original,0),6)
+                           CASE WHEN COALESCE(lines.line_count,0)>0 THEN fn_business_exact_divide(lines.applied_local,lines.applied_original,'finance.cash.book-rate','本次收付款账面汇率',30)
                                 ELSE t.exchange_rate END AS book_rate,
                            CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.cash_local ELSE t.amount_local END AS cash_local,
                            CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.write_off_local ELSE 0 END AS write_off_local,
                            CASE WHEN COALESCE(lines.line_count,0)>0 THEN lines.exchange_diff ELSE 0 END AS exchange_diff
                     FROM @header@ t LEFT JOIN LATERAL (
-                        SELECT COUNT(*) AS line_count,SUM(@original@) AS applied_original,SUM(@book@) AS applied_local,
-                               SUM(line.amount_local) AS cash_local,SUM(@writeOff@) AS write_off_local,
-                               SUM(line.exchange_diff) AS exchange_diff
+                        SELECT COUNT(*) AS line_count,
+                               CASE WHEN COUNT(*)=COUNT(@original@) THEN SUM(@original@) END AS applied_original,
+                               CASE WHEN COUNT(*)=COUNT(@book@) THEN SUM(@book@) END AS applied_local,
+                               CASE WHEN COUNT(*)=COUNT(line.amount_local) THEN SUM(line.amount_local) END AS cash_local,
+                               CASE WHEN COUNT(*)=COUNT(@writeOff@) THEN SUM(@writeOff@) END AS write_off_local,
+                               CASE WHEN COUNT(*)=COUNT(line.exchange_diff) THEN SUM(line.exchange_diff) END AS exchange_diff
                         FROM @lines@ line WHERE line.@parent@=t.id AND NOT COALESCE(line.is_deleted,false)
                     ) lines ON TRUE
                     WHERE t.status IN(1,-1) AND NOT COALESCE(t.is_deleted,false)

@@ -1,4 +1,5 @@
 import '../../../shared/models/inbound_allocation.dart';
+import '../../../shared/measurement/document_quantity.dart';
 
 export '../../../shared/models/inbound_allocation.dart';
 
@@ -46,8 +47,10 @@ class WarehouseIqcStockInConfirmItem {
   });
 
   final String passEventId;
-  final double baseQty;
-  final double expectedRemainingBaseQty;
+  // New commands use source decimal text. Old pending commands retain their
+  // original numeric scalar on recovery; never recalculate their body or key.
+  final Object baseQty;
+  final Object expectedRemainingBaseQty;
   final String warehouseId;
   final String place;
 
@@ -77,9 +80,10 @@ class WarehouseIqcStockInConfirmCommand {
       for (final item in _requiredDraftRows(data['items']))
         WarehouseIqcStockInConfirmItem(
           passEventId: item['passEventId'] as String,
-          baseQty: (item['baseQty'] as num).toDouble(),
-          expectedRemainingBaseQty: (item['expectedRemainingBaseQty'] as num)
-              .toDouble(),
+          baseQty: _pendingQuantity(item['baseQty']),
+          expectedRemainingBaseQty: _pendingQuantity(
+            item['expectedRemainingBaseQty'],
+          ),
           warehouseId: item['warehouseId'] as String,
           place: item['place'] as String,
         ),
@@ -90,6 +94,14 @@ class WarehouseIqcStockInConfirmCommand {
     'idempotencyKey': idempotencyKey,
     'items': items.map((item) => item.toJson()).toList(growable: false),
   };
+}
+
+Object _pendingQuantity(Object? value) {
+  if (value is String && positiveDocumentQuantityText(value) != null) {
+    return value;
+  }
+  if (value is num && value.isFinite && value > 0) return value;
+  throw const FormatException('原入库提交缺少完整数量，请保留原草稿并核对');
 }
 
 /// 先入库后质检(V596)：一行待检明细 → 上架仓 + 库位。

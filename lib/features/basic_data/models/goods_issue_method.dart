@@ -1,3 +1,5 @@
+import '../../../shared/models/decimal_text.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 // 货品「发料方式 / 分摊方式」切换的预览与提交模型 (ADR-131)。
 //
 // 对应后端 GoodsPeriodicMaterialDtos (GET /master/goods/{id}/issue-method/preview、
@@ -25,6 +27,7 @@ double? _num(Object? raw) => raw is num ? raw.toDouble() : null;
 /// 用到这种料的一行 BOM 在切换时怎么处理 (后端 AffectedBomRow)。
 class GoodsIssueMethodBomRow {
   const GoodsIssueMethodBomRow({
+    this.exactValues = const {},
     this.bomItemId,
     this.productGoodsId,
     this.productCode,
@@ -50,6 +53,7 @@ class GoodsIssueMethodBomRow {
   /// 按包装、按批或基准产量折不成每件用量，要先人工改 (标红)。
   static const actionBlocked = 'BLOCKED';
 
+  final Map<String, String> exactValues;
   final String? bomItemId;
   final String? productGoodsId;
   final String? productCode;
@@ -79,6 +83,7 @@ class GoodsIssueMethodBomRow {
 
   factory GoodsIssueMethodBomRow.fromJson(Map<String, dynamic> json) =>
       GoodsIssueMethodBomRow(
+        exactValues: readExactDecimalTexts(json),
         bomItemId: _text(json['bomItemId']),
         productGoodsId: _text(json['productGoodsId']),
         productCode: _text(json['productCode']),
@@ -93,6 +98,7 @@ class GoodsIssueMethodBomRow {
 /// 按工单领了这种料、还没核清的需求 (改为整批领料的前提是一条都没有)。
 class GoodsIssueMethodUnclearedDemand {
   const GoodsIssueMethodUnclearedDemand({
+    this.exactValues = const {},
     this.demandId,
     this.planNo,
     this.segmentCode,
@@ -102,6 +108,7 @@ class GoodsIssueMethodUnclearedDemand {
     this.note,
   });
 
+  final Map<String, String> exactValues;
   final String? demandId;
 
   /// 生产计划单号。
@@ -126,6 +133,7 @@ class GoodsIssueMethodUnclearedDemand {
 
   factory GoodsIssueMethodUnclearedDemand.fromJson(Map<String, dynamic> json) =>
       GoodsIssueMethodUnclearedDemand(
+        exactValues: readExactDecimalTexts(json),
         demandId: _text(json['demandId']),
         planNo: _text(json['planNo']),
         segmentCode: _text(json['segmentCode']),
@@ -138,13 +146,19 @@ class GoodsIssueMethodUnclearedDemand {
 
 /// 车间内料仓里这种料的账面 (不为 0 时不能改回按工单领料或改分摊方式)。
 class GoodsIssueMethodBinBalance {
-  const GoodsIssueMethodBinBalance({this.warehouseName, this.qty});
+  const GoodsIssueMethodBinBalance({
+    this.exactValues = const {},
+    this.warehouseName,
+    this.qty,
+  });
 
+  final Map<String, String> exactValues;
   final String? warehouseName;
   final double? qty;
 
   factory GoodsIssueMethodBinBalance.fromJson(Map<String, dynamic> json) =>
       GoodsIssueMethodBinBalance(
+        exactValues: readExactDecimalTexts(json),
         warehouseName: _text(json['warehouseName']),
         qty: _num(json['qty']),
       );
@@ -181,17 +195,20 @@ class GoodsIssueMethodOpenPeriod {
 /// 还没结算的日子里按这种料算了理论用量的产品 (按内料仓汇总)。
 class GoodsIssueMethodUnsettledTheory {
   const GoodsIssueMethodUnsettledTheory({
+    this.exactValues = const {},
     this.binName,
     this.productCount = 0,
     this.theoryQty,
   });
 
+  final Map<String, String> exactValues;
   final String? binName;
   final int productCount;
   final double? theoryQty;
 
   factory GoodsIssueMethodUnsettledTheory.fromJson(Map<String, dynamic> json) =>
       GoodsIssueMethodUnsettledTheory(
+        exactValues: readExactDecimalTexts(json),
         binName: _text(json['binName']),
         productCount: (json['productCount'] as num?)?.toInt() ?? 0,
         theoryQty: _num(json['theoryQty']),
@@ -245,6 +262,7 @@ class GoodsIssueMethodChoice {
 /// 切换预览 (GET /master/goods/{id}/issue-method/preview?target=&costBasis=)。
 class GoodsIssueMethodPreview {
   const GoodsIssueMethodPreview({
+    this.exactValues = const {},
     required this.goodsId,
     required this.targetIssueMethod,
     this.targetCostBasis,
@@ -266,6 +284,7 @@ class GoodsIssueMethodPreview {
     this.activeChoices = const [],
   });
 
+  final Map<String, String> exactValues;
   final String goodsId;
 
   /// ORDER / PERIODIC。
@@ -313,6 +332,7 @@ class GoodsIssueMethodPreview {
   }) {
     final blockers = json['blockers'];
     return GoodsIssueMethodPreview(
+      exactValues: readExactDecimalTexts(json),
       goodsId: _text(json['goodsId']) ?? goodsId,
       targetIssueMethod: _text(json['targetIssueMethod']) ?? target,
       targetCostBasis: _text(json['targetCostBasis']),
@@ -361,6 +381,7 @@ class GoodsIssueMethodChange {
     required this.issueMethod,
     this.periodicCostBasis,
     this.bulkPackageQty,
+    this.bulkPackageQtyExact,
     this.recycledMaterial = false,
   });
 
@@ -371,6 +392,9 @@ class GoodsIssueMethodChange {
 
   /// 每袋净重；null = 不改 (服务端保留原值)。
   final double? bulkPackageQty;
+  final String? bulkPackageQtyExact;
+  String? get bulkPackageQtyText =>
+      financeExactDecimal(bulkPackageQtyExact ?? bulkPackageQty);
   final bool recycledMaterial;
 
   Map<String, dynamic> toJson() => {
@@ -379,7 +403,7 @@ class GoodsIssueMethodChange {
     'issueMethod': issueMethod,
     // 按工单领料时分摊方式必须为空 (服务端与数据库约束)。
     'periodicCostBasis': issueMethod == 'PERIODIC' ? periodicCostBasis : null,
-    'bulkPackageQty': bulkPackageQty,
+    'bulkPackageQty': bulkPackageQtyText,
     'isRecycledMaterial': recycledMaterial,
   };
 
@@ -387,5 +411,5 @@ class GoodsIssueMethodChange {
   String canonical() =>
       '$goodsId|$expectedVersion|$issueMethod|'
       '${issueMethod == 'PERIODIC' ? periodicCostBasis ?? '' : ''}|'
-      '${bulkPackageQty ?? ''}|$recycledMaterial';
+      '${bulkPackageQtyText ?? ''}|$recycledMaterial';
 }

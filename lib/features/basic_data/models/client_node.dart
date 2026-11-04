@@ -2,13 +2,27 @@
 //
 // 数值字段一律走 (json['x'] as num?)?.toInt()/toDouble()，避免 int/double 被后端
 // 序列化成 String（或 null）时直接 cast 崩溃——老库迁移常踩这个坑。
-// credit 为后端 BigDecimal（NUMERIC(18,4)），前端按 double 解析。
+// 原数字字段保留兼容；编辑与精确显示优先使用服务端 Exact 文本。
 // tday 为 Integer（TDay 结算天数）。
 //
 // 后端对 fullName / clientXz / placeId / empId / legalPerson / bankAccount / taxId
 // 显式 @JsonProperty 钉死 key；fromJson 仍兼容小写兜底，防 Jackson bean 命名歧义。
 
 import 'master_facet.dart';
+import '../../../core/formatters/exact_number_text.dart';
+
+String? _clientRecordedNumber(Map<String, dynamic> json, String key) {
+  final exactKey = '${key}Exact';
+  if (json.containsKey(exactKey)) return exactNumberText(json[exactKey]) ?? '';
+  return exactNumberText(json[key] ?? json['${key}DisplayText']);
+}
+
+double? _clientLegacyNumber(Object? value) {
+  final number = value is num
+      ? value.toDouble()
+      : double.tryParse(value?.toString() ?? '');
+  return number != null && number.isFinite ? number : null;
+}
 
 /// 客户列表项（覆盖表格 23 列中 21 个有 DB 列的字段）。
 class ClientListItem {
@@ -35,7 +49,9 @@ class ClientListItem {
     this.bankAccount,
     this.taxId,
     this.credit,
+    this.creditExactText,
     this.creditFloor,
+    this.creditFloorExactText,
     this.creditDisplayText,
     this.creditFloorDisplayText,
     this.website,
@@ -85,7 +101,9 @@ class ClientListItem {
   final String? bankAccount; // 银行账号（Client_BankNo）
   final String? taxId; // 纳税号（Tax_ID）
   final double? credit; // 信誉额度（Credit）
+  final String? creditExactText;
   final double? creditFloor; // 铺底额（未设置时服务端返回 0）
+  final String? creditFloorExactText;
   final String? creditDisplayText;
   final String? creditFloorDisplayText;
   final String? website; // 网址（Http）
@@ -133,10 +151,12 @@ class ClientListItem {
     bank: json['bank'] as String?,
     bankAccount: (json['bankAccount'] ?? json['bankaccount']) as String?,
     taxId: (json['taxId'] ?? json['taxid']) as String?,
-    credit: (json['credit'] as num?)?.toDouble(),
+    creditExactText: _clientRecordedNumber(json, 'credit'),
+    credit: _clientLegacyNumber(json['credit']),
     creditDisplayText: json['creditDisplayText'] as String?,
     creditFloorDisplayText: json['creditFloorDisplayText'] as String?,
-    creditFloor: (json['creditFloor'] as num?)?.toDouble() ?? 0,
+    creditFloorExactText: _clientRecordedNumber(json, 'creditFloor'),
+    creditFloor: _clientLegacyNumber(json['creditFloor']) ?? 0,
     website: json['website'] as String?,
     status: json['status'] as String?,
     legacyId: (json['legacyId'] as num?)?.toInt(),
@@ -207,8 +227,11 @@ class ClientDetail {
     this.bankAccount,
     this.taxId,
     this.credit,
+    this.creditExactText,
     this.initTotal,
+    this.initTotalExactText,
     this.creditFloor,
+    this.creditFloorExactText,
     this.tday,
     this.remark,
     this.version,
@@ -258,8 +281,11 @@ class ClientDetail {
   final String? bankAccount; // 银行账号
   final String? taxId; // 税号
   final double? credit; // 信用额度
+  final String? creditExactText;
   final double? initTotal; // 期初应收
+  final String? initTotalExactText;
   final double? creditFloor; // 铺底额
+  final String? creditFloorExactText;
   final int? tday; // 结算天数
   final String? remark; // 备注
   final int? version;
@@ -337,9 +363,12 @@ class ClientDetail {
     bank: json['bank'] as String?,
     bankAccount: (json['bankAccount'] ?? json['bankaccount']) as String?,
     taxId: (json['taxId'] ?? json['taxid']) as String?,
-    credit: (json['credit'] as num?)?.toDouble(),
-    initTotal: (json['initTotal'] as num?)?.toDouble(),
-    creditFloor: (json['creditFloor'] as num?)?.toDouble() ?? 0,
+    creditExactText: _clientRecordedNumber(json, 'credit'),
+    credit: _clientLegacyNumber(json['credit']),
+    initTotalExactText: _clientRecordedNumber(json, 'initTotal'),
+    initTotal: _clientLegacyNumber(json['initTotal']),
+    creditFloorExactText: _clientRecordedNumber(json, 'creditFloor'),
+    creditFloor: _clientLegacyNumber(json['creditFloor']) ?? 0,
     tday: (json['tday'] as num?)?.toInt(),
     remark: json['remark'] as String?,
     version: (json['version'] as num?)?.toInt(),

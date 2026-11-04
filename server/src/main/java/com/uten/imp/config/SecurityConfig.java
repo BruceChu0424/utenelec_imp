@@ -263,6 +263,7 @@ public class SecurityConfig {
                 // ADR-133: 公共 AI 识别上传的文件名/类型(AiJobController); 跨源网页上传靠它们通过预检。
                 "X-Uten-File-Name",
                 "X-Uten-File-Type",
+                com.uten.imp.common.finance.BusinessPrecisionContext.HEADER,
                 com.uten.imp.security.StepUpInterceptor.HEADER,
                 com.uten.imp.security.AutomaticRequestPolicy.HEADER,
                 AuditDeviceContext.HEADER_CLIENT_EVENT_ID,

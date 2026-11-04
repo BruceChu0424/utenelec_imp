@@ -63,5 +63,64 @@ public record WeightObservationRow(
         String remark,
         UUID recordedBy,
         String recordedByName,
-        String status) {
+        String status,java.util.List<com.uten.imp.application.port.BusinessNumericInputEvidencePort.Value> inputEvidence) {
+    public WeightObservationRow(
+        UUID id,
+        OffsetDateTime observedAt,
+        String sourceKind,
+        String role,
+        BigDecimal qtyBase,
+        BigDecimal weightKg,
+        BigDecimal unitWeightKg,
+        BigDecimal grossKg,
+        BigDecimal tareKg,
+        UUID warehouseId,
+        String warehouseName,
+        UUID colorId,
+        String colorName,
+        UUID supplierId,
+        String supplierName,
+        String counterpartKind,
+        UUID counterpartId,
+        String counterpartName,
+        boolean namesMasked,
+        String sourceDocType,
+        UUID sourceDocId,
+        UUID sourceItemId,
+        String sourceDocCode,
+        String billNo,
+        Boolean sourceDocCleared,
+        UUID movementId,
+        String stage,
+        OffsetDateTime reversedAt,
+        String excludedReason,
+        OffsetDateTime excludedAt,
+        String excludedByName,
+        BigDecimal expectedUnitWeightKg,
+        BigDecimal expectedWeightKg,
+        BigDecimal deviationPct,
+        String alertLevel,
+        String estimateBasisUsed,
+        String estimateTierUsed,
+        BigDecimal tolerancePctUsed,
+        boolean newRegime,
+        boolean outlier,
+        Double outlierZ,
+        String outlierHint,
+        boolean previousRegime,
+        String remark,
+        UUID recordedBy,
+        String recordedByName,
+        String status){this(id,observedAt,sourceKind,role,qtyBase,weightKg,unitWeightKg,grossKg,tareKg,warehouseId,warehouseName,colorId,colorName,supplierId,supplierName,counterpartKind,counterpartId,counterpartName,namesMasked,sourceDocType,sourceDocId,sourceItemId,sourceDocCode,billNo,sourceDocCleared,movementId,stage,reversedAt,excludedReason,excludedAt,excludedByName,expectedUnitWeightKg,expectedWeightKg,deviationPct,alertLevel,estimateBasisUsed,estimateTierUsed,tolerancePctUsed,newRegime,outlier,outlierZ,outlierHint,previousRegime,remark,recordedBy,recordedByName,status,java.util.List.of());}
+    public WeightObservationRow withInputEvidence(java.util.List<com.uten.imp.application.port.BusinessNumericInputEvidencePort.Value> values){return new WeightObservationRow(id,observedAt,sourceKind,role,qtyBase,weightKg,unitWeightKg,grossKg,tareKg,warehouseId,warehouseName,colorId,colorName,supplierId,supplierName,counterpartKind,counterpartId,counterpartName,namesMasked,sourceDocType,sourceDocId,sourceItemId,sourceDocCode,billNo,sourceDocCleared,movementId,stage,reversedAt,excludedReason,excludedAt,excludedByName,expectedUnitWeightKg,expectedWeightKg,deviationPct,alertLevel,estimateBasisUsed,estimateTierUsed,tolerancePctUsed,newRegime,outlier,outlierZ,outlierHint,previousRegime,remark,recordedBy,recordedByName,status,values);}
+
+        public String getQtyBaseExact(){return com.uten.imp.common.util.DecimalText.of(qtyBase);}
+        public String getWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(weightKg);}
+        public String getUnitWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(unitWeightKg);}
+        public String getGrossKgExact(){return com.uten.imp.common.util.DecimalText.of(grossKg);}
+        public String getTareKgExact(){return com.uten.imp.common.util.DecimalText.of(tareKg);}
+        public String getExpectedUnitWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(expectedUnitWeightKg);}
+        public String getExpectedWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(expectedWeightKg);}
+        public String getDeviationPctExact(){return com.uten.imp.common.util.DecimalText.of(deviationPct);}
+        public String getTolerancePctUsedExact(){return com.uten.imp.common.util.DecimalText.of(tolerancePctUsed);}
 }

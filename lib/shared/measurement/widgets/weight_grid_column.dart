@@ -1,3 +1,7 @@
+import '../../formatters/exact_decimal.dart';
+import '../../../core/network/business_precision.dart';
+import '../../../core/network/business_precision_coordinator.dart';
+import '../../../components/buttons/uten_button.dart';
 // 采集表格「实称重量」列 (ADR-135 §6.2, review/product.md §1.1): 所有仓库采集表格共用。
 //
 // - 列放在数量组之后 (单位跟在数量后面时放在单位之后); 表头「实称重量(kg)」随录入单位变化,
@@ -31,6 +35,8 @@ import '../weight_params.dart';
 import '../weight_predictor.dart';
 import '../weight_prefs.dart';
 import '../weight_unit.dart';
+import '../weight_quantity_adoption.dart';
+import '../../auth/read_owner_fence.dart';
 import 'weight_text.dart';
 
 /// 表头说明 (ⓘ)。
@@ -50,76 +56,72 @@ const String weightCellIdleTooltip = '可直接输 850g、1.2t、3斤；空着=�
 
 /// 一行的重量录入状态 (放在行 model 里, 跟行一起创建/释放, 跨重建存活)。
 ///
-/// 事实源是 [kg] (千克, HALF_UP 4 位); [text] 只是它在当前录入单位 [unit] 下的样子。
+/// 事实源是 [kgText] (千克完整十进制原值); [text] 只是它在当前录入单位 [unit] 下的样子。
 /// 用户敲字 -> 重新解析 (支持单位后缀); 程序写值 ([setKg] / [switchUnit] / [normalize])
 /// 不重新解析, 保证 lb/oz 这类非十进制换算来回切换不漂。
 class WeightEntryController extends ChangeNotifier {
   WeightEntryController({
     double? kg,
+    String? kgExact,
     WeightUnit unit = WeightUnit.kg,
-    this._qtyFromWeight = false,
+    bool qtyFromWeight = false,
   }) : _unit = unit,
-       _kg = _positiveKg(kg) {
-    _userEdited = _kg != null;
-    text = TextEditingController(text: _kg == null ? '' : unit.editText(_kg!));
+       // ignore: prefer_initializing_formals
+       _qtyFromWeight = qtyFromWeight {
+    _kgText = _positiveText(kgExact ?? financeExactDecimal(kg));
+    _kg = _kgText == null ? null : double.tryParse(_kgText!);
+    _userEdited = _kgText != null;
+    _enteredText = _kgText == null ? '' : '$_kgText kg';
+    _enteredUnit = WeightUnit.kg;
+    text = TextEditingController(
+      text: _kgText == null ? '' : unit.editText(_kgText!),
+    );
     _lastText = text.text;
     text.addListener(_onText);
   }
-
   late final TextEditingController text;
-
-  WeightUnit _unit;
-  double? _kg;
-  double? _suggestedKg;
-  String? _suggestionSource;
+  WeightUnit _unit, _enteredUnit = WeightUnit.kg;
+  String? _kgText;
+  double? _kg, _suggestedKg;
+  String? _suggestionSource, _error, _autofilledQtyText, _qtyEstimateNote;
+  String _enteredText = '';
   late bool _userEdited;
-  String? _error;
-  bool _qtyFromWeight;
-  bool _programmatic = false;
+  bool _qtyFromWeight, _programmatic = false;
   late String _lastText;
-  String? _autofilledQtyText;
-  String? _qtyEstimateNote;
-
-  /// 当前录入单位 (文本按它理解)。
+  BusinessPrecisionChoice? _displayPrecision;
+  BusinessPrecisionChoice? quantityPrecision;
+  String? quantityPrecisionSource, quantityPendingReason;
+  WeightUnit? _displayPrecisionUnit;
   WeightUnit get unit => _unit;
 
-  /// 千克 (HALF_UP 4 位); 空/0/非法 = null (没称)。
+  /// Compatibility for estimates; recorded payloads and sums use [kgText].
   double? get kg => _kg;
-
-  /// 当前自动预填（千克）。只供呈现；不得提交为实称或参与学习。
+  String? get kgText => _kgText;
+  String get enteredText => _enteredText;
+  WeightUnit get enteredUnit => _enteredUnit;
+  BusinessPrecisionChoice? get displayPrecision =>
+      _displayPrecisionUnit == _unit ? _displayPrecision : null;
   double? get suggestedKg => _suggestedKg;
   double? get displayKg => _kg ?? _suggestedKg;
+  String? get displayKgText =>
+      _kgText ?? financeExactTrimmed(financeExactDecimal(_suggestedKg));
   bool get isSuggested => _suggestedKg != null;
   String? get suggestionSource => _suggestionSource;
   bool get userEdited => _userEdited;
-
-  /// 同步数量/库存/单重变化。人工改过、清空过或恢复的实称永不覆盖。
-  void setSuggestedKg(double? kg, {String? source}) {
-    if (_userEdited) return;
-    final next = _positiveKg(kg);
-    final nextSource = next == null ? null : source;
-    if (_suggestedKg == next && _suggestionSource == nextSource) return;
-    _suggestedKg = next;
-    _suggestionSource = nextSource;
-    _writeText(next == null ? '' : _unit.editText(next));
-    notifyListeners();
-  }
-
-  /// 用户明确输入了秤上读数（包括与预填恰好相同的数字）。
-  void acceptUserInput() {
-    if (_userEdited) return;
-    _userEdited = true;
-    _suggestedKg = null;
-    _suggestionSource = null;
-    _reparse();
-    notifyListeners();
-  }
-
-  /// 文本非空但看不懂/为负。
-  bool get hasError => _error != null;
-  String? get errorText => _error;
-
-  /// 这行的数量是按称重折算的 (不参与单重学习; 服务端哈希/客户端幂等键都要带上)。
+  bool get hasError => _error != null || quantityPendingReason != null;
+  String? get errorText =>
+      _error ??
+      (quantityPendingReason == null ? null : '数量换算需选择精度，或填写实际数量；原重量已保留');
+  String? get displayPrecisionReason => displayKgText == null
+      ? null
+      : _unit
+            .fromKgText(
+              displayKgText!,
+              precisionScale: displayPrecision?.scale,
+              precisionRounding: displayPrecision?.rounding,
+            )
+            .reason;
+  bool get needsDisplayPrecision => displayPrecisionReason != null;
   bool get qtyFromWeight => _qtyFromWeight;
   set qtyFromWeight(bool value) {
     if (value == _qtyFromWeight) return;
@@ -131,7 +133,6 @@ class WeightEntryController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 数量格黄框 ⓘ 的来源说明 (如「按称重推算 5,373~5,449个」); 数量格 sourceOf 读它。
   String? get qtyEstimateNote => _qtyEstimateNote;
   set qtyEstimateNote(String? value) {
     if (value == _qtyEstimateNote) return;
@@ -139,29 +140,83 @@ class WeightEntryController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 幂等键/指纹片段: `千克|是否按称重改数量` (千克去尾零, 没称为空)。
   String get canonicalKeyPart =>
-      '${weightKeyPart(_kg)}|${_qtyFromWeight ? 1 : 0}';
-
-  /// 最近一次按称重预填进数量格的文本 (数量格仍是这段黄框预填时, 重量再变可跟着重算/清除)。
+      '${weightKeyPart(_kgText)}|${_qtyFromWeight ? 1 : 0}';
   String? get derivedQtyText => _autofilledQtyText;
-
-  /// 记下「数量是按本次重量折算预填的」: 打上 qtyFromWeight 并保存预填文本与 ⓘ 说明。
-  void markQtyDerived(String qtyText, {String? note}) {
-    _autofilledQtyText = qtyText;
+  void markQtyDerived(String value, {String? note}) {
+    if (_autofilledQtyText == value &&
+        _qtyFromWeight &&
+        _qtyEstimateNote == note &&
+        quantityPendingReason == null) {
+      return;
+    }
+    quantityPendingReason = null;
+    _autofilledQtyText = value;
     _qtyFromWeight = true;
     _qtyEstimateNote = note;
     notifyListeners();
   }
 
-  /// 程序写入千克值 (称重计数回填/草稿恢复); 默认视为重量变了 -> 清 qtyFromWeight。
-  void setKg(double? kg, {bool qtyFromWeight = false, bool userEdited = true}) {
-    _userEdited = userEdited || _positiveKg(kg) != null;
+  void markQtyPending(String reason) {
+    if (quantityPendingReason == reason && _qtyFromWeight) return;
+    quantityPendingReason = reason;
+    _qtyFromWeight = true;
+    notifyListeners();
+  }
+
+  void clearQtyPending() {
+    if (quantityPendingReason == null) return;
+    quantityPendingReason = null;
+    notifyListeners();
+  }
+
+  void setSuggestedKg(double? kg, {String? source}) {
+    if (_userEdited) return;
+    final next = kg != null && kg.isFinite && kg > 0 ? kg : null;
+    final nextSource = next == null ? null : source;
+    if (_suggestedKg == next && _suggestionSource == nextSource) return;
+    _suggestedKg = next;
+    _suggestionSource = nextSource;
+    _writeText(next == null ? '' : _edit(next));
+    notifyListeners();
+  }
+
+  void acceptUserInput() {
+    if (_userEdited) return;
+    _userEdited = true;
     _suggestedKg = null;
     _suggestionSource = null;
-    _kg = _positiveKg(kg);
+    _reparse();
+    notifyListeners();
+  }
+
+  void setKg(
+    double? kg, {
+    bool qtyFromWeight = false,
+    bool userEdited = true,
+  }) => setKgText(
+    financeExactDecimal(kg),
+    qtyFromWeight: qtyFromWeight,
+    userEdited: userEdited,
+  );
+  void setKgText(
+    String? kg, {
+    bool qtyFromWeight = false,
+    bool userEdited = true,
+  }) {
+    final value = _positiveText(kg);
+    _userEdited = userEdited || value != null;
+    _suggestedKg = null;
+    _suggestionSource = null;
+    _kgText = value;
+    _kg = value == null ? null : double.tryParse(value);
     _error = null;
-    _writeText(_kg == null ? '' : _unit.editText(_kg!));
+    quantityPendingReason = null;
+    _displayPrecision = null;
+    _displayPrecisionUnit = null;
+    _enteredText = value == null ? '' : '$value kg';
+    _enteredUnit = WeightUnit.kg;
+    _writeText(value == null ? '' : _edit(value));
     _qtyFromWeight = qtyFromWeight;
     if (!qtyFromWeight) {
       _qtyEstimateNote = null;
@@ -170,27 +225,58 @@ class WeightEntryController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 切换录入单位: 千克值不变, 文本改写成新单位 (非法文本原样保留、按新单位重新解析)。
-  void switchUnit(WeightUnit next) {
-    if (next == _unit) return;
-    _unit = next;
-    if (_error != null) {
-      _reparse();
-    } else if (displayKg != null) {
-      _writeText(next.editText(displayKg!));
+  void restoreInputEvidence({
+    String? rawText,
+    WeightUnit? originalUnit,
+    String? displayedText,
+    BusinessPrecisionChoice? displayPrecision,
+  }) {
+    _enteredText = rawText ?? _enteredText;
+    _enteredUnit = originalUnit ?? _enteredUnit;
+    _displayPrecision = displayPrecision;
+    _displayPrecisionUnit = displayPrecision == null ? null : _unit;
+    if (displayedText != null) {
+      _writeText(displayedText);
+      if (_kgText == null && _userEdited && displayedText.trim().isNotEmpty) {
+        _reparse();
+      }
     }
     notifyListeners();
   }
 
-  /// 失焦/回车: 把带后缀或带千分位的输入规范成列单位的纯数字; 0 清空。
+  void setDisplayPrecision(BusinessPrecisionChoice choice) {
+    _displayPrecision = choice;
+    _displayPrecisionUnit = _unit;
+    normalize();
+    notifyListeners();
+  }
+
+  void switchUnit(WeightUnit next) {
+    if (next == _unit) return;
+    _unit = next;
+    _displayPrecision = null;
+    _displayPrecisionUnit = null;
+    if (_error != null) {
+      _reparse();
+    } else if (displayKgText != null) {
+      _writeText(_edit(displayKgText!));
+    }
+    notifyListeners();
+  }
+
   void normalize() {
     if (_error != null) return;
-    final canonical = displayKg == null ? '' : _unit.editText(displayKg!);
+    final canonical = displayKgText == null ? '' : _edit(displayKgText!);
     if (canonical == text.text) return;
     _writeText(canonical);
     notifyListeners();
   }
 
+  String _edit(Object value) => _unit.editText(
+    value,
+    precisionScale: displayPrecision?.scale,
+    precisionRounding: displayPrecision?.rounding,
+  );
   void _writeText(String value) {
     _programmatic = true;
     try {
@@ -205,34 +291,51 @@ class WeightEntryController extends ChangeNotifier {
   }
 
   void _onText() {
-    if (text.text == _lastText) return; // 只是光标/选区变化
+    if (text.text == _lastText) return;
     _lastText = text.text;
     if (_programmatic) return;
     _userEdited = true;
     _suggestedKg = null;
     _suggestionSource = null;
+    _displayPrecision = null;
+    _displayPrecisionUnit = null;
     _reparse();
-    // 用户改了重量: 之前「按称重折算的数量」不再对应这次重量。
     _qtyFromWeight = false;
     _qtyEstimateNote = null;
+    quantityPendingReason = null;
     notifyListeners();
   }
 
   void _reparse() {
     final raw = text.text.trim();
+    _enteredText = raw;
     if (raw.isEmpty) {
+      _kgText = null;
       _kg = null;
       _error = null;
       return;
     }
     final parsed = parseWithSuffix(raw, _unit);
     if (parsed == null) {
+      _kgText = null;
       _kg = null;
       _error = weightInputErrorText;
       return;
     }
-    _error = null;
-    _kg = _positiveKg(parsed.kgLine);
+    _enteredUnit = parsed.unit;
+    _kgText = _positiveText(parsed.kgText);
+    _kg = _kgText == null ? null : double.tryParse(_kgText!);
+    // Derived kg may exceed the 24-place stored field. Keep its complete text
+    // for the server's explicit field-precision choice; never turn it into 0.
+    final value = financeExactDecimal(_kgText), whole = value?.split('.').first;
+    _error = whole != null && whole.replaceFirst('-', '').length > 40
+        ? '千克重量最多40位整数，请核对原值；原输入已保留'
+        : null;
+  }
+
+  static String? _positiveText(String? value) {
+    final text = financeExactTrimmed(value);
+    return text == null || text == '0' || text.startsWith('-') ? null : text;
   }
 
   @override
@@ -241,11 +344,6 @@ class WeightEntryController extends ChangeNotifier {
       ..removeListener(_onText)
       ..dispose();
     super.dispose();
-  }
-
-  static double? _positiveKg(double? kg) {
-    final rounded = roundKgLine(kg);
-    return rounded == null || rounded <= 0 ? null : rounded;
   }
 }
 
@@ -265,6 +363,7 @@ class WeightQtyAutofill<T> {
   const WeightQtyAutofill({
     required this.qtyControllerOf,
     this.unitRateOf,
+    this.unitRateTextOf,
     this.enabledOf,
   });
 
@@ -274,8 +373,44 @@ class WeightQtyAutofill<T> {
   /// 1 个行单位 = 多少基本单位 (unit_rate); 不给 = 1。
   final double? Function(T row)? unitRateOf;
 
+  /// Original decimal rate; required by callers that have recorded rate text.
+  final String? Function(T row)? unitRateTextOf;
+
   /// 行级开关 (如只读行/已过账行关闭)。
   final bool Function(T row)? enabledOf;
+}
+
+/// One live editable column shares a current display choice; the recorded kg
+/// never changes. Rebuilt columns seed only from this document's row controllers.
+class _WeightDisplayBatch {
+  BusinessPrecisionChoice? policy;
+  Future<BusinessPrecisionChoice?>? pending;
+  void seed(WeightEntryController controller) {
+    policy ??= controller.displayPrecision;
+  }
+
+  Future<BusinessPrecisionChoice?> choose(
+    WeightEntryController controller,
+    bool Function() current,
+  ) {
+    if (policy != null) return Future.value(policy);
+    return pending ??= BusinessPrecisionCoordinator.instance
+        .ask(
+          BusinessPrecisionRequirement(
+            key: 'weight.from-kg',
+            groupKey: 'weight.from-kg',
+            label: '本单重量显示换算；原千克记录保持原值',
+            maxScale: 24,
+            reason: controller.displayPrecisionReason ?? 'NON_TERMINATING',
+          ),
+          isCurrent: current,
+        )
+        .then((value) {
+          if (current() && value != null) policy = value;
+          return current() ? value : null;
+        })
+        .whenComplete(() => pending = null);
+  }
 }
 
 /// 采集表格「实称重量(单位)」列。
@@ -297,7 +432,7 @@ EditableGridColumn<T> weightGridColumn<T extends EditableGridRow>({
   Listenable? paramsListenable,
   double? Function(T row)? qtyBaseOf,
   Listenable? Function(T row)? qtyListenableOf,
-  double? Function(T row)? exactKgOf,
+  Object? Function(T row)? exactKgOf,
   double? Function(T row)? expectedKgOf,
   String? Function(T row)? expectedSourceOf,
   String? Function(T row)? baseUnitNameOf,
@@ -309,6 +444,7 @@ EditableGridColumn<T> weightGridColumn<T extends EditableGridRow>({
   ValueChanged<T>? onChanged,
   String? headerInfo = weightColumnHeaderInfo,
 }) {
+  final displayBatch = _WeightDisplayBatch();
   return EditableGridColumn<T>(
     key: key,
     label: '$label(${entryUnit.symbol})',
@@ -329,8 +465,8 @@ EditableGridColumn<T> weightGridColumn<T extends EditableGridRow>({
     // Formula facts use kilograms regardless of the entry/display unit, and
     // follow the same exact-unit precedence as the visible weight cell.
     exactValueOf: (row) =>
-        (_exactKg(row, exactKgOf, paramsOf, qtyBaseOf) ?? controllerOf(row).kg)
-            ?.toString(),
+        financeExactDecimal(_exactKg(row, exactKgOf, paramsOf, qtyBaseOf)) ??
+        controllerOf(row).kgText,
     exactListenableOf: (row) => Listenable.merge([
       controllerOf(row),
       ?qtyListenableOf?.call(row),
@@ -338,9 +474,10 @@ EditableGridColumn<T> weightGridColumn<T extends EditableGridRow>({
     ]),
     required: required,
     headerInfo: headerInfo,
-    chromeWidthOf: (context) => onWeighCount == null
-        ? 0
-        : UtenControlMetrics.minimumHitExtent(context, desktop: 32),
+    chromeWidthOf: (context) =>
+        UtenControlMetrics.minimumHitExtent(context, desktop: 32) *
+        ((onWeighCount == null ? 0 : 1) +
+            (entryUnit == WeightUnit.lb || entryUnit == WeightUnit.oz ? 1 : 0)),
     textOf: (row) => controllerOf(row).text.text,
     listenableOf: (row) => controllerOf(row),
     frozenTextOf: (row) {
@@ -352,6 +489,7 @@ EditableGridColumn<T> weightGridColumn<T extends EditableGridRow>({
     cellBuilder: (context, row) => _WeightCell<T>(
       row: row,
       controller: controllerOf(row),
+      displayBatch: displayBatch,
       entryUnit: entryUnit,
       mode: mode,
       paramsOf: paramsOf,
@@ -371,27 +509,27 @@ EditableGridColumn<T> weightGridColumn<T extends EditableGridRow>({
   );
 }
 
-double? _exactKg<T>(
+String? _exactKg<T>(
   T row,
-  double? Function(T row)? exactKgOf,
+  Object? Function(T row)? exactKgOf,
   WeightParams? Function(T row)? paramsOf,
   double? Function(T row)? qtyBaseOf,
 ) {
-  if (exactKgOf != null) {
-    final v = exactKgOf(row);
-    if (v != null) return roundKgLine(v);
-  }
+  if (exactKgOf != null) return financeExactDecimal(exactKgOf(row));
   final params = paramsOf?.call(row);
   if (params == null || !params.isExact) return null;
   final qty = qtyBaseOf?.call(row);
   if (qty == null || qty <= 0) return null;
-  return roundKgLine(qty * params.massFactorKg!);
+  return financeExactTrimmed(
+    financeExactMultiplyTexts([qty.toString(), params.massFactorKgText]),
+  );
 }
 
-class _WeightCell<T extends EditableGridRow> extends StatefulWidget {
+class _WeightCell<T extends EditableGridRow> extends ConsumerStatefulWidget {
   const _WeightCell({
     required this.row,
     required this.controller,
+    required this.displayBatch,
     required this.entryUnit,
     required this.mode,
     required this.paramsOf,
@@ -411,13 +549,14 @@ class _WeightCell<T extends EditableGridRow> extends StatefulWidget {
 
   final T row;
   final WeightEntryController controller;
+  final _WeightDisplayBatch displayBatch;
   final WeightUnit entryUnit;
   final WeightCaptureMode mode;
   final WeightParams? Function(T row)? paramsOf;
   final Listenable? paramsListenable;
   final double? Function(T row)? qtyBaseOf;
   final Listenable? qtyListenable;
-  final double? Function(T row)? exactKgOf;
+  final Object? Function(T row)? exactKgOf;
   final double? Function(T row)? expectedKgOf;
   final String? Function(T row)? expectedSourceOf;
   final String? baseUnitName;
@@ -428,18 +567,44 @@ class _WeightCell<T extends EditableGridRow> extends StatefulWidget {
   final ValueChanged<T>? onChanged;
 
   @override
-  State<_WeightCell<T>> createState() => _WeightCellState<T>();
+  ConsumerState<_WeightCell<T>> createState() => _WeightCellState<T>();
 }
 
 class _WeightCellState<T extends EditableGridRow>
-    extends State<_WeightCell<T>> {
+    extends ConsumerState<_WeightCell<T>> {
   /// 焦点归格子自己 (不放进行 model: 同一个 FocusNode 不能挂到两个输入框上)。
   final FocusNode _focus = FocusNode(debugLabel: 'weight-cell');
   bool _syncScheduled = false;
+  bool _askForUnitChange = false, _choosingDisplay = false;
+  String? _displayPromptedFor;
+  bool _choosingQty = false, _ownerRetired = false;
+  int _quantityEpoch = 0;
+  late bool Function() _ownerCurrent;
+  UtenAutofillTextController? _watchedQty;
+
+  void _quantityChanged() {
+    _quantityEpoch++;
+    _scheduleSync();
+  }
+
+  void _watchQty() {
+    _watchedQty?.removeListener(_quantityChanged);
+    final autofill = widget.qtyAutofill;
+    _watchedQty =
+        autofill != null && (autofill.enabledOf?.call(widget.row) ?? true)
+        ? autofill.qtyControllerOf(widget.row)
+        : null;
+    _watchedQty?.addListener(_quantityChanged);
+  }
 
   @override
   void initState() {
     super.initState();
+    _ownerCurrent = captureReadOwner(ref);
+    listenReadOwner(ref, () => _ownerRetired = true);
+    widget.controller.text.addListener(_quantityChanged);
+    widget.paramsListenable?.addListener(_quantityChanged);
+    _watchQty();
     _focus.addListener(_onFocus);
     _scheduleSync();
   }
@@ -447,11 +612,25 @@ class _WeightCellState<T extends EditableGridRow>
   @override
   void didUpdateWidget(covariant _WeightCell<T> oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _quantityEpoch++;
+    if (!identical(oldWidget.paramsListenable, widget.paramsListenable)) {
+      oldWidget.paramsListenable?.removeListener(_quantityChanged);
+      widget.paramsListenable?.addListener(_quantityChanged);
+    }
+    if (!identical(oldWidget.controller, widget.controller)) {
+      oldWidget.controller.text.removeListener(_quantityChanged);
+      widget.controller.text.addListener(_quantityChanged);
+    }
+    _watchQty();
+    if (oldWidget.entryUnit != widget.entryUnit) _askForUnitChange = true;
     _scheduleSync();
   }
 
   @override
   void dispose() {
+    widget.controller.text.removeListener(_quantityChanged);
+    widget.paramsListenable?.removeListener(_quantityChanged);
+    _watchedQty?.removeListener(_quantityChanged);
     _focus
       ..removeListener(_onFocus)
       ..dispose();
@@ -460,7 +639,98 @@ class _WeightCellState<T extends EditableGridRow>
 
   /// 失焦: 带后缀/千分位的输入规范成列单位的纯数字。
   void _onFocus() {
-    if (!_focus.hasFocus) widget.controller.normalize();
+    if (!_focus.hasFocus) _normalizeAndChoose();
+  }
+
+  void _normalizeAndChoose() {
+    widget.controller.normalize();
+    if (widget.controller.needsDisplayPrecision) {
+      unawaited(_chooseDisplayPrecision());
+    }
+    if (widget.controller.quantityPendingReason != null) {
+      unawaited(_chooseQuantityPrecision());
+    }
+  }
+
+  String _quantitySource() {
+    final p = widget.paramsOf?.call(widget.row);
+    return '${widget.controller.kgText}|${p?.goodsId}|${p?.supplierId}|'
+        '${p?.logMean}|${p?.lotPrior}|${p?.effectiveDf}|${p?.effectiveGamma}|'
+        '${p?.effectiveTier}|${p?.scaleResKg}|${_quantityRate()}';
+  }
+
+  String? _quantityRate() {
+    final autofill = widget.qtyAutofill;
+    return autofill?.unitRateTextOf != null
+        ? autofill!.unitRateTextOf!(widget.row)
+        : financeExactDecimal(autofill?.unitRateOf?.call(widget.row) ?? 1);
+  }
+
+  Future<void> _chooseQuantityPrecision() async {
+    if (_choosingQty || !widget.enabled || _ownerRetired || !_ownerCurrent()) {
+      return;
+    }
+    final weight = widget.controller, row = widget.row;
+    final reason = weight.quantityPendingReason;
+    if (reason == null) return;
+    final epoch = _quantityEpoch, source = _quantitySource();
+    bool current() =>
+        mounted &&
+        !_ownerRetired &&
+        _ownerCurrent() &&
+        identical(widget.row, row) &&
+        identical(widget.controller, weight) &&
+        widget.enabled &&
+        epoch == _quantityEpoch &&
+        source == _quantitySource() &&
+        !(weight.text.value.composing.isValid &&
+            !weight.text.value.composing.isCollapsed) &&
+        !(_watchedQty?.value.composing.isValid == true &&
+            _watchedQty?.value.composing.isCollapsed == false);
+    _choosingQty = true;
+    try {
+      final choice = await BusinessPrecisionCoordinator.instance.ask(
+        BusinessPrecisionRequirement(
+          key: 'weight.count-quantity',
+          groupKey: 'weight.count-quantity',
+          label: '本次称重数量换算；仍为称重估算来源',
+          maxScale: 24,
+          reason: reason,
+        ),
+        isCurrent: current,
+      );
+      if (choice == null || !current()) return;
+      weight.quantityPrecision = choice;
+      weight.quantityPrecisionSource = source;
+      _maybeAutofillQty();
+      widget.onChanged?.call(row);
+    } finally {
+      _choosingQty = false;
+    }
+  }
+
+  Future<void> _chooseDisplayPrecision({bool force = false}) async {
+    final controller = widget.controller;
+    if (!widget.enabled ||
+        _choosingDisplay ||
+        !controller.needsDisplayPrecision) {
+      return;
+    }
+    final signature = '${controller.displayKgText}|${controller.unit.code}';
+    if (!force && _displayPromptedFor == signature) return;
+    _displayPromptedFor = signature;
+    _choosingDisplay = true;
+    bool current() =>
+        mounted &&
+        identical(controller, widget.controller) &&
+        widget.enabled &&
+        signature == '${controller.displayKgText}|${controller.unit.code}';
+    try {
+      final choice = await widget.displayBatch.choose(controller, current);
+      if (choice != null && current()) controller.setDisplayPrecision(choice);
+    } finally {
+      _choosingDisplay = false;
+    }
   }
 
   /// 构建与参数异步到达时下一帧同步，回调执行时读当前行，避免旧值覆盖新行。
@@ -470,6 +740,7 @@ class _WeightCellState<T extends EditableGridRow>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _syncScheduled = false;
       if (!mounted) return;
+      if (_ownerRetired || !_ownerCurrent()) return;
       widget.controller.switchUnit(widget.entryUnit);
       final exact = _exactKg(
         widget.row,
@@ -482,6 +753,17 @@ class _WeightCellState<T extends EditableGridRow>
         suggestion?.kg,
         source: suggestion?.source,
       );
+      final controller = widget.controller, batch = widget.displayBatch;
+      batch.seed(controller);
+      if (controller.needsDisplayPrecision && batch.policy != null) {
+        controller.setDisplayPrecision(batch.policy!);
+      }
+      final ask = _askForUnitChange;
+      _askForUnitChange = false;
+      if (ask && controller.userEdited && controller.needsDisplayPrecision) {
+        unawaited(_chooseDisplayPrecision());
+      }
+      _maybeAutofillQty();
     });
   }
 
@@ -513,6 +795,7 @@ class _WeightCellState<T extends EditableGridRow>
   }
 
   void _maybeAutofillQty() {
+    if (!widget.enabled || _ownerRetired || !_ownerCurrent()) return;
     final autofill = widget.qtyAutofill;
     if (autofill == null) return;
     final row = widget.row;
@@ -524,7 +807,15 @@ class _WeightCellState<T extends EditableGridRow>
         qty.autofilled &&
         weight.derivedQtyText != null &&
         qty.text == weight.derivedQtyText;
-    if (qtyText.isNotEmpty && !derivedBefore) return;
+    if (qtyText.isNotEmpty && !derivedBefore) {
+      weight.clearQtyPending();
+      return;
+    }
+    if ((!weight.text.value.composing.isCollapsed &&
+            weight.text.value.composing.isValid) ||
+        (!qty.value.composing.isCollapsed && qty.value.composing.isValid)) {
+      return;
+    }
 
     final params = widget.paramsOf?.call(row);
     final kg = weight.kg;
@@ -540,16 +831,22 @@ class _WeightCellState<T extends EditableGridRow>
     }
     final estimate = params.countFromWeight(kg);
     if (estimate == null) return;
-    final base = WeightPredictor.roundQty(
-      estimate.estimatedQty,
-      integer: params.integerQty,
+    final source = _quantitySource();
+    final adoption = resolveWeightQuantityAdoption(
+      netKg: weight.kgText,
+      estimate: estimate,
+      unitRate: _quantityRate(),
+      choice: weight.quantityPrecisionSource == source
+          ? weight.quantityPrecision
+          : null,
     );
-    final rate = autofill.unitRateOf?.call(row) ?? 1;
-    final lineQty = rate > 0 && rate != 1
-        ? WeightPredictor.roundQty(base / rate, integer: false)
-        : base;
-    final text = plainWeighQtyText(lineQty);
-    qty.setAutomaticText(text);
+    final text = adoption.qty;
+    if (text == null) {
+      if (derivedBefore) qty.setAutomaticText('');
+      if (adoption.reason != null) weight.markQtyPending(adoption.reason!);
+      return;
+    }
+    if (qty.text != text) qty.setAutomaticText(text);
     final range = formatWeighQtyRange(
       estimate,
       integer: params.integerQty,
@@ -656,6 +953,31 @@ class _WeightCellState<T extends EditableGridRow>
           );
 
     final suffix = <Widget>[
+      if (c.quantityPendingReason != null)
+        UtenButton(
+          key: const ValueKey('weight-cell-quantity-precision'),
+          type: UtenButtonType.ghost,
+          size: UtenButtonSize.small,
+          semanticLabel: '选择称重数量精度',
+          height: weighExtent,
+          onPressed: widget.enabled ? _chooseQuantityPrecision : null,
+          child: const Icon(Icons.calculate_outlined, size: 16),
+        ),
+      if (c.needsDisplayPrecision)
+        Tooltip(
+          message: '选择本次换算精度',
+          child: UtenButton(
+            key: const ValueKey('weight-cell-precision'),
+            type: UtenButtonType.ghost,
+            size: UtenButtonSize.small,
+            semanticLabel: '选择本次换算精度',
+            height: weighExtent,
+            onPressed: widget.enabled
+                ? () => _chooseDisplayPrecision(force: true)
+                : null,
+            child: const Icon(Icons.calculate_outlined, size: 16),
+          ),
+        ),
       if (widget.onWeighCount != null)
         IconButton(
           key: const ValueKey('weight-cell-weigh'),
@@ -684,7 +1006,7 @@ class _WeightCellState<T extends EditableGridRow>
       enabled: widget.enabled,
       keyboardType: TextInputType.text,
       onChanged: _handleChanged,
-      onSubmitted: (_) => c.normalize(),
+      onSubmitted: (_) => _normalizeAndChoose(),
       decoration: applyAutofillHint(
         UtenInputDecoration(
           InputDecoration(
@@ -764,20 +1086,15 @@ class _WeightCellState<T extends EditableGridRow>
   }
 }
 
-/// 回填进数量输入框的纯数字文本 (无千分位, 最多 4 位小数, 去尾零)。
-String plainWeighQtyText(double qty) {
-  if (qty == qty.roundToDouble()) return qty.toStringAsFixed(0);
-  return qty
-      .toStringAsFixed(4)
-      .replaceFirst(RegExp(r'0+$'), '')
-      .replaceFirst(RegExp(r'\.$'), '');
-}
+/// Complete model value for legacy callers; never round an adopted quantity.
+String plainWeighQtyText(double qty) =>
+    financeExactTrimmed(financeExactDecimal(qty)) ?? '';
 
 /// 精确换算的只读重量 (灰字「=25 kg」)。
 class _ExactWeightText extends StatelessWidget {
   const _ExactWeightText({required this.kg});
 
-  final double kg;
+  final Object kg;
 
   @override
   Widget build(BuildContext context) {

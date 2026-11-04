@@ -34,7 +34,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/uten_tokens.dart';
+import '../../core/theme/uten_tokens.dart';
 import 'uten_count_suffix.dart';
 import 'uten_in_progress_badge.dart';
 import 'uten_notification_badge.dart';

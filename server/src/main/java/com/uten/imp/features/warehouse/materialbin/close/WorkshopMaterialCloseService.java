@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.uten.imp.application.port.WorkshopMaterialNoticePort;
 import com.uten.imp.application.port.WorkshopMaterialNoticePort.Blocker;
 import com.uten.imp.common.util.NativeValueConverters;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
+import com.uten.imp.common.finance.BusinessPrecisionRequiredException;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.stock.valuation.WorkshopMaterialCostService;
@@ -145,11 +147,18 @@ public class WorkshopMaterialCloseService {
         if (periodId == null || actorUserId == null) return Result.SKIPPED;
         TriggerKind kind = triggerKind == null ? TriggerKind.SCHEDULED : triggerKind;
         Result result;
-        try {
-            result = transactions.execute(status -> attemptInTransaction(periodId, kind, actorUserId));
+        Map<String,BusinessPrecisionContext.Choice> policy = queuedPolicy(periodId);
+        try (var ignored = BusinessPrecisionContext.use(policy)) {
+            try {
+                result = transactions.execute(status -> attemptInTransaction(periodId, kind, actorUserId));
+            } catch (RuntimeException error) {
+                recordFailure(periodId, actorUserId, error);
+                return Result.FAILED;
+            }
         } catch (RuntimeException error) {
-            recordFailure(periodId, actorUserId, error);
-            return Result.FAILED;
+            throw error;
+        } catch (Exception error) {
+            throw new IllegalStateException("Material precision context could not be restored",error);
         }
         if (result == Result.CLOSED) {
             Map<String, Object> next = nextWaiting(periodId);
@@ -159,6 +168,22 @@ public class WorkshopMaterialCloseService {
             }
         }
         return result == null ? Result.SKIPPED : result;
+    }
+
+    private Map<String,BusinessPrecisionContext.Choice> queuedPolicy(UUID periodId) {
+        String stored=db.queryForObject("SELECT CASE WHEN close_precision_source_fingerprint=fn_workshop_material_precision_source_fingerprint(id) THEN CAST(close_precision_policy AS text) END FROM workshop_material_periods WHERE id=:id",Map.of("id",periodId),String.class);
+        if(stored==null)return Map.of();
+        return BusinessPrecisionContext.parse(java.util.Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(stored.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+    }
+    private String precisionJson(Object value) {
+        try { return json.writeValueAsString(value); }
+        catch(JsonProcessingException error){throw new IllegalStateException("Material precision metadata could not be persisted",error);}
+    }
+    private Map<String,Object> precisionRequirement(String stored) {
+        if(stored==null)return null;
+        try{return json.readValue(stored,new TypeReference<Map<String,Object>>(){});}
+        catch(JsonProcessingException error){throw new IllegalStateException("Material precision requirement is invalid",error);}
     }
 
     private Result attemptInTransaction(UUID periodId, TriggerKind kind, UUID actor) {
@@ -292,7 +317,7 @@ public class WorkshopMaterialCloseService {
 
         db.update("""
                 UPDATE workshop_material_periods
-                SET status = 'CLOSED', close_state = 'NONE', close_blockers = '[]'::jsonb, close_failures = 0,
+                SET status = 'CLOSED', close_state = 'NONE', close_precision_requirement=NULL, close_blockers = '[]'::jsonb, close_failures = 0,
                     close_attempts = close_attempts + 1, close_attempted_at = now(), close_last_error = NULL,
                     held_until = NULL, row_version = row_version + 1
                 WHERE id = :id
@@ -351,7 +376,7 @@ public class WorkshopMaterialCloseService {
                 FROM workshop_material_period_lines line
                 CROSS JOIN LATERAL (
                     SELECT CASE WHEN line.cost_basis = 'OWN' AND CAST(:theory AS numeric) > 0
-                                THEN round((line.actual_qty - CAST(:theory AS numeric)) / CAST(:theory AS numeric), 6)
+                                THEN fn_business_exact_divide(line.actual_qty-CAST(:theory AS numeric),CAST(:theory AS numeric),'workshop.material.waste-rate','本次车间物料浪费率',24)
                            END AS waste) computed
                 WHERE line.id = :line
                 """, params);
@@ -389,9 +414,9 @@ public class WorkshopMaterialCloseService {
                 SELECT used.report_item_id, used.report_id, used.business_date, used.execution_segment_id,
                        used.cost_scope_segment_id, used.product_goods_id, used.periodic_row_id,
                        used.material_goods_id, used.material_color_id,
-                       round(used.output_qty_base, 6) AS output_qty, round(used.unit_weight, 6) AS unit_weight,
+                       used.output_qty_base AS output_qty, used.unit_weight AS unit_weight,
                        used.weight_source,
-                       round(round(used.output_qty_base, 6) * round(used.unit_weight, 6), 6) AS theory_qty
+                       used.theory_qty AS theory_qty
                 FROM fn_workshop_material_period_theory(:bin, :from, :to) used
                 ORDER BY used.material_goods_id, used.report_item_id, used.periodic_row_id
                 """, new MapSqlParameterSource("bin", period.binWarehouseId()).addValue("from", period.startDate())
@@ -521,7 +546,8 @@ public class WorkshopMaterialCloseService {
 
     /** 回滚后另起事务记失败; 连续失败刚到 3 次时通知设置负责人。记失败本身出错只写日志。 */
     private void recordFailure(UUID periodId, UUID actor, RuntimeException error) {
-        String message = businessMessage(error);
+        var precision=BusinessPrecisionRequiredException.from(error).orElse(null);
+        String message = precision==null?businessMessage(error):"请选择本次结算保留的小数位及是否四舍五入，原数据未改变";
         log.warn("车间内料仓结算未完成, 期间 {}, 错误类型 {}: {}", periodId, error.getClass().getSimpleName(), message);
         String stored = error.getClass().getSimpleName() + "|" + message;
         String truncated = stored.length() > 500 ? stored.substring(0, 500) : stored;
@@ -533,12 +559,12 @@ public class WorkshopMaterialCloseService {
                 }
                 List<Integer> failures = db.queryForList("""
                         UPDATE workshop_material_periods
-                        SET close_state = 'FAILED', close_last_error = :error, close_blockers = '[]'::jsonb,
+                        SET close_state = 'FAILED', close_last_error = :error, close_precision_requirement=CAST(:precision AS jsonb), close_precision_source_fingerprint=fn_workshop_material_precision_source_fingerprint(id), close_blockers = '[]'::jsonb,
                             close_attempts = close_attempts + 1, close_failures = close_failures + 1,
                             close_attempted_at = now(), held_until = NULL, row_version = row_version + 1
                         WHERE id = :id AND status = 'COUNTED'
                         RETURNING close_failures
-                        """, new MapSqlParameterSource("error", truncated).addValue("id", periodId), Integer.class);
+                        """, new MapSqlParameterSource("error", truncated).addValue("precision",precision==null?null:precisionJson(precision.details())).addValue("id", periodId), Integer.class);
                 if (!failures.isEmpty() && failures.getFirst() == FAILURE_BACKOFF) {
                     notices.closeFailing(periodId, message);
                 }
@@ -587,11 +613,24 @@ public class WorkshopMaterialCloseService {
                     if (!"COUNTED".equals(period.status())) {
                         throw new ApiException(ErrorCode.CONFLICT, "这一期还没提交盘点, 盘点提交后系统会自动结算");
                     }
+                    Map<String,Object> requirement=precisionRequirement(db.queryForObject(
+                        "SELECT CAST(close_precision_requirement AS text) FROM workshop_material_periods WHERE id=:id",Map.of("id",periodId),String.class));
+                    Map<String,BusinessPrecisionContext.Choice> policy=new LinkedHashMap<>(queuedPolicy(periodId));
+                    policy.putAll(BusinessPrecisionContext.choices());
+                    if(requirement!=null){
+                        String calculation=requirement.get("calculationKey").toString();
+                        int max=((Number)requirement.get("maxScale")).intValue();
+                        BusinessPrecisionContext.Choice choice=policy.get(calculation);
+                        if(choice==null || Boolean.TRUE.equals(requirement.get("selectionRejected"))&&!BusinessPrecisionContext.choices().containsKey(calculation))throw new BusinessPrecisionRequiredException(calculation,requirement.get("label").toString(),max,requirement.get("reason").toString(),Boolean.TRUE.equals(requirement.get("selectionRejected")));
+                        if(choice.scale()>max)throw new ApiException(ErrorCode.VALIDATION_FAILED,"本次精度超过该数量字段的支持范围，请重新选择");
+                    }
                     db.update("""
                             UPDATE workshop_material_periods
-                            SET close_state = 'QUEUED', held_until = NULL, row_version = row_version + 1
+                            SET close_state = 'QUEUED', close_precision_policy=CAST(:policy AS jsonb),close_precision_requirement=NULL,
+                                close_precision_source_fingerprint=fn_workshop_material_precision_source_fingerprint(id),
+                                held_until = NULL, row_version = row_version + 1
                             WHERE id = :id
-                            """, Map.of("id", periodId));
+                            """, new MapSqlParameterSource("id", periodId).addValue("policy",precisionJson(Map.of("version",1,"choices",policy))));
                     trigger.request(periodId, currentUser.requireId(), TriggerKind.MANUAL);
                     return new Outcome<>(periodId, statusOf(periodId));
                 });
@@ -660,7 +699,7 @@ public class WorkshopMaterialCloseService {
                     db.update("""
                             UPDATE workshop_material_periods
                             SET status = 'COUNTED', close_state = 'HELD', held_until = now() + interval '24 hours',
-                                close_blockers = '[]'::jsonb, close_failures = 0, close_last_error = NULL,
+                                close_blockers = '[]'::jsonb, close_failures = 0, close_last_error = NULL, close_precision_policy=NULL, close_precision_requirement=NULL, close_precision_source_fingerprint=NULL,
                                 row_version = row_version + 1
                             WHERE id = :id
                             """, Map.of("id", periodId));
@@ -684,6 +723,7 @@ public class WorkshopMaterialCloseService {
                 SELECT period.id, period.bin_warehouse_id, period.workshop_department_id, period.period_no,
                        period.start_date, period.end_date, period.status, period.close_state, period.close_attempts,
                        period.close_failures, period.close_attempted_at, period.close_last_error,
+                       CAST(period.close_precision_requirement AS text) AS precision_requirement,
                        CAST(period.close_blockers AS text) AS close_blockers, period.held_until, period.row_version
                 FROM workshop_material_periods period WHERE period.id = :id
                 """, Map.of("id", periodId));
@@ -712,7 +752,7 @@ public class WorkshopMaterialCloseService {
                 NativeValueConverters.toLocalDate(row.get("start_date")), NativeValueConverters.toLocalDate(row.get("end_date")), status, (String) row.get("close_state"),
                 ((Number) row.get("close_attempts")).intValue(), ((Number) row.get("close_failures")).intValue(),
                 offset(row.get("close_attempted_at")), errorMessage, blockersOf((String) row.get("close_blockers")),
-                offset(row.get("held_until")), last, ((Number) row.get("row_version")).longValue(), actions);
+                offset(row.get("held_until")), last, ((Number) row.get("row_version")).longValue(), actions,precisionRequirement((String)row.get("precision_requirement")));
     }
 
     /** 最近一个已结算的期间, 且下一期还开着或正在盘点。 */

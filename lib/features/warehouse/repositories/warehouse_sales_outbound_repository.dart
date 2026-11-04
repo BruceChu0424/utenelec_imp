@@ -40,7 +40,7 @@ abstract interface class WarehouseSalesOutboundGateway {
     String? reason,
     Map<String, String>? stockPlaces,
     Map<String, String?>? lineWarehouses,
-    Map<String, double>? lineWeights,
+    Map<String, Object?>? lineWeights,
     List<String>? itemIds,
   });
 }
@@ -122,7 +122,7 @@ class WarehouseSalesOutboundRepository
     String? reason,
     Map<String, String>? stockPlaces,
     Map<String, String?>? lineWarehouses,
-    Map<String, double>? lineWeights,
+    Map<String, Object?>? lineWeights,
     List<String>? itemIds,
   }) async {
     final lineIds = <String>{

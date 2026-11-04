@@ -4607,7 +4607,7 @@ class FullChainEndToEndTest {
     }
 
     /** Seed a non-super-admin explicitly granted the finance page and current approve action. */
-    private UUID createApprover(World w) {
+    UUID createApprover(World w) {
         UUID emp = UUID.randomUUID(), usr = UUID.randomUUID();
         jdbc.update("""
                 insert into employees(id, code, full_name, id_type, department_id, hire_date,
@@ -4638,8 +4638,12 @@ class FullChainEndToEndTest {
     }
 
     void approvePendingFinance(String orderType, UUID orderId) {
+        approvePendingFinance(orderType,orderId,null);
+    }
+
+    void approvePendingFinance(String orderType,UUID orderId,BigDecimal exchangeRate) {
         financeApproval.approveBatch(List.of(
-                claimFinanceDecision(pendingFinanceDecision(orderType,orderId))), null);
+                claimFinanceDecision(pendingFinanceDecision(orderType,orderId))), null,exchangeRate);
         KitStage stage = "SUBCONTRACT".equals(orderType) ? subcontractKitStagesByOrder.remove(orderId) : null;
         if (stage != null) releaseSubcontractKitStage(stage);
     }
@@ -4666,7 +4670,7 @@ class FullChainEndToEndTest {
                 jdbc,reviewClaims,salesManagerReviews,orderId,reviewedRevision);
     }
 
-    private UUID createIqcWarehouseConfirmer(World w, String tag) {
+    UUID createIqcWarehouseConfirmer(World w, String tag) {
         return createUserWithPerms(
                 w, tag,
                 "warehouse_iqc_stock_in:view",
@@ -8578,7 +8582,7 @@ class FullChainEndToEndTest {
     }
 
     /** Build a single-line sales-receipt save request referencing one AR. */
-    private com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest receiptRequest(
+    com.uten.imp.features.finance.receipt.dto.FinanceReceiptSaveRequest receiptRequest(
             World w, UUID arId, UUID accountId, UUID expenseStyleId,
             String cash, String actualAccountAmount, String bankFee, String otherFee,
             BigDecimal rate, LocalDate billDate) {
@@ -9893,19 +9897,26 @@ class FullChainEndToEndTest {
     }
 
     @Test
-    void procurementActualCredit_preservesActualDocumentAcrossNonFiniteFundingParts(){
+    void procurementActualCredit_preservesActualDocumentAcrossNonFiniteFundingParts()throws Exception{
         IqcActualCreditFixture fixture=returnedIqcCreditFixture("actual-credit-nonfinite",true);
         World w=fixture.world();
         UUID caseId=fixture.caseId();
         long version=jdbc.queryForObject("select row_version from procurement_iqc_rejection_cases where id=?",Long.class,caseId);
         var allocation=new com.uten.imp.features.finance.payables.ProcurementIqcRejectionContracts.ActualCreditAllocation(
                 caseId,version,new BigDecimal("3"),BigDecimal.ONE);
-        var request=reviewedActualCredit(caseId,fixture.sourceApId(),List.of(allocation),"1");
+        com.uten.imp.features.finance.payables.ProcurementIqcRejectionContracts.ConfirmCreditRequest request;
+        try(var choices=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of(
+                "procurement.credit.actual-share",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"DOWN"),
+                "money.book-share",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"HALF_UP")))){
+            request=reviewedActualCredit(caseId,fixture.sourceApId(),List.of(allocation),"1");
+        }
         rejectionService.confirmCredit(caseId,request);
         assertSupplierApAmounts(w,new BigDecimal("999"));
         assertEquals(1,count("select count(*) from procurement_iqc_credit_documents where id=? and amount_original=1 and amount_local=1",request.commandId()));
-        assertEquals(2,count("select count(*) from procurement_iqc_credit_slices where credit_document_id=? and amount_original is null",request.commandId()),
-                "Actual one-unit credit spans exact 1/3 and 2/3 funding ratios; neither is a rounded currency fact");
+        assertEquals(0,count("select count(*) from procurement_iqc_credit_slices where credit_document_id=? and amount_original is null",request.commandId()),
+                "The current operator chose the repeating shares; the final source retains every remaining unit");
+        assertEquals(0,bigDecimalFor("select sum(amount_original) from procurement_iqc_credit_slices where credit_document_id=?",request.commandId()).compareTo(BigDecimal.ONE));
+        assertEquals(0,new BigDecimal("0.6667").compareTo(bigDecimalFor("select amount_original from procurement_iqc_credit_slices where credit_document_id=? and allocation_sequence=2",request.commandId())));
         assertEquals(0,bigDecimalFor("select sum(base_qty) from procurement_iqc_credit_slices where credit_document_id=?",request.commandId()).compareTo(new BigDecimal("3")));
         long afterVersion=jdbc.queryForObject("select row_version from procurement_iqc_rejection_cases where id=?",Long.class,caseId);
         rejectionService.confirmCredit(caseId,request);
@@ -9991,7 +10002,7 @@ class FullChainEndToEndTest {
                 version,command,"ACTUAL-"+command,BusinessTime.today(),"按供应商实际贷项原始单据明确分项",null,new BigDecimal(actual),ap,allocations);
         var preview=rejectionService.previewCredit(caseId,draft);
         return new com.uten.imp.features.finance.payables.ProcurementIqcRejectionContracts.ConfirmCreditRequest(
-                version,command,draft.creditReference(),draft.creditDate(),draft.reason(),null,draft.actualAmountOriginal(),ap,allocations,preview.bookAllocationHash());
+                version,command,draft.creditReference(),draft.creditDate(),draft.reason(),null,draft.actualAmountOriginal(),ap,allocations,preview.bookAllocationHash(),null,preview.precisionPolicy());
     }
 
     private void runPartialIqcReturn(boolean receiveReplacement) {
@@ -12165,7 +12176,7 @@ class FullChainEndToEndTest {
         UUID receipt=subcontractReceiptService.create(request).getId();subcontractReceiptService.approve(receipt);return receipt;
     }
 
-    private UUID awaitIqcRejection(String type,UUID receiptId) {
+    UUID awaitIqcRejection(String type,UUID receiptId) {
         long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
         do {
             businessOutboxProcessor.processNext();
@@ -12345,7 +12356,7 @@ class FullChainEndToEndTest {
         return usr;
     }
 
-    private void grantDataScope(UUID userId, String scope, UUID ownerEmployeeId) {
+    void grantDataScope(UUID userId, String scope, UUID ownerEmployeeId) {
         jdbc.update("""
                 insert into user_data_scopes(user_id, scope, owner_employee_id)
                 values (?, ?, ?)
@@ -12425,12 +12436,16 @@ class FullChainEndToEndTest {
     }
 
     private void drainCostsWithFreshRunnerWithoutSession(World world){
+        drainCostsWithFreshRunnerWithoutSession(world,null);
+    }
+
+    private void drainCostsWithFreshRunnerWithoutSession(World world,java.time.Duration timeout){
         var values=new com.uten.imp.features.stock.valuation.InventoryValuationService(inventoryValueJdbc,inventoryCostLock);
         var production=new com.uten.imp.features.stock.valuation.InventoryProductionCostService(inventoryValueJdbc,inventoryCostLock,values);
         var fresh=new com.uten.imp.features.stock.valuation.InventoryValueWorkService(values,production,inventoryCostLock,transactionManager);
         fresh.configureSourceRecalculations(inventoryValueJdbc,inventoryCostSupport,productionInventoryValues,subcontractInventoryValues);
         var operator=SecurityContextHolder.getContext();SecurityContextHolder.clearContext();
-        try{InventoryValueWorkTestSupport.drain(fresh,jdbc,costGoods(world));}finally{SecurityContextHolder.setContext(operator);}
+        try{InventoryValueWorkTestSupport.drain(fresh,jdbc,costGoods(world),timeout);}finally{SecurityContextHolder.setContext(operator);}
     }
 
     @Test
@@ -12623,7 +12638,7 @@ class FullChainEndToEndTest {
         }
     }
 
-    private ShipmentSaveRequest shipmentRequest(World w, UUID orderItemId, UUID goodsId, String qty) {
+    ShipmentSaveRequest shipmentRequest(World w, UUID orderItemId, UUID goodsId, String qty) {
         ShipmentSaveRequest req = new ShipmentSaveRequest();
         req.setBillDate(LocalDate.of(2026, 2, 1));
         req.setClientId(w.clientId());
@@ -12668,7 +12683,7 @@ class FullChainEndToEndTest {
                 BigDecimal.class, orderItemId);
     }
 
-    private UUID orderIdOfItem(UUID orderItemId) {
+    UUID orderIdOfItem(UUID orderItemId) {
         return jdbc.queryForObject(
                 "select order_id from sales_order_items where id = ?", UUID.class, orderItemId);
     }

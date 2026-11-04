@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // 工资批次审核页。
 //
 // 2026-09-09 表格化改版：批次 Chip 列表与摘要卡保留；_SlipRow ListView 员工明细
@@ -478,19 +479,19 @@ class _BatchDetailState extends State<_BatchDetail> {
               UtenSummaryField(
                 label: '应发合计',
                 value: financeLocalMoneyWithUnitSuffix(
-                  batch.grossIncome.toStringAsFixed(2),
+                  batch.grossIncome.toExactString(minimumFractionDigits: 2),
                 ),
               ),
               UtenSummaryField(
                 label: '扣除合计',
                 value: financeLocalMoneyWithUnitSuffix(
-                  batch.totalDeduction.toStringAsFixed(2),
+                  batch.totalDeduction.toExactString(minimumFractionDigits: 2),
                 ),
               ),
               UtenSummaryField(
                 label: '实发合计',
                 value: financeLocalMoneyWithUnitSuffix(
-                  batch.netIncome.toStringAsFixed(2),
+                  batch.netIncome.toExactString(minimumFractionDigits: 2),
                 ),
                 emphasis: true,
                 danger: true,
@@ -607,9 +608,10 @@ final List<MasterColumnDef<PayrollSlip>> _slipColumns = [
     type: 'money',
     sortable: true,
     aiSensitive: true,
-    value: (s) =>
-        financeLocalMoneyWithUnitSuffix(s.grossIncome.toStringAsFixed(2)),
-    exactValueOf: (s) => s.grossIncome.toStringAsFixed(2),
+    value: (s) => financeLocalMoneyWithUnitSuffix(
+      s.grossIncome.toExactString(minimumFractionDigits: 2),
+    ),
+    exactValueOf: (s) => s.grossIncome.toExactString(minimumFractionDigits: 2),
   ),
   MasterColumnDef(
     key: 'totalDeduction',
@@ -618,9 +620,11 @@ final List<MasterColumnDef<PayrollSlip>> _slipColumns = [
     type: 'money',
     sortable: true,
     aiSensitive: true,
-    value: (s) =>
-        financeLocalMoneyWithUnitSuffix(s.totalDeduction.toStringAsFixed(2)),
-    exactValueOf: (s) => s.totalDeduction.toStringAsFixed(2),
+    value: (s) => financeLocalMoneyWithUnitSuffix(
+      s.totalDeduction.toExactString(minimumFractionDigits: 2),
+    ),
+    exactValueOf: (s) =>
+        s.totalDeduction.toExactString(minimumFractionDigits: 2),
   ),
   MasterColumnDef(
     key: 'netIncome',
@@ -629,8 +633,9 @@ final List<MasterColumnDef<PayrollSlip>> _slipColumns = [
     type: 'money',
     sortable: true,
     aiSensitive: true,
-    value: (s) =>
-        financeLocalMoneyWithUnitSuffix(s.netIncome.toStringAsFixed(2)),
-    exactValueOf: (s) => s.netIncome.toStringAsFixed(2),
+    value: (s) => financeLocalMoneyWithUnitSuffix(
+      s.netIncome.toExactString(minimumFractionDigits: 2),
+    ),
+    exactValueOf: (s) => s.netIncome.toExactString(minimumFractionDigits: 2),
   ),
 ];

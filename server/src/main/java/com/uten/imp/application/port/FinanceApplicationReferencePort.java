@@ -11,8 +11,15 @@ public interface FinanceApplicationReferencePort {
     void requireApprovedPrepaymentMatch(Reference reference);
     Condition prepaymentMatchingCondition(String applicationAlias,AuthUser actor);
     CandidatePage prepaymentCandidates(UUID applicationId,UUID supplierId,BigDecimal amount,LocalDate paymentDate,AuthUser actor,int page,int size,String keyword);
-    record Reference(String type,UUID documentId,BigDecimal amount,LocalDate paymentDate,UUID supplierId,AuthUser actor){}
+    record Reference(String type,UUID documentId,BigDecimal amount,LocalDate paymentDate,UUID supplierId,AuthUser actor,
+            NativeApplicationOriginPort.AmountBasis amountBasis,UUID currencyId,List<NativeApplicationOriginPort.Obligation> obligations,UUID applicationId){
+        public Reference {amountBasis=amountBasis==null?NativeApplicationOriginPort.AmountBasis.LOCAL:amountBasis;obligations=obligations==null?List.of():List.copyOf(obligations);}
+        public Reference(String type,UUID documentId,BigDecimal amount,LocalDate paymentDate,UUID supplierId,AuthUser actor){this(type,documentId,amount,paymentDate,supplierId,actor,NativeApplicationOriginPort.AmountBasis.LOCAL,null,List.of(),null);}
+        public Reference(String type,UUID documentId,BigDecimal amount,LocalDate paymentDate,UUID supplierId,AuthUser actor,NativeApplicationOriginPort.AmountBasis amountBasis,UUID currencyId,List<NativeApplicationOriginPort.Obligation> obligations){this(type,documentId,amount,paymentDate,supplierId,actor,amountBasis,currencyId,obligations,null);}
+    }
     record Condition(String sql,Map<String,Object> parameters){}
-    record Candidate(UUID id,String billNo,LocalDate billDate,BigDecimal amount){}
+    record Candidate(UUID id,String billNo,LocalDate billDate,BigDecimal amount,NativeApplicationOriginPort.AmountBasis amountBasis,String currencyCode){
+        public Candidate(UUID id,String billNo,LocalDate billDate,BigDecimal amount){this(id,billNo,billDate,amount,NativeApplicationOriginPort.AmountBasis.LOCAL,null);}
+    }
     record CandidatePage(List<Candidate> items,long total){}
 }

@@ -70,11 +70,11 @@ class GlReportExportSnapshotTest {
                 java.sql.Connection.TRANSACTION_REPEATABLE_READ);
         var expected = new ReportTableResponse(List.of(), List.of(), Map.of(), 1, 1, 0, 0);
         doReturn(expected).when(service).balanceSheet(date);
-        doReturn(expected).when(service).profitAnnual(2026);
+        doReturn(expected).when(service).profitAnnual(2026, 10);
         doReturn(expected).when(service).profitMonthly(2026, 10);
-        doReturn(expected).when(service).manufacturingExpense(2026);
-        doReturn(expected).when(service).adminExpense(2026);
-        doReturn(expected).when(service).salesExpense(2026);
+        doReturn(expected).when(service).manufacturingExpense(2026, 10, com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+        doReturn(expected).when(service).adminExpense(2026, 10, com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+        doReturn(expected).when(service).salesExpense(2026, 10, com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
         doReturn(expected).when(service).operatingPl(2026, 10);
         try (var sink = ExportPageSink.open(page -> { })) {
             for (String report : List.of("gl/balance-sheet", "gl/profit-annual", "gl/profit-monthly",
@@ -85,11 +85,11 @@ class GlReportExportSnapshotTest {
             }
         }
         verify(service).balanceSheet(date);
-        verify(service).profitAnnual(2026);
+        verify(service).profitAnnual(2026, 10);
         verify(service).profitMonthly(2026, 10);
-        verify(service).manufacturingExpense(2026);
-        verify(service).adminExpense(2026);
-        verify(service).salesExpense(2026);
+        verify(service).manufacturingExpense(2026, 10, com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+        verify(service).adminExpense(2026, 10, com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
+        verify(service).salesExpense(2026, 10, com.uten.imp.features.finance.report.FinanceReportColumnOptions.NONE);
         verify(service).operatingPl(2026, 10);
     }
 }

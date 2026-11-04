@@ -57,6 +57,8 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class FinanceExpenseService implements EmployeeClaimPostingPort {
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.FinanceApplicationControlPort applications;
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
     @org.springframework.beans.factory.annotation.Autowired
     public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
@@ -250,6 +252,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     @PreAuthorize("hasAuthority('finance_expense:approve')")
     public FinanceExpenseDetail approve(UUID id) {
         tx.bind();
+        var applicationPermit=applications==null?null:applications.nativeExecutionPermit("EXPENSE",id);
         PaymentStyleHierarchyLock.lock(em);
         FinanceExpense e = lockActiveForProjection(id);
 
@@ -257,8 +260,8 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
                 "finance_expense:approve");
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_expenses",e);
         com.uten.imp.features.finance.FinanceLegacyRecordGuard.requireMutable(e.getLegacyId());
-        UUID approver = currentUser.requireEmployeeId();
-        if (e.getMakerId() != null && e.getMakerId().equals(approver)) {
+        UUID approver = applicationPermit==null?currentUser.requireEmployeeId():applicationPermit.approvedBy();
+        if (applicationPermit==null && e.getMakerId() != null && e.getMakerId().equals(approver)) {
             throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同(职责分离)");
         }
         approveInternal(e, approver);
@@ -299,7 +302,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         if (accountRows.isEmpty()) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "付款账户不存在或已禁用");
         }
-        requirePostableStyle(posting.expenseStyleId());
+        requirePostableStyle(posting.expenseStyleId(),posting.postingPurpose());
 
         UUID actor = currentUser.requireEmployeeId();
         FinanceExpense expense = new FinanceExpense();
@@ -322,6 +325,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         item.setBillDate(expense.getBillDate());
         item.setLineNo(1);
         item.setExpenseStyleId(posting.expenseStyleId());
+        item.setPostingPurpose(posting.postingPurpose().name());
         item.setDepartmentId(posting.departmentId());
         item.setQty(BigDecimal.ONE);
         item.setPrice(posting.amount());
@@ -341,6 +345,8 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         if (e.getAccountId() == null) {
             throw new ApiException(ErrorCode.BUSINESS, "费用单需指定付款账户");
         }
+        Number invalidStyles=(Number)em.createNativeQuery("SELECT count(*) FROM finance_expense_items WHERE expense_id=:id AND NOT is_deleted AND NOT fn_finance_expense_posting_style_allowed(expense_style_id,posting_purpose,true)").setParameter("id",e.getId()).getSingleResult();
+        if(invalidStyles.longValue()!=0)throw new ApiException(ErrorCode.CONFLICT,"支出科目或制造成本对应已变化，请核对原支出类型和科目后再审核");
         e.setApproverId(approverId); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         BigDecimal amountLocal = nz(e.getAmountLocal());
         if (amountLocal.signum() <= 0) {
@@ -375,6 +381,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     @PreAuthorize("hasAuthority('finance_expense:reverse')")
     public FinanceExpenseDetail reverse(UUID id) {
         tx.bind();
+        if(applications!=null)applications.requireNativeSettlementAction("EXPENSE",id,"REVERSE");
         FinanceExpense e = lockActiveForProjection(id);
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_expenses",e);
         requireUnapprovalHeader(e);
@@ -394,6 +401,7 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     @PreAuthorize("hasAuthority('finance_expense:gl_confirm')")
     public FinanceExpenseDetail glConfirm(UUID id) {
         tx.bind();
+        if(applications!=null)applications.requireNativeSettlementAction("EXPENSE",id,"CONFIRM");
         FinanceExpense e = lockActiveForProjection(id);
 
         access.requireScopedOperationWritable(e.getMakerId(), "只能操作本人负责或已交接的一般费用单",
@@ -413,6 +421,13 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         return detail(id);
     }
 
+    /** Explicit application confirmation withdrawal; it never alters existing money or GL. */
+    @Transactional @PreAuthorize("hasAuthority('finance_expense:gl_confirm')")
+    public void unconfirmFromFinancialApplication(UUID id){tx.bind();if(applications==null)throw new ApiException(ErrorCode.CONFLICT,"原申请流程尚未准备好");
+        applications.requireNativeSettlementAction("EXPENSE",id,"CONFIRM");FinanceExpense e=lockActiveForProjection(id);access.requireScopedOperationWritable(e.getMakerId(),"一般费用单不在明确财务确认范围内","finance_expense:gl_confirm");
+        if(e.getStatus()==null||e.getStatus()!=STATUS_APPROVED||e.getGlStatus()==null||e.getGlStatus()!=2)throw new ApiException(ErrorCode.CONFLICT,"原付款尚未财务确认或已变化");glPosting.requireConfirmableExpenseVoucher(e.getId(),e.getGlVoucherId(),e.getBillNo(),e.getBillDate());e.setGlStatus((short)1);expenseRepo.save(e);
+    }
+
     private void requireUnapprovalHeader(FinanceExpense e) {
         access.requireScopedOperationWritable(e.getMakerId(), "只能操作本人负责或已交接的一般费用单",
                 "finance_expense:reverse");
@@ -422,8 +437,11 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
         }
         Number linked=(Number)em.createNativeQuery("SELECT count(*) FROM expense_claims WHERE finance_expense_id=:id")
                 .setParameter("id",e.getId()).getSingleResult();
-        if(linked.longValue()>0) throw new ApiException(ErrorCode.CONFLICT,
-                "员工报销付款已绑定报销单，不能通过一般费用红冲破坏付款与报销状态的一致性");
+        if(linked.longValue()>0){
+            if(applications==null)throw new ApiException(ErrorCode.CONFLICT,"员工报销付款须从原申请对称反审");
+            @SuppressWarnings("unchecked") List<UUID> claims=em.createNativeQuery("SELECT id FROM expense_claims WHERE finance_expense_id=:id").setParameter("id",e.getId()).getResultList();
+            for(UUID claim:claims)applications.requireExpenseReversalContext(claim,e.getId());
+        }
         if (e.getGlStatus() != null && e.getGlStatus() == 2) {
             throw new ApiException(ErrorCode.CONFLICT, "该费用单已财务确认(gl_status=2)，须先撤销确认再红冲");
         }
@@ -499,13 +517,15 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
             if (l.getExpenseStyleId() == null) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "费用明细必须指定费用类别(expense_style_id)");
             }
-            requirePostableStyle(l.getExpenseStyleId());
+            var purpose=com.uten.imp.common.finance.AccountingExpensePurpose.parse(l.getPostingPurpose());
+            requirePostableStyle(l.getExpenseStyleId(),purpose);
             FinanceExpenseItem it = new FinanceExpenseItem();
             it.setExpenseId(e.getId());
             it.setBillNo(e.getBillNo());
             it.setBillDate(e.getBillDate());
             it.setLineNo(l.getLineNo() != null ? l.getLineNo() : auto);
             it.setExpenseStyleId(l.getExpenseStyleId());
+            it.setPostingPurpose(purpose.name());
             it.setDepartmentId(l.getDepartmentId());
             it.setCounterpartAccountId(l.getCounterpartAccountId());
             it.setCounterpartName(l.getCounterpartName());
@@ -530,26 +550,8 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
      * <p>页面过滤只是交互约束；创建、更新和报销入账入口共用此服务端校验，
      * 防止直接 API 请求把非可过账节点写入单据。
      */
-    private void requirePostableStyle(UUID styleId) {
-        Number matches = (Number) em.createNativeQuery("""
-                        SELECT COUNT(*)
-                        FROM payment_styles ps
-                        WHERE ps.id = :id
-                          AND COALESCE(ps.is_deleted, false) = false
-                          AND ps.status = '使用'
-                          AND ps.category = 'EXPENSE'
-                          AND NOT EXISTS (
-                              SELECT 1
-                              FROM payment_styles child
-                              WHERE child.parent_id = ps.id
-                                AND COALESCE(child.is_deleted, false) = false
-                          )
-                        """)
-                .setParameter("id", styleId)
-                .getSingleResult();
-        if (matches.longValue() != 1L) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "费用类别不存在、已禁用、大类不匹配或不是末级类别");
-        }
+    private void requirePostableStyle(UUID styleId,com.uten.imp.common.finance.AccountingExpensePurpose purpose) {
+        com.uten.imp.features.finance.FinanceAccountingExpenseStyles.require(em,styleId,purpose);
     }
 
     private void applyTotals(FinanceExpense e, List<FinanceExpenseItemDto> items) {
@@ -570,10 +572,12 @@ public class FinanceExpenseService implements EmployeeClaimPostingPort {
     }
 
     private FinanceExpenseItemDto toItemDto(FinanceExpenseItem it) {
-        return new FinanceExpenseItemDto(it.getId(), it.getLineNo(), it.getExpenseStyleId(),
+        FinanceExpenseItemDto result=new FinanceExpenseItemDto(it.getId(), it.getLineNo(), it.getExpenseStyleId(),
                 it.getDepartmentId(), it.getCounterpartAccountId(), it.getCounterpartName(),
                 it.getQty(), it.getPrice(), it.getAmountOriginal(), it.getAmountLocal(),
                 it.getSummary(), it.getRemark(), null);
+        result.setPostingPurpose(it.getPostingPurpose());
+        return result;
     }
 
     private FinanceExpenseListItem toList(FinanceExpense e) {

@@ -39,7 +39,7 @@ class _Stock {
     for (final item in items) {
       final own = item.orderItemId == 'item-1' ? 40 : 80;
       final batch = own < left ? own : left;
-      final qty = item.qty ?? batch;
+      final qty = item.qty == null ? batch : num.parse(item.qty.toString());
       if (qty > batch + 0.0001) {
         throw ApiException(
           'CONFLICT',
@@ -197,8 +197,8 @@ void main() {
       await _tapSubmitAndConfirm(tester);
       final (items, key) = gateway.submits.single;
       expect(items.map((item) => (item.orderItemId, item.qty)), [
-        ('item-1', 40),
-        ('item-2', 60),
+        ('item-1', '40'),
+        ('item-2', '60'),
       ]);
       expect(key, startsWith('subcontract-draw-'));
       expect(results, [true]);
@@ -368,4 +368,99 @@ void main() {
     expect(find.text('提交领料(2)'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'native quantity text survives display and an unknown same-key retry',
+    (tester) async {
+      const native = '0.123456789012345678901234';
+      final gateway = FakeSubcontractDrawGateway();
+      gateway.onPreview = (items) async => SubcontractDrawPreview.fromJson({
+        'tasks': [
+          {...previewTaskJson('item-1'), 'qtyExact': native},
+        ],
+        'lines': [
+          {...previewLineJson('item-1', 'plan-a'), 'qtyExact': native},
+        ],
+        'documentCount': 1,
+      });
+      var attempts = 0;
+      gateway.onSubmit = (items, key) async {
+        expect(items.single.toJson()['qty'], native);
+        if (attempts++ == 0) throw NetworkException();
+        return const SubcontractDrawSubmitResult(
+          issueIds: ['issue-native'],
+          issueBillNos: ['WF-native'],
+          documentCount: 1,
+          replayed: true,
+        );
+      };
+      await _pump(tester, gateway);
+      expect(find.text('$native kg'), findsOneWidget);
+      await _tapSubmitAndConfirm(tester);
+      await tester.tap(find.byKey(_submitKey));
+      await tester.pumpAndSettle();
+      expect(gateway.submits, hasLength(2));
+      expect(gateway.submits.first.$2, gateway.submits.last.$2);
+      expect(
+        gateway.submits.first.$1.single.toJson(),
+        gateway.submits.last.$1.single.toJson(),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'legacy binary preview alone cannot authorize a new native write',
+    (tester) async {
+      final gateway = FakeSubcontractDrawGateway();
+      final task = previewTaskJson('item-1')..remove('qtyExact');
+      gateway.onPreview = (items) async => SubcontractDrawPreview.fromJson({
+        'tasks': [task],
+        'lines': [previewLineJson('item-1', 'plan-a')],
+        'documentCount': 1,
+      });
+      await _pump(tester, gateway);
+      expect(_submit(tester).onPressed, isNull);
+      expect(gateway.submits, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final notWritten in [false, null]) {
+    testWidgets(
+      'precision 422 notWritten=$notWritten retains the original command and key',
+      (tester) async {
+        final (gateway, _) = _gateway();
+        var attempts = 0;
+        gateway.onSubmit = (items, key) async {
+          if (attempts++ == 0) {
+            throw ApiException(
+              'PRECISION_CHOICE_REQUIRED',
+              '原提交结果待核',
+              httpStatus: 422,
+              details: {'notWritten': notWritten},
+            );
+          }
+          return const SubcontractDrawSubmitResult(
+            issueIds: ['issue'],
+            issueBillNos: ['WF'],
+            documentCount: 1,
+            replayed: true,
+          );
+        };
+        await _pump(tester, gateway);
+        await _tapSubmitAndConfirm(tester);
+        expect(find.text('重试领料'), findsOneWidget);
+        await tester.tap(find.byKey(_submitKey));
+        await tester.pumpAndSettle();
+        expect(gateway.submits, hasLength(2));
+        expect(gateway.submits.first.$2, gateway.submits.last.$2);
+        expect(
+          gateway.submits.first.$1.map((i) => i.toJson()),
+          gateway.submits.last.$1.map((i) => i.toJson()),
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
 }

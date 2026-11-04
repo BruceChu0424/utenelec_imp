@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 // 车间内料仓用量报表与结算页 (ADR-131 §5.10；路由 /reports/workshop-material)。
 //
@@ -1920,8 +1921,8 @@ class WasteTrendPainter extends CustomPainter {
     for (final v in [_low, 0.0, _high])
       (
         value: v,
-        text: '${v.toStringAsFixed(0)}%',
-        size: _measure('${v.toStringAsFixed(0)}%'),
+        text: '${v.toExactString()}%',
+        size: _measure('${v.toExactString()}%'),
       ),
   ];
   late final _dates = [
@@ -2130,25 +2131,26 @@ class WasteTrendPainter extends CustomPainter {
 
 String _qty(double? v) {
   if (v == null) return '';
-  if (v == v.roundToDouble()) return v.toStringAsFixed(0);
+  if (v == v.roundToDouble()) return v.toExactString();
   return v
-      .toStringAsFixed(4)
+      .toExactString(minimumFractionDigits: 4)
       .replaceFirst(RegExp(r'0+$'), '')
       .replaceFirst(RegExp(r'\.$'), '');
 }
 
 String _grams(double? v) {
   if (v == null) return '';
-  final fixed = v.toStringAsFixed(3);
+  final fixed = v.toExactString(minimumFractionDigits: 3);
   return fixed
       .replaceFirst(RegExp(r'0+$'), '')
       .replaceFirst(RegExp(r'\.$'), '');
 }
 
 String _money(double? v, {int digits = 2}) =>
-    v == null ? '' : v.toStringAsFixed(digits);
+    v == null ? '' : v.toExactString(minimumFractionDigits: digits);
 
-String _rate(double? v) => v == null ? '' : '${(v * 100).toStringAsFixed(1)}%';
+String _rate(double? v) =>
+    v == null ? '' : '${(v * 100).toExactString(minimumFractionDigits: 1)}%';
 
 bool _rateOutOfRange(double? v) => v != null && (v * 100 < -30 || v * 100 > 50);
 

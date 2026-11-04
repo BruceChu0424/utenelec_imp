@@ -62,7 +62,8 @@ class ProcurementIqcCreditCase {
 
 class ProcurementIqcCreditSource {
   const ProcurementIqcCreditSource({
-    required this.sourceApLedgerId,
+    this.sourceApLedgerId,
+    this.sourceCandidateId,
     this.sourceBillNo,
     this.amountOriginal,
     this.amountLocal,
@@ -70,7 +71,10 @@ class ProcurementIqcCreditSource {
     this.remainingAmountOriginal,
     this.cases = const [],
   });
-  final String sourceApLedgerId;
+  final String? sourceApLedgerId, sourceCandidateId;
+  String get selectionKey => sourceCandidateId == null
+      ? (sourceApLedgerId ?? '')
+      : 'PENDING-RECEIPT:$sourceCandidateId';
   final String? sourceBillNo,
       amountOriginal,
       amountLocal,
@@ -79,7 +83,8 @@ class ProcurementIqcCreditSource {
   final List<ProcurementIqcCreditCase> cases;
   factory ProcurementIqcCreditSource.fromJson(Map<String, dynamic> json) =>
       ProcurementIqcCreditSource(
-        sourceApLedgerId: _text(json['sourceApLedgerId']) ?? '',
+        sourceApLedgerId: _text(json['sourceApLedgerId']),
+        sourceCandidateId: _text(json['sourceCandidateId']),
         sourceBillNo: _text(json['sourceBillNo']),
         amountOriginal: _text(json['amountOriginal']),
         amountLocal: _text(json['amountLocal']),
@@ -173,8 +178,10 @@ class ProcurementIqcCreditPreview {
     this.sourceAfterOriginal,
     this.sourceAfterLocal,
     this.caseAllocations = const [],
+    this.precisionPolicy,
   });
   final String bookAllocationHash;
+  final Map<String, dynamic>? precisionPolicy;
   final String? amountOriginal,
       amountLocal,
       offsetOriginal,
@@ -189,6 +196,9 @@ class ProcurementIqcCreditPreview {
   factory ProcurementIqcCreditPreview.fromJson(Map<String, dynamic> json) =>
       ProcurementIqcCreditPreview(
         bookAllocationHash: _text(json['bookAllocationHash']) ?? '',
+        precisionPolicy: json['precisionPolicy'] is Map
+            ? Map<String, dynamic>.from(json['precisionPolicy'] as Map)
+            : null,
         amountOriginal: _text(json['amountOriginal']),
         amountLocal: _text(json['amountLocal']),
         offsetOriginal: _text(json['offsetOriginal']),

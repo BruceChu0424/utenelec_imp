@@ -36,6 +36,20 @@ public class FinanceAssetCategoryService {
     private final FinanceAssetAuthorization authorization;
     private final ObjectMapper objectMapper;
 
+    @Transactional(readOnly=true)
+    @PreAuthorize("hasAuthority('finance_asset:view')")
+    public List<AssetCategoryContracts.StyleChoice> expenseStyleChoices() {
+        authorization.require(FinanceAssetAuthorization.VIEW);
+        @SuppressWarnings("unchecked") List<Object[]> rows=em.createNativeQuery("""
+            SELECT s.id,COALESCE(chart.code,s.code),COALESCE(chart.name,s.name),s.category,s.status
+            FROM payment_styles s LEFT JOIN finance_chart_code_styles mapped ON mapped.style_id=s.id
+            LEFT JOIN finance_chart_codes chart ON chart.code=mapped.code
+            WHERE fn_finance_cost_expense_style_allowed(s.id) ORDER BY COALESCE(chart.code,s.code),s.id
+            """).getResultList();
+        return rows.stream().map(row->new AssetCategoryContracts.StyleChoice(NativeValueConverters.uuid(row[0]),
+                NativeValueConverters.text(row[1]),NativeValueConverters.text(row[2]),NativeValueConverters.text(row[3]),NativeValueConverters.text(row[4]),List.of())).toList();
+    }
+
     @Transactional(readOnly = true)
     @PreAuthorize("hasAuthority('finance_asset:view')")
     public List<AssetCategoryContracts.Category> list(String objectType) {
@@ -186,7 +200,7 @@ public class FinanceAssetCategoryService {
         if (category.accumulatedStyleId() != null) {
             requirePostableStyle(category.accumulatedStyleId(), "累计折旧科目", "ACCOUNT", "账户");
         }
-        requirePostableStyle(category.expenseStyleId(), "费用科目", "EXPENSE", "费用");
+        FinanceAssetExpenseStyles.requireActive(em,category.expenseStyleId());
         requirePostableStyle(category.clearingStyleId(), "清理科目", "ACCOUNT", "账户");
         em.createNativeQuery("""
                 UPDATE finance_asset_categories

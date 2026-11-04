@@ -5,6 +5,7 @@ class ApiError {
     required this.message,
     this.fieldErrors,
     this.hasCode = true,
+    this.details,
   });
 
   final String code;
@@ -14,6 +15,7 @@ class ApiError {
   /// 响应体里是否真的带了错误码。为假表示 [code] 是本端补的 'UNKNOWN'
   /// (例如框架默认错误页的 JSON，不是后端统一错误格式)。
   final bool hasCode;
+  final Map<String, dynamic>? details;
 
   factory ApiError.fromJson(Map<String, dynamic> json) => ApiError(
     code: json['code'] as String? ?? 'UNKNOWN',
@@ -22,6 +24,9 @@ class ApiError {
         ?.map((e) => ApiFieldError.fromJson(e as Map<String, dynamic>))
         .toList(),
     hasCode: json['code'] is String,
+    details: json['details'] is Map
+        ? Map<String, dynamic>.from(json['details'] as Map)
+        : null,
   );
 }
 

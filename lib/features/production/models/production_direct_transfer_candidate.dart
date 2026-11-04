@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // 报工页「转下一道工序」的候选工单(V584/V585/V595)。
 //
 // 能不能送、还差多少只由服务端的一份判定给出(V736/ADR-127)：这里只收可送的上层工单，
@@ -128,9 +129,9 @@ class ProductionDirectTransferCandidate {
 }
 
 String _number(double value) => value == value.roundToDouble()
-    ? value.toStringAsFixed(0)
+    ? value.toExactString()
     : value
-          .toStringAsFixed(4)
+          .toExactString(minimumFractionDigits: 4)
           .replaceFirst(RegExp(r'0+$'), '')
           .replaceFirst(RegExp(r'\.$'), '');
 

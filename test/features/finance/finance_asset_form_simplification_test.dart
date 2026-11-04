@@ -76,7 +76,7 @@ void main() {
       final repository = _Repository();
       const opening = {
         'asOf': '2026-06-30',
-        'accumulatedAmount': '123456.1234',
+        'accumulatedAmount': '123456.12345678901234567890123456789',
         'remainingMonths': 18,
       };
       await _pump(
@@ -102,7 +102,7 @@ void main() {
             )
             .controller!
             .text,
-        '123456.1234',
+        '123456.12345678901234567890123456789',
       );
       await tester.tap(find.byKey(const Key('finance-asset-form-save')));
       await tester.pumpAndSettle();

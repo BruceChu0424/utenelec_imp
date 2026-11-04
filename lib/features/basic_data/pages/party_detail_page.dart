@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // 客户/供应商详情整页（V579，2026-09-14；2026-09-17 布局改版）。
 //
 // 改版对齐员工详情/我的页的家族范式（用户 2026-09-17 口径：原五张全宽大卡片
@@ -701,9 +702,24 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
         color: scoreColor,
         tip: '首条扣分/加分记录按 100 分起算，累计夹在 0-200',
       ),
-      (label: '信用额度', value: _fmtMoney(d.credit), color: null, tip: null),
-      (label: '期初应收', value: _fmtMoney(d.initTotal), color: null, tip: null),
-      (label: '铺底额', value: _fmtMoney(d.creditFloor), color: null, tip: null),
+      (
+        label: '信用额度',
+        value: _fmtMoney(d.creditExactText ?? d.credit),
+        color: null,
+        tip: null,
+      ),
+      (
+        label: '期初应收',
+        value: _fmtMoney(d.initTotalExactText ?? d.initTotal),
+        color: null,
+        tip: null,
+      ),
+      (
+        label: '铺底额',
+        value: _fmtMoney(d.creditFloorExactText ?? d.creditFloor),
+        color: null,
+        tip: null,
+      ),
     ];
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -910,14 +926,14 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     final stats = <({String label, String value, Color? color, String? tip})>[
       (
         label: '加权损耗率',
-        value: formatSubcontractPct(s.lossPct),
+        value: formatSubcontractPct(s.lossPctValue),
         color: lossColor,
         tip: '累计损耗 / 累计订货，接受损耗结案的行按改量前的原订货量算',
       ),
       (
         label: '累计损耗 / 订货',
         value:
-            '${formatSubcontractQty(s.lossQty)} / ${formatSubcontractQty(s.orderedQty)}',
+            '${formatSubcontractQty(s.lossQtyValue)} / ${formatSubcontractQty(s.orderedQtyValue)}',
         color: null,
         tip: null,
       ),
@@ -929,7 +945,8 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
       ),
       (
         label: '接受损耗次数 / 最高一次',
-        value: '${s.acceptedLossCount} / ${formatSubcontractPct(s.maxLossPct)}',
+        value:
+            '${s.acceptedLossCount} / ${formatSubcontractPct(s.maxLossPctValue)}',
         color: null,
         tip: null,
       ),
@@ -972,9 +989,9 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
               padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
               child: Text(
                 '${g.goodsName ?? ''} ${g.goodsCode ?? ''}：'
-                '结清 ${g.settledLineCount} 行，订 ${formatSubcontractQty(g.orderedQty)}，'
-                '损耗 ${formatSubcontractQty(g.lossQty)}(${formatSubcontractPct(g.lossPct)})，'
-                '最高一次 ${formatSubcontractPct(g.maxLossPct)}',
+                '结清 ${g.settledLineCount} 行，订 ${formatSubcontractQty(g.orderedQtyValue)}，'
+                '损耗 ${formatSubcontractQty(g.lossQtyValue)}(${formatSubcontractPct(g.lossPctValue)})，'
+                '最高一次 ${formatSubcontractPct(g.maxLossPctValue)}',
                 style: theme.textTheme.bodyMedium,
               ),
             ),
@@ -993,8 +1010,8 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
               padding: const EdgeInsets.only(bottom: UtenSpacing.s4),
               child: Text(
                 '${ChinaDateTime.formatIsoInstant(c.closedAt, fallback: '—')} · '
-                '${c.orderBillNo} · ${c.goodsLabel}：订 ${formatSubcontractQty(c.orderedQty, c.unitName)}，'
-                '损耗 ${formatSubcontractQty(c.lossQty ?? 0, c.unitName)}(${formatSubcontractPct(c.lossPct)})',
+                '${c.orderBillNo} · ${c.goodsLabel}：订 ${formatSubcontractQty(c.orderedQtyValue, c.unitName)}，'
+                '损耗 ${formatSubcontractQty(c.lossQtyValue ?? 0, c.unitName)}(${formatSubcontractPct(c.lossPctValue)})',
                 style: theme.textTheme.bodyMedium,
               ),
             ),
@@ -1036,9 +1053,10 @@ class _PartyDetailPageState extends ConsumerState<PartyDetailPage>
     'bank': d.bank ?? '',
     'bankAccount': d.bankAccount ?? '',
     'taxId': d.taxId ?? '',
-    'credit': d.credit?.toString() ?? '',
-    'initTotal': d.initTotal?.toString() ?? '',
-    'creditFloor': d.creditFloor?.toString() ?? '',
+    'credit': d.creditExactText ?? exactNumberText(d.credit) ?? '',
+    'initTotal': d.initTotalExactText ?? exactNumberText(d.initTotal) ?? '',
+    'creditFloor':
+        d.creditFloorExactText ?? exactNumberText(d.creditFloor) ?? '',
     'tday': d.tday?.toString() ?? '',
     'defaultSettlementMethodId': d.defaultSettlementMethodId ?? '',
     'defaultShipmentPolicy': d.defaultShipmentPolicy ?? '',
@@ -2257,10 +2275,12 @@ String _shortDateTime(String? iso) =>
     ChinaDateTime.formatIsoInstant(iso, fallback: iso ?? '—');
 
 /// 金额/税率显示：整数不带 .0，小数保留两位。
-String _fmtMoney(double? v) {
-  if (v == null) return '—';
-  if (v == v.truncateToDouble()) return v.truncate().toString();
-  return v.toStringAsFixed(2);
+String _fmtMoney(Object? value) {
+  final text = exactNumberDisplay(value);
+  if (text == null) return '—';
+  return text.contains('.')
+      ? exactNumberDisplay(text, minimumFractionDigits: 2) ?? '—'
+      : text;
 }
 
 /// 默认货运策略显示标签：词表复用销售侧 [salesShipmentPolicyLabel]；

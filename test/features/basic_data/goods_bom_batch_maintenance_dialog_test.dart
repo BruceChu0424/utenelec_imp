@@ -403,7 +403,7 @@ void main() {
       await _pick(tester);
       await _submit(tester);
       expect(repository.previews.single.targets, ['P1', 'P2']);
-      expect(repository.previews.single.items.single['qty'], 1);
+      expect(repository.previews.single.items.single['qty'], '1');
       expect(repository.commits, isEmpty);
       expect(find.textContaining('跳过 1'), findsWidgets);
       expect(find.textContaining('共用总成'), findsOneWidget);
@@ -430,7 +430,7 @@ void main() {
       expect(find.text('预览影响范围'), findsOneWidget);
       await _submit(tester);
       expect(repository.previews, hasLength(2));
-      expect(repository.previews.last.items.single['qty'], 2.5);
+      expect(repository.previews.last.items.single['qty'], '2.5');
       expect(repository.commits, isEmpty);
     },
   );
@@ -601,11 +601,11 @@ void main() {
       expect(find.text('保存前请确认'), findsOneWidget);
       expect(
         repository.previews.single.items.single,
-        containsPair('qty', .0125),
+        isNot(contains('qty')),
       );
       expect(
         repository.previews.single.items.single,
-        containsPair('unitWeightGrams', 12.5),
+        containsPair('unitWeightGrams', '12.5'),
       );
       await tester.tap(find.byKey(const Key('periodic-bom-confirm')));
       await tester.pumpAndSettle();

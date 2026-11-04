@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // 上游单据明细引入面板（销售编辑页"从上游引入"用）。
 //
 // 结构（2026-08-16 收敛）：面板状态机与外壳在共享组件
@@ -314,7 +315,7 @@ List<MasterColumnDef<SalesDocListItem>> _docColumns(
     sortable: upstream != SalesDocType.order,
     value: (d) =>
         (upstream == SalesDocType.order ? d.totalOriginal : d.totalLocal)
-            ?.toStringAsFixed(2),
+            ?.toExactString(minimumFractionDigits: 2),
   ),
 ];
 
@@ -328,7 +329,8 @@ List<EditableGridColumn<UtenDocLinkItemRow<SalesDocItem>>> _middleItemColumns(
     label: upstream == SalesDocType.order ? '订货数' : '出货数',
     width: 90,
     numeric: true,
-    cellBuilder: (context, row) => Text((row.item.qty ?? 0).toStringAsFixed(1)),
+    cellBuilder: (context, row) =>
+        Text((row.item.qty ?? 0).toExactString(minimumFractionDigits: 1)),
   ),
   EditableGridColumn<UtenDocLinkItemRow<SalesDocItem>>(
     key: 'shipped',
@@ -339,7 +341,7 @@ List<EditableGridColumn<UtenDocLinkItemRow<SalesDocItem>>> _middleItemColumns(
       (upstream == SalesDocType.order
               ? (row.item.shippedQty ?? 0)
               : (row.item.returnedQty ?? 0))
-          .toStringAsFixed(1),
+          .toExactString(minimumFractionDigits: 1),
     ),
   ),
 ];

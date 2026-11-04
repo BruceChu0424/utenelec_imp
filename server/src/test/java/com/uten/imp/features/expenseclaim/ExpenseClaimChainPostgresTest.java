@@ -57,6 +57,43 @@ class ExpenseClaimChainPostgresTest {
     }
     @AfterEach void logout(){SecurityContextHolder.clearContext();}
 
+    @Test void currentPrecisionClaimInvoiceSnapshotPaymentAndLedgerKeepEveryFiniteDigit() throws Exception {
+        Actor applicant=actor("exact-owner"),reviewer=actor("exact-reviewer"),executive=actor("exact-executive"),payer=actor("exact-payer");
+        var amount=new BigDecimal("100.123456789012345678901234");
+        login(applicant,"expense:apply");
+        var draft=claims.create(new ExpenseClaimCreateRequest("精确原始费用","原票据值",List.of(
+            new ExpenseClaimItemInput("TRAVEL",amount,BusinessTime.today(),"实际发生的完整原值")),null));
+        UUID evidence=attachment(draft.id());
+        var withInvoice=claims.addInvoiceVersioned(draft.id(),new ExpenseClaimInvoiceInput(
+            "DIGITAL",null,"26310000000000129876",BusinessTime.today(),"精确测试单位",null,"测试公司",
+            amount.subtract(new BigDecimal("0.000000000000000000000001")),new BigDecimal("0.000000000000000000000001"),amount,evidence,null,draft.version(),null));
+        assertThat(withInvoice.totalAmount()).isEqualByComparingTo(amount);
+        assertThat(claims.detail(draft.id()).invoices().getFirst().totalAmount()).isEqualByComparingTo(amount);
+        var submitted=claims.submit(draft.id(),withInvoice.version());
+        var snapshot=new com.fasterxml.jackson.databind.ObjectMapper().readTree(submitted.submissionSnapshot());
+        assertThat(snapshot.path("items").get(0).path("amount").asText()).isEqualTo(amount.toPlainString());
+        var initial=advanceTo(submitted,ExpenseApprovalPolicy.FINANCE_INITIAL);
+        login(reviewer,"expense:approve:finance_initial","attachment:view","attachment:download");
+        var checked=claims.verifyInvoice(draft.id(),jdbc.queryForObject("SELECT id FROM expense_claim_invoices WHERE claim_id=?",UUID.class,draft.id()),
+            new ExpenseClaimInvoiceVerifyRequest(initial.version(),"VERIFIED_MANUAL","原票据完整小数已逐项核对"));
+        var approved=approveFully(claims.approve(draft.id(),checked.version()),executive);
+        assertThat(approved.status()).isEqualTo("APPROVED");
+        assertThat(jdbc.queryForList("SELECT approval_stage FROM expense_claim_events WHERE claim_id=? AND event_type IN('STAGE_APPROVED','APPROVED') ORDER BY created_at,id",String.class,draft.id()))
+            .containsExactly("DEPARTMENT","FINANCE_INITIAL","FINANCE_REVIEW","EXECUTIVE");
+        assertThat(jdbc.queryForObject("SELECT count(DISTINCT actor_employee_id) FROM expense_claim_events WHERE claim_id=? AND event_type IN('STAGE_APPROVED','APPROVED')",Integer.class,draft.id())).isEqualTo(4);
+        login(payer,"expense:pay");attachment(draft.id(),"EXPENSE_PAYMENT_PROOF");UUID bank=account(),style=expenseStyle();
+        var payment=new ExpenseClaimPaymentRequest(bank,style,BusinessTime.today(),approved.version());
+        var paid=claims.payVersioned(draft.id(),payment);
+        assertThat(jdbc.queryForObject("SELECT total_amount FROM expense_claims WHERE id=?",BigDecimal.class,draft.id())).isEqualByComparingTo(amount);
+        assertThat(jdbc.queryForObject("SELECT amount_local FROM finance_expenses WHERE id=?",BigDecimal.class,paid.financeExpenseId())).isEqualByComparingTo(amount);
+        assertThat(jdbc.queryForObject("SELECT balance_current FROM accounts WHERE id=?",BigDecimal.class,bank)).isEqualByComparingTo(new BigDecimal("1000").subtract(amount));
+        assertThat(jdbc.queryForObject("SELECT max(amount) FROM gl_entries WHERE source_doc_id=? AND NOT is_deleted",BigDecimal.class,paid.financeExpenseId())).isEqualByComparingTo(amount);
+        assertThat(jdbc.queryForObject("SELECT sum(direction*amount) FROM gl_entries WHERE source_doc_id=? AND NOT is_deleted",BigDecimal.class,paid.financeExpenseId())).isEqualByComparingTo("0");
+        assertThat(claims.payVersioned(draft.id(),payment).financeExpenseId()).isEqualTo(paid.financeExpenseId());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM finance_expenses WHERE remark=?",Integer.class,"员工报销 "+draft.id())).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT balance_current FROM accounts WHERE id=?",BigDecimal.class,bank)).isEqualByComparingTo(new BigDecimal("1000").subtract(amount));
+    }
+
     @Test void softDeletedDraftLeavesTheListAndBadgeTogether() {
         Actor applicant=actor("deleted-count-owner");login(applicant,"expense:apply");
         var keep=claims.create(request("保留草稿",null));
@@ -514,7 +551,7 @@ class ExpenseClaimChainPostgresTest {
             VALUES(?,?,'报销链测试账户','BANK',?,1000,0,0,1000,'使用',?)
             """,id,"EXP-"+id,currency,accountStyle);return id;
     }
-    private UUID expenseStyle(){UUID id=UUID.randomUUID();jdbc.update("INSERT INTO payment_styles(id,code,name,category,status) VALUES(?,?,'报销测试费用','EXPENSE','使用')",id,"EXP-"+id);return id;}
+    private UUID expenseStyle(){UUID id=UUID.randomUUID();jdbc.update("INSERT INTO payment_styles(id,code,name,category,status) VALUES(?,?,?,'EXPENSE','使用')",id,"EXP-"+id,"报销测试费用-"+id);return id;}
     private Actor actor(String label) {
         UUID employee=UUID.randomUUID(),user=UUID.randomUUID();String login="expense-"+label+"-"+user;
         UUID department=jdbc.queryForObject("SELECT id FROM departments WHERE code='DEPT_FIN'",UUID.class);

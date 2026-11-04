@@ -1,6 +1,7 @@
 package com.uten.imp.features.subcontract.receipt.dto;
 
 import com.uten.imp.common.finance.ServerDerivedAmounts;
+import com.uten.imp.common.validation.DocumentQuantity;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.Setter;
@@ -25,6 +26,7 @@ public class ReceiptItemLine extends com.uten.imp.common.platformcolumns.Platfor
     private BigDecimal unitRate;
 
     @NotNull
+    @DocumentQuantity
     private BigDecimal qty;
 
     @jakarta.validation.constraints.Pattern(regexp = "NORMAL|RETURN_REPLACEMENT")

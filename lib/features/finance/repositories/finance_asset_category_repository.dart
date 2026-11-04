@@ -3,6 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/network/api_client.dart';
 import '../models/finance_asset_category_models.dart';
 import '../models/finance_asset_models.dart';
+import '../../basic_data/models/payment_style_node.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
+
+final financeAssetExpenseStylesProvider = FutureProvider.autoDispose<List<PaymentStyleNode>>((ref) async {
+  ref.watch(exportContextEpochProvider);
+  final api = ref.watch(apiClientProvider);
+  final rows = await api.getList('/finance/asset-categories/expense-style-choices');
+  return rows.map(PaymentStyleNode.fromJson).toList(growable: false);
+});
 
 abstract interface class FinanceAssetCategoryRepository {
   Future<List<FinanceAssetCategory>> list(FinanceAssetLedger objectType);

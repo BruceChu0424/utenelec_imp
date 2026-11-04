@@ -10,7 +10,8 @@ import '../../../components/inputs/uten_date_field.dart';
 import '../../../components/layout/uten_form_grid.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
-import '../../../core/utils/rmb_amount.dart';
+import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/financial_amount_validation.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../models/expense_item.dart';
 
@@ -63,7 +64,7 @@ class _ExpenseItemDialogState extends State<ExpenseItemDialog> {
     _category = initial?.category ?? ExpenseCategory.transport;
     _date = initial?.date ?? ChinaDateTime.today();
     _amountController = TextEditingController(
-      text: initial == null ? '' : initial.amount.toStringAsFixed(2),
+      text: initial == null ? '' : financeExactMoneyDisplay(initial.amountText),
     );
     _descController = TextEditingController(text: initial?.description ?? '');
     _baseline = _snapshot;
@@ -207,13 +208,7 @@ class _ExpenseItemDialogState extends State<ExpenseItemDialog> {
                         info: '按这项费用的实际票据填写人民币金额，同一笔费用不要拆成重复明细。',
                       ),
                       validator: (v) {
-                        final amount = parseExpenseAmountCents(v ?? '');
-                        if (amount == null) {
-                          return AppLocalizations.of(
-                            context,
-                          ).expenseFlowAmountInvalid;
-                        }
-                        return null;
+                        return validateFinanceAmount(v);
                       },
                     ),
                     UtenDateField(
@@ -265,8 +260,8 @@ class _ExpenseItemDialogState extends State<ExpenseItemDialog> {
                       widget.initial?.id ??
                       DateTime.now().microsecondsSinceEpoch.toString(),
                   category: _category,
-                  amount:
-                      parseExpenseAmountCents(_amountController.text)! / 100,
+                  amount: double.parse(_amountController.text.trim()),
+                  amountExact: financeExactDecimal(_amountController.text),
                   date: _date,
                   description: _descController.text.trim().isEmpty
                       ? null

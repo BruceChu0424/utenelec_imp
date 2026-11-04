@@ -271,6 +271,9 @@ public class ReviewNoticeAudience {
             case "EXPENSE_CLAIM_SUBMITTED" -> permissions.stream().anyMatch(Set.of("expense:approve:department","expense:approve:finance_initial","expense:approve:finance_review","expense:approve:executive")::contains);
             case "EXPENSE_CLAIM_PENDING_PAYMENT" -> permissions.contains("expense:pay");
             case "EXPENSE_CLAIM_REJECTED" -> permissions.contains("expense:apply");
+            case "FINANCE_APPLICATION_REVIEW_REQUIRED" -> permissions.containsAll(Set.of("finance_application:view","finance_application:review"));
+            case "FINANCE_APPLICATION_PAYMENT_REQUIRED" -> permissions.containsAll(Set.of("finance_application:view","finance_application:execute"));
+            case "FINANCE_APPLICATION_RETURNED" -> any(permissions,"finance_application:apply","expense:apply","payroll:generate");
             case "PAYROLL_BATCH_SUBMITTED" -> permissions.contains("payroll:review");
             case "PAYROLL_BATCH_PENDING_PUBLISH" -> permissions.contains("payroll:publish");
             case "WEBSITE_INQUIRY_NEW" -> permissions.containsAll(Set.of("webinquiry:view","webinquiry:claim"));

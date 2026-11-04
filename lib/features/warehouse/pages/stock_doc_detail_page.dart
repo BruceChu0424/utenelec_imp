@@ -1,4 +1,6 @@
 import '../widgets/stock_storage_transfer_notice.dart';
+import '../../../shared/formatters/numeric_input_evidence.dart';
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../../../shared/documents/document_unapproval.dart';
 // 仓库单据详情页：主表头卡 + 只读明细子表 + 状态门控操作（审核/红冲/编辑/删除）。
@@ -463,12 +465,12 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
         // 本次提交的逐行重量随幂等键一起定格: 回执不明重试时原样重发。
         _materialReturnLines ??= [
           for (final item in detail.items)
-            if (_returnWeights[item.id]?.kg case final kg?)
+            if (_returnWeights[item.id]?.kgText case final kg?)
               {'itemId': item.id, 'weightKg': kg},
         ];
         _materialReturnKey ??= businessIdempotencyKey(
           'material-return-confirm',
-          '${widget.id}|$warehouseId|${_materialReturnLines!.map((line) => '${line['itemId']}=${weightKeyPart(line['weightKg'] as double?)}').join(',')}',
+          '${widget.id}|$warehouseId|${_materialReturnLines!.map((line) => '${line['itemId']}=${weightKeyPart(line['weightKg'])}').join(',')}',
         );
         _busy = true;
       });
@@ -696,7 +698,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
         'itemId': item.id,
         'qty': qty,
         // 本次实称 (千克 4 位, ADR-135 §3.6): 只落出库流水, 不写回领料明细。
-        'weightKg': ?weight?.kg,
+        'weightKg': ?weight?.kgText,
         if (weight?.qtyFromWeight == true) 'qtyFromWeight': true,
       });
       lineCount++;
@@ -938,7 +940,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
               .issuedQtyText;
           // 服务端出库哈希含重量: 改了重量就是另一次请求, 键必须跟着变。
           final weight =
-              '${weightKeyPart(line['weightKg'] as double?)}|'
+              '${weightKeyPart(line['weightKg'])}|'
               '${line['qtyFromWeight'] == true ? 1 : 0}';
           return '$itemId|issued=${current == null ? 'unknown' : financeExactTrimmed(current)}|delta=${line['qty']}|w=$weight';
         })
@@ -1242,7 +1244,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
   }
 
   static String _quantityInputText(double value) => value
-      .toStringAsFixed(4)
+      .toExactString(minimumFractionDigits: 4)
       .replaceFirst(RegExp(r'0+$'), '')
       .replaceFirst(RegExp(r'\.$'), '');
 
@@ -1594,7 +1596,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
     MasterColumnDef<StockDocItem> weightDisplay(
       String key,
       String label,
-      double? Function(StockDocItem item) kgOf, {
+      Object? Function(StockDocItem item) kgOf, {
       bool Function(StockDocItem item)? estimatedOf,
     }) => MasterColumnDef(
       key: key,
@@ -1605,8 +1607,14 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
         kgOf(it),
         estimated: estimatedOf?.call(it) ?? false,
       ),
-      cellBuilder: (context, it) =>
-          WeightText(kg: kgOf(it), estimated: estimatedOf?.call(it) ?? false),
+      cellBuilder: (context, it) => WeightText(
+        kg: kgOf(it),
+        estimated: estimatedOf?.call(it) ?? false,
+        inputEvidence: numericInputEvidenceTooltip(
+          it.weightInputEvidence,
+          key == 'countWeight' ? 'COUNT_WEIGHT_KG' : 'WEIGHT_KG',
+        ),
+      ),
     );
 
     return MasterDataTableView<StockDocItem>(
@@ -1699,8 +1707,8 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
                 formatQtyWithUnit(it.surplusQty, unitOf(it), maxDecimals: 1),
           ),
           // 盘点重量 (ADR-135 §3.4): 账面重量 = 保存时的库存重量快照, 实盘重量选填。
-          weightDisplay('bookWeight', '账面重量', (it) => it.bookWeight),
-          weightDisplay('countWeight', '实盘重量', (it) => it.countWeight),
+          weightDisplay('bookWeight', '账面重量', (it) => it.bookWeightText),
+          weightDisplay('countWeight', '实盘重量', (it) => it.countWeightText),
         ] else if (widget.docType == StockDocType.finishedIn) ...[
           MasterColumnDef(
             key: 'reportedQty',
@@ -1721,7 +1729,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
             value: (it) =>
                 formatQtyWithUnit(it.qty ?? 0, unitOf(it), maxDecimals: 2),
           ),
-          weightDisplay('weight', '重量', (it) => it.weight),
+          weightDisplay('weight', '重量', (it) => it.weightText),
         ] else ...[
           MasterColumnDef(
             key: 'qty',
@@ -1772,7 +1780,7 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
                   unitName: unit,
                   integer: check.integerQty,
                 );
-                return '登记退 ${qty(check.qtyBase)}, 称重约 ${qty(check.count.estimatedQty)}';
+                return '登记退 ${qty(check.qtyBase)}, 称重约 ${qty(WeightPredictor.roundQty(check.count.estimatedQty, integer: check.integerQty))}';
               },
             ),
           ] else if (widget.docType == StockDocType.wdraw)
@@ -1781,11 +1789,11 @@ class _StockDocDetailPageState extends ConsumerState<StockDocDetailPage>
             weightDisplay(
               'receivedWeight',
               '实收重量',
-              (it) => it.issuedWeightKg,
+              (it) => it.issuedWeightKgText,
               estimatedOf: (it) => it.issuedWeightEstimated,
             )
           else
-            weightDisplay('weight', '重量', (it) => it.weight),
+            weightDisplay('weight', '重量', (it) => it.weightText),
         ],
       ],
       items: detail.items,

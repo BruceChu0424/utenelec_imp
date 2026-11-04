@@ -26,7 +26,7 @@ class XlsxTableProjectionPrecisionTest {
             var row = sheet.getRow(1);
             assertThat(row.getCell(0).getStringCellValue()).isEqualTo("000017");
             assertThat(row.getCell(1).getNumericCellValue()).isEqualTo(0.00000003125);
-            assertThat(row.getCell(1).getCellStyle().getDataFormatString()).isEqualTo("General");
+            assertThat(new org.apache.poi.ss.usermodel.DataFormatter(java.util.Locale.ROOT).formatCellValue(row.getCell(1))).isEqualTo("0.00000003125");
             assertThat(row.getCell(2).getStringCellValue()).isEqualTo("1234567890123456.12");
             assertThat(row.getCell(3).getCellType()).isEqualTo(CellType.STRING);
             assertThat(row.getCell(3).getCellStyle().getDataFormatString()).isEqualTo("@");

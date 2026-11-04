@@ -42,4 +42,6 @@ public class OrderCostItemDto {
     private String lineClass;
     private String sourceDocNo;
     private String remark;
+
+    public String getReturnedQtyExact(){return com.uten.imp.common.util.DecimalText.of(returnedQty);}
 }

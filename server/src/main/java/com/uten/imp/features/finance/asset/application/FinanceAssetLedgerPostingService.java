@@ -3,208 +3,42 @@ package com.uten.imp.features.finance.asset.application;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import com.uten.imp.features.finance.asset.domain.AssetPeriod;
-import com.uten.imp.application.concurrency.PaymentStyleHierarchyLock;
-import com.uten.imp.security.TxSessionVars;
-import jakarta.persistence.EntityManager;
+import com.uten.imp.features.finance.gl.FinanceControlledJournalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.ArrayList;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.UUID;
 
-/** Asset-subledger owned GL writer. It never participates in legacy GL regeneration. */
-@Service
-@RequiredArgsConstructor
+/** Asset authorization and source contract over the shared controlled journal writer. */
+@Service @RequiredArgsConstructor
 public class FinanceAssetLedgerPostingService {
-
-    private final EntityManager em;
-    private final TxSessionVars tx;
+    private final FinanceControlledJournalService journals;
     private final FinanceAssetAuthorization authorization;
-
-    @Transactional(propagation = Propagation.MANDATORY)
-    public UUID post(
-            String voucherNo,
-            String period,
-            LocalDate voucherDate,
-            String sourceType,
-            UUID sourceDocumentId,
-            String sourceDocumentType,
-            String remark,
-            List<Entry> entries) {
-        PaymentStyleHierarchyLock.lock(em);
-        return postInternal(voucherNo, period, voucherDate, sourceType, sourceDocumentId,
-                sourceDocumentType, remark, entries, null);
+    @Transactional(propagation=Propagation.MANDATORY)
+    public UUID post(String voucherNo,String period,LocalDate voucherDate,String sourceType,UUID sourceDocumentId,
+            String sourceDocumentType,String remark,List<Entry> entries){
+        UUID actor=authorization.requireActorId(FinanceAssetAuthorization.POST);requirePeriod(period,voucherDate);
+        return journals.post(voucherNo,voucherDate,sourceType,sourceDocumentId,sourceDocumentType,remark,convert(entries),actor).voucherId();
     }
-
-    private UUID postInternal(
-            String voucherNo,
-            String period,
-            LocalDate voucherDate,
-            String sourceType,
-            UUID sourceDocumentId,
-            String sourceDocumentType,
-            String remark,
-            List<Entry> entries,
-            UUID reversalOfVoucherId) {
-        tx.bind();
-        UUID actorId = authorization.requireActorId(reversalOfVoucherId==null?FinanceAssetAuthorization.POST:FinanceAssetAuthorization.REVERSE);
+    @Transactional(propagation=Propagation.MANDATORY)
+    public UUID reverse(UUID originalVoucherId,String voucherNo,String period,LocalDate voucherDate,String sourceType,
+            UUID sourceDocumentId,String sourceDocumentType,String reason){
+        UUID actor=authorization.requireActorId(FinanceAssetAuthorization.REVERSE);requirePeriod(period,voucherDate);
+        return journals.reverse(originalVoucherId,voucherNo,voucherDate,sourceType,sourceDocumentId,sourceDocumentType,reason,actor).voucherId();
+    }
+    static void validateEntries(List<Entry> entries){FinanceControlledJournalService.validateEntries(convert(entries));}
+    private static List<FinanceControlledJournalService.Entry> convert(List<Entry> entries){
+        if(entries==null)throw new ApiException(ErrorCode.VALIDATION_FAILED,"请填写凭证分录");
+        return entries.stream().map(e->e==null?null:new FinanceControlledJournalService.Entry(e.styleId(),e.direction(),e.amount(),e.summary())).toList();
+    }
+    private static void requirePeriod(String period,LocalDate date){
         AssetPeriod.parse(period);
-        validateEntries(entries);
-        if (entries.isEmpty()) {
-            return null;
-        }
-
-        UUID voucherId = UUID.randomUUID();
-        String sourceRef = sourceDocumentType + ":" + sourceDocumentId;
-        String idempotencyKey = sourceType + "|" + sourceRef + "|" + period;
-        em.createNativeQuery("""
-                INSERT INTO gl_vouchers
-                    (id, voucher_no, period, voucher_date, source, source_type, remark,
-                      source_ref, idempotency_key, reversal_of_voucher_id,
-                      status, created_by, updated_by)
-                VALUES
-                    (:id, :no, :period, :voucherDate, 'AUTO', :sourceType, :remark,
-                      :sourceRef, :idempotencyKey, :reversalOf,
-                      0, :actor, :actor)
-                """)
-                .setParameter("id", voucherId)
-                .setParameter("no", voucherNo)
-                .setParameter("period", period)
-                .setParameter("voucherDate", voucherDate)
-                .setParameter("sourceType", sourceType)
-                .setParameter("remark", remark)
-                .setParameter("sourceRef", sourceRef)
-                .setParameter("idempotencyKey", idempotencyKey)
-                .setParameter("reversalOf", reversalOfVoucherId)
-                .setParameter("actor", actorId)
-                .executeUpdate();
-
-        int lineNo = 0;
-        for (Entry entry : entries) {
-            em.createNativeQuery("""
-                    INSERT INTO gl_entries
-                        (voucher_id, line_no, style_id, direction, amount, entry_date, period,
-                         source_doc_type, source_doc_id, source_bill_no, summary,
-                         created_by, updated_by)
-                    VALUES
-                        (:voucher, :lineNo, :style, :direction, :amount, :entryDate, :period,
-                         :documentType, :documentId, :billNo, :summary,
-                         :actor, :actor)
-                    """)
-                    .setParameter("voucher", voucherId)
-                    .setParameter("lineNo", ++lineNo)
-                    .setParameter("style", entry.styleId())
-                    .setParameter("direction", entry.direction())
-                    .setParameter("amount", entry.amount())
-                    .setParameter("entryDate", voucherDate)
-                    .setParameter("period", period)
-                    .setParameter("documentType", sourceDocumentType)
-                    .setParameter("documentId", sourceDocumentId)
-                    .setParameter("billNo", voucherNo)
-                    .setParameter("summary", entry.summary())
-                    .setParameter("actor", actorId)
-                    .executeUpdate();
-        }
-        int posted = em.createNativeQuery("""
-                UPDATE gl_vouchers
-                SET status=1, updated_at=now(), updated_by=:actor
-                WHERE id=:id AND status=0
-                """)
-                .setParameter("actor", actorId)
-                .setParameter("id", voucherId)
-                .executeUpdate();
-        if (posted != 1) {
-            throw new ApiException(ErrorCode.CONFLICT, "资产凭证草稿没有完成生效，请刷新后重试");
-        }
-        return voucherId;
+        if(date==null||!YearMonth.from(date).toString().equals(period))throw new ApiException(ErrorCode.VALIDATION_FAILED,"凭证日期与会计期间不一致");
     }
-
-    @Transactional(propagation = Propagation.MANDATORY)
-    public UUID reverse(
-            UUID originalVoucherId,
-            String voucherNo,
-            String period,
-            LocalDate voucherDate,
-            String sourceType,
-            UUID sourceDocumentId,
-            String sourceDocumentType,
-            String reason) {
-        tx.bind();
-        PaymentStyleHierarchyLock.lock(em);
-        authorization.require(FinanceAssetAuthorization.REVERSE);
-        @SuppressWarnings("unchecked")
-        List<Object[]> rows = em.createNativeQuery("""
-                SELECT style_id, direction, amount, summary
-                FROM gl_entries
-                WHERE voucher_id=:voucher AND is_deleted=false
-                ORDER BY line_no, id
-                """)
-                .setParameter("voucher", originalVoucherId)
-                .getResultList();
-        if (rows.isEmpty()) {
-            throw new ApiException(ErrorCode.NOT_FOUND, "原凭证下没有有效的分录，不能红冲");
-        }
-        List<Entry> reverseEntries = new ArrayList<>(rows.size());
-        for (Object[] row : rows) {
-            reverseEntries.add(new Entry(
-                    asUuid(row[0]),
-                    -((Number) row[1]).intValue(),
-                    (BigDecimal) row[2],
-                    "Reversal: " + (row[3] == null ? reason : row[3])));
-        }
-        UUID reversalVoucherId = postInternal(
-                voucherNo,
-                period,
-                voucherDate,
-                sourceType,
-                sourceDocumentId,
-                sourceDocumentType,
-                reason,
-                reverseEntries,
-                originalVoucherId);
-        UUID actorId = authorization.requireActorId(FinanceAssetAuthorization.REVERSE);
-        em.createNativeQuery("""
-                UPDATE gl_vouchers
-                SET status=-1, reversed_by_voucher_id=:reversal,
-                    updated_at=now(), updated_by=:actor
-                WHERE id=:original AND status=1
-                """)
-                .setParameter("reversal", reversalVoucherId)
-                .setParameter("actor", actorId)
-                .setParameter("original", originalVoucherId)
-                .executeUpdate();
-        return reversalVoucherId;
-    }
-
-    static void validateEntries(List<Entry> entries) {
-        if (entries == null) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "请填写凭证分录");
-        }
-        BigDecimal debit = BigDecimal.ZERO;
-        BigDecimal credit = BigDecimal.ZERO;
-        for (Entry entry : entries) {
-            if (entry.styleId() == null || (entry.direction() != 1 && entry.direction() != -1)
-                    || entry.amount() == null || entry.amount().signum() <= 0) {
-                throw new ApiException(ErrorCode.VALIDATION_FAILED, "资产凭证的分录不正确，请核对科目、方向和金额");
-            }
-            if (entry.direction() == 1) debit = debit.add(entry.amount());
-            else credit = credit.add(entry.amount());
-        }
-        if (debit.compareTo(credit) != 0) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "资产凭证借贷不平：借方 " + debit + "，贷方 " + credit + "，请核对分录金额");
-        }
-    }
-
-    private static UUID asUuid(Object value) {
-        return value instanceof UUID uuid ? uuid : UUID.fromString(value.toString());
-    }
-
-    public record Entry(UUID styleId, int direction, BigDecimal amount, String summary) {}
+    public record Entry(UUID styleId,int direction,BigDecimal amount,String summary) { }
 }

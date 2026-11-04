@@ -855,7 +855,7 @@ class _ProductionDrawBatchIssuePageState
             if (_issueWeights[item.id] case final entry? when entry.kg != null)
               {
                 'itemId': item.id,
-                'weightKg': entry.kg,
+                'weightKg': entry.kgText,
                 'qtyFromWeight': entry.qtyFromWeight,
               },
       ];

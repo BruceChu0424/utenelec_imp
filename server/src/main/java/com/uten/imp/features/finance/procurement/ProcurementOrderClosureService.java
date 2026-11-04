@@ -29,7 +29,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -126,6 +125,7 @@ public class ProcurementOrderClosureService {
         closure.put("mode",mode);closure.put("reason",reason);closure.put("fingerprint",preview.fingerprint());closure.put("items",preview.items());
         closure.put("unverifiedQuantity",preview.unverifiedQuantity());
         closure.put("executionMode","DIRECT");
+        closure.put("businessPrecisionPolicy",com.uten.imp.common.finance.BusinessPrecisionContext.json());
         closure.put("closedAt",jdbc.queryForObject("SELECT now()",OffsetDateTime.class));
         closure.put("closedByName",jdbc.queryForObject("SELECT full_name FROM employees WHERE id=?",String.class,currentUser.requireEmployeeId()));
         submitted.put("closureRequest",closure);
@@ -235,7 +235,7 @@ public class ProcurementOrderClosureService {
             try {
                 if(rate.signum()<=0) throw conflict("订单单位换算率尚未核验，请先核对原始计量依据");
                 var bound=ProcurementOrderQuantityBounds.receipts(em,type,itemId);
-                retained=bound.retainedBase().divide(rate,4,RoundingMode.CEILING);
+                retained=bound.retainedOrderedQty(rate);
             } catch(ApiException unknownBasis) {
                 if(!standaloneLegacy) throw unknownBasis;
                 unverified=true;
@@ -249,6 +249,9 @@ public class ProcurementOrderClosureService {
                     gift,giftReceived,giftReturned,retained==null?null:gift.subtract(giftReceived).add(giftReturned).max(BigDecimal.ZERO)));
         }
         Map<String,Object> fingerprint=new LinkedHashMap<>();fingerprint.put("order",id);fingerprint.put("items",rows);
+        fingerprint.put("remaining",items);
+        var selectedQuantity=com.uten.imp.common.finance.BusinessPrecisionContext.usedChoices().get("procurement.order.retained-quantity");
+        if(selectedQuantity!=null)fingerprint.put("remainingQuantityPolicy",selectedQuantity);
         if(((Number)header.get("status")).intValue()==1) fingerprint.put("commercial",ProcurementApprovalSnapshot.json(ports.get(type).lockFinanceReconfirmationSnapshot(id),mapper));
         fingerprint.put("receipts",jdbc.queryForList("SELECT to_jsonb(i)::text AS item,to_jsonb(h)::text AS header FROM "+prefix+"_receipt_items i JOIN "+prefix+"_receipts h ON h.id=i.receipt_id JOIN "+prefix+"_order_items oi ON oi.id=i.order_item_id WHERE oi.order_id=? ORDER BY i.id",id));
         fingerprint.put("returns",jdbc.queryForList("SELECT to_jsonb(i)::text AS item,to_jsonb(h)::text AS header FROM "+prefix+"_return_items i JOIN "+prefix+"_returns h ON h.id=i.return_id JOIN "+prefix+"_order_items oi ON oi.id=i.order_item_id WHERE oi.order_id=? ORDER BY i.id",id));

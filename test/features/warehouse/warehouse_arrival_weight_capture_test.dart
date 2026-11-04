@@ -3,7 +3,7 @@
 //  2. 带单位后缀输入(20g) 以千克 4 位提交, 幂等键带上重量: 改了重量是另一个请求;
 //  3. 按本单供应商学到的单重核对, 偏差超出容差出「称重核对」标签, 表尾「实称 / 称重偏差」;
 //  4. 行单位本身是重量单位时只读「=5 kg」, 提交不带重量;
-//  5. 称重计数「按称重改数量」回填整数数量(黄框)并带 qtyFromWeight。
+//  5. 称重计数「按称重改数量」回填完整估算数量(黄框)并带 qtyFromWeight。
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -230,7 +230,10 @@ void main() {
 
   testWidgets('历史单重实际预填，但未经实称的建议不提交为重量', (tester) async {
     final (:api, :weights) = await _open(tester, prefill: _prefill());
-    expect(tester.widget<TextField>(_weightInput()).controller!.text, '0.01');
+    expect(
+      tester.widget<TextField>(_weightInput()).controller!.text,
+      '0.009996287001961856',
+    );
     // 预填建议 = 全站黄框待核对口径（不再有「≈」前缀与格下小字）。
     final decoration = tester.widget<TextField>(_weightInput()).decoration!;
     expect(decoration, isA<UtenInputDecoration>());
@@ -324,7 +327,7 @@ void main() {
     await _submit(tester);
     expect(api.arrivalBodies, hasLength(1));
     final first = api.arrivalBodies.single;
-    expect(_item(first)['weight'], 0.02);
+    expect(_item(first)['weight'], '0.02');
     expect(_item(first)['qty'], '5');
     expect(_item(first).containsKey('qtyFromWeight'), isFalse);
 
@@ -334,7 +337,7 @@ void main() {
     await _submit(tester);
     expect(api.arrivalBodies, hasLength(2));
     final second = api.arrivalBodies.last;
-    expect(_item(second)['weight'], 0.019);
+    expect(_item(second)['weight'], '0.019');
     expect(second['idempotencyKey'], isNot(first['idempotencyKey']));
     await tester.pumpAndSettle(const Duration(seconds: 5));
     expect(find.text('任务中心'), findsOneWidget);
@@ -389,14 +392,14 @@ void main() {
       find.byKey(const ValueKey('warehouse-arrival-qty-$_itemId')),
     );
     final qty = qtyField.controller! as UtenAutofillTextController;
-    expect(qty.text, '9654');
+    expect(qty.text, '9653.584373984168');
     expect(qty.autofilled, isTrue);
 
     await _submit(tester);
     await tester.pumpAndSettle(const Duration(seconds: 5));
     final item = _item(api.arrivalBodies.single);
-    expect(item['qty'], '9654');
-    expect(item['weight'], 19.3);
+    expect(item['qty'], '9653.584373984168');
+    expect(item['weight'], '19.3');
     expect(item['qtyFromWeight'], isTrue);
   });
 

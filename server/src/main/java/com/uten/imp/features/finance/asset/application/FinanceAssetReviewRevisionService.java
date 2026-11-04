@@ -30,6 +30,9 @@ public class FinanceAssetReviewRevisionService {
         String specific = deferred ? """
                 'totalAmount', a.total_amount::text,
                 'responsibleEmployeeId', a.responsible_employee_id,
+                'openingBalance',CASE WHEN a.opening_as_of IS NULL THEN NULL ELSE jsonb_build_object(
+                    'asOf',a.opening_as_of,'accumulatedAmount',a.opening_amortized_amount::text,
+                    'remainingMonths',a.opening_remaining_months) END,
                 'benefitStartDate', a.service_start_on, 'benefitEndDate', a.benefit_end_on
                 """ : """
                 'originalValue', a.original_value::text, 'salvageRate', a.salvage_rate::text,

@@ -1357,7 +1357,7 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
         ..stockPlaceNotifier.value = g.stockPlace;
       // 订单/报价/出货：单价由货品主档自动带入、锁定(出货亦可由来源订货单引入)。
       // 明确登记外币或缺少本位币证明的主价不能直接当成本位币，服务端负责核价。
-      final basePricePreview = g.baseCurrencyPrice;
+      final basePricePreview = g.baseCurrencyPriceText;
       if (_hasClientPricing || widget.docType == SalesDocType.shipment) {
         target.applyLockedPricePreview(basePricePreview);
       }
@@ -1391,10 +1391,11 @@ class _SalesDocEditPageState extends ConsumerState<SalesDocEditPage>
                 : l10n.salesIntakeMarkerOrderDiscount;
           }
         } else {
-          final disc = (g.discount == null || g.discount == 0)
-              ? 1.0
-              : g.discount;
-          target.discount.text = financeExactTrimmed(disc.toString()) ?? '';
+          final disc = g.discountText;
+          target.discount.text =
+              disc == null || financeAmountUnits(disc) == BigInt.zero
+              ? '1'
+              : disc;
         }
         // 识别导入的行换了货品 = 人工确认；英文名勾选只对原来那个货品有效。
         target

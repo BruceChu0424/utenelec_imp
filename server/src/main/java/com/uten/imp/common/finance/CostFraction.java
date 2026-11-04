@@ -17,20 +17,17 @@ public record CostFraction(BigInteger numerator,BigInteger denominator) {
                 :new CostFraction(normalized.unscaledValue(),BigInteger.TEN.pow(scale));
     }
     public CostFraction multiply(BigDecimal value){return multiply(of(value));}
+    public CostFraction add(CostFraction value){return new CostFraction(numerator.multiply(value.denominator).add(value.numerator.multiply(denominator)),denominator.multiply(value.denominator));}
     public CostFraction multiply(CostFraction value){return new CostFraction(numerator.multiply(value.numerator),denominator.multiply(value.denominator));}
     public CostFraction divide(BigDecimal value){return divide(of(value));}
     public CostFraction divide(CostFraction value){return new CostFraction(numerator.multiply(value.denominator),denominator.multiply(value.numerator));}
     public BigDecimal ceiling(){return new BigDecimal(numerator).divide(new BigDecimal(denominator),0,RoundingMode.CEILING);}
     public int signum(){return numerator.signum();}
     public BigDecimal project(int scale,RoundingMode mode) {
-        try{return new BigDecimal(numerator).divide(new BigDecimal(denominator));}
-        catch(ArithmeticException repeating){
-            BigDecimal projected=new BigDecimal(numerator).divide(new BigDecimal(denominator),scale,mode);
-            if(projected.signum()==0&&numerator.signum()!=0)throw CostCalculationMath.invalid("非零成本或用量小于计算精度，请调整计量单位或批量");
-            return projected;
-        }
+        return project();
     }
-    /** Compatibility boundary deliberately enforces the caller's intermediate scale even for finite divisions. */
-    public BigDecimal scaled(int scale,RoundingMode mode){return new BigDecimal(numerator).divide(new BigDecimal(denominator),scale,mode);}
-    public BigDecimal project(){return project(24,RoundingMode.HALF_EVEN);}
+    /** Legacy arguments cannot silently authorize a new precision loss. */
+    public BigDecimal scaled(int scale,RoundingMode mode){return project(scale,mode);}
+    public BigDecimal project(){return project("cost.fraction","本次成本或用量投影",30);}
+    public BigDecimal project(String key,String label,int maximum){return BusinessPrecisionContext.divide(new BigDecimal(numerator),new BigDecimal(denominator),key,label,maximum);}
 }

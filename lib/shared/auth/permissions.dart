@@ -503,6 +503,12 @@ abstract final class Perm {
   static const financeAssetDispose = 'finance_asset:dispose';
   static const financeAssetPeriodManage = 'finance_asset_period:manage';
   static const financePostExecute = 'finance_post:execute';
+  static const financeApplicationView = 'finance_application:view';
+  static const financeApplicationApply = 'finance_application:apply';
+  static const financeApplicationReview = 'finance_application:review';
+  static const financeApplicationExecute = 'finance_application:execute';
+  static const financeApplicationConfirm = 'finance_application:confirm';
+  static const financeApplicationReverse = 'finance_application:reverse';
 
   /// 出货财务审核(permissions-09：查看 / 放行 / 退回 / 反审四个动作码)。
   static const salesShipmentFinanceView = 'sales_shipment_finance:view';

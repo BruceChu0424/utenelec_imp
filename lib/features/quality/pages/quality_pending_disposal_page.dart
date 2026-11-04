@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // 待检处置（品质任务中心唯一待办入口）——IQC 与 FQC 统一队列。
 //
 // 2026-09-01 合并：原「待检处置」只收采购/委外收货 IQC，「生产成品质检」FQC 单列
@@ -2056,7 +2057,9 @@ class _ReceiptHeaderRow {
 }
 
 String _fmt(double value) {
-  final text = value.toStringAsFixed(4).replaceFirst(RegExp(r'0+$'), '');
+  final text = value
+      .toExactString(minimumFractionDigits: 4)
+      .replaceFirst(RegExp(r'0+$'), '');
   return text.endsWith('.') ? text.substring(0, text.length - 1) : text;
 }
 

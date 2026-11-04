@@ -127,8 +127,11 @@ Map<String, MasterInlineField<GoodsListItem>> goodsInlineFields(
         onChanged: field.onChanged,
       ),
     ),
-    'minOrderQty': number('minOrderQty', (g) => g.minOrderQty),
-    'orderMultipleQty': number('orderMultipleQty', (g) => g.orderMultipleQty),
+    'minOrderQty': number('minOrderQty', (g) => g.minOrderQtyText),
+    'orderMultipleQty': number(
+      'orderMultipleQty',
+      (g) => g.orderMultipleQtyText,
+    ),
     if (permissions.contains(Perm.goodsPriceEdit)) ...{
       'price': number('price', (g) => g.priceText),
       'currencyId': MasterInlineField(
@@ -143,7 +146,7 @@ Map<String, MasterInlineField<GoodsListItem>> goodsInlineFields(
           dense: true,
         ),
       ),
-      'discount': number('discount', (g) => g.discount),
+      'discount': number('discount', (g) => g.discountText),
     },
   };
   return {

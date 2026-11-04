@@ -1,8 +1,8 @@
 package com.uten.imp.features.warehouse.inbound.dto;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -28,7 +28,7 @@ public record BatchInspectionPassRequest(
             @NotNull UUID inspectionItemId,
             @NotNull
             @DecimalMin(value = "0", inclusive = false)
-            @Digits(integer = 14, fraction = 4)
+            @DocumentQuantity
             BigDecimal expectedRemainingBaseQty,
             @NotBlank @Size(min = 8, max = 128) String idempotencyKey) {
     }

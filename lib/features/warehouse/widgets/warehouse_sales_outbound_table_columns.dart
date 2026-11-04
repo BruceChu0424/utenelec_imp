@@ -174,13 +174,15 @@ warehouseSalesOutboundTableColumns({
         type: 'weight',
         sortable: true,
         filterFromRows: true,
-        exactValueOf: (row) => row.line.weightKg?.toString(),
+        exactValueOf: (row) => row.line.weightKgText,
         value: (row) => formatWeightValue(
-          row.line.weightKg,
+          row.line.weightKgText,
           estimated: isEstimatedWeightSource(row.line.weightSource),
         ),
-        cellBuilder: (context, row) =>
-            WeightText(kg: row.line.weightKg, source: row.line.weightSource),
+        cellBuilder: (context, row) => WeightText(
+          kg: row.line.weightKgText,
+          source: row.line.weightSource,
+        ),
       ),
   ];
   MasterColumnDef<WarehouseSalesOutboundTableRow> column(

@@ -16,8 +16,12 @@ class BusinessApplicationWorkflowTest {
     }
     @Test void exactAmountRejectsRoundingExponentsAndNegativeOrZeroPayments(){
         assertEquals(new BigDecimal("22011.68"),BusinessApplicationWorkflow.amount("22011.68",false));
-        assertEquals(new BigDecimal("0.00"),BusinessApplicationWorkflow.amount("0",true));
-        for(String value:List.of("1.001","-1","1e2","NaN","Infinity","0","999999999999999"))assertThrows(ApiException.class,()->BusinessApplicationWorkflow.amount(value,false),value);
+        assertEquals(new BigDecimal("0"),BusinessApplicationWorkflow.amount("0",true));
+        assertNull(BusinessApplicationWorkflow.amount(null,true));assertNull(BusinessApplicationWorkflow.amount("",true));
+        String full="1234567890123456789012345678901234567890.123456789012345678901234";
+        assertEquals(new BigDecimal(full),BusinessApplicationWorkflow.amount(full,false));
+        assertEquals(new BigDecimal("1.001"),BusinessApplicationWorkflow.amount("1.001",false));
+        for(String value:List.of("1.0000000000000000000000001","-1","1e2","NaN","Infinity","0","10000000000000000000000000000000000000000"))assertThrows(ApiException.class,()->BusinessApplicationWorkflow.amount(value,false),value);
     }
     @Test void taskCenterAliasesRetainEachIndependentNode(){
         assertEquals(Set.of("VICE_EXECUTIVE","EXECUTIVE"),BusinessApplicationWorkflow.scope("MANAGEMENT"));

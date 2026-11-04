@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../shared/models/employee_reference.dart';
 import '../../../shared/repositories/employee_reference_repository.dart';
 import '../../../shared/widgets/business_employee_picker.dart';
@@ -579,9 +580,7 @@ class _SubcontractOrderEditPageState
         row.pricing.restoreRecordedTotal(it.totalAmountInputText);
         row.remark.text = it.remark ?? '';
         // ADR-098：已保存的允许损耗原样回显（冻结在本行，不再按主档预填）。
-        row.allowedLossPct.text = it.allowedLossPct == null
-            ? ''
-            : _plainPercent(it.allowedLossPct!);
+        row.allowedLossPct.text = it.allowedLossPctText ?? '';
         // 既有单一套条款：明细不落条款，编辑回显按单头条款回填各行。
         row
           ..supplierId = d.supplierId
@@ -746,7 +745,7 @@ class _SubcontractOrderEditPageState
             r.exchangeRate.text.trim().isEmpty &&
             terms.exchangeRate != null) {
           r.exchangeRate.text =
-              financeExactTrimmed(terms.exchangeRate.toString()) ?? '';
+              financeExactTrimmed(terms.exchangeRateText) ?? '';
           r.markTermsAutofilled('rate', r.exchangeRate.text);
           changed = true;
         }
@@ -754,7 +753,7 @@ class _SubcontractOrderEditPageState
             r.supplierId != null &&
             r.taxRate.text.trim().isEmpty &&
             terms.taxRate != null) {
-          r.taxRate.text = financeExactTrimmed(terms.taxRate.toString()) ?? '';
+          r.taxRate.text = financeExactTrimmed(terms.taxRateText) ?? '';
           r.markTermsAutofilled('tax', r.taxRate.text);
           changed = true;
         }
@@ -766,15 +765,14 @@ class _SubcontractOrderEditPageState
                   colorId: r.colorId,
                   unitId: r.unitId,
                   currencyId: r.currencyId,
-                  taxRate: double.tryParse(r.taxRate.text.trim()),
+                  taxRate: r.taxRate.text,
                 ) ??
                 false);
         if (r.price.text.trim().isEmpty &&
             r.pricing.totalAmount.text.trim().isEmpty &&
             terms.subcontractPrice != null &&
             matchesPriceContext()) {
-          r.price.text =
-              financeExactTrimmed(terms.subcontractPrice.toString()) ?? '';
+          r.price.text = financeExactTrimmed(terms.subcontractPriceText) ?? '';
           r.markTermsAutofilled('price', r.price.text);
           r.watchDefaultPrice(
             price: r.price,
@@ -790,7 +788,7 @@ class _SubcontractOrderEditPageState
         // ADR-098 允许损耗记忆（货品主档默认值，不看供应商）：空位预填并挂黄标提醒核对。
         if (r.allowedLossPct.text.trim().isEmpty &&
             terms.allowedLossPct != null) {
-          r.allowedLossPct.text = _plainPercent(terms.allowedLossPct!);
+          r.allowedLossPct.text = terms.allowedLossPctText ?? '';
           r.markAllowedLossAutofilled(r.allowedLossPct.text);
           changed = true;
         }
@@ -799,14 +797,6 @@ class _SubcontractOrderEditPageState
     }
     if (changed && mounted) setState(() {});
   }
-
-  /// 百分比显示：整数不带小数点，其余去掉尾零（5.0 → 5，2.50 → 2.5）。
-  static String _plainPercent(double value) => value == value.roundToDouble()
-      ? value.toInt().toString()
-      : value
-            .toStringAsFixed(2)
-            .replaceFirst(RegExp(r'0+$'), '')
-            .replaceFirst(RegExp(r'\.$'), '');
 
   /// 主档没给时回落默认：币种人民币、汇率 1、税率 0 (结算方式无全局默认，
   /// 由供应商主档默认 V452 在选商后预填）。
@@ -1089,7 +1079,7 @@ class _SubcontractOrderEditPageState
     final rate = double.tryParse(r.exchangeRate.text.trim()) ?? 0;
     final tax = double.tryParse(r.taxRate.text.trim()) ?? 0;
     return '${r.supplierId}|${r.settlementMethodId}|${r.currencyId}|'
-        '${rate.toStringAsFixed(6)}|${tax.toStringAsFixed(4)}';
+        '${rate.toExactString(minimumFractionDigits: 6)}|${tax.toExactString(minimumFractionDigits: 4)}';
   }
 
   /// 保存前查重：同「委外商+条款+货品+颜色+单位+换算率」多行 → 弹窗汇总/去重/
@@ -1383,23 +1373,15 @@ class _SubcontractOrderEditPageState
       }
       final remarkText = r.remark.text.trim();
       // ADR-098 允许损耗%：空 = 未设；填了必须是 0 到 100 的数。
-      final allowedLossText = r.allowedLossPct.text.trim();
-      final allowedLoss = allowedLossText.isEmpty
-          ? null
-          : double.tryParse(allowedLossText);
-      if (allowedLossText.isNotEmpty &&
-          (allowedLoss == null ||
-              !allowedLoss.isFinite ||
-              allowedLoss < 0 ||
-              allowedLoss > 100)) {
+      final allowedLoss = parseExactPercentage(r.allowedLossPct.text);
+      if (!allowedLoss.valid) {
         context.appError(
-          '「${r.goods?.name ?? ''}」的允许损耗必须是 0 到 100 之间的数，留空表示不设',
+          '「${r.goods?.name ?? ''}」的允许损耗须为0到100之间最多24位有效小数的原百分数；留空表示不设',
         );
         return;
       }
       itemsBody.add({
-        if (allowedLoss != null)
-          'allowedLossPct': double.parse(allowedLoss.toStringAsFixed(2)),
+        if (allowedLoss.value != null) 'allowedLossPct': allowedLoss.value,
         'goodsId': r.goods!.id,
         'extraColumns': r.extraColumnsPayload(),
         if (r.documentItemId != null) 'id': r.documentItemId,

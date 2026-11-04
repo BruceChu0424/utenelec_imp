@@ -7,7 +7,6 @@ import com.uten.imp.common.time.BusinessTime;
 import com.uten.imp.features.finance.asset.api.AssetWorkbenchRequests;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.*;
@@ -49,13 +48,14 @@ final class AssetOpeningBalanceSupport {
     }
     static void validate(AssetWorkbenchRequests.OpeningBalance opening,BigDecimal original,BigDecimal residual,
                          LocalDate ready,String start) {
+        com.uten.imp.common.util.FinancialExactAmount.book(opening.accumulatedAmount(),"期初累计");
         if(opening.asOf()==null||opening.asOf().isAfter(BusinessTime.today())
                 ||!opening.asOf().equals(YearMonth.from(opening.asOf()).atEndOfMonth()))
             throw invalid("旧资产接续日必须是已经结束的月末日期");
         if(ready==null||ready.isAfter(opening.asOf()))throw invalid("旧资产可使用日期不能晚于接续日");
         if(!YearMonth.from(opening.asOf()).plusMonths(1).toString().equals(start))
             throw invalid("旧资产从接续日的下一个月开始计提");
-        BigDecimal maximum=original.subtract(original.multiply(residual).setScale(4,RoundingMode.HALF_UP));
+        BigDecimal maximum=original.subtract(com.uten.imp.common.util.FinancialExactAmount.book(original.multiply(residual),"残值金额"));
         if(opening.accumulatedAmount()==null||opening.accumulatedAmount().signum()<0||opening.accumulatedAmount().compareTo(maximum)>0)
             throw invalid("期初累计折旧不能超过原值扣除残值后的金额");
         BigDecimal remaining=maximum.subtract(opening.accumulatedAmount());
@@ -63,7 +63,7 @@ final class AssetOpeningBalanceSupport {
                 ||(remaining.signum()>0&&opening.remainingMonths()==0)
                 ||(remaining.signum()==0&&opening.remainingMonths()!=0))
             throw invalid("请填写剩余计提月数；已提足折旧时填 0");
-        if(remaining.signum()>0&&remaining.divide(BigDecimal.valueOf(opening.remainingMonths()),4,RoundingMode.HALF_UP).signum()==0)
+        if(remaining.signum()>0&&com.uten.imp.features.finance.asset.domain.StraightLineScheduleCalculator.regularAmount(remaining,opening.remainingMonths()).signum()==0)
             throw invalid("剩余月折旧在账面精度下为零，请核对累计折旧和剩余月数");
     }
     UUID verifyExisting(AssetWorkbenchRequests.OpeningBalance opening,BigDecimal original,UUID cost,UUID accumulated,UUID clearing) {

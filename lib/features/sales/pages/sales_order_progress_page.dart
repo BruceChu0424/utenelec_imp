@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/core/ui/human_error_message.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
@@ -1036,6 +1037,6 @@ class _SalesOrderProgressPageState extends ConsumerState<SalesOrderProgressPage>
 
   String _fmt(double v) {
     if (v == v.roundToDouble()) return v.toInt().toString();
-    return v.toStringAsFixed(2);
+    return v.toExactString(minimumFractionDigits: 2);
   }
 }

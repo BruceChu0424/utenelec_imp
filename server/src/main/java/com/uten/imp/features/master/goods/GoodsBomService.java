@@ -50,7 +50,7 @@ import java.util.stream.Collectors;
  *
  * <p>唯一性按 {@code (goods_id, component_goods_id)} 两个 UUID 判断；组件编号只用于搜索/显示，
  * 改号不影响关系。部分唯一索引兜底，service 先查给出友好报错。
- * 金额：total 未传时用 BigDecimal 按 qty*price 重算（两位小数）。
+ * 金额：total 未传时用 BigDecimal 按 qty*price 重算，保原数；超出原生小数容量时明确采用。
  */
 @Service
 @RequiredArgsConstructor
@@ -61,6 +61,7 @@ public class GoodsBomService {
     private static final Set<String> HARD_GATE_STAGES = Set.of(
             "START", "ASSEMBLY", "FINISH");
 
+    private final com.uten.imp.application.port.BusinessNumericInputEvidencePort numericEvidence;
     private final GoodsRepository goodsRepo;
     private final GoodsBomItemRepository bomRepo;
     private final ColorRepository colorRepo;
@@ -145,6 +146,7 @@ public class GoodsBomService {
         r.setGoods(parent);
         applyConfirmed(req, r, parent, component, null);
         r.setSortOrder(nextSortOrder(goodsId));
+        capturePreparedNumericInputs(r);
         bomRepo.save(r);
         flushPeriodicEdge(component);
         recalcSourceE(parent);
@@ -169,6 +171,7 @@ public class GoodsBomService {
         // 行内容变更后原审计结论作废：清空审计标记。
         r.setAuditedAt(null);
         r.setAuditedBy(null);
+        capturePreparedNumericInputs(r);
         bomRepo.save(r);
         flushPeriodicEdge(component);
         recalcSourceE(r.getGoods());
@@ -248,6 +251,7 @@ public class GoodsBomService {
             r.setAuditedAt(null);
             r.setAuditedBy(null);
         }
+        capturePreparedNumericInputs(r);
         bomRepo.save(r);
         return toView(r, r.getComponent());
     }
@@ -262,6 +266,7 @@ public class GoodsBomService {
         Goods parent = r.getGoods();
         r.setDeleted(true);
         r.setDeletedAt(OffsetDateTime.now());
+        capturePreparedNumericInputs(r);
         bomRepo.save(r);
         recalcSourceE(parent);
     }
@@ -440,7 +445,9 @@ public class GoodsBomService {
                 fresh.setSstatus(r.getSstatus());
                 r.setDeleted(true);
                 r.setDeletedAt(OffsetDateTime.now());
+                capturePreparedNumericInputs(r);
                 bomRepo.save(r);
+                capturePreparedNumericInputs(fresh);
                 bomRepo.save(fresh);
                 effective = fresh;
             }
@@ -627,7 +634,9 @@ public class GoodsBomService {
 
     /** 把请求写到组装行上并校验(用量/阶段/计量方式/硬门槛/颜色/供应商)；粘贴命令逐行复用。 */
     void apply(BomItemSaveRequest req, GoodsBomItem r, Goods component) {
+        r.setPendingAmount(null);r.setPendingPeriodic(null);
         Goods previousComponent = r.getComponent();
+        BigDecimal previousQty=r.getQty(), previousPrice=r.getPrice(), previousTotal=r.getTotal();
         r.setComponent(component);
         if (GoodsPeriodicMaterialRules.isPeriodic(component)) {
             applyPeriodicEdge(req, r, component, previousComponent);
@@ -646,15 +655,29 @@ public class GoodsBomService {
             BigDecimal defaultPrice = com.uten.imp.common.finance.SellingPriceCurrency.forBaseCurrency(
                     component.getPrice(), component.getCurrency() == null ? null : component.getCurrency().getId(),
                     component.getCurrency() != null && component.getCurrency().isBaseCurrency());
-            price = componentChanged ? defaultPrice
-                    : r.getPrice() != null ? r.getPrice() : defaultPrice;
+            price = componentChanged || previousComponent==null ? defaultPrice : previousPrice;
         }
+        if (price != null) com.uten.imp.common.util.FinancialExactAmount.unitPrice(price,"组装单价");
         r.setPrice(price);
         // 金额：显式传入优先，否则 qty*price 兜底（无单价则 null）
         BigDecimal total = req.getTotal();
-        if (total == null && price != null) {
-            total = qty.multiply(price).setScale(2, RoundingMode.HALF_UP);
+        boolean preserveTotal=previousComponent!=null && previousComponent.getId().equals(component.getId())
+                && sameNumeric(previousQty,qty) && sameNumeric(previousPrice,price);
+        if(total==null && preserveTotal) total=previousTotal;
+        if (total == null && price != null && !preserveTotal) {
+            BigDecimal original = qty.multiply(price);
+            if (original.signum()<0 || original.abs().compareTo(BigDecimal.ONE.scaleByPowerOfTen(40))>=0)
+                throw new ApiException(ErrorCode.VALIDATION_FAILED,"组装金额超出非负可保存范围，本次未保存");
+            total = com.uten.imp.common.finance.BusinessPrecisionContext.limit(original,
+                    "goods.bom.line-amount","本次组装明细金额",24);
+            com.uten.imp.common.util.FinancialExactAmount.require(total,"组装金额");
+            var used=com.uten.imp.common.finance.BusinessPrecisionContext.usedChoices();
+            var selected=original.compareTo(total)!=0 && used.containsKey("goods.bom.line-amount")
+                    ? Map.of("goods.bom.line-amount",used.get("goods.bom.line-amount"))
+                    : Map.<String,com.uten.imp.common.finance.BusinessPrecisionContext.Choice>of();
+            r.setPendingAmount(new GoodsBomItem.PendingAmount(qty,price,original,total,selected));
         }
+        if (total != null) com.uten.imp.common.util.FinancialExactAmount.require(total,"组装金额");
         r.setTotal(total);
         if (req.hasColorReference()) {
             if (clearsReference(req.getColorId(), req.getColorLegacyId())) {
@@ -760,7 +783,7 @@ public class GoodsBomService {
     }
 
     /** 期间边每件用量 (组件基本单位, 5 位小数)。 */
-    private static BigDecimal periodicQty(BomItemSaveRequest req, GoodsBomItem r, Goods component,
+    private BigDecimal periodicQty(BomItemSaveRequest req, GoodsBomItem r, Goods component,
                                           boolean sameComponent) {
         BigDecimal perUnit;
         if (req.getUnitWeightGrams() != null) {
@@ -773,15 +796,15 @@ public class GoodsBomService {
             if (req.getUnitWeightGrams().signum() <= 0) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "单个重量必须大于 0 克");
             }
-            perUnit = GoodsPeriodicMaterialRules.fromGrams(req.getUnitWeightGrams(), gramsPerUnit);
+            perUnit = GoodsPeriodicMaterialRules.fromGrams(req.getUnitWeightGrams(),gramsPerUnit);
+            r.setPendingPeriodic(new GoodsBomItem.PendingPeriodic(req.getUnitWeightGrams(),gramsPerUnit,"GRAMS",perUnit));
         } else if (req.getQty() != null) {
             BigDecimal basis = req.getBasisOutputQty() == null ? BigDecimal.ONE : req.getBasisOutputQty();
             if (basis.signum() <= 0) {
                 throw new ApiException(ErrorCode.VALIDATION_FAILED, "基准产量必须大于 0");
             }
-            perUnit = basis.compareTo(BigDecimal.ONE) == 0
-                    ? req.getQty().setScale(GoodsPeriodicMaterialRules.QTY_SCALE, RoundingMode.HALF_UP)
-                    : req.getQty().divide(basis, GoodsPeriodicMaterialRules.QTY_SCALE, RoundingMode.HALF_UP);
+            perUnit = GoodsPeriodicMaterialRules.asPerPiece(req.getQty(),basis);
+            r.setPendingPeriodic(new GoodsBomItem.PendingPeriodic(req.getQty(),basis,"BASIS_OUTPUT",perUnit));
         } else if (!r.isNew() && sameComponent && r.getQty() != null) {
             perUnit = r.getQty();
         } else {
@@ -789,9 +812,37 @@ public class GoodsBomService {
                     "「" + GoodsPeriodicMaterialRules.label(component) + "」是整批领料的料, 请填单个重量 (克)");
         }
         if (perUnit.signum() <= 0) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "单个重量太小, 最少 0.01 克");
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "单个用量须为可保存的正原数，请核对本次采用选择");
         }
         return perUnit;
+    }
+
+    /** Called only after every row/source/permission check, at the real write boundary.
+     * Temporary paste/import planning objects never create evidence or DB adoption packets. */
+    void capturePreparedNumericInputs(GoodsBomItem row) {
+        var periodic=row.getPendingPeriodic();var amount=row.getPendingAmount();
+        row.setPendingPeriodic(null);row.setPendingAmount(null);
+        if(periodic==null && amount==null) return;
+        if(row.getGoods()==null || row.getComponent()==null)
+            throw new ApiException(ErrorCode.CONFLICT,"BOM实际写入缺少真实父件或组件，输入已保留");
+        if(periodic!=null && sameNumeric(row.getQty(),periodic.adopted())) {
+            var adopted=bomRepo.adoptPeriodicQuantity(row.getId(),row.getGoods().getId(),row.getComponent().getId(),
+                    periodic.quantity(),periodic.basis(),periodic.kind());
+            if(!sameNumeric(adopted,row.getQty())) throw new ApiException(ErrorCode.CONFLICT,"BOM用量预览与本次实际采用不一致，输入已保留");
+        }
+        if(amount==null || !sameNumeric(row.getQty(),amount.quantity()) || !sameNumeric(row.getPrice(),amount.price())
+                || !sameNumeric(row.getTotal(),amount.adopted())) return;
+        var noUnit=new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Unit("NUMBER",null,null);
+        String version=String.valueOf(row.getGoods().getVersion());
+        numericEvidence.record(new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Capture(
+                "GOODS_BOM_LINE",row.getGoods().getId(),row.getId(),"designQty",version,amount.quantity(),noUnit,amount.quantity(),noUnit,Map.of()));
+        numericEvidence.record(new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Capture(
+                "GOODS_BOM_LINE",row.getGoods().getId(),row.getId(),"price",version,amount.price(),noUnit,amount.price(),noUnit,Map.of()));
+        numericEvidence.record(new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Capture(
+                "GOODS_BOM_LINE",row.getGoods().getId(),row.getId(),"total",version,amount.original(),noUnit,amount.adopted(),noUnit,amount.policy()));
+    }
+    private static boolean sameNumeric(BigDecimal left,BigDecimal right) {
+        return left==null?right==null:right!=null&&left.compareTo(right)==0;
     }
 
     private static String validChoice(
@@ -952,7 +1003,7 @@ public class GoodsBomService {
     /**
      * BOM 增删改后重算父货品「材料合计」sourceE 并写回 goods：
      * 直接组件中，来源=自制 或 自身有 BOM(半成品)的取其成本价 cTotal×设计使用数量(其下级成本已含)，
-     * 其余(采购/委外/未设)取 price×设计使用数量。求和(两位小数)。
+     * 其余(采购/委外/未设)取 price×设计使用数量。求和，保留可存原值；超出原生小数容量时由本次明确数值采用策略处理。
      * 公式只在数据库函数 fn_goods_bom_material_cost 里定义一次，学习引擎同步学习边后也调它(ADR-129)。
      * 前端成本 Tab 的 sourceE 只读显示此值；下游成本（成品价/成本价/出厂价）由前端据此级联。
      */

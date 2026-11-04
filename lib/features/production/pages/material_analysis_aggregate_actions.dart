@@ -1,5 +1,10 @@
 part of 'production_material_analysis_page.dart';
 
+BigInt? _aggregateQuantityUnits(String? text) =>
+    financeExactDecimalUnits(text, scale: 24);
+String _aggregateQuantityText(BigInt units) =>
+    financeExactDecimalFromUnits(units, scale: 24);
+
 extension _MaterialAggregateActions on _MaterialAggregateTableController {
   Widget actionCell(_MaterialAggregate aggregate) {
     // 来源车间 / 负责人 / 比例不同时，这一行下单会自动分成几张工单
@@ -500,7 +505,7 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
     for (final material in analysis.materials) {
       for (final target in material.notifiedTargets) {
         if (target.actionId == actionId && target.status != 'CANCELLED') {
-          final allocated = financeExactDecimalUnits(
+          final allocated = _aggregateQuantityUnits(
             materialPresentationFact(
               target.quantityFactsExact,
               'allocatedQty',
@@ -536,7 +541,7 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
       BigInt.zero,
       (sum, value) => sum + value,
     );
-    BigInt? actionUnits(String key, double value) => financeExactDecimalUnits(
+    BigInt? actionUnits(String key, double value) => _aggregateQuantityUnits(
       materialPresentationFact(action.quantityFactsExact, key, value),
     );
     final requested = actionUnits('requestedQty', action.requestedQty);
@@ -557,7 +562,7 @@ extension _MaterialAggregateActions on _MaterialAggregateTableController {
       return false;
     }
     String quantity(BigInt units) =>
-        financeExactTrimmed(financeExactDecimalFromUnits(units))!;
+        financeExactTrimmed(_aggregateQuantityText(units))!;
     final total = allocated + public + safety;
     var reason = '';
     final confirmed = await UtenDialog.show(

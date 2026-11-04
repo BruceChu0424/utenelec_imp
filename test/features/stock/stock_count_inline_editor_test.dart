@@ -289,7 +289,7 @@ void main() {
   );
 
   test(
-    'mass quantity derives HALF_UP 4-place kilograms and blocks a positive amount rounded to zero',
+    'mass quantity retains finite full kilograms and keeps tiny positive facts',
     () {
       final mass = StockCountEditRow(
         _row('mass', factor: '0.001000000000'),
@@ -297,14 +297,17 @@ void main() {
       );
       addTearDown(mass.dispose);
       mass.qty.text = '3.25';
-      expect(mass.targetWeightKg, '0.0033');
+      expect(mass.targetWeightKg, '0.00325');
       expect(mass.payload(true)['materialSetupBasis'], 'OWN');
       expect(mass.validation, isNull);
       mass.qty.text = '0.0001';
-      expect(mass.targetWeightKg, '0');
-      expect(mass.validation, contains('小于 0.0001 kg'));
+      expect(mass.targetWeightKg, '0.0000001');
+      expect(mass.validation, isNull);
       mass.qty.text = '1.00001';
-      expect(mass.validation, contains('最多 4 位'));
+      expect(mass.validation, isNull);
+      mass.qty.text = '1.0000000000000000000000001';
+      expect(mass.validation, contains('24位小数'));
+      expect(mass.qty.text, '1.0000000000000000000000001');
     },
   );
 

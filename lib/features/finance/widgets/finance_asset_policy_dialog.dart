@@ -26,6 +26,7 @@ import '../models/finance_asset_models.dart';
 import '../repositories/finance_asset_category_repository.dart';
 import 'finance_asset_ui.dart';
 import 'package:uten_imp/core/ui/human_error_message.dart';
+import '../../../shared/providers/export_context_epoch_provider.dart';
 
 Future<bool> showFinanceAssetPolicyDialog(
   BuildContext context, {
@@ -264,6 +265,7 @@ class _FinanceAssetPolicySurfaceState
 
   Future<void> _loadStyles() async {
     final generation = _styleRequestGuard.begin();
+    final scope = ref.read(exportContextEpochProvider);
     setState(() {
       _styleLoading = true;
       _styleError = null;
@@ -274,15 +276,25 @@ class _FinanceAssetPolicySurfaceState
       for (final category in const ['ACCOUNT', 'LIABILITY', 'EQUITY']) {
         balanceRoots.addAll(await repository.tree(category: category));
       }
-      final expenseRoots = await repository.tree(category: 'EXPENSE');
-      if (!mounted || !_styleRequestGuard.isCurrent(generation)) return;
+      final expenseRoots = await ref.read(
+        financeAssetExpenseStylesProvider.future,
+      );
+      if (!mounted ||
+          !_styleRequestGuard.isCurrent(generation) ||
+          scope != ref.read(exportContextEpochProvider)) {
+        return;
+      }
       setState(() {
         _balanceStyles = _flattenStyles(balanceRoots);
         _expenseStyles = _flattenStyles(expenseRoots);
         _styleLoading = false;
       });
     } catch (caughtError) {
-      if (!mounted || !_styleRequestGuard.isCurrent(generation)) return;
+      if (!mounted ||
+          !_styleRequestGuard.isCurrent(generation) ||
+          scope != ref.read(exportContextEpochProvider)) {
+        return;
+      }
       setState(() {
         _styleLoading = false;
         _styleError = humanErrorMessage(caughtError) ?? '会计科目加载失败，请重试';

@@ -2279,7 +2279,7 @@ abstract class _MaterialAnalysisMaterialTableState
           final budget = _tableBudgetOf(row);
           final tooltip = budget != null
               ? '${_preparationUseAvailableQty == false ? '本次保留余量、额外下单，不预扣公共可用量。' : '本次选中量预占后，'}公共可用余额 $text。'
-                    '本行本次预占 ${_qty(budget.reservedSharedQty)}；取消勾选即恢复。已归属各订单的私有份额不再加入公共可用。'
+                    '本行本次预占 ${budget.reservedSharedQtyText ?? '待核'}；取消勾选即恢复。已归属各订单的私有份额不再加入公共可用。'
                     '这是本次编辑预算，正式下达后按实际结果更新。'
               : material?.preparationAvailableQty != null
               ? '当前可采用 $text，包含仓库现货、已下单待办理和在途供给。'
@@ -3021,16 +3021,13 @@ abstract class _MaterialAnalysisMaterialTableState
 
   String? _materialTablePublicAvailableText(_MaterialTableRow row) {
     if (row.contextOnly || row.isAggregateSource) return null;
+    if (_draftBudget.value.pendingReason != null) return null;
     // 预算优先（HEAD 同口径）：共享池余量的实时投影——选中预占、取消/清空
     // 恢复、供给片可用性都在这里体现；来源行已在上面按「共享池只在汇总行
     // 显示一次」返回 '—'，不与预算分支冲突。
     final budget = _tableBudgetOf(row);
     if (budget != null) {
-      return materialPresentationFact(
-        const {},
-        'available',
-        budget.availableQty,
-      );
+      return budget.availableQtyText;
     }
     final paths =
         row.aggregate?.paths ?? [if (row.material != null) row.material!];
@@ -3212,13 +3209,10 @@ abstract class _MaterialAnalysisMaterialTableState
     if (row.contextOnly || (row.product != null && row.group == null)) {
       return null;
     }
+    if (_draftBudget.value.pendingReason != null) return null;
     final budget = _tableBudgetOf(row);
     if (budget != null) {
-      return materialPresentationFact(
-        const {},
-        'budget',
-        budget.netShortageQty,
-      );
+      return budget.netShortageQtyText;
     }
     if (row.aggregate case final aggregate?) {
       return _aggregateShownQtyText(aggregate, net: true);
@@ -5586,7 +5580,7 @@ abstract class _MaterialAnalysisMaterialTableState
           ? '这一行的补货走「下达车间」，没有单独的下单缺口。'
           : budget != null
           ? '按本次选中填写的数量预留后，这一行还缺 ${_qty(net)}。'
-                '\n本次为该行预留 ${_qty(budget.reservedSharedQty)}，共同可用余量 ${_qty(budget.remainingSharedQty)}。'
+                '\n本次为该行预留 ${budget.reservedSharedQtyText ?? '待核'}，共同可用余量 ${budget.remainingSharedQtyText ?? '待核'}。'
                 '\n能用于本行的供给才抵扣缺口。'
                 '\n这是本次编辑预算，取消勾选即恢复；实际采用和下单在提交时复核。'
           : '扣掉公共的量之后，这一行还要另外下 ${_qty(net)}。',
@@ -7646,7 +7640,7 @@ abstract class _MaterialAnalysisMaterialTableState
           coverage.requiredText == null || coverage.coveredText == null
           ? null
           : '合格库存保障 ${coverage.coveredText}/${coverage.requiredText}'
-                '（${(aggregate.coverageRatio * 100).toStringAsFixed(0)}%），在途供给不计作合格库存。';
+                '（${(aggregate.coverageRatio * 100).toExactString()}%），在途供给不计作合格库存。';
       return Tooltip(
         message: ['进度＝各来源最落后单据阶段，与顶层/分桶页同一口径。', ?coverageDetail].join('\n'),
         child: label(status),

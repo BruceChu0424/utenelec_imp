@@ -1,9 +1,24 @@
+import '../../core/formatters/exact_number_text.dart';
+
 /// Exact fixed-scale decimal helpers shared by feature modules.
 ///
 /// Decimal text remains authoritative until an explicit fixed-scale [BigInt]
 /// conversion, avoiding binary floating-point round trips for money values.
 const financeAmountScale = 24;
 const financeRateScale = 6;
+
+/// Native percentage points, distinct from a stored 0..1 ratio. No projection.
+({String? value, bool valid}) parseExactPercentage(String? raw) {
+  final text = raw?.trim() ?? '';
+  if (text.isEmpty) return (value: null, valid: true);
+  final units = financeAmountUnits(text);
+  if (units == null ||
+      units < BigInt.zero ||
+      units > BigInt.from(100) * BigInt.from(10).pow(financeAmountScale)) {
+    return (value: null, valid: false);
+  }
+  return (value: financeExactDecimal(text), valid: true);
+}
 
 /// Finite products retain every input digit. This is a reference calculation;
 /// actual document and bank amounts remain their own recorded facts.
@@ -12,9 +27,11 @@ String? financeExactMultiplyTexts(Iterable<String?> inputs) {
   var scale = 0;
   for (final input in inputs) {
     if (input == null) return null;
-    final match = RegExp(
-      r'^([+-]?)(\d+)(?:\.(\d+))?$',
-    ).firstMatch(input.trim());
+    final parsed = financeExactDecimal(input);
+    if (parsed == null) {
+      return null;
+    }
+    final match = RegExp(r'^([+-]?)(\d+)(?:\.(\d+))?$').firstMatch(parsed);
     if (match == null) return null;
     final fraction = match.group(3) ?? '';
     coefficient *= BigInt.parse('${match.group(1)}${match.group(2)}$fraction');
@@ -80,15 +97,16 @@ String financeAmountMoneyDisplay(BigInt units) =>
     financeExactMoneyDisplay(financeAmountFromUnits(units));
 
 String? financeExactDecimal(Object? value) {
-  if (value == null) return null;
-  final text = value.toString().trim();
-  if (text.isEmpty) return null;
-  return RegExp(r'^-?\d+(?:\.\d+)?$').hasMatch(text) ? text : null;
+  return exactNumberText(value);
 }
 
 BigInt? financeExactDecimalUnits(String? raw, {int scale = 4}) {
   if (raw == null || scale < 0) return null;
-  final match = RegExp(r'^(-?)(\d+)(?:\.(\d+))?$').firstMatch(raw.trim());
+  final canonical = financeExactDecimal(raw);
+  if (canonical == null) {
+    return null;
+  }
+  final match = RegExp(r'^(-?)(\d+)(?:\.(\d+))?$').firstMatch(canonical);
   if (match == null) return null;
   final fraction = match.group(3) ?? '';
   if (fraction.length > scale) return null;
@@ -100,28 +118,103 @@ BigInt? financeExactDecimalUnits(String? raw, {int scale = 4}) {
   return match.group(1) == '-' ? -units : units;
 }
 
+class FinanceExactDivision {
+  const FinanceExactDivision(this.text, {this.reason, this.usedChoice = false});
+  final String? text;
+  final String? reason;
+  final bool usedChoice;
+}
+
+/// Finite divisions are exact and ignore a smaller suggested/display scale.
+/// A non-finite or unsupported result needs an explicit current-user policy.
+FinanceExactDivision financeExactDivideTexts(
+  String? left,
+  String? right, {
+  int maxScale = 24,
+  int? choiceScale,
+  String? choiceRounding,
+}) {
+  final l = financeExactDecimal(left), r = financeExactDecimal(right);
+  if (l == null || r == null) return const FinanceExactDivision(null);
+  int scale(String value) =>
+      value.contains('.') ? value.length - value.indexOf('.') - 1 : 0;
+  final ls = scale(l), rs = scale(r);
+  var numerator =
+      financeExactDecimalUnits(l, scale: ls)! * BigInt.from(10).pow(rs);
+  var denominator =
+      financeExactDecimalUnits(r, scale: rs)! * BigInt.from(10).pow(ls);
+  if (denominator == BigInt.zero) return const FinanceExactDivision(null);
+  final negative = numerator.isNegative != denominator.isNegative;
+  numerator = numerator.abs();
+  denominator = denominator.abs();
+  final gcd = numerator.gcd(denominator);
+  numerator ~/= gcd;
+  denominator ~/= gcd;
+  var remaining = denominator, twos = 0, fives = 0;
+  while (remaining % BigInt.two == BigInt.zero) {
+    remaining ~/= BigInt.two;
+    twos++;
+  }
+  while (remaining % BigInt.from(5) == BigInt.zero) {
+    remaining ~/= BigInt.from(5);
+    fives++;
+  }
+  final finiteScale = twos > fives ? twos : fives;
+  if (remaining == BigInt.one && finiteScale <= maxScale) {
+    final units = numerator * BigInt.from(10).pow(finiteScale) ~/ denominator;
+    return FinanceExactDivision(
+      financeExactTrimmed(
+        financeExactDecimalFromUnits(
+          negative ? -units : units,
+          scale: finiteScale,
+        ),
+      ),
+    );
+  }
+  final reason = remaining == BigInt.one
+      ? 'PRECISION_LIMIT'
+      : 'NON_TERMINATING';
+  if (choiceScale == null ||
+      choiceScale < 0 ||
+      choiceScale > maxScale ||
+      !const {'HALF_UP', 'DOWN'}.contains(choiceRounding)) {
+    return FinanceExactDivision(null, reason: reason);
+  }
+  final scaled = numerator * BigInt.from(10).pow(choiceScale);
+  var units = scaled ~/ denominator;
+  if (choiceRounding == 'HALF_UP' &&
+      (scaled % denominator) * BigInt.two >= denominator) {
+    units += BigInt.one;
+  }
+  return FinanceExactDivision(
+    financeExactTrimmed(
+      financeExactDecimalFromUnits(
+        negative ? -units : units,
+        scale: choiceScale,
+      ),
+    ),
+    usedChoice: true,
+  );
+}
+
+/// Complete finite product in explicit output units. An unsupported scale stays
+/// unavailable; this conversion never chooses a rounding policy.
 BigInt? financeExactProductUnits(
   String? left,
   String? right, {
-  int leftScale = 4,
-  int rightScale = 6,
-  int outputScale = 4,
+  int leftScale = 24,
+  int rightScale = 24,
+  int outputScale = 48,
 }) {
-  final leftUnits = financeExactDecimalUnits(left, scale: leftScale);
-  final rightUnits = financeExactDecimalUnits(right, scale: rightScale);
-  if (leftUnits == null || rightUnits == null) return null;
-  final reduceScale = leftScale + rightScale - outputScale;
-  if (reduceScale < 0) {
-    return leftUnits * rightUnits * BigInt.from(10).pow(-reduceScale);
+  final l = financeExactTrimmed(left), r = financeExactTrimmed(right);
+  if (financeExactDecimalUnits(l, scale: leftScale) == null ||
+      financeExactDecimalUnits(r, scale: rightScale) == null) {
+    return null;
   }
-  final divisor = BigInt.from(10).pow(reduceScale);
-  final product = leftUnits * rightUnits;
-  final negative = product.isNegative;
-  final absolute = product.abs();
-  var rounded = absolute ~/ divisor;
-  final remainder = absolute % divisor;
-  if (remainder * BigInt.two >= divisor) rounded += BigInt.one;
-  return negative ? -rounded : rounded;
+  return financeExactDecimalUnits(
+    financeExactTrimmed(financeExactMultiplyTexts([l, r])),
+    scale: outputScale,
+  );
 }
 
 String financeExactUnitsMoneyDisplay(BigInt units, {int scale = 4}) =>

@@ -1,4 +1,5 @@
 import '../formatters/exact_decimal.dart';
+import '../measurement/document_quantity.dart';
 
 const procurementLegacyQuantity = 'LEGACY_RECORDED';
 const procurementChargedPlusGiftQuantity = 'CHARGED_PLUS_GIFT_V1';
@@ -21,16 +22,22 @@ String? procurementQuantityError(
   String giftQty, {
   required bool extraGift,
 }) {
-  final charged = financeExactDecimalUnits(chargedQty);
-  final gift = financeExactDecimalUnits(giftQty.trim().isEmpty ? '0' : giftQty);
-  final maximum = BigInt.from(10).pow(18) - BigInt.one;
+  final charged = financeExactDecimalUnits(
+    nonNegativeDocumentQuantityText(chargedQty),
+    scale: 24,
+  );
+  final gift = financeExactDecimalUnits(
+    nonNegativeDocumentQuantityText(giftQty.trim().isEmpty ? '0' : giftQty),
+    scale: 24,
+  );
+  final maximum = BigInt.from(10).pow(64) - BigInt.one;
   if (charged == null ||
       gift == null ||
       charged.isNegative ||
       gift.isNegative ||
       charged > maximum ||
       gift > maximum) {
-    return '收费数量与赠品数量必须是不小于0、整数最多14位、小数最多4位的数字';
+    return '收费数量与赠品数量必须是不小于0、整数最多40位、小数最多24位的数字';
   }
   final physical = extraGift ? charged + gift : charged;
   if (physical <= BigInt.zero || physical > maximum) {

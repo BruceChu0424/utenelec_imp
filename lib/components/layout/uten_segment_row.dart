@@ -27,7 +27,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../feedback/uten_dialog.dart';
 
-import '../../../core/theme/uten_tokens.dart';
+import '../../core/theme/uten_tokens.dart';
 import '../feedback/uten_segment_badge_label.dart';
 import 'uten_fit_or_compact.dart';
 

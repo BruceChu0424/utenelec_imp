@@ -214,6 +214,24 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+  testWidgets('native 40/24 amount is preserved in the actual create body', (
+    tester,
+  ) async {
+    const raw =
+        '1234567890123456789012345678901234567890.123456789012345678901234';
+    final repository = _Repo();
+    await _pumpEditor(tester, repository);
+    await fillPayment(tester);
+    final field = find.widgetWithText(TextField, '申请金额（元）*');
+    await tester.ensureVisible(field);
+    await tester.enterText(field, raw);
+    final save = find.text('保存并补充凭证');
+    await tester.ensureVisible(save);
+    await tester.tap(save);
+    await tester.pumpAndSettle();
+    expect(repository.inputs.single.amount, raw);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('rapid repeated save creates once and shows one busy overlay', (
     tester,
   ) async {

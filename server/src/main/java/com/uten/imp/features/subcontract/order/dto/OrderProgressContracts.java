@@ -33,6 +33,8 @@ public final class OrderProgressContracts {
 
     /** 物料在途供应来源(kind: PURCHASE / PRODUCTION / SUBCONTRACT)。 */
     public record SupplySource(String kind, UUID docId, String docNo, BigDecimal openQty) {
+        public String getOpenQtyExact(){return com.uten.imp.common.util.DecimalText.of(openQty);}
+
     }
 
     /**
@@ -61,6 +63,15 @@ public final class OrderProgressContracts {
             BigDecimal usableQty,
             String state,
             List<SupplySource> supplySources) {
+        public String getPerUnitQtyExact(){return com.uten.imp.common.util.DecimalText.of(perUnitQty);}
+        public String getRequiredQtyExact(){return com.uten.imp.common.util.DecimalText.of(requiredQty);}
+        public String getSentQtyExact(){return com.uten.imp.common.util.DecimalText.of(sentQty);}
+        public String getPendingQtyExact(){return com.uten.imp.common.util.DecimalText.of(pendingQty);}
+        public String getAvailableQtyExact(){return com.uten.imp.common.util.DecimalText.of(availableQty);}
+        public String getDrawableQtyExact(){return com.uten.imp.common.util.DecimalText.of(drawableQty);}
+        public String getShortQtyExact(){return com.uten.imp.common.util.DecimalText.of(shortQty);}
+        public String getUsableQtyExact(){return com.uten.imp.common.util.DecimalText.of(usableQty);}
+
         public MaterialLine {
             supplySources = supplySources == null ? List.of() : List.copyOf(supplySources);
         }
@@ -107,6 +118,18 @@ public final class OrderProgressContracts {
             BigDecimal settledLossQty,
             List<MaterialLine> materials,
             List<TimelineNode> timeline) {
+        public String getOrderQtyExact(){return com.uten.imp.common.util.DecimalText.of(orderQty);}
+        public String getDrawnQtyExact(){return com.uten.imp.common.util.DecimalText.of(drawnQty);}
+        public String getPendingQtyExact(){return com.uten.imp.common.util.DecimalText.of(pendingQty);}
+        public String getDrawableQtyExact(){return com.uten.imp.common.util.DecimalText.of(drawableQty);}
+        public String getShortQtyExact(){return com.uten.imp.common.util.DecimalText.of(shortQty);}
+        public String getReturnableQtyExact(){return com.uten.imp.common.util.DecimalText.of(returnableQty);}
+        public String getReceivedQtyExact(){return com.uten.imp.common.util.DecimalText.of(receivedQty);}
+        public String getQualifiedQtyExact(){return com.uten.imp.common.util.DecimalText.of(qualifiedQty);}
+        public String getPendingInspectionQtyExact(){return com.uten.imp.common.util.DecimalText.of(pendingInspectionQty);}
+        public String getStockedQtyExact(){return com.uten.imp.common.util.DecimalText.of(stockedQty);}
+        public String getSettledLossQtyExact(){return com.uten.imp.common.util.DecimalText.of(settledLossQty);}
+
         public ItemProgress {
             materials = materials == null ? List.of() : List.copyOf(materials);
             timeline = timeline == null ? List.of() : List.copyOf(timeline);
@@ -118,6 +141,8 @@ public final class OrderProgressContracts {
             UUID id, String billNo, Short status, LocalDate billDate,
             String warehouseName, String approverName, BigDecimal totalQty,
             OffsetDateTime updatedAt) {
+        public String getTotalQtyExact(){return com.uten.imp.common.util.DecimalText.of(totalQty);}
+
     }
 
     /** 进仓单进度（含 IQC 聚合状态）。 */
@@ -130,18 +155,30 @@ public final class OrderProgressContracts {
             BigDecimal warehouseStockedBaseQty,
             BigDecimal pendingStockInBaseQty,
             OffsetDateTime updatedAt) {
+        public String getTotalQtyExact(){return com.uten.imp.common.util.DecimalText.of(totalQty);}
+        public String getTotalLocalExact(){return com.uten.imp.common.util.DecimalText.of(totalLocal);}
+        public String getIqcPassedBaseQtyExact(){return com.uten.imp.common.util.DecimalText.of(iqcPassedBaseQty);}
+        public String getWarehouseStockedBaseQtyExact(){return com.uten.imp.common.util.DecimalText.of(warehouseStockedBaseQty);}
+        public String getPendingStockInBaseQtyExact(){return com.uten.imp.common.util.DecimalText.of(pendingStockInBaseQty);}
+
     }
 
     /** 成品退货单进度。 */
     public record ReturnDoc(
             UUID id, String billNo, Short status, LocalDate billDate,
             BigDecimal totalQty, BigDecimal totalLocal) {
+        public String getTotalQtyExact(){return com.uten.imp.common.util.DecimalText.of(totalQty);}
+        public String getTotalLocalExact(){return com.uten.imp.common.util.DecimalText.of(totalLocal);}
+
     }
 
     /** 损耗单进度。 */
     public record WasteDoc(
             UUID id, String billNo, Short status, LocalDate billDate,
             BigDecimal totalQty, BigDecimal deductAmount, Boolean deductPosted) {
+        public String getTotalQtyExact(){return com.uten.imp.common.util.DecimalText.of(totalQty);}
+        public String getDeductAmountExact(){return com.uten.imp.common.util.DecimalText.of(deductAmount);}
+
     }
 
     /** 委外商处材料台账（V221 守恒口径，按物料聚合）。 */
@@ -149,6 +186,12 @@ public final class OrderProgressContracts {
             String goodsCode, String goodsName, String colorName, String unitName,
             BigDecimal atSupplierQty, BigDecimal consumedQty, BigDecimal returnedQty,
             BigDecimal wastedQty, BigDecimal supplierEnding) {
+        public String getAtSupplierQtyExact(){return com.uten.imp.common.util.DecimalText.of(atSupplierQty);}
+        public String getConsumedQtyExact(){return com.uten.imp.common.util.DecimalText.of(consumedQty);}
+        public String getReturnedQtyExact(){return com.uten.imp.common.util.DecimalText.of(returnedQty);}
+        public String getWastedQtyExact(){return com.uten.imp.common.util.DecimalText.of(wastedQty);}
+        public String getSupplierEndingExact(){return com.uten.imp.common.util.DecimalText.of(supplierEnding);}
+
     }
 
     public record OrderProgress(
@@ -173,6 +216,9 @@ public final class OrderProgressContracts {
             BigDecimal wasteDeductTotal,
             /** 当前用户无委外商业金额权限时为 true，进度中的金额族字段全部置 null。 */
             boolean priceMasked) {
+        public String getApPostedTotalExact(){return com.uten.imp.common.util.DecimalText.of(apPostedTotal);}
+        public String getWasteDeductTotalExact(){return com.uten.imp.common.util.DecimalText.of(wasteDeductTotal);}
+
         public OrderProgress {
             items = List.copyOf(items);
             issues = List.copyOf(issues);

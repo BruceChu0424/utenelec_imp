@@ -59,7 +59,7 @@ class GoodsBomSupplierReferenceTest {
     private final GoodsBomItemRepository bomRepo = mock(GoodsBomItemRepository.class);
     private final MasterObjectAccess access = mock(MasterObjectAccess.class);
     private final EntityManager em = mock(EntityManager.class);
-    private final GoodsBomService bom = new GoodsBomService(
+    private final GoodsBomService bom = new GoodsBomService(org.mockito.Mockito.mock(com.uten.imp.application.port.BusinessNumericInputEvidencePort.class),
             goodsRepo, bomRepo, mock(ColorRepository.class), mock(UnitRepository.class),
             mock(TxSessionVars.class), mock(SecurityContextCurrentUser.class),
             mock(MasterReferenceValidationPort.class), relationships,

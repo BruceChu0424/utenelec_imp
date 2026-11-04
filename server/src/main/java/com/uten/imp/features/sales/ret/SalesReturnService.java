@@ -659,8 +659,9 @@ public class SalesReturnService {
     /** 写一笔库存流水（方向由调用方给）。qty 为明细量，baseQty = qty×unit_rate。 */
     private void applyMovement(SalesReturn r, SalesReturnItem it, short direction,
                                OffsetDateTime ts, BigDecimal overrideAmount) {
-        BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
-        BigDecimal baseQty = it.getQty().multiply(rate);
+        var original=com.uten.imp.common.finance.DocumentUnitConversion.originalMovement(em,StockService.SRC_SALES_RETURN,
+                StockService.TYPE_SALES_RETURN,r.getId(),it.getId(),it.getGoodsId(),it.getColorId(),r.getWarehouseId(),1);
+        BigDecimal baseQty=original.quantity();
         BigDecimal amt = overrideAmount != null ? overrideAmount : it.getAmountLocal();
         stockService.recordMovement(new StockService.MovementRequest(
                 ts, StockService.TYPE_SALES_RETURN, StockService.SRC_SALES_RETURN,

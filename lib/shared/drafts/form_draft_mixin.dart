@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 import '../../components/layout/uten_editable_grid.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/network/business_precision.dart';
+import '../../core/network/business_precision_coordinator.dart';
 import '../../core/network/api_client.dart';
 import '../../core/diagnostics/diagnostic_log.dart';
 import '../../core/network/authenticated_request_scope.dart';
@@ -88,6 +90,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     }
     _draftRevision = checkpoint.revision;
     _draftSubmissionPending = false;
+    _precisionTransport.clear();
     _draftSubmissionBlocked = false;
     _draftRestoreBlocked = false;
     _draftError = null;
@@ -219,7 +222,8 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   bool get formDraftHasUnknownSubmission => hasUnknownFormDraftSubmission(
     captureDeferredJsonValues(captureFormDraft),
     route: formDraftSpec.route,
-    pendingFallback: _draftSubmissionPending,
+    pendingFallback:
+        _draftSubmissionPending && !_precisionTransport.definitelyUnwritten,
     honorMarker: false,
   );
   FormDraftSpec get formDraftSpec;
@@ -269,6 +273,77 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   bool _draftStorageReady = false;
   bool _draftRestoreBlocked = false;
   bool _draftSubmissionPending = false;
+  late final BusinessPrecisionTransport _precisionTransport =
+      BusinessPrecisionTransport(
+        checkpoint: saveFormDraftNow,
+        isCurrent: () =>
+            mounted && formDraftIdentityIsCurrent && !_draftDisposed,
+      );
+
+  /// A local exact preview uses the same per-draft policy as its later request.
+  /// Unknown writes can only replay their original policy, never ask a new one.
+  BusinessPrecisionChoice? formDraftPrecisionChoice(String key) =>
+      _precisionTransport.choices[key];
+
+  Future<BusinessPrecisionChoice?> chooseFormDraftPrecision(
+    BusinessPrecisionRequirement requirement, {
+    bool Function()? isCurrent,
+  }) async {
+    bool current() =>
+        mounted &&
+        formDraftIdentityIsCurrent &&
+        !_draftDisposed &&
+        (isCurrent?.call() ?? true);
+    if (!current() ||
+        formDraftHasUnknownSubmission ||
+        !_precisionTransport.canAsk) {
+      return null;
+    }
+    _precisionTransport.prepareRelatedPreview();
+    final choice = await BusinessPrecisionCoordinator.instance.ask(
+      requirement,
+      isCurrent: current,
+    );
+    if (choice == null || !current() || choice.scale > requirement.maxScale) {
+      return null;
+    }
+    _precisionTransport.seenPrecision = true;
+    await _precisionTransport.select(requirement.key, choice);
+    return current() ? choice : null;
+  }
+
+  /// A proven read/preview shares this draft's explicit choices without
+  /// turning a timeout into an unknown write or resetting the write body fence.
+  Future<R> runFormDraftPrecisionRead<R>(Future<R> Function() read) async {
+    final unknown = formDraftHasUnknownSubmission;
+    if (!unknown) _precisionTransport.prepareRelatedPreview();
+    late BusinessPrecisionTransport preview;
+    preview = BusinessPrecisionTransport(
+      readOnly: true,
+      isCurrent: () => mounted && formDraftIdentityIsCurrent && !_draftDisposed,
+      checkpoint: () async {
+        if (!mounted || !formDraftIdentityIsCurrent) {
+          throw StateError('原操作身份已变化');
+        }
+        _precisionTransport.seenPrecision =
+            preview.seenPrecision || _precisionTransport.seenPrecision;
+        _precisionTransport.choices.addAll(preview.choices);
+        await saveFormDraftNow();
+      },
+    );
+    preview.choices.addAll(_precisionTransport.choices);
+    preview.priorUnknown = unknown || !_precisionTransport.canAsk;
+    return preview.run(read);
+  }
+
+  /// Only the matching real command receipt authorizes this continuation.
+  Future<void> checkpointFormDraftAfterConfirmedMutation() async {
+    _precisionTransport.advanceConfirmedRequest();
+    _draftSubmissionPending = false;
+    _draftSubmissionBlocked = false;
+    await saveFormDraftNow();
+  }
+
   bool _draftSubmissionBlocked = false;
   bool _draftSkipResume = false;
   bool _draftReloadDirty = false;
@@ -386,6 +461,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
         if (found.data[formDraftRetirementConflictKey] == true) {
           throw StateError('原草稿已在其他页面修改或结束，这份保全副本仅供核对，不能重新提交');
         }
+        _precisionTransport.restore(found.data[businessPrecisionDraftKey]);
         await restoreFormDraft(found.data);
         final frozenCommands = unknownFormDraftCommandIdentities(
           found.data,
@@ -469,6 +545,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     _draftFinished = false;
     _draftExitAllowed = false;
     _draftSubmissionPending = false;
+    _precisionTransport.clear();
     _draftSubmissionBlocked = false;
     _draftRestoreBlocked = false;
     _draftError = null;
@@ -770,6 +847,8 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
         snapshotJsonValue({
               ...captureDeferredJsonValues(captureFormDraft),
               '_platformGridDrafts': ?grids,
+              if (_precisionTransport.seenPrecision)
+                businessPrecisionDraftKey: _precisionTransport.snapshot(),
               if (_draftSubmissionPending) '_formDraftSubmissionPending': true,
               formDraftUnknownSubmissionKey: formDraftHasUnknownSubmission,
             })
@@ -830,10 +909,14 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   }) async {
     if (!formDraftEnabled || _draftScope == null) return send();
     if (_draftFinished) throw StateError('本次单据已经提交，请返回任务中心');
-    if (_draftSubmissionPending && !formDraftCanReplaySubmission) {
+    if (_draftSubmissionPending &&
+        formDraftHasUnknownSubmission &&
+        !formDraftCanReplaySubmission) {
       throw StateError('上次提交结果待确认，请先核对任务中心，不能重复创建');
     }
     final wasPending = _draftSubmissionPending;
+    final wasUnknown = wasPending && formDraftHasUnknownSubmission;
+    _precisionTransport.beginRun(unknown: wasUnknown);
     _draftSubmissionPending = true;
     try {
       await saveFormDraftNow();
@@ -851,7 +934,7 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
       rethrow;
     }
     try {
-      return await send();
+      return await _precisionTransport.run(send);
     } on ApiException catch (error) {
       // These structured remote admission refusals happen before a business
       // controller runs. A fresh attempt remains editable even when a caller's
@@ -865,12 +948,16 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
                   const {'REMOTE_ACCESS_DENIED'}.contains(error.code)) ||
               (error.httpStatus == 429 &&
                   error.code == 'REMOTE_CAPACITY_REJECTED'));
-      final rejected = remoteAdmissionRejected
-          ? !wasPending
+      final rejected = error.code == 'PRECISION_CHOICE_REQUIRED'
+          ? !wasUnknown && (error.details?['notWritten'] == true)
+          : remoteAdmissionRejected
+          ? !wasUnknown
           : (isDefiniteRejection?.call(error) ??
-                (error.httpStatus == 400 ||
-                    error.httpStatus == 422 ||
-                    (error.httpStatus == 409 && error.code == 'CONFLICT')));
+                (!wasUnknown &&
+                    (error.httpStatus == 400 ||
+                        error.httpStatus == 422 ||
+                        (error.httpStatus == 409 &&
+                            error.code == 'CONFLICT'))));
       if (rejected) {
         _draftSubmissionPending = false;
         // The server's definite rejection is what the user must see. A failing
@@ -1070,12 +1157,11 @@ mixin FormDraftMixin<T extends ConsumerStatefulWidget> on ConsumerState<T> {
     }
     // GoRouter onExit is the authoritative guard (covers go/replace and browser
     // back). The wrapper also protects editors hosted by a plain Navigator.
-    var hasRouter = formDraftUsesRouterGuard;
-    try {
-      GoRouter.of(context);
-    } catch (_) {
-      hasRouter = false;
-    }
+    // Keep this captured guard immutable. The tested dart2js build reused the
+    // prior registry temporary across the old try/catch merge and supplied
+    // that object as PopScope.canPop on the successful router branch.
+    final hasRouter =
+        formDraftUsesRouterGuard && GoRouter.maybeOf(context) != null;
     return PopScope(
       canPop: hasRouter || _draftExitAllowed || !_draftReady,
       onPopInvokedWithResult: (didPop, result) async {

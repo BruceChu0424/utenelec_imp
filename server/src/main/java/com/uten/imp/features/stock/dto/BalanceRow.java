@@ -38,4 +38,7 @@ public class BalanceRow {
 
     /** Lossless JSON companions; existing numeric fields and constructor remain compatible. */
     public String getQtyExact() { return qty == null ? null : qty.toPlainString(); }
+
+    @com.fasterxml.jackson.annotation.JsonProperty("weightExact")
+    public String getWeightExact(){return com.uten.imp.common.util.DecimalText.of(weight);}
 }

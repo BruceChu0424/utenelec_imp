@@ -14,6 +14,34 @@ public final class ProcurementReturnPayableAuthority {
     private ProcurementReturnPayableAuthority() {
     }
 
+    /** A pending receipt is a real obligation, with a distinct typed UUID; never return it as an AP id. */
+    public record Reference(String sourceKind,UUID sourceId,UUID ledgerId,UUID candidateId) { }
+
+    public static Reference lockAndValidateConsideration(EntityManager em,String receiptType,UUID receiptId,
+            UUID supplierId,UUID currencyId,BigDecimal exchangeRate,UUID settlementMethodId,
+            BigDecimal receiptTotalOriginal,BigDecimal receiptTotalLocal,boolean sourceMarkedPosted){
+        if(!java.util.Set.of("PURCHASE","SUBCONTRACT").contains(receiptType))throw conflict("退货来源类型不正确");
+        var rows=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
+            SELECT candidate.id,candidate.supplier_id,candidate.currency_id,candidate.exchange_rate,candidate.settlement_method_id,
+                   candidate.amount_original,candidate.amount_local,candidate.ledger_id,
+                   (SELECT sum(part.payable_original) FROM procurement_receipt_consideration_parts part
+                     WHERE part.receipt_type=:type AND part.receipt_id=:receipt AND fn_procurement_consideration_active('CONSIDERATION',part.id)),
+                   (SELECT sum(part.payable_local) FROM procurement_receipt_consideration_parts part
+                     WHERE part.receipt_type=:type AND part.receipt_id=:receipt AND fn_procurement_consideration_active('CONSIDERATION',part.id))
+            FROM finance_procurement_payable_candidates candidate WHERE candidate.source_type=:sourceType AND candidate.source_id=:receipt
+              AND candidate.status<>'SOURCE_REVERSED' ORDER BY candidate.id FOR UPDATE OF candidate
+            """).setParameter("type",receiptType).setParameter("receipt",receiptId).setParameter("sourceType",receiptType+"_RECEIPT"));
+        if(rows.isEmpty()){
+            UUID ledger=lockAndValidate(em,receiptType,receiptId,supplierId,currencyId,exchangeRate,settlementMethodId,receiptTotalOriginal,receiptTotalLocal,sourceMarkedPosted);
+            return new Reference("AP",ledger,ledger,null);
+        }
+        if(rows.size()!=1)throw conflict("来源暂估债务重复，不能生成退货贷项");Object[] row=rows.getFirst();
+        if(!Objects.equals(supplierId,uuid(row[1]))||!Objects.equals(currencyId,uuid(row[2]))||!same(exchangeRate,decimal(row[3]))
+            ||!Objects.equals(settlementMethodId,uuid(row[4]))||!same(decimal(row[5]),decimal(row[8]))||!same(decimal(row[6]),decimal(row[9])))
+            throw conflict("来源暂估债务与冻结计款供应商、币别、汇率、结算或双币金额不一致");
+        return new Reference("PENDING_RECEIPT",uuid(row[0]),uuid(row[7]),uuid(row[0]));
+    }
+
     public static UUID lockAndValidate(
             EntityManager em,
             String receiptType,

@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 // 报销审批列表页（审批人 + 财务打款双队列）
 // 文档：docs/03-页面/报销审批列表页.md
 //
@@ -344,13 +345,13 @@ class _ExpenseApprovalListPageState
                       child: Text(
                         // 报销恒人民币（2026-10-10 金额带单位口径：数值后带「元」）。
                         '待审批 ${summary.pendingCount} 单 · '
-                        '${summary.pendingAmount.toStringAsFixed(2)} 元　|　'
+                        '${financeExactMoneyDisplay(summary.pendingAmountText)} 元　|　'
                         '待付款 ${summary.payableCount} 单 · '
-                        '${summary.payableAmount.toStringAsFixed(2)} 元　|　'
+                        '${financeExactMoneyDisplay(summary.payableAmountText)} 元　|　'
                         '本月提交 ${summary.monthSubmittedCount} 单 · '
-                        '${summary.monthSubmittedAmount.toStringAsFixed(2)} 元　|　'
+                        '${financeExactMoneyDisplay(summary.monthSubmittedAmountText)} 元　|　'
                         '本月已付款 ${summary.monthPaidCount} 单 · '
-                        '${summary.monthPaidAmount.toStringAsFixed(2)} 元',
+                        '${financeExactMoneyDisplay(summary.monthPaidAmountText)} 元',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                           fontFeatures: const [FontFeature.tabularFigures()],
@@ -516,10 +517,11 @@ class _ExpenseApprovalListPageState
     ),
     MasterColumnDef(
       key: 'totalAmount',
+      exactValueOf: (claim) => claim.totalAmountText,
       label: '金额',
       width: 110,
       type: 'money',
-      value: (claim) => claim.totalAmount.toStringAsFixed(2),
+      value: (claim) => financeExactMoneyDisplay(claim.totalAmountText),
     ),
     MasterColumnDef(
       key: 'yearMonth',

@@ -26,4 +26,7 @@ public class GoodsStockSummary {
     /** Totals remain book evidence; consumers must not attach a current unit while any basis is pending. */
     public boolean isMeasurementPending() { return rows != null && rows.stream().anyMatch(GoodsStockRow::isMeasurementPending); }
     public boolean isAvailableKnown() { return !isMeasurementPending(); }
+
+    @com.fasterxml.jackson.annotation.JsonProperty("totalWeightExact")
+    public String getTotalWeightExact(){return com.uten.imp.common.util.DecimalText.of(totalWeight);}
 }

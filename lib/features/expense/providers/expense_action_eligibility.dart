@@ -36,6 +36,7 @@ final class ExpenseActionEligibility {
   bool canReviewClaim(ExpenseClaim? claim) =>
       canReview &&
       claim != null &&
+      (claim.financialApplication == null || claim.canApprove != null) &&
       claim.id.isNotEmpty &&
       claim.applicantId.isNotEmpty &&
       claim.applicantId != employeeId &&
@@ -73,6 +74,7 @@ final class ExpenseActionEligibility {
   bool canPayClaim(ExpenseClaim? claim) =>
       canPay &&
       claim != null &&
+      (claim.financialApplication == null || claim.canPay != null) &&
       claim.status == ExpenseClaimStatus.approved &&
       claim.applicantId.isNotEmpty &&
       claim.applicantId != employeeId &&

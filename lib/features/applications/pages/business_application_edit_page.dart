@@ -1,3 +1,4 @@
+import '../../../shared/formatters/financial_amount_validation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -80,6 +81,7 @@ class _BusinessApplicationEditPageState
   bool get formDraftIdentityIsCurrent =>
       super.formDraftIdentityIsCurrent && !_documentIdentityChanged;
   int? _version;
+  BusinessApplication? _originalApplication;
 
   bool get _editing => widget.applicationId != null;
   bool get _travel => _kind == 'TRAVEL';
@@ -167,6 +169,7 @@ class _BusinessApplicationEditPageState
   void _prefill(BusinessApplication? application) {
     if (_initialized || application == null) return;
     _initialized = true;
+    _originalApplication = application;
     _id = application.id;
     _version = application.version;
     _kind = application.kind;
@@ -191,12 +194,14 @@ class _BusinessApplicationEditPageState
       context.appWarning('请填写申请标题和事由');
       return;
     }
-    final amount = _text('amount').isEmpty && _travel ? '0' : _text('amount');
-    if (!RegExp(r'^\d{1,14}(\.\d{1,2})?$').hasMatch(amount) ||
-        (!_travel &&
-            (BigInt.tryParse(amount.replaceAll('.', '')) ?? BigInt.zero) ==
-                BigInt.zero)) {
-      context.appWarning('请输入有效金额，最多两位小数');
+    final amount = _text('amount');
+    final amountError = _travel && amount.isEmpty
+        ? null
+        : _travel
+        ? validateNonNegativeFinanceAmount(amount)
+        : validateFinanceAmount(amount);
+    if (amountError != null) {
+      context.appWarning(amountError);
       return;
     }
     if (_travel &&
@@ -302,11 +307,13 @@ class _BusinessApplicationEditPageState
     bool money = false,
   }) => TextField(
     controller: _controllers[key],
+    readOnly:
+        key == 'amount' && (_originalApplication?.continuedOriginal ?? false),
     maxLines: maxLines,
     maxLength: key == 'title'
         ? 200
         : key == 'amount'
-        ? 17
+        ? 200
         : 2000,
     keyboardType: money
         ? const TextInputType.numberWithOptions(decimal: true)
@@ -348,7 +355,18 @@ class _BusinessApplicationEditPageState
         children: [
           _field('title', '申请标题 *'),
           if (_travel) _field('destination', '出差目的地 *'),
-          if (_supplierTarget)
+          if (_supplierTarget &&
+              _originalApplication?.continuedOriginal == true)
+            TextFormField(
+              initialValue: _supplierName,
+              readOnly: true,
+              decoration: const UtenInputDecoration(
+                InputDecoration(labelText: '原收款供应商'),
+                info: '保留已审阅原供应商及其原币义务。',
+              ),
+            ),
+          if (_supplierTarget &&
+              _originalApplication?.continuedOriginal != true)
             SupplierPickerField(
               label: '收款供应商',
               required: true,
@@ -364,18 +382,27 @@ class _BusinessApplicationEditPageState
                 }
                 return supplier;
               },
-              onChanged: (id) => setState(() {
-                _supplierId = id;
-                if (id == null) {
-                  _supplierName = null;
-                  _controllers['payee']!.clear();
+              onChanged: (id) {
+                if (_originalApplication?.continuedOriginal == true &&
+                    id != _supplierId) {
+                  context.appWarning('原供应商须按已审阅义务保留');
+                  return;
                 }
-              }),
+                setState(() {
+                  _supplierId = id;
+                  if (id == null) {
+                    _supplierName = null;
+                    _controllers['payee']!.clear();
+                  }
+                });
+              },
             ),
           if (!_travel && !_supplierTarget) _field('payee', '收款人 / 单位 *'),
           _field(
             'amount',
-            _travel ? '预计费用（元）' : '申请金额（元）*',
+            _travel
+                ? '预计费用（${_originalApplication?.amountUnit ?? '元'}）'
+                : '申请金额（${_originalApplication?.amountUnit ?? '元'}）*',
             money: true,
             info: _kind == 'PREPAYMENT'
                 ? '仅支持供应商预付款。获批后登记实际付款凭证，账务状态独立跟进；不会自动生成费用单，后续核销以财务预付台账为准。'

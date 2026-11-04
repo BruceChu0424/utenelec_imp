@@ -12,9 +12,9 @@ import java.math.BigDecimal;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ExcelImportNumbersTest {
-    @Test void nativeFloatingTailsWithinOneUlpCanReturnToTheSupportedDecimal() throws Exception {
-        assertEquals("35.3", numeric("35.299999999999997", 4, "General", false));
-        assertEquals("0.3", numeric("0.30000000000000004", 4, "General", false));
+    @Test void nativeFloatingTailsRemainTheExactStoredInputForExplicitCorrection() throws Exception {
+        assertEquals("35.299999999999997", numeric("35.299999999999997", 4, "General", false));
+        assertEquals("0.30000000000000004", numeric("0.30000000000000004", 4, "General", false));
     }
 
     @Test void cleanNativeValueIgnoresTheTwoDecimalDisplayMask() throws Exception {
@@ -39,12 +39,13 @@ class ExcelImportNumbersTest {
     }
 
     @Test void cachedNumericFormulaUsesItsCacheWithoutEvaluation() throws Exception {
-        assertEquals("35.3", numeric("35.299999999999997", 4, "General", true));
+        assertEquals("35.299999999999997", numeric("35.299999999999997", 4, "General", true));
     }
 
-    @Test void exactlyOneBinaryUlpIsIncludedWithoutRoundingItsDecimalBoundary() throws Exception {
+    @Test void evenExactlyOneBinaryUlpCannotAuthorizeChangingStoredInput() throws Exception {
         BigDecimal exactUlp=new BigDecimal(Math.ulp(1.0));
-        assertEquals("1",numeric(BigDecimal.ONE.add(exactUlp).toPlainString(),4,"General",false));
+        String raw=BigDecimal.ONE.add(exactUlp).toPlainString();
+        assertEquals(raw,numeric(raw,4,"General",false));
     }
 
     @Test void bothSignsAndDirectionsKeepTheExactUlpAndItsEpsilonNeighboursDistinct() throws Exception {
@@ -56,8 +57,8 @@ class ExcelImportNumbersTest {
             String inside=candidate.add(exactUlp.subtract(epsilon).multiply(multiplier)).toPlainString();
             String boundary=candidate.add(exactUlp.multiply(multiplier)).toPlainString();
             String outside=candidate.add(exactUlp.add(epsilon).multiply(multiplier)).toPlainString();
-            assertEquals(sign,numeric(inside,4,"General",false));
-            assertEquals(sign,numeric(boundary,4,"General",false));
+            assertEquals(inside,numeric(inside,4,"General",false));
+            assertEquals(boundary,numeric(boundary,4,"General",false));
             assertEquals(outside,numeric(outside,4,"General",false));
         }
     }

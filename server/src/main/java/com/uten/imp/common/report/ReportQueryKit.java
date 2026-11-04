@@ -252,11 +252,17 @@ public final class ReportQueryKit {
                                                 ToLongFunction<T> total,
                                                 Function<T, List<ExportColumn>> exportColumns,
                                                 Function<T, List<Map<String, Object>>> rows) {
+        return paginateAll(maxRows,loader,total,exportColumns,rows,ignored->Map.of());
+    }
+    public static <T> ExportPayload paginateAll(int maxRows,BiFunction<Integer,Integer,T> loader,ToLongFunction<T> total,
+            Function<T,List<ExportColumn>> exportColumns,Function<T,List<Map<String,Object>>> rows,
+            Function<T,Map<String,Object>> documentMetadata) {
         requireExportRowCount(maxRows, 0);
         final int size = Math.min(500, Math.max(1, com.uten.imp.common.export.LegacyExportBudget.maximumRows(maxRows)));
         var sink = com.uten.imp.common.export.ExportPageSink.current();
         List<Map<String, Object>> all = sink == null ? new ArrayList<>() : null;
         List<ExportColumn> cols = null;
+        Map<String,Object> metadata=null;
         int seen = 0;
         try (var ignored = ReportReadPlan.open(ReportReadPlan.ROWS_ONLY)) {
             for (int page = 1; page <= 2000; page++) {
@@ -267,6 +273,9 @@ public final class ReportQueryKit {
                     r = loader.apply(page, size);
                 }
                 long reported = total.applyAsLong(r);
+                Map<String,Object> pageMetadata=documentMetadata.apply(r);if(pageMetadata==null)pageMetadata=Map.of();
+                if(metadata==null)metadata=new LinkedHashMap<>(pageMetadata);
+                else if(!metadata.equals(pageMetadata))throw new IllegalStateException("Document metadata changed during export");
                 requireExportRowCount(maxRows, reported);
                 if (cols == null) {
                     List<ExportColumn> first = exportColumns.apply(r);
@@ -277,10 +286,10 @@ public final class ReportQueryKit {
                 seen += pageRows.size();
                 // Check every batch, including unknown counts and rows committed during legacy reads.
                 if (sink == null) all.addAll(pageRows);
-                else sink.accept(new ExportPayload(cols == null ? List.of() : cols, pageRows, seen));
+                else sink.accept(new ExportPayload(cols == null ? List.of() : cols, pageRows, seen).withDocumentMetadata(metadata));
                 if (pageRows.size() < size || (reported >= 0 && seen >= reported)) {
                     return new ExportPayload(cols == null ? List.of() : cols,
-                            sink == null ? all : List.of(), seen);
+                            sink == null ? all : List.of(), seen).withDocumentMetadata(metadata);
                 }
             }
         }

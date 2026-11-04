@@ -1,3 +1,4 @@
+import '../../finance/config/finance_requirement_names.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
 import 'dart:async';
@@ -150,7 +151,8 @@ class _SalesShipmentTaskWorkbenchState
 
   String get _backRoute => _isFinance ? RouteName.finance : RouteName.warehouse;
 
-  String get _title => _isFinance ? '出货财务审核' : '仓库销售出库';
+  String get _title =>
+      _isFinance ? FinanceRequirementNames.customerShipmentReview : '仓库销售出库';
 
   String get _emptyMessage {
     if (_isFinance) {
@@ -588,7 +590,8 @@ class _SalesShipmentTaskWorkbenchState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const UtenReviewerResponsibilityNotice(
-                  actionLabel: '批量出货财务审核',
+                  actionLabel:
+                      '批量${FinanceRequirementNames.customerShipmentReview}',
                   description:
                       '确认后，系统会按当前登录员工记录整批放行责任；放行后单据交给仓库出库，应收在仓库确认出库后生成。',
                   compact: true,
@@ -657,7 +660,8 @@ class _SalesShipmentTaskWorkbenchState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const UtenReviewerResponsibilityNotice(
-                      actionLabel: '批量退回出货财务审核',
+                      actionLabel:
+                          '批量退回${FinanceRequirementNames.customerShipmentReview}',
                       description: '确认后，系统将以此登录员工记录整批退回责任。',
                       compact: true,
                     ),

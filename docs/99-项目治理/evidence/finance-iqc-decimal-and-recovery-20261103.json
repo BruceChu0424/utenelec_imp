@@ -1,0 +1,87 @@
+{
+  "recordedAt": "2026-11-04T08:48:08.111451+00:00",
+  "baseRevision": "8937e02d2f9b4ae1f5a4ff63ad79673cbd3ad149",
+  "finalRevision": null,
+  "candidateHasUncommittedChanges": true,
+  "sourceSha256": {
+    "lib/core/network/business_precision.dart": "f005cd96b9e9af88fc1a4274c36367dd5d26892898fc326f63feb79ca331fcd6",
+    "lib/core/network/interceptors/business_precision_interceptor.dart": "2b3a9c68a407c12d2c38a716b866a22f94861b6f6f6be133ae180fd706e08e80",
+    "lib/features/warehouse/models/warehouse_iqc_stock_in.dart": "c04d0a2f6d8f165051b522de12463f62b6b8bbf3f102d11752ecd6c59d917adb",
+    "lib/features/warehouse/models/warehouse_quality_result.dart": "e286c49bdd71e422b0f44e65eb7d1350d42a8853ffbb5d18da987c1e4597f0ee",
+    "lib/features/warehouse/widgets/warehouse_quality_slice_table.dart": "f1a2e03e715388ab0258e3840a5e1d1b823e470396a0547761967e1b9d3b30e9",
+    "lib/features/warehouse/widgets/warehouse_quality_merged_table.dart": "b414baaacc6dc6ba501a3bcef181a402266aa049b1f6a0b07d6e942ff85e5c31",
+    "lib/features/warehouse/widgets/warehouse_inbound_allocation_view.dart": "3ee25fccfb33f7af794d856492a80c920a579a6671946ae7a49b984ff3fd6872",
+    "lib/features/warehouse/pages/warehouse_quality_result_detail_page.dart": "54f88601d9f180c4e1963ae739983bf90420db6e8f896f35e944e877bbe677a1",
+    "lib/features/warehouse/pages/warehouse_quality_batch_stock_in_page.dart": "08848504a5fc90dc1db22c61c51e7227ef6f36c5c65a81c69e0ed0a4792d851c",
+    "lib/features/warehouse/pages/inbound_arrival_registration_page.dart": "e1910206b6526bd752ad027bf07f3df4324f6b43a73c3a1efdb0698eb1538531",
+    "lib/shared/models/inbound_allocation.dart": "c32f095f4b7a2946e1ac0eaa42c4e03e72cf75ce88c41ec1a609a5d4afb6a672",
+    "lib/shared/measurement/widgets/weight_grid_column.dart": "b7c5e98fcfa6069fc0b5da950ac3b83acab456fc260255ba56ebcb1f5e8f1d3e",
+    "test/features/warehouse/warehouse_iqc_exact_quantity_test.dart": "784aa546427ffb0d4c58607ffbc377677a2254b02250579ae8de3d2623d55dc2"
+  },
+  "targetedVerification": {
+    "scope": "precision/auth/raw IQC and actual queue recovery subset",
+    "testsPassed": 100,
+    "skippedVisualCases": 4,
+    "failed": 0,
+    "log": "tmp/finance-interactive/iqc-exact-recovery-v8.log",
+    "notAFullBusinessAcceptance": true
+  },
+  "earlierBroadRun": {
+    "passed": 196,
+    "skipped": 4,
+    "failed": 4,
+    "log": "tmp/finance-interactive/iqc-exact-all-callers-v7.log",
+    "failuresResolvedInV8": [
+      "raw text contract assertions",
+      "HTTP409 fixture must include actual status",
+      "unknown recovery must permit authoritative GET while retaining original writes"
+    ]
+  },
+  "actualBusinessBoundaries": [
+    "new quantities originate from source Exact aliases and original input text",
+    "expected remaining uses exact comparison with no epsilon",
+    "old pending numeric scalars remain their original JSON type on restore",
+    "new credentials never enter precision persistence or retry",
+    "partial old actual weight uses stored actual before, not new-policy recomputation",
+    "shared allocation preview retains source warehouse/destination and charged-plus-gift semantics"
+  ],
+  "remaining": [
+    "full same-source backend V1032 plus UI integration",
+    "actual local Web and Flutter IQC interactions and precision popup",
+    "original statement paper V2 and BS per-cell source styles",
+    "final finance20 combined regression, reimbursement refactor merge, illustrated Word"
+  ],
+  "nativeCandidate": {
+    "productName": "UTEN Local Test",
+    "runtime": "flutter",
+    "architecture": "x64",
+    "mode": "Release",
+    "engineSha256": "1c47300271ef26e5ec62cb133811516041ce1d980d14b4aaa73700b0109e969a",
+    "source": "same-revision locally built reviewed engine; matching gen_snapshot",
+    "buildLog": "tmp/finance-interactive/windows-reviewed-engine-build-v4.log",
+    "formalPackage": false,
+    "privatePathsVerified": true,
+    "preexistingLocalTestFilesChanged": 0,
+    "actualVerified": [
+      "programmatic normal authentication on loopback only",
+      "real dashboard to finance to persisted monthly profit report",
+      "native accessibility reads after route changes",
+      "chart directory load and UtenBusyOverlay",
+      "new code form rendering and real physical key input"
+    ],
+    "remaining": [
+      "complete writes/import/export/cancellation/stress on final source",
+      "native text injection and element cache affected by concurrent desktop tests; wait for reimbursement thread to finish"
+    ],
+    "stoppedTaskOwnWindows": true
+  },
+  "rejectedTestRuntime": {
+    "mode": "Debug",
+    "nativeException": "0xc0000005",
+    "module": "flutter_windows.dll",
+    "rva": "0xb8ceca",
+    "log": "tmp/finance-interactive/windows-client.stderr.log",
+    "usedForAcceptance": false,
+    "resolution": "recompiled actual app with reviewed matching Release engine; did not modify public SDK"
+  }
+}

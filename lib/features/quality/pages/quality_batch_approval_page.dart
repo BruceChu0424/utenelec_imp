@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/core/ui/human_error_message.dart';
 // 品质「批量审批」汇总页（2026-09-05）——待检处置列表多选后进入。
 //
@@ -1256,7 +1257,7 @@ class _QualityBatchApprovalPageState
 }
 
 String _fmt(double value) {
-  final fixed = value.toStringAsFixed(4);
+  final fixed = value.toExactString(minimumFractionDigits: 4);
   final trimmed = fixed.replaceFirst(RegExp(r'0+$'), '');
   return trimmed.endsWith('.')
       ? trimmed.substring(0, trimmed.length - 1)

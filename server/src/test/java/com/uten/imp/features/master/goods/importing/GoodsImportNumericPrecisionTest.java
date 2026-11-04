@@ -21,7 +21,7 @@ class GoodsImportNumericPrecisionTest {
     private final GoodsImportService importer = new GoodsImportService(
             null, null, null, null, null, null, null, null, null, null, null);
 
-    @Test void nativePriceAndPurchaseQuantitiesRemoveOnlyRepresentationalTails() throws Exception {
+    @Test void nativePriceAndPurchaseQuantitiesKeepStoredDecimalTails() throws Exception {
         var parsed = parse(workbook(row -> {
             rawNumeric(row, 3, "35.299999999999997", "#,##0.00");
             rawNumeric(row, 4, "0.30000000000000004", "General");
@@ -30,10 +30,10 @@ class GoodsImportNumericPrecisionTest {
 
         assertTrue(errors(parsed).isEmpty(), errors(parsed).toString());
         Object row = rows(parsed).getFirst();
-        assertDecimal("35.3", row, "price");
-        assertDecimal("0.3", row, "minOrderQty");
-        assertDecimal("35.3", row, "orderMultipleQty");
-        assertEquals("35.3", cells(row).get("price"));
+        assertDecimal("35.299999999999997", row, "price");
+        assertDecimal("0.30000000000000004", row, "minOrderQty");
+        assertDecimal("35.299999999999997", row, "orderMultipleQty");
+        assertEquals("35.299999999999997", cells(row).get("price"));
     }
 
     @Test void cleanNumericCellWithTheActualFilesTwoDecimalFormatStaysExact() throws Exception {
@@ -52,28 +52,20 @@ class GoodsImportNumericPrecisionTest {
         assertEquals("99999999999999.9999", cells(rows(parsed).getFirst()).get("price"));
     }
 
-    @Test void explicitTextAndLegitimateNumericFractionsRemainVisibleErrors() throws Exception {
-        for (String text : List.of("35.299999999999997", "0.123456")) {
-            var parsed = parse(workbook(row -> row.createCell(3).setCellValue(text)), Map.of());
-            assertPriceError(parsed);
-            assertEquals(text, cells(rows(parsed).getFirst()).get("price"));
+    @Test void nativeAndEditedCompleteDecimalsAreAcceptedWithoutRounding() throws Exception {
+        for (String text : List.of("35.299999999999997", "0.123456", "0.000000000000000000000001", "1234567890123456789012345678901234567890.123456789012345678901234")) {
+            for (var parsed : List.of(parse(workbook(row -> row.createCell(3).setCellValue(text)), Map.of()),
+                    parse(workbook(row -> rawNumeric(row, 3, text, "0.00")), Map.of()),
+                    parse(workbook(row -> row.createCell(3).setCellValue("1")), Map.of(2,Map.of("price",text))))) {
+                assertTrue(errors(parsed).isEmpty(),errors(parsed).toString());
+                assertDecimal(text,rows(parsed).getFirst(),"price");
+                assertEquals(text,cells(rows(parsed).getFirst()).get("price"));
+            }
         }
-        assertPriceError(parse(workbook(row -> rawNumeric(row, 3, "0.123456", "0.00")), Map.of()));
-        assertPriceError(parse(workbook(row -> rawNumeric(row, 3, "35.29999999999997", "0.00")), Map.of()));
-    }
-
-    @Test void editedNumericTextIsNeverTreatedAsANativeFloatingPointArtifact() throws Exception {
-        byte[] file = workbook(row -> rawNumeric(row, 3, "35.299999999999997", "General"));
-        var rejected = parse(file, Map.of(2, Map.of("price", "35.299999999999997")));
-        assertPriceError(rejected);
-        assertEquals("35.299999999999997", cells(rows(rejected).getFirst()).get("price"));
-        var accepted = parse(file, Map.of(2, Map.of("price", "35.3")));
-        assertTrue(errors(accepted).isEmpty());
-        assertDecimal("35.3", rows(accepted).getFirst(), "price");
     }
 
     @Test @Timeout(5) void exponentAndStorageBoundsStillRejectInsteadOfUnderflowingOrRoundingToZero() throws Exception {
-        for (String raw : List.of("1E999999999", "1E-999999999", "0E-999999999", "0E999999999", "100000000000000")) {
+        for (String raw : List.of("1E999999999", "1E-999999999", "0E-999999999", "0E999999999", "10000000000000000000000000000000000000000", "0.0000000000000000000000001")) {
             assertPriceError(parse(workbook(row -> rawNumeric(row, 3, raw, "General")), Map.of()));
             assertPriceError(parse(workbook(row -> row.createCell(3).setCellValue(raw)), Map.of()));
             assertPriceError(parse(workbook(row -> row.createCell(3).setCellValue("1")),

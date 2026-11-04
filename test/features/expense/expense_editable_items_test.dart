@@ -80,8 +80,11 @@ void main() {
       expect(grid.mountedRowCount, lessThan(100));
       expect(grid.rows.last.description.text, '费用 1999');
       expect(
-        grid.rows.fold<int>(0, (sum, row) => sum + row.amountCents!),
-        2000,
+        grid.rows.fold<BigInt>(
+          BigInt.zero,
+          (sum, row) => sum + row.amountUnits!,
+        ),
+        BigInt.from(20) * BigInt.from(10).pow(24),
       );
       grid.rows.last.amount.text = '0.';
       expect(grid.rows.last.exportDraft()['amountText'], '0.');

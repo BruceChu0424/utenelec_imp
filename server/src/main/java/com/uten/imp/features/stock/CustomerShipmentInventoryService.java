@@ -12,7 +12,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
+import com.uten.imp.common.util.FinancialExactAmount;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -66,7 +66,7 @@ public class CustomerShipmentInventoryService implements CustomerShipmentInvento
                     qty,consumed_qty,released_qty,status,source,source_doc_type,source_doc_id,supply_type,supply_id,
                     idempotency_key,created_by,updated_by)
                 SELECT gen_random_uuid(),'CUSTOMER_SHIPMENT_ITEM',item.id,'CUSTOMER_SHIPMENT_ITEM',item.goods_id,item.color_id,
-                    :warehouse,ROUND(item.qty*COALESCE(NULLIF(item.unit_rate,0),1),4),0,0,0,0,'SALES_SHIPMENT',:shipment,
+                    :warehouse,fn_customer_shipment_picked_base(item),0,0,0,0,'SALES_SHIPMENT',:shipment,
                     'STOCK_BALANCE',balance.id,:attempt||':'||item.id::text,:actor,:actor
                 FROM sales_shipment_items item JOIN v_stock_operable_balances balance
                   ON balance.warehouse_id=:warehouse AND balance.goods_id=item.goods_id AND balance.color_id IS NOT DISTINCT FROM item.color_id
@@ -118,7 +118,7 @@ public class CustomerShipmentInventoryService implements CustomerShipmentInvento
         if(lines.stream().anyMatch(line->line.warehouseId()==null))throw conflict("发货明细缺少实际发出仓");
         lines.forEach(line->inventory.requireHeld(new InventoryKey(line.goodsId(),line.colorId())));
         List<Object[]> rows=NativeQueryResults.objectArrayRows(em.createNativeQuery("""
-                SELECT item.id,item.goods_id,item.color_id,ROUND(item.qty*COALESCE(NULLIF(item.unit_rate,0),1),4)
+                SELECT item.id,item.goods_id,item.color_id,fn_customer_shipment_picked_base(item)
                 FROM sales_shipments document JOIN sales_shipment_items item ON item.shipment_id=document.id AND NOT item.is_deleted
                 WHERE document.id=:id AND document.shipment_kind='DIRECT_CUSTOMER'
                   AND document.status=0 AND NOT document.is_deleted AND NOT document.rejected AND document.finance_audit=1
@@ -146,8 +146,8 @@ public class CustomerShipmentInventoryService implements CustomerShipmentInvento
                 """).setParameter("id",shipmentId));
     }
     private static BigDecimal base(BigDecimal value) {
-        if(value==null||value.setScale(4,RoundingMode.HALF_UP).signum()<=0)throw conflict("发货的基本单位数量太小或不正确");
-        return value.setScale(4,RoundingMode.HALF_UP);
+        if(value==null||value.signum()<=0)throw conflict("发货的基本单位数量必须大于零");
+        return FinancialExactAmount.quantity(value,"发货基本单位数量");
     }
     private static BigDecimal decimal(Object value){return value==null?BigDecimal.ZERO:new BigDecimal(value.toString());}
     private static ApiException conflict(String message){return new ApiException(ErrorCode.CONFLICT,message);}

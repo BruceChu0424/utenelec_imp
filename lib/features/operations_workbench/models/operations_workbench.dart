@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../basic_data/models/master_facet.dart';
 import '../../../shared/models/subcontract_task_source.dart';
 import '../../../shared/models/paged_result.dart';
@@ -829,6 +830,6 @@ String _displayNumber(num value) => value == value.roundToDouble()
 String formatWorkbenchQuantity(num value) => value == value.roundToDouble()
     ? value.toInt().toString()
     : value
-          .toStringAsFixed(3)
+          .toExactString(minimumFractionDigits: 3)
           .replaceFirst(RegExp(r'0+$'), '')
           .replaceFirst(RegExp(r'\.$'), '');

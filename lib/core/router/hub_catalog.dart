@@ -52,6 +52,7 @@ final Map<String, List<String>> hubCardLocations = <String, List<String>>{
     RouteName.workshopMaterialSetup,
   ],
   RouteName.finance: [
+    '/finance/applications',
     '/finance/expenses',
     RouteName.financeAudits,
     RouteName.financeQuoteReview,

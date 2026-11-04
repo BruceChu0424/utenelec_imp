@@ -899,8 +899,8 @@ void main() {
       (batch) => batch.receiptId == 'receipt-1',
     );
     expect(first.receiptType, 'PURCHASE');
-    expect(first.items.single.baseQty, 3.5);
-    expect(first.items.single.expectedRemainingBaseQty, 5);
+    expect(first.items.single.baseQty, '3.5');
+    expect(first.items.single.expectedRemainingBaseQty, '5');
     expect(first.items.single.place, 'B-02');
     // 第二张没改：数量/库位走批量表的默认预填。
     final second = command.batches.firstWhere(
@@ -1403,10 +1403,15 @@ Map<String, dynamic> _detailJsonFor(String receiptId) {
         'colorName': '黑色',
         'unitName': '件',
         'receivedBaseQty': 10,
+        'receivedBaseQtyExact': '10',
         'passedBaseQty': 5,
+        'passedBaseQtyExact': '5',
         'failedBaseQty': 0,
+        'failedBaseQtyExact': '0',
         'warehouseStockedBaseQty': 0,
+        'warehouseStockedBaseQtyExact': '0',
         'pendingStockBaseQty': 5,
+        'pendingStockBaseQtyExact': '5',
         'lineStatus': 'PARTIAL',
       },
     ],
@@ -1424,11 +1429,17 @@ Map<String, dynamic> _detailJsonFor(String receiptId) {
         'unitName': '件',
         'sourceOrderNo': 'PO-001',
         'receivedBaseQty': 10,
+        'receivedBaseQtyExact': '10',
         'qualityPassedBaseQty': 5,
+        'qualityPassedBaseQtyExact': '5',
         'warehouseStockedBaseQty': 0,
+        'warehouseStockedBaseQtyExact': '0',
         'releasedBaseQty': 5,
+        'releasedBaseQtyExact': '5',
         'stockedForReleaseBaseQty': 0,
+        'stockedForReleaseBaseQtyExact': '0',
         'remainingBaseQty': 5,
+        'remainingBaseQtyExact': '5',
         'releasedWeight': 2.5,
         'placeHint': 'A-01',
         'releaseNote': '抽检合格',

@@ -10,7 +10,6 @@ import '../../../components/layout/uten_table_column_kit.dart';
 import '../../../components/layout/uten_collapsible_content.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/theme/uten_colors.dart';
-import '../../../shared/formatters/exact_decimal.dart';
 import '../models/production_exact_quantity.dart';
 import '../models/production_direct_transfer_candidate.dart'
     show directTransferLoadFailedText;
@@ -685,7 +684,7 @@ class _ProductionDailyProductDetailsCardState
     final quantity = row.material?.issuedQtyText;
     if (quantity == null) return '领料量待核对';
     final unit = row.material?.unitName?.trim();
-    return '${_number(financeExactDecimalUnits(quantity)!)}${unit?.isNotEmpty == true ? ' $unit' : ''}';
+    return '${_number(productionExactQuantityUnits(quantity)!)}${unit?.isNotEmpty == true ? ' $unit' : ''}';
   }
 
   String _materialIssue(DailyGridRow row) {
@@ -708,13 +707,13 @@ class _ProductionDailyProductDetailsCardState
     ),
   );
 
-  static BigInt? _units(String text) => financeExactDecimalUnits(
-    productionExactQuantityText(text.trim().replaceFirst(RegExp(r'\.$'), '')),
+  static BigInt? _units(String text) => productionExactQuantityUnits(
+    text.trim().replaceFirst(RegExp(r'\.$'), ''),
   );
 
   static String _number(BigInt units) {
     final text = productionExactQuantityText(
-      financeExactDecimalFromUnits(units),
+      productionQuantityTextFromUnits(units),
     )!;
     final parts = text.split('.');
     final integer = parts.first.replaceAllMapped(

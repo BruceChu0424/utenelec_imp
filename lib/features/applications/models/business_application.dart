@@ -113,12 +113,24 @@ class BusinessApplication {
     this.events = const [],
     this.financeDocumentId,
     this.submittedAt,
+    this.originalContext = const {},
   });
   final String id;
   final String applicationNo;
   final String kind;
   final String title;
   final String amount;
+  final Map<String, dynamic> originalContext;
+  bool get originalAmount => originalContext['amountBasis'] == 'ORIGINAL';
+  bool get continuedOriginal => originalContext.isNotEmpty;
+  String get amountUnit => originalAmount
+      ? (originalContext['currencyCode']?.toString() ??
+            originalContext['currencyName']?.toString() ??
+            '原币待核')
+      : '元';
+  String get amountLabel => amount.isEmpty ? '—' : '$amount $amountUnit';
+  bool get rmbAmount =>
+      !originalAmount || originalContext['baseCurrency'] == true;
   final String status;
   final String applicantId;
   final String applicantName;
@@ -165,7 +177,10 @@ class BusinessApplication {
         applicationNo: json['applicationNo'] as String,
         kind: json['kind'] as String,
         title: json['title'] as String,
-        amount: json['amount'].toString(),
+        amount: json['amount']?.toString() ?? '',
+        originalContext: Map<String, dynamic>.from(
+          json['originalContext'] as Map? ?? const {},
+        ),
         status: json['status'] as String,
         applicantId: json['applicantId'] as String,
         applicantName: json['applicantName'] as String? ?? '',

@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/authenticated_request_scope.dart';
+import '../../core/network/business_precision.dart';
 import '../../core/io/file_saver.dart';
 import 'master_export_job.dart';
 import 'supplemental_export_job.dart';
@@ -92,7 +93,12 @@ class ReportExportJob {
       bytes = (json['bytes'] as num?)?.toInt() ?? 0,
       snapshotAt = json['snapshotAt']?.toString(),
       createdAt = json['createdAt']?.toString(),
-      error = json['error']?.toString();
+      error = json['error']?.toString(),
+      attempt = (json['attempt'] as num?)?.toInt() ?? 0,
+      precisionRequirement = BusinessPrecisionRequirement.parse(
+        json['precisionRequirement'],
+      ),
+      precisionChoices = _parsePrecisionChoices(json['precisionChoices']);
 
   final String id;
   final String domain;
@@ -105,9 +111,13 @@ class ReportExportJob {
   final String? snapshotAt;
   final String? createdAt;
   final String? error;
+  final int attempt;
+  final BusinessPrecisionRequirement? precisionRequirement;
+  final Map<String, BusinessPrecisionChoice> precisionChoices;
 
   bool get active => status == 'PENDING' || status == 'RUNNING';
   bool get downloadable => status == 'SUCCEEDED';
+  bool get awaitingPrecision => status == 'WAITING_PRECISION';
   String get statusLabel => active && cancelRequested
       ? '正在取消'
       : switch (status) {
@@ -117,8 +127,87 @@ class ReportExportJob {
           'FAILED' => '生成失败',
           'CANCELLED' => '已取消',
           'EXPIRED' => '文件已过期',
+          'WAITING_PRECISION' => '等待本次精度选择',
           _ => '状态待核查',
         };
+}
+
+Map<String, BusinessPrecisionChoice> _parsePrecisionChoices(Object? raw) {
+  if (raw == null) {
+    return const {};
+  }
+  if (raw is! Map || raw.length > 32) {
+    throw const FormatException('原导出精度资料不完整');
+  }
+  final result = <String, BusinessPrecisionChoice>{};
+  for (final entry in raw.entries) {
+    final choice = BusinessPrecisionChoice.parse(entry.value);
+    if (entry.key is! String || choice == null) {
+      throw const FormatException('原导出精度选择无效');
+    }
+    result[entry.key as String] = choice;
+  }
+  return Map.unmodifiable(result);
+}
+
+class ReportExportPrecisionResume {
+  ReportExportPrecisionResume({
+    required this.jobId,
+    required this.requestId,
+    required this.expectedAttempt,
+    required Map<String, BusinessPrecisionChoice> choices,
+  }) : choices = Map.unmodifiable(choices);
+  factory ReportExportPrecisionResume.create(
+    ReportExportJob job,
+    BusinessPrecisionChoice choice,
+  ) {
+    final required = job.precisionRequirement;
+    if (!job.awaitingPrecision ||
+        required == null ||
+        job.attempt < 1 ||
+        choice.scale > required.maxScale) {
+      throw StateError('原导出不在可选择精度的等待状态');
+    }
+    if (job.precisionChoices.containsKey(required.key) &&
+        !required.selectionRejected) {
+      throw StateError('原任务的同项精度仍待核对，不能自动循环选择');
+    }
+    return ReportExportPrecisionResume(
+      jobId: job.id,
+      requestId: const Uuid().v4(),
+      expectedAttempt: job.attempt,
+      choices: {...job.precisionChoices, required.key: choice},
+    );
+  }
+  factory ReportExportPrecisionResume.fromJson(Map<String, dynamic> json) {
+    if (json['version'] != 1 ||
+        json['jobId'] is! String ||
+        json['requestId'] is! String ||
+        json['expectedAttempt'] is! int) {
+      throw const FormatException('原导出精度续处理资料不完整');
+    }
+    return ReportExportPrecisionResume(
+      jobId: json['jobId'] as String,
+      requestId: json['requestId'] as String,
+      expectedAttempt: json['expectedAttempt'] as int,
+      choices: _parsePrecisionChoices(json['choices']),
+    );
+  }
+  final String jobId, requestId;
+  final int expectedAttempt;
+  final Map<String, BusinessPrecisionChoice> choices;
+  Map<String, dynamic> get body => {
+    'requestId': requestId,
+    'expectedAttempt': expectedAttempt,
+  };
+  Map<String, dynamic> get json => {
+    'version': 1,
+    'jobId': jobId,
+    ...body,
+    'choices': {
+      for (final entry in choices.entries) entry.key: entry.value.toJson(),
+    },
+  };
 }
 
 /// Every request retains the original authenticated command scope. A create
@@ -162,6 +251,38 @@ class ReportExportJobsClient {
   Future<ReportExportJob> cancel(String id) async {
     await scope.run(() => api.post('$base/$id/cancel'));
     return read(id);
+  }
+
+  Future<ReportExportJob> resumePrecision(
+    ReportExportPrecisionResume request,
+  ) async {
+    final transport =
+        BusinessPrecisionTransport(isCurrent: () => scope.isCurrent)
+          ..choices.addAll(request.choices)
+          ..beginRun(unknown: true);
+    final response = await scope.run(
+      () => transport.run(
+        () => api.post('$base/${request.jobId}/precision', body: request.body),
+      ),
+    );
+    await scope.verify();
+    return ReportExportJob.fromJson(response);
+  }
+
+  Future<ReportExportJob?> precisionReceipt(
+    ReportExportPrecisionResume request,
+  ) async {
+    final response = await scope.run(
+      () => api.get(
+        '$base/${request.jobId}/precision-receipts/${request.requestId}',
+      ),
+    );
+    await scope.verify();
+    return response['found'] == true
+        ? ReportExportJob.fromJson(
+            Map<String, dynamic>.from(response['job'] as Map),
+          )
+        : null;
   }
 
   Future<Uint8List> download(String id, String password) async {
@@ -251,6 +372,31 @@ class ReportExportPendingStore {
   Future<void> resolve(String id) async {
     if (read()?.id == id && !await preferences.remove(key)) {
       throw StateError('无法更新导出任务记录，请稍后重试');
+    }
+  }
+
+  ReportExportPrecisionResume? readPrecisionResume() {
+    final value = preferences.getString('$key.precision-resume');
+    return value == null
+        ? null
+        : ReportExportPrecisionResume.fromJson(
+            jsonDecode(value) as Map<String, dynamic>,
+          );
+  }
+
+  Future<void> savePrecisionResume(ReportExportPrecisionResume request) async {
+    if (!await preferences.setString(
+      '$key.precision-resume',
+      jsonEncode(request.json),
+    )) {
+      throw StateError('无法保留原导出精度请求，本次未发送');
+    }
+  }
+
+  Future<void> resolvePrecisionResume(String requestId) async {
+    if (readPrecisionResume()?.requestId == requestId &&
+        !await preferences.remove('$key.precision-resume')) {
+      throw StateError('无法更新原导出精度回执记录，请保留原任务');
     }
   }
 }

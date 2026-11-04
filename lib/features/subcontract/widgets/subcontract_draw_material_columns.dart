@@ -10,19 +10,17 @@ List<MasterColumnDef<SubcontractDrawMaterial>> subcontractDrawMaterialColumns({
 }) {
   String label(String? value) =>
       value?.trim().isNotEmpty == true ? value!.trim() : '—';
-  MasterColumnDef<SubcontractDrawMaterial> quantity(
-    String key,
-    String title,
-    double Function(SubcontractDrawMaterial) value,
-  ) => MasterColumnDef(
-    key: key,
-    label: title,
-    width: quantityWidth,
-    type: 'number',
-    sortable: true,
-    exactValueOf: (row) => value(row).toString(),
-    value: (row) => formatQtyWithUnit(value(row), row.unitName),
-  );
+  MasterColumnDef<SubcontractDrawMaterial> quantity(String key, String title) =>
+      MasterColumnDef(
+        key: key,
+        label: title,
+        width: quantityWidth,
+        type: 'number',
+        sortable: true,
+        exactValueOf: (row) => row.quantityText(key),
+        value: (row) =>
+            formatExactQtyWithUnit(row.quantityText(key), row.unitName),
+      );
   return [
     MasterColumnDef(
       key: 'state',
@@ -54,13 +52,13 @@ List<MasterColumnDef<SubcontractDrawMaterial>> subcontractDrawMaterialColumns({
       filterFromRows: true,
       value: (row) => label(row.colorName),
     ),
-    quantity('perUnitQty', '每套用量', (row) => row.perUnitQty),
-    quantity('requiredQty', '需求', (row) => row.requiredQty),
-    quantity('sentQty', '已发外', (row) => row.sentQty),
-    quantity('pendingQty', '待仓库发', (row) => row.pendingQty),
-    quantity('availableQty', '仓库可用', (row) => row.availableQty),
-    quantity('drawableQty', '本次可领', (row) => row.drawableQty),
-    quantity('shortQty', '还缺', (row) => row.shortQty),
+    quantity('perUnitQty', '每套用量'),
+    quantity('requiredQty', '需求'),
+    quantity('sentQty', '已发外'),
+    quantity('pendingQty', '待仓库发'),
+    quantity('availableQty', '仓库可用'),
+    quantity('drawableQty', '本次可领'),
+    quantity('shortQty', '还缺'),
     const MasterColumnDef(
       key: 'supplySources',
       label: '供应来源',

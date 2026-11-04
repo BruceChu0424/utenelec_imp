@@ -69,6 +69,15 @@ public final class SubcontractShortDeliveryContracts {
             long version,
             /** 当前登录人可否判定(权限点 + 对象级：本人负责的订货单或 view:all)。 */
             boolean canDecide) {
+        public String getOrderedQtyExact(){return com.uten.imp.common.util.DecimalText.of(orderedQty);}
+        public String getAllowedLossPctExact(){return com.uten.imp.common.util.DecimalText.of(allowedLossPct);}
+        public String getFloorQtyExact(){return com.uten.imp.common.util.DecimalText.of(floorQty);}
+        public String getDeliveredQtyExact(){return com.uten.imp.common.util.DecimalText.of(deliveredQty);}
+        public String getShortfallQtyExact(){return com.uten.imp.common.util.DecimalText.of(shortfallQty);}
+        public String getShortfallPctExact(){return com.uten.imp.common.util.DecimalText.of(shortfallPct);}
+        public String getLossQtyExact(){return com.uten.imp.common.util.DecimalText.of(lossQty);}
+        public String getLossPctExact(){return com.uten.imp.common.util.DecimalText.of(lossPct);}
+
     }
 
     public record CaseEvent(
@@ -98,6 +107,11 @@ public final class SubcontractShortDeliveryContracts {
             OffsetDateTime lastLossAt,
             List<GoodsLossRow> byGoods,
             List<CaseRow> recentCases) {
+        public String getOrderedQtyExact(){return com.uten.imp.common.util.DecimalText.of(orderedQty);}
+        public String getLossQtyExact(){return com.uten.imp.common.util.DecimalText.of(lossQty);}
+        public String getLossPctExact(){return com.uten.imp.common.util.DecimalText.of(lossPct);}
+        public String getMaxLossPctExact(){return com.uten.imp.common.util.DecimalText.of(maxLossPct);}
+
     }
 
     public record GoodsLossRow(
@@ -111,5 +125,10 @@ public final class SubcontractShortDeliveryContracts {
             BigDecimal lossPct,
             BigDecimal maxLossPct,
             OffsetDateTime lastLossAt) {
+        public String getOrderedQtyExact(){return com.uten.imp.common.util.DecimalText.of(orderedQty);}
+        public String getLossQtyExact(){return com.uten.imp.common.util.DecimalText.of(lossQty);}
+        public String getLossPctExact(){return com.uten.imp.common.util.DecimalText.of(lossPct);}
+        public String getMaxLossPctExact(){return com.uten.imp.common.util.DecimalText.of(maxLossPct);}
+
     }
 }

@@ -27,7 +27,7 @@ class GoodsBomControlFieldsTest {
 
     private final GoodsRepository goodsRepo = mock(GoodsRepository.class);
     private final GoodsBomItemRepository bomRepo = mock(GoodsBomItemRepository.class);
-    private final GoodsBomService service = new GoodsBomService(
+    private final GoodsBomService service = new GoodsBomService(org.mockito.Mockito.mock(com.uten.imp.application.port.BusinessNumericInputEvidencePort.class),
             goodsRepo,
             bomRepo,
             mock(ColorRepository.class),

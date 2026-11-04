@@ -27,16 +27,19 @@ class OutboundWeightEntry extends EditableGridRow {
     this.qtyController,
     Listenable? qtyListenable,
     this.unitRate,
+    this.unitRateExact,
     this.supplierId,
     this.colorId,
     this.warehouseId,
     this.warehouseIdOf,
     double? kg,
+    String? kgExact,
     bool qtyFromWeight = false,
     WeightUnit unit = WeightUnit.kg,
   }) : qtyListenable = qtyListenable ?? qtyController,
        weight = WeightEntryController(
          kg: kg,
+         kgExact: kgExact,
          unit: unit,
          qtyFromWeight: qtyFromWeight,
        );
@@ -52,6 +55,7 @@ class OutboundWeightEntry extends EditableGridRow {
 
   /// 1 个行单位 = 多少基本单位; null = 不知道换算 (不核对偏差, 只记重量)。
   final double? unitRate;
+  final String? unitRateExact;
 
   /// 可改的本次数量 (称重推算数量时黄框预填); null = 数量既定。
   final UtenAutofillTextController? qtyController;
@@ -74,6 +78,7 @@ class OutboundWeightEntry extends EditableGridRow {
 
   /// 千克 (HALF_UP 4 位); 没称为 null。
   double? get kg => weight.kg;
+  String? get kgText => weight.kgText;
   bool get qtyFromWeight => weight.qtyFromWeight;
 
   /// 幂等键/指纹片段: `千克|是否按称重改数量`。
@@ -159,6 +164,6 @@ WeightTotalsSummary outboundWeightTotals(
     if (entry.hasWeightDeviation(params, mode: mode)) deviation++;
   }
   return WeightTotalsSummary.of([
-    for (final e in list) e.kg,
+    for (final e in list) e.kgText,
   ], deviationRows: deviation);
 }

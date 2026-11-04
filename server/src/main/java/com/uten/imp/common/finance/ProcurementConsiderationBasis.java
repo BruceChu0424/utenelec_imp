@@ -32,7 +32,6 @@ public final class ProcurementConsiderationBasis {
     /** A reviewed book allocation retains its remainder in the source; the final share takes it all. */
     public static BigDecimal bookAllocation(BigDecimal remainingLocal,BigDecimal actualOriginal,BigDecimal remainingOriginal){
         BigDecimal exact=finiteBookPortion(remainingLocal,actualOriginal,remainingOriginal);
-        return exact!=null?exact:remainingLocal.multiply(actualOriginal)
-                .divide(remainingOriginal,FinancialExactAmount.MAX_BOOK_FRACTION_DIGITS,java.math.RoundingMode.DOWN);
+        return exact!=null?exact:BusinessPrecisionContext.divide(remainingLocal.multiply(actualOriginal),remainingOriginal,"money.book-share","本次账面金额分摊",FinancialExactAmount.MAX_BOOK_FRACTION_DIGITS);
     }
 }

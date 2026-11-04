@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "purpose": "stock.value.interval",
+  "quantityFractionDigits": 24,
+  "bookFractionDigits": 30,
+  "rule": "Stored v1 results retain their original cumulative ROUND4 proof. New v2 values retain finite digits; nonterminating or field-limited cumulative endpoints require an explicit policy. A final slice takes the same source's actual remainder. Frozen policies precede unrelated current headers.",
+  "cases": [
+    {"id":"finite-24","value":"1.123456789012345678901234","from":"0","to":"1","denominator":"2","precisionVersion":2,"expected":"0.561728394506172839450617"},
+    {"id":"finite-30","value":"1.12345678901234567890123456789","from":"0","to":"1","denominator":"2","precisionVersion":2,"expected":"0.561728394506172839450617283945"},
+    {"id":"finite-ignores-unused-zero-choice","value":"1.123456789012345678901234","from":"0","to":"1","denominator":"2","precisionVersion":2,"choice":{"scale":0,"rounding":"DOWN"},"expected":"0.561728394506172839450617"},
+    {"id":"legacy-prefix","value":"1.0001","from":"0","to":"1","denominator":"3","precisionVersion":1,"expected":"0.3334"},
+    {"id":"legacy-tail","value":"1.0001","from":"1","to":"3","denominator":"3","precisionVersion":1,"expected":"0.6667"},
+    {"id":"new-repeating-requires-choice","value":"1.0001","from":"0","to":"1","denominator":"3","precisionVersion":2,"required":"NON_TERMINATING"},
+    {"id":"new-explicit-24-down","value":"100","from":"0","to":"1","denominator":"11","precisionVersion":2,"choice":{"scale":24,"rounding":"DOWN"},"expected":"9.090909090909090909090909"},
+    {"id":"new-explicit-24-tail","value":"100","from":"1","to":"11","denominator":"11","precisionVersion":2,"choice":{"scale":24,"rounding":"DOWN"},"expected":"90.909090909090909090909091"},
+    {"id":"new-explicit-half-up","value":"1.0001","from":"0","to":"1","denominator":"3","precisionVersion":2,"choice":{"scale":4,"rounding":"HALF_UP"},"expected":"0.3334"},
+    {"id":"full-source-needs-no-choice","value":"100.123456789012345678901234","from":"0","to":"3","denominator":"3","precisionVersion":2,"expected":"100.123456789012345678901234"},
+    {"id":"zero-width-needs-no-choice","value":"1","from":"0","to":"0","denominator":"3","precisionVersion":2,"expected":"0"},
+    {"id":"complete-product-48-needs-choice","value":"0.000000000000000000000001","from":"0","to":"0.000000000000000000000001","denominator":"1","precisionVersion":2,"required":"PRECISION_LIMIT"},
+    {"id":"complete-product-48-explicit-30-down","value":"0.000000000000000000000001","from":"0","to":"0.000000000000000000000001","denominator":"1","precisionVersion":2,"choice":{"scale":30,"rounding":"DOWN"},"expected":"0"}
+  ]
+}

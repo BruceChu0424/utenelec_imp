@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 // 报销单模型
 // 文档：docs/04-数据模型/实体字典.md#ExpenseClaim
 
@@ -81,6 +82,7 @@ class ExpenseClaim {
     required this.title,
     required this.items,
     required this.totalAmount,
+    this.totalAmountExact,
     required this.status,
     required this.createdAt,
     this.departmentId,
@@ -107,6 +109,10 @@ class ExpenseClaim {
     this.previousSubmissionSnapshot,
     this.submissionSnapshot,
     this.resubmission = false,
+    this.financialApplication,
+    this.applicationKind,
+    this.travelApplicationId,
+    this.travelApplicationSourceKind,
     this.approvalStage,
     this.approvalStageLabel,
     this.approvalRound = 0,
@@ -118,6 +124,10 @@ class ExpenseClaim {
   });
 
   final String id;
+  final String? applicationKind,
+      travelApplicationId,
+      travelApplicationSourceKind;
+  final ExpenseClaimFinancialApplication? financialApplication;
   final int version;
   final String? approvedBy;
 
@@ -169,6 +179,9 @@ class ExpenseClaim {
 
   /// 总金额
   final double totalAmount;
+  final String? totalAmountExact;
+  String get totalAmountText =>
+      financeExactTrimmed(totalAmountExact ?? totalAmount.toString())!;
 
   /// 状态
   final ExpenseClaimStatus status;
@@ -223,6 +236,15 @@ class ExpenseClaim {
     final rawItems = json['items'] as List<dynamic>? ?? const [];
     return ExpenseClaim(
       id: json['id'] as String,
+      applicationKind: json['applicationKind'] as String?,
+      travelApplicationId: json['travelApplicationId'] as String?,
+      travelApplicationSourceKind:
+          json['travelApplicationSourceKind'] as String?,
+      financialApplication: json['financialApplication'] is Map
+          ? ExpenseClaimFinancialApplication.fromJson(
+              Map<String, dynamic>.from(json['financialApplication'] as Map),
+            )
+          : null,
       claimNo: (json['claimNo'] as String?) ?? '',
       version: (json['version'] as num?)?.toInt() ?? 0,
       approvedBy: json['approvedBy'] as String?,
@@ -245,7 +267,12 @@ class ExpenseClaim {
       items: rawItems
           .map((item) => ExpenseItem.fromJson(item as Map<String, dynamic>))
           .toList(growable: false),
-      totalAmount: (json['totalAmount'] as num).toDouble(),
+      totalAmount: double.parse(
+        financeExactDecimal(json['totalAmountExact'] ?? json['totalAmount'])!,
+      ),
+      totalAmountExact: financeExactDecimal(
+        json['totalAmountExact'] ?? json['totalAmount'],
+      ),
       status: ExpenseClaimStatusValue.fromApi(json['status']),
       createdAt: ChinaDateTime.tryParse(json['createdAt'] as String)!,
       submittedAt: _dateTime(json['submittedAt']),
@@ -292,6 +319,10 @@ class ExpenseClaim {
   }) {
     return ExpenseClaim(
       id: id,
+      financialApplication: financialApplication,
+      applicationKind: applicationKind,
+      travelApplicationId: travelApplicationId,
+      travelApplicationSourceKind: travelApplicationSourceKind,
       claimNo: claimNo,
       version: version,
       approvedBy: approvedBy,
@@ -313,6 +344,7 @@ class ExpenseClaim {
       title: title,
       items: items ?? this.items,
       totalAmount: totalAmount,
+      totalAmountExact: totalAmountExact,
       status: status ?? this.status,
       createdAt: createdAt,
       submittedAt: submittedAt ?? this.submittedAt,
@@ -336,16 +368,45 @@ class ExpenseClaim {
   }
 }
 
+class ExpenseClaimFinancialApplication {
+  const ExpenseClaimFinancialApplication({
+    required this.id,
+    required this.applicationNo,
+    required this.kind,
+    required this.status,
+    required this.currentStep,
+    required this.canOpen,
+  });
+  final String id, applicationNo, kind, status, currentStep;
+  final bool canOpen;
+  factory ExpenseClaimFinancialApplication.fromJson(
+    Map<String, dynamic> json,
+  ) => ExpenseClaimFinancialApplication(
+    id: json['id']?.toString() ?? '',
+    applicationNo: json['applicationNo']?.toString() ?? '',
+    kind: json['kind']?.toString() ?? '',
+    status: json['status']?.toString() ?? '',
+    currentStep: json['currentStep']?.toString() ?? '',
+    canOpen: json['canOpen'] == true,
+  );
+}
+
 class ExpenseClaimCreateInput {
   const ExpenseClaimCreateInput({
     required this.title,
     required this.items,
     this.remark,
     this.expectedVersion,
+    this.applicationKind,
+    this.travelApplicationId,
+    this.travelApplicationSourceKind,
     this.expenseKind = 'GENERAL',
   });
 
   final int? expectedVersion;
+  final String? applicationKind,
+      travelApplicationId,
+      travelApplicationSourceKind;
   final String expenseKind;
   final String title;
   final String? remark;
@@ -356,6 +417,9 @@ class ExpenseClaimCreateInput {
     'expenseKind': expenseKind,
     if (expectedVersion != null) 'expectedVersion': expectedVersion,
     'remark': remark,
+    'applicationKind': ?applicationKind,
+    'travelApplicationId': ?travelApplicationId,
+    'travelApplicationSourceKind': ?travelApplicationSourceKind,
     'items': items.map((item) => item.toCreateJson()).toList(),
   };
 }
@@ -365,39 +429,96 @@ class ExpenseQueueSummary {
   const ExpenseQueueSummary({
     required this.pendingCount,
     required this.pendingAmount,
+    this.pendingAmountExact,
     required this.payableCount,
     required this.payableAmount,
+    this.payableAmountExact,
     required this.monthSubmittedCount,
     required this.monthSubmittedAmount,
+    this.monthSubmittedAmountExact,
     required this.monthPaidCount,
     required this.monthPaidAmount,
+    this.monthPaidAmountExact,
     this.actionablePendingCount = 0,
     this.actionablePayableCount = 0,
   });
 
   final int pendingCount;
   final double pendingAmount;
+  final String? pendingAmountExact;
+  String get pendingAmountText =>
+      financeExactTrimmed(pendingAmountExact ?? pendingAmount.toString())!;
   final int payableCount;
   final double payableAmount;
+  final String? payableAmountExact;
+  String get payableAmountText =>
+      financeExactTrimmed(payableAmountExact ?? payableAmount.toString())!;
   final int monthSubmittedCount;
   final double monthSubmittedAmount;
+  final String? monthSubmittedAmountExact;
+  String get monthSubmittedAmountText => financeExactTrimmed(
+    monthSubmittedAmountExact ?? monthSubmittedAmount.toString(),
+  )!;
   final int monthPaidCount;
   final double monthPaidAmount;
+  final String? monthPaidAmountExact;
+  String get monthPaidAmountText =>
+      financeExactTrimmed(monthPaidAmountExact ?? monthPaidAmount.toString())!;
   final int actionablePendingCount;
   final int actionablePayableCount;
 
   factory ExpenseQueueSummary.fromJson(Map<String, dynamic> json) =>
       ExpenseQueueSummary(
         pendingCount: (json['pendingCount'] as num?)?.toInt() ?? 0,
-        pendingAmount: (json['pendingAmount'] as num?)?.toDouble() ?? 0,
+        pendingAmount:
+            double.tryParse(
+              financeExactDecimal(
+                    json['pendingAmountExact'] ?? json['pendingAmount'],
+                  ) ??
+                  '',
+            ) ??
+            0,
+        pendingAmountExact: financeExactDecimal(
+          json['pendingAmountExact'] ?? json['pendingAmount'],
+        ),
         payableCount: (json['payableCount'] as num?)?.toInt() ?? 0,
-        payableAmount: (json['payableAmount'] as num?)?.toDouble() ?? 0,
+        payableAmount:
+            double.tryParse(
+              financeExactDecimal(
+                    json['payableAmountExact'] ?? json['payableAmount'],
+                  ) ??
+                  '',
+            ) ??
+            0,
+        payableAmountExact: financeExactDecimal(
+          json['payableAmountExact'] ?? json['payableAmount'],
+        ),
         monthSubmittedCount:
             (json['monthSubmittedCount'] as num?)?.toInt() ?? 0,
         monthSubmittedAmount:
-            (json['monthSubmittedAmount'] as num?)?.toDouble() ?? 0,
+            double.tryParse(
+              financeExactDecimal(
+                    json['monthSubmittedAmountExact'] ??
+                        json['monthSubmittedAmount'],
+                  ) ??
+                  '',
+            ) ??
+            0,
+        monthSubmittedAmountExact: financeExactDecimal(
+          json['monthSubmittedAmountExact'] ?? json['monthSubmittedAmount'],
+        ),
         monthPaidCount: (json['monthPaidCount'] as num?)?.toInt() ?? 0,
-        monthPaidAmount: (json['monthPaidAmount'] as num?)?.toDouble() ?? 0,
+        monthPaidAmount:
+            double.tryParse(
+              financeExactDecimal(
+                    json['monthPaidAmountExact'] ?? json['monthPaidAmount'],
+                  ) ??
+                  '',
+            ) ??
+            0,
+        monthPaidAmountExact: financeExactDecimal(
+          json['monthPaidAmountExact'] ?? json['monthPaidAmount'],
+        ),
         actionablePendingCount:
             (json['actionablePendingCount'] as num?)?.toInt() ?? 0,
         actionablePayableCount:

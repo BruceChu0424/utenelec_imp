@@ -40,6 +40,8 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
     private final TxSessionVars tx;
     private final GlPostingService glPosting;
     private final SupplierClosedPeriodGuard closedPeriodGuard;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.NativeFinancialPostingAccountPort nativeAccounts;
 
     /**
      * 立应收(AR)/应付(AP)。审核 0→1 同事务调；调用方随后置 ar_posted=true（销售/委外侧）。
@@ -65,6 +67,17 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
     public void postArAp(ArApPostingRequest req,
                          BigDecimal receivedOriginal,
                          BigDecimal receivedLocal) {
+        postInternal(req,receivedOriginal,receivedLocal,null);
+    }
+
+    @Override @Transactional(propagation=Propagation.MANDATORY)
+    public void postReconciledArAp(ArApPostingRequest req,String financialPostingNo){
+        if(req==null||!"AP".equals(req.direction())||financialPostingNo==null||!financialPostingNo.matches("APC-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))
+            throw new ApiException(ErrorCode.VALIDATION_FAILED,"首次应付确认缺少本次独立立账编号");
+        postInternal(req,null,null,financialPostingNo);
+    }
+
+    private void postInternal(ArApPostingRequest req,BigDecimal receivedOriginal,BigDecimal receivedLocal,String financialPostingNo){
         tx.bind();
         if (req == null) {
             throw new IllegalArgumentException("postArAp: req is null");
@@ -116,7 +129,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         l.setSourceDocType(req.sourceDocType());
         l.setSourceDocId(req.sourceDocId());
         l.setSourceDocNo(req.sourceDocNo());
-        l.setBillNo(req.sourceDocNo() != null ? req.sourceDocNo() : "DIRECT-" + System.nanoTime());
+        l.setBillNo(financialPostingNo!=null?financialPostingNo:req.sourceDocNo() != null ? req.sourceDocNo() : "DIRECT-" + System.nanoTime());
         l.setBillDate(billDate);
         if ("AR".equals(req.direction())) {
             l.setClientId(req.clientId());
@@ -169,6 +182,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
         // hibernate.order_inserts，因此先 flush 父行，避免批处理重排时触发 FK。
         repo.flush();
         saveSourceRefs(l, req.sourceRefs());
+        if(nativeAccounts!=null)nativeAccounts.captureArAp(l.getId());
     }
 
     /**
@@ -209,7 +223,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
             requireSourceUnsettled(l);
         }
         ArApLedger ledger = rows.getFirst();
-        glPosting.removeAutoProjection(
+        if(nativeAccounts==null||!nativeAccounts.reverseArApGl(ledger.getId()))glPosting.removeAutoProjection(
                 projectionSourceType(ledger.getDirection(),sourceDocType),
                 sourceDocType,
                 sourceDocId,
@@ -227,7 +241,7 @@ public class ArApLedgerServiceImpl implements ArApLedgerService {
     @Override
     @Transactional(propagation=Propagation.MANDATORY,readOnly=true,noRollbackFor={com.uten.imp.common.web.ApiException.class,IllegalStateException.class})
     public void requireReturnCostProjectionReversible(java.util.UUID id,String sourceDocType,String billNo,LocalDate billDate){
-        glPosting.requireRemovableAutoProjection("PROC_RETURN_VARIANCE",sourceDocType,id,billNo,billDate);
+        glPosting.requireRemovableAutoProjection("PROC_RETURN_VARIANCE","PROC_RETURN_VARIANCE",id,billNo,billDate);
     }
 
     @Override

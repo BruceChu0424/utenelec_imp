@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.order.dto;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -43,15 +44,13 @@ public class OrderItemLine extends com.uten.imp.common.columns.ExtraColumnReques
     private BigDecimal unitRate;
     @NotNull
     @jakarta.validation.constraints.DecimalMin("0")
-    @jakarta.validation.constraints.Digits(integer = 14, fraction = 4)
+    @DocumentQuantity
     private BigDecimal qty;
     private BigDecimal price;
     /** Agreed original-currency total before extra-column adjustments; null means unit-price pricing. */
     private BigDecimal totalAmountInput;
     @jakarta.validation.constraints.DecimalMin("0")
-    @jakarta.validation.constraints.Digits(integer=14,fraction=4)
-    @jakarta.validation.constraints.DecimalMin("0")
-    @jakarta.validation.constraints.Digits(integer = 14, fraction = 4)
+    @DocumentQuantity
     private BigDecimal giftQty;
     /** 关联申请明细（单来源行；审核时回写 ordered_qty）。 */
     private UUID requestItemId;
@@ -68,12 +67,12 @@ public class OrderItemLine extends com.uten.imp.common.columns.ExtraColumnReques
     private String remark;
 
     /**
-     * 本行允许超收百分比(ADR-144)：0 到 100, 最多 2 位小数; 空 = 0。保存时回写货品主档
+     * 本行允许超收百分比(ADR-144)：0 到 100, 原数最多 24 位有效小数; 空 = 0。保存时回写货品主档
      * purchase_allowed_over_receipt_pct 作为下次预填的记忆(空行不清记忆)。
      */
     @jakarta.validation.constraints.DecimalMin("0.00")
     @jakarta.validation.constraints.DecimalMax("100.00")
-    @jakarta.validation.constraints.Digits(integer = 3, fraction = 2)
+    @com.uten.imp.common.validation.DocumentAmount
     private BigDecimal allowedOverReceiptPct;
 
     /**

@@ -1,3 +1,4 @@
+import '../../core/formatters/exact_number_text.dart';
 // 报表「表格下方合计」的模型（共享）—— 对齐后端 common.report.ReportTotal record。
 //
 // 为什么合计必须来自服务端：报表表格一律服务端分页（一页 50 行），前端对「当前页」求和
@@ -125,23 +126,15 @@ UtenTotalEntry reportTotalEntry(
     );
   }
   if (total.type == 'count') {
-    final group = total.groups.firstOrNull;
-    final raw = group?.valueText;
-    final value = raw == null
-        ? null
-        : financeExactDecimalUnits(raw, scale: 0) ??
-              BigInt.from(group!.value.round());
+    final raw = total.groups.firstOrNull?.valueText;
     final unit = total.unitLabel?.trim();
     return UtenTotalEntry(
       total.label,
-      value == null || value == BigInt.zero
+      raw == null || financeExactTrimmed(raw) == '0'
           ? ''
           : unit?.isNotEmpty == true
-          ? formatExactQtyWithUnit(value.toString(), unit)
-          : value.toString().replaceAllMapped(
-              RegExp(r'(\d)(?=(\d{3})+(?!\d))'),
-              (match) => '${match[1]},',
-            ),
+          ? formatExactQtyWithUnit(raw, unit)
+          : (exactNumberDisplay(raw, groupThousands: true) ?? raw),
       danger: danger,
     );
   }
@@ -203,11 +196,11 @@ UtenTotalEntry _weightTotalEntry(
         ? total.groups
               .map(
                 (g) =>
-                    '$prefix${formatWeight(g.value, display: display)}'
+                    '$prefix${formatWeight(g.valueText, display: display)}'
                     ' (${g.unit ?? '—'})',
               )
               .join(' · ')
-        : '$prefix${formatWeight(total.groups.first.value, display: display)}';
+        : '$prefix${formatWeight(total.groups.first.valueText, display: display)}';
     value = unknownRows > 0 ? '$known (另有 $unknownRows 项未称)' : known;
   }
   return UtenTotalEntry(total.label, value, danger: danger);
@@ -223,17 +216,27 @@ List<UtenTotalEntry> reportTotalEntries(
 }) {
   final list = totals.toList(growable: false);
   final byKey = {for (final t in list) t.key: t};
-  int companion(String weightKey, String suffix) {
+  int? companion(String weightKey, String suffix) {
     final t = byKey['${weightKey}_$suffix'];
     if (t == null || t.type != 'count' || t.groups.isEmpty) return 0;
-    return t.groups.first.value.round();
+    final exact = financeExactDecimalUnits(
+      financeExactTrimmed(t.groups.first.valueText),
+      scale: 0,
+    );
+    if (exact == null ||
+        exact < BigInt.zero ||
+        exact > BigInt.parse('9007199254740991')) {
+      return null;
+    }
+    return exact.toInt();
   }
 
   final folded = <String>{
     for (final t in list)
       if (t.type == 'weight') ...[
-        '${t.key}_unknown_rows',
-        '${t.key}_estimated_rows',
+        if (companion(t.key, 'unknown_rows') != null) '${t.key}_unknown_rows',
+        if (companion(t.key, 'estimated_rows') != null)
+          '${t.key}_estimated_rows',
       ],
   };
   return [
@@ -242,8 +245,8 @@ List<UtenTotalEntry> reportTotalEntries(
         reportTotalEntry(
           t,
           weightDisplay: weightDisplay,
-          weightEstimated: companion(t.key, 'estimated_rows') > 0,
-          weightUnknownRows: companion(t.key, 'unknown_rows'),
+          weightEstimated: (companion(t.key, 'estimated_rows') ?? 0) > 0,
+          weightUnknownRows: companion(t.key, 'unknown_rows') ?? 0,
         )
       else if (!(t.type == 'count' && folded.contains(t.key)))
         reportTotalEntry(t),

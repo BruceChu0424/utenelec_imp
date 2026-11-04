@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
+import 'package:uten_imp/components/inputs/uten_date_range_button.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
@@ -40,7 +41,7 @@ FormDraft _draft(
   permission: '',
   draftKind: kind,
   data: data,
-  updatedAt: updatedAt ?? DateTime.utc(2026, 9, 26),
+  updatedAt: updatedAt ?? DateTime.now().toUtc(),
 );
 
 class _Drafts extends FormDraftsNotifier {
@@ -332,6 +333,21 @@ void main() {
       expect(row.status, 'LOCAL_DRAFT');
       expect(row.action, 'FORM_DRAFT');
       expect(row.targetId, 'stock-local');
+      // The default recent month intentionally excludes older inputs. Clearing
+      // that visible condition must recover them without changing category.
+      final dates = tester.widget<UtenDateRangeButton>(
+        find.byType(UtenDateRangeButton).first,
+      );
+      expect(dates.range, isNotNull);
+      dates.onClear!();
+      await tester.pumpAndSettle();
+      table = tester.widget<MasterDataTableView<WarehouseTaskCenterRecord>>(
+        find.byType(MasterDataTableView<WarehouseTaskCenterRecord>),
+      );
+      expect([...table.unpagedItems, ...table.items].map((r) => r.id).toSet(), {
+        'stock-local',
+        'expired-stock-local',
+      });
       expect(tester.takeException(), isNull);
     },
   );

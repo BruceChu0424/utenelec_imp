@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -456,7 +457,7 @@ class _ReportablePlanLineSheetState
   String _fmt(double? value) {
     if (value == null) return '—';
     return value == value.roundToDouble()
-        ? value.toStringAsFixed(0)
-        : value.toStringAsFixed(2);
+        ? value.toExactString()
+        : value.toExactString(minimumFractionDigits: 2);
   }
 }

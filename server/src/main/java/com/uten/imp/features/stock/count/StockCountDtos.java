@@ -1,5 +1,6 @@
 package com.uten.imp.features.stock.count;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
@@ -9,11 +10,11 @@ import java.util.UUID;
 public final class StockCountDtos {
     private StockCountDtos() {}
     public record LineInput(@NotNull UUID goodsId, UUID colorId, @NotNull UUID unitId,
-            @NotNull @Digits(integer=14,fraction=4) BigDecimal expectedQty,
-            @Digits(integer=14,fraction=4) BigDecimal expectedWeightKg,
+            @NotNull @DocumentQuantity BigDecimal expectedQty,
+            @Digits(integer=40,fraction=24) BigDecimal expectedWeightKg,
             boolean expectedWeightEstimated,
-            @NotNull @DecimalMin("0") @Digits(integer=14,fraction=4) BigDecimal targetQty,
-            @DecimalMin("0") @Digits(integer=14,fraction=4) BigDecimal targetWeightKg,
+            @NotNull @DecimalMin("0") @DocumentQuantity BigDecimal targetQty,
+            @DecimalMin("0") @Digits(integer=40,fraction=48) BigDecimal targetWeightKg,
             boolean weightChanged, String materialSetupBasis, @NotNull Long goodsVersion) {}
     /**
      * 盘点送审。reason = 盘点说明, 选填: 不传、null、空串或只有空白都合法,

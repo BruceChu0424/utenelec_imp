@@ -112,6 +112,8 @@ public class SubcontractReturnService {
     private final LinkedDocumentIntegrityService sourceIntegrity;
     private final SubcontractReturnAmountAuthority returnAmountAuthority;
     private final ArApLedgerService arApService;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.ProcurementPayableRecognitionPort firstPayables;
     private final SupplierPaymentTermService paymentTerms;
     private final SupplierPeriodIdentityGuard periodIdentityGuard;
     private final TxSessionVars tx;
@@ -295,6 +297,7 @@ public class SubcontractReturnService {
     @PreAuthorize("hasAuthority('subcontract_return:approve')")
     public ReturnDetail approve(UUID id) {
         tx.bind();
+        if(firstPayables!=null)firstPayables.beginApproval(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("SUBCONTRACT_RETURN",id));
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.SUBCONTRACT_RETURN, id);
         periodIdentityGuard.requireOpenAtBillDate(periodIdentity, "委外退货审核");
@@ -386,11 +389,11 @@ public class SubcontractReturnService {
             }
         }
         // ③ 反向立应付（AP, SUBCONTRACT_RETURN, 金额取负 — 冲减进仓单立的应付）
-        postAp(r, r.getTotalOriginal(), totalLocalOf(items), -1);
+        boolean formallyPosted=postAp(r, r.getTotalOriginal(), totalLocalOf(items), -1);
         r.setStatus(STATUS_APPROVED);
         r.setApproverId(currentUser.requireEmployeeId()); // 审核=当前登录用户（报表按 approver_id 解析审核员）
         canonicalizeApprover(r);
-        r.setApPosted(true);
+        r.setApPosted(formallyPosted);
         returnRepo.save(r);
         arrivalControl.refreshAfterReturn(ProcurementArrivalControlPort.SUBCONTRACT,
                 items.stream().map(SubcontractReturnItem::getOrderItemId).toList());
@@ -415,6 +418,7 @@ public class SubcontractReturnService {
         if(r.getStatus()==null||r.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
     }
     private void requireReversibleBusiness(SubcontractReturn r){UUID id=r.getId();
+        if(firstPayables!=null)firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("SUBCONTRACT_RETURN",id));
         var items=itemRepo.findByReturnIdOrderByLineNoAsc(id);
         requireReversibleArAp(id,StockService.SRC_SUBCONTRACT_RETURN);
         arApService.requireReturnCostProjectionReversible(id,StockService.SRC_SUBCONTRACT_RETURN,r.getBillNo(),r.getBillDate());
@@ -430,7 +434,11 @@ public class SubcontractReturnService {
         unapprovalValues.requireIssueReturnsAvailable(sources);
         requireReturnCounterBalances(id);
     }
+    private boolean postOrDefer(com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest req){
+        return com.uten.imp.common.finance.ProcurementPayablePosting.post(firstPayables,arApService,req);
+    }
     private void requireReversibleArAp(UUID id,String type){
+        if(firstPayables!=null&&firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source(type,id)))return;
         try{arApService.requireReversibleSource(id,type);}
         catch(IllegalStateException denied){throw new ApiException(ErrorCode.CONFLICT,denied.getMessage());}
     }
@@ -452,6 +460,7 @@ public class SubcontractReturnService {
     private String unapprovalDependencyFacts(UUID id){return String.valueOf(em.createNativeQuery("""
         SELECT jsonb_build_object(
             'lines',(SELECT jsonb_agg(to_jsonb(line) ORDER BY line.id) FROM subcontract_return_items line WHERE line.return_id=:id),
+            'firstPayable',(SELECT to_jsonb(candidate) FROM finance_procurement_payable_candidates candidate WHERE candidate.source_type='SUBCONTRACT_RETURN' AND candidate.source_id=:id),
             'arAp',(SELECT jsonb_agg(to_jsonb(ledger) ORDER BY ledger.id) FROM ar_ap_ledger ledger WHERE ledger.source_doc_id=:id),
             'vouchers',(SELECT jsonb_agg(to_jsonb(voucher) ORDER BY voucher.id) FROM gl_vouchers voucher WHERE voucher.source_doc_id=:id),
             'supplierPeriods',(SELECT jsonb_agg(to_jsonb(batch) ORDER BY batch.id) FROM supplier_settlement_batches batch JOIN subcontract_returns doc ON doc.supplier_id=batch.supplier_id AND doc.currency_id=batch.currency_id WHERE doc.id=:id),
@@ -482,7 +491,7 @@ public class SubcontractReturnService {
                 .map(it -> new InventoryKey(it.getGoodsId(), it.getColorId()))
                 .toList());
         arApService.reverseReturnCostProjection(r.getId(),StockService.SRC_SUBCONTRACT_RETURN,r.getBillNo(),r.getBillDate());
-        arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RETURN);
+        if(firstPayables==null||!firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("SUBCONTRACT_RETURN",r.getId())))arApService.reverseArAp(r.getId(), StockService.SRC_SUBCONTRACT_RETURN);
         OffsetDateTime now = OffsetDateTime.now();
         // 反向只翻 direction；amountLocal 传正数（StockService 内部乘 direction）。negate 会致金额符号不回滚。
         for (SubcontractReturnItem it : items) {
@@ -519,6 +528,7 @@ public class SubcontractReturnService {
                 recalcOrderClosed(it.getOrderItemId());
             }
         }
+        if(firstPayables!=null)firstPayables.sourceReversed(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("SUBCONTRACT_RETURN",id));
         r.setStatus(STATUS_REVERSED);
         r.setApPosted(false);
         returnRepo.save(r);
@@ -542,18 +552,18 @@ public class SubcontractReturnService {
     }
 
     /** 立应付反向 AP。sign=-1 退货（应付减少，金额转负）。 */
-    private void postAp(
+    private boolean postAp(
             SubcontractReturn r,
             BigDecimal amountOriginal,
             BigDecimal amountLocal,
             int sign) {
-        if (amountLocal == null) return;
+        if (amountLocal == null) return false;
         BigDecimal signedLocal = sign < 0 ? amountLocal.negate() : amountLocal;
         BigDecimal signedOriginal = amountOriginal == null
                 ? null : (sign < 0 ? amountOriginal.negate() : amountOriginal);
         LocalDate dueDate = paymentTerms.resolveDueDate(
                 r.getSupplierId(), r.getSettlementMethodId(), r.getBillDate());
-        arApService.postArAp(new ArApPostingRequest(
+        return postOrDefer(new ArApPostingRequest(
                 "AP",
                 StockService.SRC_SUBCONTRACT_RETURN,
                 r.getId(),

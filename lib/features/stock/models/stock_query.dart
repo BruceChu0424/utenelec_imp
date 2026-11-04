@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/models/historical_receipt_facts.dart';
 import '../../../shared/stock_inventory/measurement_hold.dart';
 
@@ -19,6 +20,7 @@ class BalanceRow {
     this.amountLocal,
     this.costMasked = false,
     this.weight,
+    this.weightExact,
     this.weightEstimated = false,
     this.lastMovementDate,
     this.measurementPending = false,
@@ -37,6 +39,8 @@ class BalanceRow {
 
   /// 库存重量 (千克); null = 未知。
   final double? weight;
+  final String? weightExact;
+  String? get weightText => financeExactDecimal(weightExact ?? weight);
 
   /// 库存重量含估算 (按库存均重/单重估算过)。
   final bool weightEstimated;
@@ -57,7 +61,10 @@ class BalanceRow {
         ? null
         : (json['amountLocal'] as num?)?.toDouble(),
     costMasked: json['costMasked'] == true,
-    weight: (json['weight'] as num?)?.toDouble(),
+    weight: double.tryParse(
+      (json['weightExact'] ?? json['weight'])?.toString() ?? '',
+    ),
+    weightExact: financeExactDecimal(json['weightExact'] ?? json['weight']),
     weightEstimated: json['weightEstimated'] == true,
     lastMovementDate: json['lastMovementDate'] as String?,
     measurementPending: json['measurementPending'] == true,
@@ -77,6 +84,7 @@ class StockBalanceAdjustmentResult {
     required this.adjustedByName,
     required this.adjustedAt,
     this.afterWeightKg,
+    this.afterWeightKgExact,
   });
 
   final String documentId;
@@ -90,6 +98,9 @@ class StockBalanceAdjustmentResult {
 
   /// 本次一并定下的库存重量 (千克); null = 本次没有改重量。
   final double? afterWeightKg;
+  final String? afterWeightKgExact;
+  String? get afterWeightKgText =>
+      financeExactDecimal(afterWeightKgExact ?? afterWeightKg);
 
   factory StockBalanceAdjustmentResult.fromJson(Map<String, dynamic> json) =>
       StockBalanceAdjustmentResult(
@@ -101,6 +112,12 @@ class StockBalanceAdjustmentResult {
         adjustedByEmployeeId: json['adjustedByEmployeeId'] as String?,
         adjustedByName: json['adjustedByName'] as String? ?? '',
         adjustedAt: json['adjustedAt'] as String? ?? '',
-        afterWeightKg: (json['afterWeightKg'] as num?)?.toDouble(),
+        afterWeightKg: double.tryParse(
+          (json['afterWeightKgExact'] ?? json['afterWeightKg'])?.toString() ??
+              '',
+        ),
+        afterWeightKgExact: financeExactDecimal(
+          json['afterWeightKgExact'] ?? json['afterWeightKg'],
+        ),
       );
 }

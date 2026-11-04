@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'dart:async';
 
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
@@ -888,7 +889,7 @@ class _PendingPanelState extends ConsumerState<_PendingPanel>
       if (v <= 0 || v > (r.needQty ?? 0) + 1e-6) {
         context.appWarning(
           '订单 ${r.orderBillNo} 排产量需在 0 ~ 缺口 '
-          '${(r.needQty ?? 0).toStringAsFixed(2)} 之间',
+          '${(r.needQty ?? 0).toExactString(minimumFractionDigits: 2)} 之间',
         );
         return;
       }
@@ -1272,9 +1273,9 @@ class _PendingPanelState extends ConsumerState<_PendingPanel>
 
   String _qtyText(double? value) {
     if (value == null) return '—';
-    if (value == value.roundToDouble()) return value.toStringAsFixed(0);
+    if (value == value.roundToDouble()) return value.toExactString();
     return value
-        .toStringAsFixed(4)
+        .toExactString(minimumFractionDigits: 4)
         .replaceFirst(RegExp(r'0+$'), '')
         .replaceFirst(RegExp(r'\.$'), '');
   }
@@ -2530,5 +2531,7 @@ class _PlanPanelState extends ConsumerState<_PlanPanel>
 
   String _fmt(double? v) => v == null
       ? '—'
-      : (v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2));
+      : (v == v.roundToDouble()
+            ? v.toExactString()
+            : v.toExactString(minimumFractionDigits: 2));
 }

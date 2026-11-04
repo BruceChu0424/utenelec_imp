@@ -11,6 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCES = (
     "tool/pdf_worker.dart",
     "lib/core/print/print_pdf_document.dart",
+    "lib/core/print/source_table_paper.dart",
+    "lib/core/print/print_bounds.dart",
+    "lib/core/tables/uten_table_header_group.dart",
     "lib/core/performance/ui_work_budget.dart",
     "lib/features/purchase/models/purchase_order_pdf_bundle.dart",
     "lib/features/purchase/models/purchase_order_pdf.dart",
@@ -21,8 +24,10 @@ SOURCES = (
     "lib/shared/print/procurement_order_print_document.dart",
     "lib/shared/export/document_batch_limits.dart",
     "lib/shared/formatters/exact_decimal.dart",
+    "lib/core/formatters/exact_number_text.dart",
     "lib/core/network/api_exception.dart",
     "lib/core/network/api_error.dart",
+    "lib/core/network/api_error_message.dart",
     "pubspec.lock",
 )
 OUTPUT = ROOT / "assets/workers/uten_pdf_worker.js"

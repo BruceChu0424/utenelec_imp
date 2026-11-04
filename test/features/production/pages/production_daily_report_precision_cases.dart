@@ -4,9 +4,89 @@ Map<String, dynamic> _precisionOnlyItem(Object? value) =>
     Map<String, dynamic>.from((value as List).single as Map);
 
 void registerDailyReportPrecisionTests() {
+  testWidgets(
+    'current precision selection preserves complete receiver allocation and original entered quantity',
+    (tester) async {
+      final prompts = <BusinessPrecisionRequirement>[];
+      final unregister = BusinessPrecisionCoordinator.instance.register((
+        requirement,
+      ) async {
+        prompts.add(requirement);
+        return const BusinessPrecisionChoice(2, 'DOWN');
+      });
+      addTearDown(unregister);
+      Map<String, dynamic>? saved;
+      final grid = await _pumpAllocationPage(
+        tester,
+        sourceOverrides: const {'unitRate': 3, 'unitRateExact': '3'},
+        candidatesOverride: const {
+          'candidates': [
+            {
+              'demandId': 'A',
+              'executionSegmentId': 'a',
+              'remainingQty': 2,
+              'remainingQtyExact': '2',
+              'requiredQty': 2,
+              'requiredQtyExact': '2',
+            },
+          ],
+          'blockedTargets': <Object>[],
+        },
+        onCreate: (body) => saved = body,
+      );
+      final product = grid.rows.firstWhere((row) => !row.isSubRow);
+      product.qty.text = '1';
+      await tester.pumpAndSettle();
+      expect(prompts, hasLength(1));
+      expect(prompts.single.key, 'production.output.receiver-quantity');
+      expect(prompts.single.reason, 'NON_TERMINATING');
+      expect(product.qty.text, '1');
+      expect(product.allocationRows.map((row) => row.allocationQty.text), [
+        '0.66',
+        '0.34',
+      ]);
+      await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+      await tester.pumpAndSettle();
+      final item = _precisionOnlyItem(saved!['items']);
+      expect(item['qty'], 1);
+      expect((item['allocations'] as List).map((raw) => (raw as Map)['qty']), [
+        0.66,
+        0.34,
+      ]);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'current precision finite 24-place quantity and rate keep all input digits',
+    (tester) async {
+      final sent = <Map<String, dynamic>>[];
+      await _pumpNewReport(
+        tester,
+        _api(
+          sourceOverrides: const {
+            'unitRate': null,
+            'unitRateExact': '0.000000000000000000000001',
+          },
+          onCreate: sent.add,
+        ),
+      );
+      final row = _productRows(tester).single;
+      row.qty.text = '0.000000000000000000000001';
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
+      await tester.pumpAndSettle();
+      final item = _precisionOnlyItem(sent.single['items']);
+      expect(productionExactQuantityText(item['qty']), row.qty.text);
+      expect(productionExactQuantityText(item['unitRate']), row.unitRateText);
+      expect(row.qty.text, '0.000000000000000000000001');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final sample in [
-    ('100000000000000', 0.1, '完工申报量超过系统计量范围'),
-    ('10000000000000', 10.0, '换算后的基本量超过系统计量范围'),
+    ('1${'0' * 40}', 0.1, '完工申报量超过系统计量范围'),
+    ('1${'0' * 39}', 10.0, '换算后的基本量超过系统计量范围'),
     ('99999999999999.9999', 1.0, null),
   ]) {
     testWidgets(
@@ -19,7 +99,7 @@ void registerDailyReportPrecisionTests() {
             sourceOverrides: {
               'unitRate': sample.$2,
               'maxReportQty': 100000000000000.0,
-              'maxReportQtyExact': '99999999999999.9999',
+              'maxReportQtyExact': '${'9' * 40}.${'9' * 24}',
             },
             onCreate: sent.add,
           ),
@@ -102,9 +182,9 @@ void registerDailyReportPrecisionTests() {
             'goodsName': '范围测试原料',
             'executionSegmentId': 'segment-1',
             'issuedQty': 100000000000000.0,
-            'issuedQtyExact': '100000000000000',
+            'issuedQtyExact': '1${'0' * 40}',
             'availableToSettleQty': 100000000000000.0,
-            'availableToSettleQtyExact': '100000000000000',
+            'availableToSettleQtyExact': '1${'0' * 40}',
             'requiredQty': 100,
             'requiredForProductQty': 100,
             'requirementMode': 'LINEAR',
@@ -113,15 +193,15 @@ void registerDailyReportPrecisionTests() {
         onPutBody: (body) => sent = body,
       );
       final material = _materialRows(tester).single;
-      material.materialUsed.text = '100000000000000';
+      material.materialUsed.text = '1${'0' * 40}';
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
       await tester.pumpAndSettle();
       expect(sent, isNull);
       expect(find.textContaining('本次实际用料超过系统计量范围'), findsWidgets);
-      expect(material.materialUsed.text, '100000000000000');
+      expect(material.materialUsed.text, '1${'0' * 40}');
       material.materialUsed.text = '0';
-      grid.rows.single.defectQty.text = '100000000000000';
+      grid.rows.single.defectQty.text = '1${'0' * 40}';
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
       await tester.pumpAndSettle();
@@ -133,7 +213,7 @@ void registerDailyReportPrecisionTests() {
 
   for (final rate in [0.4, 0.5]) {
     testWidgets(
-      'exact daily base conversion respects half-up boundary rate=$rate',
+      'exact daily base conversion retains the full finite product rate=$rate',
       (tester) async {
         final sent = <Map<String, dynamic>>[];
         await _pumpNewReport(
@@ -151,12 +231,7 @@ void registerDailyReportPrecisionTests() {
         await tester.tap(find.byKey(const ValueKey('uten-edit-save')));
         await tester.pumpAndSettle();
         expect(row.qty.text, '0.0001');
-        if (rate == 0.4) {
-          expect(sent, isEmpty);
-          expect(find.textContaining('第 1 行换算后的基本量为 0'), findsOneWidget);
-        } else {
-          expect(_precisionOnlyItem(sent.single['items'])['qty'], 0.0001);
-        }
+        expect(_precisionOnlyItem(sent.single['items'])['qty'], 0.0001);
         expect(tester.takeException(), isNull);
       },
     );

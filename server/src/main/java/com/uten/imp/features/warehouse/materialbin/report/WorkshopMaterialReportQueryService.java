@@ -67,7 +67,7 @@ public class WorkshopMaterialReportQueryService {
                        report.loss_qty, report.close_no, report.closed_at, report.current_value,
                        report.value_at_close,
                        CASE WHEN report.value_at_close IS NOT NULL AND abs(report.actual_qty) > 0
-                            THEN round(report.value_at_close / abs(report.actual_qty), 4) END AS unit_cost
+                            THEN fn_business_exact_divide(report.value_at_close,abs(report.actual_qty),'workshop.material.unit-cost','本次车间物料单位成本',30) END AS unit_cost
                 """ + WorkshopMaterialCountBasisQuery.columns("report") + """
                 FROM v_workshop_material_period_report report
                 JOIN goods ON goods.id = report.goods_id
@@ -111,11 +111,11 @@ public class WorkshopMaterialReportQueryService {
                        product.name AS product_name, report.output_qty, report.theory_qty, report.allocated_qty,
                        report.current_value, report.exclusive_period,
                        CASE WHEN report.output_qty > 0 AND report.theory_qty IS NOT NULL
-                            THEN round(report.theory_qty / report.output_qty, 6) END AS unit_weight,
+                            THEN fn_business_exact_divide(report.theory_qty,report.output_qty,'workshop.material.report-unit-weight','本次车间物料报表单重',24) END AS unit_weight,
                        CASE WHEN report.output_qty > 0
-                            THEN round(report.current_value / report.output_qty, 4) END AS unit_material_cost,
+                            THEN fn_business_exact_divide(report.current_value,report.output_qty,'workshop.material.unit-material-cost','本次单位材料成本',30) END AS unit_material_cost,
                        CASE WHEN report.exclusive_period AND report.output_qty > 0
-                            THEN round(report.allocated_qty / report.output_qty, 6) END AS actual_per_unit
+                            THEN fn_business_exact_divide(report.allocated_qty,report.output_qty,'workshop.material.actual-per-unit','本次单位实际耗用',24) END AS actual_per_unit
                 """ + WorkshopMaterialCountBasisQuery.columns("report", "report.material_goods_id", "report.material_color_id") + """
                 FROM v_workshop_material_product_report report
                 JOIN goods material ON material.id = report.material_goods_id

@@ -123,11 +123,18 @@ public class WorkshopMaterialCountService {
         Count count = count(countId, false);
         Period period = bins.period(count.periodId());
         scope.requireWorkshop(period.workshopDepartmentId());
-        requireDraft(count);
         LineValues values = validate(period, input);
         MapSqlParameterSource params = values.params()
                 .addValue("count", countId).addValue("key", key).addValue("actor", currentUser.requireId());
         CountLineView existing = line(countId, key);
+        // A matching original receipt is a read, including after the count was
+        // submitted. Authority and exact source/actor/CAS proof still apply;
+        // every actual modification below continues to require a draft.
+        if (existing != null && (input.expectedVersion() == null || input.expectedVersion() != existing.rowVersion())) {
+            long replayVersion = input.expectedVersion() == null ? 0 : input.expectedVersion() + 1;
+            if (existing.rowVersion() == replayVersion && matchesOriginalLineWrite(params, existing.rowVersion())) return existing;
+        }
+        requireDraft(count);
         if (existing == null) {
             if (input.expectedVersion() != null) throw new ApiException(ErrorCode.CONFLICT, "这一行已被别人删掉, 请刷新");
             if (values.containerId() != null && containerTaken(countId, values.containerId(), key)) {
@@ -165,6 +172,25 @@ public class WorkshopMaterialCountService {
             if (updated != 1) throw new LineConflict(line(countId, key));
         }
         return line(countId, key);
+    }
+
+    private boolean matchesOriginalLineWrite(MapSqlParameterSource params, long rowVersion) {
+        Integer matches = db.queryForObject("""
+                SELECT count(*) FROM workshop_material_count_lines
+                WHERE count_id=:count AND client_line_key=:key AND row_version=:replayVersion
+                  AND entered_by=:actor AND line_kind=:kind AND weigh_note IS NOT DISTINCT FROM :note
+                  AND goods_id IS NOT DISTINCT FROM CAST(:goods AS uuid)
+                  AND color_id IS NOT DISTINCT FROM CAST(:color AS uuid)
+                  AND unit_id IS NOT DISTINCT FROM CAST(:unit AS uuid)
+                  AND machine_id IS NOT DISTINCT FROM CAST(:machine AS uuid)
+                  AND container_id IS NOT DISTINCT FROM CAST(:container AS uuid)
+                  AND fill_level IS NOT DISTINCT FROM :fill
+                  AND bag_count IS NOT DISTINCT FROM :bagCount
+                  AND bag_net_qty IS NOT DISTINCT FROM :bagNet
+                  AND weighed_qty IS NOT DISTINCT FROM :weighed
+                  AND capacity_qty_snapshot IS NOT DISTINCT FROM :capacity
+                """, params.addValue("replayVersion", rowVersion), Integer.class);
+        return matches != null && matches == 1;
     }
 
     @Transactional
@@ -339,10 +365,10 @@ public class WorkshopMaterialCountService {
                             INSERT INTO workshop_material_count_lines(
                                 count_id, client_line_key, line_kind, weigh_note, goods_id, color_id, unit_id,
                                 bag_count, bag_net_qty, weighed_qty, machine_id, container_id, capacity_qty_snapshot,
-                                fill_level, entered_by)
+                                fill_level, entered_by, derivation_source_line_id)
                             SELECT :count, client_line_key, line_kind, weigh_note, goods_id, color_id, unit_id,
                                    bag_count, bag_net_qty, weighed_qty, machine_id, container_id,
-                                   capacity_qty_snapshot, fill_level, :actor
+                                   capacity_qty_snapshot, fill_level, :actor, id
                             FROM workshop_material_count_lines WHERE count_id = :previous
                             """, new MapSqlParameterSource("count", countId).addValue("actor", actor)
                             .addValue("previous", previousCount));
@@ -921,10 +947,7 @@ public class WorkshopMaterialCountService {
     }
 
     private static BigDecimal scale(BigDecimal value, String what) {
-        if (value.stripTrailingZeros().scale() > MoneyPolicy.QUANTITY_SCALE) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, what + "最多保留 4 位小数");
-        }
-        return MoneyPolicy.quantity(value);
+        return com.uten.imp.common.util.FinancialExactAmount.quantity(value,what);
     }
 
     private static String requireLineKey(String key) {

@@ -72,6 +72,11 @@ public class SubcontractReturn extends SoftDeletableEntity {
     @Column(name = "ap_posted", nullable = false)
     private boolean apPosted = false;
 
+    @org.hibernate.annotations.Formula("(SELECT candidate.status='CONFIRMED' FROM finance_procurement_payable_candidates candidate WHERE candidate.source_type='SUBCONTRACT_RETURN' AND candidate.source_id=id)")
+    @Getter(lombok.AccessLevel.NONE) @Setter(lombok.AccessLevel.NONE)
+    private Boolean reconcileFirstApPosted;
+    public boolean isApPosted(){return reconcileFirstApPosted==null?apPosted:reconcileFirstApPosted;}
+
     private String remark;
 
     @Column(name = "total_original", precision = 18, scale = 4)

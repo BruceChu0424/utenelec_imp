@@ -273,7 +273,7 @@ public class GoodsService {
             same = cb.equal(rank, targetRank);
         }
         if(stockSort) {
-            var value=stockQuantitiesFor(List.of(id)).getOrDefault(id,BigDecimal.ZERO).setScale(2,java.math.RoundingMode.HALF_UP);
+            var value=stockQuantitiesFor(List.of(id)).getOrDefault(id,BigDecimal.ZERO);
             var stock=com.uten.imp.features.master.search.MasterColumnSearch.numericValue(cb,root.get("id"),
                     com.uten.imp.features.master.search.MasterColumnSearch.Domain.GOODS,"stockQty");
             boolean ascending=!"desc".equalsIgnoreCase(order);
@@ -1572,24 +1572,24 @@ public class GoodsService {
         // 成本预算：无 goods:cost:view 的普通编辑保留实体原值，避免脱敏 null 覆盖历史成本。
         // 导入是独立特权入口，显式传 writeCosts=true 保持批量导入能力。
         if (writeCosts) {
-            g.setSourceE(req.getSourceE());
-            g.setMachiningE(req.getMachiningE());
-            g.setIncidentalE(req.getIncidentalE());
-            g.setLacquerE(req.getLacquerE());
-            g.setPlatingE(req.getPlatingE());
-            g.setCasingE(req.getCasingE());
-            g.setPolishE(req.getPolishE());
-            g.setTotal(req.getTotal());
-            g.setWorkRate(req.getWorkRate());
-            g.setWorkE(req.getWorkE());
-            g.setLostRate(req.getLostRate());
-            g.setLostE(req.getLostE());
-            g.setRentRate(req.getRentRate());
-            g.setRentE(req.getRentE());
-            g.setMakeRate(req.getMakeRate());
-            g.setMakeE(req.getMakeE());
-            g.setCTotal(req.getCTotal());
-            g.setGTotal(req.getGTotal());
+            if (req.hasCostField("sourceE")) g.setSourceE(req.getSourceE());
+            if (req.hasCostField("machiningE")) g.setMachiningE(req.getMachiningE());
+            if (req.hasCostField("incidentalE")) g.setIncidentalE(req.getIncidentalE());
+            if (req.hasCostField("lacquerE")) g.setLacquerE(req.getLacquerE());
+            if (req.hasCostField("platingE")) g.setPlatingE(req.getPlatingE());
+            if (req.hasCostField("casingE")) g.setCasingE(req.getCasingE());
+            if (req.hasCostField("polishE")) g.setPolishE(req.getPolishE());
+            if (req.hasCostField("total")) g.setTotal(req.getTotal());
+            if (req.hasCostField("workRate")) g.setWorkRate(req.getWorkRate());
+            if (req.hasCostField("workE")) g.setWorkE(req.getWorkE());
+            if (req.hasCostField("lostRate")) g.setLostRate(req.getLostRate());
+            if (req.hasCostField("lostE")) g.setLostE(req.getLostE());
+            if (req.hasCostField("rentRate")) g.setRentRate(req.getRentRate());
+            if (req.hasCostField("rentE")) g.setRentE(req.getRentE());
+            if (req.hasCostField("makeRate")) g.setMakeRate(req.getMakeRate());
+            if (req.hasCostField("makeE")) g.setMakeE(req.getMakeE());
+            if (req.hasCostField("cTotal")) g.setCTotal(req.getCTotal());
+            if (req.hasCostField("gTotal")) g.setGTotal(req.getGTotal());
         }
         GoodsCostValuePolicy.validateEntity(g);
     }

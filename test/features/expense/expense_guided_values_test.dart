@@ -98,13 +98,11 @@ void main() {
       '-12.00',
       '0',
       '0.00',
-      '1e5',
       'NaN',
       'Infinity',
-      '123.456',
+      '10000000000000000000000000000000000000000',
+      '0.0000000000000000000000001',
       '1,234.56',
-      ' 100.00',
-      '1000000000000.00',
     ]) {
       expect(
         guidedExpenseItem(plan(amount: amount), 'row'),
@@ -114,6 +112,24 @@ void main() {
     }
     expect(guidedExpenseItem(plan(amount: '0.01'), 'row')?.amount, .01);
   });
+
+  test(
+    'supported finite values keep every digit including scientific representation',
+    () {
+      for (final sample in [
+        ('1e5', '100000'),
+        ('123.456', '123.456'),
+        (' 100.00', '100'),
+        ('1000000000000.00', '1000000000000'),
+        ('0.000000000000000000000001', '0.000000000000000000000001'),
+      ]) {
+        expect(
+          guidedExpenseItem(plan(amount: sample.$1), 'row')?.amountText,
+          sample.$2,
+        );
+      }
+    },
+  );
 
   test('uncertain descriptions are not silently promoted to fact', () {
     expect(

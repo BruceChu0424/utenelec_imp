@@ -87,6 +87,9 @@ public class SubcontractWasteService {
     private static final Map<String, String> ALLOWED_SORT = Map.of(
             "billDate", "billDate", "totalWeight", "totalWeight", "billNo", "billNo");
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.BusinessNumericInputEvidencePort numericInputEvidence;
+
     private final SubcontractWasteRepository wasteRepo;
     private final SubcontractWasteItemRepository itemRepo;
     private final StockService stockService;
@@ -195,7 +198,7 @@ public class SubcontractWasteService {
         r.setStatus(STATUS_DRAFT);
         wasteRepo.save(r);
         List<WasteItemDto> items = saveItems(r, req.getItems());
-        applyTotals(r, items);
+        applyTotals(r, items,req.getTotalWeight());
         return toDetail(r, items);
     }
 
@@ -215,7 +218,7 @@ public class SubcontractWasteService {
         itemRepo.deleteByWasteId(id);
         itemRepo.flush();
         List<WasteItemDto> items = saveItems(r, req.getItems());
-        applyTotals(r, items);
+        applyTotals(r, items,req.getTotalWeight());
         return toDetail(r, items);
     }
 
@@ -272,7 +275,7 @@ public class SubcontractWasteService {
         @SuppressWarnings("unchecked")
         List<Object[]> rows = em.createNativeQuery("""
                 SELECT issue_item.id, issue_item.goods_id, issue_item.color_id, issue_item.unit_id,
-                       COALESCE(issue_item.unit_rate, 1), plan_item.bom_unit_qty,
+                       issue_item.unit_rate, plan_item.bom_unit_qty,
                        issue.warehouse_id, issue.supplier_id,
                        GREATEST(COALESCE(issue_item.at_supplier_qty, 0) + COALESCE(issue_item.compensated_qty, 0)
                                 - COALESCE(issue_item.consumed_qty, 0) - COALESCE(issue_item.returned_qty, 0)
@@ -295,14 +298,21 @@ public class SubcontractWasteService {
             groups.computeIfAbsent((UUID) row[9], ignored -> new ArrayList<>()).add(row);
         }
         List<WasteItemLine> lines = new ArrayList<>();
+        Map<UUID,BigDecimal> originalStandards=new java.util.LinkedHashMap<>();
         UUID warehouseId = null;
         UUID supplierId = null;
         for (List<Object[]> group : groups.values()) {
             BigDecimal perSet = (BigDecimal) group.getFirst()[5];
-            BigDecimal allowedRemaining = allowed.multiply(perSet).setScale(4, java.math.RoundingMode.CEILING);
+            BigDecimal allowedRemaining = allowed.multiply(perSet);
             for (Object[] row : group) {
                 BigDecimal take = (BigDecimal) row[8];
-                BigDecimal standard = take.min(allowedRemaining);
+                com.uten.imp.common.integrity.SourceQuantityBasis.requireKnown((UUID)row[3],(BigDecimal)row[4]);
+                BigDecimal originalStandard=take.min(allowedRemaining);
+                BigDecimal standard=com.uten.imp.common.util.FinancialExactAmount.quantity(
+                    com.uten.imp.common.finance.BusinessPrecisionContext.limit(originalStandard,"subcontract.normal-loss-quantity","本次委外允许损耗材料数量",24),"允许损耗材料数量");
+                if(standard.signum()<0||standard.compareTo(originalStandard)>0||standard.compareTo(take)>0)
+                    throw new com.uten.imp.common.finance.BusinessPrecisionRequiredException("subcontract.normal-loss-quantity","本次委外允许损耗材料数量：所选精度超过原允许量，请明确重新选择",24,"PRECISION_LIMIT",true);
+                originalStandards.put((UUID)row[0],originalStandard);
                 allowedRemaining = allowedRemaining.subtract(standard);
                 WasteItemLine line = new WasteItemLine();
                 line.setMaterialIssueItemId((UUID) row[0]);
@@ -333,9 +343,19 @@ public class SubcontractWasteService {
         r.setStatus(STATUS_DRAFT);
         wasteRepo.save(r);
         List<WasteItemDto> items = saveItems(r, req.getItems());
-        applyTotals(r, items);
+        applyTotals(r, items,req.getTotalWeight());
         wasteRepo.flush();
         itemRepo.flush();
+        for(var item:items){
+            var raw=originalStandards.get(item.getMaterialIssueItemId());
+            if(raw==null)throw new ApiException(ErrorCode.CONFLICT,"原允许损耗数量依据缺失");
+            if(numericInputEvidence==null)throw new ApiException(ErrorCode.CONFLICT,"当前无法保存原损耗数量依据，请保留输入");
+            var unit=new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Unit("LINE_QUANTITY",null,item.getUnitId());
+            var choice=raw.stripTrailingZeros().scale()>24?com.uten.imp.common.finance.BusinessPrecisionContext.usedChoices().get("subcontract.normal-loss-quantity"):null;
+            numericInputEvidence.record(new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Capture(
+                "SUBCONTRACT_WASTE",r.getId(),item.getId(),"standardQty","1",raw,unit,item.getStandardQty(),unit,
+                choice==null?Map.of():Map.of("subcontract.normal-loss-quantity",choice)));
+        }
         approveInternal(r.getId());
         return r.getId();
     }
@@ -566,9 +586,9 @@ public class SubcontractWasteService {
         r.setSupplierId(req.getSupplierId());
         r.setWarehouseId(req.getWarehouseId());
         r.setWorkerId(req.getWorkerId());
-        r.setTotalWeight(req.getTotalWeight());
+        r.setTotalWeight(com.uten.imp.features.stock.weight.DocumentWeightAdoption.adopt(req.getTotalWeight(),"损耗单声明总重"));
         r.setRemark(req.getRemark());
-        r.setDeductAmount(req.getDeductAmount());
+        r.setDeductAmount(com.uten.imp.common.util.FinancialExactAmount.optional(req.getDeductAmount(),"建议扣款金额"));
     }
 
     private List<WasteItemDto> saveItems(SubcontractWaste r, List<WasteItemLine> lines) {
@@ -614,10 +634,12 @@ public class SubcontractWasteService {
             MoneyPolicy.LineAmounts amounts = MoneyPolicy.line(l.getQty(), it.getPrice(), null, BigDecimal.ONE);
             it.setAmountOriginal(amounts.original());
             it.setAmountLocal(amounts.local());
-            it.setWeight(l.getWeight());
+            BigDecimal adoptedWeight=com.uten.imp.features.stock.weight.DocumentWeightAdoption.adopt(l.getWeight(),"损耗单声明重量");
+            it.setWeight(adoptedWeight);
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
             itemRepo.save(it);
+            com.uten.imp.features.stock.weight.DocumentWeightAdoption.capture(numericInputEvidence,"SUBCONTRACT_WASTE",r.getId(),it.getId(),"declaredWeightKg",l.getWeight(),adoptedWeight);
             out.add(toItemDto(it));
             autoLine++;
         }
@@ -661,7 +683,7 @@ public class SubcontractWasteService {
         item.setGoodsSnapshotLockedAt(lockedAt);
     }
 
-    private void applyTotals(SubcontractWaste r, List<WasteItemDto> items) {
+    private void applyTotals(SubcontractWaste r, List<WasteItemDto> items,BigDecimal originalHeaderWeight) {
         BigDecimal local = items.stream()
                 .map(i -> i.getAmountLocal() == null ? BigDecimal.ZERO : i.getAmountLocal())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -677,6 +699,7 @@ public class SubcontractWasteService {
         if (r.getTotalWeight() == null) {
             r.setTotalWeight(weight);
         }
+        com.uten.imp.features.stock.weight.DocumentWeightAdoption.capture(numericInputEvidence,"SUBCONTRACT_WASTE",r.getId(),r.getId(),"declaredTotalWeightKg",originalHeaderWeight,r.getTotalWeight());
         wasteRepo.save(r);
     }
 

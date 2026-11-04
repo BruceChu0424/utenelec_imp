@@ -22,7 +22,7 @@ import static com.uten.imp.features.stock.valuation.ValueMath.*;
 /** Company materials retain their issued cost roots; supplier consideration is a separate source. */
 @Service
 @Transactional(propagation=Propagation.MANDATORY)
-public class SubcontractOwnMaterialCostService implements com.uten.imp.application.port.SubcontractMaterialReversalValuePort {
+public class SubcontractOwnMaterialCostService implements com.uten.imp.application.port.SubcontractMaterialReversalValuePort,com.uten.imp.application.port.SubcontractMaterialQuantityPort {
     private final NamedParameterJdbcTemplate db;
     private final InventoryPositionPort positions;
     private final InventoryProductionCostPort costs;
@@ -360,6 +360,13 @@ public class SubcontractOwnMaterialCostService implements com.uten.imp.applicati
     public UUID materialReturnIssue(UUID returnItem){
         UUID issue=db.queryForObject("SELECT material_issue_item_id FROM subcontract_material_return_items WHERE id=:id",Map.of("id",returnItem),UUID.class);
         if(issue==null)throw conflict("材料退回红冲缺少原委外实发明细");return issue;
+    }
+
+    @Override @Transactional(readOnly=true,propagation=Propagation.MANDATORY)
+    public BigDecimal returnableBaseQuantity(UUID issueItemId){
+        if(issueItemId==null)throw conflict("材料退回缺少原委外实发明细，不能推定实际数量容量");
+        return InventoryOwnerPositions.remaining(db,Owner.SUBCONTRACT_WIP,List.of(issueItemId)).stream()
+                .map(row->row.quantity()).reduce(BigDecimal.ZERO,BigDecimal::add);
     }
 
     private List<Map<String,Object>> consumptions(UUID receipt){return db.queryForList("""

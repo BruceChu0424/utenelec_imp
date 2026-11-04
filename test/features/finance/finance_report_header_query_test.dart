@@ -13,11 +13,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
+import 'package:uten_imp/components/inputs/uten_dropdown_field.dart';
 import 'package:uten_imp/components/data_display/uten_totals_summary_bar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/api_exception.dart';
 import 'package:uten_imp/features/basic_data/widgets/master_data_table_view.dart';
+import 'package:uten_imp/features/basic_data/models/supplier_node.dart';
 import 'package:uten_imp/features/finance/pages/finance_report_table_page.dart';
 import 'package:uten_imp/features/report/shared/report_filter_prefs.dart';
 import 'package:uten_imp/shared/auth/permissions.dart';
@@ -31,6 +33,12 @@ void main() {
       tester
           .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
           .onSelectionChanged!(4);
+      await tester.pumpAndSettle();
+      // Full business-detail candidates are separate from the original paper,
+      // whose party and currency remain mandatory and cannot be guessed.
+      await tester.tap(
+        find.byKey(const Key('finance-client-statement-view-toggle')),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('客户名称'));
       await tester.pumpAndSettle();
@@ -63,6 +71,12 @@ void main() {
           .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
           .onSelectionChanged!(4);
       await tester.pumpAndSettle();
+      // Full business-detail candidates are separate from the original paper,
+      // whose party and currency remain mandatory and cannot be guessed.
+      await tester.tap(
+        find.byKey(const Key('finance-client-statement-view-toggle')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(find.text('客户名称'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('优腾远端客户 (12)'));
@@ -82,6 +96,12 @@ void main() {
       tester
           .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
           .onSelectionChanged!(4);
+      await tester.pumpAndSettle();
+      // Full business-detail candidates are separate from the original paper,
+      // whose party and currency remain mandatory and cannot be guessed.
+      await tester.tap(
+        find.byKey(const Key('finance-client-statement-view-toggle')),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('客户名称'));
       await tester.pumpAndSettle();
@@ -116,6 +136,10 @@ void main() {
       tester
           .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
           .onSelectionChanged!(4);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('finance-client-statement-view-toggle')),
+      );
       await tester.pumpAndSettle();
       MasterDataTableView<Map<String, dynamic>> table() =>
           tester.widget(find.byType(MasterDataTableView<Map<String, dynamic>>));
@@ -164,11 +188,32 @@ void main() {
       table().onFilterChanged('search.clientName', '新条件');
       await tester.pumpAndSettle();
       expect(table().items.single['clientName'], '新条件');
+      expect(api.requests.last.$2['layout'], isNull);
       api.delayedClient!.complete(
         _clientStatementData({'f.search.clientName': '旧条件'}),
       );
       await tester.pumpAndSettle();
       expect(table().items.single['clientName'], '新条件');
+      api.delayedClient = Completer<Map<String, dynamic>>();
+      table().onFilterChanged('search.clientName', '跨视图旧条件');
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.tap(
+        find.byKey(const Key('finance-client-statement-view-toggle')),
+      );
+      await tester.pumpAndSettle();
+      api.delayedClient!.complete(
+        _clientStatementData({'f.search.clientName': '跨视图旧条件'}),
+      );
+      await tester.pumpAndSettle();
+      // Main keeps trusted empty headers and the date toolbar available;
+      // missing original-paper identities must still publish no old facts.
+      final emptyTable = tester
+          .widget<MasterDataTableView<Map<String, dynamic>>>(
+            find.byType(MasterDataTableView<Map<String, dynamic>>),
+          );
+      expect(emptyTable.items, isEmpty);
+      expect(emptyTable.totalPages, 0);
+      expect(find.text('请选择实际往来对象和币别，按原表查看对账单'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -228,9 +273,7 @@ void main() {
         api.requests.last.$2,
         containsPair('f.search.orderDate', '2026-10..2026-11'),
       );
-      final export = table().toolbarActions!
-          .whereType<UtenExportButton>()
-          .single;
+      final export = await _visibleExport(tester);
       expect(
         export.queryParams,
         containsPair('f.search.expectedOriginal', '>=90071992547409.1234'),
@@ -265,6 +308,7 @@ void main() {
           .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
           .onSelectionChanged!(3);
       await tester.pumpAndSettle();
+      await _selectMaterialContext(tester);
       expect(
         table().columns
             .where((column) => column.type == 'number')
@@ -305,17 +349,12 @@ void main() {
     },
   );
   testWidgets(
-    'seven GL layouts preserve row order while trial balance keeps sortable columns',
+    'all original GL layouts preserve source row order including trial balance',
     (tester) async {
       final api = await _pump(tester, 'gl');
       MasterDataTableView<Map<String, dynamic>> table() =>
           tester.widget(find.byType(MasterDataTableView<Map<String, dynamic>>));
-      expect(
-        table().columns
-            .singleWhere((column) => column.key == 'orderDate')
-            .sortable,
-        isTrue,
-      );
+      expect(table().columns.every((column) => !column.sortable), isTrue);
       for (final index in const [1, 2, 3, 4, 5, 6, 7]) {
         tester
             .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
@@ -337,18 +376,12 @@ void main() {
         table().onFilterChanged('search.$key', 'MATCH');
         await tester.pumpAndSettle();
         expect(api.requests.last.$2['sort'], isNull);
-        expect(
-          table().toolbarActions!
-              .whereType<UtenExportButton>()
-              .single
-              .queryParams['sort'],
-          isNull,
-        );
+        expect((await _visibleExport(tester)).queryParams['sort'], isNull);
       }
     },
   );
   testWidgets(
-    'balance side menu sends the exact two-choice scope to the report and export',
+    'balance template retains both original sides and eight columns in report and export',
     (tester) async {
       final api = await _pump(tester, 'gl');
       tester
@@ -357,29 +390,46 @@ void main() {
       await tester.pumpAndSettle();
       MasterDataTableView<Map<String, dynamic>> table() =>
           tester.widget(find.byType(MasterDataTableView<Map<String, dynamic>>));
-      expect(
-        table().facets['side']!.map((facet) => facet.value),
-        containsAll(['资产', '负债和所有者权益']),
-      );
-      final header = find.byKey(const ValueKey('master-column-filter-side'));
-      await tester.ensureVisible(header);
-      await tester.pumpAndSettle();
-      final rect = tester.getRect(header);
-      await tester.tapAt(Offset(rect.left + 16, rect.center.dy));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('负债和所有者权益'));
-      await tester.pumpAndSettle();
-      expect(api.requests.last.$2['f.side'], '负债和所有者权益');
-      expect(
-        table().toolbarActions!
-            .whereType<UtenExportButton>()
-            .single
-            .queryParams['f.side'],
+      expect(table().columns.map((c) => c.label), [
+        '资产',
+        '行次',
+        '期末余额',
+        '年初余额',
         '负债和所有者权益',
+        '行次',
+        '期末余额',
+        '年初余额',
+      ]);
+      expect(table().items.single['assetLineNo'], 1);
+      expect(table().items.single['liabilityLineNo'], 31);
+      final item = table().items.single;
+      final context = tester.element(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
       );
-      table().onFilterChanged('side', null);
-      await tester.pumpAndSettle();
-      expect(api.requests.last.$2['f.side'], isNull);
+      expect(
+        table().columns.firstWhere((c) => c.key == 'assetItem').cellColor!(
+          context,
+          item,
+        ),
+        const Color(0xff808080),
+      );
+      expect(
+        table().columns.firstWhere((c) => c.key == 'assetLineNo').cellColor!(
+          context,
+          item,
+        ),
+        isNull,
+      );
+      expect(
+        table().columns.firstWhere((c) => c.key == 'liabilityEnd').cellColor!(
+          context,
+          item,
+        ),
+        isNull,
+      );
+      expect(api.requests.last.$2['layout'], 'template');
+      expect((await _visibleExport(tester)).queryParams['layout'], 'template');
+      expect(table().serverColumnSearchKeys, isNot(contains('side')));
     },
   );
   testWidgets('C2 unproved price placeholders expose neither search nor sort', (
@@ -408,9 +458,13 @@ void main() {
     expect(api.requests.last.$2['sort'], isNull);
   });
   testWidgets(
-    'trial footer renders the server full-scope totals instead of adding the visible page',
+    'detail footer renders server full-scope totals instead of adding the visible page',
     (tester) async {
-      await _pump(tester, 'gl', serverTotals: true);
+      await _pump(tester, 'detail', serverTotals: true);
+      tester
+          .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
+          .onSelectionChanged!(1);
+      await tester.pumpAndSettle();
       MasterDataTableView<Map<String, dynamic>> table() =>
           tester.widget(find.byType(MasterDataTableView<Map<String, dynamic>>));
       expect(table().items.single['debit'], 10);
@@ -432,6 +486,188 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+  testWidgets(
+    'trial original totals remain inline without a duplicate footer',
+    (tester) async {
+      await _pump(tester, 'gl');
+      final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+        find.byType(MasterDataTableView<Map<String, dynamic>>),
+      );
+      expect(table.columns.map((c) => c.label), [
+        '科目编码',
+        '科目名称',
+        '外币名称',
+        '期初借方',
+        '期初贷方',
+        '本期发生借方',
+        '本期发生贷方',
+        '期末借方',
+        '期末贷方',
+      ]);
+      expect(table.items.last['__rowKind'], 'TOTAL');
+      expect(table.items.last['name'], '总合计');
+      expect(find.byType(UtenTotalsSummaryBar), findsNothing);
+    },
+  );
+  testWidgets(
+    'statement waits for both identities and clearing either removes prior facts',
+    (tester) async {
+      final api = await _pump(tester, 'recon', selectContext: false);
+      expect(api.requests, isEmpty);
+      await _selectStatementContext(tester, selectCurrency: false);
+      expect(api.requests, isEmpty);
+      tester
+          .widget<UtenDropdownField>(
+            find.byKey(const Key('finance-report-currency')),
+          )
+          .onChanged
+          .call('currency-id');
+      await tester.pumpAndSettle();
+      expect(api.requests.last.$2, containsPair('partyId', 'supplier-id'));
+      expect(api.requests.last.$2, containsPair('currencyId', 'currency-id'));
+      final count = api.requests.length;
+      tester
+          .widget<UtenDropdownField>(
+            find.byKey(const Key('finance-report-currency')),
+          )
+          .onChanged
+          .call(null);
+      await tester.pumpAndSettle();
+      expect(api.requests, hasLength(count));
+      // Main keeps trusted empty headers and the date toolbar available;
+      // missing original-paper identities must still publish no old facts.
+      final emptyTable = tester
+          .widget<MasterDataTableView<Map<String, dynamic>>>(
+            find.byType(MasterDataTableView<Map<String, dynamic>>),
+          );
+      expect(emptyTable.items, isEmpty);
+      expect(emptyTable.totalPages, 0);
+      expect(find.text('请选择实际往来对象和币别，按原表查看对账单'), findsOneWidget);
+    },
+  );
+  testWidgets(
+    'material statement uses the selected group and actual paper currency rather than its book property',
+    (tester) async {
+      final api = await _pump(tester, 'recon');
+      tester
+          .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
+          .onSelectionChanged!(3);
+      await tester.pumpAndSettle();
+      expect(
+        api.requests.where((r) => r.$1.endsWith('/other-receivable')),
+        isEmpty,
+      );
+      await _selectMaterialContext(tester);
+      final query = api.requests.last.$2;
+      expect(query, containsPair('materialContextId', 'material-id'));
+      expect(query, containsPair('partyId', 'supplier-id'));
+      expect(query, containsPair('currencyId', 'actual-usd-id'));
+      expect(query['currencyId'], isNot('book-cny-id'));
+      expect(
+        (await _visibleExport(tester)).queryParams,
+        containsPair('materialContextId', 'material-id'),
+      );
+    },
+  );
+  testWidgets(
+    'closing a material picker during loading cannot later select or publish its old group',
+    (tester) async {
+      final api = await _pump(tester, 'recon');
+      tester
+          .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
+          .onSelectionChanged!(3);
+      await tester.pumpAndSettle();
+      final pending = Completer<Map<String, dynamic>>();
+      api.materialContexts = pending;
+      await tester.tap(
+        find.byKey(const Key('finance-material-context-select')),
+      );
+      await tester.pump();
+      Navigator.of(tester.element(find.text('选择对账资料').last)).pop();
+      await tester.pumpAndSettle();
+      pending.complete({
+        'items': [_materialContext],
+        'totalPages': 1,
+      });
+      await tester.pumpAndSettle();
+      expect(
+        api.requests.where((r) => r.$1.endsWith('/other-receivable')),
+        isEmpty,
+      );
+      expect(find.text('请选择已审核的对账资料，按原表查看'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+}
+
+const _materialContext = <String, dynamic>{
+  'id': 'material-id',
+  'state': 'APPROVED',
+  'auxiliaryCode': 'J001',
+  'auxiliaryName': '匿名加工往来',
+  'goodsName': '匿名产品',
+  'productNameCaption': '原产品名称',
+  'accountCode': '1221',
+  'accountingCurrencyId': 'book-cny-id',
+  'accountingCurrencyCode': 'CNY',
+  'actualCurrencyId': 'actual-usd-id',
+  'partyId': 'supplier-id',
+  'partyRole': 'SUPPLIER',
+  'amountBasis': 'ORIGINAL',
+};
+
+Future<void> _selectMaterialContext(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('finance-material-context-select')));
+  await tester.pumpAndSettle();
+  final table = tester.widget<MasterDataTableView<Map<String, dynamic>>>(
+    find.byType(MasterDataTableView<Map<String, dynamic>>).last,
+  );
+  table.onRowTap!(table.items.single);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _selectStatementContext(
+  WidgetTester tester, {
+  bool selectCurrency = true,
+}) async {
+  final party = find.byKey(const Key('finance-report-party'));
+  await tester.ensureVisible(party);
+  await tester.tap(party);
+  await tester.pumpAndSettle();
+  Navigator.of(
+    tester.element(find.text('选择供应商').last),
+  ).pop(const SupplierListItem(id: 'supplier-id', code: 'S001', name: '匿名供应商'));
+  await tester.pumpAndSettle();
+  if (selectCurrency) {
+    tester
+        .widget<UtenDropdownField>(
+          find.byKey(const Key('finance-report-currency')),
+        )
+        .onChanged
+        .call('currency-id');
+    await tester.pumpAndSettle();
+  }
+}
+
+Future<UtenExportButton> _visibleExport(WidgetTester tester) async {
+  var opened = false;
+  if (find.byType(UtenExportButton).evaluate().isEmpty) {
+    final trigger = find
+        .descendant(
+          of: find.byType(MasterDataTableView<Map<String, dynamic>>),
+          matching: find.byKey(const ValueKey('uten-action-overflow-trigger')),
+        )
+        .first;
+    await tester.tap(trigger);
+    await tester.pumpAndSettle();
+    opened = true;
+  }
+  final result = tester.widget<UtenExportButton>(find.byType(UtenExportButton));
+  if (opened) {
+    await tester.tapAt(const Offset(2, 2));
+    await tester.pumpAndSettle();
+  }
+  return result;
 }
 
 Future<_HeaderApi> _pump(
@@ -439,6 +675,7 @@ Future<_HeaderApi> _pump(
   String card, {
   bool serverTotals = false,
   bool separatePrefs = false,
+  bool selectContext = true,
   GlobalKey? capture,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1800, 1000));
@@ -479,6 +716,7 @@ Future<_HeaderApi> _pump(
     ),
   );
   await tester.pumpAndSettle();
+  if (card == 'recon' && selectContext) await _selectStatementContext(tester);
   return api;
 }
 
@@ -547,6 +785,7 @@ class _GlPrefs extends FinanceGlReportPrefsNotifier {
 }
 
 class _HeaderApi extends ApiClient {
+  Completer<Map<String, dynamic>>? delayedClient;
   _HeaderApi() : super(Dio());
   final requests = <(String, Map<String, dynamic>)>[];
   final candidateRequests = <Map<String, dynamic>>[];
@@ -570,17 +809,58 @@ class _HeaderApi extends ApiClient {
 
   bool rejectHeaders = false;
   bool serverTotals = false;
-  Completer<Map<String, dynamic>>? delayedClient;
+  Completer<Map<String, dynamic>>? materialContexts;
+  @override
+  Future<List<Map<String, dynamic>>> getList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async => path.endsWith('/currencies/dict')
+      ? [
+          {'id': 'currency-id', 'name': '美金', 'code': 'USD'},
+        ]
+      : [];
+  @override
+  Future<Map<String, dynamic>> post(
+    String path, {
+    Object? body,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? query,
+  }) async => {
+    'items': <Map<String, dynamic>>[],
+    'page': 1,
+    'size': 100,
+    'total': 0,
+    'totalPages': 1,
+  };
   @override
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, dynamic>? query,
   }) async {
+    if (path == '/finance/material-statements') {
+      return materialContexts?.future ??
+          {
+            'items': [_materialContext],
+            'page': 1,
+            'size': 50,
+            'total': 1,
+            'totalPages': 1,
+          };
+    }
     if (!path.startsWith('/finance/reports/')) return {};
+    if (path == '/finance/reports/context/plastic-bins') {
+      return {
+        'items': [
+          {'id': 'bin-id', 'code': 'B001', 'name': '匿名内料仓'},
+        ],
+      };
+    }
     final parameters = Map<String, dynamic>.of(query ?? {});
     requests.add((path, parameters));
     if (path.endsWith('/statements/client')) {
-      if (parameters['f.search.clientName'] == '旧条件' && delayedClient != null) {
+      if (parameters['f.search.clientName']?.toString().contains('旧条件') ==
+              true &&
+          delayedClient != null) {
         return delayedClient!.future;
       }
       return _clientStatementData(parameters);
@@ -588,7 +868,7 @@ class _HeaderApi extends ApiClient {
     if (rejectHeaders && parameters.containsKey('f.search.orderNo')) {
       throw ApiException('TEMPORARY', '暂时无法检索', httpStatus: 503);
     }
-    if (serverTotals && path.endsWith('/gl/trial-balance')) {
+    if (serverTotals && path.endsWith('/ar-ap/detail')) {
       final page = parameters['page'] ?? 1;
       return {
         'readScopeVersion': 'scope-1',
@@ -640,24 +920,77 @@ class _HeaderApi extends ApiClient {
       return {
         'readScopeVersion': 'scope-1',
         'columns': [
-          {'key': 'item', 'label': '项目', 'type': 'text'},
-          {'key': 'side', 'label': '类别', 'type': 'text'},
-          {'key': 'lineNo', 'label': '行次', 'type': 'number'},
-          {'key': 'periodEnd', 'label': '期末余额', 'type': 'money'},
-        ],
-        'columnSearchKeys': ['item', 'side', 'lineNo', 'periodEnd'],
-        'rows': [
-          {'item': '货币资金', 'side': '资产', 'lineNo': 1, 'periodEnd': 10},
-        ],
-        'facets': {
-          'side': [
-            {'value': '资产', 'label': '资产', 'count': 1},
-            {'value': '负债和所有者权益', 'label': '负债和所有者权益', 'count': 0},
+          for (final side in ['asset', 'liability']) ...[
+            {
+              'key': '${side}Item',
+              'label': side == 'asset' ? '资产' : '负债和所有者权益',
+              'type': 'text',
+            },
+            {'key': '${side}LineNo', 'label': '行次', 'type': 'int'},
+            {'key': '${side}End', 'label': '期末余额', 'type': 'money'},
+            {'key': '${side}Start', 'label': '年初余额', 'type': 'money'},
           ],
-        },
+        ],
+        'columnSearchKeys': ['assetItem', 'liabilityItem'],
+        'rows': [
+          {
+            'assetItem': '  货币资金',
+            '__cellStyles': {
+              'assetItem': {'fillRgb': '808080'},
+            },
+            'assetLineNo': 1,
+            'assetEnd': 10,
+            'assetStart': 5,
+            'liabilityItem': '短期借款',
+            'liabilityLineNo': 31,
+            'liabilityEnd': 10,
+            'liabilityStart': 5,
+          },
+        ],
+        'facets': <String, dynamic>{},
         'page': 1,
         'size': 50,
         'total': 1,
+        'totalPages': 1,
+      };
+    }
+    if (path.endsWith('/gl/trial-balance')) {
+      return {
+        'readScopeVersion': 'scope-1',
+        'columns': [
+          {'key': 'code', 'label': '科目编码', 'type': 'text'},
+          {'key': 'name', 'label': '科目名称', 'type': 'text'},
+          {'key': 'currencyName', 'label': '外币名称', 'type': 'text'},
+          for (final entry in {
+            'openingDebit': '期初借方',
+            'openingCredit': '期初贷方',
+            'debit': '本期发生借方',
+            'credit': '本期发生贷方',
+            'closingDebit': '期末借方',
+            'closingCredit': '期末贷方',
+          }.entries)
+            {'key': entry.key, 'label': entry.value, 'type': 'money'},
+        ],
+        'rows': [
+          {
+            'code': '1001',
+            'name': '库存现金',
+            'debit': '10.12345',
+            '__rowKind': 'DETAIL',
+          },
+          {
+            'code': '',
+            'name': '总合计',
+            'debit': '10.12345',
+            '__rowKind': 'TOTAL',
+          },
+        ],
+        'columnSearchKeys': ['code', 'name'],
+        'facets': <String, dynamic>{},
+        'totals': <Map<String, dynamic>>[],
+        'page': 1,
+        'size': 50,
+        'total': 2,
         'totalPages': 1,
       };
     }

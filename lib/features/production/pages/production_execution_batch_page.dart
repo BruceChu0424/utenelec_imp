@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -909,5 +910,6 @@ class _ProductionExecutionBatchPageState
   }
 }
 
-String _number(double value) =>
-    value.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
+String _number(double value) => value
+    .toExactString(minimumFractionDigits: 4)
+    .replaceFirst(RegExp(r'\.?0+$'), '');

@@ -27,6 +27,21 @@ class FinancialStatementPresentationTest {
         var partial=new ReportTableResponse(full.columns(),full.rows().subList(0,1),Map.of(),1,1,1,1);
         assertThatThrownBy(()->FinancialStatementPresentation.apply("BALANCE","template",partial)).isInstanceOf(ApiException.class);
     }
+    @Test void originalLabelIndentAndSevenIndividualGrayCellsDoNotShadeEitherWholeSide() {
+        var paper=FinancialStatementPresentation.apply("BALANCE","template",source());
+        Set<String> actual=new HashSet<>();
+        for(int index=0;index<paper.rows().size();index++) {
+            var row=paper.rows().get(index);
+            if(row.get("__cellStyles") instanceof Map<?,?> styles)for(var entry:styles.entrySet()) {
+                assertThat(entry.getValue()).isEqualTo(Map.of("fillRgb","808080"));
+                actual.add(index+":"+entry.getKey());
+            }
+        }
+        assertThat(actual).containsExactlyInAnyOrder("0:assetItem","0:liabilityItem","12:liabilityItem","16:assetItem","18:liabilityItem","31:assetItem","31:liabilityItem");
+        assertThat(paper.rows().get(1).get("assetItem").toString()).startsWith("  ");
+        assertThat(paper.rows().stream().filter(r->Integer.valueOf(11).equals(r.get("assetLineNo"))).findFirst().orElseThrow().get("assetItem").toString()).startsWith("     ");
+        assertThat(paper.rows().get(25)).doesNotContainKey("__cellStyles");
+    }
     private static ReportTableResponse source() {
         List<Map<String,Object>> rows=new ArrayList<>();
         for(var line:FinancialStatementCatalog.BALANCE) {

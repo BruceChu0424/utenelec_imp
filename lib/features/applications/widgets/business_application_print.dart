@@ -73,8 +73,18 @@ List<List<String>> businessApplicationPrintRows(
   ['当前状态', application.statusLabel],
   if (application.kind == 'PREPAYMENT' && application.status == 'PAID')
     ['账务状态', application.postingStatus == 'POSTED' ? '已关联预付账务' : '待财务入账'],
-  ['${application.kind == 'TRAVEL' ? '预计费用' : '申请金额'}（元）', application.amount],
-  ['金额大写', rmbCapitalExact(application.amount)],
+  [
+    '${application.kind == 'TRAVEL' ? '预计费用' : '申请金额'}（${application.amountUnit}）',
+    application.amount.isEmpty ? '—' : application.amount,
+  ],
+  [
+    '金额大写',
+    application.amount.isEmpty
+        ? '不适用'
+        : application.rmbAmount
+        ? rmbCapitalExact(application.amount)
+        : '原币 ${application.amountLabel}',
+  ],
   for (final entry in businessApplicationFieldLabels.entries)
     if (application.fields[entry.key]?.toString().trim().isNotEmpty == true)
       [entry.value, application.fields[entry.key].toString()],

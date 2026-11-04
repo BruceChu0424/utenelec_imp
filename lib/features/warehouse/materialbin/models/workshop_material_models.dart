@@ -2,7 +2,7 @@
 // 内料仓现存、自动结算状态、上线准备。
 //
 // 字段名按实现规格 §2.3 (REST 接口, 前缀 /api/workshop-material) 的 camelCase 写;
-// 数字一律 (x as num).toDouble()/toInt() 解析, 服务端给字符串小数时也兼容。
+// 盘点及机台容量保留十进制原文；既有估算/其他模块兼容字段另列迁移，不作为数值权威。
 // 页面按钮只看服务端随数据下发的 allowedActions (不在页面里拼权限)。
 
 double _d(Object? v) => _dn(v) ?? 0;
@@ -325,6 +325,7 @@ class WmCloseStatus {
     this.failures = 0,
     this.attemptedAt,
     this.lastErrorMessage,
+    this.precisionRequirement,
     this.blockers = const [],
     this.heldUntil,
     this.lastClose,
@@ -337,6 +338,7 @@ class WmCloseStatus {
   final int failures;
   final String? attemptedAt;
   final String? lastErrorMessage;
+  final Map<String, dynamic>? precisionRequirement;
   final List<WmBlocker> blockers;
   final String? heldUntil;
   final WmLastClose? lastClose;
@@ -357,6 +359,7 @@ class WmCloseStatus {
       failures: _i(json['failures']),
       attemptedAt: _s(json['attemptedAt']),
       lastErrorMessage: _s(json['lastErrorMessage']),
+      precisionRequirement: _map(json['precisionRequirement']),
       blockers: WmBlocker.listOf(json['blockers']),
       heldUntil: _s(json['heldUntil']),
       lastClose: last == null ? null : WmLastClose.fromJson(last),
@@ -813,7 +816,7 @@ class WmContainer {
   final String id;
   final String machineId;
   final String name;
-  final double capacityQty;
+  final Object? capacityQty;
   final bool enabled;
   final int sortOrder;
   final int rowVersion;
@@ -822,7 +825,7 @@ class WmContainer {
     id: json['id'] as String,
     machineId: _s(json['machineId']) ?? '',
     name: _s(json['name']) ?? '',
-    capacityQty: _d(json['capacityQty']),
+    capacityQty: _s(json['capacityQty']),
     enabled: json['enabled'] == null ? true : _b(json['enabled']),
     sortOrder: _i(json['sortOrder']),
     rowVersion: _i(json['rowVersion']),
@@ -850,7 +853,7 @@ class WmMachine {
   final String name;
   final String? workshopDepartmentId;
   final String? model;
-  final double? tonnage;
+  final Object? tonnage;
   final bool enabled;
   final int sortOrder;
   final String? remark;
@@ -863,7 +866,7 @@ class WmMachine {
     name: _s(json['name']) ?? '',
     workshopDepartmentId: _s(json['workshopDepartmentId']),
     model: _s(json['model']),
-    tonnage: _dn(json['tonnage']),
+    tonnage: _s(json['tonnage']),
     enabled: json['enabled'] == null ? true : _b(json['enabled']),
     sortOrder: _i(json['sortOrder']),
     remark: _s(json['remark']),
@@ -1026,7 +1029,7 @@ class WmCountContainer {
 
   final String containerId;
   final String name;
-  final double capacityQty;
+  final Object? capacityQty;
   final int sortOrder;
 
   /// 服务端建议的行键 (已录时就是那一行的行键); 新录这个容器时沿用它。
@@ -1036,7 +1039,7 @@ class WmCountContainer {
       WmCountContainer(
         containerId: _s(json['containerId'] ?? json['id']) ?? '',
         name: _s(json['name']) ?? '',
-        capacityQty: _d(json['capacityQty']),
+        capacityQty: _s(json['capacityQtyExact'] ?? json['capacityQty']),
         sortOrder: _i(json['sortOrder']),
         clientLineKey: _s(json['clientLineKey']),
       );
@@ -1094,7 +1097,7 @@ class WmCountMaterial {
   final String? goodsCode;
   final String? goodsName;
   final String? colorName;
-  final double? bulkPackageQty;
+  final Object? bulkPackageQty;
 
   /// 服务端建议的整袋行行键; 新录这种料的整袋数时沿用它。
   final String? clientLineKey;
@@ -1113,7 +1116,7 @@ class WmCountMaterial {
         goodsCode: _s(json['goodsCode']),
         goodsName: _s(json['goodsName']),
         colorName: _s(json['colorName']),
-        bulkPackageQty: _dn(json['bulkPackageQty'] ?? json['bagNetQty']),
+        bulkPackageQty: _s(json['bulkPackageQty'] ?? json['bagNetQty']),
         clientLineKey: _s(json['clientLineKey']),
       );
 }
@@ -1170,14 +1173,14 @@ class WmCountLine {
   final String? colorId;
   final String? goodsName;
   final String? colorName;
-  final double? bagCount;
-  final double? bagNetQty;
-  final double? weighedQty;
+  final Object? bagCount;
+  final Object? bagNetQty;
+  final Object? weighedQty;
   final String? machineId;
   final String? containerId;
-  final double? capacityQtySnapshot;
+  final Object? capacityQtySnapshot;
   final String? fillLevel;
-  final double? qtyBase;
+  final Object? qtyBase;
 
   /// 行版本; 还没落库的新行为空。
   final int? rowVersion;
@@ -1191,16 +1194,14 @@ class WmCountLine {
     colorId: _s(json['colorId']),
     goodsName: _s(json['goodsName']),
     colorName: _s(json['colorName']),
-    bagCount: _dn(json['bagCount']),
-    bagNetQty: _dn(json['bagNetQty']),
-    weighedQty: _dn(json['weighedQty']),
+    bagCount: _s(json['bagCount']),
+    bagNetQty: _s(json['bagNetQty']),
+    weighedQty: _s(json['weighedQty']),
     machineId: _s(json['machineId']),
     containerId: _s(json['containerId']),
-    capacityQtySnapshot: _dn(
-      json['capacityQtySnapshot'] ?? json['capacityQty'],
-    ),
+    capacityQtySnapshot: _s(json['capacityQtySnapshot'] ?? json['capacityQty']),
     fillLevel: _s(json['fillLevel']),
-    qtyBase: _dn(json['qtyBase']),
+    qtyBase: _s(json['qtyBase']),
     rowVersion: _in(json['rowVersion']),
   );
 
@@ -1214,8 +1215,8 @@ class WmCountLine {
     String? colorId,
     String? goodsName,
     String? colorName,
-    double? weighedQty,
-    double? qtyBase,
+    Object? weighedQty,
+    Object? qtyBase,
   }) => WmCountLine(
     id: id ?? this.id,
     clientLineKey: clientLineKey,

@@ -44,6 +44,39 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
     public record CaseCreditInput(UUID caseId,long caseVersion,BigDecimal baseQty,BigDecimal amountOriginal) {}
     public record CaseBookAllocation(CaseCreditInput input,BigDecimal amountLocal,
             BigDecimal beforeOriginal,BigDecimal beforeLocal,BigDecimal afterOriginal,BigDecimal afterLocal) {}
+    public record FundingCreditPlan(UUID caseId,UUID fundingId,int sequence,BigDecimal quantity,
+            BigDecimal original,BigDecimal local,BigDecimal beforeQuantity,BigDecimal beforeOriginal,BigDecimal beforeLocal,
+            BigDecimal afterQuantity,BigDecimal afterOriginal,BigDecimal afterLocal) { }
+    public record CreditAllocationPlan(com.uten.imp.application.port.ProcurementCreditBookAllocationPort.BookAllocationPlan source,
+            List<CaseBookAllocation> cases,List<FundingCreditPlan> slices,String fingerprint) { }
+
+    /** Preview and execution consume this same complete plan, including every funding remainder. */
+    public CreditAllocationPlan creditAllocationPlan(com.uten.imp.application.port.ProcurementCreditBookAllocationPort.BookAllocationPlan plan,
+            List<CaseCreditInput> inputs){
+        var cases=caseBookAllocations(plan.amountOriginal(),plan.amountLocal(),inputs);var slices=new ArrayList<FundingCreditPlan>();
+        for(var allocation:cases){
+            var input=allocation.input();BigDecimal left=input.baseQty(),original=input.amountOriginal(),local=allocation.amountLocal();int sequence=0;
+            for(Object[] fund:funding(input.caseId())){
+                if(left.signum()==0)break;
+                if(plan.sourceCandidateId()!=null?!plan.sourceCandidateId().equals(uuid(fund[5])):!plan.sourceApLedgerId().equals(uuid(fund[4])))continue;
+                BigDecimal capacity=decimal(uncommittedFunding(uuid(fund[0]))[0]),take=capacity.min(left);if(take.signum()<=0)continue;
+                BigDecimal actual=take.compareTo(left)==0?original:BusinessPrecisionContext.divide(original.multiply(take),left,
+                        "procurement.credit.actual-share","实际供应商贷项原币分摊",com.uten.imp.common.util.FinancialExactAmount.MAX_FRACTION_DIGITS);
+                BigDecimal book=take.compareTo(left)==0?local:ProcurementConsiderationBasis.bookAllocation(local,take,left);
+                com.uten.imp.common.util.FinancialExactAmount.require(actual,"实际贷项原币分项");com.uten.imp.common.util.FinancialExactAmount.book(book,"实际贷项本币分项");
+                if(actual.signum()<0||book.signum()<0||actual.compareTo(original)>0||book.compareTo(local)>0)
+                    throw conflict("所选保留位数不足以守恒本次贷项，请增加保留位数后重新预览");
+                BigDecimal after=left.subtract(take),afterOriginal=original.subtract(actual),afterLocal=local.subtract(book);
+                slices.add(new FundingCreditPlan(input.caseId(),uuid(fund[0]),++sequence,take,actual,book,left,original,local,after,afterOriginal,afterLocal));
+                left=after;original=afterOriginal;local=afterLocal;
+            }
+            if(left.signum()!=0||original.signum()!=0||local.signum()!=0)throw conflict("实际贷项超过该来源尚未被补回或其他贷项占用的退货份额");
+        }
+        try{
+            String fingerprint=com.uten.imp.common.util.CanonicalFingerprint.sha256(List.of("IQC_CREDIT_ALLOCATION_V2",creditApprovalHash(plan,inputs),new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(slices)));
+            return new CreditAllocationPlan(plan,List.copyOf(cases),List.copyOf(slices),fingerprint);
+        }catch(com.fasterxml.jackson.core.JsonProcessingException error){throw new IllegalStateException("实际贷项资金计划无法冻结",error);}
+    }
 
     public record CreditDocumentQuote(UUID documentId,UUID sourceApId,String kind,
             String sourceVersion,String sourceHash,List<CreditPart> parts,Amounts amounts,
@@ -360,7 +393,8 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                 SELECT quality.id,quality.base_qty,quality.amount_original,quality.amount_local,
                        part.billing_mode,part.funding_slice_id,part.receipt_item_id,
                        parent.root_funding_slice_id,parent.root_case_id,parent.root_receipt_item_id,
-                       COALESCE(parent.source_ap_ledger_id,ledger.id)
+                       CASE WHEN COALESCE(parent.source_candidate_id,candidate.id) IS NULL THEN COALESCE(parent.source_ap_ledger_id,ledger.id) END,
+                       COALESCE(parent.source_candidate_id,candidate.id)
                 FROM procurement_iqc_quality_consideration_parts quality
                 JOIN procurement_inspection_events event ON event.id=quality.inspection_event_id
                 JOIN procurement_receipt_consideration_parts part ON part.id=quality.consideration_part_id
@@ -371,6 +405,9 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                   AND ledger.source_doc_type=part.receipt_type||'_RECEIPT'
                   AND ledger.direction='AP' AND ledger.status=1 AND ledger.is_deleted=FALSE
                   AND part.billing_mode<>'NO_CHARGE'
+                LEFT JOIN finance_procurement_payable_candidates candidate ON candidate.source_type=part.receipt_type||'_RECEIPT'
+                  AND candidate.source_id=part.receipt_id AND candidate.status<>'SOURCE_REVERSED'
+                  AND part.quantity_tranche<>'GIFT' AND part.billing_mode<>'NO_CHARGE'
                 WHERE event.inspection_item_id=:id AND event.action='FAIL'
                   AND fn_procurement_consideration_active('QUALITY',quality.id)
                   AND NOT EXISTS(SELECT 1 FROM procurement_iqc_funding_slices funding
@@ -380,20 +417,21 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
             boolean carried = "NO_CHARGE".equals(row[4]);
             UUID fundingId = UUID.randomUUID();
             UUID sourceApId = uuid(row[10]);
-            if (sourceApId == null && (decimal(row[2]).signum() > 0 || decimal(row[3]).signum() > 0)) {
+            UUID sourceCandidateId=uuid(row[11]);
+            if (sourceApId == null && sourceCandidateId==null && (decimal(row[2]).signum() > 0 || decimal(row[3]).signum() > 0)) {
                 throw conflict("质量失败的资金份额缺少对应正应付，不能猜测新索赔来源");
             }
             em.createNativeQuery("""
                     INSERT INTO procurement_iqc_funding_slices(id,case_id,quality_part_id,
                         parent_funding_slice_id,root_funding_slice_id,root_case_id,root_receipt_item_id,
-                        source_ap_ledger_id,base_qty,amount_original,amount_local,created_by)
-                    VALUES(:id,:caseId,:quality,:parent,:root,:rootCase,:rootItem,:ap,:qty,:original,:local,:actor)
+                        source_ap_ledger_id,source_candidate_id,base_qty,amount_original,amount_local,created_by)
+                    VALUES(:id,:caseId,:quality,:parent,:root,:rootCase,:rootItem,:ap,:candidate,:qty,:original,:local,:actor)
                     """).setParameter("id", fundingId).setParameter("caseId", caseId)
                     .setParameter("quality", uuid(row[0])).setParameter("parent", carried ? uuid(row[5]) : null)
                     .setParameter("root", carried ? uuid(row[7]) : fundingId)
                     .setParameter("rootCase", carried ? uuid(row[8]) : caseId)
                     .setParameter("rootItem", carried ? uuid(row[9]) : uuid(row[6]))
-                    .setParameter("ap", sourceApId).setParameter("qty", decimal(row[1]))
+                    .setParameter("ap", sourceApId).setParameter("candidate",sourceCandidateId).setParameter("qty", decimal(row[1]))
                     .setParameter("original", nullableDecimal(row[2])).setParameter("local", nullableDecimal(row[3]))
                     .setParameter("actor", actorId).executeUpdate();
         }
@@ -409,7 +447,13 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
     public CreditQuote prepareCredit(UUID anchorCaseId,long anchorVersion,UUID commandId,
             UUID sourceApId,BigDecimal actualOriginal,List<CaseCreditInput> allocations,
             String reference,LocalDate date,String reason,String expectedBookAllocationHash) {
-        if(sourceApId==null||actualOriginal==null||allocations==null||allocations.isEmpty())
+        return prepareCredit(anchorCaseId,anchorVersion,commandId,sourceApId,null,actualOriginal,allocations,reference,date,reason,expectedBookAllocationHash);
+    }
+
+    public CreditQuote prepareCredit(UUID anchorCaseId,long anchorVersion,UUID commandId,
+            UUID sourceApId,UUID sourceCandidateId,BigDecimal actualOriginal,List<CaseCreditInput> allocations,
+            String reference,LocalDate date,String reason,String expectedBookAllocationHash) {
+        if((sourceApId==null)==(sourceCandidateId==null)||actualOriginal==null||allocations==null||allocations.isEmpty())
             throw conflict("请按实际供应商贷项填写原币金额、来源应付和明确的案件分项");
         BigDecimal original=com.uten.imp.common.util.FinancialExactAmount.require(actualOriginal,"实际供应商贷项金额");
         if(original.signum()<=0)throw conflict("实际供应商贷项金额必须大于零");
@@ -418,8 +462,8 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
         java.util.Set<UUID> seen=new java.util.HashSet<>();
         for(CaseCreditInput input:allocations){
             if(input==null||input.caseId()==null||!seen.add(input.caseId())||input.baseQty()==null
-                    ||input.baseQty().signum()<=0||input.baseQty().stripTrailingZeros().scale()>4)
-                throw conflict("供应商贷项案件必须唯一且明确填写四位以内的实际退货基本量");
+                    ||input.baseQty().signum()<=0||input.baseQty().stripTrailingZeros().scale()>com.uten.imp.common.util.FinancialExactAmount.MAX_FRACTION_DIGITS)
+                throw conflict("供应商贷项案件必须唯一且明确填写24位小数以内的实际退货基本量");
             BigDecimal amount=com.uten.imp.common.util.FinancialExactAmount.require(input.amountOriginal(),"案件实际分项金额");
             if(amount.signum()<=0)throw conflict("每个案件实际分项金额必须大于零");
             allocated=allocated.add(amount);
@@ -427,30 +471,35 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
         }
         if(!seen.contains(anchorCaseId)||allocated.compareTo(original)!=0)
             throw conflict("案件实际分项必须包含当前任务，并精确合计到供应商贷项原始金额");
-        List<Object[]> aps=rows("""
+        boolean pendingSource=sourceCandidateId!=null;UUID sourceId=pendingSource?sourceCandidateId:sourceApId;
+        List<Object[]> origins=pendingSource?rows("""
+                SELECT amount_original,amount_local FROM finance_procurement_payable_candidates WHERE id=:id
+                  AND status='PENDING' AND source_type IN('PURCHASE_RECEIPT','SUBCONTRACT_RECEIPT') AND amount_original>0 FOR UPDATE
+                """,Map.of("id",sourceId)):rows("""
                 SELECT amount_original,amount_original_local FROM ar_ap_ledger WHERE id=:id
                   AND direction='AP' AND status=1 AND is_deleted=FALSE AND amount_original>0 FOR UPDATE
-                """,Map.of("id",sourceApId));
-        if(aps.size()!=1)throw conflict("实际供应商贷项的原应付不存在或已反向");
-        BigDecimal sourceOriginal=decimal(aps.getFirst()[0]);
+                """,Map.of("id",sourceId));
+        if(origins.size()!=1)throw conflict("实际供应商贷项的原应付/明确暂估来源不存在或已变化");
+        BigDecimal sourceOriginal=decimal(origins.getFirst()[0]);
         BigDecimal alreadyCredited=number("""
                 SELECT COALESCE(SUM(document.amount_original),0) FROM procurement_iqc_credit_documents document
-                WHERE source_ap_ledger_id=:id AND EXISTS(SELECT 1 FROM procurement_iqc_credit_slices slice
+                WHERE %s=:id AND EXISTS(SELECT 1 FROM procurement_iqc_credit_slices slice
                     WHERE slice.credit_document_id=document.id AND fn_procurement_consideration_active('CREDIT',slice.id))
-                """,Map.of("id",sourceApId));
+                """.formatted(pendingSource?"source_candidate_id":"source_ap_ledger_id"),Map.of("id",sourceId));
         if(original.compareTo(sourceOriginal.subtract(alreadyCredited))>0)
-            throw conflict("实际供应商贷项超过同一原应付尚未贷项的原币余额");
-        var bookPlan=creditBook.plan(sourceApId,original);
-        if(bookPlan==null||!sourceApId.equals(bookPlan.sourceApLedgerId())
+            throw conflict("实际供应商贷项超过同一原来源尚未贷项的原币余额");
+        var bookPlan=pendingSource?creditBook.planPending(sourceCandidateId,original):creditBook.plan(sourceApId,original);
+        if(bookPlan==null||!java.util.Objects.equals(sourceApId,bookPlan.sourceApLedgerId())
+                ||!java.util.Objects.equals(sourceCandidateId,bookPlan.sourceCandidateId())
                 ||original.compareTo(bookPlan.amountOriginal())!=0)throw conflict("实际供应商贷项缺少同源账面分配计划");
         BigDecimal local=com.uten.imp.common.util.FinancialExactAmount.book(bookPlan.amountLocal(),"实际贷项账面分配额");
-        String bookPlanJson=bookPlanJson(bookPlan);
-        if(expectedBookAllocationHash==null||!creditApprovalHash(bookPlan,allocations).equals(expectedBookAllocationHash))
+        String bookPlanJson=bookPlanJson(bookPlan);var allocationPlan=creditAllocationPlan(bookPlan,allocations);
+        if(expectedBookAllocationHash==null||!allocationPlan.fingerprint().equals(expectedBookAllocationHash))
             throw conflict("原应付账面分配或余额已变化，请重新预览本币分配额和剩余金额后确认");
         String sourceVersion="IQC_CREDIT/"+commandId;
-        List<String> fingerprint=new ArrayList<>(List.of(sourceVersion,"sourceAP="+sourceApId,
+        List<String> fingerprint=new ArrayList<>(List.of(sourceVersion,pendingSource?"sourcePending="+sourceCandidateId:"sourceAP="+sourceApId,
                 "original="+original.toPlainString(),"local="+local.toPlainString(),"date="+date,
-                "reference="+reference,"reason="+reason,"bookPlan="+bookPlanJson));
+                "reference="+reference,"reason="+reason,"bookPlan="+bookPlanJson,"fundingPlan="+allocationPlan.fingerprint()));
         List<CaseCreditInput> ordered=allocations.stream().sorted(CASE_DATABASE_ORDER).toList();
         for(CaseCreditInput input:ordered)fingerprint.add("case="+input.caseId()+"/"+input.caseVersion()+"/"
                 +input.baseQty().stripTrailingZeros().toPlainString()+"/"+input.amountOriginal().stripTrailingZeros().toPlainString());
@@ -458,18 +507,18 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
         UUID actor=currentUser.requireId();
         em.createNativeQuery("""
                 INSERT INTO procurement_iqc_credit_documents(id,command_id,case_id,case_version,
-                    source_ap_ledger_id,document_kind,approved_source_version,approved_source_hash,
-                    base_qty,amount_original,amount_local,book_allocation_plan,effective_date,credit_reference,reason,approved_by)
-                VALUES(:id,:id,:caseId,:version,:ap,'SUPPLIER_CREDIT',:sourceVersion,:hash,
-                    :qty,:original,:local,CAST(:bookPlan AS jsonb),:date,:reference,:reason,:actor)
+                    source_ap_ledger_id,source_candidate_id,document_kind,approved_source_version,approved_source_hash,
+                    base_qty,amount_original,amount_local,book_allocation_plan,effective_date,credit_reference,reason,approved_by,allocation_version)
+                VALUES(:id,:id,:caseId,:version,:ap,:candidate,'SUPPLIER_CREDIT',:sourceVersion,:hash,
+                    :qty,:original,:local,CAST(:bookPlan AS jsonb),:date,:reference,:reason,:actor,2)
                 """).setParameter("id",commandId).setParameter("caseId",anchorCaseId).setParameter("version",anchorVersion)
-                .setParameter("ap",sourceApId).setParameter("sourceVersion",sourceVersion).setParameter("hash",hash)
+                .setParameter("ap",sourceApId).setParameter("candidate",sourceCandidateId).setParameter("sourceVersion",sourceVersion).setParameter("hash",hash)
                 .setParameter("qty",totalQty).setParameter("original",original).setParameter("local",local)
                 .setParameter("bookPlan",bookPlanJson)
                 .setParameter("date",date).setParameter("reference",reference).setParameter("reason",reason)
                 .setParameter("actor",actor).executeUpdate();
         List<CreditPart> parts=new ArrayList<>();
-        for(CaseBookAllocation caseBook:caseBookAllocations(original,local,ordered)){
+        for(CaseBookAllocation caseBook:allocationPlan.cases()){
             CaseCreditInput input=caseBook.input();
             UUID allocationId=UUID.randomUUID();
             em.createNativeQuery("""
@@ -483,29 +532,22 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                     .setParameter("beforeOriginal",caseBook.beforeOriginal()).setParameter("beforeLocal",caseBook.beforeLocal())
                     .setParameter("afterOriginal",caseBook.afterOriginal()).setParameter("afterLocal",caseBook.afterLocal())
                     .setParameter("actor",actor).executeUpdate();
-            BigDecimal left=input.baseQty();
-            BigDecimal caseLocal=caseBook.amountLocal();
-            for(Object[] fund:funding(input.caseId())){
-                if(left.signum()==0)break;
-                if(!sourceApId.equals(uuid(fund[4])))continue;
-                BigDecimal capacity=decimal(uncommittedFunding(uuid(fund[0]))[0]);
-                BigDecimal take=capacity.min(left);
-                if(take.signum()<=0)continue;
-                UUID sliceId=UUID.randomUUID();
-                BigDecimal sliceOriginal=ProcurementConsiderationBasis.finitePortion(input.amountOriginal(),take,input.baseQty());
-                BigDecimal sliceLocal=ProcurementConsiderationBasis.finiteBookPortion(caseLocal,take,input.baseQty());
+            for(var slice:allocationPlan.slices()){
+                if(!slice.caseId().equals(input.caseId()))continue;UUID sliceId=UUID.randomUUID();
                 em.createNativeQuery("""
                         INSERT INTO procurement_iqc_credit_slices(id,command_id,case_id,funding_slice_id,credit_document_id,
-                            case_allocation_id,base_qty,amount_original,amount_local,credit_reference,credit_date,reason,created_by)
-                        VALUES(:id,:document,:caseId,:fund,:document,:allocation,:qty,:original,:local,:reference,:date,:reason,:actor)
+                            case_allocation_id,base_qty,amount_original,amount_local,credit_reference,credit_date,reason,created_by,
+                            allocation_sequence,before_quantity,before_original,before_local,after_quantity,after_original,after_local)
+                        VALUES(:id,:document,:caseId,:fund,:document,:allocation,:qty,:original,:local,:reference,:date,:reason,:actor,
+                            :sequence,:beforeQty,:beforeOriginal,:beforeLocal,:afterQty,:afterOriginal,:afterLocal)
                         """).setParameter("id",sliceId).setParameter("document",commandId).setParameter("caseId",input.caseId())
-                        .setParameter("fund",fund[0]).setParameter("allocation",allocationId).setParameter("qty",take)
-                        .setParameter("original",sliceOriginal).setParameter("local",sliceLocal).setParameter("reference",reference)
-                        .setParameter("date",date).setParameter("reason",reason).setParameter("actor",actor).executeUpdate();
-                parts.add(new CreditPart(sliceId,uuid(fund[0]),sourceApId,take,sliceOriginal,sliceLocal));
-                left=left.subtract(take);
+                        .setParameter("fund",slice.fundingId()).setParameter("allocation",allocationId).setParameter("qty",slice.quantity())
+                        .setParameter("original",slice.original()).setParameter("local",slice.local()).setParameter("reference",reference)
+                        .setParameter("date",date).setParameter("reason",reason).setParameter("actor",actor).setParameter("sequence",slice.sequence())
+                        .setParameter("beforeQty",slice.beforeQuantity()).setParameter("beforeOriginal",slice.beforeOriginal()).setParameter("beforeLocal",slice.beforeLocal())
+                        .setParameter("afterQty",slice.afterQuantity()).setParameter("afterOriginal",slice.afterOriginal()).setParameter("afterLocal",slice.afterLocal()).executeUpdate();
+                parts.add(new CreditPart(sliceId,slice.fundingId(),sourceApId,slice.quantity(),slice.original(),slice.local()));
             }
-            if(left.signum()!=0)throw conflict("案件分项超过该原应付尚未被免费补回或实际贷项占用的退货基本量");
         }
         var amounts=new Amounts(original,local);
         var document=new CreditDocumentQuote(commandId,sourceApId,"SUPPLIER_CREDIT",sourceVersion,hash,List.copyOf(parts),amounts,bookPlan);
@@ -538,6 +580,7 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
             BigDecimal allocatedLocal=ProcurementConsiderationBasis.bookAllocation(remainingLocal,input.amountOriginal(),remainingOriginal);
             BigDecimal afterOriginal=remainingOriginal.subtract(input.amountOriginal());
             BigDecimal afterLocal=remainingLocal.subtract(allocatedLocal);
+            if(afterOriginal.signum()<0||afterLocal.signum()<0)throw conflict("所选保留位数不足以守恒案件分项，请增加保留位数后重新预览");
             result.add(new CaseBookAllocation(input,allocatedLocal,remainingOriginal,remainingLocal,afterOriginal,afterLocal));
             remainingOriginal=afterOriginal;remainingLocal=afterLocal;
         }
@@ -779,7 +822,9 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
     }
 
     @Transactional(propagation=Propagation.MANDATORY,readOnly=true)
-    public BigDecimal creditableBaseQty(UUID caseId,UUID sourceApId){
+    public BigDecimal creditableBaseQty(UUID caseId,UUID sourceApId){return creditableBaseQty(caseId,sourceApId,null);}
+    public BigDecimal creditableBaseQty(UUID caseId,UUID sourceApId,UUID sourceCandidateId){
+        if((sourceApId==null)==(sourceCandidateId==null))throw conflict("请明确选择实际应付或原暂估来源，不能混用两类编号");
         return number("""
                 SELECT COALESCE(SUM(funding.base_qty-COALESCE((
                     SELECT SUM(base_qty) FROM procurement_receipt_consideration_parts part
@@ -788,8 +833,8 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
                     SELECT SUM(base_qty) FROM procurement_iqc_credit_slices credit
                     WHERE credit.funding_slice_id=funding.id AND fn_procurement_consideration_active('CREDIT',credit.id)),0)),0)
                 FROM procurement_iqc_funding_slices funding WHERE funding.case_id=:caseId
-                  AND funding.source_ap_ledger_id=:ap AND fn_procurement_consideration_active('FUNDING',funding.id)
-                """,Map.of("caseId",caseId,"ap",sourceApId));
+                  AND %s=:ap AND fn_procurement_consideration_active('FUNDING',funding.id)
+                """.formatted(sourceCandidateId==null?"fn_finance_iqc_funding_ap(funding.id)":"funding.source_candidate_id"),Map.of("caseId",caseId,"ap",sourceCandidateId==null?sourceApId:sourceCandidateId));
     }
 
     @Transactional(propagation=Propagation.MANDATORY,readOnly=true)
@@ -874,7 +919,7 @@ public class ProcurementReceiptConsiderationService implements ProcurementReceip
 
     private List<Object[]> funding(UUID caseId) {
         return rows("""
-                SELECT funding.id,funding.base_qty,funding.amount_original,funding.amount_local,funding.source_ap_ledger_id
+                SELECT funding.id,funding.base_qty,funding.amount_original,funding.amount_local,fn_finance_iqc_funding_ap(funding.id),funding.source_candidate_id
                 FROM procurement_iqc_funding_slices funding
                 JOIN procurement_iqc_quality_consideration_parts quality ON quality.id=funding.quality_part_id
                 JOIN procurement_inspection_events event ON event.id=quality.inspection_event_id

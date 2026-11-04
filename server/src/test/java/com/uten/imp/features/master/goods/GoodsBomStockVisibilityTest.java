@@ -27,7 +27,7 @@ class GoodsBomStockVisibilityTest {
     final GoodsBomItemRepository rows=mock(GoodsBomItemRepository.class);
     final SecurityContextCurrentUser actor=mock(SecurityContextCurrentUser.class);
     final MasterObjectAccess access=mock(MasterObjectAccess.class);
-    final GoodsBomService service=new GoodsBomService(goods,rows,mock(ColorRepository.class),mock(UnitRepository.class),
+    final GoodsBomService service=new GoodsBomService(org.mockito.Mockito.mock(com.uten.imp.application.port.BusinessNumericInputEvidencePort.class), goods,rows,mock(ColorRepository.class),mock(UnitRepository.class),
             mock(TxSessionVars.class),actor,mock(MasterReferenceValidationPort.class),
             mock(GoodsMasterRelationshipResolver.class),mock(BusinessEventPublisher.class),access);
     final Goods parent=new Goods(), first=new Goods(), second=new Goods();

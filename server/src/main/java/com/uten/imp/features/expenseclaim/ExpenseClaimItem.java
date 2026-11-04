@@ -28,7 +28,7 @@ public class ExpenseClaimItem extends BaseEntity {
     @Column(nullable = false)
     private String category;
 
-    @Column(nullable = false, precision = 18, scale = 2)
+    @Column(nullable = false)
     private BigDecimal amount;
 
     @Column(name = "expense_date", nullable = false)

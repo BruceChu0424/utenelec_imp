@@ -35,6 +35,6 @@ public record ProductionMaterialReturnConfirmRequest(
     /** 一行退料的收料实称重量。 */
     public record Line(
             @NotNull UUID itemId,
-            @DecimalMin("0") @Digits(integer = 14, fraction = 4) BigDecimal weightKg) {
+            @DecimalMin("0") @Digits(integer = 40, fraction = 48) BigDecimal weightKg) {
     }
 }

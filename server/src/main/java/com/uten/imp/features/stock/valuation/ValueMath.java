@@ -7,17 +7,13 @@ import java.math.RoundingMode;
 
 final class ValueMath {
     static final BigDecimal ZERO = new BigDecimal("0.0000");
-    private static final BigDecimal MAX = new BigDecimal("99999999999999.9999");
     private ValueMath() {}
 
     static BigDecimal decimal(BigDecimal value, String field, boolean negativeAllowed) {
         if (value == null) throw invalid(field + "不能为空");
-        try {
-            BigDecimal result = value.setScale(4, RoundingMode.UNNECESSARY);
-            if (result.abs().compareTo(MAX) > 0 || (!negativeAllowed && result.signum() < 0))
-                throw invalid(field + "超出有效范围");
-            return result;
-        } catch (ArithmeticException ex) { throw invalid(field + "最多4位小数"); }
+        BigDecimal result=com.uten.imp.common.util.FinancialExactAmount.quantity(value,field);
+        if (!negativeAllowed && result.signum() < 0) throw invalid(field + "超出有效范围");
+        return result;
     }
 
     static BigDecimal positive(BigDecimal value, String field) {
@@ -26,7 +22,7 @@ final class ValueMath {
         return result;
     }
 
-    /** Frozen cumulative interval; no rounded intermediate unit price or ratio. */
+    /** Historical v1 proof. Current-schema allocations use the versioned SQL entry in InventoryValueLedger. */
     static BigDecimal interval(BigDecimal value, BigDecimal from, BigDecimal to, BigDecimal denominator) {
         if (denominator.signum() <= 0 || from.signum() < 0 || to.compareTo(from) < 0
                 || to.compareTo(denominator) > 0) throw invalid("成本分配数量区间无效");

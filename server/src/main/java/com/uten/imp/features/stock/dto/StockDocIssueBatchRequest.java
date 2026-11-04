@@ -62,7 +62,7 @@ public class StockDocIssueBatchRequest {
     /** 一行领料的本次实称重量(千克, 空或 0 = 没称)。 */
     public record ItemWeight(
             @NotNull UUID itemId,
-            @DecimalMin("0") @Digits(integer = 14, fraction = 4) BigDecimal weightKg,
+            @DecimalMin("0") @Digits(integer = 40, fraction = 48) BigDecimal weightKg,
             Boolean qtyFromWeight) {
     }
 }

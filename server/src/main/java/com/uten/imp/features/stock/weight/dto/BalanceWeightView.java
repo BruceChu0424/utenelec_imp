@@ -19,4 +19,6 @@ public record BalanceWeightView(
         BigDecimal qty,
         BigDecimal weightKg,
         boolean weightEstimated) {
+        public String getQtyExact(){return com.uten.imp.common.util.DecimalText.of(qty);}
+        public String getWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(weightKg);}
 }

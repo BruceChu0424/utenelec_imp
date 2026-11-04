@@ -1,5 +1,6 @@
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import '../../../shared/providers/master_party_options.dart';
+import '../widgets/finance_classification_correction_dialog.dart';
 // 应收应付台账页（只读查询，ar_ap_ledger:view）。
 //
 // direction(AR/AP) + settled(全部/未清/已清) 双向过滤 + 关键词 + 日期范围。
@@ -13,6 +14,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/buttons/uten_refresh_button.dart';
 import '../../../components/buttons/uten_back_button.dart';
+import '../../../components/feedback/uten_context_menu.dart';
 import '../../../components/data_display/uten_status_badge.dart';
 import '../../../components/data_display/uten_status_cell_color.dart';
 import '../../../components/inputs/uten_multi_value_cell.dart';
@@ -23,6 +25,8 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/latest_request_guard.dart';
 import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/auth/permissions.dart';
+import '../../../shared/drafts/form_draft_dialog_resume.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -39,6 +43,8 @@ import '../models/finance_legacy_balance.dart';
 import '../providers/finance_name_provider.dart';
 import '../repositories/finance_repository.dart';
 import '../widgets/finance_table_facets.dart';
+import '../widgets/finance_native_debt_correspondence_dialog.dart';
+import '../widgets/finance_native_legacy_opening_dialog.dart';
 
 const Map<int, String> financeArApSettlementStyleLabels = {
   1: '现金',
@@ -619,198 +625,285 @@ class _FinanceArApPageState extends ConsumerState<FinanceArApPage>
   @override
   Widget build(BuildContext context) {
     final names = ref.watch(financeNameServiceProvider);
-    return Scaffold(
-      appBar: UtenAppBar(
-        title: '应收应付台账',
-        leading: UtenBackButton(
-          onPressed: () => backTo(context, defaultPath: RouteName.finance),
-        ),
-        actions: [
-          UtenRefreshButton(
-            busy: _loading,
-            // 刷新当前可见页，同时更新字典。
-            onRefresh: () async {
-              await Future.wait([
-                ref.read(financeNameServiceProvider).ensureLoaded(),
-                _load(_tableRows.visiblePage ?? _pageNum),
-              ]);
-            },
+    final permissions = ref.watch(currentPermissionsProvider);
+    final canReadCorrespondence =
+        permissions.contains(Perm.financeReportView) &&
+        permissions.contains(Perm.financeViewAll) &&
+        permissions.contains(Perm.arApLedgerView);
+    final page = FormDraftDialogResume(
+      descriptor: FormDraftCatalog.financeNativeLegacyOpening,
+      onResume: (parameters) async {
+        final ledger = parameters['ledgerId'];
+        if (ledger == null || ledger.isEmpty) {
+          throw const FormatException('旧未结草稿缺少原台账身份');
+        }
+        await showFinanceNativeLegacyOpeningDialog(
+          context,
+          ledgerId: ledger,
+          resumeDraftId: parameters['draftId'],
+        );
+      },
+      child: Scaffold(
+        appBar: UtenAppBar(
+          title: '应收应付台账',
+          leading: UtenBackButton(
+            onPressed: () => backTo(context, defaultPath: RouteName.finance),
           ),
-        ],
-      ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            // 方向保留为主业务视图，清结状态由彩色状态列与表头承接。
-            child: UtenCollapsingHeaderScrollView(
-              collapsingHeader: Padding(
-                padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
-                child: UtenFilterToolbar<String?>(
-                  compactBreakpoint: UtenBreakpoints.mediumStart,
-                  segments: const [
-                    UtenFilterSegment<String?>(value: null, label: '全部'),
-                    UtenFilterSegment<String?>(value: 'AR', label: '应收'),
-                    UtenFilterSegment<String?>(value: 'AP', label: '应付'),
-                  ],
-                  selected: _directionSelected ? {_direction} : const {},
-                  onSelectionChanged: (value) {
-                    setState(() {
-                      _direction = value;
-                      _directionSelected = true;
-                      _partyId = null;
-                      _clearInapplicableColumns();
-                    });
-                    _load(1);
-                  },
-                  searchHint: '搜索单据号 / 来源单号',
-                  initialSearchValue: _keyword,
-                  onSearchChanged: (value) {
-                    setState(() => _keyword = value);
-                    _load(1);
-                  },
-                  onSearchSubmitted: (value) {
-                    setState(() => _keyword = value);
-                    _load(1);
-                  },
-                ),
-              ),
-              body: MasterDataTableView<ArApLedgerItem>(
-                rowsController: _tableRows,
-                expensiveRowMounts: false,
-                primary: true,
-                tableKey:
-                    'features.finance.pages.finance_ar_ap_page.FinanceArApPageState.build.1',
-                columns: _columns(names),
-                serverColumnSearchKeys: const {
-                  'billNo',
-                  'sourceDocNo',
-                  'salesOrderNos',
-                  'party',
-                  'billDate',
-                  'dueDate',
-                  'settlementStyleLegacy',
-                  'exchangeRate',
-                  'amountOriginal',
-                  'amountReceivedOriginal',
-                  'amountWriteOffOriginal',
-                  'prepaymentAppliedOriginal',
-                  'amountBalanceOriginal',
-                  'amountBalance',
-                  'remark',
-                  'legacySourceResolution',
-                },
-                headerFilterScopeDescription:
-                    '检索当前台账范围的完整结果；原币金额需先选择币种，本币金额单独保留',
-                items: _page?.items ?? const [],
-                facets: {
-                  // 单号桶与列表同一过滤口径（2026-09-25 单号列统一）。
-                  'billNo': _columnFilters.bucketOf('billNo'),
-                  'sourceDocNo': _columnFilters.bucketOf('sourceDocNo'),
-                  'direction': financeArApDirectionFacets,
-                  'sourceDocType': financeArApSourceTypeFacets,
-                  'openItemKind': [
-                    for (final kind in const [
-                      'RECEIVABLE',
-                      'PAYABLE',
-                      'CREDIT',
-                      'CLAIM_CREDIT',
-                      'PREPAYMENT',
-                      'CUSTOMER_PREPAYMENT',
-                      'LEGACY_UNVERIFIED',
-                    ])
-                      MasterFacetBucket(
-                        value: kind,
-                        label: financeArApOpenItemKindLabel(kind),
-                        count: 0,
-                      ),
-                  ],
-                  'legacySourceResolution': [
-                    for (final status in const [
-                      'EXACT_SOURCE',
-                      'AMBIGUOUS_SOURCE',
-                      'MISSING_OR_CONFLICTING_SOURCE',
-                      'UNVERIFIED_SOURCE_KIND',
-                    ])
-                      MasterFacetBucket(
-                        value: status,
-                        label: financeLegacySourceResolutionLabel(status),
-                        count: 0,
-                      ),
-                    const MasterFacetBucket(
-                      value: 'UNSET',
-                      label: '—（未提供匹配状态）',
-                      count: 0,
-                    ),
-                  ],
-                  'settlementStyleLegacy': [
-                    for (final style
-                        in financeArApSettlementStyleLabels.entries)
-                      MasterFacetBucket(
-                        value: style.key.toString(),
-                        label: style.value,
-                        count: 0,
-                      ),
-                    const MasterFacetBucket(
-                      value: 'UNSET',
-                      label: '未设置',
-                      count: 0,
-                    ),
-                  ],
-                  'party': selectedPartyFacet(
-                    _partyId,
-                    (id) => _direction == 'AP'
-                        ? names.supplier(id)
-                        : _direction == 'AR'
-                        ? names.client(id)
-                        : names.clientEntries[id] ?? names.supplierEntries[id],
+          actions: [
+            UtenRefreshButton(
+              busy: _loading,
+              // 刷新当前可见页，同时更新字典。
+              onRefresh: () async {
+                await Future.wait([
+                  ref.read(financeNameServiceProvider).ensureLoaded(),
+                  _load(_tableRows.visiblePage ?? _pageNum),
+                ]);
+              },
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: UtenContentContainer.wide(
+            child: Padding(
+              padding: const EdgeInsets.only(top: UtenSpacing.s8),
+              // 方向保留为主业务视图，清结状态由彩色状态列与表头承接。
+              child: UtenCollapsingHeaderScrollView(
+                collapsingHeader: Padding(
+                  padding: const EdgeInsets.only(bottom: UtenSpacing.s12),
+                  child: UtenFilterToolbar<String?>(
+                    compactBreakpoint: UtenBreakpoints.mediumStart,
+                    segments: const [
+                      UtenFilterSegment<String?>(value: null, label: '全部'),
+                      UtenFilterSegment<String?>(value: 'AR', label: '应收'),
+                      UtenFilterSegment<String?>(value: 'AP', label: '应付'),
+                    ],
+                    selected: _directionSelected ? {_direction} : const {},
+                    onSelectionChanged: (value) {
+                      setState(() {
+                        _direction = value;
+                        _directionSelected = true;
+                        _partyId = null;
+                        _clearInapplicableColumns();
+                      });
+                      _load(1);
+                    },
+                    searchHint: '搜索单据号 / 来源单号',
+                    initialSearchValue: _keyword,
+                    onSearchChanged: (value) {
+                      setState(() => _keyword = value);
+                      _load(1);
+                    },
+                    onSearchSubmitted: (value) {
+                      setState(() => _keyword = value);
+                      _load(1);
+                    },
                   ),
-                  'settled': financeArApSettledFacets,
-                  'currency': masterDictionaryFacets({
-                    ...names.currencyEntries,
-                    for (final currency in _columnFilters.bucketOf('currency'))
-                      currency.value: currency.display,
-                  }),
-                },
-                facetPageLoaders: {
-                  'party': _direction == 'AP'
-                      ? supplierPartyFacetLoader(ref)
-                      : _direction == 'AR'
-                      ? clientPartyFacetLoader(ref)
-                      : combinedPartyFacetLoader(ref),
-                },
-                facetSearchScope: partyFacetSearchScope(ref, (
-                  'finance-ar-ap-party',
-                  _direction,
-                  _criteriaRevision,
-                )),
-                nullCounts: const {},
-                filters: {
-                  ..._columnFilters.values,
-                  'direction': _direction,
-                  'sourceDocType': _sourceDocType,
-                  'party': _partyId,
-                  'currency': _currencyId,
-                  'settled': _settled?.toString(),
-                },
-                onFilterChanged: _onColumnFilterChanged,
-                sortColumn: _columnFilters.sortColumn,
-                sortAscending: _columnFilters.sortAscending,
-                onSortChange: _onSortChange,
-                isLoading: _loading && _page == null,
-                loadingMore: _loading && _page != null,
-                error: _error,
-                onRetry: () => _load(_tableRows.visiblePage ?? _pageNum),
-                emptyMessage: '暂无台账记录',
-                currentPage: _page?.page ?? 1,
-                totalPages: _page?.totalPages ?? 1,
-                paginationScope: _criteriaRevision,
-                onPageChange: _navigatePage,
+                ),
+                body: MasterDataTableView<ArApLedgerItem>(
+                  rowsController: _tableRows,
+                  expensiveRowMounts: false,
+                  primary: true,
+                  tableKey:
+                      'features.finance.pages.finance_ar_ap_page.FinanceArApPageState.build.1',
+                  columns: _columns(names),
+                  rowMenuBuilder: canReadCorrespondence
+                      ? (item) {
+                          final isCurrent = captureReadOwner(ref);
+                          if (item.openItemKind == 'LEGACY_UNVERIFIED' ||
+                              item.sourceDocType == 'LEGACY_OPENING') {
+                            return [
+                              UtenMenuItem(
+                                label: '旧未结接续',
+                                onTap: () async {
+                                  if (!isCurrent()) return;
+                                  await showFinanceNativeLegacyOpeningDialog(
+                                    context,
+                                    ledgerId: item.id,
+                                  );
+                                  if (isCurrent()) {
+                                    await _load(
+                                      _tableRows.visiblePage ?? _pageNum,
+                                    );
+                                  }
+                                },
+                              ),
+                            ];
+                          }
+                          if (!const {
+                            'RECEIVABLE',
+                            'PAYABLE',
+                            'CREDIT',
+                            'CLAIM_CREDIT',
+                          }.contains(item.openItemKind)) {
+                            return const [];
+                          }
+                          return [
+                            UtenMenuItem(
+                              label: '核对原科目与辅助',
+                              onTap: () async {
+                                if (!isCurrent()) return;
+                                await showFinanceNativeDebtCorrespondenceDialog(
+                                  context,
+                                  ledgerId: item.id,
+                                );
+                                if (isCurrent()) {
+                                  await _load(
+                                    _tableRows.visiblePage ?? _pageNum,
+                                  );
+                                }
+                              },
+                            ),
+                          ];
+                        }
+                      : null,
+                  serverColumnSearchKeys: const {
+                    'billNo',
+                    'sourceDocNo',
+                    'salesOrderNos',
+                    'party',
+                    'billDate',
+                    'dueDate',
+                    'settlementStyleLegacy',
+                    'exchangeRate',
+                    'amountOriginal',
+                    'amountReceivedOriginal',
+                    'amountWriteOffOriginal',
+                    'prepaymentAppliedOriginal',
+                    'amountBalanceOriginal',
+                    'amountBalance',
+                    'remark',
+                    'legacySourceResolution',
+                  },
+                  headerFilterScopeDescription:
+                      '检索当前台账范围的完整结果；原币金额需先选择币种，本币金额单独保留',
+                  items: _page?.items ?? const [],
+                  facets: {
+                    // 单号桶与列表同一过滤口径（2026-09-25 单号列统一）。
+                    'billNo': _columnFilters.bucketOf('billNo'),
+                    'sourceDocNo': _columnFilters.bucketOf('sourceDocNo'),
+                    'direction': financeArApDirectionFacets,
+                    'sourceDocType': financeArApSourceTypeFacets,
+                    'openItemKind': [
+                      for (final kind in const [
+                        'RECEIVABLE',
+                        'PAYABLE',
+                        'CREDIT',
+                        'CLAIM_CREDIT',
+                        'PREPAYMENT',
+                        'CUSTOMER_PREPAYMENT',
+                        'LEGACY_UNVERIFIED',
+                      ])
+                        MasterFacetBucket(
+                          value: kind,
+                          label: financeArApOpenItemKindLabel(kind),
+                          count: 0,
+                        ),
+                    ],
+                    'legacySourceResolution': [
+                      for (final status in const [
+                        'EXACT_SOURCE',
+                        'AMBIGUOUS_SOURCE',
+                        'MISSING_OR_CONFLICTING_SOURCE',
+                        'UNVERIFIED_SOURCE_KIND',
+                      ])
+                        MasterFacetBucket(
+                          value: status,
+                          label: financeLegacySourceResolutionLabel(status),
+                          count: 0,
+                        ),
+                      const MasterFacetBucket(
+                        value: 'UNSET',
+                        label: '—（未提供匹配状态）',
+                        count: 0,
+                      ),
+                    ],
+                    'settlementStyleLegacy': [
+                      for (final style
+                          in financeArApSettlementStyleLabels.entries)
+                        MasterFacetBucket(
+                          value: style.key.toString(),
+                          label: style.value,
+                          count: 0,
+                        ),
+                      const MasterFacetBucket(
+                        value: 'UNSET',
+                        label: '未设置',
+                        count: 0,
+                      ),
+                    ],
+                    'party': selectedPartyFacet(
+                      _partyId,
+                      (id) => _direction == 'AP'
+                          ? names.supplier(id)
+                          : _direction == 'AR'
+                          ? names.client(id)
+                          : names.clientEntries[id] ??
+                                names.supplierEntries[id],
+                    ),
+                    'settled': financeArApSettledFacets,
+                    'currency': masterDictionaryFacets({
+                      ...names.currencyEntries,
+                      for (final currency in _columnFilters.bucketOf(
+                        'currency',
+                      ))
+                        currency.value: currency.display,
+                    }),
+                  },
+                  facetPageLoaders: {
+                    'party': _direction == 'AP'
+                        ? supplierPartyFacetLoader(ref)
+                        : _direction == 'AR'
+                        ? clientPartyFacetLoader(ref)
+                        : combinedPartyFacetLoader(ref),
+                  },
+                  facetSearchScope: partyFacetSearchScope(ref, (
+                    'finance-ar-ap-party',
+                    _direction,
+                    _criteriaRevision,
+                  )),
+                  nullCounts: const {},
+                  filters: {
+                    ..._columnFilters.values,
+                    'direction': _direction,
+                    'sourceDocType': _sourceDocType,
+                    'party': _partyId,
+                    'currency': _currencyId,
+                    'settled': _settled?.toString(),
+                  },
+                  onFilterChanged: _onColumnFilterChanged,
+                  sortColumn: _columnFilters.sortColumn,
+                  sortAscending: _columnFilters.sortAscending,
+                  onSortChange: _onSortChange,
+                  isLoading: _loading && _page == null,
+                  loadingMore: _loading && _page != null,
+                  error: _error,
+                  onRetry: () => _load(_tableRows.visiblePage ?? _pageNum),
+                  emptyMessage: '暂无台账记录',
+                  currentPage: _page?.page ?? 1,
+                  totalPages: _page?.totalPages ?? 1,
+                  paginationScope: _criteriaRevision,
+                  onPageChange: _navigatePage,
+                ),
               ),
             ),
           ),
         ),
       ),
+    );
+    return FormDraftDialogResume(
+      descriptor: FormDraftCatalog.financeClassificationCorrection,
+      onResume: (parameters) async {
+        final ids = parameters['ledgerIds']?.split(',') ?? const <String>[];
+        if (ids.isEmpty || ids.any((id) => id.trim().isEmpty)) {
+          throw const FormatException('分类更正草稿缺少真实来源身份');
+        }
+        await showFinanceClassificationCorrectionDialog(
+          context,
+          ledgerIds: ids,
+          resumeDraftId: parameters['draftId'],
+        );
+      },
+      child: page,
     );
   }
 }

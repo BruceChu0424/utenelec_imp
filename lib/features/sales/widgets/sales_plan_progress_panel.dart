@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // 销售订货单「排产进度」面板——销售端看业务链另一端。
 //
 // 数据源 GET /sales/orders/{id}/plan-progress：每行 订货/可发/已排/已产/已发 + 链路状态
@@ -352,7 +353,9 @@ class _SalesPlanProgressPanelState
 /// 数量展示统一：整数不带小数位，小数保留两位。
 String _fmt(double? v) => v == null
     ? '—'
-    : (v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2));
+    : (v == v.roundToDouble()
+          ? v.toExactString()
+          : v.toExactString(minimumFractionDigits: 2));
 
 /// 「数量 + 单位」内联口径（2026-10-10 全站表格数量口径）：独立「单位」列撤销，
 /// 单位直接跟在数量后（如 `1000 米`）；空值仍显「—」。数值排序由
@@ -896,7 +899,7 @@ class _ProgressList extends ConsumerWidget {
   String _ratio(double? value) {
     if (value == null) return '—';
     final normalized = normalizeProgressRatio(value);
-    return '${(normalized.clamp(0, 1) * 100).toStringAsFixed(0)}%';
+    return '${(normalized.clamp(0, 1) * 100).toExactString()}%';
   }
 
   Widget _planRow(

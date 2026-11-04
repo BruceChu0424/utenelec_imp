@@ -64,6 +64,7 @@ public record TaskClaimPolicy(int leaseMinutes, Set<String> claimPermissions, Se
     /** 取某类型策略；未登记抛 400（fail-closed）。 */
     public static TaskClaimPolicy of(String targetType) {
         TaskClaimPolicy p = switch (targetType) {
+            case "FINANCE_APPLICATION_REVIEW" -> new TaskClaimPolicy(30,Set.of("finance_application:review"),Set.of("expense:settings"),"finance_application:view");
             case "SALES_QUOTE_MANAGER_REVIEW" -> management("quote");
             case "SALES_ORDER_MANAGER_REVIEW" -> management("order");
             default -> POLICIES.get(targetType);

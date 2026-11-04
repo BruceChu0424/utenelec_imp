@@ -59,7 +59,7 @@ public class DirectCustomerShipmentCommercialService {
             if(line.getQty()==null||line.getQty().signum()<=0)throw validation("发货数量必须大于零");
             var unit=references.resolveVisibleActiveGoodsUnit(line.getGoodsId(),line.getUnitId(),line.getUnitRate(),++sequence);
             line.setUnitId(unit.unitId());line.setUnitRate(unit.unitRate());
-            if(MoneyPolicy.quantity(line.getQty().multiply(unit.unitRate())).signum()<=0)throw validation("换算后的基本单位数量过小");
+            if(MoneyPolicy.quantityToBase(line.getQty(),unit.unitRate()).signum()<=0)throw validation("换算后的基本单位数量过小");
             if(free) {line.setPrice(BigDecimal.ZERO);line.setDiscount(BigDecimal.ONE);}
             else {
                 if(line.getPrice()==null||line.getPrice().signum()<=0)throw validation("收费发货请填写实际单价");
@@ -92,11 +92,9 @@ public class DirectCustomerShipmentCommercialService {
         }
     }
 
-    /** 折扣列为 NUMERIC(18,4): 超过 4 位的折扣倍率明确拒绝, 不让数据库悄悄四舍五入。 */
+    /** The actual discount retains the same native finite input as other quantities. */
     private static BigDecimal requireStoredDiscount(BigDecimal discount) {
-        BigDecimal exact=discount.stripTrailingZeros();
-        if(exact.scale()>4)throw validation("折扣倍率最多 4 位小数，请核对后重新填写");
-        return exact;
+        return FinancialExactAmount.quantity(discount,"折扣倍率");
     }
     private static ApiException validation(String message){return new ApiException(ErrorCode.VALIDATION_FAILED,message);}
 }

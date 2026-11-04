@@ -257,7 +257,7 @@ public class InventoryPositionService extends InventoryValueLedger implements In
         ConsumptionSource prepared=prepareConsumptionReturn(key,command.originalPositionRootId(),qty,command.materialOwner(),command.materialOwnerId(),true);
         Node root=prepared.root(),source=prepared.source();BigDecimal through=root.returnedQty().add(qty);
         Pool pool=lockPool(key);UUID event=UUID.randomUUID();
-        BigDecimal cost=interval(source.value(),root.returnedQty(),through,root.qty());
+        BigDecimal cost=frozenInterval(source,root.returnedQty(),through,root.qty());
         Node restored=newPosition(pool,command.materialOwner(),command.materialOwnerId(),qty,cost,pending(source),event,
                 List.of(fraction(source,root.returnedQty(),through,root.qty())));
         Node cursor=createDerivedNode(pool,"COST_RETURN_CURSOR",null,null,null,root.id(),root.qty(),through,root.qty(),
@@ -372,7 +372,7 @@ public class InventoryPositionService extends InventoryValueLedger implements In
             var transfer=part.transfer();Node root=part.root(),held=part.held();
             BigDecimal partQty=part.qty(),from=part.from(),to=part.to(),amount=part.amount();
             Node restored=newPosition(part.sourcePool(),Owner.valueOf(held.ownerKind()),held.ownerId(),partQty,amount,pending(held),eventId,
-                    List.of(fraction(held,from,to,held.qty())));
+                    List.of(restoringFraction(held,from,to,held.qty(),(UUID)transfer.get("id"))));
             Node remainder=createDerivedNode(held.poolIdentity(),"ISSUE_POSITION",held.ownerKind(),held.ownerId(),null,root.id(),held.qty(),held.from(),held.to(),held.value(),pending(held),true,true,eventId,List.of(whole(held)));
             deactivate(held);
             if(db.update("UPDATE stock_value_nodes SET return_head_id=:next WHERE id=:root AND return_head_id=:before",
@@ -610,7 +610,7 @@ public class InventoryPositionService extends InventoryValueLedger implements In
                 throw conflict("原来源物料已有后续使用或转移，请先处理对应后续业务，再撤回收仓");
             BigDecimal partQty=(BigDecimal)transfer.get("qty_base"),from=(BigDecimal)transfer.get("range_from"),to=(BigDecimal)transfer.get("range_to");
             if(held.from().compareTo(to)<0)throw conflict("原入库切片尚未全部离开原合格位置");
-            BigDecimal amount=interval(held.value(),from,to,held.qty());
+            BigDecimal amount=frozenTransferInterval(transfer,held,from,to);
             Pool sourcePool=held.poolId().equals(pool.id())?pool:poolById(held.poolId(),false);
             parts.add(new Restoration(transfer,root,held,sourcePool,partQty,from,to,amount));cost=cost.add(amount);qty=qty.add(partQty);
         }
@@ -677,7 +677,7 @@ public class InventoryPositionService extends InventoryValueLedger implements In
         BigDecimal through=head.from().add(slice.qtyBase());
         if(!head.active()||!sameGoods(head.key(),target)||through.compareTo(head.to())>0)
             throw conflict("原价值位置已转移或本次数量超过剩余数量");
-        return new Take(slice,root,head,through,interval(head.value(),head.from(),through,head.qty()));
+        return new Take(slice,root,head,through,frozenInterval(head,head.from(),through,head.qty()));
     }
     private static List<Contribution> transferContributions(List<Take> takes){
         return takes.stream().map(t->fraction(t.head(),t.head().from(),t.through(),t.head().qty())).toList();

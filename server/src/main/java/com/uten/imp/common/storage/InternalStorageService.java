@@ -111,6 +111,13 @@ public class InternalStorageService implements StorageService, BlobStore {
 
     @Override public PresignedUpload presignUpload(UploadRequest request) {
         requireLength(request.contentLength(), properties.getMaxBytes());
+        return presignUploadChecked(request);
+    }
+    @Override public PresignedUpload presignUpload(UploadRequest request,com.uten.imp.common.files.document.DocumentIntakeProfile profile) {
+        requireLength(request.contentLength(),profileLimit(profile));
+        return presignUploadChecked(request);
+    }
+    private PresignedUpload presignUploadChecked(UploadRequest request) {
         if(request.category()==null || !request.category().matches("[A-Z][A-Z0-9_]{0,63}"))
             throw new IllegalArgumentException("Internal attachments require their registered business owner type");
         String key = "i1_"+request.category()+"_"+DateTimeFormatter.ofPattern("yyyyMM")
@@ -122,6 +129,13 @@ public class InternalStorageService implements StorageService, BlobStore {
 
     @Override public void store(String key, InputStream input, long length) {
         requireLength(length, properties.getMaxBytes());
+        storeChecked(key,input,length);
+    }
+    @Override public void store(String key,InputStream input,long length,com.uten.imp.common.files.document.DocumentIntakeProfile profile) {
+        requireLength(length,profileLimit(profile));
+        storeChecked(key,input,length);
+    }
+    private void storeChecked(String key,InputStream input,long length) {
         Path target = resolve(staging, key);
         try (Lease lease = lease()) {
             createPartition(staging,target.getParent());
@@ -445,6 +459,11 @@ public class InternalStorageService implements StorageService, BlobStore {
     private static void requireVersion(Header header,String version) {
         if (version==null || !header.version().equals(version))
             throw new IllegalStateException("Internal attachment version does not match the confirmed identity");
+    }
+    private long profileLimit(com.uten.imp.common.files.document.DocumentIntakeProfile profile){
+        if(profile==null)throw new IllegalArgumentException("profile");
+        long limit=profile==com.uten.imp.common.files.document.DocumentIntakeProfile.FINANCIAL_ASSET?profile.maxBytes():Math.min(profile.maxBytes(),properties.getMaxBytes());
+        return Math.min(limit,properties.getInternal().getMaxObjectBytes());
     }
     private static void requireLength(long length,long maximum) {
         if (length<=0 || length>maximum) throw new IllegalArgumentException("Attachment length is outside storage limits");

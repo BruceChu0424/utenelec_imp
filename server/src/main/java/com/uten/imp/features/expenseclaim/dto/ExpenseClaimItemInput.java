@@ -12,7 +12,7 @@ import java.time.LocalDate;
 public record ExpenseClaimItemInput(
         @NotBlank String category,
         @NotNull @DecimalMin(value = "0.00", inclusive = false)
-        @Digits(integer = 16, fraction = 2) BigDecimal amount,
+        @Digits(integer = 40, fraction = 24) BigDecimal amount,
         @NotNull LocalDate date,
         @Size(max = 1000) String description,
         @jakarta.validation.Valid com.uten.imp.common.platformcolumns.PlatformColumnLineInput.Fields platformFields

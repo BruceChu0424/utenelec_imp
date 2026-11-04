@@ -1,3 +1,5 @@
+import '../formatters/exact_decimal.dart';
+
 // 采购/委外订货单行级商业条款的主档默认值模型 (/last-terms 返回体)。
 //
 // 类名 ProcurementLastTerms 与端点路径 /last-terms 都是历史遗留: 语义自 V592/V593
@@ -10,17 +12,23 @@ class ProcurementLastTerms {
     this.settlementMethodId,
     this.currencyId,
     this.exchangeRate,
+    this.exchangeRateExact,
     this.taxRate,
+    this.taxRateExact,
     // V593：货品主档默认单价（采购=purchasePrice / 委外=subcontractPrice），
     // 随 /last-terms 一起带回，订货行单价预填用。
     this.purchasePrice,
+    this.purchasePriceExact,
     this.subcontractPrice,
+    this.subcontractPriceExact,
     this.priceContext,
     // ADR-098：货品主档「委外允许损耗」默认值（记忆），委外订货行允许损耗列预填用。
     this.allowedLossPct,
+    this.allowedLossPctExact,
     this.allowedLossPctSource,
     // ADR-144：货品主档「采购允许超收」默认值（记忆），采购订货行允许超收列预填用。
     this.allowedOverReceiptPct,
+    this.allowedOverReceiptPctExact,
     this.allowedOverReceiptPctSource,
   });
 
@@ -30,18 +38,32 @@ class ProcurementLastTerms {
     supplierId: json['supplierId'] as String?,
     settlementMethodId: json['settlementMethodId'] as String?,
     currencyId: json['currencyId'] as String?,
-    exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
-    taxRate: (json['taxRate'] as num?)?.toDouble(),
-    purchasePrice: (json['purchasePrice'] as num?)?.toDouble(),
-    subcontractPrice: (json['subcontractPrice'] as num?)?.toDouble(),
+    exchangeRate: double.tryParse(json['exchangeRate']?.toString() ?? ''),
+    exchangeRateExact: (json['exchangeRateExact'] ?? json['exchangeRate'])
+        ?.toString(),
+    taxRate: double.tryParse(json['taxRate']?.toString() ?? ''),
+    taxRateExact: (json['taxRateExact'] ?? json['taxRate'])?.toString(),
+    purchasePrice: double.tryParse(json['purchasePrice']?.toString() ?? ''),
+    purchasePriceExact: (json['purchasePriceExact'] ?? json['purchasePrice'])
+        ?.toString(),
+    subcontractPrice: double.tryParse(
+      json['subcontractPrice']?.toString() ?? '',
+    ),
+    subcontractPriceExact:
+        (json['subcontractPriceExact'] ?? json['subcontractPrice'])?.toString(),
     priceContext: json['priceContext'] is Map<String, dynamic>
         ? ProcurementPriceContext.fromJson(
             json['priceContext'] as Map<String, dynamic>,
           )
         : null,
     allowedLossPct: (json['allowedLossPct'] as num?)?.toDouble(),
+    allowedLossPctExact: (json['allowedLossPctExact'] ?? json['allowedLossPct'])
+        ?.toString(),
     allowedLossPctSource: json['allowedLossPctSource'] as String?,
     allowedOverReceiptPct: (json['allowedOverReceiptPct'] as num?)?.toDouble(),
+    allowedOverReceiptPctExact:
+        (json['allowedOverReceiptPctExact'] ?? json['allowedOverReceiptPct'])
+            ?.toString(),
     allowedOverReceiptPctSource: json['allowedOverReceiptPctSource'] as String?,
   );
 
@@ -49,17 +71,34 @@ class ProcurementLastTerms {
   final String? settlementMethodId;
   final String? currencyId;
   final double? exchangeRate;
+  final String? exchangeRateExact;
+  String? get exchangeRateText =>
+      financeExactDecimal(exchangeRateExact ?? exchangeRate);
   final double? taxRate;
+  final String? taxRateExact;
+  String? get taxRateText => financeExactDecimal(taxRateExact ?? taxRate);
   final double? purchasePrice;
+  final String? purchasePriceExact;
+  String? get purchasePriceText =>
+      financeExactDecimal(purchasePriceExact ?? purchasePrice);
   final double? subcontractPrice;
+  final String? subcontractPriceExact;
+  String? get subcontractPriceText =>
+      financeExactDecimal(subcontractPriceExact ?? subcontractPrice);
   final ProcurementPriceContext? priceContext;
 
   /// 委外允许损耗默认值(%)；来源目前只有 GOODS_MASTER（货品主档记忆）。
   final double? allowedLossPct;
+  final String? allowedLossPctExact;
+  String? get allowedLossPctText =>
+      allowedLossPctExact ?? allowedLossPct?.toString();
   final String? allowedLossPctSource;
 
   /// 采购允许超收默认值(%)；来源目前只有 GOODS_MASTER（货品主档记忆）。不受价格遮蔽。
   final double? allowedOverReceiptPct;
+  final String? allowedOverReceiptPctExact;
+  String? get allowedOverReceiptPctText =>
+      allowedOverReceiptPctExact ?? allowedOverReceiptPct?.toString();
   final String? allowedOverReceiptPctSource;
 }
 
@@ -71,6 +110,7 @@ class ProcurementPriceContext {
     this.unitId,
     this.currencyId,
     this.taxRate,
+    this.taxRateExact,
   });
 
   factory ProcurementPriceContext.fromJson(Map<String, dynamic> json) =>
@@ -79,7 +119,8 @@ class ProcurementPriceContext {
         colorId: json['colorId'] as String?,
         unitId: json['unitId'] as String?,
         currencyId: json['currencyId'] as String?,
-        taxRate: (json['taxRate'] as num?)?.toDouble(),
+        taxRate: double.tryParse(json['taxRate']?.toString() ?? ''),
+        taxRateExact: (json['taxRateExact'] ?? json['taxRate'])?.toString(),
       );
 
   final String? supplierId;
@@ -87,21 +128,25 @@ class ProcurementPriceContext {
   final String? unitId;
   final String? currencyId;
   final double? taxRate;
+  final String? taxRateExact;
+  String? get taxRateText => financeExactDecimal(taxRateExact ?? taxRate);
 
   bool matches({
     required String? supplierId,
     required String? colorId,
     required String? unitId,
     required String? currencyId,
-    required double? taxRate,
+    required Object? taxRate,
   }) =>
       this.supplierId != null &&
       this.unitId != null &&
       this.currencyId != null &&
-      this.taxRate != null &&
+      taxRateText != null &&
       this.supplierId == supplierId &&
       this.colorId == colorId &&
       this.unitId == unitId &&
       this.currencyId == currencyId &&
-      this.taxRate == taxRate;
+      financeAmountUnits(taxRateText) != null &&
+      financeAmountUnits(taxRateText) ==
+          financeAmountUnits(financeExactDecimal(taxRate));
 }

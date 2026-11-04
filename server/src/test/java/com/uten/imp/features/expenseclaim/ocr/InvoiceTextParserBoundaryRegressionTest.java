@@ -16,4 +16,10 @@ class InvoiceTextParserBoundaryRegressionTest {
         assertThat(leap).isNotNull();
         assertThat(leap.issueDate()).isEqualTo("2024-02-29");
     }
+    @Test void originalFiniteDigitsAreNotReplacedByATwoPlaceOcrPrefix() {
+        var exact=InvoiceTextParser.parse(List.of("发票号码：24312000000012345678","价税合计（小写）￥100.123456789012345678901234"));
+        assertThat(exact.totalAmount()).isEqualByComparingTo("100.123456789012345678901234");
+        var unsupported=InvoiceTextParser.parse(List.of("发票号码：24312000000012345678","价税合计（小写）￥100.1234567890123456789012345"));
+        assertThat(unsupported==null?null:unsupported.totalAmount()).isNull();
+    }
 }

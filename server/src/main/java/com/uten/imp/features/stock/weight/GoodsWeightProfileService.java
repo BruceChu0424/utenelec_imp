@@ -17,7 +17,6 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +42,8 @@ public class GoodsWeightProfileService {
     private final GoodsWeightEstimateService estimates;
     private final SecurityContextCurrentUser currentUser;
     private final TransactionTemplate writeTx;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.uten.imp.application.port.BusinessNumericInputEvidencePort numericInputs;
 
     public GoodsWeightProfileService(
             NamedParameterJdbcTemplate db,
@@ -80,12 +81,12 @@ public class GoodsWeightProfileService {
         if (net == null || net.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "称样净重必须大于 0");
         }
-        BigDecimal tare = req.tareKg() == null ? null : req.tareKg().setScale(KG_SCALE, RoundingMode.HALF_EVEN);
+        BigDecimal tare = req.tareKg() == null ? null : WeightMath.normalizeInput(req.tareKg());
         if (tare != null && tare.signum() < 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "皮重不能为负数");
         }
         BigDecimal gross = tare == null ? net : net.add(tare);
-        BigDecimal qty = req.qty().setScale(4, RoundingMode.HALF_EVEN);
+        BigDecimal qty = com.uten.imp.common.util.FinancialExactAmount.quantity(req.qty(),"抽样数量");
         if (req.supplierId() != null && !exists("suppliers", req.supplierId())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "供应商不存在或已删除");
         }
@@ -98,24 +99,40 @@ public class GoodsWeightProfileService {
         boolean newRegime = Boolean.TRUE.equals(req.newRegime());
         writeTx.executeWithoutResult(status -> {
             List<Map<String, Object>> replay = db.queryForList("""
-                    SELECT goods_id, qty_base, weight_kg FROM goods_weight_observations WHERE capture_key = :key
+                    SELECT goods_id, qty_base, weight_kg, supplier_id, warehouse_id, tare_kg, new_regime, remark, recorded_by FROM goods_weight_observations WHERE capture_key = :key
                     """, new MapSqlParameterSource("key", captureKey));
             if (!replay.isEmpty()) {
                 Map<String, Object> row = replay.get(0);
                 if (!goodsId.equals(row.get("goods_id"))
                         || ((BigDecimal) row.get("qty_base")).compareTo(qty) != 0
-                        || ((BigDecimal) row.get("weight_kg")).compareTo(net) != 0) {
+                        || ((BigDecimal) row.get("weight_kg")).compareTo(net) != 0
+                        || !Objects.equals(row.get("supplier_id"),req.supplierId())
+                        || !Objects.equals(row.get("warehouse_id"),req.warehouseId())
+                        || !WeightMath.sameKg((BigDecimal)row.get("tare_kg"),tare)
+                        || !Objects.equals(row.get("recorded_by"),actor)
+                        || Boolean.TRUE.equals(row.get("new_regime"))!=newRegime
+                        || !Objects.equals(row.get("remark"),trimToNull(req.remark()))) {
                     throw new ApiException(ErrorCode.CONFLICT, "同一次提交的称样内容不一致, 请刷新后重新提交");
                 }
                 return;
             }
-            Optional<UUID> recorded = observations.record(new ObservationCommand(
+            Optional<GoodsWeightObservationService.Recorded> recorded = observations.recordWithReceipt(new ObservationCommand(
                     goodsId, null, req.warehouseId(), SourceKind.SAMPLE, qty, net, req.supplierId(),
                     null, null, null, null, null, null, captureKey, OffsetDateTime.now(),
                     gross, tare, null, false, null, newRegime, req.remark(), actor));
             if (recorded.isEmpty()) {
                 throw new ApiException(ErrorCode.CONFLICT, "这次称样没有记入学习, 请检查数量和重量");
             }
+            if(!recorded.get().created())return; // A concurrent replay must not invent original operands.
+            UUID observationId=recorded.get().id();
+            String version=db.queryForObject("SELECT xmin::text FROM goods_weight_observations WHERE id=:id",Map.of("id",observationId),String.class);
+            Map<String,com.uten.imp.common.finance.BusinessPrecisionContext.Choice> weightPolicy=Map.of();
+            if(req.weight().multiply(unit.kgPerUnit()).compareTo(net)!=0)weightPolicy=usedWeightPolicy("weight.to-kg");
+            captureNumeric("GOODS_WEIGHT_OBSERVATION",goodsId,observationId,"WEIGHT_KG","xmin:"+version,req.weight(),
+                new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Unit("MASS",unit.code(),null),net,massUnit(),weightPolicy);
+            if(req.tareKg()!=null)captureNumeric("GOODS_WEIGHT_OBSERVATION",goodsId,observationId,"TARE_KG","xmin:"+version,req.tareKg(),massUnit(),tare,massUnit(),
+                req.tareKg().compareTo(tare)==0?Map.of():usedWeightPolicy("weight.kg-field"));
+
         });
         estimates.recomputeCommitted(goodsId);
         return estimates.goodsView(goodsId);
@@ -131,11 +148,24 @@ public class GoodsWeightProfileService {
         writeTx.executeWithoutResult(status -> {
             GoodsWeightFacts goods = requireGoods(goodsId);
             Profile current = goods.profile();
+            BigDecimal tare=WeightMath.normalizeInput(req.defaultTareKg());
+            BigDecimal manual = req.manualUnitWeightKg() == null ? null
+                    : WeightMath.normalizeInput(req.manualUnitWeightKg());
             if (req.expectedVersion() == null || current.version() != req.expectedVersion()) {
+                // A complete PUT has one CAS transition. The exact same actor,
+                // predecessor version and complete resulting state prove a lost
+                // response; accepting it cannot perform a second version write.
+                boolean replay=req.expectedVersion()!=null&&current.version()==req.expectedVersion()+1
+                    && actor.equals(current.updatedBy())&&WeightMath.sameKg(tare,current.defaultTareKg())
+                    && WeightMath.sameKg(manual,current.manualUnitWeightKg())
+                    && WeightMath.sameKg(req.tolerancePct(),current.tolerancePct())
+                    && WeightMath.sameKg(req.pieceCvPct(),current.pieceCvPct())
+                    && Objects.equals(manual==null?null:reason,current.manualReason())
+                    && current.learningEnabled()==(req.learningEnabled()==null||req.learningEnabled())
+                    && Objects.equals(current.regimeMode(),req.regimeMode()==null?Profile.REGIME_AUTO:req.regimeMode());
+                if(replay)return;
                 throw new ApiException(ErrorCode.CONFLICT, "称重设置已被他人修改, 请刷新后重试");
             }
-            BigDecimal manual = req.manualUnitWeightKg() == null ? null
-                    : req.manualUnitWeightKg().setScale(UNIT_WEIGHT_SCALE, RoundingMode.HALF_EVEN);
             if (manual != null && goods.exact()) {
                 throw new ApiException(ErrorCode.CONFLICT, "按重量计量的货品重量随数量自动计算, 不用设定单重");
             }
@@ -148,7 +178,7 @@ public class GoodsWeightProfileService {
             MapSqlParameterSource args = new MapSqlParameterSource()
                     .addValue("goods", goodsId)
                     .addValue("expected", req.expectedVersion())
-                    .addValue("tare", req.defaultTareKg())
+                    .addValue("tare", tare)
                     .addValue("tolerance", req.tolerancePct())
                     .addValue("pieceCv", req.pieceCvPct())
                     .addValue("manual", manual)
@@ -187,9 +217,29 @@ public class GoodsWeightProfileService {
             if (changed != 1) {
                 throw new ApiException(ErrorCode.CONFLICT, "称重设置已被他人修改, 请刷新后重试");
             }
+            String version="version:"+(current.version()+1);
+            if(req.defaultTareKg()!=null)captureNumeric("GOODS_WEIGHT_PROFILE",goodsId,goodsId,"DEFAULT_TARE_KG",version,req.defaultTareKg(),massUnit(),tare,massUnit(),req.defaultTareKg().compareTo(tare)==0?Map.of():usedWeightPolicy("weight.kg-field"));
+            if(req.manualUnitWeightKg()!=null){var per=new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Unit("MASS_PER_UNIT","KG",goods.goodsUnitId());captureNumeric("GOODS_WEIGHT_PROFILE",goodsId,goodsId,"MANUAL_UNIT_WEIGHT_KG",version,req.manualUnitWeightKg(),per,manual,per,req.manualUnitWeightKg().compareTo(manual)==0?Map.of():usedWeightPolicy("weight.kg-field"));}
+            var percent=new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Unit("RATIO","PERCENT_POINTS",null);
+            if(req.tolerancePct()!=null)captureNumeric("GOODS_WEIGHT_PROFILE",goodsId,goodsId,"TOLERANCE_PCT",version,req.tolerancePct(),percent,req.tolerancePct(),percent,Map.of());
+            if(req.pieceCvPct()!=null)captureNumeric("GOODS_WEIGHT_PROFILE",goodsId,goodsId,"PIECE_CV_PCT",version,req.pieceCvPct(),percent,req.pieceCvPct(),percent,Map.of());
+
         });
         estimates.recomputeCommitted(goodsId);
         return estimates.goodsView(goodsId);
+    }
+
+    private static com.uten.imp.application.port.BusinessNumericInputEvidencePort.Unit massUnit(){return new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Unit("MASS","KG",null);}
+    private static Map<String,com.uten.imp.common.finance.BusinessPrecisionContext.Choice> usedWeightPolicy(String key){
+        var used=com.uten.imp.common.finance.BusinessPrecisionContext.usedChoices().get(key);
+        if(used==null)throw new IllegalStateException("A changed weight input lacks its actual precision choice");return Map.of(key,used);
+    }
+    private void captureNumeric(String kind,UUID owner,UUID row,String field,String version,BigDecimal original,
+            com.uten.imp.application.port.BusinessNumericInputEvidencePort.Unit originalUnit,BigDecimal recorded,
+            com.uten.imp.application.port.BusinessNumericInputEvidencePort.Unit recordedUnit,
+            Map<String,com.uten.imp.common.finance.BusinessPrecisionContext.Choice> used){
+        if(numericInputs==null)throw new IllegalStateException("Numeric input provenance adapter is unavailable");
+        numericInputs.record(new com.uten.imp.application.port.BusinessNumericInputEvidencePort.Capture(kind,owner,row,field,version,original,originalUnit,recorded,recordedUnit,used));
     }
 
     /** 排除一条称重记录 (不再参与学习; 已红冲的不用排除, 已排除的原样返回)。 */

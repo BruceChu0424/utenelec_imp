@@ -38,7 +38,7 @@ class GoodsBomExportColumnsTest {
     private final GoodsBomItemRepository bomRepo = mock(GoodsBomItemRepository.class);
     private final com.uten.imp.features.master.lifecycle.MasterObjectAccess access = accessAllowingAll();
 
-    private final GoodsBomService service = new GoodsBomService(
+    private final GoodsBomService service = new GoodsBomService(org.mockito.Mockito.mock(com.uten.imp.application.port.BusinessNumericInputEvidencePort.class),
             goodsRepo, bomRepo, mock(ColorRepository.class), mock(UnitRepository.class),
             mock(TxSessionVars.class),
             mock(com.uten.imp.security.SecurityContextCurrentUser.class),

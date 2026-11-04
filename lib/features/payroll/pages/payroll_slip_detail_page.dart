@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // 工资条详情页
 // 文档：docs/03-页面/工资条详情页.md（待写）
 //
@@ -185,7 +186,7 @@ class _DetailContent extends ConsumerWidget {
                           UtenInfoRow(
                             label: earnings[i].name,
                             value:
-                                '+ ¥ ${earnings[i].amount.toStringAsFixed(2)}',
+                                '+ ¥ ${earnings[i].amount.toExactString(minimumFractionDigits: 2)}',
                             showDivider: i != earnings.length - 1,
                           ),
                       ],
@@ -207,7 +208,7 @@ class _DetailContent extends ConsumerWidget {
                           UtenInfoRow(
                             label: deductions[i].name,
                             value:
-                                '- ¥ ${deductions[i].amount.toStringAsFixed(2)}',
+                                '- ¥ ${deductions[i].amount.toExactString(minimumFractionDigits: 2)}',
                             showDivider: i != deductions.length - 1,
                           ),
                       ],
@@ -227,15 +228,18 @@ class _DetailContent extends ConsumerWidget {
                       children: [
                         UtenInfoRow(
                           label: '应发合计',
-                          value: '¥ ${slip.grossIncome.toStringAsFixed(2)}',
+                          value:
+                              '¥ ${slip.grossIncome.toExactString(minimumFractionDigits: 2)}',
                         ),
                         UtenInfoRow(
                           label: '扣除合计',
-                          value: '¥ ${slip.totalDeduction.toStringAsFixed(2)}',
+                          value:
+                              '¥ ${slip.totalDeduction.toExactString(minimumFractionDigits: 2)}',
                         ),
                         UtenInfoRow(
                           label: '实发金额',
-                          value: '¥ ${slip.netIncome.toStringAsFixed(2)}',
+                          value:
+                              '¥ ${slip.netIncome.toExactString(minimumFractionDigits: 2)}',
                           isImportant: true,
                           showDivider: false,
                         ),
@@ -293,18 +297,19 @@ class _DetailContent extends ConsumerWidget {
       primary: [
         UtenSummaryField(
           label: '实发金额',
-          value: '${slip.netIncome.toStringAsFixed(2)} 元',
+          value: '${slip.netIncome.toExactString(minimumFractionDigits: 2)} 元',
           emphasis: true,
           danger: true,
         ),
         UtenSummaryField(
           label: '应发',
-          value: '${slip.grossIncome.toStringAsFixed(2)} 元',
+          value:
+              '${slip.grossIncome.toExactString(minimumFractionDigits: 2)} 元',
         ),
         UtenSummaryField(
           label: '扣除',
           value:
-              '${slip.totalDeduction > 0 ? '-' : ''}${slip.totalDeduction.abs().toStringAsFixed(2)} 元',
+              '${slip.totalDeduction > 0 ? '-' : ''}${slip.totalDeduction.abs().toExactString(minimumFractionDigits: 2)} 元',
         ),
       ],
       facts: [UtenSummaryField(label: '员工工号', value: slip.employeeCode)],

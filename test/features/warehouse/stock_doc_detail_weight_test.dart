@@ -378,7 +378,7 @@ void main() {
       final first = api.posts.single;
       expect(first.path, endsWith('/issue'));
       expect(first.body['lines'], [
-        {'itemId': 'i1', 'qty': '5', 'weightKg': 0.025},
+        {'itemId': 'i1', 'qty': '5', 'weightKg': '0.025'},
       ]);
 
       await tester.enterText(
@@ -397,7 +397,7 @@ void main() {
       expect(api.posts, hasLength(2));
       expect(
         ((api.posts.last.body['lines'] as List).single as Map)['weightKg'],
-        0.01,
+        '0.01',
       );
       expect(
         api.posts.last.body['idempotencyKey'],
@@ -517,7 +517,7 @@ void main() {
       final body = api.posts.single.body;
       expect(body['warehouseId'], 'normal');
       expect(body['lines'], [
-        {'itemId': 'r1', 'weightKg': 0.2},
+        {'itemId': 'r1', 'weightKg': '0.2'},
       ]);
       expect(body['idempotencyKey'], isNotEmpty);
       expect(tester.takeException(), isNull);

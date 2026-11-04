@@ -27,8 +27,10 @@ class FinancialExactAmountTest {
         BigDecimal local=price.multiply(new BigDecimal("1.2345")).multiply(new BigDecimal("0.9876")).multiply(rate);
         assertEquals(0,local.compareTo(FinancialExactAmount.require(local,"本币金额")));
         assertEquals(24,local.scale());
-        assertThrows(ApiException.class,()->FinancialExactAmount.unitPrice(new BigDecimal("0.12345678912"),"单价"));
-        assertThrows(ApiException.class,()->FinancialExactAmount.rate(new BigDecimal("7.1234567"),"汇率"));
+        assertEquals(new BigDecimal("0.123456789123456789123456"),FinancialExactAmount.unitPrice(new BigDecimal("0.123456789123456789123456"),"单价"));
+        assertEquals(new BigDecimal("7.123456789123456789123456"),FinancialExactAmount.rate(new BigDecimal("7.123456789123456789123456"),"汇率"));
+        assertThrows(ApiException.class,()->FinancialExactAmount.unitPrice(new BigDecimal("1E-25"),"单价"));
+        assertThrows(ApiException.class,()->FinancialExactAmount.rate(new BigDecimal("1E-25"),"汇率"));
         assertEquals(new BigDecimal("12.3400"),FinancialExactAmount.canonicalMoney(new BigDecimal("12.340000"),"金额"));
         assertEquals(new BigDecimal("12.345678"),FinancialExactAmount.canonicalMoney(new BigDecimal("12.345678"),"金额"));
     }

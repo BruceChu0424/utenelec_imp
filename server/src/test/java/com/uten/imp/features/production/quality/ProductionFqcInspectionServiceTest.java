@@ -89,9 +89,10 @@ class ProductionFqcInspectionServiceTest {
                 .hasMessageContaining("超过待检数量");
 
         assertThatThrownBy(() -> ProductionFqcInspectionService.normalizeQty(
-                new BigDecimal("1.00001"), "质检数量"))
+                new BigDecimal("1e-25"), "质检数量"))
                 .isInstanceOf(ApiException.class)
-                .hasMessageContaining("4 位小数");
+                .hasMessageContaining("质检数量");
+        assertThat(ProductionFqcInspectionService.normalizeQty(new BigDecimal("1e-24"),"质检数量")).isEqualByComparingTo("1e-24");
     }
 
     @Test

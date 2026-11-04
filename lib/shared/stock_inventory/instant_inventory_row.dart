@@ -1,3 +1,4 @@
+import '../formatters/exact_decimal.dart';
 import 'measurement_hold.dart';
 
 /// 即时库存行（对标老系统「即时库存」窗口），对应后端 InstantInventoryRow。
@@ -15,9 +16,11 @@ class InstantInventoryRow {
     this.unitName,
     this.remark,
     this.weight,
+    this.weightExact,
     this.weightEstimated = false,
     this.weightUnknown = false,
     this.unitWeightKg,
+    this.unitWeightKgExact,
     this.weightTier,
     this.qty,
     this.costAmount,
@@ -56,6 +59,8 @@ class InstantInventoryRow {
   final String? remark; // 备注（老库 B_Goods.Paper，如 外购）
   /// 库存重量 (千克, 多仓合计); null = 有维度重量未知 (显示「未称」, 不当 0)。
   final double? weight;
+  final String? weightExact;
+  String? get weightText => financeExactDecimal(weightExact ?? weight);
 
   /// 库存重量含估算 (显示「≈」)。
   final bool weightEstimated;
@@ -65,6 +70,9 @@ class InstantInventoryRow {
 
   /// 当前学到的单重 (千克/基本单位); 本页不显示, 供流水/分析口径对齐。
   final double? unitWeightKg;
+  final String? unitWeightKgExact;
+  String? get unitWeightKgText =>
+      financeExactDecimal(unitWeightKgExact ?? unitWeightKg);
 
   /// 单重可靠度 GREEN / YELLOW / RED。
   final String? weightTier;
@@ -115,10 +123,18 @@ class InstantInventoryRow {
         colorName: json['colorName'] as String?,
         unitName: json['unitName'] as String?,
         remark: json['remark'] as String?,
-        weight: (json['weight'] as num?)?.toDouble(),
+        weight: double.tryParse(
+          (json['weightExact'] ?? json['weight'])?.toString() ?? '',
+        ),
+        weightExact: financeExactDecimal(json['weightExact'] ?? json['weight']),
         weightEstimated: json['weightEstimated'] == true,
         weightUnknown: json['weightUnknown'] == true,
-        unitWeightKg: (json['unitWeightKg'] as num?)?.toDouble(),
+        unitWeightKg: double.tryParse(
+          (json['unitWeightKgExact'] ?? json['unitWeightKg'])?.toString() ?? '',
+        ),
+        unitWeightKgExact: financeExactDecimal(
+          json['unitWeightKgExact'] ?? json['unitWeightKg'],
+        ),
         weightTier: json['weightTier'] as String?,
         qty: (json['qty'] as num?)?.toDouble(),
         costAmount: json['costMasked'] == true

@@ -2,6 +2,7 @@
 // （前半只能填数字，后半下拉选单位，不额外新增独立输入框行）。
 // 单位下拉复用货品「单位」主档字典（[unitDictProvider]），支持内联新建新单位。
 import 'package:flutter/material.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 
 import '../../../components/inputs/uten_dropdown_field.dart';
@@ -39,7 +40,7 @@ class NumberUnitField extends StatefulWidget {
   /// UUID 关系字段原样回传字符串；旧 legacy 字段才解析为 int。
   final bool unitValueAsString;
 
-  /// 回写复合值：UUID 链路为 {numberKey: double?, unitKey: String?}；
+  /// 回写复合值：UUID 链路为 {numberKey: String?, unitKey: String?}；
   /// 旧 legacy 链路才把单位值解析为 int。
   final void Function(Map<String, dynamic> value) onChanged;
 
@@ -73,7 +74,7 @@ class _NumberUnitFieldState extends State<NumberUnitField> {
   void _emit() {
     final raw = _ctl.text.trim();
     widget.onChanged({
-      widget.numberKey: raw.isEmpty ? null : double.tryParse(raw),
+      widget.numberKey: raw.isEmpty ? null : financeExactDecimal(raw) ?? raw,
       widget.unitKey: _unit == null
           ? null
           : (widget.unitValueAsString ? _unit : int.tryParse(_unit!)),

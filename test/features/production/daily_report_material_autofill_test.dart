@@ -204,7 +204,7 @@ void main() {
   );
 
   test(
-    'quantity input rejects extra decimals without silently changing the quantity',
+    'quantity input retains unsupported raw decimals for explicit validation',
     () {
       const before = TextEditingValue(text: '1.2345');
       expect(
@@ -212,7 +212,7 @@ void main() {
           before,
           const TextEditingValue(text: '1.23456'),
         ),
-        same(before),
+        const TextEditingValue(text: '1.23456'),
       );
       expect(
         productionQuantityInputFormatter.formatEditUpdate(
@@ -334,10 +334,26 @@ void main() {
   });
 
   test(
-    'rounds to four decimals and rejects non-positive reported quantities',
+    'non-terminating suggestion needs an explicit choice and non-positive quantities stay unavailable',
     () {
       final material = _material(requiredQty: 1, requiredForProductQty: 3);
-      expect(expectedMaterialUsage(reportedQty: 1, material: material), 0.3333);
+      expect(expectedMaterialUsage(reportedQty: 1, material: material), isNull);
+      expect(
+        expectedMaterialUsageCalculation(
+          reportedQty: 1,
+          material: material,
+        ).reason,
+        'NON_TERMINATING',
+      );
+      expect(
+        expectedMaterialUsageText(
+          reportedQty: 1,
+          material: material,
+          precisionScale: 4,
+          precisionRounding: 'DOWN',
+        ),
+        '0.3333',
+      );
       expect(expectedMaterialUsage(reportedQty: 0, material: material), isNull);
       expect(
         expectedMaterialUsage(reportedQty: -5, material: material),

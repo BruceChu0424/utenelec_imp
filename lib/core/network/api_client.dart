@@ -15,6 +15,9 @@ import 'company_tls.dart';
 import 'connection_recovery.dart';
 import 'data_write_revision.dart';
 import 'api_error.dart';
+import 'business_precision_coordinator.dart';
+import 'business_submission_headers.dart';
+import 'interceptors/business_precision_interceptor.dart';
 import 'api_exception.dart';
 import 'api_mutation_reload_safety.dart';
 import 'authenticated_request_scope.dart';
@@ -46,11 +49,26 @@ class ApiClient {
     this._dio, {
     this.streamingDownloads = false,
     ApiMutationReloadSafety? reloadSafety,
+    BusinessPrecisionCoordinator? precisionCoordinator,
+    Object? Function(RequestOptions)? precisionIdentity,
+    Future<bool> Function(RequestOptions)? precisionIsCurrent,
   }) : _reloadSafety = reloadSafety ?? apiMutationReloadSafety {
     if (!_dio.interceptors.any(
       (item) => item is DiagnosticRequestInterceptor,
     )) {
       _dio.interceptors.add(DiagnosticRequestInterceptor());
+    }
+    if (!_dio.interceptors.any(
+      (interceptor) => interceptor is BusinessPrecisionInterceptor,
+    )) {
+      _dio.interceptors.add(
+        BusinessPrecisionInterceptor(
+          _dio,
+          coordinator: precisionCoordinator,
+          identity: precisionIdentity,
+          isCurrent: precisionIsCurrent,
+        ),
+      );
     }
   }
 
@@ -551,9 +569,22 @@ class ApiClient {
     String filename,
     String contentType, {
     Duration? receiveTimeout,
+    Map<String, Object?> jsonParts = const {},
+    Map<String, dynamic>? headers,
   }) => _reloadSafety.track(() async {
     try {
+      if (jsonParts.containsKey('file') ||
+          jsonParts.keys.any((key) => key.trim().isEmpty)) {
+        throw ArgumentError(
+          'JSON multipart fields must have distinct non-file names',
+        );
+      }
       final form = FormData.fromMap({
+        for (final entry in jsonParts.entries)
+          entry.key: MultipartFile.fromString(
+            jsonEncode(entry.value),
+            contentType: DioMediaType.parse('application/json'),
+          ),
         'file': MultipartFile.fromBytes(
           bytes,
           filename: filename,
@@ -565,6 +596,7 @@ class ApiClient {
         data: form,
         options: Options(
           responseType: ResponseType.json,
+          headers: businessSubmissionHeaders(headers),
           receiveTimeout: receiveTimeout,
           extra: {
             safeRequestRetryDisabledKey: true,
@@ -748,6 +780,9 @@ class ApiClient {
 
   /// bytes 响应的错误转换：业务错误体可能是 UTF-8 JSON 字节，尝试解出 ApiError 取消息。
   ApiException _convertBytes(DioException e) {
+    if (e.error is ApiException) {
+      return e.error! as ApiException;
+    }
     final connectionFailure = _connectionException(e);
     if (connectionFailure != null) return connectionFailure;
     final data = e.response?.data;
@@ -767,6 +802,9 @@ class ApiClient {
   String get baseUrl => _dio.options.baseUrl;
 
   ApiException _convert(DioException e) {
+    if (e.error is ApiException) {
+      return e.error! as ApiException;
+    }
     if (e.type == DioExceptionType.cancel && e.error == _retiredReadReason) {
       return ApiException('REQUEST_STALE', '搜索条件或读取页面已变化');
     }
@@ -883,5 +921,13 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   dio.interceptors.add(
     DataWriteRevisionInterceptor((options) => recordDataWrite(ref, options)),
   );
-  return ApiClient(dio, streamingDownloads: true);
+  return ApiClient(
+    dio,
+    streamingDownloads: true,
+    precisionIdentity: AuthInterceptor.retainedIdentity,
+    precisionIsCurrent: (options) async =>
+        ref.mounted &&
+        ref.read(apiBaseUrlProvider) == baseUrl &&
+        await authInterceptor.requestBelongsToCurrentIdentity(options),
+  );
 });

@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/components/feedback/uten_modal_bottom_sheet.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../core/router/page_navigation_session.dart';
@@ -876,6 +877,6 @@ String _statusDescription(ProductionFqcReplenishmentMaterialTask task) =>
     };
 
 String _qty(double value) => value
-    .toStringAsFixed(4)
+    .toExactString(minimumFractionDigits: 4)
     .replaceFirst(RegExp(r'0+$'), '')
     .replaceFirst(RegExp(r'\.$'), '');

@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read.dart';
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
@@ -1307,7 +1308,7 @@ UtenStatusBadgeType _decisionBadgeType(String decision) => switch (decision) {
 };
 
 String _qty(double value) => value
-    .toStringAsFixed(4)
+    .toExactString(minimumFractionDigits: 4)
     .replaceFirst(RegExp(r'0+$'), '')
     .replaceFirst(RegExp(r'\.$'), '');
 

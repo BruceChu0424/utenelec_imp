@@ -1,0 +1,7351 @@
+{
+  "schemaVersion": 1,
+  "sourceSha256": "47e2a017451b2c25e3a5f75f7848eec7e1589975056baf4b08673b2fd2c44a4d",
+  "confirmedBusinessRules": {
+    "应收账款汇总表-物料金额": "用户2026-11-03确认：期末还欠的物料款，不是本期新增物料款",
+    "source": "用户转述财务确认 2026-11-02",
+    "销售收入": "主营业务收入",
+    "加工人工": "制造费用",
+    "金本收入": "其他业务收入",
+    "退税": "营业外收入",
+    "收客户税点": "营业外收入",
+    "plasticRatio": {
+      "formula": "当月结算用量 ÷ 实际耗用量 × 100%",
+      "confirmedBy": "USER_RELAYED_FINANCE",
+      "zeroOrMissingDenominator": "UNKNOWN",
+      "sourceFormulas": [
+        {
+          "cell": "附件8!L6",
+          "formula": "H6/(C6+E6+D6+F6-G6-J6)"
+        },
+        {
+          "cell": "附件8!L18",
+          "formula": "H18/(C18+D18+E18+C20+D20+E20-J20-J18)"
+        },
+        {
+          "cell": "附件8!L27",
+          "formula": "H27/(C27+E27+D27+F27-G27-J27)"
+        }
+      ]
+    },
+    "supplierSettlementDeductions": {
+      "confirmedBy": "USER_RELAYED_FINANCE_2026-11-03",
+      "decision": "PER_DOCUMENT_EXPLICIT_CHOICE",
+      "stillOwed": "只减少本次实际付款参考，未付部分继续留在原应付余额",
+      "released": "须有明确金额、科目、归属及依据，经原真实应付冲减后减少欠款；不只改报表",
+      "rounding": "不自动凑整、舍入或默认尾差扣款",
+      "bankFee": "实际银行费用保持原资金/费用事实，不因名字自动等同债务减免"
+    }
+  },
+  "templates": {
+    "subcontractStatement": {
+      "entryName": "应付账款-委外加工对账单",
+      "source": "部门汇总!A3",
+      "headers": [
+        "序号",
+        "物料编码",
+        "品名及规格",
+        "颜色",
+        "期初库存(PCS)",
+        "本月入库 / 材料单号",
+        "本月入库 / 入库日期",
+        "本月入库 / 入库数量",
+        "本月入库 / 数量合计",
+        "允许生产损耗3%",
+        "本月出货 / 入库单号",
+        "本月出货 / 出货日期",
+        "本月出货 / 出货数量",
+        "本月出货 / 数量合计",
+        "结存",
+        "加工单价含税（元）",
+        "金额（元）",
+        "减扣材料款 / 单价",
+        "减扣材料款 / 金额"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A3",
+            "label": "序号"
+          }
+        ],
+        [
+          {
+            "cell": "B3",
+            "label": "物料编码"
+          }
+        ],
+        [
+          {
+            "cell": "C3",
+            "label": "品名及规格"
+          }
+        ],
+        [
+          {
+            "cell": "D3",
+            "label": "颜色"
+          }
+        ],
+        [
+          {
+            "cell": "E3",
+            "label": "期初库存(PCS)"
+          }
+        ],
+        [
+          {
+            "cell": "F3",
+            "label": "本月入库"
+          },
+          {
+            "cell": "F4",
+            "label": "材料单号"
+          }
+        ],
+        [
+          {
+            "cell": "F3",
+            "label": "本月入库"
+          },
+          {
+            "cell": "G4",
+            "label": "入库日期"
+          }
+        ],
+        [
+          {
+            "cell": "F3",
+            "label": "本月入库"
+          },
+          {
+            "cell": "H4",
+            "label": "入库数量"
+          }
+        ],
+        [
+          {
+            "cell": "F3",
+            "label": "本月入库"
+          },
+          {
+            "cell": "I4",
+            "label": "数量合计"
+          }
+        ],
+        [
+          {
+            "cell": "J3",
+            "label": "允许生产损耗3%"
+          }
+        ],
+        [
+          {
+            "cell": "K3",
+            "label": "本月出货"
+          },
+          {
+            "cell": "K4",
+            "label": "入库单号"
+          }
+        ],
+        [
+          {
+            "cell": "K3",
+            "label": "本月出货"
+          },
+          {
+            "cell": "L4",
+            "label": "出货日期"
+          }
+        ],
+        [
+          {
+            "cell": "K3",
+            "label": "本月出货"
+          },
+          {
+            "cell": "M4",
+            "label": "出货数量"
+          }
+        ],
+        [
+          {
+            "cell": "K3",
+            "label": "本月出货"
+          },
+          {
+            "cell": "N4",
+            "label": "数量合计"
+          }
+        ],
+        [
+          {
+            "cell": "O3",
+            "label": "结存"
+          }
+        ],
+        [
+          {
+            "cell": "P3",
+            "label": "加工单价含税（元）"
+          }
+        ],
+        [
+          {
+            "cell": "Q3",
+            "label": "金额（元）"
+          }
+        ],
+        [
+          {
+            "cell": "R3",
+            "label": "减扣材料款"
+          },
+          {
+            "cell": "R4",
+            "label": "单价"
+          }
+        ],
+        [
+          {
+            "cell": "R3",
+            "label": "减扣材料款"
+          },
+          {
+            "cell": "S4",
+            "label": "金额"
+          }
+        ]
+      ],
+      "headerSource": "附件1!A3:S4",
+      "print": {
+        "widths": [
+          9.0,
+          10.375,
+          30.5583,
+          14.6333,
+          8.8833,
+          18.25,
+          10.75,
+          10.3833,
+          9.5,
+          9.0,
+          12.8833,
+          9.1333,
+          11.5,
+          9.0,
+          9.0,
+          9.0,
+          19.225,
+          9.0,
+          7.75
+        ],
+        "fontName": "宋体",
+        "fontSize": 12,
+        "rowHeight": 18.0,
+        "sourceHeader": "附件1!A3:S4",
+        "sourceStyleCell": "A5",
+        "paper": {
+          "version": 2,
+          "headerStartRow": 2,
+          "headerRow": 3,
+          "headingRowHeights": {
+            "0": 32,
+            "1": 32,
+            "2": 32,
+            "3": 32
+          },
+          "headings": [
+            {
+              "sourceCell": "A1",
+              "fontSize": 12,
+              "bold": true,
+              "alignment": "CENTER",
+              "field": "title",
+              "merge": "A1:S1"
+            },
+            {
+              "sourceCell": "A2",
+              "fontSize": 12,
+              "bold": true,
+              "alignment": "LEFT",
+              "field": "header.customerName",
+              "merge": "A2:S2"
+            }
+          ],
+          "footer": {
+            "sourceFirstRow": 288,
+            "minimumDataRows": 283,
+            "cells": [
+              {
+                "sourceCell": "Q288",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "RIGHT",
+                "field": "paperTotals.processAmount",
+                "type": "money"
+              },
+              {
+                "sourceCell": "S288",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "RIGHT",
+                "field": "paperTotals.materialAmount",
+                "type": "money"
+              },
+              {
+                "sourceCell": "C289",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "text": "合计：",
+                "merge": "C289:P289",
+                "type": "text"
+              },
+              {
+                "sourceCell": "Q289",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "RIGHT",
+                "field": "footer.settlementNet.value",
+                "merge": "Q289:Q290",
+                "type": "money"
+              },
+              {
+                "sourceCell": "R289",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "confirmation.internalState",
+                "merge": "R289:S290",
+                "type": "text"
+              },
+              {
+                "sourceCell": "C290",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "footer.settlementAdjustmentBasis",
+                "merge": "C290:P290",
+                "type": "text"
+              }
+            ]
+          },
+          "orientation": "portrait",
+          "paperSize": "A4",
+          "sourcePrint": {
+            "version": 2,
+            "sourceSha256": "47e2a017451b2c25e3a5f75f7848eec7e1589975056baf4b08673b2fd2c44a4d",
+            "sourceSheetPath": "xl/worksheets/sheet2.xml",
+            "paperSize": "A4",
+            "effectivePaperSize": "A4",
+            "orientation": "portrait",
+            "scalePercent": 100,
+            "fitToPage": false,
+            "fitToWidth": 1,
+            "fitToHeight": 1,
+            "pageOrder": "downThenOver",
+            "marginsPoints": {
+              "left": 54,
+              "right": 54,
+              "top": 72,
+              "bottom": 72,
+              "header": 36,
+              "footer": 36
+            },
+            "repeatRows": [],
+            "repeatColumns": [],
+            "columnWidthsPoints": [
+              50.625,
+              58.5,
+              171.75,
+              82.125,
+              49.875,
+              102.75,
+              60.375,
+              58.5,
+              53.25,
+              50.625,
+              72.375,
+              51.375,
+              64.5,
+              50.625,
+              50.625,
+              50.625,
+              108.0,
+              50.625,
+              43.5
+            ],
+            "columnWidthCharacters": [
+              9.0,
+              10.375,
+              30.5583333333333,
+              14.6333333333333,
+              8.88333333333333,
+              18.25,
+              10.75,
+              10.3833333333333,
+              9.5,
+              9.0,
+              12.8833333333333,
+              9.13333333333333,
+              11.5,
+              9.0,
+              9.0,
+              9.0,
+              19.225,
+              9.0,
+              7.75
+            ],
+            "widthBasis": {
+              "fontName": "宋体",
+              "fontSize": 11,
+              "measurement": "Microsoft Excel 16.0 native anonymous geometry"
+            },
+            "sourcePageSetupAttributes": {
+              "paperSize": "9",
+              "orientation": "portrait"
+            },
+            "sourceStyles": {
+              "A1": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "A2": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "LEFT",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "A3": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "B3": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "C289": {
+                "fontSize": 11.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "C290": {
+                "fontSize": 11.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "C3": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "LEFT",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "D3": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "E3": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "F3": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "F4": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "G4": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "H4": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "I4": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "J3": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "K3": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "K4": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "L4": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "M4": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "N4": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "O3": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "P3": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "Q288": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "Q289": {
+                "fontSize": 11.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "Q3": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "R289": {
+                "fontSize": 11.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "R3": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "R4": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "S288": {
+                "fontSize": 11.0,
+                "bold": true,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "S4": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              }
+            },
+            "bodyStyles": [
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 11.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              }
+            ]
+          },
+          "geometrySha256": "87e6cce66cdde7bf5b11eb04c656c17cf9457d397dc86b8cfbd165e0daf2d030"
+        }
+      }
+    },
+    "supplierStatement": {
+      "entryName": "应付账款-供应商对账单",
+      "source": "部门汇总!A4",
+      "headers": [
+        "送货日期",
+        "物料编码",
+        "物料名称",
+        "单位",
+        "数量",
+        "含税单价",
+        "含税金额",
+        "备注"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A6",
+            "label": "送货日期"
+          }
+        ],
+        [
+          {
+            "cell": "B6",
+            "label": "物料编码"
+          }
+        ],
+        [
+          {
+            "cell": "C6",
+            "label": "物料名称"
+          }
+        ],
+        [
+          {
+            "cell": "D6",
+            "label": "单位"
+          }
+        ],
+        [
+          {
+            "cell": "E6",
+            "label": "数量"
+          }
+        ],
+        [
+          {
+            "cell": "F6",
+            "label": "含税单价"
+          }
+        ],
+        [
+          {
+            "cell": "G6",
+            "label": "含税金额"
+          }
+        ],
+        [
+          {
+            "cell": "H6",
+            "label": "备注"
+          }
+        ]
+      ],
+      "headerSource": "附件2!A6:H6",
+      "print": {
+        "widths": [
+          9.65,
+          9.1,
+          47.9,
+          5.2,
+          8.0,
+          10.3917,
+          12.0,
+          18.0
+        ],
+        "fontName": "宋体",
+        "fontSize": 11,
+        "rowHeight": 30.0,
+        "sourceHeader": "附件2!A6:H6",
+        "sourceStyleCell": "A7",
+        "paper": {
+          "version": 2,
+          "headerStartRow": 5,
+          "headerRow": 5,
+          "headingRowHeights": {
+            "0": 24.5,
+            "1": 23,
+            "2": 23,
+            "3": 23,
+            "4": 23,
+            "5": 30
+          },
+          "headings": [
+            {
+              "sourceCell": "B1",
+              "fontSize": 18,
+              "bold": true,
+              "alignment": "CENTER",
+              "field": "organizationName",
+              "merge": "B1:H1"
+            },
+            {
+              "sourceCell": "B2",
+              "fontSize": 10,
+              "bold": false,
+              "alignment": "CENTER",
+              "field": "header.address",
+              "merge": "B2:G2"
+            },
+            {
+              "sourceCell": "B3",
+              "fontSize": 10,
+              "bold": false,
+              "alignment": "CENTER",
+              "field": "header.phone",
+              "merge": "B3:G3"
+            },
+            {
+              "sourceCell": "B4",
+              "fontSize": 18,
+              "bold": true,
+              "alignment": "CENTER",
+              "text": "对 帐 表",
+              "merge": "B4:G4"
+            },
+            {
+              "sourceCell": "A5",
+              "fontSize": 11,
+              "bold": false,
+              "alignment": "CENTER",
+              "field": "supplierCustomerPeriod",
+              "merge": "A5:G5"
+            }
+          ],
+          "footer": {
+            "sourceFirstRow": 13,
+            "minimumDataRows": 6,
+            "cells": [
+              {
+                "sourceCell": "A13",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "text": "合计：",
+                "type": "text",
+                "merge": "A13:C13"
+              },
+              {
+                "sourceCell": "E13",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "RIGHT",
+                "field": "paperTotals.qty",
+                "type": "number"
+              },
+              {
+                "sourceCell": "G13",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "RIGHT",
+                "field": "paperTotals.amount",
+                "type": "money"
+              },
+              {
+                "sourceCell": "A14",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "text": "合计：",
+                "type": "text"
+              },
+              {
+                "sourceCell": "B14",
+                "merge": "B14:F14",
+                "field": "footer.settlementAdjustmentBasis",
+                "type": "text",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT"
+              },
+              {
+                "sourceCell": "G14",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "RIGHT",
+                "field": "footer.settlementNet.value",
+                "type": "money"
+              },
+              {
+                "sourceCell": "H14",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "confirmation.internalState",
+                "type": "text"
+              },
+              {
+                "sourceCell": "E16",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "CENTER",
+                "field": "organizationName",
+                "merge": "E16:G16",
+                "type": "text"
+              },
+              {
+                "sourceCell": "E17",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "CENTER",
+                "field": "issuedDate",
+                "merge": "E17:G17",
+                "type": "text"
+              }
+            ]
+          },
+          "evidenceNotes": [
+            "原件SHA47e2a017451b2c25e3a5f75f7848eec7e1589975056baf4b08673b2fd2c44a4d，按workbook relationships→xl/worksheets/sheet3.xml直接核对；不用旧提取JSON的merge记录。",
+            "G14为独立净额，不落合并；原扣20.14及尾差只作源样例，不默认，缺实际调整源留空。"
+          ],
+          "orientation": "portrait",
+          "paperSize": "EXCEL_DEFAULT",
+          "sourcePrint": {
+            "version": 2,
+            "sourceSha256": "47e2a017451b2c25e3a5f75f7848eec7e1589975056baf4b08673b2fd2c44a4d",
+            "sourceSheetPath": "xl/worksheets/sheet3.xml",
+            "paperSize": "EXCEL_DEFAULT",
+            "effectivePaperSize": "A4",
+            "orientation": "portrait",
+            "scalePercent": 100,
+            "fitToPage": false,
+            "fitToWidth": 1,
+            "fitToHeight": 1,
+            "pageOrder": "downThenOver",
+            "marginsPoints": {
+              "left": 54,
+              "right": 54,
+              "top": 72,
+              "bottom": 72,
+              "header": 36,
+              "footer": 36
+            },
+            "repeatRows": [],
+            "repeatColumns": [],
+            "columnWidthsPoints": [
+              54.375,
+              51.0,
+              269.25,
+              29.25,
+              45.0,
+              58.5,
+              67.5,
+              101.25
+            ],
+            "columnWidthCharacters": [
+              9.65,
+              9.1,
+              47.9,
+              5.2,
+              8.0,
+              10.3916666666667,
+              12.0,
+              18.0
+            ],
+            "widthBasis": {
+              "fontName": "宋体",
+              "fontSize": 11,
+              "measurement": "Microsoft Excel 16.0 native anonymous geometry"
+            },
+            "sourcePageSetupAttributes": {},
+            "sourceStyles": {
+              "A13": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A14": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A5": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A6": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "B1": {
+                "fontSize": 18.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "B14": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "B2": {
+                "fontSize": 10.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "B3": {
+                "fontSize": 10.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "B4": {
+                "fontSize": 18.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "B6": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "C6": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "D6": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "E13": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "E16": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "E17": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "E6": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "F6": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "G13": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "G14": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "G6": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "H14": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "H6": {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              }
+            },
+            "bodyStyles": [
+              {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "LEFT",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 11.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              }
+            ]
+          },
+          "geometrySha256": "093b029589c8ae421ff6af49b1418cdb3c584598e7ac0b1a797f52efcab6a651"
+        }
+      }
+    },
+    "payableSummary": {
+      "entryName": "应付账款汇总表",
+      "source": "部门汇总!A5",
+      "headers": [
+        "供应商编号",
+        "供应商简称",
+        "供应商全称",
+        "结算期限",
+        "上月余额",
+        "货款金额",
+        "付款金额",
+        "退货金额",
+        "货款冲销",
+        "货款余额",
+        "模具款",
+        "付款金额",
+        "模具款冲销",
+        "货款余额",
+        "应付合计"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A2",
+            "label": "供应商编号"
+          }
+        ],
+        [
+          {
+            "cell": "B2",
+            "label": "供应商简称"
+          }
+        ],
+        [
+          {
+            "cell": "C2",
+            "label": "供应商全称"
+          }
+        ],
+        [
+          {
+            "cell": "D2",
+            "label": "结算期限"
+          }
+        ],
+        [
+          {
+            "cell": "E2",
+            "label": "上月余额"
+          }
+        ],
+        [
+          {
+            "cell": "F2",
+            "label": "货款金额"
+          }
+        ],
+        [
+          {
+            "cell": "G2",
+            "label": "付款金额"
+          }
+        ],
+        [
+          {
+            "cell": "H2",
+            "label": "退货金额"
+          }
+        ],
+        [
+          {
+            "cell": "I2",
+            "label": "货款冲销"
+          }
+        ],
+        [
+          {
+            "cell": "J2",
+            "label": "货款余额"
+          }
+        ],
+        [
+          {
+            "cell": "K2",
+            "label": "模具款"
+          }
+        ],
+        [
+          {
+            "cell": "L2",
+            "label": "付款金额"
+          }
+        ],
+        [
+          {
+            "cell": "M2",
+            "label": "模具款冲销"
+          }
+        ],
+        [
+          {
+            "cell": "N2",
+            "label": "货款余额"
+          }
+        ],
+        [
+          {
+            "cell": "O2",
+            "label": "应付合计"
+          }
+        ]
+      ],
+      "headerSource": "附件3!A2:O2",
+      "print": {
+        "widths": [
+          11.0,
+          14.75,
+          35.25,
+          35.125,
+          10.375,
+          9.0,
+          9.375,
+          9.0,
+          9.0,
+          10.375,
+          9.0,
+          9.0,
+          12.875,
+          9.0,
+          9.0
+        ],
+        "fontName": "宋体",
+        "fontSize": 12,
+        "rowHeight": 23.0,
+        "sourceHeader": "附件3!A2:O2",
+        "sourceStyleCell": "A3"
+      }
+    },
+    "customerShipmentReview": {
+      "entryName": "客户发货审核",
+      "source": "部门汇总!A6",
+      "printTitle": "发货清单",
+      "printFormCode": "YT-FM-XS-05",
+      "printHeaders": [
+        "序号",
+        "编号",
+        "产品型号",
+        "系列",
+        "产品名称",
+        "颜色",
+        "单位",
+        "数量",
+        "单价",
+        "折扣",
+        "金额",
+        "备注"
+      ],
+      "printSignatures": [
+        "仓管",
+        "制单员",
+        "审核员",
+        "仓库审核",
+        "客户签名"
+      ]
+    },
+    "otherReceivableStatement": {
+      "entryName": "其他应收款-对账单",
+      "source": "部门汇总!A7",
+      "headers": [
+        "日期",
+        "产品名称（57#）",
+        "规格",
+        "进仓重量(KG)",
+        "发出重量(KG)",
+        "损耗0.5%",
+        "本月结余(KG）",
+        "发出数量(PCS)",
+        "加工单价",
+        "加工货款"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A3",
+            "label": "日期"
+          }
+        ],
+        [
+          {
+            "cell": "B3",
+            "label": "产品名称（57#）"
+          }
+        ],
+        [
+          {
+            "cell": "C3",
+            "label": "规格"
+          }
+        ],
+        [
+          {
+            "cell": "D3",
+            "label": "进仓重量(KG)"
+          }
+        ],
+        [
+          {
+            "cell": "E3",
+            "label": "发出重量(KG)"
+          }
+        ],
+        [
+          {
+            "cell": "F3",
+            "label": "损耗0.5%"
+          }
+        ],
+        [
+          {
+            "cell": "G3",
+            "label": "本月结余(KG）"
+          }
+        ],
+        [
+          {
+            "cell": "H3",
+            "label": "发出数量(PCS)"
+          }
+        ],
+        [
+          {
+            "cell": "I3",
+            "label": "加工单价"
+          }
+        ],
+        [
+          {
+            "cell": "J3",
+            "label": "加工货款"
+          }
+        ]
+      ],
+      "headerSource": "附件4!A3:J3",
+      "print": {
+        "widths": [
+          10.4167,
+          22.875,
+          4.875,
+          10.0,
+          8.125,
+          8.3333,
+          10.9333,
+          10.5167,
+          7.9167,
+          19.125
+        ],
+        "fontName": "宋体",
+        "fontSize": 10,
+        "rowHeight": 25.5,
+        "sourceHeader": "附件4!A3:J3",
+        "sourceStyleCell": "A4",
+        "paper": {
+          "version": 2,
+          "headerStartRow": 2,
+          "headerRow": 2,
+          "headingRowHeights": {
+            "0": 55,
+            "1": 32,
+            "2": 25.5
+          },
+          "headings": [
+            {
+              "sourceCell": "A1",
+              "fontSize": 24,
+              "bold": true,
+              "alignment": "CENTER",
+              "field": "title",
+              "merge": "A1:J1"
+            },
+            {
+              "sourceCell": "A2",
+              "fontSize": 12,
+              "bold": true,
+              "alignment": "LEFT",
+              "field": "header.customerName",
+              "merge": "A2:D2"
+            },
+            {
+              "sourceCell": "E2",
+              "fontSize": 12,
+              "bold": false,
+              "alignment": "LEFT",
+              "field": "header.phone",
+              "merge": "E2:F2"
+            },
+            {
+              "sourceCell": "H2",
+              "fontSize": 12,
+              "bold": false,
+              "alignment": "LEFT",
+              "field": "header.fax"
+            },
+            {
+              "sourceCell": "J2",
+              "fontSize": 10,
+              "bold": false,
+              "alignment": "LEFT",
+              "text": "其他应收款  对账单"
+            }
+          ],
+          "footer": {
+            "sourceFirstRow": 41,
+            "minimumDataRows": 37,
+            "cells": [
+              {
+                "sourceCell": "A41",
+                "fontSize": 12,
+                "bold": true,
+                "alignment": "RIGHT",
+                "text": "本月加工费总金额：",
+                "merge": "A41:B41",
+                "type": "text"
+              },
+              {
+                "sourceCell": "D41",
+                "fontSize": 12,
+                "bold": true,
+                "alignment": "CENTER",
+                "field": "footer.periodAmount.value",
+                "merge": "D41:E41",
+                "type": "money"
+              },
+              {
+                "sourceCell": "F41",
+                "fontSize": 12,
+                "bold": true,
+                "alignment": "LEFT",
+                "text": "人民币大写总金额：",
+                "merge": "F41:G41",
+                "type": "text"
+              },
+              {
+                "sourceCell": "H41",
+                "fontSize": 12,
+                "bold": true,
+                "alignment": "LEFT",
+                "field": "footer.periodAmountUpper.value",
+                "merge": "H41:J41",
+                "type": "text"
+              },
+              {
+                "sourceCell": "A42",
+                "fontSize": 12,
+                "bold": true,
+                "alignment": "RIGHT",
+                "text": "含税加工费金额",
+                "merge": "A42:B42",
+                "type": "text"
+              },
+              {
+                "sourceCell": "D42",
+                "fontSize": 12,
+                "bold": true,
+                "alignment": "CENTER",
+                "field": "footer.adjustedProcessingAmount.value",
+                "merge": "D42:E42",
+                "type": "money"
+              },
+              {
+                "sourceCell": "A43",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "footer.closingBalance.label",
+                "merge": "A43:D43",
+                "type": "text"
+              },
+              {
+                "sourceCell": "E43",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "CENTER",
+                "field": "footer.closingBalance.value",
+                "merge": "E43:F43",
+                "type": "money"
+              },
+              {
+                "sourceCell": "A44",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "text": "总欠金本材料",
+                "merge": "A44:E44",
+                "type": "text"
+              },
+              {
+                "sourceCell": "F44",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "CENTER",
+                "field": "footer.closingMaterialWeight.value",
+                "type": "number"
+              },
+              {
+                "sourceCell": "G44",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "preparedBy",
+                "text": "制表:",
+                "type": "text"
+              },
+              {
+                "sourceCell": "I44",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "issuedDate",
+                "text": "日期：",
+                "type": "text"
+              },
+              {
+                "sourceCell": "A46",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "footer.printRemark",
+                "merge": "A46:J46",
+                "type": "text"
+              },
+              {
+                "sourceCell": "A48",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "confirmation.counterpartName",
+                "text": "客户确认:",
+                "type": "text"
+              },
+              {
+                "sourceCell": "G48",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "confirmation.internalName",
+                "text": "优腾确认:",
+                "type": "text"
+              },
+              {
+                "sourceCell": "A50",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "confirmation.counterpartDate",
+                "text": "日    期:",
+                "type": "text"
+              },
+              {
+                "sourceCell": "G50",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "confirmation.internalDate",
+                "text": "日   期：",
+                "type": "text"
+              }
+            ]
+          },
+          "orientation": "portrait",
+          "paperSize": "EXCEL_DEFAULT",
+          "sourcePrint": {
+            "version": 2,
+            "sourceSha256": "47e2a017451b2c25e3a5f75f7848eec7e1589975056baf4b08673b2fd2c44a4d",
+            "sourceSheetPath": "xl/worksheets/sheet5.xml",
+            "paperSize": "EXCEL_DEFAULT",
+            "effectivePaperSize": "A4",
+            "orientation": "portrait",
+            "scalePercent": 100,
+            "fitToPage": false,
+            "fitToWidth": 1,
+            "fitToHeight": 1,
+            "pageOrder": "downThenOver",
+            "marginsPoints": {
+              "left": 54,
+              "right": 54,
+              "top": 72,
+              "bottom": 72,
+              "header": 36,
+              "footer": 36
+            },
+            "repeatRows": [],
+            "repeatColumns": [],
+            "columnWidthsPoints": [
+              58.5,
+              128.625,
+              27.375,
+              56.25,
+              45.75,
+              46.875,
+              61.5,
+              59.25,
+              44.625,
+              107.625,
+              30.75,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0,
+              0.0
+            ],
+            "columnWidthCharacters": [
+              10.4166666666667,
+              22.875,
+              4.875,
+              10.0,
+              8.125,
+              8.33333333333333,
+              10.9333333333333,
+              10.5166666666667,
+              7.91666666666667,
+              19.125,
+              5.5,
+              24.0,
+              6.3,
+              9.0,
+              7.7,
+              9.8,
+              11.6
+            ],
+            "widthBasis": {
+              "fontName": "宋体",
+              "fontSize": 11,
+              "measurement": "Microsoft Excel 16.0 native anonymous geometry"
+            },
+            "sourcePageSetupAttributes": {},
+            "sourceStyles": {
+              "A1": {
+                "fontSize": 24.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "A2": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "LEFT",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A3": {
+                "fontSize": 10.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A41": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "RIGHT",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A42": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A43": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A44": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A46": {
+                "fontSize": 10.0,
+                "bold": true,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A48": {
+                "fontSize": 10.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A50": {
+                "fontSize": 10.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "B3": {
+                "fontSize": 10.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "C3": {
+                "fontSize": 10.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "D3": {
+                "fontSize": 10.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "D41": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "D42": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "E2": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "E3": {
+                "fontSize": 10.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "E43": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "F3": {
+                "fontSize": 10.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "F41": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "F44": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "G3": {
+                "fontSize": 10.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "G44": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "G48": {
+                "fontSize": 10.0,
+                "bold": true,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "G50": {
+                "fontSize": 10.0,
+                "bold": true,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "H2": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "H3": {
+                "fontSize": 10.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "H41": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "I3": {
+                "fontSize": 10.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": true
+              },
+              "I44": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "J2": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "J3": {
+                "fontSize": 10.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              }
+            },
+            "bodyStyles": [
+              {
+                "fontSize": 10.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 10.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 10.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 10.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 10.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 10.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 10.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 10.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 10.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 10.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              }
+            ]
+          },
+          "geometrySha256": "b207efb981d319dcc1cd12e28a1572ce7c98fcb7580284e491cd76b6f9d48917"
+        }
+      }
+    },
+    "clientStatement": {
+      "entryName": "应收账款-客户对账单",
+      "source": "部门汇总!A8",
+      "headers": [
+        "开单日期",
+        "货品名称",
+        "颜色",
+        "单位",
+        "数量",
+        "含税单价",
+        "含税金额",
+        "备注"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A4",
+            "label": "开单日期"
+          }
+        ],
+        [
+          {
+            "cell": "B4",
+            "label": "货品名称"
+          }
+        ],
+        [
+          {
+            "cell": "C4",
+            "label": "颜色"
+          }
+        ],
+        [
+          {
+            "cell": "D4",
+            "label": "单位"
+          }
+        ],
+        [
+          {
+            "cell": "E4",
+            "label": "数量"
+          }
+        ],
+        [
+          {
+            "cell": "F4",
+            "label": "含税单价"
+          }
+        ],
+        [
+          {
+            "cell": "G4",
+            "label": "含税金额"
+          }
+        ],
+        [
+          {
+            "cell": "H4",
+            "label": "备注"
+          }
+        ]
+      ],
+      "headerSource": "附件5!A4:H4",
+      "print": {
+        "widths": [
+          11.3667,
+          55.1667,
+          11.6667,
+          4.5,
+          8.0917,
+          9.5333,
+          14.1167,
+          14.2417
+        ],
+        "fontName": "宋体",
+        "fontSize": 9,
+        "rowHeight": 18.0,
+        "sourceHeader": "附件5!A4:H4",
+        "sourceStyleCell": "A5",
+        "paper": {
+          "version": 2,
+          "headerStartRow": 3,
+          "headerRow": 3,
+          "headingRowHeights": {
+            "0": 33,
+            "1": 18,
+            "2": 18,
+            "3": 18
+          },
+          "headings": [
+            {
+              "sourceCell": "A1",
+              "fontSize": 11,
+              "bold": true,
+              "alignment": "CENTER",
+              "field": "title",
+              "merge": "A1:H1"
+            },
+            {
+              "sourceCell": "A2",
+              "fontSize": 12,
+              "bold": true,
+              "alignment": "LEFT",
+              "field": "header.customerName"
+            },
+            {
+              "sourceCell": "E2",
+              "fontSize": 9,
+              "bold": false,
+              "alignment": "LEFT",
+              "text": "应收账款   客户对账",
+              "merge": "E2:G2"
+            },
+            {
+              "sourceCell": "A3",
+              "fontSize": 12,
+              "bold": true,
+              "alignment": "LEFT",
+              "field": "header.phone"
+            },
+            {
+              "sourceCell": "C3",
+              "fontSize": 12,
+              "bold": true,
+              "alignment": "LEFT",
+              "field": "header.fax"
+            }
+          ],
+          "footer": {
+            "sourceFirstRow": 94,
+            "minimumDataRows": 89,
+            "cells": [
+              {
+                "sourceCell": "B94",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "text": "合计",
+                "type": "text"
+              },
+              {
+                "sourceCell": "E94",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "RIGHT",
+                "field": "paperTotals.qty",
+                "type": "number"
+              },
+              {
+                "sourceCell": "G94",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "RIGHT",
+                "field": "paperTotals.amount",
+                "type": "money"
+              },
+              {
+                "sourceCell": "A95",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "text": "本月货款人民币大写金额：",
+                "merge": "A95:B95",
+                "type": "text"
+              },
+              {
+                "sourceCell": "C95",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "footer.periodAmount.value",
+                "merge": "C95:H95",
+                "type": "text"
+              },
+              {
+                "sourceCell": "A96",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "footer.retention",
+                "merge": "A96:H96",
+                "type": "text"
+              },
+              {
+                "sourceCell": "A97",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "footer.closingBalance.label",
+                "merge": "A97:B97",
+                "type": "text"
+              },
+              {
+                "sourceCell": "C97",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "RIGHT",
+                "field": "footer.closingBalance.value",
+                "type": "money"
+              },
+              {
+                "sourceCell": "D97",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "footer.closingBalanceBasis.value",
+                "merge": "D97:H97",
+                "type": "text"
+              },
+              {
+                "sourceCell": "A98",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "footer.printRemark",
+                "merge": "A98:G98",
+                "type": "text"
+              },
+              {
+                "sourceCell": "A100",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "confirmation.counterpartName",
+                "text": "客户对账人签名盖章：",
+                "type": "text"
+              },
+              {
+                "sourceCell": "C100",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "confirmation.internalName",
+                "text": "     供应商对账人签名盖章：",
+                "type": "text"
+              },
+              {
+                "sourceCell": "G100",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "preparedBy",
+                "type": "text"
+              },
+              {
+                "sourceCell": "A103",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "confirmation.counterpartDate",
+                "text": "              日期：",
+                "type": "text"
+              },
+              {
+                "sourceCell": "C103",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "confirmation.internalDate",
+                "text": "                 日期：",
+                "merge": "C103:F103",
+                "type": "text"
+              },
+              {
+                "sourceCell": "G103",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "issuedDate",
+                "type": "text"
+              },
+              {
+                "sourceCell": "G105",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "organizationName",
+                "type": "text"
+              },
+              {
+                "sourceCell": "G106",
+                "fontSize": 10,
+                "bold": false,
+                "alignment": "LEFT",
+                "field": "issuedDate",
+                "merge": "G106:H106",
+                "type": "text"
+              }
+            ]
+          },
+          "orientation": "portrait",
+          "paperSize": "EXCEL_DEFAULT",
+          "sourcePrint": {
+            "version": 2,
+            "sourceSha256": "47e2a017451b2c25e3a5f75f7848eec7e1589975056baf4b08673b2fd2c44a4d",
+            "sourceSheetPath": "xl/worksheets/sheet6.xml",
+            "paperSize": "EXCEL_DEFAULT",
+            "effectivePaperSize": "A4",
+            "orientation": "portrait",
+            "scalePercent": 100,
+            "fitToPage": false,
+            "fitToWidth": 1,
+            "fitToHeight": 1,
+            "pageOrder": "downThenOver",
+            "marginsPoints": {
+              "left": 54,
+              "right": 54,
+              "top": 72,
+              "bottom": 72,
+              "header": 36,
+              "footer": 36
+            },
+            "repeatRows": [],
+            "repeatColumns": [],
+            "columnWidthsPoints": [
+              63.75,
+              310.125,
+              65.625,
+              25.125,
+              45.375,
+              53.625,
+              79.5,
+              80.25
+            ],
+            "columnWidthCharacters": [
+              11.3666666666667,
+              55.1666666666667,
+              11.6666666666667,
+              4.5,
+              8.09166666666667,
+              9.53333333333333,
+              14.1166666666667,
+              14.2416666666667
+            ],
+            "widthBasis": {
+              "fontName": "宋体",
+              "fontSize": 11,
+              "measurement": "Microsoft Excel 16.0 native anonymous geometry"
+            },
+            "sourcePageSetupAttributes": {},
+            "sourceStyles": {
+              "A1": {
+                "fontSize": 11.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "A100": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A103": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A2": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A3": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A4": {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A95": {
+                "fontSize": 14.0,
+                "bold": true,
+                "alignment": "RIGHT",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A96": {
+                "fontSize": 14.0,
+                "bold": true,
+                "alignment": "LEFT",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "A97": {
+                "fontSize": 11.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "A98": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "LEFT",
+                "wrapText": true,
+                "shrinkToFit": true
+              },
+              "B4": {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "B94": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "C100": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "GENERAL",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "C103": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "C3": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "C4": {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "C95": {
+                "fontSize": 14.0,
+                "bold": true,
+                "alignment": "LEFT",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "C97": {
+                "fontSize": 9.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "D4": {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "D97": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "LEFT",
+                "wrapText": true,
+                "shrinkToFit": false
+              },
+              "E2": {
+                "fontSize": 12.0,
+                "bold": true,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "E4": {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "E94": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "F4": {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "G100": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "G103": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "G105": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "G106": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "G4": {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "G94": {
+                "fontSize": 12.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              "H4": {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              }
+            },
+            "bodyStyles": [
+              {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "LEFT",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              },
+              {
+                "fontSize": 9.0,
+                "bold": false,
+                "alignment": "CENTER",
+                "wrapText": false,
+                "shrinkToFit": false
+              }
+            ]
+          },
+          "geometrySha256": "cc14ccdd1ea1da406232053d5de2a2fe3b176e5bf1cb471b647374c50f1accc2"
+        }
+      }
+    },
+    "receivableSummary": {
+      "entryName": "应收账款汇总表",
+      "source": "部门汇总!A9",
+      "headers": [
+        "客户编号",
+        "客户简称",
+        "客户全称",
+        "业务员",
+        "总监",
+        "区域",
+        "所属地区",
+        "结算期限",
+        "铺底额",
+        "上月余额",
+        "发货金额",
+        "回款金额",
+        "退货金额",
+        "货款冲销",
+        "应收余额",
+        "超出铺底额",
+        "物料金额"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A2",
+            "label": "客户编号"
+          }
+        ],
+        [
+          {
+            "cell": "B2",
+            "label": "客户简称"
+          }
+        ],
+        [
+          {
+            "cell": "C2",
+            "label": "客户全称"
+          }
+        ],
+        [
+          {
+            "cell": "D2",
+            "label": "业务员"
+          }
+        ],
+        [
+          {
+            "cell": "E2",
+            "label": "总监"
+          }
+        ],
+        [
+          {
+            "cell": "F2",
+            "label": "区域"
+          }
+        ],
+        [
+          {
+            "cell": "G2",
+            "label": "所属地区"
+          }
+        ],
+        [
+          {
+            "cell": "H2",
+            "label": "结算期限"
+          }
+        ],
+        [
+          {
+            "cell": "I2",
+            "label": "铺底额"
+          }
+        ],
+        [
+          {
+            "cell": "J2",
+            "label": "上月余额"
+          }
+        ],
+        [
+          {
+            "cell": "K2",
+            "label": "发货金额"
+          }
+        ],
+        [
+          {
+            "cell": "L2",
+            "label": "回款金额"
+          }
+        ],
+        [
+          {
+            "cell": "M2",
+            "label": "退货金额"
+          }
+        ],
+        [
+          {
+            "cell": "N2",
+            "label": "货款冲销"
+          }
+        ],
+        [
+          {
+            "cell": "O2",
+            "label": "应收余额"
+          }
+        ],
+        [
+          {
+            "cell": "P2",
+            "label": "超出铺底额"
+          }
+        ],
+        [
+          {
+            "cell": "Q2",
+            "label": "物料金额"
+          }
+        ]
+      ],
+      "headerSource": "附件6!A2:Q2",
+      "print": {
+        "widths": [
+          9.0,
+          14.75,
+          35.25,
+          9.0,
+          9.0,
+          9.0,
+          9.0,
+          35.125,
+          9.0,
+          10.375,
+          9.0,
+          9.375,
+          9.0,
+          9.0,
+          10.375,
+          12.0,
+          9.0
+        ],
+        "fontName": "宋体",
+        "fontSize": 12,
+        "rowHeight": 23.0,
+        "sourceHeader": "附件6!A2:Q2",
+        "sourceStyleCell": "A3"
+      }
+    },
+    "copperFee": {
+      "entryName": "黄庆哲铜柱加工费核算表",
+      "source": "部门汇总!A10",
+      "headers": [
+        "序号",
+        "产品名称",
+        "单位",
+        "数量",
+        "单价",
+        "金额"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A3",
+            "label": "序号"
+          }
+        ],
+        [
+          {
+            "cell": "B3",
+            "label": "产品名称"
+          }
+        ],
+        [
+          {
+            "cell": "C3",
+            "label": "单位"
+          }
+        ],
+        [
+          {
+            "cell": "D3",
+            "label": "数量"
+          }
+        ],
+        [
+          {
+            "cell": "E3",
+            "label": "单价"
+          }
+        ],
+        [
+          {
+            "cell": "F3",
+            "label": "金额"
+          }
+        ]
+      ],
+      "headerSource": "附件7!A3:F3",
+      "print": {
+        "widths": [
+          6,
+          34.75,
+          6.6,
+          14.25,
+          9.0,
+          10.375
+        ],
+        "fontName": "宋体",
+        "fontSize": 12,
+        "rowHeight": 20.0,
+        "sourceHeader": "附件7!A3:F3",
+        "sourceStyleCell": "A4"
+      }
+    },
+    "copperDetail": {
+      "entryName": "铜柱车间插套酸洗与铜柱明细表",
+      "source": "附件7-1!A1，移除动态月份",
+      "headers": [
+        "时间",
+        "货品名称",
+        "重量",
+        "单位",
+        "数量",
+        "单位"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A3",
+            "label": "时间"
+          }
+        ],
+        [
+          {
+            "cell": "B3",
+            "label": "货品名称"
+          }
+        ],
+        [
+          {
+            "cell": "C3",
+            "label": "重量"
+          }
+        ],
+        [
+          {
+            "cell": "D3",
+            "label": "单位"
+          }
+        ],
+        [
+          {
+            "cell": "E3",
+            "label": "数量"
+          }
+        ],
+        [
+          {
+            "cell": "F3",
+            "label": "单位"
+          }
+        ]
+      ],
+      "headerSource": "附件7-1!A3:F3",
+      "bodySections": {
+        "PICKLING_INSERT": "插套酸洗入库明细",
+        "COPPER_PICKLING": "铜柱酸洗明细表"
+      },
+      "bodySectionAnchors": {
+        "PICKLING_INSERT": "A2",
+        "COPPER_PICKLING": "A29"
+      },
+      "print": {
+        "widths": [
+          8.6667,
+          27.1667,
+          8.6667,
+          8.6667,
+          8.6667,
+          8.6667
+        ],
+        "fontName": "Tahoma",
+        "fontSize": 9,
+        "rowHeight": 19.0,
+        "sourceHeader": "附件7-1!A3:F3",
+        "sourceStyleCell": "A4"
+      }
+    },
+    "plasticUsage": {
+      "entryName": "塑料耗用明细表",
+      "source": "部门汇总!A11",
+      "headers": [
+        "序号",
+        "材料名称",
+        "上月结存",
+        "本月仓库领用",
+        "不良品退注塑车 / 退料",
+        "不良品退注塑车 / 安装挑选不良",
+        "不良品退注塑车 / 安装挑选不良",
+        "产品入库数",
+        "账面结存",
+        "实 际 盘 点 数",
+        "差异",
+        "成品占材料比例%",
+        "原因"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A3",
+            "label": "序号"
+          }
+        ],
+        [
+          {
+            "cell": "B3",
+            "label": "材料名称"
+          }
+        ],
+        [
+          {
+            "cell": "C3",
+            "label": "上月结存"
+          }
+        ],
+        [
+          {
+            "cell": "D3",
+            "label": "本月仓库领用"
+          }
+        ],
+        [
+          {
+            "cell": "E3",
+            "label": "不良品退注塑车"
+          },
+          {
+            "cell": "E4",
+            "label": "退料"
+          }
+        ],
+        [
+          {
+            "cell": "E3",
+            "label": "不良品退注塑车"
+          },
+          {
+            "cell": "F4",
+            "label": "安装挑选不良"
+          }
+        ],
+        [
+          {
+            "cell": "G3",
+            "label": "不良品退注塑车"
+          },
+          {
+            "cell": "G4",
+            "label": "安装挑选不良"
+          }
+        ],
+        [
+          {
+            "cell": "H3",
+            "label": "产品入库数"
+          }
+        ],
+        [
+          {
+            "cell": "I3",
+            "label": "账面结存"
+          }
+        ],
+        [
+          {
+            "cell": "J3",
+            "label": "实 际 盘 点 数"
+          }
+        ],
+        [
+          {
+            "cell": "K3",
+            "label": "差异"
+          }
+        ],
+        [
+          {
+            "cell": "L3",
+            "label": "成品占材料比例%"
+          }
+        ],
+        [
+          {
+            "cell": "M3",
+            "label": "原因"
+          }
+        ]
+      ],
+      "headerSource": "附件8!A3:M4",
+      "print": {
+        "widths": [
+          6,
+          23.775,
+          6,
+          8.5583,
+          6.225,
+          6,
+          6,
+          9.775,
+          8.3833,
+          6,
+          8.5583,
+          6,
+          6
+        ],
+        "fontName": "宋体",
+        "fontSize": 9,
+        "rowHeight": 18.0,
+        "sourceHeader": "附件8!A3:M4",
+        "sourceStyleCell": "A5"
+      }
+    },
+    "plasticIssue": {
+      "entryName": "附件8-1领料",
+      "source": "工作表附件8-1领料",
+      "headers": [
+        "单号",
+        "开单日期",
+        "订单号",
+        "货品名称",
+        "型号",
+        "颜色",
+        "实发数量",
+        "备注"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A1",
+            "label": "单号"
+          }
+        ],
+        [
+          {
+            "cell": "B1",
+            "label": "开单日期"
+          }
+        ],
+        [
+          {
+            "cell": "C1",
+            "label": "订单号"
+          }
+        ],
+        [
+          {
+            "cell": "D1",
+            "label": "货品名称"
+          }
+        ],
+        [
+          {
+            "cell": "E1",
+            "label": "型号"
+          }
+        ],
+        [
+          {
+            "cell": "F1",
+            "label": "颜色"
+          }
+        ],
+        [
+          {
+            "cell": "G1",
+            "label": "实发数量"
+          }
+        ],
+        [
+          {
+            "cell": "H1",
+            "label": "备注"
+          }
+        ]
+      ],
+      "headerSource": "附件8-1领料!A1:H1",
+      "print": {
+        "widths": [
+          10.4417,
+          11.775,
+          8.6667,
+          20.0,
+          25.5583,
+          9.6667,
+          8.8917,
+          56.6667
+        ],
+        "fontName": "Tahoma",
+        "fontSize": 9,
+        "rowHeight": 20.0,
+        "sourceHeader": "附件8-1领料!A1:H1",
+        "sourceStyleCell": "A2"
+      }
+    },
+    "plasticReturn": {
+      "entryName": "附件8-2退料",
+      "source": "工作表附件8-2退料",
+      "headers": [
+        "单号",
+        "开单日期",
+        "系列",
+        "编号",
+        "货品名称",
+        "实退数量"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A1",
+            "label": "单号"
+          }
+        ],
+        [
+          {
+            "cell": "B1",
+            "label": "开单日期"
+          }
+        ],
+        [
+          {
+            "cell": "C1",
+            "label": "系列"
+          }
+        ],
+        [
+          {
+            "cell": "D1",
+            "label": "编号"
+          }
+        ],
+        [
+          {
+            "cell": "E1",
+            "label": "货品名称"
+          }
+        ],
+        [
+          {
+            "cell": "F1",
+            "label": "实退数量"
+          }
+        ]
+      ],
+      "headerSource": "附件8-2退料!A1:F1",
+      "print": {
+        "widths": [
+          10.6667,
+          9.3333,
+          6,
+          15.4417,
+          19.5583,
+          8.8917
+        ],
+        "fontName": "Tahoma",
+        "fontSize": 9,
+        "rowHeight": 20.0,
+        "sourceHeader": "附件8-2退料!A1:F1",
+        "sourceStyleCell": "A2"
+      }
+    },
+    "plasticFinished": {
+      "entryName": "附件8-3产品入库",
+      "source": "工作表附件8-3产品入库",
+      "headers": [
+        "单号",
+        "开单日期",
+        "系列",
+        "编号",
+        "货品名称",
+        "颜色",
+        "材质",
+        "重量",
+        "数量",
+        "备注"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A1",
+            "label": "单号"
+          }
+        ],
+        [
+          {
+            "cell": "B1",
+            "label": "开单日期"
+          }
+        ],
+        [
+          {
+            "cell": "C1",
+            "label": "系列"
+          }
+        ],
+        [
+          {
+            "cell": "D1",
+            "label": "编号"
+          }
+        ],
+        [
+          {
+            "cell": "E1",
+            "label": "货品名称"
+          }
+        ],
+        [
+          {
+            "cell": "F1",
+            "label": "颜色"
+          }
+        ],
+        [
+          {
+            "cell": "G1",
+            "label": "材质"
+          }
+        ],
+        [
+          {
+            "cell": "H1",
+            "label": "重量"
+          }
+        ],
+        [
+          {
+            "cell": "I1",
+            "label": "数量"
+          }
+        ],
+        [
+          {
+            "cell": "J1",
+            "label": "备注"
+          }
+        ]
+      ],
+      "headerSource": "附件8-3产品入库!A1:J1",
+      "print": {
+        "widths": [
+          12.3,
+          12.725,
+          7.675,
+          11.775,
+          30.3333,
+          9.0,
+          24.5583,
+          11.0083,
+          9.575,
+          51.0833
+        ],
+        "fontName": "Tahoma",
+        "fontSize": 9,
+        "rowHeight": 20.0,
+        "sourceHeader": "附件8-3产品入库!A1:J1",
+        "sourceStyleCell": "A2"
+      }
+    },
+    "balanceSheet": {
+      "entryName": "月度资产负债表",
+      "source": "部门汇总!A12",
+      "headers": [
+        "资  产",
+        "行次",
+        "期末余额",
+        "年初余额",
+        "负债和所有者权益",
+        "行次",
+        "期末余额",
+        "年初余额"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A4",
+            "label": "资  产"
+          }
+        ],
+        [
+          {
+            "cell": "B4",
+            "label": "行次"
+          }
+        ],
+        [
+          {
+            "cell": "C4",
+            "label": "期末余额"
+          }
+        ],
+        [
+          {
+            "cell": "D4",
+            "label": "年初余额"
+          }
+        ],
+        [
+          {
+            "cell": "E4",
+            "label": "负债和所有者权益"
+          }
+        ],
+        [
+          {
+            "cell": "F4",
+            "label": "行次"
+          }
+        ],
+        [
+          {
+            "cell": "G4",
+            "label": "期末余额"
+          }
+        ],
+        [
+          {
+            "cell": "H4",
+            "label": "年初余额"
+          }
+        ]
+      ],
+      "headerSource": "附年9!A4:H4",
+      "rows": {
+        "1": "货币资金",
+        "2": "短期投资",
+        "3": "应收票据",
+        "4": "应收账款",
+        "5": "预付账款",
+        "6": "应收股利",
+        "7": "应收利息",
+        "8": "其他应收款",
+        "9": "存货",
+        "10": "其中:原材料",
+        "11": "在产品",
+        "12": "库存商品",
+        "13": "周转材料",
+        "14": "其他流动资产",
+        "15": "流动资产合计",
+        "16": "长期债券投资",
+        "17": "长期股权投资",
+        "18": "固定资产原价",
+        "19": "减：累计折旧",
+        "20": "固定资产账面价值",
+        "21": "在建工程",
+        "22": "工程物资",
+        "23": "固定资产清理",
+        "24": "生产性生物资产",
+        "25": "无形资产",
+        "26": "开发支出",
+        "27": "长期待摊费用",
+        "28": "其他非流动资产",
+        "29": "非流动资产合计",
+        "30": "资产总计",
+        "31": "短期借款",
+        "32": "应付票据",
+        "33": "应付账款",
+        "34": "预收账款",
+        "35": "应付职工薪酬",
+        "36": "应交税费",
+        "37": "应付利息",
+        "38": "应付利润",
+        "39": "其他应付款",
+        "40": "其他流动负债",
+        "41": "流动负债合计",
+        "42": "长期借款",
+        "43": "长期应付款",
+        "44": "递延收益",
+        "45": "其他非流动负债",
+        "46": "非流动负债合计",
+        "47": "负债合计",
+        "48": "实收资本（或股本）",
+        "49": "资本公积",
+        "50": "盈余公积",
+        "51": "未分配利润",
+        "52": "所有者权益（或股东权益）合计",
+        "53": "负债和所有者权益（或股东权益）总计"
+      },
+      "reportTitle": "资产负债表",
+      "sectionNames": {
+        "A5": "流动资产：",
+        "A21": "非流动资产：",
+        "E5": "流动负债：",
+        "E17": "非流动负债：",
+        "E30": "所有者权益（或股东权益）"
+      },
+      "print": {
+        "widths": [
+          18.6333,
+          6,
+          13.3833,
+          14.5583,
+          32.5,
+          6,
+          15.5,
+          15.5
+        ],
+        "fontName": "宋体",
+        "fontSize": 12,
+        "rowHeight": 16,
+        "sourceHeader": "附年9!A4:H4",
+        "sourceStyleCell": "A5",
+        "bodyCellStylesSource": {
+          "sourceSha256": "47e2a017451b2c25e3a5f75f7848eec7e1589975056baf4b08673b2fd2c44a4d",
+          "sourceSheet": "附年9",
+          "sourceRange": "A5:H36",
+          "reviewedCells": 256
+        },
+        "bodyCellStyles": [
+          {
+            "sourceCell": "A5",
+            "displayRow": 0,
+            "columnKey": "assetItem",
+            "fillRgb": "808080"
+          },
+          {
+            "sourceCell": "E5",
+            "displayRow": 0,
+            "columnKey": "liabilityItem",
+            "fillRgb": "808080"
+          },
+          {
+            "sourceCell": "A6",
+            "displayRow": 1,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E6",
+            "displayRow": 1,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A7",
+            "displayRow": 2,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E7",
+            "displayRow": 2,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A8",
+            "displayRow": 3,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E8",
+            "displayRow": 3,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A9",
+            "displayRow": 4,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E9",
+            "displayRow": 4,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A10",
+            "displayRow": 5,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E10",
+            "displayRow": 5,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A11",
+            "displayRow": 6,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E11",
+            "displayRow": 6,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A12",
+            "displayRow": 7,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E12",
+            "displayRow": 7,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A13",
+            "displayRow": 8,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E13",
+            "displayRow": 8,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A14",
+            "displayRow": 9,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E14",
+            "displayRow": 9,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E15",
+            "displayRow": 10,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A16",
+            "displayRow": 11,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "     "
+          },
+          {
+            "sourceCell": "E16",
+            "displayRow": 11,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A17",
+            "displayRow": 12,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "     "
+          },
+          {
+            "sourceCell": "E17",
+            "displayRow": 12,
+            "columnKey": "liabilityItem",
+            "fillRgb": "808080"
+          },
+          {
+            "sourceCell": "A18",
+            "displayRow": 13,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "     "
+          },
+          {
+            "sourceCell": "E18",
+            "displayRow": 13,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A19",
+            "displayRow": 14,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E19",
+            "displayRow": 14,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A20",
+            "displayRow": 15,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E20",
+            "displayRow": 15,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A21",
+            "displayRow": 16,
+            "columnKey": "assetItem",
+            "fillRgb": "808080"
+          },
+          {
+            "sourceCell": "E21",
+            "displayRow": 16,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A22",
+            "displayRow": 17,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E22",
+            "displayRow": 17,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A23",
+            "displayRow": 18,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E23",
+            "displayRow": 18,
+            "columnKey": "liabilityItem",
+            "fillRgb": "808080"
+          },
+          {
+            "sourceCell": "A24",
+            "displayRow": 19,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A25",
+            "displayRow": 20,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A26",
+            "displayRow": 21,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A27",
+            "displayRow": 22,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A28",
+            "displayRow": 23,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A29",
+            "displayRow": 24,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A30",
+            "displayRow": 25,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A31",
+            "displayRow": 26,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E31",
+            "displayRow": 26,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A32",
+            "displayRow": 27,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E32",
+            "displayRow": 27,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A33",
+            "displayRow": 28,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E33",
+            "displayRow": 28,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A34",
+            "displayRow": 29,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E34",
+            "displayRow": 29,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A35",
+            "displayRow": 30,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "E35",
+            "displayRow": 30,
+            "columnKey": "liabilityItem",
+            "leadingWhitespace": "  "
+          },
+          {
+            "sourceCell": "A36",
+            "displayRow": 31,
+            "columnKey": "assetItem",
+            "leadingWhitespace": "  ",
+            "fillRgb": "808080"
+          },
+          {
+            "sourceCell": "E36",
+            "displayRow": 31,
+            "columnKey": "liabilityItem",
+            "fillRgb": "808080"
+          }
+        ]
+      }
+    },
+    "annualProfit": {
+      "entryName": "年度利润汇总表",
+      "source": "部门汇总!A13",
+      "headers": [
+        "项       目",
+        "01月金额",
+        "02月金额",
+        "03月金额",
+        "04月金额",
+        "05月金额",
+        "06月金额",
+        "07月金额",
+        "08月金额",
+        "09月金额",
+        "10月金额",
+        "11月金额",
+        "12月金额",
+        "2026年全年合计",
+        "月均利润率"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A4",
+            "label": "项       目"
+          }
+        ],
+        [
+          {
+            "cell": "B4",
+            "label": "01月金额"
+          }
+        ],
+        [
+          {
+            "cell": "C4",
+            "label": "02月金额"
+          }
+        ],
+        [
+          {
+            "cell": "D4",
+            "label": "03月金额"
+          }
+        ],
+        [
+          {
+            "cell": "E4",
+            "label": "04月金额"
+          }
+        ],
+        [
+          {
+            "cell": "F4",
+            "label": "05月金额"
+          }
+        ],
+        [
+          {
+            "cell": "G4",
+            "label": "06月金额"
+          }
+        ],
+        [
+          {
+            "cell": "H4",
+            "label": "07月金额"
+          }
+        ],
+        [
+          {
+            "cell": "I4",
+            "label": "08月金额"
+          }
+        ],
+        [
+          {
+            "cell": "J4",
+            "label": "09月金额"
+          }
+        ],
+        [
+          {
+            "cell": "K4",
+            "label": "10月金额"
+          }
+        ],
+        [
+          {
+            "cell": "L4",
+            "label": "11月金额"
+          }
+        ],
+        [
+          {
+            "cell": "M4",
+            "label": "12月金额"
+          }
+        ],
+        [
+          {
+            "cell": "N4",
+            "label": "2026年全年合计"
+          }
+        ],
+        [
+          {
+            "cell": "O4",
+            "label": "月均利润率"
+          }
+        ]
+      ],
+      "headerSource": "附件10!A4:O4",
+      "reportTitle": "{year}年度利润汇总表",
+      "rows": {
+        "33": "减：以前年度损益调整"
+      },
+      "print": {
+        "widths": [
+          38.125,
+          12.5583,
+          13.125,
+          12.6667,
+          12.5583,
+          12.5583,
+          12.5583,
+          12.5583,
+          12.5583,
+          12.5583,
+          12.5583,
+          12.5583,
+          12.5583,
+          17.25,
+          6.775
+        ],
+        "fontName": "宋体",
+        "fontSize": 12,
+        "rowHeight": 21.0,
+        "sourceHeader": "附件10!A4:O4",
+        "sourceStyleCell": "A5"
+      }
+    },
+    "monthlyProfit": {
+      "entryName": "月度利润表",
+      "source": "部门汇总!A14",
+      "headers": [
+        "项       目",
+        "行次",
+        "本年累计金额",
+        "本月金额"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A4",
+            "label": "项       目"
+          }
+        ],
+        [
+          {
+            "cell": "B4",
+            "label": "行次"
+          }
+        ],
+        [
+          {
+            "cell": "C4",
+            "label": "本年累计金额"
+          }
+        ],
+        [
+          {
+            "cell": "D4",
+            "label": "本月金额"
+          }
+        ]
+      ],
+      "headerSource": "附件11!A4:D4",
+      "rows": {
+        "1": "一、营业收入",
+        "2": "减：营业成本",
+        "3": "营业税金及附加",
+        "11": "销售费用",
+        "14": "管理费用",
+        "18": "财务费用",
+        "19": "其中：利息费用（收入以“-”号填列）",
+        "20": "加：投资收益（损失以“-”号填列）",
+        "21": "二、营业利润（亏损以“-”号填列）",
+        "22": "加：营业外收入（退税收入+收客户税点）",
+        "23": "其中：政府补助",
+        "24": "减：营业外支出",
+        "25": "其中：坏账损失",
+        "26": "无法收回的长期债券投资损失",
+        "27": "无法收回的长期股权投资损失",
+        "28": "自然灾害等不可抗力因素造成的损失",
+        "29": "税收滞纳金",
+        "30": "三、利润总额（亏损总额以“-”号填列）",
+        "31": "减：所得税费用",
+        "32": "四、净利润（净亏损以“-”号填列）"
+      },
+      "reportTitle": "利润表",
+      "sourceRows": {
+        "1": "一、营业收入",
+        "2": "减：营业成本",
+        "3": "营业税金及附加",
+        "11": "销售费用",
+        "14": "管理费用",
+        "18": "财务费用",
+        "19": "其中：利息费用（收入以“-”号填列）",
+        "20": "加：投资收益（损失以“-”号填列）",
+        "21": "二、营业利润（亏损以“-”号填列）",
+        "22": "加：营业外收入（金本收入+退税收入+收客户税点）",
+        "23": "其中：政府补助",
+        "24": "减：营业外支出（加工人工）",
+        "25": "其中：坏账损失",
+        "26": "无法收回的长期债券投资损失",
+        "27": "无法收回的长期股权投资损失",
+        "28": "自然灾害等不可抗力因素造成的损失",
+        "29": "税收滞纳金",
+        "30": "三、利润总额（亏损总额以“-”号填列）",
+        "31": "减：所得税费用",
+        "32": "四、净利润（净亏损以“-”号填列）"
+      },
+      "print": {
+        "widths": [
+          44.3333,
+          8.775,
+          21.0,
+          17.6333
+        ],
+        "fontName": "宋体",
+        "fontSize": 12,
+        "rowHeight": 16,
+        "sourceHeader": "附件11!A4:D4",
+        "sourceStyleCell": "A5"
+      }
+    },
+    "manufacturingExpense": {
+      "entryName": "制造费用明细表",
+      "source": "部门汇总!A15",
+      "headers": [
+        "制造费用项目",
+        "01月份",
+        "02月份",
+        "03月份",
+        "04月份",
+        "05月份",
+        "06月份",
+        "07月份",
+        "08月份",
+        "09月份",
+        "10月份",
+        "11月份",
+        "12月份",
+        "2026年全年合计"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A3",
+            "label": "制造费用项目"
+          }
+        ],
+        [
+          {
+            "cell": "B3",
+            "label": "01月份"
+          }
+        ],
+        [
+          {
+            "cell": "C3",
+            "label": "02月份"
+          }
+        ],
+        [
+          {
+            "cell": "D3",
+            "label": "03月份"
+          }
+        ],
+        [
+          {
+            "cell": "E3",
+            "label": "04月份"
+          }
+        ],
+        [
+          {
+            "cell": "F3",
+            "label": "05月份"
+          }
+        ],
+        [
+          {
+            "cell": "G3",
+            "label": "06月份"
+          }
+        ],
+        [
+          {
+            "cell": "H3",
+            "label": "07月份"
+          }
+        ],
+        [
+          {
+            "cell": "I3",
+            "label": "08月份"
+          }
+        ],
+        [
+          {
+            "cell": "J3",
+            "label": "09月份"
+          }
+        ],
+        [
+          {
+            "cell": "K3",
+            "label": "10月份"
+          }
+        ],
+        [
+          {
+            "cell": "L3",
+            "label": "11月份"
+          }
+        ],
+        [
+          {
+            "cell": "M3",
+            "label": "12月份"
+          }
+        ],
+        [
+          {
+            "cell": "N3",
+            "label": "2026年全年合计"
+          }
+        ]
+      ],
+      "headerSource": "附件12!A3:N3",
+      "rows": [
+        {
+          "key": "MFG_OUTPUT",
+          "label": "生产产值",
+          "source": "附件12!A4"
+        },
+        {
+          "key": "LABOR_DIRECT",
+          "label": "直接人工",
+          "source": "附件12!A5"
+        },
+        {
+          "key": "LABOR_INDIRECT",
+          "label": "间接人工",
+          "source": "附件12!A6"
+        },
+        {
+          "key": "MFG_DEPRECIATION",
+          "label": "资产折旧",
+          "source": "附件12!A7"
+        },
+        {
+          "key": "MFG_MOULD_REPAIR",
+          "label": "模具维修",
+          "source": "附件12!A8"
+        },
+        {
+          "key": "MFG_MATERIAL",
+          "label": "物料消耗",
+          "source": "附件12!A9"
+        },
+        {
+          "key": "MFG_OTHER",
+          "label": "其他费用",
+          "source": "附件12!A10"
+        },
+        {
+          "key": "MFG_UTILITIES",
+          "label": "水电费",
+          "source": "附件12!A11"
+        },
+        {
+          "key": "MFG_SUBCONTRACT",
+          "label": "加工费",
+          "source": "附件12!A12"
+        },
+        {
+          "key": "MFG_QC",
+          "label": "品质部",
+          "source": "附件12!A13"
+        },
+        {
+          "key": "MFG_WAREHOUSE",
+          "label": "仓储部门",
+          "source": "附件12!A14"
+        },
+        {
+          "key": "MFG_INJECTION",
+          "label": "注塑车间",
+          "source": "附件12!A15"
+        },
+        {
+          "key": "MFG_COPPER",
+          "label": "铜柱车间",
+          "source": "附件12!A16"
+        },
+        {
+          "key": "MFG_RAIL",
+          "label": "轨道车间",
+          "source": "附件12!A17"
+        },
+        {
+          "key": "MFG_ASSEMBLY",
+          "label": "安装车间",
+          "source": "附件12!A18"
+        },
+        {
+          "key": "MFG_DORM_RENT",
+          "label": "宿舍租赁费",
+          "source": "附件12!A19"
+        }
+      ],
+      "totalLabel": "合计",
+      "print": {
+        "widths": [
+          20.0,
+          12.8917,
+          12.8917,
+          12.8917,
+          12.8917,
+          12.8917,
+          12.8917,
+          12.8917,
+          12.8917,
+          12.8917,
+          12.8917,
+          12.8917,
+          12.8917,
+          15.75
+        ],
+        "fontName": "宋体",
+        "fontSize": 11,
+        "rowHeight": 19.0,
+        "sourceHeader": "附件12!A3:N3",
+        "sourceStyleCell": "A4"
+      }
+    },
+    "adminExpense": {
+      "entryName": "管理费用明细表",
+      "source": "部门汇总!A16",
+      "headers": [
+        "管理费用项目",
+        "01月份",
+        "02月份",
+        "03月份",
+        "04月份",
+        "05月份",
+        "06月份",
+        "07月份",
+        "08月份",
+        "09月份",
+        "10月份",
+        "11月份",
+        "12月份",
+        "2026年全年合计"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A3",
+            "label": "管理费用项目"
+          }
+        ],
+        [
+          {
+            "cell": "B3",
+            "label": "01月份"
+          }
+        ],
+        [
+          {
+            "cell": "C3",
+            "label": "02月份"
+          }
+        ],
+        [
+          {
+            "cell": "D3",
+            "label": "03月份"
+          }
+        ],
+        [
+          {
+            "cell": "E3",
+            "label": "04月份"
+          }
+        ],
+        [
+          {
+            "cell": "F3",
+            "label": "05月份"
+          }
+        ],
+        [
+          {
+            "cell": "G3",
+            "label": "06月份"
+          }
+        ],
+        [
+          {
+            "cell": "H3",
+            "label": "07月份"
+          }
+        ],
+        [
+          {
+            "cell": "I3",
+            "label": "08月份"
+          }
+        ],
+        [
+          {
+            "cell": "J3",
+            "label": "09月份"
+          }
+        ],
+        [
+          {
+            "cell": "K3",
+            "label": "10月份"
+          }
+        ],
+        [
+          {
+            "cell": "L3",
+            "label": "11月份"
+          }
+        ],
+        [
+          {
+            "cell": "M3",
+            "label": "12月份"
+          }
+        ],
+        [
+          {
+            "cell": "N3",
+            "label": "2026年全年合计"
+          }
+        ]
+      ],
+      "headerSource": "附件13!A3:N3",
+      "rows": [
+        {
+          "key": "ADM_SALES",
+          "label": "销售额",
+          "source": "附件13!A4"
+        },
+        {
+          "key": "ADM_RENT",
+          "label": "厂房及成品仓租赁费",
+          "source": "附件13!A5"
+        },
+        {
+          "key": "ADM_SALARY",
+          "label": "工资",
+          "source": "附件13!A6"
+        },
+        {
+          "key": "ADM_MEAL",
+          "label": "餐费",
+          "source": "附件13!A7"
+        },
+        {
+          "key": "ADM_WELFARE",
+          "label": "福利费",
+          "source": "附件13!A8"
+        },
+        {
+          "key": "ADM_SOCIAL",
+          "label": "社保费",
+          "source": "附件13!A9"
+        },
+        {
+          "key": "ADM_OFFICE",
+          "label": "办公费",
+          "source": "附件13!A10"
+        },
+        {
+          "key": "ADM_PHONE",
+          "label": "通迅费",
+          "source": "附件13!A11"
+        },
+        {
+          "key": "ADM_TRAVEL",
+          "label": "交通费",
+          "source": "附件13!A12"
+        },
+        {
+          "key": "ADM_ENTERTAIN",
+          "label": "招待费",
+          "source": "附件13!A13"
+        },
+        {
+          "key": "ADM_REPAIR",
+          "label": "维修费",
+          "source": "附件13!A14"
+        },
+        {
+          "key": "ADM_DESIGN",
+          "label": "设计费",
+          "source": "附件13!A15"
+        },
+        {
+          "key": "ADM_LAWYER",
+          "label": "律师费",
+          "source": "附件13!A16"
+        },
+        {
+          "key": "ADM_OTHER",
+          "label": "其他费",
+          "source": "附件13!A17"
+        },
+        {
+          "key": "ADM_FINANCE",
+          "label": "财务费用",
+          "source": "附件13!A18"
+        },
+        {
+          "key": "ADM_VEHICLE",
+          "label": "汽车费用",
+          "source": "附件13!A19"
+        },
+        {
+          "key": "ADM_FUEL",
+          "label": "汽车油费",
+          "source": "附件13!A20"
+        },
+        {
+          "key": "ADM_DEPRECIATION",
+          "label": "设备折旧",
+          "source": "附件13!A21"
+        },
+        {
+          "key": "ADM_FREIGHT_OTHER",
+          "label": "其他运费",
+          "source": "附件13!A22"
+        },
+        {
+          "key": "ADM_FREIGHT_PURCHASE",
+          "label": "采购运费",
+          "source": "附件13!A23"
+        },
+        {
+          "key": "ADM_FREIGHT_PROJECT",
+          "label": "工程运费",
+          "source": "附件13!A24"
+        },
+        {
+          "key": "ADM_RESEARCH_TEST",
+          "label": "研发支出/检测费",
+          "source": "附件13!A25"
+        },
+        {
+          "key": "ADM_LIFT_AMORT",
+          "label": "电梯保养摊销",
+          "source": "附件13!A26"
+        },
+        {
+          "key": "ADM_INSURANCE_AMORT",
+          "label": "车险摊销",
+          "source": "附件13!A27"
+        },
+        {
+          "key": "ADM_DESIGN_AMORT",
+          "label": "设计费摊销",
+          "source": "附件13!A28"
+        },
+        {
+          "key": "ADM_CERT_AMORT",
+          "label": "认证/摊销费",
+          "source": "附件13!A29"
+        },
+        {
+          "key": "ADM_RENOVATION_AMORT",
+          "label": "装修/摊销费",
+          "source": "附件13!A30"
+        },
+        {
+          "key": "ADM_OFFICE_AMORT",
+          "label": "办公费摊销",
+          "source": "附件13!A31"
+        },
+        {
+          "key": "ADM_EXHIBITION_AMORT",
+          "label": "展会费摊销",
+          "source": "附件13!A32"
+        },
+        {
+          "key": "ADM_ADVERTISING_AMORT",
+          "label": "广告费摊销",
+          "source": "附件13!A33"
+        },
+        {
+          "key": "ADM_PATENT",
+          "label": "产品专利费",
+          "source": "附件13!A34"
+        },
+        {
+          "key": "ADM_ACCOUNTING",
+          "label": "帐务处理费",
+          "source": "附件13!A35"
+        },
+        {
+          "key": "ADM_EXECUTIVE",
+          "label": "总经办费用",
+          "source": "附件13!A36"
+        },
+        {
+          "key": "ADM_PROPERTY",
+          "label": "物业管理费",
+          "source": "附件13!A37"
+        },
+        {
+          "key": "ADM_TAX_FEE",
+          "label": "税收手续费",
+          "source": "附件13!A38"
+        },
+        {
+          "key": "ADM_FINANCE_FEE",
+          "label": "财务手续费",
+          "source": "附件13!A39"
+        },
+        {
+          "key": "ADM_WATER",
+          "label": "办公饮用水",
+          "source": "附件13!A40"
+        },
+        {
+          "key": "ADM_EXPORT_AGENCY",
+          "label": "代理出口手续费",
+          "source": "附件13!A41"
+        }
+      ],
+      "totalLabel": "月合计",
+      "ratioLabel": "当月费用与当月销售额占比",
+      "print": {
+        "widths": [
+          18.8917,
+          14.225,
+          14.225,
+          14.225,
+          14.225,
+          14.225,
+          14.225,
+          14.225,
+          14.225,
+          14.225,
+          14.225,
+          14.225,
+          14.225,
+          17.0
+        ],
+        "fontName": "宋体",
+        "fontSize": 11,
+        "rowHeight": 19.0,
+        "sourceHeader": "附件13!A3:N3",
+        "sourceStyleCell": "A4"
+      }
+    },
+    "salesExpense": {
+      "entryName": "销售费用明细表",
+      "source": "部门汇总!A17",
+      "headers": [
+        "月份",
+        "销售费用项目",
+        "工资",
+        "社保",
+        "运费",
+        "其他",
+        "差旅费",
+        "招待费",
+        "货代/报关费",
+        "展会费",
+        "装柜/拖车费",
+        "物料消耗/赠品",
+        "佣金/返利冲销",
+        "业务提成经济补偿金",
+        "费用月合计金额",
+        "本月销售额",
+        "当月费用与销售占比"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A3",
+            "label": "月份"
+          }
+        ],
+        [
+          {
+            "cell": "B3",
+            "label": "销售费用项目"
+          }
+        ],
+        [
+          {
+            "cell": "C3",
+            "label": "工资"
+          }
+        ],
+        [
+          {
+            "cell": "D3",
+            "label": "社保"
+          }
+        ],
+        [
+          {
+            "cell": "E3",
+            "label": "运费"
+          }
+        ],
+        [
+          {
+            "cell": "F3",
+            "label": "其他"
+          }
+        ],
+        [
+          {
+            "cell": "G3",
+            "label": "差旅费"
+          }
+        ],
+        [
+          {
+            "cell": "H3",
+            "label": "招待费"
+          }
+        ],
+        [
+          {
+            "cell": "I3",
+            "label": "货代/报关费"
+          }
+        ],
+        [
+          {
+            "cell": "J3",
+            "label": "展会费"
+          }
+        ],
+        [
+          {
+            "cell": "K3",
+            "label": "装柜/拖车费"
+          }
+        ],
+        [
+          {
+            "cell": "L3",
+            "label": "物料消耗/赠品"
+          }
+        ],
+        [
+          {
+            "cell": "M3",
+            "label": "佣金/返利冲销"
+          }
+        ],
+        [
+          {
+            "cell": "N3",
+            "label": "业务提成经济补偿金"
+          }
+        ],
+        [
+          {
+            "cell": "O3",
+            "label": "费用月合计金额"
+          }
+        ],
+        [
+          {
+            "cell": "P3",
+            "label": "本月销售额"
+          }
+        ],
+        [
+          {
+            "cell": "Q3",
+            "label": "当月费用与销售占比"
+          }
+        ]
+      ],
+      "headerSource": "附件14!A3:Q3",
+      "sourceGroups": [
+        {
+          "sourceRow": 4,
+          "month": 1,
+          "label": "外销费用/苏君丽",
+          "source": "附件14!B4"
+        },
+        {
+          "sourceRow": 5,
+          "month": 1,
+          "label": "外销费用/胡钟炎",
+          "source": "附件14!B5"
+        },
+        {
+          "sourceRow": 6,
+          "month": 1,
+          "label": "外销费用/刘炎勇",
+          "source": "附件14!B6"
+        },
+        {
+          "sourceRow": 7,
+          "month": 1,
+          "label": "内销费用/黄连芳",
+          "source": "附件14!B7"
+        },
+        {
+          "sourceRow": 8,
+          "month": 1,
+          "label": "内销费用/张龙",
+          "source": "附件14!B8"
+        },
+        {
+          "sourceRow": 9,
+          "month": 1,
+          "label": "OEM费用/王浩然",
+          "source": "附件14!B9"
+        },
+        {
+          "sourceRow": 10,
+          "month": 1,
+          "label": "市场营销总监/总经办/零售",
+          "source": "附件14!B10"
+        },
+        {
+          "sourceRow": 13,
+          "month": 2,
+          "label": "外销费用/苏君丽",
+          "source": "附件14!B13"
+        },
+        {
+          "sourceRow": 14,
+          "month": 2,
+          "label": "外销费用/胡钟炎",
+          "source": "附件14!B14"
+        },
+        {
+          "sourceRow": 15,
+          "month": 2,
+          "label": "外销费用/刘炎勇",
+          "source": "附件14!B15"
+        },
+        {
+          "sourceRow": 16,
+          "month": 2,
+          "label": "内销费用/黄连芳",
+          "source": "附件14!B16"
+        },
+        {
+          "sourceRow": 17,
+          "month": 2,
+          "label": "内销费用/张龙",
+          "source": "附件14!B17"
+        },
+        {
+          "sourceRow": 18,
+          "month": 2,
+          "label": "OEM费用/王浩然",
+          "source": "附件14!B18"
+        },
+        {
+          "sourceRow": 19,
+          "month": 2,
+          "label": "市场营销总监/总经办/零售",
+          "source": "附件14!B19"
+        },
+        {
+          "sourceRow": 22,
+          "month": 3,
+          "label": "外销费用/苏君丽",
+          "source": "附件14!B22"
+        },
+        {
+          "sourceRow": 23,
+          "month": 3,
+          "label": "外销费用/胡钟炎",
+          "source": "附件14!B23"
+        },
+        {
+          "sourceRow": 24,
+          "month": 3,
+          "label": "外销费用/刘炎勇",
+          "source": "附件14!B24"
+        },
+        {
+          "sourceRow": 25,
+          "month": 3,
+          "label": "内销费用/黄连芳",
+          "source": "附件14!B25"
+        },
+        {
+          "sourceRow": 26,
+          "month": 3,
+          "label": "内销费用/张龙",
+          "source": "附件14!B26"
+        },
+        {
+          "sourceRow": 27,
+          "month": 3,
+          "label": "OEM费用/王浩然",
+          "source": "附件14!B27"
+        },
+        {
+          "sourceRow": 28,
+          "month": 3,
+          "label": "市场营销总监/总经办/零售",
+          "source": "附件14!B28"
+        },
+        {
+          "sourceRow": 31,
+          "month": 4,
+          "label": "外销费用/苏君丽",
+          "source": "附件14!B31"
+        },
+        {
+          "sourceRow": 32,
+          "month": 4,
+          "label": "外销费用/胡钟炎",
+          "source": "附件14!B32"
+        },
+        {
+          "sourceRow": 33,
+          "month": 4,
+          "label": "外销费用/刘炎勇",
+          "source": "附件14!B33"
+        },
+        {
+          "sourceRow": 34,
+          "month": 4,
+          "label": "内销费用/黄连芳",
+          "source": "附件14!B34"
+        },
+        {
+          "sourceRow": 35,
+          "month": 4,
+          "label": "外销费用/罗紫柔",
+          "source": "附件14!B35"
+        },
+        {
+          "sourceRow": 36,
+          "month": 4,
+          "label": "OEM费用/王浩然",
+          "source": "附件14!B36"
+        },
+        {
+          "sourceRow": 37,
+          "month": 4,
+          "label": "市场营销总监/总经办/零售",
+          "source": "附件14!B37"
+        },
+        {
+          "sourceRow": 40,
+          "month": 5,
+          "label": "外销费用/苏君丽",
+          "source": "附件14!B40"
+        },
+        {
+          "sourceRow": 41,
+          "month": 5,
+          "label": "外销费用/胡钟炎",
+          "source": "附件14!B41"
+        },
+        {
+          "sourceRow": 42,
+          "month": 5,
+          "label": "外销费用/刘炎勇",
+          "source": "附件14!B42"
+        },
+        {
+          "sourceRow": 43,
+          "month": 5,
+          "label": "内销费用/黄连芳",
+          "source": "附件14!B43"
+        },
+        {
+          "sourceRow": 44,
+          "month": 5,
+          "label": "外销费用/罗紫柔",
+          "source": "附件14!B44"
+        },
+        {
+          "sourceRow": 45,
+          "month": 5,
+          "label": "OEM费用/王浩然",
+          "source": "附件14!B45"
+        },
+        {
+          "sourceRow": 46,
+          "month": 5,
+          "label": "市场营销总监/总经办/零售",
+          "source": "附件14!B46"
+        },
+        {
+          "sourceRow": 50,
+          "month": 6,
+          "label": "外销费用/苏君丽",
+          "source": "附件14!B50"
+        },
+        {
+          "sourceRow": 51,
+          "month": 6,
+          "label": "外销费用/胡钟炎",
+          "source": "附件14!B51"
+        },
+        {
+          "sourceRow": 52,
+          "month": 6,
+          "label": "外销费用/刘炎勇",
+          "source": "附件14!B52"
+        },
+        {
+          "sourceRow": 53,
+          "month": 6,
+          "label": "内销费用/黄连芳",
+          "source": "附件14!B53"
+        },
+        {
+          "sourceRow": 54,
+          "month": 6,
+          "label": "外销费用/罗紫柔",
+          "source": "附件14!B54"
+        },
+        {
+          "sourceRow": 55,
+          "month": 6,
+          "label": "OEM费用/王浩然",
+          "source": "附件14!B55"
+        },
+        {
+          "sourceRow": 56,
+          "month": 6,
+          "label": "市场营销总监/总经办/零售",
+          "source": "附件14!B56"
+        },
+        {
+          "sourceRow": 59,
+          "month": 7,
+          "label": "外销费用/苏君丽",
+          "source": "附件14!B59"
+        },
+        {
+          "sourceRow": 60,
+          "month": 7,
+          "label": "外销费用/胡钟炎",
+          "source": "附件14!B60"
+        },
+        {
+          "sourceRow": 61,
+          "month": 7,
+          "label": "外销费用/刘炎勇",
+          "source": "附件14!B61"
+        },
+        {
+          "sourceRow": 62,
+          "month": 7,
+          "label": "内销费用/黄连芳",
+          "source": "附件14!B62"
+        },
+        {
+          "sourceRow": 63,
+          "month": 7,
+          "label": "外销费用/罗紫柔",
+          "source": "附件14!B63"
+        },
+        {
+          "sourceRow": 64,
+          "month": 7,
+          "label": "OEM费用/王浩然",
+          "source": "附件14!B64"
+        },
+        {
+          "sourceRow": 65,
+          "month": 7,
+          "label": "市场营销总监/总经办/零售",
+          "source": "附件14!B65"
+        },
+        {
+          "sourceRow": 68,
+          "month": 8,
+          "label": "外销费用/苏君丽",
+          "source": "附件14!B68"
+        },
+        {
+          "sourceRow": 69,
+          "month": 8,
+          "label": "外销费用/胡钟炎",
+          "source": "附件14!B69"
+        },
+        {
+          "sourceRow": 70,
+          "month": 8,
+          "label": "外销费用/刘炎勇",
+          "source": "附件14!B70"
+        },
+        {
+          "sourceRow": 71,
+          "month": 8,
+          "label": "内销费用/黄连芳",
+          "source": "附件14!B71"
+        },
+        {
+          "sourceRow": 72,
+          "month": 8,
+          "label": "外销费用/罗紫柔",
+          "source": "附件14!B72"
+        },
+        {
+          "sourceRow": 73,
+          "month": 8,
+          "label": "OEM费用/王浩然",
+          "source": "附件14!B73"
+        },
+        {
+          "sourceRow": 74,
+          "month": 8,
+          "label": "市场营销总监/总经办/零售",
+          "source": "附件14!B74"
+        },
+        {
+          "sourceRow": 77,
+          "month": 9,
+          "label": "外销费用/苏君丽",
+          "source": "附件14!B77"
+        },
+        {
+          "sourceRow": 78,
+          "month": 9,
+          "label": "外销费用/胡钟炎",
+          "source": "附件14!B78"
+        },
+        {
+          "sourceRow": 79,
+          "month": 9,
+          "label": "外销费用/刘炎勇",
+          "source": "附件14!B79"
+        },
+        {
+          "sourceRow": 80,
+          "month": 9,
+          "label": "内销费用/黄连芳",
+          "source": "附件14!B80"
+        },
+        {
+          "sourceRow": 81,
+          "month": 9,
+          "label": "外销费用/罗紫柔",
+          "source": "附件14!B81"
+        },
+        {
+          "sourceRow": 82,
+          "month": 9,
+          "label": "OEM费用/王浩然",
+          "source": "附件14!B82"
+        },
+        {
+          "sourceRow": 83,
+          "month": 9,
+          "label": "市场营销总监/总经办/零售",
+          "source": "附件14!B83"
+        },
+        {
+          "sourceRow": 87,
+          "month": 10,
+          "label": "外销费用/苏君丽",
+          "source": "附件14!B87"
+        },
+        {
+          "sourceRow": 88,
+          "month": 10,
+          "label": "外销费用/胡钟炎",
+          "source": "附件14!B88"
+        },
+        {
+          "sourceRow": 89,
+          "month": 10,
+          "label": "外销费用/刘炎勇",
+          "source": "附件14!B89"
+        },
+        {
+          "sourceRow": 90,
+          "month": 10,
+          "label": "内销费用/黄连芳",
+          "source": "附件14!B90"
+        },
+        {
+          "sourceRow": 91,
+          "month": 10,
+          "label": "外销费用/罗紫柔",
+          "source": "附件14!B91"
+        },
+        {
+          "sourceRow": 92,
+          "month": 10,
+          "label": "OEM费用/王浩然",
+          "source": "附件14!B92"
+        },
+        {
+          "sourceRow": 93,
+          "month": 10,
+          "label": "市场营销总监/总经办/零售",
+          "source": "附件14!B93"
+        },
+        {
+          "sourceRow": 97,
+          "month": 11,
+          "label": "外销费用/苏君丽",
+          "source": "附件14!B97"
+        },
+        {
+          "sourceRow": 98,
+          "month": 11,
+          "label": "外销费用/胡钟炎",
+          "source": "附件14!B98"
+        },
+        {
+          "sourceRow": 99,
+          "month": 11,
+          "label": "外销费用/刘炎勇",
+          "source": "附件14!B99"
+        },
+        {
+          "sourceRow": 100,
+          "month": 11,
+          "label": "内销费用/黄连芳",
+          "source": "附件14!B100"
+        },
+        {
+          "sourceRow": 101,
+          "month": 11,
+          "label": "外销费用/罗紫柔",
+          "source": "附件14!B101"
+        },
+        {
+          "sourceRow": 102,
+          "month": 11,
+          "label": "OEM费用/王浩然",
+          "source": "附件14!B102"
+        },
+        {
+          "sourceRow": 103,
+          "month": 11,
+          "label": "市场营销总监/总经办/零售",
+          "source": "附件14!B103"
+        },
+        {
+          "sourceRow": 106,
+          "month": 12,
+          "label": "外销费用/苏君丽",
+          "source": "附件14!B106"
+        },
+        {
+          "sourceRow": 107,
+          "month": 12,
+          "label": "外销费用/胡钟炎",
+          "source": "附件14!B107"
+        },
+        {
+          "sourceRow": 108,
+          "month": 12,
+          "label": "外销费用/刘炎勇",
+          "source": "附件14!B108"
+        },
+        {
+          "sourceRow": 109,
+          "month": 12,
+          "label": "内销费用/黄连芳",
+          "source": "附件14!B109"
+        },
+        {
+          "sourceRow": 110,
+          "month": 12,
+          "label": "外销费用/罗紫柔",
+          "source": "附件14!B110"
+        },
+        {
+          "sourceRow": 111,
+          "month": 12,
+          "label": "OEM费用/王浩然",
+          "source": "附件14!B111"
+        },
+        {
+          "sourceRow": 112,
+          "month": 12,
+          "label": "市场营销总监/总经办/零售",
+          "source": "附件14!B112"
+        }
+      ],
+      "monthTotalLabel": "月合计",
+      "yearTotalPattern": "{year}年共计",
+      "print": {
+        "widths": [
+          6.5583,
+          26.3333,
+          9.1083,
+          9.1083,
+          9.1083,
+          8.0,
+          9.1083,
+          9.1083,
+          9.1083,
+          9.1083,
+          9.1083,
+          9.1083,
+          9.1083,
+          9.1083,
+          14.775,
+          13.5583,
+          9.5583
+        ],
+        "fontName": "宋体",
+        "fontSize": 11,
+        "rowHeight": 20.0,
+        "sourceHeader": "附件14!A3:Q3",
+        "sourceStyleCell": "A4"
+      }
+    },
+    "salesCostSummary": {
+      "entryName": "销售成本核算汇总表",
+      "source": "部门汇总!A18",
+      "headers": [
+        "客户名称",
+        "业务员",
+        "区域",
+        "总监",
+        "销售出货金额",
+        "销售成本",
+        "含工本占销售比率",
+        "管理费8%",
+        "销售费用OEM 1%    外贸 6%    内销 25%",
+        "税费10%",
+        "运费",
+        "净利润",
+        "净利润率",
+        "汇率"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A3",
+            "label": "客户名称"
+          }
+        ],
+        [
+          {
+            "cell": "B3",
+            "label": "业务员"
+          }
+        ],
+        [
+          {
+            "cell": "C3",
+            "label": "区域"
+          }
+        ],
+        [
+          {
+            "cell": "D3",
+            "label": "总监"
+          }
+        ],
+        [
+          {
+            "cell": "E3",
+            "label": "销售出货金额"
+          }
+        ],
+        [
+          {
+            "cell": "F3",
+            "label": "销售成本"
+          }
+        ],
+        [
+          {
+            "cell": "G3",
+            "label": "含工本占销售比率"
+          }
+        ],
+        [
+          {
+            "cell": "H3",
+            "label": "管理费8%"
+          }
+        ],
+        [
+          {
+            "cell": "I3",
+            "label": "销售费用OEM 1%    外贸 6%    内销 25%"
+          }
+        ],
+        [
+          {
+            "cell": "J3",
+            "label": "税费10%"
+          }
+        ],
+        [
+          {
+            "cell": "K3",
+            "label": "运费"
+          }
+        ],
+        [
+          {
+            "cell": "L3",
+            "label": "净利润"
+          }
+        ],
+        [
+          {
+            "cell": "M3",
+            "label": "净利润率"
+          }
+        ],
+        [
+          {
+            "cell": "N3",
+            "label": "汇率"
+          }
+        ]
+      ],
+      "headerSource": "附件15!A3:N3",
+      "print": {
+        "widths": [
+          18.3667,
+          8.75,
+          10.8833,
+          8.4583,
+          11.4667,
+          11.275,
+          7.775,
+          11.275,
+          9.3333,
+          9.525,
+          7.775,
+          10.5,
+          7.775,
+          9.3333
+        ],
+        "fontName": "宋体",
+        "fontSize": 10,
+        "rowHeight": 17.0,
+        "sourceHeader": "附件15!A3:N3",
+        "sourceStyleCell": "A4"
+      }
+    },
+    "depreciation": {
+      "entryName": "固定资产-折旧清单",
+      "source": "部门汇总!A19",
+      "sourceSheet": "2026年固定资产清单",
+      "headerRow": 2,
+      "headers": [
+        "月份",
+        "存放地点",
+        "名称",
+        "使用情况",
+        "类别",
+        "名称",
+        "单位",
+        "购入日期",
+        "原值",
+        "折旧年限",
+        "折旧额",
+        "2026年12月折旧额",
+        "2026年11月折旧额",
+        "2026年10月折旧额",
+        "2026年9月折旧额",
+        "2026年8月折旧额",
+        "2026年7月折旧额",
+        "2026年6月折旧额",
+        "2026年5月折旧额",
+        "2026年4月折旧额",
+        "2026年3月折旧额",
+        "2026年2月折旧额",
+        "2026年1月折旧额",
+        "2025年12月折旧额",
+        "2025年11月折旧额",
+        "2025年10月折旧额",
+        "2025年9月折旧额",
+        "2025年8月折旧额",
+        "2025年7月折旧额",
+        "2025年6月折旧额",
+        "2025年5月折旧额",
+        "2025年4月折旧额",
+        "2025年3月折旧额",
+        "2025年2月折旧额",
+        "2025年1月折旧额",
+        "2024年至2026年累计折旧",
+        "科目",
+        "计提到期",
+        "验收合格",
+        "未计提金额",
+        "",
+        "2024年12月份月折旧额",
+        "2024年11月份月折旧额",
+        "2024年10月份月折旧额",
+        "2024年9月份月折旧额",
+        "2024年8月份月折旧额",
+        "2024年7月份月折旧额",
+        "2024年6月份月折旧额",
+        "2024年5月份月折旧额",
+        "2024年4月份月折旧额",
+        "2024年3月份月折旧额",
+        "2024年2月份月折旧额",
+        "2024年1月份月折旧额",
+        "2024年累计折旧额",
+        "2023年前累计折旧额"
+      ],
+      "blankColumns": [
+        41
+      ],
+      "note": "原文原序；月份/年份按所选会计年生成，空白分隔列保留。完成清单旧日期序列需按原格式转换，不能猜隐藏列。",
+      "sourceSha256": "7b68d284343175c7e89b9d1d1f4d085cee899a1e6f657a4687ce7a3eb7020778",
+      "sourceFile": "2026年9月固定资产明细表.xlsx"
+    },
+    "amortization": {
+      "entryName": "长期待摊费用-摊销",
+      "source": "部门汇总!A20",
+      "sourceSheet": "费用摊销",
+      "headerRow": 1,
+      "headers": [
+        "月份",
+        "供应商单位名称",
+        "名称",
+        "使用情况",
+        "类别",
+        "日期",
+        "全额",
+        "摊销年限",
+        "月摊销额",
+        "2026年12月摊销",
+        "2026年11月摊销",
+        "2026年10月摊销",
+        "2026年9月摊销",
+        "2026年8月摊销",
+        "2026年7月摊销",
+        "2026年6月摊销",
+        "2026年5月摊销",
+        "2026年4月摊销",
+        "2026年3月摊销",
+        "2026年2月摊销",
+        "2026年1月摊销",
+        "一级科目",
+        "二级明细",
+        "2025年-2026累计折旧",
+        "未计提金额",
+        "计提到期",
+        "验收合格",
+        "",
+        "",
+        "2025年12月摊销",
+        "2025年11月摊销",
+        "2025年10月摊销",
+        "2025年9月摊销",
+        "2025年8月摊销",
+        "2025年7月摊销",
+        "2025年6月摊销",
+        "2025年5月摊销",
+        "2025年4月摊销",
+        "2025年3月摊销",
+        "2025年2月摊销",
+        "2025年1月摊销",
+        "2025年累计推销额"
+      ],
+      "blankColumns": [
+        28,
+        29
+      ],
+      "note": "原文原序；月份/年份按所选会计年生成，空白分隔列保留。完成清单旧日期序列需按原格式转换，不能猜隐藏列。",
+      "sourceSha256": "7b68d284343175c7e89b9d1d1f4d085cee899a1e6f657a4687ce7a3eb7020778",
+      "sourceFile": "2026年9月固定资产明细表.xlsx"
+    },
+    "operatingProfit": {
+      "entryName": "公司经营损益表",
+      "source": "部门汇总!A21",
+      "headers": [
+        "项目分类",
+        "分项",
+        "具体项目",
+        "01月金额",
+        "占销售比",
+        "02月金额",
+        "占销售比",
+        "03月金额",
+        "占销售比",
+        "04月金额",
+        "占销售比",
+        "05月金额",
+        "占销售比",
+        "06月金额",
+        "占销售比",
+        "07月金额",
+        "占销售比",
+        "08月金额",
+        "占销售比",
+        "09月金额",
+        "占销售比",
+        "10月金额",
+        "占销售比",
+        "11月金额",
+        "占销售比",
+        "12月金额",
+        "占销售比",
+        "1-4月平均值占销售比",
+        "备注",
+        "差异原因"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A2",
+            "label": "项目分类"
+          }
+        ],
+        [
+          {
+            "cell": "B2",
+            "label": "分项"
+          }
+        ],
+        [
+          {
+            "cell": "C2",
+            "label": "具体项目"
+          }
+        ],
+        [
+          {
+            "cell": "D2",
+            "label": "01月金额"
+          }
+        ],
+        [
+          {
+            "cell": "E2",
+            "label": "占销售比"
+          }
+        ],
+        [
+          {
+            "cell": "F2",
+            "label": "02月金额"
+          }
+        ],
+        [
+          {
+            "cell": "G2",
+            "label": "占销售比"
+          }
+        ],
+        [
+          {
+            "cell": "H2",
+            "label": "03月金额"
+          }
+        ],
+        [
+          {
+            "cell": "I2",
+            "label": "占销售比"
+          }
+        ],
+        [
+          {
+            "cell": "J2",
+            "label": "04月金额"
+          }
+        ],
+        [
+          {
+            "cell": "K2",
+            "label": "占销售比"
+          }
+        ],
+        [
+          {
+            "cell": "L2",
+            "label": "05月金额"
+          }
+        ],
+        [
+          {
+            "cell": "M2",
+            "label": "占销售比"
+          }
+        ],
+        [
+          {
+            "cell": "N2",
+            "label": "06月金额"
+          }
+        ],
+        [
+          {
+            "cell": "O2",
+            "label": "占销售比"
+          }
+        ],
+        [
+          {
+            "cell": "P2",
+            "label": "07月金额"
+          }
+        ],
+        [
+          {
+            "cell": "Q2",
+            "label": "占销售比"
+          }
+        ],
+        [
+          {
+            "cell": "R2",
+            "label": "08月金额"
+          }
+        ],
+        [
+          {
+            "cell": "S2",
+            "label": "占销售比"
+          }
+        ],
+        [
+          {
+            "cell": "T2",
+            "label": "09月金额"
+          }
+        ],
+        [
+          {
+            "cell": "U2",
+            "label": "占销售比"
+          }
+        ],
+        [
+          {
+            "cell": "V2",
+            "label": "10月金额"
+          }
+        ],
+        [
+          {
+            "cell": "W2",
+            "label": "占销售比"
+          }
+        ],
+        [
+          {
+            "cell": "X2",
+            "label": "11月金额"
+          }
+        ],
+        [
+          {
+            "cell": "Y2",
+            "label": "占销售比"
+          }
+        ],
+        [
+          {
+            "cell": "Z2",
+            "label": "12月金额"
+          }
+        ],
+        [
+          {
+            "cell": "AA2",
+            "label": "占销售比"
+          }
+        ],
+        [
+          {
+            "cell": "AB2",
+            "label": "1-4月平均值占销售比"
+          }
+        ],
+        [
+          {
+            "cell": "AC2",
+            "label": "备注"
+          }
+        ],
+        [
+          {
+            "cell": "AD2",
+            "label": "差异原因"
+          }
+        ]
+      ],
+      "headerSource": "附件16!A2:AD2",
+      "sourceRows": [
+        {
+          "sourceRow": 3,
+          "category": "应收账款",
+          "sub": "",
+          "item": "",
+          "source": "附件16!A3:C3"
+        },
+        {
+          "sourceRow": 4,
+          "category": "材料费",
+          "sub": "主材",
+          "item": "玻璃",
+          "source": "附件16!A4:C4"
+        },
+        {
+          "sourceRow": 5,
+          "category": "",
+          "sub": "",
+          "item": "成品",
+          "source": "附件16!A5:C5"
+        },
+        {
+          "sourceRow": 6,
+          "category": "",
+          "sub": "",
+          "item": "弹簧",
+          "source": "附件16!A6:C6"
+        },
+        {
+          "sourceRow": 7,
+          "category": "",
+          "sub": "",
+          "item": "电板插",
+          "source": "附件16!A7:C7"
+        },
+        {
+          "sourceRow": 8,
+          "category": "",
+          "sub": "",
+          "item": "电子件",
+          "source": "附件16!A8:C8"
+        },
+        {
+          "sourceRow": 9,
+          "category": "",
+          "sub": "",
+          "item": "电子件USB",
+          "source": "附件16!A9:C9"
+        },
+        {
+          "sourceRow": 10,
+          "category": "",
+          "sub": "",
+          "item": "刮须插电子件",
+          "source": "附件16!A10:C10"
+        },
+        {
+          "sourceRow": 11,
+          "category": "",
+          "sub": "",
+          "item": "胶条",
+          "source": "附件16!A11:C11"
+        },
+        {
+          "sourceRow": 12,
+          "category": "",
+          "sub": "",
+          "item": "展板",
+          "source": "附件16!A12:C12"
+        },
+        {
+          "sourceRow": 13,
+          "category": "",
+          "sub": "",
+          "item": "冷板",
+          "source": "附件16!A13:C13"
+        },
+        {
+          "sourceRow": 14,
+          "category": "",
+          "sub": "",
+          "item": "螺丝",
+          "source": "附件16!A14:C14"
+        },
+        {
+          "sourceRow": 15,
+          "category": "",
+          "sub": "",
+          "item": "铝材",
+          "source": "附件16!A15:C15"
+        },
+        {
+          "sourceRow": 16,
+          "category": "",
+          "sub": "",
+          "item": "塑料",
+          "source": "附件16!A16:C16"
+        },
+        {
+          "sourceRow": 17,
+          "category": "",
+          "sub": "",
+          "item": "铁扣",
+          "source": "附件16!A17:C17"
+        },
+        {
+          "sourceRow": 18,
+          "category": "",
+          "sub": "",
+          "item": "铜材",
+          "source": "附件16!A18:C18"
+        },
+        {
+          "sourceRow": 19,
+          "category": "",
+          "sub": "",
+          "item": "温控器",
+          "source": "附件16!A19:C19"
+        },
+        {
+          "sourceRow": 20,
+          "category": "",
+          "sub": "",
+          "item": "亚克力板",
+          "source": "附件16!A20:C20"
+        },
+        {
+          "sourceRow": 21,
+          "category": "",
+          "sub": "",
+          "item": "银点",
+          "source": "附件16!A21:C21"
+        },
+        {
+          "sourceRow": 22,
+          "category": "",
+          "sub": "",
+          "item": "荧光粉",
+          "source": "附件16!A22:C22"
+        },
+        {
+          "sourceRow": 23,
+          "category": "",
+          "sub": "",
+          "item": "指示灯",
+          "source": "附件16!A23:C23"
+        },
+        {
+          "sourceRow": 24,
+          "category": "",
+          "sub": "",
+          "item": "PVC",
+          "source": "附件16!A24:C24"
+        },
+        {
+          "sourceRow": 25,
+          "category": "",
+          "sub": "",
+          "item": "弹簧针",
+          "source": "附件16!A25:C25"
+        },
+        {
+          "sourceRow": 26,
+          "category": "",
+          "sub": "",
+          "item": "地板插",
+          "source": "附件16!A26:C26"
+        },
+        {
+          "sourceRow": 27,
+          "category": "",
+          "sub": "",
+          "item": "智能开关",
+          "source": "附件16!A27:C27"
+        },
+        {
+          "sourceRow": 28,
+          "category": "",
+          "sub": "",
+          "item": "剃须刀卡片",
+          "source": "附件16!A28:C28"
+        },
+        {
+          "sourceRow": 29,
+          "category": "",
+          "sub": "",
+          "item": "锡",
+          "source": "附件16!A29:C29"
+        },
+        {
+          "sourceRow": 30,
+          "category": "",
+          "sub": "",
+          "item": "主材合计",
+          "source": "附件16!A30:C30"
+        },
+        {
+          "sourceRow": 31,
+          "category": "",
+          "sub": "",
+          "item": "外箱",
+          "source": "附件16!A31:C31"
+        },
+        {
+          "sourceRow": 32,
+          "category": "",
+          "sub": "",
+          "item": "贴纸",
+          "source": "附件16!A32:C32"
+        },
+        {
+          "sourceRow": 33,
+          "category": "",
+          "sub": "",
+          "item": "内盒",
+          "source": "附件16!A33:C33"
+        },
+        {
+          "sourceRow": 34,
+          "category": "",
+          "sub": "",
+          "item": "胶袋",
+          "source": "附件16!A34:C34"
+        },
+        {
+          "sourceRow": 35,
+          "category": "",
+          "sub": "",
+          "item": "不干胶",
+          "source": "附件16!A35:C35"
+        },
+        {
+          "sourceRow": 36,
+          "category": "",
+          "sub": "",
+          "item": "塑吸盖",
+          "source": "附件16!A36:C36"
+        },
+        {
+          "sourceRow": 37,
+          "category": "",
+          "sub": "",
+          "item": "珍珠棉",
+          "source": "附件16!A37:C37"
+        },
+        {
+          "sourceRow": 38,
+          "category": "",
+          "sub": "",
+          "item": "封口胶",
+          "source": "附件16!A38:C38"
+        },
+        {
+          "sourceRow": 39,
+          "category": "",
+          "sub": "",
+          "item": "3M不干胶",
+          "source": "附件16!A39:C39"
+        },
+        {
+          "sourceRow": 40,
+          "category": "",
+          "sub": "",
+          "item": "泡沫包装",
+          "source": "附件16!A40:C40"
+        },
+        {
+          "sourceRow": 41,
+          "category": "",
+          "sub": "",
+          "item": "包材合计",
+          "source": "附件16!A41:C41"
+        },
+        {
+          "sourceRow": 42,
+          "category": "",
+          "sub": "总材料项目合计",
+          "item": "",
+          "source": "附件16!A42:C42"
+        },
+        {
+          "sourceRow": 43,
+          "category": "工费",
+          "sub": "劳务费",
+          "item": "直接人员工资",
+          "source": "附件16!A43:C43"
+        },
+        {
+          "sourceRow": 44,
+          "category": "",
+          "sub": "",
+          "item": "间接人员工资",
+          "source": "附件16!A44:C44"
+        },
+        {
+          "sourceRow": 45,
+          "category": "",
+          "sub": "",
+          "item": "人员福利+社保+餐费",
+          "source": "附件16!A45:C45"
+        },
+        {
+          "sourceRow": 46,
+          "category": "",
+          "sub": "",
+          "item": "委外加工费",
+          "source": "附件16!A46:C46"
+        },
+        {
+          "sourceRow": 47,
+          "category": "",
+          "sub": "工费合计",
+          "item": "",
+          "source": "附件16!A47:C47"
+        },
+        {
+          "sourceRow": 48,
+          "category": "一般管理费",
+          "sub": "场地费用分摊",
+          "item": "厂房及成品仓租金",
+          "source": "附件16!A48:C48"
+        },
+        {
+          "sourceRow": 49,
+          "category": "",
+          "sub": "",
+          "item": "宿舍租金",
+          "source": "附件16!A49:C49"
+        },
+        {
+          "sourceRow": 50,
+          "category": "",
+          "sub": "能耗",
+          "item": "电费",
+          "source": "附件16!A50:C50"
+        },
+        {
+          "sourceRow": 51,
+          "category": "",
+          "sub": "",
+          "item": "水费",
+          "source": "附件16!A51:C51"
+        },
+        {
+          "sourceRow": 52,
+          "category": "",
+          "sub": "设备费用",
+          "item": "设备折旧费",
+          "source": "附件16!A52:C52"
+        },
+        {
+          "sourceRow": 53,
+          "category": "",
+          "sub": "",
+          "item": "模具折旧费",
+          "source": "附件16!A53:C53"
+        },
+        {
+          "sourceRow": 54,
+          "category": "",
+          "sub": "品牌支撑分摊",
+          "item": "广告费",
+          "source": "附件16!A54:C54"
+        },
+        {
+          "sourceRow": 55,
+          "category": "",
+          "sub": "运输费分摊",
+          "item": "物流费",
+          "source": "附件16!A55:C55"
+        },
+        {
+          "sourceRow": 56,
+          "category": "",
+          "sub": "",
+          "item": "装卸费",
+          "source": "附件16!A56:C56"
+        },
+        {
+          "sourceRow": 57,
+          "category": "",
+          "sub": "",
+          "item": "快递费",
+          "source": "附件16!A57:C57"
+        },
+        {
+          "sourceRow": 58,
+          "category": "",
+          "sub": "发展支撑分摊",
+          "item": "物业管理费",
+          "source": "附件16!A58:C58"
+        },
+        {
+          "sourceRow": 59,
+          "category": "",
+          "sub": "",
+          "item": "办公费",
+          "source": "附件16!A59:C59"
+        },
+        {
+          "sourceRow": 60,
+          "category": "",
+          "sub": "",
+          "item": "电话费",
+          "source": "附件16!A60:C60"
+        },
+        {
+          "sourceRow": 61,
+          "category": "",
+          "sub": "",
+          "item": "维修费",
+          "source": "附件16!A61:C61"
+        },
+        {
+          "sourceRow": 62,
+          "category": "",
+          "sub": "",
+          "item": "设计费",
+          "source": "附件16!A62:C62"
+        },
+        {
+          "sourceRow": 63,
+          "category": "",
+          "sub": "",
+          "item": "税收手续费",
+          "source": "附件16!A63:C63"
+        },
+        {
+          "sourceRow": 64,
+          "category": "",
+          "sub": "",
+          "item": "账务处理费",
+          "source": "附件16!A64:C64"
+        },
+        {
+          "sourceRow": 65,
+          "category": "",
+          "sub": "",
+          "item": "招待费",
+          "source": "附件16!A65:C65"
+        },
+        {
+          "sourceRow": 66,
+          "category": "",
+          "sub": "",
+          "item": "交通费",
+          "source": "附件16!A66:C66"
+        },
+        {
+          "sourceRow": 67,
+          "category": "",
+          "sub": "",
+          "item": "检测费",
+          "source": "附件16!A67:C67"
+        },
+        {
+          "sourceRow": 68,
+          "category": "",
+          "sub": "",
+          "item": "报关费",
+          "source": "附件16!A68:C68"
+        },
+        {
+          "sourceRow": 69,
+          "category": "",
+          "sub": "",
+          "item": "财务费用",
+          "source": "附件16!A69:C69"
+        },
+        {
+          "sourceRow": 70,
+          "category": "",
+          "sub": "",
+          "item": "其他费",
+          "source": "附件16!A70:C70"
+        },
+        {
+          "sourceRow": 71,
+          "category": "",
+          "sub": "",
+          "item": "利息",
+          "source": "附件16!A71:C71"
+        },
+        {
+          "sourceRow": 72,
+          "category": "",
+          "sub": "",
+          "item": "服务费",
+          "source": "附件16!A72:C72"
+        },
+        {
+          "sourceRow": 73,
+          "category": "",
+          "sub": "",
+          "item": "律师费",
+          "source": "附件16!A73:C73"
+        },
+        {
+          "sourceRow": 74,
+          "category": "",
+          "sub": "",
+          "item": "认证费",
+          "source": "附件16!A74:C74"
+        },
+        {
+          "sourceRow": 75,
+          "category": "",
+          "sub": "",
+          "item": "总经办费用",
+          "source": "附件16!A75:C75"
+        },
+        {
+          "sourceRow": 76,
+          "category": "",
+          "sub": "",
+          "item": "税收",
+          "source": "附件16!A76:C76"
+        },
+        {
+          "sourceRow": 77,
+          "category": "",
+          "sub": "销售支撑分摊",
+          "item": "杂费+出柜费+拖车费",
+          "source": "附件16!A77:C77"
+        },
+        {
+          "sourceRow": 78,
+          "category": "",
+          "sub": "",
+          "item": "招待费+差旅费",
+          "source": "附件16!A78:C78"
+        },
+        {
+          "sourceRow": 79,
+          "category": "",
+          "sub": "",
+          "item": "展位费",
+          "source": "附件16!A79:C79"
+        },
+        {
+          "sourceRow": 80,
+          "category": "",
+          "sub": "",
+          "item": "物料消耗/赠品",
+          "source": "附件16!A80:C80"
+        },
+        {
+          "sourceRow": 81,
+          "category": "",
+          "sub": "",
+          "item": "返利活动结算",
+          "source": "附件16!A81:C81"
+        },
+        {
+          "sourceRow": 82,
+          "category": "",
+          "sub": "",
+          "item": "佣金",
+          "source": "附件16!A82:C82"
+        },
+        {
+          "sourceRow": 83,
+          "category": "",
+          "sub": "",
+          "item": "销售提成奖励",
+          "source": "附件16!A83:C83"
+        },
+        {
+          "sourceRow": 84,
+          "category": "",
+          "sub": "购买车间费用维修费等",
+          "item": "工具购买",
+          "source": "附件16!A84:C84"
+        },
+        {
+          "sourceRow": 85,
+          "category": "",
+          "sub": "",
+          "item": "清洗济",
+          "source": "附件16!A85:C85"
+        },
+        {
+          "sourceRow": 86,
+          "category": "",
+          "sub": "",
+          "item": "模具开模维修费",
+          "source": "附件16!A86:C86"
+        },
+        {
+          "sourceRow": 87,
+          "category": "",
+          "sub": "车辆费用分摊",
+          "item": "油费",
+          "source": "附件16!A87:C87"
+        },
+        {
+          "sourceRow": 88,
+          "category": "",
+          "sub": "",
+          "item": "其他（违章、保险...)",
+          "source": "附件16!A88:C88"
+        },
+        {
+          "sourceRow": 89,
+          "category": "",
+          "sub": "其他费用分摊",
+          "item": "",
+          "source": "附件16!A89:C89"
+        },
+        {
+          "sourceRow": 90,
+          "category": "",
+          "sub": "一般管理费合计",
+          "item": "",
+          "source": "附件16!A90:C90"
+        },
+        {
+          "sourceRow": 91,
+          "category": "",
+          "sub": "成本合计",
+          "item": "",
+          "source": "附件16!A91:C91"
+        },
+        {
+          "sourceRow": 92,
+          "category": "",
+          "sub": "利润额",
+          "item": "",
+          "source": "附件16!A92:C92"
+        }
+      ],
+      "merges": [
+        "A1:AD1",
+        "A3:C3",
+        "B42:C42",
+        "B47:C47",
+        "B90:C90",
+        "B91:C91",
+        "B92:C92",
+        "A4:A42",
+        "A43:A47",
+        "A48:A90",
+        "B4:B30",
+        "B31:B41",
+        "B43:B46",
+        "B48:B49",
+        "B50:B51",
+        "B52:B53",
+        "B55:B57",
+        "B58:B76",
+        "B77:B83",
+        "B84:B86",
+        "B87:B88",
+        "AC2:AC3",
+        "AD2:AD3"
+      ],
+      "print": {
+        "widths": [
+          14.4417,
+          17.225,
+          27.8917,
+          10.225,
+          8.25,
+          9.6667,
+          8.8917,
+          9.8917,
+          8.225,
+          9.4417,
+          7.8917,
+          9.775,
+          7.775,
+          10.4417,
+          7.775,
+          10.4417,
+          8.0,
+          9.6667,
+          8.0,
+          10.1083,
+          7.5583,
+          9.6667,
+          8.3333,
+          10.1083,
+          10.1083,
+          10.225,
+          7.1083,
+          10.775,
+          16.4417,
+          25.0
+        ],
+        "fontName": "微软雅黑",
+        "fontSize": 12,
+        "rowHeight": 16,
+        "sourceHeader": "附件16!A2:AD2",
+        "sourceStyleCell": "A3"
+      }
+    },
+    "chartCodes": {
+      "entryName": "科目余额表代码",
+      "source": "追加科目文件名，移除动态月份",
+      "classifications": [
+        {
+          "id": "ASSET",
+          "label": "资产",
+          "totalLabel": "资产小计",
+          "sourceRow": 31,
+          "codes": [
+            "1001",
+            "100201",
+            "100202",
+            "100203",
+            "110104",
+            "1121",
+            "112201",
+            "112202",
+            "1123",
+            "122101",
+            "122102",
+            "122103",
+            "122104",
+            "122105",
+            "122106",
+            "122107",
+            "122108",
+            "122110",
+            "122111",
+            "122112",
+            "122113",
+            "122114",
+            "1401",
+            "1403",
+            "1405",
+            "1411",
+            "1601",
+            "1602",
+            "1801"
+          ]
+        },
+        {
+          "id": "LIABILITY",
+          "label": "负债",
+          "totalLabel": "负债小计",
+          "sourceRow": 86,
+          "codes": [
+            "200101",
+            "2202",
+            "221101",
+            "221102",
+            "222102",
+            "222117",
+            "2232",
+            "22410107",
+            "22410110",
+            "22410112",
+            "22410116",
+            "22410117",
+            "22410118",
+            "22410120",
+            "22410121",
+            "22410125",
+            "22410128",
+            "22410129",
+            "22410131",
+            "22410132",
+            "22410133",
+            "22410137",
+            "22410138",
+            "22410139",
+            "22410140",
+            "22410141",
+            "22410142",
+            "22410143",
+            "22410144",
+            "22410145",
+            "22410146",
+            "22410147",
+            "22410201",
+            "22410202",
+            "22410203",
+            "22410206",
+            "22410207",
+            "22410208",
+            "22410209",
+            "22410210",
+            "22410211",
+            "22410212",
+            "22410213",
+            "22410214",
+            "22410215",
+            "224103",
+            "224104",
+            "270102",
+            "270103",
+            "270104",
+            "270108",
+            "270109",
+            "270110"
+          ]
+        },
+        {
+          "id": "EQUITY",
+          "label": "权益",
+          "totalLabel": "权益小计",
+          "sourceRow": 92,
+          "codes": [
+            "3001",
+            "3002",
+            "3103",
+            "310410",
+            "310415"
+          ]
+        },
+        {
+          "id": "COST",
+          "label": "成本",
+          "totalLabel": "成本小计",
+          "sourceRow": 109,
+          "codes": [
+            "4001",
+            "410101",
+            "410102",
+            "410103",
+            "410104",
+            "410105",
+            "410106",
+            "410108",
+            "410109",
+            "410111",
+            "410112",
+            "410113",
+            "410114",
+            "410115",
+            "410116",
+            "410118"
+          ]
+        },
+        {
+          "id": "PROFIT",
+          "label": "损益",
+          "totalLabel": "损益小计",
+          "sourceRow": 184,
+          "codes": [
+            "5001",
+            "5051",
+            "530102",
+            "530103",
+            "530105",
+            "530108",
+            "53011101",
+            "53011102",
+            "530115",
+            "5401",
+            "5403",
+            "560101",
+            "56010601",
+            "560107",
+            "560108",
+            "560110",
+            "56011301",
+            "56011302",
+            "56011305",
+            "56011306",
+            "56011307",
+            "56011310",
+            "56011311",
+            "56011312",
+            "56011313",
+            "56011314",
+            "56011317",
+            "56011403",
+            "56011406",
+            "56011408",
+            "56011409",
+            "56011413",
+            "560115",
+            "560116",
+            "560120",
+            "560121",
+            "560201",
+            "56020202",
+            "560203",
+            "560204",
+            "560206",
+            "560207",
+            "560208",
+            "560209",
+            "560210",
+            "560212",
+            "560214",
+            "56021501",
+            "56021506",
+            "56021507",
+            "56021508",
+            "560216",
+            "560218",
+            "56021901",
+            "56021902",
+            "560220",
+            "560221",
+            "560222",
+            "560223",
+            "560224",
+            "560227",
+            "560231",
+            "560234",
+            "560235",
+            "560237",
+            "56023901",
+            "56023902",
+            "56023903",
+            "56023904",
+            "56023906",
+            "56023907",
+            "560302",
+            "560306",
+            "571106"
+          ]
+        }
+      ]
+    },
+    "trialBalance": {
+      "entryName": "科目余额表",
+      "source": "追加科目表!A1:I1",
+      "headers": [
+        "科目编码",
+        "科目名称",
+        "外币名称",
+        "期初借方",
+        "期初贷方",
+        "本期发生借方",
+        "本期发生贷方",
+        "期末借方",
+        "期末贷方"
+      ],
+      "totalLabel": "合计",
+      "classifications": [
+        {
+          "id": "ASSET",
+          "label": "资产",
+          "totalLabel": "资产小计",
+          "sourceRow": 31,
+          "codes": [
+            "1001",
+            "100201",
+            "100202",
+            "100203",
+            "110104",
+            "1121",
+            "112201",
+            "112202",
+            "1123",
+            "122101",
+            "122102",
+            "122103",
+            "122104",
+            "122105",
+            "122106",
+            "122107",
+            "122108",
+            "122110",
+            "122111",
+            "122112",
+            "122113",
+            "122114",
+            "1401",
+            "1403",
+            "1405",
+            "1411",
+            "1601",
+            "1602",
+            "1801"
+          ]
+        },
+        {
+          "id": "LIABILITY",
+          "label": "负债",
+          "totalLabel": "负债小计",
+          "sourceRow": 86,
+          "codes": [
+            "200101",
+            "2202",
+            "221101",
+            "221102",
+            "222102",
+            "222117",
+            "2232",
+            "22410107",
+            "22410110",
+            "22410112",
+            "22410116",
+            "22410117",
+            "22410118",
+            "22410120",
+            "22410121",
+            "22410125",
+            "22410128",
+            "22410129",
+            "22410131",
+            "22410132",
+            "22410133",
+            "22410137",
+            "22410138",
+            "22410139",
+            "22410140",
+            "22410141",
+            "22410142",
+            "22410143",
+            "22410144",
+            "22410145",
+            "22410146",
+            "22410147",
+            "22410201",
+            "22410202",
+            "22410203",
+            "22410206",
+            "22410207",
+            "22410208",
+            "22410209",
+            "22410210",
+            "22410211",
+            "22410212",
+            "22410213",
+            "22410214",
+            "22410215",
+            "224103",
+            "224104",
+            "270102",
+            "270103",
+            "270104",
+            "270108",
+            "270109",
+            "270110"
+          ]
+        },
+        {
+          "id": "EQUITY",
+          "label": "权益",
+          "totalLabel": "权益小计",
+          "sourceRow": 92,
+          "codes": [
+            "3001",
+            "3002",
+            "3103",
+            "310410",
+            "310415"
+          ]
+        },
+        {
+          "id": "COST",
+          "label": "成本",
+          "totalLabel": "成本小计",
+          "sourceRow": 109,
+          "codes": [
+            "4001",
+            "410101",
+            "410102",
+            "410103",
+            "410104",
+            "410105",
+            "410106",
+            "410108",
+            "410109",
+            "410111",
+            "410112",
+            "410113",
+            "410114",
+            "410115",
+            "410116",
+            "410118"
+          ]
+        },
+        {
+          "id": "PROFIT",
+          "label": "损益",
+          "totalLabel": "损益小计",
+          "sourceRow": 184,
+          "codes": [
+            "5001",
+            "5051",
+            "530102",
+            "530103",
+            "530105",
+            "530108",
+            "53011101",
+            "53011102",
+            "530115",
+            "5401",
+            "5403",
+            "560101",
+            "56010601",
+            "560107",
+            "560108",
+            "560110",
+            "56011301",
+            "56011302",
+            "56011305",
+            "56011306",
+            "56011307",
+            "56011310",
+            "56011311",
+            "56011312",
+            "56011313",
+            "56011314",
+            "56011317",
+            "56011403",
+            "56011406",
+            "56011408",
+            "56011409",
+            "56011413",
+            "560115",
+            "560116",
+            "560120",
+            "560121",
+            "560201",
+            "56020202",
+            "560203",
+            "560204",
+            "560206",
+            "560207",
+            "560208",
+            "560209",
+            "560210",
+            "560212",
+            "560214",
+            "56021501",
+            "56021506",
+            "56021507",
+            "56021508",
+            "560216",
+            "560218",
+            "56021901",
+            "56021902",
+            "560220",
+            "560221",
+            "560222",
+            "560223",
+            "560224",
+            "560227",
+            "560231",
+            "560234",
+            "560235",
+            "560237",
+            "56023901",
+            "56023902",
+            "56023903",
+            "56023904",
+            "56023906",
+            "56023907",
+            "560302",
+            "560306",
+            "571106"
+          ]
+        }
+      ],
+      "currencyRows": [
+        {
+          "label": "美元",
+          "sourceRow": 32,
+          "after": "ASSET",
+          "labelColumn": 1
+        },
+        {
+          "label": "美元",
+          "sourceRow": 186,
+          "after": "GRAND_TOTAL",
+          "labelColumn": 1
+        }
+      ]
+    },
+    "depreciationCompleted": {
+      "entryName": "2025年前折旧完清单",
+      "sourceSheet": "2025年前折旧完清单",
+      "headerRow": 2,
+      "headers": [
+        "月份",
+        "存放地点",
+        "名称",
+        "使用情况",
+        "类别",
+        "名称",
+        "单位",
+        "购入日期",
+        "原值",
+        "折旧年限",
+        "折旧额",
+        "2025/12/31",
+        "2025/11/30",
+        "2025/10/30",
+        "2025/9/30",
+        "2025/8/31",
+        "2025/7/29",
+        "2025/6/30",
+        "2025/5/31",
+        "2025/4/1",
+        "2025/3/1",
+        "2025/2/1",
+        "2025/1/1",
+        "12月份月折旧额",
+        "11月份月折旧额",
+        "10月份月折旧额",
+        "9月份月折旧额",
+        "8月份月折旧额",
+        "7月份月折旧额",
+        "6月份月折旧额",
+        "5月份月折旧额",
+        "4月份月折旧额",
+        "3月份月折旧额",
+        "2月份月折旧额",
+        "1月份月折旧额",
+        "2024年至2025累计折旧",
+        "科目",
+        "计提到期",
+        "验收合格"
+      ],
+      "blankColumns": [],
+      "note": "原文原序；月份/年份按所选会计年生成，空白分隔列保留。完成清单旧日期序列需按原格式转换，不能猜隐藏列。",
+      "sourceSha256": "7b68d284343175c7e89b9d1d1f4d085cee899a1e6f657a4687ce7a3eb7020778",
+      "sourceFile": "2026年9月固定资产明细表.xlsx",
+      "dateHeaderEvidence": [
+        {
+          "cell": "L2",
+          "serial": "46022",
+          "value": "2025-12-31 00:00:00",
+          "numFmt": "yyyy/m/d;@",
+          "display": "2025/12/31"
+        },
+        {
+          "cell": "M2",
+          "serial": "45991",
+          "value": "2025-11-30 00:00:00",
+          "numFmt": "yyyy/m/d;@",
+          "display": "2025/11/30"
+        },
+        {
+          "cell": "N2",
+          "serial": "45960",
+          "value": "2025-10-30 00:00:00",
+          "numFmt": "yyyy/m/d;@",
+          "display": "2025/10/30"
+        },
+        {
+          "cell": "O2",
+          "serial": "45930",
+          "value": "2025-09-30 00:00:00",
+          "numFmt": "yyyy/m/d;@",
+          "display": "2025/9/30"
+        },
+        {
+          "cell": "P2",
+          "serial": "45900",
+          "value": "2025-08-31 00:00:00",
+          "numFmt": "yyyy/m/d;@",
+          "display": "2025/8/31"
+        },
+        {
+          "cell": "Q2",
+          "serial": "45867",
+          "value": "2025-07-29 00:00:00",
+          "numFmt": "yyyy/m/d;@",
+          "display": "2025/7/29"
+        },
+        {
+          "cell": "R2",
+          "serial": "45838",
+          "value": "2025-06-30 00:00:00",
+          "numFmt": "yyyy/m/d;@",
+          "display": "2025/6/30"
+        },
+        {
+          "cell": "S2",
+          "serial": "45808",
+          "value": "2025-05-31 00:00:00",
+          "numFmt": "yyyy/m/d;@",
+          "display": "2025/5/31"
+        },
+        {
+          "cell": "T2",
+          "serial": "45748",
+          "value": "2025-04-01 00:00:00",
+          "numFmt": "yyyy/m/d;@",
+          "display": "2025/4/1"
+        },
+        {
+          "cell": "U2",
+          "serial": "45717",
+          "value": "2025-03-01 00:00:00",
+          "numFmt": "yyyy/m/d;@",
+          "display": "2025/3/1"
+        },
+        {
+          "cell": "V2",
+          "serial": "45689",
+          "value": "2025-02-01 00:00:00",
+          "numFmt": "yyyy/m/d;@",
+          "display": "2025/2/1"
+        },
+        {
+          "cell": "W2",
+          "serial": "45658",
+          "value": "2025-01-01 00:00:00",
+          "numFmt": "yyyy/m/d;@",
+          "display": "2025/1/1"
+        }
+      ],
+      "reportTitle": "2025年前已折旧完固定资产清单",
+      "fixedArchiveYear": 2025
+    },
+    "receivableAuxiliaryDetail": {
+      "entryName": "应收账款明细表",
+      "source": "2026年9月份应收账款明细表.xls!A1:N3",
+      "sourceTitle": "2026年9月份应收账款明细汇总表",
+      "reportTitle": "{year}年{month}月份应收账款明细汇总表",
+      "sourceSha256": "01abfe7ec87a71963da4268e1b8e0f36f8859c98d1895384c8d8eca524361269",
+      "headers": [
+        "科目编码",
+        "科目名称",
+        "客户编号",
+        "客户名称",
+        "方向",
+        "期初借方余额",
+        "期初贷方余额",
+        "期初余额金额",
+        "本期借方金额",
+        "本期贷方金额",
+        "期末借方余额",
+        "期末贷方余额",
+        "方向20",
+        "期末余额金额"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A3",
+            "label": "科目编码"
+          }
+        ],
+        [
+          {
+            "cell": "B3",
+            "label": "科目名称"
+          }
+        ],
+        [
+          {
+            "cell": "C3",
+            "label": "客户编号"
+          }
+        ],
+        [
+          {
+            "cell": "D3",
+            "label": "客户名称"
+          }
+        ],
+        [
+          {
+            "cell": "E3",
+            "label": "方向"
+          }
+        ],
+        [
+          {
+            "cell": "F3",
+            "label": "期初借方余额"
+          }
+        ],
+        [
+          {
+            "cell": "G3",
+            "label": "期初贷方余额"
+          }
+        ],
+        [
+          {
+            "cell": "H3",
+            "label": "期初余额金额"
+          }
+        ],
+        [
+          {
+            "cell": "I3",
+            "label": "本期借方金额"
+          }
+        ],
+        [
+          {
+            "cell": "J3",
+            "label": "本期贷方金额"
+          }
+        ],
+        [
+          {
+            "cell": "K3",
+            "label": "期末借方余额"
+          }
+        ],
+        [
+          {
+            "cell": "L3",
+            "label": "期末贷方余额"
+          }
+        ],
+        [
+          {
+            "cell": "M3",
+            "label": "方向20"
+          }
+        ],
+        [
+          {
+            "cell": "N3",
+            "label": "期末余额金额"
+          }
+        ]
+      ],
+      "currencyBasis": "LOCAL",
+      "grain": [
+        "accountCode",
+        "auxiliaryId",
+        "currencyId"
+      ],
+      "notes": "入口保留文件名去动态年月，表内标题保留A1。原文字段包括期初贷款余额、方向4/方向20；不静默改字。与初始附件3/6分开维护。"
+    },
+    "payableAuxiliaryDetail": {
+      "entryName": "应付账款明细表",
+      "source": "2026年9月份应付账款明细表.xls!A1:N3",
+      "sourceTitle": "2026年9月份应付汇总明细表",
+      "reportTitle": "{year}年{month}月份应付汇总明细表",
+      "sourceSha256": "4af91296ff2e9ba3a08e2127aa23d4de959837a5d8dc1c449b353d2a8abef9b9",
+      "headers": [
+        "科目编码",
+        "科目名称",
+        "供应商编号",
+        "供应商名称",
+        "期初借方余额",
+        "期初贷款余额",
+        "方向4",
+        "期初余额金额",
+        "本期借方金额",
+        "本期贷方金额",
+        "期末借方余额",
+        "期末贷方余额",
+        "方向20",
+        "期末余额金额"
+      ],
+      "headerParts": [
+        [
+          {
+            "cell": "A3",
+            "label": "科目编码"
+          }
+        ],
+        [
+          {
+            "cell": "B3",
+            "label": "科目名称"
+          }
+        ],
+        [
+          {
+            "cell": "C3",
+            "label": "供应商编号"
+          }
+        ],
+        [
+          {
+            "cell": "D3",
+            "label": "供应商名称"
+          }
+        ],
+        [
+          {
+            "cell": "E3",
+            "label": "期初借方余额"
+          }
+        ],
+        [
+          {
+            "cell": "F3",
+            "label": "期初贷款余额"
+          }
+        ],
+        [
+          {
+            "cell": "G3",
+            "label": "方向4"
+          }
+        ],
+        [
+          {
+            "cell": "H3",
+            "label": "期初余额金额"
+          }
+        ],
+        [
+          {
+            "cell": "I3",
+            "label": "本期借方金额"
+          }
+        ],
+        [
+          {
+            "cell": "J3",
+            "label": "本期贷方金额"
+          }
+        ],
+        [
+          {
+            "cell": "K3",
+            "label": "期末借方余额"
+          }
+        ],
+        [
+          {
+            "cell": "L3",
+            "label": "期末贷方余额"
+          }
+        ],
+        [
+          {
+            "cell": "M3",
+            "label": "方向20"
+          }
+        ],
+        [
+          {
+            "cell": "N3",
+            "label": "期末余额金额"
+          }
+        ]
+      ],
+      "currencyBasis": "LOCAL",
+      "grain": [
+        "accountCode",
+        "auxiliaryId",
+        "currencyId"
+      ],
+      "notes": "入口保留文件名去动态年月，表内标题保留A1。原文字段包括期初贷款余额、方向4/方向20；不静默改字。与初始附件3/6分开维护。"
+    },
+    "financeApplications": {
+      "entryName": "各部门申请流程",
+      "types": {
+        "TRAVEL_APPLICATION": "出差申请",
+        "TRAVEL_REIMBURSEMENT": "出差报销申请",
+        "REIMBURSEMENT": "报销申请",
+        "PAYMENT_APPLICATION": "付款申请",
+        "PREPAYMENT_APPLICATION": "预付申请",
+        "PAYROLL_PAYMENT": "工资付款申请"
+      },
+      "roles": {
+        "DEPARTMENT_REVIEW": "部门负责人审核",
+        "TRAVEL_APPROVAL": "小朱总或朱总批准",
+        "FINANCE_CUSTODY": "交财务苏蝶金保管",
+        "FINANCE_REVIEW_1": "财务苏蝶金复核",
+        "FINANCE_REVIEW_2": "财务吴兰梅复核",
+        "MANAGEMENT_PAYMENT": "总经办王经理批准支付"
+      }
+    },
+    "accountingContinuation": {
+      "entryName": "原账套接续",
+      "source": "用户补充的会计分录凭证、科目余额表、辅助核算明细",
+      "reportTitle": "原账套接续"
+    }
+  }
+}

@@ -131,7 +131,9 @@ class ExpenseClaimServiceTest {
         var policy=org.mockito.Mockito.spy(new ExpenseApprovalPolicy(departments));
         org.mockito.Mockito.doNothing().when(policy).requireNext(any(),any(),anyString());
         org.mockito.Mockito.doNothing().when(policy).requirePaymentOperator(any(),anyString(),org.mockito.ArgumentMatchers.anyBoolean());
-        var readers=new ExpenseClaimReadPolicy(mock(com.uten.imp.security.OwnerVisibility.class));
+        var owners=mock(com.uten.imp.security.OwnerVisibility.class);
+        when(owners.evaluate(anyString(),anyString())).thenReturn(new com.uten.imp.security.OwnerVisibility.OwnerScope(false,Set.of(),Set.of()));
+        var readers=new ExpenseClaimReadPolicy(owners);
         org.springframework.test.util.ReflectionTestUtils.setField(readers,"approvalPolicy",policy);
         org.springframework.test.util.ReflectionTestUtils.setField(readers,"events",eventRepository);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"approvalPolicy",policy);

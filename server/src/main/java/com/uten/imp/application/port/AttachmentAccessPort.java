@@ -16,6 +16,8 @@ import java.io.InputStream;
 public interface AttachmentAccessPort {
 
     List<AttachmentView> listVisible(String ownerType, UUID ownerId);
+    /** Exact reviewed original references, never the foreign owner's entire attachment list. */
+    default List<AttachmentView> listLinkedVisible(String ownerType,UUID ownerId){return List.of();}
 
     /** Read-only full history under the owner's current historical object/data-scope policy. */
     List<AttachmentView> listVisibleHistory(String ownerType,UUID ownerId);

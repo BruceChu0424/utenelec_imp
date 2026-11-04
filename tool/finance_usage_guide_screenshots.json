@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "purpose": "真实本地应用培训截图登记，不接收组件测试、占位或绘制页面",
+  "minimumVerifiedImages": 10,
+  "groups": [
+    {"id":"home","section":"start","need":"财税部首页，包含总账报表、对账单、成本核算及各部门申请流程入口","preferredCount":1,"images":[]},
+    {"id":"accounts","section":"accounts","need":"科目目录与业务单据科目对应，显示真实入口名称","preferredCount":1,"images":[]},
+    {"id":"opening","section":"opening","need":"原账套接续，含来源账套、原文件、用途和批次状态；辅助可同组另图","preferredCount":1,"images":[]},
+    {"id":"trial","section":"trial","need":"科目余额表原9列与分类小计，有非零匿名事实","preferredCount":1,"images":[]},
+    {"id":"balance","section":"statements","need":"月度资产负债表左右同表与会计月份","preferredCount":1,"images":[]},
+    {"id":"profit","section":"statements","need":"月度利润或年度利润原表，显示累计与当月或全年列","preferredCount":1,"images":[]},
+    {"id":"applications","section":"applications","need":"申请类型与当前审核节点；支付和财务确认细图在审批重构稳定后采","preferredCount":2,"images":[]},
+    {"id":"shipment","section":"shipment","need":"客户发货审核的到账/结算方式/审核结果，或带有效审核人的打印预览","preferredCount":1,"images":[]},
+    {"id":"payable","section":"payables","need":"委外或供应商原件、原件及打印资料、手续费/尾数逐单处理","preferredCount":2,"images":[]},
+    {"id":"receivable","section":"receivables","need":"客户原对账或应收汇总，能识别期末仍欠物料金额","preferredCount":1,"images":[]},
+    {"id":"material","section":"materials","need":"塑料耗用与三附表切换或其他应收物料来源，包含单位和来源核对","preferredCount":1,"images":[]},
+    {"id":"cost","section":"costs","need":"铜柱/销售成本实际原表，或精度选择与真实成本状态","preferredCount":1,"images":[]},
+    {"id":"assets","section":"assets","need":"资产/待摊原表接续，原工作表选择、成员对应及原凭证条目","preferredCount":2,"images":[]},
+    {"id":"operating","section":"expenses","need":"制造/管理/销售费用或经营损益的原表与期间","preferredCount":1,"images":[]},
+    {"id":"export","section":"files","need":"导入的明确工作表选择或实际导出/打印任务结果","preferredCount":1,"images":[]}
+  ],
+  "imageRecordContract": {
+    "path":"绝对路径",
+    "caption":"只解释画面内实际操作与结果",
+    "actualApp":true,
+    "verifiedBy":"真实应用检查人",
+    "captureContext":"匿名本地隔离环境，不含账号/令牌/公司业务数据"
+  }
+}

@@ -23,6 +23,7 @@ import '../../features/warehouse/repositories/stock_doc_repository.dart';
 import '../auth/document_scope_capability.dart';
 import '../auth/permissions.dart';
 import '../models/paged_result.dart';
+import '../formatters/exact_decimal.dart';
 import '../providers/authenticated_scope_provider.dart';
 import '../providers/draft_counts_provider.dart';
 import '../providers/master_name_provider.dart';
@@ -219,8 +220,11 @@ final draftWorkspaceRowsProvider = FutureProvider.autoDispose
         }
         final names = ref.read(masterNameServiceProvider);
         final label = draftWorkspaceKindLabel(kind);
-        String? money(double? amount, [bool masked = false]) =>
-            masked ? '***' : amount?.toStringAsFixed(2);
+        String? money(Object? amount, [bool masked = false]) => masked
+            ? '***'
+            : amount == null
+            ? null
+            : financeExactMoneyDisplay(amount.toString());
         final purchase = _purchaseType(kind);
         if (purchase != null) {
           final repo = ref.watch(purchaseRepositoryProvider(purchase));
@@ -251,7 +255,7 @@ final draftWorkspaceRowsProvider = FutureProvider.autoDispose
                 billDate: row.billDate,
                 party: names.supplier(row.supplierId),
                 amount: money(
-                  row.totalLocal,
+                  row.totalLocalText ?? row.totalLocal,
                   row.priceMasked ||
                       !PurchaseDocConfig.by(
                         purchase,
@@ -297,7 +301,7 @@ final draftWorkspaceRowsProvider = FutureProvider.autoDispose
                 billDate: row.billDate,
                 party: names.supplier(row.supplierId),
                 amount: money(
-                  row.totalLocal,
+                  row.totalLocalText ?? row.totalLocal,
                   row.priceMasked ||
                       !(superAdmin ||
                           SubcontractDocConfig.by(
@@ -348,7 +352,7 @@ final draftWorkspaceRowsProvider = FutureProvider.autoDispose
                   FinanceDocType.payment => financeNames.supplier(row.partyId),
                   _ => financeNames.account(row.accountId ?? row.outAccountId),
                 },
-                amount: row.amountLocalText ?? money(row.amountLocal),
+                amount: money(row.amountLocalText ?? row.amountLocal),
                 deletable: row.status == 0 && !row.legacyImported,
               ),
           ];
@@ -448,7 +452,10 @@ final draftWorkspaceRowsProvider = FutureProvider.autoDispose
                   billNo: row.billNo,
                   billDate: row.billDate,
                   party: salesNames.client(row.clientId),
-                  amount: money(row.totalLocal, row.priceMasked),
+                  amount: money(
+                    row.totalLocalText ?? row.totalLocal,
+                    row.priceMasked,
+                  ),
                   deletable: isDeletableSalesDraftRow(row, sales),
                   expectedRevision: sales == SalesDocType.quote
                       ? row.quoteWorkflow.reviewRevision

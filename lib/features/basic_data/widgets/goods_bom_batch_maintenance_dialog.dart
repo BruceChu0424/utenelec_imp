@@ -234,7 +234,7 @@ class _BatchMaintenanceDialogState
     }
     final copied = component.copied;
     final body = copied == null
-        ? <String, dynamic>{'price': goods.baseCurrencyPrice}
+        ? <String, dynamic>{'price': goods.baseCurrencyPriceText}
         : bomComponentCopyBody(copied);
     if (copied != null &&
         component.quantity.text.trim() ==
@@ -244,13 +244,17 @@ class _BatchMaintenanceDialogState
       return body;
     }
     if (goods.isPeriodicIssue) {
-      body.addAll(periodicBomQuantityBody(goods.id, entered, goods.unitName));
+      body.addAll(
+        periodicBomQuantityBody(
+          goods.id,
+          component.quantity.text,
+          goods.unitName,
+        ),
+      );
     } else {
       body.addAll({
         'componentGoodsId': goods.id,
-        'qty': copied?.qtyExactText == null
-            ? entered
-            : financeExactDecimal(component.quantity.text) ?? entered,
+        'qty': financeExactDecimal(component.quantity.text),
       });
     }
     if (copied != null &&

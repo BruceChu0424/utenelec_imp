@@ -48,6 +48,7 @@ public interface ExpenseClaimRepository
     @Query("""
             SELECT count(c), sum(c.totalAmount) FROM ExpenseClaim c
             WHERE c.deleted = false AND c.status IN :statuses AND c.applicantId<>:actor
+            AND function('fn_finance_expense_is_application_managed',c.id)=false
             AND (:payment=false OR c.approvedBy IS NULL OR c.approvedBy<>:actor)
             AND (:payment=false OR locate(cast(:actor AS string),coalesce(c.approvalParticipants,''))=0)
             """)

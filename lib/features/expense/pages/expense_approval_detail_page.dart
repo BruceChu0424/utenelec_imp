@@ -1,4 +1,7 @@
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
+import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/models/accounting_expense_purpose.dart';
+import '../../../shared/formatters/money_display.dart';
 // 报销审批详情页（审批人/财务视角）
 // 文档：docs/03-页面/报销审批详情页.md · 审批流见 docs/05-架构/全局机制.md §3.3
 //
@@ -38,6 +41,7 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/rmb_amount.dart';
 import '../../../shared/attachments/attachment_section.dart';
+import '../../finance/widgets/finance_native_original_section.dart';
 import '../../../shared/auth/sensitive_write.dart';
 import '../../../shared/providers/sensitive_read_boundary_provider.dart';
 import '../../../shared/widgets/sensitive_content_boundary.dart';
@@ -54,6 +58,7 @@ import '../providers/expense_action_eligibility.dart';
 import '../repositories/expense_repository.dart';
 import '../widgets/expense_claim_print.dart';
 import '../widgets/expense_claim_timeline.dart';
+import '../widgets/expense_financial_application_link.dart';
 import '../widgets/expense_approval_progress.dart';
 import '../widgets/expense_invoice_section.dart';
 import '../widgets/expense_submission_revision.dart';
@@ -317,6 +322,11 @@ class _ExpenseApprovalDetailPageState
             showBackButton: true,
             actions: [
               detail.maybeWhen(
+                data: (claim) =>
+                    ExpenseFinancialApplicationLinkButton(claim: claim),
+                orElse: () => const SizedBox.shrink(),
+              ),
+              detail.maybeWhen(
                 data: (claim) => UtenButton(
                   type: UtenButtonType.tonal,
                   size: UtenButtonSize.small,
@@ -437,6 +447,13 @@ class _ExpenseApprovalDetailPageState
                         stickyHeaderPinned: _invoicePinned,
                       ),
                       const SizedBox(height: UtenSpacing.s20),
+                      if (claim.applicationKind != null) ...[
+                        FinanceNativeOriginalSection(
+                          ownerType: 'EXPENSE_CLAIM',
+                          ownerId: claim.id,
+                        ),
+                        const SizedBox(height: UtenSpacing.s20),
+                      ],
                       _sectionTitle(
                         theme,
                         '附件 / 发票影像 (${claim.attachments.length})',
@@ -579,7 +596,7 @@ class _ExpenseApprovalDetailPageState
               entries: [
                 UtenTotalEntry(
                   '合计',
-                  '${claim.totalAmount.toStringAsFixed(2)} 元',
+                  '${financeExactMoneyDisplay(claim.totalAmountText)} 元',
                 ),
               ],
             ),
@@ -604,6 +621,8 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
   late final TextEditingController _dateController;
   String? _accountId;
   String? _expenseStyleId;
+  AccountingExpensePurpose _postingPurpose =
+      AccountingExpensePurpose.ordinaryExpense;
   // UtenDropdownField 非 FormField：必填校验在 _submit 里显式判空并回显 errorMessage。
   String? _accountError;
   String? _styleError;
@@ -649,13 +668,18 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
         accountId: _accountId!,
         expenseStyleId: _expenseStyleId!,
         paymentDate: _paymentDate,
+        postingPurpose: _postingPurpose,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final optionsAsync = ref.watch(expensePaymentOptionsProvider);
+    final optionsProvider =
+        _postingPurpose == AccountingExpensePurpose.ordinaryExpense
+        ? expensePaymentOptionsProvider
+        : expensePaymentOptionsForPurposeProvider(_postingPurpose);
+    final optionsAsync = ref.watch(optionsProvider);
     final options = optionsAsync.value;
     final hasOptions =
         options != null &&
@@ -692,7 +716,7 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
                   message: '付款账户和费用类别没有加载出来',
                   description: '请重试或联系财务维护付款账户和费用类别。',
                   actionLabel: '重试',
-                  onAction: () => ref.invalidate(expensePaymentOptionsProvider),
+                  onAction: () => ref.invalidate(optionsProvider),
                 ),
               ),
               data: (loaded) {
@@ -708,8 +732,7 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
                       message: '缺少$missing',
                       description: '请联系财务在基础资料中维护可用付款账户和费用类别，再重新加载。',
                       actionLabel: '重新加载',
-                      onAction: () =>
-                          ref.invalidate(expensePaymentOptionsProvider),
+                      onAction: () => ref.invalidate(optionsProvider),
                     ),
                   );
                 }
@@ -721,6 +744,28 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        UtenDropdownField(
+                          label: '支付用途',
+                          value: _postingPurpose.apiValue,
+                          items: [
+                            for (final purpose
+                                in AccountingExpensePurpose.values)
+                              UtenDropdownItem(
+                                value: purpose.apiValue,
+                                label: purpose.label,
+                              ),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setState(() {
+                              _postingPurpose =
+                                  AccountingExpensePurpose.fromApi(value);
+                              _expenseStyleId = null;
+                              _styleError = null;
+                            });
+                          },
+                        ),
+                        const SizedBox(height: UtenSpacing.s16),
                         UtenDropdownField(
                           label: '付款账户',
                           required: true,
@@ -734,7 +779,7 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
                                 label: account.balanceCurrent == null
                                     ? account.label
                                     : '${account.label} · 余额 '
-                                          '${account.balanceCurrent!.toStringAsFixed(2)} 元',
+                                          '${financeMoneyWithUnitSuffix(account.balanceCurrentText ?? account.balanceCurrent?.toString(), currencyName: account.currencyName, currencyCode: account.currencyCode)}',
                               ),
                           ],
                           onChanged: (value) => setState(() {
@@ -744,7 +789,11 @@ class _ExpensePaymentDialogState extends ConsumerState<_ExpensePaymentDialog> {
                         ),
                         const SizedBox(height: UtenSpacing.s16),
                         UtenDropdownField(
-                          label: '费用类别',
+                          label:
+                              _postingPurpose ==
+                                  AccountingExpensePurpose.manufacturingCost
+                              ? '制造费用科目'
+                              : '费用类别',
                           required: true,
                           value: _expenseStyleId,
                           allowClear: false,
@@ -831,7 +880,7 @@ class _Hero extends StatelessWidget {
       primary: [
         UtenSummaryField(
           label: '报销总额',
-          value: '${claim.totalAmount.toStringAsFixed(2)} 元',
+          value: '${financeExactMoneyDisplay(claim.totalAmountText)} 元',
           emphasis: true,
           danger: true,
         ),
@@ -845,7 +894,7 @@ class _Hero extends StatelessWidget {
         ),
       ],
       details: [
-        UtenSummaryField(label: '大写', value: rmbCapital(claim.totalAmount)),
+        UtenSummaryField(label: '大写', value: rmbCapital(claim.totalAmountText)),
         if (claim.remark != null && claim.remark!.trim().isNotEmpty)
           UtenSummaryField(label: '备注', value: claim.remark),
       ],

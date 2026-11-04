@@ -140,7 +140,7 @@ class _GoodsPurchaseOverReceiptDetailRow extends MasterDetailRow {
   _GoodsPurchaseOverReceiptDetailRow({required this.pct, required this.onEdit})
     : super('采购允许超收%', goodsPurchaseOverReceiptText(pct));
 
-  final double? pct;
+  final Object? pct;
   final VoidCallback? onEdit;
 }
 
@@ -680,6 +680,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
           key: 'discount',
           label: '折扣',
           type: MasterFieldType.money,
+          exactDecimal: true,
           group: '商务',
           hint: '倍率 1=原价 0.9=9折',
         ),
@@ -741,6 +742,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         key: 'minOrderQty',
         label: '最小起订量',
         type: MasterFieldType.money,
+        exactDecimal: true,
         group: '采购',
         hint: '供应商最小起订量，下达采购时按它抬量',
       ),
@@ -748,6 +750,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         key: 'orderMultipleQty',
         label: '订货倍数',
         type: MasterFieldType.money,
+        exactDecimal: true,
         group: '采购',
         hint: '整箱/整包数量，下达采购时向上取整到它的倍数',
       ),
@@ -855,25 +858,25 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       'series': d.series ?? '',
       'stockPlace': d.stockPlace ?? '',
       'owningWarehouseId': d.owningWarehouseId ?? '',
-      'thickness': s(d.thickness),
-      'mWeight': s(d.mWeight),
+      'thickness': d.thicknessText ?? '',
+      'mWeight': d.mWeightText ?? '',
       'colorId': d.colorId ?? '',
       'mouldId': d.mouldId ?? '',
       'rearInsertCode': d.rearInsertCode ?? '',
       'price': d.priceText ?? '',
       'currencyId': d.currencyId ?? '',
-      'discount': s(d.discount),
+      'discount': d.discountText ?? '',
       'pack': d.pack ?? '',
       'unitId': d.unitId ?? '',
       'pieces': s(d.pieces),
       // 起订量/倍数绝大多数是整数：回填「500」而不是「500.0」，免得用户每次
       // 进编辑都要手动擦掉尾巴。
-      'minOrderQty': goodsQtyText(d.minOrderQty) ?? '',
-      'orderMultipleQty': goodsQtyText(d.orderMultipleQty) ?? '',
+      'minOrderQty': d.minOrderQtyText ?? '',
+      'orderMultipleQty': d.orderMultipleQtyText ?? '',
     };
   }
 
-  /// 编辑态全量回传的成本字段（后端 apply 全量覆盖，缺字段清 null）。
+  /// Basic editing carries only identity/CAS metadata; budget facts belong to their own command.
   Map<String, dynamic> _costFixedValues() {
     final d = _detail;
     final m = <String, dynamic>{'categoryId': _categoryId};
@@ -882,25 +885,6 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       if (d.version != null) m['version'] = d.version;
       // 车间内料仓属性 (ADR-131：发料方式、分摊方式、每袋净重、回收料) 只在「发料方式」
       // 弹窗里改 (PUT /issue-method/batch)；普通保存服务端不收这四个字段，这里也不提交。
-      m
-        ..['sourceE'] = d.sourceE
-        ..['machiningE'] = d.machiningE
-        ..['incidentalE'] = d.incidentalE
-        ..['lacquerE'] = d.lacquerE
-        ..['platingE'] = d.platingE
-        ..['casingE'] = d.casingE
-        ..['polishE'] = d.polishE
-        ..['total'] = d.total
-        ..['workRate'] = d.workRate
-        ..['workE'] = d.workE
-        ..['lostRate'] = d.lostRate
-        ..['lostE'] = d.lostE
-        ..['rentRate'] = d.rentRate
-        ..['rentE'] = d.rentE
-        ..['makeRate'] = d.makeRate
-        ..['makeE'] = d.makeE
-        ..['cTotal'] = d.cTotal
-        ..['gTotal'] = d.gTotal;
     }
     return m;
   }
@@ -928,6 +912,17 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       body.removeWhere(
         (key, _) => !GoodsFieldEditPolicy.canEditField(key, permissions),
       );
+    }
+    if (editing) {
+      // Unchanged sensitive values must not become a write merely by opening this form.
+      for (final key in const ['price', 'discount', 'currencyId']) {
+        if (!body.containsKey(key)) continue;
+        final controller = form!.controller.controllers[key];
+        final current = controller?.text ?? '${body[key] ?? ''}';
+        if (current == (form.controller.initialValues[key] ?? '')) {
+          body.remove(key);
+        }
+      }
     }
     // Preserve the exact old UUID/legacy snapshot, including unresolved history.
     // The API and DB independently reject spoofed changes to a used unit.
@@ -1618,8 +1613,8 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         !d.costMasked &&
         (ref.watch(isSuperAdminProvider) ||
             ref.watch(currentPermissionsProvider).contains(Perm.goodsCostView));
-    String? learnedPrice(GoodsLearnedPriceInfo? info, double? oldValue) {
-      final price = info?.price ?? oldValue;
+    String? learnedPrice(GoodsLearnedPriceInfo? info, String? oldValue) {
+      final price = info?.priceText ?? oldValue;
       if (price == null) return null;
       final l10n = AppLocalizations.of(context);
       if (info == null || !info.contextComplete) {
@@ -1629,7 +1624,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         '$price ${info.currencyName}/${info.unitName}',
         if (info.supplierName != null) info.supplierName!,
         if (info.colorName != null) info.colorName!,
-        '${l10n.goodsLearnedPriceTaxRate} ${info.taxRate}%',
+        '${l10n.goodsLearnedPriceTaxRate} ${info.taxRateText}%',
       ].join(' · ');
     }
 
@@ -1667,11 +1662,11 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         MasterDetailRow('所属仓库', d.owningWarehouseName),
         MasterDetailRow(
           '厚度',
-          withUnit(d.thickness, d.thicknessUnitId, d.thicknessUnitLegacyId),
+          withUnit(d.thicknessText, d.thicknessUnitId, d.thicknessUnitLegacyId),
         ),
         MasterDetailRow(
           '单重',
-          withUnit(d.mWeight, d.mWeightUnitId, d.mWeightUnitLegacyId),
+          withUnit(d.mWeightText, d.mWeightUnitId, d.mWeightUnitLegacyId),
         ),
         MasterDetailRow('颜色', d.colorName),
         for (final w in d.periodicBomWeights)
@@ -1686,8 +1681,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         if (canViewPrice) MasterDetailRow('价格', d.priceText ?? ''),
         if (canViewPrice)
           _GoodsCurrencyDetailRow(d.currencyName, d.currencyCode),
-        if (canViewDiscount)
-          MasterDetailRow('折扣', d.discount == null ? '' : '${d.discount}'),
+        if (canViewDiscount) MasterDetailRow('折扣', d.discountText ?? ''),
         MasterDetailRow('包装', d.pack),
         MasterDetailRow('基本单位', d.unitName),
         MasterDetailRow('件数', s(d.pieces)),
@@ -1697,16 +1691,16 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       _DetailSection('采购', [
         MasterDetailRow(
           '最小起订量',
-          withUnit(goodsQtyText(d.minOrderQty), d.unitId, d.unitLegacyId),
+          withUnit(d.minOrderQtyText, d.unitId, d.unitLegacyId),
         ),
         MasterDetailRow(
           '订货倍数',
-          withUnit(goodsQtyText(d.orderMultipleQty), d.unitId, d.unitLegacyId),
+          withUnit(d.orderMultipleQtyText, d.unitId, d.unitLegacyId),
         ),
         // ADR-144 采购允许超收记忆：订货行预填用；每次保存采购订货单自动写回。
         // 比例不是价格，不看成本权限；能编辑货品就能改。
         _GoodsPurchaseOverReceiptDetailRow(
-          pct: d.purchaseAllowedOverReceiptPct,
+          pct: d.purchaseAllowedOverReceiptPctText,
           onEdit:
               _canEditSaved &&
                   (ref.watch(isSuperAdminProvider) ||
@@ -1720,14 +1714,17 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
         if (canViewLearnedPrice)
           MasterDetailRow(
             '采购单价',
-            learnedPrice(d.defaultPurchasePriceInfo, d.defaultPurchasePrice),
+            learnedPrice(
+              d.defaultPurchasePriceInfo,
+              d.defaultPurchasePriceText,
+            ),
           ),
         if (canViewLearnedPrice)
           MasterDetailRow(
             '委外单价',
             learnedPrice(
               d.defaultSubcontractPriceInfo,
-              d.defaultSubcontractPrice,
+              d.defaultSubcontractPriceText,
             ),
           ),
       ]),
@@ -1807,7 +1804,7 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
   static String _rowWeightText(GoodsStockRow w, WeightDisplay display) {
     if (w.weight == null && (w.qty ?? 0) == 0) return '';
     final text = formatWeightValue(
-      w.weight,
+      w.weightText,
       display: display,
       estimated: w.weightEstimated,
     );
@@ -1972,7 +1969,6 @@ class _GoodsDetailBodyState extends ConsumerState<GoodsDetailBody>
       key: ValueKey('cost-$_goodsId'),
       detail: _detail!,
       canEdit: _canEditSaved,
-      materialTotal: _detail!.sourceE,
       onSaved: () {
         _refreshDetail();
         widget.onDataChanged?.call();

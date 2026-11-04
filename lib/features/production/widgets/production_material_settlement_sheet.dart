@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import 'package:uten_imp/components/buttons/uten_refresh_button.dart';
 import 'package:uten_imp/components/feedback/uten_dialog.dart';
@@ -443,7 +444,7 @@ class _MaterialSettlementSheetState
     reason.dispose();
     if (result == null || !mounted) return;
     final canonical =
-        '${widget.planId}|${source.postingId}|${source.reversedQtyBase}|${source.reversibleQtyBase}|${result.$1.toStringAsFixed(6)}|${result.$2}';
+        '${widget.planId}|${source.postingId}|${source.reversedQtyBase}|${source.reversibleQtyBase}|${result.$1.toExactString(minimumFractionDigits: 6)}|${result.$2}';
     setState(() => _busy = true);
     try {
       await ref
@@ -1239,8 +1240,10 @@ double _positive(String text) {
 }
 
 String _number(double value) => value == value.roundToDouble()
-    ? value.toStringAsFixed(0)
-    : value.toStringAsFixed(4).replaceFirst(RegExp(r'0+$'), '');
+    ? value.toExactString()
+    : value
+          .toExactString(minimumFractionDigits: 4)
+          .replaceFirst(RegExp(r'0+$'), '');
 
 String _settlementLabel(String type) => switch (type) {
   'APPROVED_LOSS' => '另行确认损耗',

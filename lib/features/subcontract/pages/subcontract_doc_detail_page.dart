@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../../../shared/documents/document_unapproval.dart';
@@ -992,13 +993,13 @@ class _SubcontractDocDetailPageState
       if (_cfg.hasLastDate) _KV('最后交货日', d.lastDate),
       if (_cfg.hasBStyle) _KV('bStyle', d.bStyle?.toString()),
       if (_cfg.hasTotalWeight && d.totalWeight != null)
-        _KV('总重', d.totalWeight?.toStringAsFixed(2)),
+        _KV('总重', d.totalWeight?.toExactString(minimumFractionDigits: 2)),
       if (canViewCommercialAmounts &&
           _cfg.hasDeductAmount &&
           (d.deductAmount ?? 0) > 0)
         _KV(
           '建议索赔金额(本币)',
-          '${financeMoneyWithUnitSuffix(d.deductAmount?.toStringAsFixed(2), currencyName: '人民币', fullCurrencyName: true)}(仅建议，不自动冲应付)',
+          '${financeMoneyWithUnitSuffix(d.deductAmount?.toExactString(minimumFractionDigits: 2), currencyName: '人民币', fullCurrencyName: true)}(仅建议，不自动冲应付)',
         ),
       if (canViewCommercialAmounts &&
           _cfg.hasAmount &&
@@ -1146,11 +1147,11 @@ class _SubcontractDocDetailPageState
     String? unitOf(SubcontractDocItem it) => _dictText(names.unit(it.unitId));
     String? qtyWithUnit(
       SubcontractDocItem it,
-      num? value, {
+      Object? value, {
       int maxDecimals = 4,
     }) => value == null
         ? null
-        : formatQtyWithUnit(value, unitOf(it), maxDecimals: maxDecimals);
+        : formatExactQtyWithUnit(financeExactDecimal(value), unitOf(it));
 
     // 金额「数值 币种」后缀（2026-10-10 口径）：明细行币种随单据表头
     // d.currencyId（names.currency 缺失返回 '—'，助手遇 '—'/「未知」不拼单位）。
@@ -1373,21 +1374,23 @@ class _SubcontractDocDetailPageState
                         key: 'received',
                         label: '已收',
                         sortable: true,
-                        exactValueOf: (it) => it.receivedQty?.toString(),
+                        exactValueOf: (it) => it.counterText('receivedQty'),
                         width: 100,
                         type: 'number',
-                        value: (it) => qtyWithUnit(it, it.receivedQty),
+                        value: (it) =>
+                            qtyWithUnit(it, it.counterText('receivedQty')),
                       ),
                     if (widget.docType == SubcontractDocType.order)
                       MasterColumnDef(
                         key: 'settledLossQty',
                         label: '结案损耗',
                         sortable: true,
-                        exactValueOf: (it) => it.settledLossQty?.toString(),
+                        exactValueOf: (it) => it.counterText('settledLossQty'),
                         width: 110,
                         type: 'number',
                         value: (it) =>
-                            qtyWithUnit(it, it.settledLossQty) ?? '—',
+                            qtyWithUnit(it, it.counterText('settledLossQty')) ??
+                            '—',
                       ),
                     // ADR-098：订货行允许损耗%（回厂累计低于 数量×(1−允许损耗) 即短交待判定）。
                     if (_cfg.itemHasAllowedLossPct)
@@ -1395,22 +1398,23 @@ class _SubcontractDocDetailPageState
                         key: 'allowedLossPct',
                         label: '允许损耗%',
                         sortable: true,
-                        exactValueOf: (it) => it.allowedLossPct?.toString(),
+                        exactValueOf: (it) => it.allowedLossPctText,
                         width: 100,
                         type: 'number',
                         value: (it) => it.allowedLossPct == null
                             ? '未设'
-                            : it.allowedLossPct!.toStringAsFixed(2),
+                            : it.allowedLossPctText ?? '',
                       ),
                     if (_cfg.showReturned)
                       MasterColumnDef(
                         key: 'returned',
                         label: '已退',
                         sortable: true,
-                        exactValueOf: (it) => it.returnedQty?.toString(),
+                        exactValueOf: (it) => it.counterText('returnedQty'),
                         width: 100,
                         type: 'number',
-                        value: (it) => qtyWithUnit(it, it.returnedQty),
+                        value: (it) =>
+                            qtyWithUnit(it, it.counterText('returnedQty')),
                       ),
                     if (widget.docType == SubcontractDocType.application ||
                         widget.docType == SubcontractDocType.order)
@@ -1440,47 +1444,52 @@ class _SubcontractDocDetailPageState
                         key: 'wasted',
                         label: '已损耗',
                         sortable: true,
-                        exactValueOf: (it) => it.wastedQty?.toString(),
+                        exactValueOf: (it) => it.counterText('wastedQty'),
                         width: 100,
                         type: 'number',
-                        value: (it) => qtyWithUnit(it, it.wastedQty),
+                        value: (it) =>
+                            qtyWithUnit(it, it.counterText('wastedQty')),
                       ),
                     if (_cfg.showSupplierLedger) ...[
                       MasterColumnDef(
                         key: 'atSupplier',
                         label: '在供应商处',
                         sortable: true,
-                        exactValueOf: (it) => it.atSupplierQty?.toString(),
+                        exactValueOf: (it) => it.counterText('atSupplierQty'),
                         width: 110,
                         type: 'number',
-                        value: (it) => qtyWithUnit(it, it.atSupplierQty),
+                        value: (it) =>
+                            qtyWithUnit(it, it.counterText('atSupplierQty')),
                       ),
                       MasterColumnDef(
                         key: 'consumed',
                         label: '已消费',
                         sortable: true,
-                        exactValueOf: (it) => it.consumedQty?.toString(),
+                        exactValueOf: (it) => it.counterText('consumedQty'),
                         width: 100,
                         type: 'number',
-                        value: (it) => qtyWithUnit(it, it.consumedQty),
+                        value: (it) =>
+                            qtyWithUnit(it, it.counterText('consumedQty')),
                       ),
                       MasterColumnDef(
                         key: 'supplierEnding',
                         label: '供应商结存',
                         sortable: true,
-                        exactValueOf: (it) => it.supplierEnding?.toString(),
+                        exactValueOf: (it) => it.counterText('supplierEnding'),
                         width: 110,
                         type: 'number',
-                        value: (it) => qtyWithUnit(it, it.supplierEnding),
+                        value: (it) =>
+                            qtyWithUnit(it, it.counterText('supplierEnding')),
                       ),
                       MasterColumnDef(
                         key: 'frozenUnitQty',
                         label: '冻结单耗',
                         sortable: true,
-                        exactValueOf: (it) => it.frozenUnitQty?.toString(),
+                        exactValueOf: (it) => it.counterText('frozenUnitQty'),
                         width: 100,
                         type: 'number',
-                        value: (it) => qtyWithUnit(it, it.frozenUnitQty),
+                        value: (it) =>
+                            qtyWithUnit(it, it.counterText('frozenUnitQty')),
                       ),
                     ],
                     if (_cfg.itemHasWasteFields)
@@ -1490,7 +1499,8 @@ class _SubcontractDocDetailPageState
                         sortable: true,
                         width: 140,
                         value: (it) => [
-                          if (it.wasteRate != null) '${it.wasteRate}%',
+                          if (it.wasteRate != null)
+                            '${it.wasteRateText ?? it.wasteRate}%',
                           if (it.cause?.isNotEmpty == true) it.cause,
                         ].join(' · '),
                       ),

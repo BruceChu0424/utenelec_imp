@@ -1,3 +1,4 @@
+import 'package:uten_imp/shared/formatters/exact_decimal.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:uten_imp/features/production/models/material_preparation_draft_budget.dart';
 import 'package:uten_imp/features/production/models/material_preparation_supply_slice.dart';
@@ -371,25 +372,73 @@ void main() {
   });
 
   test(
-    'invalid and cleared inputs consume nothing and fractional sums conserve',
+    'unverified inputs remain pending while cleared and valid fractional inputs conserve',
     () {
-      final budget = MaterialPreparationDraftBudget.project(
+      final invalid = MaterialPreparationDraftBudget.project(
         lines: [
           line('a', requested: double.nan, selected: true),
           line('b', requested: -1, selected: true),
+        ],
+        sharedAvailableByPool: const {pool: 0.1},
+      );
+      expect(invalid.pendingReason, isNotNull);
+      expect(invalid.rows, isEmpty);
+      final budget = MaterialPreparationDraftBudget.project(
+        lines: [
           line('c', requested: 0, selected: true),
           for (var i = 0; i < 1000; i++)
             line('fraction-$i', requested: 0.0001, selected: true),
         ],
         sharedAvailableByPool: const {pool: 0.1},
       );
-      expect(budget.rows['a']!.reservedSharedQty, 0);
-      expect(budget.rows['b']!.reservedSharedQty, 0);
       expect(budget.rows['c']!.reservedSharedQty, 0);
       expect(
         budget.rows.values.every((row) => row.remainingSharedQty == 0),
         isTrue,
       );
+    },
+  );
+  test(
+    '24-place capacities and quantities beyond JavaScript integers retain every unit',
+    () {
+      const pool = 'exact-pool';
+      for (final requested in [
+        '0.000000000000000000000001',
+        '1234567890123456789012345678901234567890.000000000000000000000001',
+      ]) {
+        final quantity = MaterialPreparationDraftBudget.units(requested);
+        final free = quantity + BigInt.one;
+        final available = financeExactTrimmed(
+          financeExactDecimalFromUnits(free, scale: 24),
+        )!;
+        final budget = MaterialPreparationDraftBudget.project(
+          lines: [
+            MaterialPreparationBudgetLine(
+              materialLineId: 'a',
+              poolKey: pool,
+              ownedAvailableQty: 0,
+              uncoveredBeforeSharedQty: 0,
+              requestedQty: 0,
+              selected: true,
+              quantityFactsExact: {
+                'ownedAvailableQty': '0',
+                'uncoveredBeforeSharedQty': requested,
+                'requestedQty': requested,
+              },
+            ),
+          ],
+          sharedAvailableByPool: const {pool: 0},
+          sharedAvailableExactByPool: {pool: available},
+        );
+        expect(budget.pendingReason, isNull);
+        expect(budget.rows['a']!.reservedSharedQtyText, requested);
+        expect(
+          budget.rows['a']!.remainingSharedQtyText,
+          '0.000000000000000000000001',
+        );
+        expect(budget.coveredReservations['a'], quantity);
+        expect(budget.summarize(['a']).netShortageQtyText, '0');
+      }
     },
   );
 }

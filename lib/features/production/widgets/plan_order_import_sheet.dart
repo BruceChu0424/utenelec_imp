@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 // 新建生产计划单「从订单带明细」面板。
@@ -407,7 +408,7 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
   String _fmt(double? value) {
     if (value == null) return '—';
     return value == value.roundToDouble()
-        ? value.toStringAsFixed(0)
-        : value.toStringAsFixed(2);
+        ? value.toExactString()
+        : value.toExactString(minimumFractionDigits: 2);
   }
 }

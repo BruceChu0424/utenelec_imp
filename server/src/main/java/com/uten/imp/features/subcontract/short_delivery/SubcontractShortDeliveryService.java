@@ -35,7 +35,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -300,10 +299,10 @@ public class SubcontractShortDeliveryService
                   AND COALESCE(receipt_item.is_deleted, FALSE) = FALSE
                   AND current_return.delivered_qty < oi.qty
                   AND ((c.status='PENDING_OWNER' AND oi.allowed_loss_pct IS NOT NULL
-                        AND current_return.delivered_qty < ROUND(oi.qty*(100-oi.allowed_loss_pct)/100,4))
+                        AND current_return.delivered_qty < (oi.qty*(100-oi.allowed_loss_pct)*0.01))
                        OR (c.status='WAITING_MORE' AND c.expected_complete_by<CURRENT_DATE
                            AND (oi.allowed_loss_pct IS NULL OR current_return.delivered_qty
-                                < ROUND(oi.qty*(100-oi.allowed_loss_pct)/100,4))))
+                                < (oi.qty*(100-oi.allowed_loss_pct)*0.01))))
                 ORDER BY goods_name
                 """.formatted(DELIVERED_SQL), receiptId);
         if (rows.isEmpty()) return null;
@@ -536,7 +535,6 @@ public class SubcontractShortDeliveryService
         UUID wasteId = wasteService.recordShortDeliveryLoss(
                 fact.orderItemId(), shortfall, allowedShortfall,
                 fact.allowedLossPct(), cause, BusinessTime.today());
-        BigDecimal lossPct = SubcontractShortDeliveryPolicy.shortfallPct(fact.orderedQty(), fact.deliveredQty());
         // ADR-103 §2.5：WAITING_MORE 案件也走这一条 UPDATE。V636 的 CHECK 要求 status<>'WAITING_MORE'
         // OR decision='WAIT_MORE', 以及 decision/decided_at/decided_by_* 三列同空同非空——这里把
         // status、decision、decided_* 一起改成 ACCEPT_LOSS 那一套, 与人工「接受损耗」落库完全一致,
@@ -545,13 +543,13 @@ public class SubcontractShortDeliveryService
                 UPDATE subcontract_short_delivery_cases
                 SET status = 'ACCEPTED_LOSS', decision = 'ACCEPT_LOSS', expected_complete_by = NULL,
                     decision_note = ?, decided_by_user_id = ?, decided_by_employee_id = ?,
-                    decided_at = now(), closed_at = now(), loss_qty = ?, loss_pct = ?,
+                    decided_at = now(), closed_at = now(), loss_qty = ?,
                     waste_id = ?, qty_change_log_id = NULL,
-                    ordered_qty = ?, delivered_qty = ?, shortfall_qty = ?, shortfall_pct = ?, severity = ?,
+                    ordered_qty = ?, delivered_qty = ?, shortfall_qty = ?, severity = ?,
                     last_evaluated_at = now(), version = version + 1, updated_at = now()
                 WHERE id = ? AND status IN ('PENDING_OWNER', 'WAITING_MORE')
-                """, blankToNull(note), actorUser, actorEmployee, shortfall, lossPct, wasteId,
-                fact.orderedQty(), fact.deliveredQty(), shortfall, lossPct, severity, caseId);
+                """, blankToNull(note), actorUser, actorEmployee, shortfall, wasteId,
+                fact.orderedQty(), fact.deliveredQty(), shortfall, severity, caseId);
         if (changed != 1) {
             throw new ApiException(ErrorCode.CONFLICT, "该短交案件状态已变化，请刷新后重试");
         }
@@ -562,7 +560,6 @@ public class SubcontractShortDeliveryService
         wakeDrawRecheck(List.of(fact.orderItemId()));
         Map<String, Object> snapshot = new LinkedHashMap<>(snapshot(fact, null, null));
         snapshot.put("lossQty", shortfall);
-        snapshot.put("lossPct", lossPct);
         snapshot.put("allowedShortfallQty", allowedShortfall);
         if (wasteId != null) snapshot.put("wasteId", wasteId.toString());
         snapshot.put("settlementBasis", "RECEIVED_PLUS_LOSS");
@@ -1084,7 +1081,7 @@ public class SubcontractShortDeliveryService
 
     private static BigDecimal outstandingShortfall(ItemFacts fact, BigDecimal deliveredQty) {
         return fact.orderedQty().subtract(deliveredQty).subtract(fact.settledLossQty())
-                .max(BigDecimal.ZERO).setScale(4, RoundingMode.HALF_UP);
+                .max(BigDecimal.ZERO);
     }
 
     private static String remainingSeverity(ItemFacts fact, BigDecimal deliveredQty) {
@@ -1155,17 +1152,14 @@ public class SubcontractShortDeliveryService
                 INSERT INTO subcontract_short_delivery_cases (
                     id, order_id, order_item_id, order_bill_no_snapshot, supplier_id, goods_id, color_id, unit_id,
                     goods_code_snapshot, goods_name_snapshot, receipt_id, receipt_bill_no_snapshot,
-                    ordered_qty, allowed_loss_pct, floor_qty, delivered_qty, shortfall_qty, shortfall_pct,
+                    ordered_qty, allowed_loss_pct, delivered_qty, shortfall_qty,
                     severity, status, arrival_count, owner_employee_id, owner_user_id,
                     detected_by_user_id, detected_by_employee_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_OWNER', 1, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_OWNER', 1, ?, ?, ?, ?)
                 """, caseId, fact.orderId(), fact.orderItemId(), fact.orderBillNo(), fact.supplierId(),
                 fact.goodsId(), fact.colorId(), fact.unitId(), fact.goodsCode(), fact.goodsName(),
                 receiptId, receiptBillNo, fact.orderedQty(), fact.allowedLossPct(),
-                SubcontractShortDeliveryPolicy.floorQty(fact.orderedQty(), fact.allowedLossPct()),
-                fact.deliveredQty(), shortfall,
-                SubcontractShortDeliveryPolicy.shortfallPct(fact.orderedQty(), fact.deliveredQty()),
-                severity, fact.makerId(), activeUserOfEmployee(fact.makerId()), actorUser, actorEmployee);
+                fact.deliveredQty(), shortfall, severity, fact.makerId(), activeUserOfEmployee(fact.makerId()), actorUser, actorEmployee);
         Map<String, Object> snapshot = new LinkedHashMap<>(snapshot(fact, receiptBillNo, null));
         snapshot.put("acknowledgedByWarehouse", acknowledged);
         appendEvent(caseId, "DETECTED", actorUser, actorEmployee, snapshot);
@@ -1200,17 +1194,14 @@ public class SubcontractShortDeliveryService
         BigDecimal shortfall = outstandingShortfall(fact, fact.deliveredQty());
         jdbc.update("""
                 UPDATE subcontract_short_delivery_cases
-                SET ordered_qty = ?, allowed_loss_pct = ?, floor_qty = ?, delivered_qty = ?,
-                    shortfall_qty = ?, shortfall_pct = ?, severity = ?,
+                SET ordered_qty = ?, allowed_loss_pct = ?, delivered_qty = ?,
+                    shortfall_qty = ?, severity = ?,
                     receipt_id = COALESCE(?, receipt_id), receipt_bill_no_snapshot = COALESCE(?, receipt_bill_no_snapshot),
                     arrival_count = arrival_count + ?, last_evaluated_at = now(),
                     version = version + 1, updated_at = now()
                 WHERE id = ?
                 """, fact.orderedQty(), fact.allowedLossPct(),
-                SubcontractShortDeliveryPolicy.floorQty(fact.orderedQty(), fact.allowedLossPct()),
-                fact.deliveredQty(), shortfall,
-                SubcontractShortDeliveryPolicy.shortfallPct(fact.orderedQty(), fact.deliveredQty()),
-                severity, receiptId, receiptBillNo, countArrival ? 1 : 0, caseId);
+                fact.deliveredQty(), shortfall, severity, receiptId, receiptBillNo, countArrival ? 1 : 0, caseId);
     }
 
     private void closeCase(OpenCase open, String status, String eventType, UUID actorUser, UUID actorEmployee,
@@ -1228,11 +1219,20 @@ public class SubcontractShortDeliveryService
 
     private void appendEvent(UUID caseId, String eventType, UUID actorUser, UUID actorEmployee,
                              Map<String, Object> snapshot) {
-        jdbc.update("""
+        int appended=jdbc.update("""
                 INSERT INTO subcontract_short_delivery_case_events (
                     id, case_id, event_type, actor_user_id, actor_employee_id, event_snapshot)
-                VALUES (?, ?, ?, ?, ?, CAST(? AS jsonb))
-                """, UUID.randomUUID(), caseId, eventType, actorUser, actorEmployee, writeSnapshot(snapshot));
+                SELECT ?, ?, ?, ?, ?, CAST(? AS jsonb)||jsonb_build_object(
+                    'orderedQty',c.ordered_qty::text,'allowedLossPct',c.allowed_loss_pct::text,
+                    'floorQty',c.floor_qty::text,'deliveredQty',c.delivered_qty::text,
+                    'shortfallQty',c.shortfall_qty::text,'shortfallPct',c.shortfall_pct::text,
+                    'lossQty',c.loss_qty::text,'lossPct',c.loss_pct::text,
+                    'shortfallPrecisionVersion',c.shortfall_pct_precision_version,
+                    'shortfallPrecisionPolicy',c.shortfall_pct_precision_policy,
+                    'lossPrecisionVersion',c.loss_pct_precision_version,'lossPrecisionPolicy',c.loss_pct_precision_policy)
+                FROM subcontract_short_delivery_cases c WHERE c.id=?
+                """, UUID.randomUUID(), caseId, eventType, actorUser, actorEmployee, writeSnapshot(snapshot),caseId);
+        if(appended!=1)throw new ApiException(ErrorCode.CONFLICT,"短交案件依据已变化，本次记录未生效");
     }
 
     private void publishDetected(UUID caseId, long version) {
@@ -1316,7 +1316,4 @@ public class SubcontractShortDeliveryService
         return null;
     }
 
-    static BigDecimal scaleQty(BigDecimal value) {
-        return value == null ? null : value.setScale(4, RoundingMode.HALF_UP);
-    }
 }

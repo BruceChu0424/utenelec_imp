@@ -43,7 +43,7 @@ class GoodsBomImportMergePersistenceTest {
     private final EntityManager em = mock(EntityManager.class);
     private final Query nativeQuery = mock(Query.class);
     private final MasterObjectAccess access = mock(MasterObjectAccess.class);
-    private final GoodsBomService bom = new GoodsBomService(goods, items, mock(ColorRepository.class),
+    private final GoodsBomService bom = new GoodsBomService(org.mockito.Mockito.mock(com.uten.imp.application.port.BusinessNumericInputEvidencePort.class), goods, items, mock(ColorRepository.class),
             mock(UnitRepository.class), mock(TxSessionVars.class), mock(SecurityContextCurrentUser.class),
             mock(MasterReferenceValidationPort.class), mock(GoodsMasterRelationshipResolver.class),
             mock(BusinessEventPublisher.class), access);

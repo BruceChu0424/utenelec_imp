@@ -400,7 +400,7 @@ class ProductionDailyReportInputGroup {
     final direct = <String, BigInt>{};
     var warehouse = BigInt.zero;
     for (final item in items) {
-      final qty = financeExactDecimalUnits(item.qtyText);
+      final qty = productionExactQuantityUnits(item.qtyText);
       if (qty == null) throw const FormatException('已存去向缺少精确数量');
       final demand = item.directTransferDemandId;
       if (item.isDirectTransfer && demand != null) {
@@ -414,14 +414,14 @@ class ProductionDailyReportInputGroup {
         {
           'directTransferDemandId': entry.key,
           'qty': productionQuantityWire(
-            financeExactDecimalFromUnits(entry.value),
+            productionQuantityTextFromUnits(entry.value),
           ),
         },
       if (warehouse > BigInt.zero)
         {
           'directTransferDemandId': null,
           'qty': productionQuantityWire(
-            financeExactDecimalFromUnits(warehouse),
+            productionQuantityTextFromUnits(warehouse),
           ),
         },
     ];

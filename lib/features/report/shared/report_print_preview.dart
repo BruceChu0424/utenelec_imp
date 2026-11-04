@@ -2,7 +2,9 @@ import 'package:collection/collection.dart';
 
 import '../../../components/print/uten_print_preview.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/print/print_bounds.dart';
 import '../../../core/performance/ui_work_budget.dart';
+import '../../../core/tables/uten_table_header_group.dart';
 import '../../../shared/paging/paged_query_identity.dart';
 import '../../../shared/measurement/weight_unit.dart';
 import 'report_cell.dart';
@@ -12,15 +14,18 @@ import 'report_metadata_reuse.dart';
 
 /// Load the declared prefix of a report, respecting actual server paging. This
 /// differs from complete entity printing: repeated document IDs are valid rows,
-/// metadata counts may be disabled, and the existing 2,000-row limit stays put.
+/// metadata counts may be disabled. Originals require a complete bounded read.
 Future<UtenPrintTable> loadBoundedReportPrintPreview({
   required ApiClient api,
   required String Function() endpointOf,
   required Map<String, dynamic> Function() queryOf,
   required bool Function() isCurrent,
-  int rowLimit = 2000,
+  int rowLimit = defaultReportPrintPreviewRows,
+  bool requireComplete = false,
   int pageSize = 500,
   bool useSuggestedWidths = false,
+  bool includeValueUnits = true,
+  bool repeatColumnHeaders = false,
   WeightDisplay weightDisplay = WeightDisplay.auto,
   String? Function(ReportColumn column, Map<String, dynamic> row)? cellTextOf,
   Future<Map<String, dynamic>> Function(
@@ -29,7 +34,13 @@ Future<UtenPrintTable> loadBoundedReportPrintPreview({
   )?
   fetch,
 }) async {
-  if (rowLimit < 1 || rowLimit > 2000 || pageSize < 1 || pageSize > 500) {
+  if (rowLimit < 1 ||
+      rowLimit >
+          (requireComplete
+              ? maximumCompleteOriginalPrintRows
+              : defaultReportPrintPreviewRows) ||
+      pageSize < 1 ||
+      pageSize > 500) {
     throw ArgumentError('Invalid bounded report preview limit');
   }
   const equality = DeepCollectionEquality();
@@ -58,6 +69,7 @@ Future<UtenPrintTable> loadBoundedReportPrintPreview({
     );
     List<ReportColumn>? columns;
     String? readScopeVersion;
+    Map<String, dynamic>? documentMetadata;
     int? knownTotal, knownPages, effectiveSize;
     final rows = <List<String>>[];
     final ids = <String?>[];
@@ -67,6 +79,8 @@ Future<UtenPrintTable> loadBoundedReportPrintPreview({
       final parameters = <String, dynamic>{
         ...query,
         ...reportRowsOnlyQuery,
+        if (requireComplete) 'includeCount': true,
+        if (requireComplete) 'includeTotals': true,
         'page': page,
         'size': pageSize,
         'includeColumns': page == 1,
@@ -97,6 +111,14 @@ Future<UtenPrintTable> loadBoundedReportPrintPreview({
         throw const FormatException('打印读取范围已变化，请刷新后重试');
       }
       readScopeVersion ??= nextVersion;
+      if (documentMetadata == null) {
+        documentMetadata = Map<String, dynamic>.unmodifiable(
+          freezePagedReadQuery(data.documentMetadata) as Map,
+        );
+      } else if (data.documentMetadata.isNotEmpty &&
+          !equality.equals(documentMetadata, data.documentMetadata)) {
+        throw const FormatException('原表抬头、表尾或来源已变化，请刷新后重试打印');
+      }
       if (columns == null) {
         columns = List.unmodifiable(data.columns);
       } else if (data.columns.isNotEmpty &&
@@ -121,12 +143,24 @@ Future<UtenPrintTable> loadBoundedReportPrintPreview({
         }
         knownPages = pages.toInt();
       }
+      final original =
+          requireComplete ||
+          documentMetadata['paperLayout'] is Map ||
+          documentMetadata['reviewId'] != null;
+      if (original && knownTotal != null && knownTotal > rowLimit) {
+        throw const FormatException('原件超过完整打印范围，请下载完整表格；不会用部分明细配完整合计出纸');
+      }
       for (final row in data.rows) {
         if (rows.length == rowLimit) break;
         final cells = <String>[];
         for (final column in columns) {
           final text = cellTextOf == null
-              ? formatReportCell(column, row, weightDisplay: weightDisplay)
+              ? formatReportCell(
+                  column,
+                  row,
+                  weightDisplay: weightDisplay,
+                  includeUnit: includeValueUnits,
+                )
               : cellTextOf(column, row);
           cells.add(text ?? '');
           await work.checkpoint();
@@ -156,10 +190,24 @@ Future<UtenPrintTable> loadBoundedReportPrintPreview({
     }
     work.ensureCurrent();
     await scope.verify();
+    if ((requireComplete ||
+            documentMetadata?['paperLayout'] is Map ||
+            documentMetadata?['reviewId'] != null) &&
+        (knownTotal == null || rows.length != knownTotal)) {
+      throw const FormatException('本份原件未读取全部明细，请重试完整打印或下载完整表格');
+    }
     final frozen = columns ?? const <ReportColumn>[];
     return UtenPrintTable(
       columnKeys: List.unmodifiable(frozen.map((column) => column.key)),
       headers: List.unmodifiable(frozen.map((column) => column.label)),
+      headerGroups: List<List<UtenTableHeaderGroup>>.unmodifiable(
+        frozen.map(
+          (column) =>
+              List<UtenTableHeaderGroup>.unmodifiable(column.headerGroups),
+        ),
+      ),
+      documentMetadata: documentMetadata ?? const {},
+      repeatColumnHeaders: repeatColumnHeaders,
       columnWidths: useSuggestedWidths
           ? frozen
                 .map(
@@ -176,5 +224,11 @@ Future<UtenPrintTable> loadBoundedReportPrintPreview({
   });
 }
 
-Object _columnIdentity(ReportColumn column) =>
-    (column.key, column.label, column.type, column.unitKey, column.unitLabel);
+Object _columnIdentity(ReportColumn column) => [
+  column.key,
+  column.label,
+  column.type,
+  column.unitKey,
+  column.unitLabel,
+  column.headerGroups.map((group) => [group.id, group.label]).toList(),
+];

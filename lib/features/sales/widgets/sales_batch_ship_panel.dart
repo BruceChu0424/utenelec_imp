@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:uten_imp/components/buttons/uten_close_button.dart';
 import '../../../components/inputs/uten_field_hint_icon.dart';
 // 批量发货面板（SOP §一9，订单列表「批量发货」用）。
@@ -137,7 +138,9 @@ class _BatchShipSheetState extends ConsumerState<_BatchShipSheet>
 
   static String _num(double? v) {
     if (v == null) return '—';
-    return v.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
+    return v
+        .toExactString(minimumFractionDigits: 4)
+        .replaceFirst(RegExp(r'\.?0+$'), '');
   }
 
   @override

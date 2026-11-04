@@ -23,7 +23,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -44,7 +43,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class FinanceAssetPostingService {
 
-    private static final String ALGORITHM_VERSION = "STRAIGHT_LINE_OPENING_V2";
+    private static final String ALGORITHM_VERSION = "STRAIGHT_LINE_EXACT_OPENING_V3";
     private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
 
     private final EntityManager em;
@@ -87,7 +86,7 @@ public class FinanceAssetPostingService {
         for (Candidate candidate : candidates) {
             String message = continuity;
             if (message == null && candidate.amount().signum() <= 0) {
-                message = "算出来的金额按账面精度（4 位小数）四舍五入后是 0，请先调整折旧/摊销政策";
+                message = "算出的月金额为 0，请先核对原额、累计和折旧/摊销政策";
             }
             if (message == null && candidate.expectedPeriod() != null
                     && !command.period().equals(candidate.expectedPeriod())) {
@@ -449,7 +448,7 @@ public class FinanceAssetPostingService {
                        COALESCE((SELECT to_char((to_date(max(l.period),'YYYY-MM')+interval '1 month'),'YYYY-MM')
                                  FROM fa_depreciation_log l
                                  WHERE l.asset_id=a.id AND l.asset_book_id=b.id AND l.entry_kind='NORMAL'
-                                   AND l.status='ACTIVE' AND l.is_deleted=false),b.start_period),b.opening_accumulated_amount
+                                   AND l.status='ACTIVE' AND l.is_deleted=false),b.start_period),b.opening_accumulated_amount,b.regular_monthly_amount
                 FROM finance_asset_books b JOIN fixed_assets a ON a.id=b.asset_id
                 WHERE b.book_type=:book AND b.status='ACTIVE' AND b.posting_enabled=true
                   AND b.start_period<=:period
@@ -470,7 +469,7 @@ public class FinanceAssetPostingService {
             int sequence=Math.toIntExact(java.time.temporal.ChronoUnit.MONTHS.between(
                     YearMonth.parse(NativeValueConverters.text(r[9])),YearMonth.parse(period))+1L);
             BigDecimal amount=com.uten.imp.features.finance.asset.domain.StraightLineScheduleCalculator.periodAmount(
-                    depreciable,NativeValueConverters.toBigDecimal(r[17]),Math.toIntExact(usefulMonths),sequence,accumulated);
+                    depreciable,NativeValueConverters.toBigDecimal(r[17]),Math.toIntExact(usefulMonths),sequence,accumulated,r[18]==null?null:NativeValueConverters.toBigDecimal(r[18]));
             result.add(new Candidate("FIXED_ASSET", NativeValueConverters.uuid(r[0]), NativeValueConverters.uuid(r[1]), null, null, NativeValueConverters.text(r[2]), NativeValueConverters.text(r[3]),
                     original, opening, amount, accumulated.add(amount), opening.subtract(amount),
                     NativeValueConverters.uuid(r[12]), NativeValueConverters.uuid(r[11]), NativeValueConverters.uuid(r[10]), NativeValueConverters.uuid(r[13]), NativeValueConverters.uuid(r[14]),

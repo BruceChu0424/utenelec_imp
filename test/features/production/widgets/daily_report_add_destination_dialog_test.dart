@@ -186,7 +186,15 @@ void main() {
         onResult: results.add,
       );
       await _select(tester, 'first-demand');
-      for (final input in ['', '.', '0', '-1', '1.23456', '6', '4.0001']) {
+      for (final input in [
+        '',
+        '.',
+        '0',
+        '-1',
+        '1.2345678901234567890123456',
+        '6',
+        '4.0001',
+      ]) {
         await tester.enterText(_quantity, input);
         await tester.tap(_add);
         await tester.pumpAndSettle();
@@ -204,10 +212,9 @@ void main() {
   );
 
   for (final sample in [
-    ('0.0001', '0.4', '换算后的基本量为 0'),
-    ('100000000000000', '1', '去向数量超过系统计量范围'),
-    ('10000000000000', '10', '换算后的基本量超过系统计量范围'),
-    ('1', '1000000000000', '来源单位换算率尚未核对'),
+    ('1${'0' * 40}', '1', '去向数量超过系统计量范围'),
+    ('1${'0' * 39}', '10', '换算后的基本量超过系统计量范围'),
+    ('1', '1${'0' * 40}', '来源单位换算率尚未核对'),
   ]) {
     testWidgets(
       'physical/storage guard retains input ${sample.$1} × ${sample.$2}',
@@ -215,8 +222,8 @@ void main() {
         final results = <DailyReportDestinationChoice?>[];
         await _open(
           tester,
-          availableQtyText: '99999999999999.9999',
-          maximumByDemand: const {'first-demand': '99999999999999.9999'},
+          availableQtyText: '1${'0' * 40}',
+          maximumByDemand: {'first-demand': '1${'0' * 40}'},
           unitRateText: sample.$2,
           onResult: results.add,
         );
@@ -231,15 +238,19 @@ void main() {
     );
   }
 
-  for (final sample in [('0.0001', '.5'), ('99999999999999.9999', '1')]) {
+  for (final sample in [
+    ('0.0001', '.4'),
+    ('0.000000000000000000000001', '0.000000000000000000000001'),
+    ('${'9' * 40}.${'9' * 24}', '1'),
+  ]) {
     testWidgets(
       'exact physical boundary commits unchanged ${sample.$1} × ${sample.$2}',
       (tester) async {
         DailyReportDestinationChoice? chosen;
         await _open(
           tester,
-          availableQtyText: '99999999999999.9999',
-          maximumByDemand: const {'first-demand': '99999999999999.9999'},
+          availableQtyText: '1${'0' * 40}',
+          maximumByDemand: {'first-demand': '1${'0' * 40}'},
           unitRateText: sample.$2,
           onResult: (value) => chosen = value,
         );

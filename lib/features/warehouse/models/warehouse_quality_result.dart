@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/models/procurement_quantity.dart';
 import 'package:flutter/foundation.dart' show mapEquals;
 
@@ -407,7 +408,16 @@ class WarehouseQualityInspectionLine {
     this.warehouseName,
     this.preStocked,
     this.placeHint,
+    this.exactQuantities = const {},
   });
+
+  final Map<String, String> exactQuantities;
+  String? get receivedBaseQtyText => exactQuantities['receivedBaseQty'];
+  String? get passedBaseQtyText => exactQuantities['passedBaseQty'];
+  String? get failedBaseQtyText => exactQuantities['failedBaseQty'];
+  String? get warehouseStockedBaseQtyText =>
+      exactQuantities['warehouseStockedBaseQty'];
+  String? get pendingStockBaseQtyText => exactQuantities['pendingStockBaseQty'];
 
   final String inspectionItemId;
   final String goodsId;
@@ -470,6 +480,13 @@ class WarehouseQualityInspectionLine {
 
   factory WarehouseQualityInspectionLine.fromJson(Map<String, dynamic> json) =>
       WarehouseQualityInspectionLine(
+        exactQuantities: _recordedQuantities(json, [
+          'receivedBaseQty',
+          'passedBaseQty',
+          'failedBaseQty',
+          'warehouseStockedBaseQty',
+          'pendingStockBaseQty',
+        ]),
         inspectionItemId: _requiredText(
           json['inspectionItemId'],
           '检查明细行缺少 inspectionItemId',
@@ -514,6 +531,7 @@ class WarehouseQualityReleasedSlice {
     this.unitName,
     this.sourceOrderNo,
     this.releasedWeight,
+    this.releasedWeightExact,
     this.placeHint,
     this.releaseNote,
     this.releasedBy,
@@ -521,7 +539,21 @@ class WarehouseQualityReleasedSlice {
     this.warehouseId,
     this.warehouseName,
     this.expectedAllocations = const [],
+    this.exactQuantities = const {},
   });
+
+  final Map<String, String> exactQuantities;
+  String? get receivedBaseQtyText => exactQuantities['receivedBaseQty'];
+  String? get qualityPassedBaseQtyText =>
+      exactQuantities['qualityPassedBaseQty'];
+  String? get warehouseStockedBaseQtyText =>
+      exactQuantities['warehouseStockedBaseQty'];
+  String? get releasedBaseQtyText => exactQuantities['releasedBaseQty'];
+  String? get stockedForReleaseBaseQtyText =>
+      exactQuantities['stockedForReleaseBaseQty'];
+  String? get remainingBaseQtyText => exactQuantities['remainingBaseQty'];
+  String? get stockedForReleaseWeightText =>
+      exactQuantities['stockedForReleaseWeight'];
 
   final String passEventId;
   final String inspectionItemId;
@@ -543,6 +575,9 @@ class WarehouseQualityReleasedSlice {
 
   /// 放行重量(千克), 按到货实称累计切片; null = 到货没称(ADR-135 重量一律按千克存)。
   final double? releasedWeight;
+  final String? releasedWeightExact;
+  String? get releasedWeightText =>
+      financeExactDecimal(releasedWeightExact ?? releasedWeight);
   final String? placeHint;
   final String? releaseNote;
   final String? releasedBy;
@@ -560,6 +595,15 @@ class WarehouseQualityReleasedSlice {
 
   factory WarehouseQualityReleasedSlice.fromJson(Map<String, dynamic> json) =>
       WarehouseQualityReleasedSlice(
+        exactQuantities: _recordedQuantities(json, [
+          'receivedBaseQty',
+          'qualityPassedBaseQty',
+          'warehouseStockedBaseQty',
+          'releasedBaseQty',
+          'stockedForReleaseBaseQty',
+          'remainingBaseQty',
+          'stockedForReleaseWeight',
+        ]),
         passEventId: _requiredText(json['passEventId'], '待入库切片缺少 passEventId'),
         inspectionItemId: _requiredText(
           json['inspectionItemId'],
@@ -579,7 +623,13 @@ class WarehouseQualityReleasedSlice {
         releasedBaseQty: _decimal(json['releasedBaseQty']),
         stockedForReleaseBaseQty: _decimal(json['stockedForReleaseBaseQty']),
         remainingBaseQty: _decimal(json['remainingBaseQty']),
-        releasedWeight: _nullableDecimal(json['releasedWeight']),
+        releasedWeight: double.tryParse(
+          (json['releasedWeightExact'] ?? json['releasedWeight'])?.toString() ??
+              '',
+        ),
+        releasedWeightExact: financeExactDecimal(
+          json['releasedWeightExact'] ?? json['releasedWeight'],
+        ),
         placeHint: _text(json['placeHint']),
         releaseNote: _text(json['releaseNote']),
         releasedBy: _text(json['releasedBy']),
@@ -605,13 +655,18 @@ class WarehouseQualityStockInHistoryItem {
     this.colorName,
     this.unitName,
     this.weight,
+    this.weightExact,
     this.confirmedBy,
     this.confirmedAt,
     this.warehouseId,
     this.warehouseName,
     this.actualAllocations = const [],
     this.origin = 'WAREHOUSE_CONFIRM',
+    this.exactQuantities = const {},
   });
+
+  final Map<String, String> exactQuantities;
+  String? get baseQtyText => exactQuantities['baseQty'];
 
   final String stockInItemId;
   final String batchId;
@@ -627,6 +682,8 @@ class WarehouseQualityStockInHistoryItem {
 
   /// 本批入库重量(千克); null = 没称。
   final double? weight;
+  final String? weightExact;
+  String? get weightText => financeExactDecimal(weightExact ?? weight);
   final String place;
   final String? confirmedBy;
   final String? confirmedAt;
@@ -652,6 +709,7 @@ class WarehouseQualityStockInHistoryItem {
   factory WarehouseQualityStockInHistoryItem.fromJson(
     Map<String, dynamic> json,
   ) => WarehouseQualityStockInHistoryItem(
+    exactQuantities: _recordedQuantities(json, ['baseQty']),
     stockInItemId: _requiredText(json['stockInItemId'], '入库历史缺少 stockInItemId'),
     batchId: _requiredText(json['batchId'], '入库历史缺少 batchId'),
     passEventId: _requiredText(json['passEventId'], '入库历史缺少 passEventId'),
@@ -661,7 +719,10 @@ class WarehouseQualityStockInHistoryItem {
     colorName: _text(json['colorName']),
     unitName: _text(json['unitName']),
     baseQty: _decimal(json['baseQty']),
-    weight: _nullableDecimal(json['weight']),
+    weight: double.tryParse(
+      (json['weightExact'] ?? json['weight'])?.toString() ?? '',
+    ),
+    weightExact: financeExactDecimal(json['weightExact'] ?? json['weight']),
     place: _text(json['place']) ?? '—',
     confirmedBy: _text(json['confirmedBy']),
     confirmedAt: _text(json['confirmedAt']),
@@ -892,12 +953,6 @@ double _decimal(Object? value) {
   return double.tryParse(value?.toString() ?? '') ?? 0;
 }
 
-double? _nullableDecimal(Object? value) {
-  if (value == null) return null;
-  if (value is num) return value.toDouble();
-  return double.tryParse(value.toString());
-}
-
 Set<String> _stringSet(Object? value) {
   if (value is! List) return const {};
   return {for (final item in value) ?_text(item)};
@@ -909,3 +964,13 @@ List<WarehouseInboundAllocation> _allocationList(Object? value) => value is List
           WarehouseInboundAllocation.fromJson(Map<String, dynamic>.from(row)),
       ]
     : const [];
+
+// Exact aliases preserve the server decimal before the JSON numeric fallback.
+Map<String, String> _recordedQuantities(
+  Map<String, dynamic> json,
+  List<String> keys,
+) => Map.unmodifiable({
+  for (final key in keys)
+    if ((json['${key}Exact'] ?? json[key]) case final String raw)
+      if (financeExactDecimal(raw) case final String exact) key: exact,
+});

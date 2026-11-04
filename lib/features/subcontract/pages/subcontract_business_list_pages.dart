@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../shared/providers/master_party_options.dart';
 import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/auth/read_owner_fence.dart';
@@ -1318,11 +1319,13 @@ List<MasterColumnDef<SubcontractDocListItem>> _baseColumns({
       sortable: true,
       columnSearchEnabled: true,
       exactValueOf: (row) =>
-          row.totalWeightDisplayText ?? row.totalWeight?.toStringAsFixed(3),
+          row.totalWeightDisplayText ??
+          row.totalWeight?.toExactString(minimumFractionDigits: 3),
       width: 130,
       type: 'number',
       value: (row) =>
-          row.totalWeightDisplayText ?? row.totalWeight?.toStringAsFixed(3),
+          row.totalWeightDisplayText ??
+          row.totalWeight?.toExactString(minimumFractionDigits: 3),
     ),
   if (closed)
     MasterColumnDef(

@@ -271,6 +271,9 @@ public class FixedAssetController {
     public Items<AssetCategoryContracts.Category> assetCategories(@RequestParam String objectType) {
         return new Items<>(categories.list(objectType));
     }
+    @GetMapping("/asset-categories/expense-style-choices")
+    @PreAuthorize("hasAuthority('finance_asset:view')")
+    public java.util.List<AssetCategoryContracts.StyleChoice> expenseStyleChoices(){return categories.expenseStyleChoices();}
 
     @PostMapping("/asset-categories")
     @PreAuthorize("hasAuthority('finance_asset:approve')")
@@ -408,6 +411,14 @@ public class FixedAssetController {
             @RequestParam(required=false) @org.springframework.format.annotation.DateTimeFormat(iso=org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate dateTo) {
         var options=com.uten.imp.features.finance.report.FinanceReportColumnOptions.current();
         return legacyReports.amortizationSchedule(page,size,options,dateTo);
+    }
+
+    @GetMapping("/reports/fa/completed-depreciation-schedule")
+    @PreAuthorize("hasAuthority('finance_asset:view')")
+    public ReportTableResponse completedDepreciationSchedule(
+            @RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="50")int size,
+            @RequestParam(required=false) @org.springframework.format.annotation.DateTimeFormat(iso=org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate dateTo){
+        return legacyReports.completedDepreciationSchedule(page,size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.current(),dateTo);
     }
 
     public record Items<T>(List<T> items) {}

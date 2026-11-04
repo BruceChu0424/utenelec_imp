@@ -8,39 +8,63 @@ import '../../../shared/formatters/exact_decimal.dart';
 import 'production_direct_transfer_candidate.dart';
 import 'production_exact_quantity.dart';
 
-/// 数量精度：四位小数，全部按「万分之一」整数计算，避免浮点误差。
+/// Quantities are compared as exact 24-place units; full products retain 48.
 BigInt _ticks(Object? value) =>
-    financeExactDecimalUnits(productionExactQuantityText(value)) ?? BigInt.zero;
-String _text(BigInt ticks) =>
-    financeExactTrimmed(financeExactDecimalFromUnits(ticks))!;
+    productionExactQuantityUnits(value) ?? BigInt.zero;
+String _text(BigInt ticks) => productionQuantityTextFromUnits(ticks);
+String _baseText(BigInt ticks) => financeExactTrimmed(
+  financeExactDecimalFromUnits(ticks, scale: productionProductScale),
+)!;
 double _value(BigInt ticks) => double.parse(_text(ticks));
+BigInt _capacity(BigInt quantity) => quantity * productionProductFactor;
 
-/// 报工单位数量 × 换算率 → 基本单位(与服务端同一舍入：四位小数)。
 BigInt _baseTicks(BigInt ticks, String rate) {
   if (ticks <= BigInt.zero) return BigInt.zero;
-  final units = financeExactProductUnits(_text(ticks), rate);
-  return units!;
+  return ticks * productionExactQuantityUnits(rate)!;
 }
 
-/// 基本单位上限 → 报工单位最多能分多少(向下取，保证换算后不超)。
-BigInt _reportTicksWithin(BigInt baseTicks, String rate) {
-  final rateUnits = financeExactDecimalUnits(rate, scale: 6)!;
-  if (baseTicks <= BigInt.zero || rateUnits <= BigInt.zero) return BigInt.zero;
-  var ticks = baseTicks * BigInt.from(1000000) ~/ rateUnits;
-  while (ticks > BigInt.zero && _baseTicks(ticks, rate) > baseTicks) {
-    ticks -= BigInt.one;
+class OutputAllocationPrecisionRequired implements Exception {
+  const OutputAllocationPrecisionRequired(
+    this.reason, [
+    this.exceedsCapacity = false,
+  ]);
+  final String reason;
+  final bool exceedsCapacity;
+  String get message => exceedsCapacity
+      ? '所选精度会超过实际可接收数量，请重新选择精度或手动填写可接收数量；原分配已保留'
+      : '接收数量换算不能在24位小数内精确表示，请选择本次分配的位数和取舍方式；原分配已保留';
+}
+
+BigInt _reportTicksWithin(
+  BigInt base,
+  String rate, {
+  int? precisionScale,
+  String? precisionRounding,
+}) {
+  final divisor = productionExactQuantityUnits(rate)!;
+  if (base <= BigInt.zero || divisor <= BigInt.zero) return BigInt.zero;
+  final division = financeExactDivideTexts(
+    _baseText(base),
+    rate,
+    choiceScale: precisionScale,
+    choiceRounding: precisionRounding,
+  );
+  if (division.text == null) {
+    throw OutputAllocationPrecisionRequired(
+      division.reason ?? 'PRECISION_LIMIT',
+    );
   }
-  return ticks;
+  final reason = division.reason ?? 'PRECISION_LIMIT';
+  final result = productionExactQuantityUnits(division.text)!;
+  if (_baseTicks(result, rate) > base) {
+    throw OutputAllocationPrecisionRequired(reason, true);
+  }
+  return result;
 }
 
-/// 数量文本：整数不带小数点，小数最多 4 位且不留尾零(与全站数量显示同口径)。
+/// Display only: finite quantity text is never reduced to a display precision.
 String outputAllocationQuantityText(double value) =>
-    value == value.roundToDouble()
-    ? value.toStringAsFixed(0)
-    : value
-          .toStringAsFixed(4)
-          .replaceFirst(RegExp(r'0+$'), '')
-          .replaceFirst(RegExp(r'\.$'), '');
+    financeExactTrimmed(financeExactDecimal(value)) ?? '—';
 
 /// 一条已有的去向(工人亲手定过的叫「固定」；其余是系统建议，每次重排都会重新给出)。
 class OutputAllocationSlot {
@@ -88,7 +112,7 @@ class OutputAllocationRowInput {
   final double unitRate;
   final String? quantityExact, unitRateExact;
   String? get rateText =>
-      productionExactQuantityText(unitRateExact ?? unitRate, scale: 6);
+      productionExactQuantityText(unitRateExact ?? unitRate);
 
   /// 服务端给的可送上层工单，已按先急后缓排好。
   final List<ProductionDirectTransferCandidate> candidates;
@@ -146,8 +170,10 @@ class OutputAllocationRowPlan {
     required this.roomBase,
     this.roomBaseExact = const {},
     this.issue,
+    this.precisionReason,
   });
 
+  final String? precisionReason;
   final List<OutputAllocationLine> lines;
 
   /// 每个可送上层工单：本行最多还能分给它多少(基本单位，已扣掉本张报工其它行分给它的)。
@@ -184,8 +210,34 @@ class _Line {
 /// 一张报工全部行一起重排：先扣所有固定行，再按行序给每行补建议行(先急后缓逐个分满)，
 /// 最后剩下的送入仓库。多行投给同一个上层工单时共用它「还差多少」。
 List<OutputAllocationRowPlan> planOutputAllocations(
-  List<OutputAllocationRowInput> rows,
-) {
+  List<OutputAllocationRowInput> rows, {
+  int? precisionScale,
+  String? precisionRounding,
+}) {
+  try {
+    return _planOutputAllocations(
+      rows,
+      precisionScale: precisionScale,
+      precisionRounding: precisionRounding,
+    );
+  } on OutputAllocationPrecisionRequired catch (required) {
+    return [
+      for (final _ in rows)
+        OutputAllocationRowPlan(
+          lines: const [],
+          roomBase: const {},
+          issue: required.message,
+          precisionReason: required.reason,
+        ),
+    ];
+  }
+}
+
+List<OutputAllocationRowPlan> _planOutputAllocations(
+  List<OutputAllocationRowInput> rows, {
+  int? precisionScale,
+  String? precisionRounding,
+}) {
   // Numeric legacy facts are usable only in the precision-safe range. The
   // caller retains its current rows when a shared capacity cannot be proven.
   if (rows.any(
@@ -266,12 +318,14 @@ List<OutputAllocationRowPlan> planOutputAllocations(
 
   BigInt shortfallOf(ProductionDirectTransferCandidate candidate) =>
       _ticks(candidate.requiredQtyText) > BigInt.zero
-      ? _ticks(candidate.requiredQtyText) -
-            _ticks(candidate.alreadyCoveredQtyText)
+      ? _capacity(
+          _ticks(candidate.requiredQtyText) -
+              _ticks(candidate.alreadyCoveredQtyText),
+        )
       // Missing requiredQty is the existing compatibility contract: only the
       // per-source remainingQty limits this receiver. Above every NUMERIC(18)
       // quantity/rate product, this sentinel imposes no artificial extra cap.
-      : BigInt.one << 256;
+      : BigInt.one << 768;
 
   // 3) 按行序给建议行：跳过本行已固定的工单，逐个取「本行还能分给它的」与余量的较小值。
   final takenAll = <String, BigInt>{};
@@ -297,13 +351,18 @@ List<OutputAllocationRowPlan> planOutputAllocations(
           (fixedAll[demand] ?? BigInt.zero) -
           (takenAll[demand] ?? BigInt.zero);
       final roomSame =
-          _ticks(candidate.remainingQtyText) -
+          _capacity(_ticks(candidate.remainingQtyText)) -
           (fixedSame[key] ?? BigInt.zero) -
           (takenSame[key] ?? BigInt.zero);
-      final room = _reportTicksWithin(
-        roomAll < roomSame ? roomAll : roomSame,
-        row.rateText!,
-      );
+      final capacity = roomAll < roomSame ? roomAll : roomSame;
+      final room = _baseTicks(available, row.rateText!) <= capacity
+          ? available
+          : _reportTicksWithin(
+              capacity,
+              row.rateText!,
+              precisionScale: precisionScale,
+              precisionRounding: precisionRounding,
+            );
       if (room <= BigInt.zero) continue;
       final ticks = available < room ? available : room;
       lines[r].add(_Line(demand, ticks, false, null, false));
@@ -363,13 +422,13 @@ List<OutputAllocationRowPlan> planOutputAllocations(
       final others = (totalAll[demand] ?? BigInt.zero) - own;
       final othersSame = (totalSame[key] ?? BigInt.zero) - own;
       final all = shortfallOf(candidate) - others;
-      final same = _ticks(candidate.remainingQtyText) - othersSame;
-      room[demand] = _value(all < same ? all : same);
-      roomExact[demand] = _text(all < same ? all : same);
+      final same = _capacity(_ticks(candidate.remainingQtyText)) - othersSame;
+      room[demand] = double.parse(_baseText(all < same ? all : same));
+      roomExact[demand] = _baseText(all < same ? all : same);
     }
     for (final line in lines[r]) {
       if (line.ticks > productionQuantityMaxUnits ||
-          _baseTicks(line.ticks, row.rateText!) > productionQuantityMaxUnits) {
+          _baseTicks(line.ticks, row.rateText!) > productionProductMaxUnits) {
         line.issue ??= '这条去向数量或换算后的基本量超过系统计量范围，请核对原输入';
       }
       if (line.ticks > BigInt.zero &&
@@ -388,11 +447,14 @@ List<OutputAllocationRowPlan> planOutputAllocations(
         if (row.candidatesKnown) line.issue = '原来选的上层工单现在不能收，请重新选择去向';
         continue;
       }
-      final cap = _ticks(roomExact[demand]);
+      final cap = financeExactDecimalUnits(
+        roomExact[demand],
+        scale: productionProductScale,
+      )!;
       if (_baseTicks(line.ticks, row.rateText!) > cap) {
         line.issue =
             '${candidate.executionSegmentCode ?? '这个上层工单'} 最多还能收 '
-            '${_text(cap < BigInt.zero ? BigInt.zero : cap)}'
+            '${_baseText(cap < BigInt.zero ? BigInt.zero : cap)}'
             '${candidate.unitName == null ? '' : ' ${candidate.unitName}'}';
       }
     }
@@ -428,7 +490,7 @@ double outputAllocationWithinRoom(
   if (current <= 0 || roomBase <= 0 || rate <= 0) return 0;
   final currentText = productionExactQuantityText(current);
   final roomText = productionExactQuantityText(roomBase);
-  final rateText = productionExactQuantityText(rate, scale: 6);
+  final rateText = productionExactQuantityText(rate);
   if (currentText == null || roomText == null || rateText == null) {
     throw const FormatException('转送数量缺少精确原文');
   }
@@ -440,9 +502,21 @@ double outputAllocationWithinRoom(
 String outputAllocationWithinRoomText(
   String current,
   String roomBase,
-  String rate,
-) {
-  final room = _reportTicksWithin(_ticks(roomBase), rate);
+  String rate, {
+  int? precisionScale,
+  String? precisionRounding,
+}) {
   final ticks = _ticks(current);
+  final capacity = financeExactDecimalUnits(
+    roomBase,
+    scale: productionProductScale,
+  )!;
+  if (_baseTicks(ticks, rate) <= capacity) return _text(ticks);
+  final room = _reportTicksWithin(
+    capacity,
+    rate,
+    precisionScale: precisionScale,
+    precisionRounding: precisionRounding,
+  );
   return _text(ticks < room ? ticks : room);
 }

@@ -28,6 +28,7 @@ public class BusinessApplicationService {
     private final DepartmentApprovalScope departments;
     private final com.uten.imp.application.port.AttachmentEvidencePort evidence;
     private final com.uten.imp.application.port.FinanceApplicationReferencePort financeReferences;
+    private final com.uten.imp.application.port.NativeApplicationOriginPort origins;
     private final com.uten.imp.application.port.EmployeeApplicationNoticePort notices;
     private final com.uten.imp.application.port.ApprovalCandidateDirectoryPort approvalCandidates;
     private final com.uten.imp.application.port.MasterReferenceValidationPort masterReferences;
@@ -84,7 +85,7 @@ public class BusinessApplicationService {
     private Map<String,Object> dto(Map<String,Object> row,AuthUser u,boolean detail){
         var out=new LinkedHashMap<String,Object>();
         Map<String,String> mapping=Map.ofEntries(Map.entry("id","id"),Map.entry("application_no","applicationNo"),Map.entry("kind","kind"),Map.entry("title","title"),Map.entry("status","status"),Map.entry("approval_stage","approvalStage"),Map.entry("applicant_id","applicantId"),Map.entry("applicant_name","applicantName"),Map.entry("department_id","departmentId"),Map.entry("department_name","departmentName"),Map.entry("round","round"),Map.entry("version","version"),Map.entry("reject_reason","rejectReason"),Map.entry("finance_document_id","financeDocumentId"));
-        mapping.forEach((key,value)->out.put(value,row.get(key)));out.put("amount",((BigDecimal)row.get("amount")).toPlainString());
+        mapping.forEach((key,value)->out.put(value,row.get(key)));out.put("originalContext",originContext(id(row)));out.put("amount",row.get("amount")==null?null:((BigDecimal)row.get("amount")).toPlainString());
         out.put("fields",fields(row));out.put("createdAt",instant(row.get("created_at")));out.put("submittedAt",instant(row.get("submitted_at")));
         out.put("approvalStageLabel",label(text(row,"kind"),text(row,"approval_stage")));boolean action=canAct(row,u);
         out.put("canApprove",action&&REVIEW_STAGES.contains(text(row,"approval_stage"))&&canInspectOriginals(row,u));
@@ -100,7 +101,7 @@ public class BusinessApplicationService {
         return out;
     }
     private String instant(Object value){return value==null?null:value instanceof java.sql.Timestamp t?t.toInstant().toString():value instanceof OffsetDateTime t?t.toInstant().toString():value.toString();}
-    private void validate(Input in){validate(in,null);}
+    void validate(Input in){validate(in,null);}
     private UUID retainedSupplier(Map<String,Object> row){return (UUID)row.get("supplier_id");}
     private void validate(Input in,UUID retainedSupplier){
         if(in==null||in.id()==null||in.kind()==null||!KINDS.containsKey(in.kind()))throw invalid("请选择申请类别");
@@ -136,6 +137,7 @@ public class BusinessApplicationService {
         }
         return fields;
     }
+    private static boolean sameAmount(BigDecimal left,BigDecimal right){return left==null?right==null:right!=null&&left.compareTo(right)==0;}
     private boolean sameFields(String kind,Map<String,Object> before,Map<String,Object> request){
         var left=new LinkedHashMap<>(before);var right=new LinkedHashMap<>(request);
         if(Set.of("SUPPLIER_PAYMENT","PREPAYMENT").contains(kind)){for(String key:List.of("supplierName","payee")){left.remove(key);right.remove(key);}}
@@ -145,7 +147,7 @@ public class BusinessApplicationService {
     @Transactional public Map<String,Object> create(Input in){var u=writer();validate(in);requireApply(u,in.kind());
         jdbc.queryForObject("SELECT pg_advisory_xact_lock(hashtextextended(?,0))",Object.class,"application-create:"+in.id());
         var existing=jdbc.queryForList("SELECT * FROM business_applications WHERE id=?",in.id());
-        if(!existing.isEmpty()){var old=existing.getFirst();if(!owns(old,u)||!text(old,"kind").equals(in.kind())||!text(old,"title").equals(in.title().trim())||((BigDecimal)old.get("amount")).compareTo(amount(in.amount(),"TRAVEL".equals(in.kind())))!=0||!sameFields(in.kind(),fields(old),in.fields()))throw new ApiException(ErrorCode.CONFLICT,"原申请编号已存在，请核对原记录");return dto(old,u,true);}
+        if(!existing.isEmpty()){var old=existing.getFirst();if(!owns(old,u)||!text(old,"kind").equals(in.kind())||!text(old,"title").equals(in.title().trim())||!sameAmount((BigDecimal)old.get("amount"),amount(in.amount(),"TRAVEL".equals(in.kind())))||!sameFields(in.kind(),fields(old),in.fields()))throw new ApiException(ErrorCode.CONFLICT,"原申请编号已存在，请核对原记录");return dto(old,u,true);}
         var employee=jdbc.queryForList("SELECT e.full_name name,e.department_id,d.name department_name FROM employees e JOIN departments d ON d.id=e.department_id WHERE e.id=? AND NOT e.is_deleted AND NOT d.is_deleted FOR SHARE OF e,d",u.getEmployeeId());
         if(employee.isEmpty())throw invalid("请先配置申请人的有效部门");var e=employee.getFirst();
         String number=documentNumbers.nextNumber(com.uten.imp.common.docnumber.DocNumberPrefix.BUSINESS_APPLICATION);
@@ -154,14 +156,16 @@ public class BusinessApplicationService {
     }
     @Transactional public Map<String,Object> update(UUID id,Input in){var u=writer();var row=row(id,true);editable(row,u);if(in==null)throw invalid("申请内容不能为空");version(row,in.expectedVersion());validate(in,retainedSupplier(row));
         if(!id.equals(in.id())||!text(row,"kind").equals(in.kind()))throw invalid("申请类别与原记录不一致");
+        origins.requireCurrentValues("BUSINESS_APPLICATION",id,amount(in.amount(),"TRAVEL".equals(in.kind())),Set.of("SUPPLIER_PAYMENT","PREPAYMENT").contains(in.kind())?uuid(in.fields(),"supplierId"):null);
         jdbc.update("UPDATE business_applications SET title=?,amount=?,fields=?::jsonb,supplier_id=?,version=version+1,updated_at=now() WHERE id=?",in.title().trim(),amount(in.amount(),"TRAVEL".equals(in.kind())),encoded(storedFields(in,row)),Set.of("SUPPLIER_PAYMENT","PREPAYMENT").contains(in.kind())?uuid(in.fields(),"supplierId"):null,id);append(row,"EDITED",u,null,null);return dto(row(id,false),u,true);
     }
     @Transactional public Map<String,Object> act(UUID id,String action,Action in){var u=writer();var row=row(id,true);version(row,in==null?null:in.expectedVersion());String stage=text(row,"approval_stage");
+        if(Set.of("submit","approve","receive","pay","link-finance").contains(action))origins.requireReady("BUSINESS_APPLICATION",id);
         switch(action){
             case "cancel" -> {
                 requireApply(u,text(row,"kind"));if(!owns(row,u)||!Set.of("DRAFT","REJECTED").contains(row.get("status")))throw new ApiException(ErrorCode.CONFLICT,"仅本人草稿或待修订申请可以作废；已提交的申请须先撤回");
                 jdbc.update("UPDATE business_applications SET status='CANCELLED',approval_stage=NULL,version=version+1,updated_at=now() WHERE id=?",id);append(row,"CANCELLED",u,null,"作废申请；保留申请编号、凭据及全部历史，不释放单号");}
-            case "submit" -> {editable(row,u);validate(new Input(id,text(row,"kind"),text(row,"title"),row.get("amount").toString(),fields(row),in.expectedVersion()),retainedSupplier(row));
+            case "submit" -> {editable(row,u);validate(new Input(id,text(row,"kind"),text(row,"title"),(row.get("amount")==null?null:row.get("amount").toString()),fields(row),in.expectedVersion()),retainedSupplier(row));
                 if(!"TRAVEL".equals(text(row,"kind"))&&evidence.cleanEvidence("BUSINESS_APPLICATION",id).isEmpty())throw invalid("请先上传相关凭证并等待扫描完成");
                 int round=((Number)row.get("round")).intValue()+1;String first=stages(text(row,"kind")).getFirst();
                 var applicants=jdbc.queryForList("SELECT e.full_name,e.department_id,d.name department_name FROM employees e JOIN departments d ON d.id=e.department_id WHERE e.id=? AND NOT e.is_deleted AND NOT d.is_deleted FOR SHARE OF e,d",u.getEmployeeId());
@@ -169,7 +173,7 @@ public class BusinessApplicationService {
                 String approvalSnapshot="DEPARTMENT".equals(first)?departmentRouting.capture((UUID)row.get("applicant_id"),(UUID)applicant.get("department_id")):null;
                 jdbc.update("UPDATE business_applications SET status='SUBMITTED',approval_stage=?,round=?,reject_reason=NULL,applicant_name=?,department_id=?,department_name=?,department_approval_snapshot=?::jsonb,submitted_at=now(),version=version+1,updated_at=now() WHERE id=?",first,round,applicant.get("full_name"),applicant.get("department_id"),applicant.get("department_name"),approvalSnapshot,id);
                 row=row(id,false);
-                var snapshot=new LinkedHashMap<String,Object>();snapshot.put("kind",row.get("kind"));snapshot.put("title",row.get("title"));snapshot.put("amount",row.get("amount").toString());snapshot.put("fields",fields(row));
+                var snapshot=new LinkedHashMap<String,Object>();snapshot.put("kind",row.get("kind"));snapshot.put("title",row.get("title"));snapshot.put("amount",row.get("amount")==null?null:row.get("amount").toString());snapshot.put("fields",fields(row));
                 snapshot.put("applicantId",row.get("applicant_id"));snapshot.put("applicantName",row.get("applicant_name"));snapshot.put("departmentId",row.get("department_id"));snapshot.put("departmentName",row.get("department_name"));
                 snapshot.put("attachments",evidence.cleanEvidence("BUSINESS_APPLICATION",id).stream().map(a->{Map<String,Object> f=new LinkedHashMap<>();f.put("id",a.id());f.put("sha256",a.sha256());f.put("originalName",a.originalName());return f;}).toList());
                 jdbc.update("INSERT INTO business_application_submissions(application_id,round,snapshot) VALUES(?,?,?::jsonb)",id,round,encoded(snapshot));
@@ -188,7 +192,7 @@ public class BusinessApplicationService {
                 var fields=in.fields();if(fields==null||fields.keySet().stream().anyMatch(key->!Set.of("financeDocumentType","financeDocumentId").contains(key)))throw invalid("关联入账只能选择财务记录，不能修改原付款事实");
                 if(!"PAYMENT".equals(Objects.toString(fields.get("financeDocumentType"),"PAYMENT")))throw invalid("供应商预付不能关联费用单");
                 UUID document=uuid(fields,"financeDocumentId");var facts=fields(row);
-                financeReferences.requireApprovedPrepaymentMatch(new com.uten.imp.application.port.FinanceApplicationReferencePort.Reference("PAYMENT",document,(BigDecimal)row.get("amount"),date(facts,"paymentDate"),retainedSupplier(row),u));
+                financeReferences.requireApprovedPrepaymentMatch(reference(row,"PAYMENT",document,date(facts,"paymentDate"),u));
                 if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM business_applications WHERE finance_document_type='PAYMENT' AND finance_document_id=? AND id<>?)",Boolean.class,document,id)))throw new ApiException(ErrorCode.CONFLICT,"该财务单已关联其他申请");
                 jdbc.update("UPDATE business_applications SET finance_document_id=?,finance_document_type='PAYMENT',version=version+1,updated_at=now() WHERE id=?",document,id);
                 append(row,"FINANCE_LINKED",u,"FINANCE_POSTING","关联已审核供应商预付款 "+document+"；保留原实际付款日期和凭证号，未重复扣账");notifyOwner(row,"供应商预付已关联合法财务入账记录");}
@@ -237,11 +241,23 @@ public class BusinessApplicationService {
         UUID document=uuid(input,"financeDocumentId");LocalDate date=date(input,"paymentDate");
         if(date.isAfter(BusinessTime.today()))throw invalid("实际付款日期不能晚于今天");required(input,"paymentReference","银行流水或现金签收编号");
         if(evidence.cleanEvidence("BUSINESS_APPLICATION_PAYMENT",id(row)).isEmpty())throw invalid("请先上传银行回单或签收凭据并等待扫描完成");
-        financeReferences.requireApprovedMatch(new com.uten.imp.application.port.FinanceApplicationReferencePort.Reference(type,document,(BigDecimal)row.get("amount"),date,retainedSupplier(row),u));
+        financeReferences.requireApprovedMatch(reference(row,type,document,date,u));
         if(Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS(SELECT 1 FROM business_applications WHERE finance_document_type=? AND finance_document_id=? AND id<>?)",Boolean.class,type,document,id(row))))throw new ApiException(ErrorCode.CONFLICT,"该财务单已关联其他申请");
         var fields=fields(row);fields.put("paymentDate",date.toString());fields.put("paymentReference",input.get("paymentReference"));fields.put("financeDocumentType",type);
         jdbc.update("UPDATE business_applications SET finance_document_id=?,finance_document_type=?,fields=?::jsonb WHERE id=?",document,type,encoded(fields),id(row));
     }
+    private com.uten.imp.application.port.FinanceApplicationReferencePort.Reference reference(Map<String,Object> row,String type,UUID document,LocalDate date,AuthUser actor){
+        var origin=origins.origin("BUSINESS_APPLICATION",id(row));
+        if(origin==null)return new com.uten.imp.application.port.FinanceApplicationReferencePort.Reference(type,document,(BigDecimal)row.get("amount"),date,retainedSupplier(row),actor,com.uten.imp.application.port.NativeApplicationOriginPort.AmountBasis.LOCAL,null,List.of(),id(row));
+        return new com.uten.imp.application.port.FinanceApplicationReferencePort.Reference(type,document,(BigDecimal)row.get("amount"),date,retainedSupplier(row),actor,origin.amountBasis(),origin.currencyId(),origin.obligations(),id(row));
+    }
+    private Map<String,Object> originContext(UUID id){
+        var origin=origins.origin("BUSINESS_APPLICATION",id);if(origin==null)return Map.of();
+        var out=new LinkedHashMap<String,Object>();out.put("sourceNo",origin.sourceNo());out.put("originalKind",origin.originalKind());out.put("requestedDate",origin.requestedDate());
+        out.put("currencyId",origin.currencyId());out.put("currencyCode",origin.currencyCode());out.put("currencyName",origin.currencyName());out.put("baseCurrency",origin.baseCurrency());
+        out.put("amountBasis",origin.amountBasis().name());out.put("amount",origin.amount()==null?null:origin.amount().toPlainString());out.put("readOnly",true);return out;
+    }
+    @Transactional(readOnly=true) public Map<String,Object> originalSource(UUID id){var actor=user();readable(row(id,false),actor);return origins.originalView("BUSINESS_APPLICATION",id);}
     private String activeScope(AuthUser u,Set<String> stages,String code,Map<String,Object> params){
         params.put("actor",u.getEmployeeId());List<String> terms=new ArrayList<>();
         for(String stage:stages)if(has(u,permission(stage))){String term="a.approval_stage='"+stage+"'";if("DEPARTMENT".equals(stage)){term+=" AND "+departmentRouting.sql("a.applicant_id","a.department_id","a.department_approval_snapshot",u);if(code!=null&&!code.isBlank()){var ids=departmentIds(u,code);params.put("departmentIds",ids.isEmpty()?List.of(new UUID(0,0)):ids);term+=" AND a.department_id IN(:departmentIds)";}}terms.add("("+term+")");}
@@ -250,7 +266,7 @@ public class BusinessApplicationService {
     @Transactional(readOnly=true) public PageResponse<Map<String,Object>> prepaymentFinanceCandidates(UUID id,int page,int size,String keyword){
         var u=user();var row=row(id,false);if(!canLinkFinanceBase(row,u))throw new ApiException(ErrorCode.FORBIDDEN);
         int p=Math.max(1,page),s=Math.clamp(size,1,100);var result=financeReferences.prepaymentCandidates(id,retainedSupplier(row),(BigDecimal)row.get("amount"),date(fields(row),"paymentDate"),u,p,s,keyword);
-        return new PageResponse<>(result.items().stream().map(candidate->{Map<String,Object> out=new LinkedHashMap<>();out.put("id",candidate.id());out.put("billNo",candidate.billNo());out.put("billDate",candidate.billDate().toString());out.put("amountLocalText",candidate.amount().toPlainString());out.put("status",1);return out;}).toList(),p,s,result.total(),(int)((result.total()+s-1)/s));
+        return new PageResponse<>(result.items().stream().map(candidate->{Map<String,Object> out=new LinkedHashMap<>();out.put("id",candidate.id());out.put("billNo",candidate.billNo());out.put("billDate",candidate.billDate().toString());out.put("amountText",candidate.amount().toPlainString());out.put("amountBasis",candidate.amountBasis().name());out.put("currencyCode",candidate.currencyCode());if(candidate.amountBasis()==com.uten.imp.application.port.NativeApplicationOriginPort.AmountBasis.LOCAL)out.put("amountLocalText",candidate.amount().toPlainString());out.put("status",1);return out;}).toList(),p,s,result.total(),(int)((result.total()+s-1)/s));
     }
     @Transactional(readOnly=true) public PageResponse<Map<String,Object>> list(String queue,String kind,String status,String stage,String code,int page,int size){
         var u=user();Map<String,Object> params=new HashMap<>();params.put("actor",u.getEmployeeId());String where;

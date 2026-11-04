@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
+import 'package:uten_imp/core/network/api_client.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -128,6 +130,11 @@ Future<GoRouter> _pump(
       overrides: [
         sessionProvider.overrideWith(_Session.new),
         apiBaseUrlProvider.overrideWithValue('https://expense-ui.invalid/api'),
+        apiClientProvider.overrideWithValue(
+          ApiClient(
+            Dio(BaseOptions(baseUrl: 'https://expense-ui.invalid/api')),
+          ),
+        ),
         currentPermissionsProvider.overrideWithValue({Perm.expenseApply}),
         sharedPreferencesProvider.overrideWithValue(preferences),
         formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
@@ -262,7 +269,14 @@ void main() {
         tester.widget<UtenButton>(save).onPressed?.call();
         await tester.pump();
       }
-      expect(repository.updates, hasLength(1));
+      expect(
+        repository.updates,
+        hasLength(1),
+        reason: tester
+            .widgetList<Text>(find.byType(Text))
+            .map((text) => text.data ?? '')
+            .join(' | '),
+      );
       expect(repository.updates.single.items, hasLength(100));
       expect(repository.updates.single.title, '千行报销修订');
       expect(repository.updates.single.expectedVersion, 7);

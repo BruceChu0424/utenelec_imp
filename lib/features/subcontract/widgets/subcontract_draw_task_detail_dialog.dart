@@ -241,7 +241,7 @@ class _SubcontractDrawTaskDetailDialogState
 
   Widget _facts(ThemeData theme, SubcontractDrawTaskRow task) {
     final unit = task.unitName.trim();
-    String qty(double value) =>
+    String qty(Object? value) =>
         '${subcontractDrawQty(value)}${unit.isEmpty ? '' : ' $unit'}';
     final entries = <(String, String)>[
       ('委外订货单', _label(task.orderBillNo)),
@@ -249,11 +249,11 @@ class _SubcontractDrawTaskDetailDialogState
       ('委外件', _label(task.goodsName)),
       ('编号', _label(task.goodsCode)),
       ('颜色', _label(task.colorName)),
-      ('订货数量', qty(task.orderQty)),
-      ('已领', qty(task.drawnQty)),
-      ('待仓库发', qty(task.pendingQty)),
-      ('可领', qty(task.drawableQty)),
-      ('还缺', qty(task.shortQty)),
+      ('订货数量', qty(task.quantityText('orderQty'))),
+      ('已领', qty(task.quantityText('drawnQty'))),
+      ('待仓库发', qty(task.quantityText('pendingQty'))),
+      ('可领', qty(task.quantityText('drawableQty'))),
+      ('还缺', qty(task.quantityText('shortQty'))),
       if ((task.deliverDate ?? '').isNotEmpty) ('交期', task.deliverDate!),
     ];
     return Wrap(

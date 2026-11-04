@@ -391,7 +391,33 @@ void main() {
     expect(call.count, 21);
     expect(call.startNo, 4);
     expect(call.containers.map((c) => c.name), ['干燥机料斗', '储料桶']);
-    expect(call.containers.map((c) => c.capacityQty), [50, 100]);
+    expect(call.containers.map((c) => c.capacityQty), ['50', '100']);
+  });
+
+  testWidgets('容器配置保留24位容量，超界留输入而不提交', (tester) async {
+    final repo = _repo();
+    await _pumpSetupPage(
+      tester,
+      const WorkshopMaterialSetupPage(),
+      repo: repo,
+      size: const Size(1600, 1000),
+    );
+    await _openTab(tester, '机台与容器');
+    const raw = '60.123456789012345678901234';
+    final field = find.byKey(const Key('wm-machine-cap-m1-干燥机料斗'));
+    await tester.enterText(field, raw);
+    await tester.tap(find.byKey(const Key('wm-machines-save')));
+    await tester.pumpAndSettle();
+    expect(repo.containerUpdates.single.single['capacityQty'], raw);
+    await tester.enterText(field, '0.0000000000000000000000001');
+    final calls = repo.containerUpdates.length;
+    await tester.tap(find.byKey(const Key('wm-machines-save')));
+    await tester.pumpAndSettle();
+    expect(repo.containerUpdates, hasLength(calls));
+    expect(
+      _controller(tester, 'wm-machine-cap-m1-干燥机料斗').text,
+      '0.0000000000000000000000001',
+    );
   });
 
   testWidgets('勾选两行改一格容量, 两行一起改, 没勾的不动, 提交的就是这两行', (tester) async {
@@ -429,7 +455,7 @@ void main() {
     expect(repo.containerUpdates, hasLength(1));
     final items = repo.containerUpdates.single;
     expect(items.map((i) => i['id']), ['m1-hopper', 'm2-hopper']);
-    expect(items.every((i) => i['capacityQty'] == 60), isTrue);
+    expect(items.every((i) => i['capacityQty'] == '60'), isTrue);
     expect(items.every((i) => i['expectedVersion'] == 2), isTrue);
   });
 

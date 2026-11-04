@@ -18,19 +18,19 @@ class GoodsPricePrecisionTest {
             .getValidator();
 
     @Test
-    void priceAcceptsFourDecimalPlacesWithoutFloatingPointConversion() {
-        GoodsSaveRequest request = requestWithPrice(new BigDecimal("12345678901234.1234"));
+    void priceAcceptsNativeFortyByTwentyFourWithoutFloatingPointConversion() {
+        GoodsSaveRequest request = requestWithPrice(new BigDecimal("1234567890123456789012345678901234567890.123456789012345678901234"));
 
         assertTrue(validator.validate(request).isEmpty());
     }
 
     @Test
-    void priceRejectsValuesThatDoNotFitNumericEighteenFour() {
+    void priceRejectsValuesOutsideNativeCapacity() {
         assertFalse(validator.validate(
-                        requestWithPrice(new BigDecimal("123.12345")))
+                        requestWithPrice(new BigDecimal("0.0000000000000000000000001")))
                 .isEmpty());
         assertFalse(validator.validate(
-                        requestWithPrice(new BigDecimal("123456789012345.1234")))
+                        requestWithPrice(new BigDecimal("10000000000000000000000000000000000000000")))
                 .isEmpty());
     }
 

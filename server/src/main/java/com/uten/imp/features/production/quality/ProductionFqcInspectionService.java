@@ -48,7 +48,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -1489,7 +1488,7 @@ public class ProductionFqcInspectionService
         BigDecimal left = passQty;
         for (BigDecimal capacity : remaining) {
             BigDecimal take = capacity.min(left).max(BigDecimal.ZERO);
-            result.add(take.setScale(4, RoundingMode.UNNECESSARY));
+            result.add(nonNegativeQty(take,"合格分配数量"));
             left = left.subtract(take);
         }
         if (left.signum() != 0) throw conflict("合格数量超过这一批还没判定的数量");
@@ -1502,7 +1501,7 @@ public class ProductionFqcInspectionService
         BigDecimal left = failQty;
         for (int index = remaining.size() - 1; index >= 0; index--) {
             BigDecimal take = remaining.get(index).subtract(pass.get(index)).min(left).max(BigDecimal.ZERO);
-            result[index] = take.setScale(4, RoundingMode.UNNECESSARY);
+            result[index] = nonNegativeQty(take,"不良分配数量");
             left = left.subtract(take);
         }
         if (left.signum() != 0) throw conflict("不良数量超过这一批还没判定的数量");
@@ -2537,11 +2536,7 @@ public class ProductionFqcInspectionService
 
     private static BigDecimal nonNegativeQty(BigDecimal value, String label) {
         if (value == null || value.signum() < 0) throw validation(label + "不能小于 0");
-        try {
-            return value.setScale(4, RoundingMode.UNNECESSARY);
-        } catch (ArithmeticException ex) {
-            throw validation(label + "最多保留 4 位小数");
-        }
+        return com.uten.imp.common.finance.MoneyPolicy.canonical(com.uten.imp.common.util.FinancialExactAmount.quantity(value,label));
     }
 
     record NormalizedLotDecision(
@@ -2688,11 +2683,7 @@ public class ProductionFqcInspectionService
         if (value == null || value.signum() <= 0) {
             throw validation(label + "必须大于 0");
         }
-        try {
-            return value.setScale(4, RoundingMode.UNNECESSARY);
-        } catch (ArithmeticException ex) {
-            throw validation(label + "最多保留 4 位小数");
-        }
+        return nonNegativeQty(value,label);
     }
 
     private static BigDecimal optionalQty(BigDecimal value, String label) {

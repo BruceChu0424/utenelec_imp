@@ -35,7 +35,7 @@ public class GoodsPurchaseReceiptPolicyController {
     private final TxSessionVars tx;
 
     public record Policy(
-            @DecimalMin("0.00") @DecimalMax("100.00") @Digits(integer = 3, fraction = 2)
+            @DecimalMin("0.00") @DecimalMax("100.00") @com.uten.imp.common.validation.DocumentAmount
             BigDecimal allowedOverReceiptPct,
             @NotNull Long version) {}
 

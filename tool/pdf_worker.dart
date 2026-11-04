@@ -6,6 +6,8 @@ import 'dart:typed_data';
 import 'package:web/web.dart' as web;
 
 import 'package:uten_imp/core/print/print_pdf_document.dart';
+import 'package:uten_imp/core/print/source_table_paper.dart';
+import 'package:uten_imp/core/tables/uten_table_header_group.dart';
 import 'package:uten_imp/features/purchase/models/purchase_order_pdf_bundle.dart';
 import 'package:uten_imp/features/subcontract/models/subcontract_order_pdf_bundle.dart';
 
@@ -41,6 +43,7 @@ Future<void> _generate(web.MessageEvent event) async {
       final renderer = switch (data.getProperty<JSString>('kind'.toJS).toDart) {
         'purchase-order-bundle' => renderPurchaseOrderBundle,
         'subcontract-order-bundle' => renderSubcontractOrderBundle,
+        sourceTablePaperRendererKind => renderSourceTablePaper,
         _ => throw const FormatException('renderer'),
       };
       final bytes = await renderer(
@@ -72,6 +75,47 @@ Future<void> _generate(web.MessageEvent event) async {
         : PrintPdfRequest(
             title: data.getProperty<JSString>('title'.toJS).toDart,
             subtitle: subtitle?.toDart,
+            pageHeader: data.getProperty<JSString?>('pageHeader'.toJS)?.toDart,
+            pageFooter: data.getProperty<JSString?>('pageFooter'.toJS)?.toDart,
+            repeatColumnHeaders:
+                data
+                    .getProperty<JSBoolean?>('repeatColumnHeaders'.toJS)
+                    ?.toDart ??
+                false,
+            headerGroups:
+                data
+                    .getProperty<JSArray<JSArray<JSObject>>?>(
+                      'headerGroups'.toJS,
+                    )
+                    ?.toDart
+                    .map(
+                      (path) => path.toDart
+                          .map(
+                            (group) => UtenTableHeaderGroup(
+                              id: group.getProperty<JSString>('id'.toJS).toDart,
+                              label: group
+                                  .getProperty<JSString>('label'.toJS)
+                                  .toDart,
+                            ),
+                          )
+                          .toList(),
+                    )
+                    .toList() ??
+                const [],
+            documentHeader:
+                data
+                    .getProperty<JSArray<JSString>?>('documentHeader'.toJS)
+                    ?.toDart
+                    .map((line) => line.toDart)
+                    .toList() ??
+                const [],
+            documentFooter:
+                data
+                    .getProperty<JSArray<JSString>?>('documentFooter'.toJS)
+                    ?.toDart
+                    .map((line) => line.toDart)
+                    .toList() ??
+                const [],
             headers: data
                 .getProperty<JSArray<JSString>>('headers'.toJS)
                 .toDart

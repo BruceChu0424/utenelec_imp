@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../components/layout/uten_compact_toolbar.dart';
 import '../../../shared/paging/scoped_paged_read_view_mixin.dart';
 // 币种资料管理页（基础资料 · 扁平主档，无分类树）。
@@ -558,7 +559,10 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
   List<MasterDetailRow> _detailRows(CurrencyDetail c) => [
     MasterDetailRow('币种名称', c.name),
     MasterDetailRow('编号', c.code),
-    MasterDetailRow('参考汇率', c.exchangeRate?.toStringAsFixed(4)),
+    MasterDetailRow(
+      '参考汇率',
+      c.exchangeRate?.toExactString(minimumFractionDigits: 4),
+    ),
     MasterDetailRow('状态', c.status),
     MasterDetailRow('本位币权威', c.baseCurrency ? '是（受保护，不可改动）' : '否'),
     MasterDetailRow('旧系统 ID', c.legacyId?.toString()),
@@ -887,7 +891,7 @@ class _CurrencyPageState extends ConsumerState<CurrencyPage>
       columnSearchEnabled: true,
       exactValueOf: (c) => c.exchangeRateText,
       info: '按参考汇率原始精度检索；汇率不合计',
-      value: (c) => c.exchangeRate?.toStringAsFixed(4),
+      value: (c) => c.exchangeRate?.toExactString(minimumFractionDigits: 4),
     ),
   ];
 

@@ -182,25 +182,29 @@ void main() {
     });
   }
 
-  testWidgets('invoice entry rejects fractional cents before saving', (
-    tester,
-  ) async {
-    final repo = _FakeExpenseRepository();
-    await _pump(tester, repo, claim: _claim());
-    await tester.tap(find.byKey(const Key('expense-invoice-add')));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const Key('expense-invoice-no')),
-      '24312000000012345678',
-    );
-    await tester.enterText(
-      find.byKey(const Key('expense-invoice-total')),
-      '84.801',
-    );
-    await tester.tap(find.byKey(const Key('expense-invoice-save')));
-    await tester.pumpAndSettle();
-    expect(repo.addInvoiceCalls, isEmpty);
-  });
+  testWidgets(
+    'invoice entry keeps every supported fractional digit when saving',
+    (tester) async {
+      final repo = _FakeExpenseRepository();
+      await _pump(tester, repo, claim: _claim());
+      await tester.tap(find.byKey(const Key('expense-invoice-add')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('expense-invoice-no')),
+        '24312000000012345678',
+      );
+      await tester.enterText(
+        find.byKey(const Key('expense-invoice-total')),
+        '84.801',
+      );
+      await tester.tap(find.byKey(const Key('expense-invoice-save')));
+      await tester.pumpAndSettle();
+      expect(repo.addInvoiceCalls, hasLength(1));
+      final input =
+          repo.addInvoiceCalls.single['input'] as ExpenseClaimInvoiceInput;
+      expect(input.toJson()['totalAmount'], '84.801');
+    },
+  );
 
   testWidgets('renders invoice rows and total for approver review', (
     tester,

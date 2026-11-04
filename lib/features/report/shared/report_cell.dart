@@ -11,13 +11,26 @@ import '../../../shared/formatters/money_display.dart';
 import '../../../shared/formatters/quantity_display.dart';
 import 'report_column.dart';
 
+/// Future month cells are intentionally empty; missing source facts remain unknown.
+bool reportCellIsNotApplicable(ReportColumn col, Map<String, dynamic> row) {
+  final fields=row['__notApplicable'];
+  if(fields is String&&fields.split(',').map((field)=>field.trim()).contains(col.key)||fields is List&&fields.contains(col.key))return true;
+  final match = RegExp(r'^[mr](\d{1,2})$').firstMatch(col.key);
+  final months = row['__notApplicableMonths'];
+  return match != null &&
+      months is List &&
+      months.contains(int.parse(match.group(1)!));
+}
+
 /// 按 [col.type] 格式化 [row] 中该列的值为展示字符串；空值返回 null。
 /// [weightDisplay] 只影响 'weight' 列 (默认按量级自动选单位)。
 String? formatReportCell(
   ReportColumn col,
   Map<String, dynamic> row, {
   WeightDisplay weightDisplay = WeightDisplay.auto,
+  bool includeUnit = true,
 }) {
+  if (reportCellIsNotApplicable(col, row)) return '—';
   final v = row[col.key];
   // A masked main value remains masked even if an older response retained Exact.
   if (v == null) return null;
@@ -26,16 +39,37 @@ String? formatReportCell(
     return '$v';
   }
   final unitKey = col.unitKey?.trim();
-  final unit = unitKey != null && unitKey.isNotEmpty
+  final sourceUnit = unitKey != null && unitKey.isNotEmpty
       ? row[unitKey]?.toString()
       : col.unitLabel;
+  final retainSourceCurrency = row['__showCurrencyInOriginal'] == true &&
+      col.type == 'money' && unitKey == 'currencyCode';
+  final unit = sourceUnit == '%' || includeUnit || retainSourceCurrency
+      ? sourceUnit
+      : null;
   final exact = row['${col.key}Exact'];
-  if (exact is String && financeExactDecimal(exact) != null) {
+  final percentages = row['__percentageKeys'];
+  if (unit == '%' || percentages is List && percentages.contains(col.key)) {
+    final text = exact is String && financeExactDecimal(exact) != null
+        ? exact
+        : v.toString();
+    return financeExactDecimal(text) == null
+        ? text
+        : '${financeExactMoneyDisplay(text)}%';
+  }
+  // Frozen originals store the authoritative decimal in the original field.
+  // A separate Exact alias is optional; never route valid decimal text through double.
+  final authoritative = exact is String && financeExactDecimal(exact) != null
+      ? exact
+      : v is String && financeExactDecimal(v) != null
+      ? v
+      : null;
+  if (authoritative != null) {
     if (col.type == 'money') {
-      return financeMoneyWithUnitSuffix(exact, currencyName: unit);
+      return financeMoneyWithUnitSuffix(authoritative, currencyName: unit);
     }
     if (col.type == 'number' || col.type == 'int' || col.type == 'count') {
-      return formatExactQtyWithUnit(exact, unit);
+      return formatExactQtyWithUnit(authoritative, unit);
     }
   }
   switch (col.type) {
@@ -59,9 +93,9 @@ String? formatReportCell(
       final n = v is num ? v : num.tryParse('$v');
       return n == null ? '$v' : formatChinaNumber(n, decimalDigits: 0);
     case 'weight':
-      final n = v is num ? v : num.tryParse('$v');
-      if (n == null) return '$v';
-      final text = formatWeight(n.toDouble(), display: weightDisplay);
+      final raw = authoritative ?? financeExactDecimal(v);
+      if (raw == null) return '$v';
+      final text = formatWeight(raw, display: weightDisplay);
       return row['${col.key}Estimated'] == true ? '≈$text' : text;
     case 'bool':
       final b = v is bool ? v : '$v' == 'true';

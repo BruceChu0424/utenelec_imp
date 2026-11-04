@@ -5,14 +5,19 @@
 import '../../../../components/data_display/uten_status_badge.dart';
 import '../../../../core/l10n/gen/app_localizations.dart';
 import '../../../../shared/formatters/quantity_display.dart';
+import '../../../../shared/formatters/exact_decimal.dart';
 import '../models/workshop_material_models.dart';
 
-/// 数量显示: 最多 [maxDecimals] 位小数, 去掉末尾的 0。（实现升位 shared/formatters。）
-String wmQty(num? value, {int maxDecimals = 2}) =>
+/// 数量显示保留完整有限原值；[maxDecimals] 仅保留兼容签名，不取舍原数。
+String wmQty(Object? value, {int maxDecimals = 2}) =>
     formatQty(value, maxDecimals: maxDecimals);
 
 /// 输入框文本 → 数量; 空或非法为 null。
 double? wmParseQty(String text) => parseQty(text);
+
+/// Exact input parser; validation remains at the original text field and server.
+String? wmParseExactQty(String text) =>
+    financeExactDecimal(text.trim().replaceAll(',', ''));
 
 /// 期间显示名: 第 N 期 (起 至 止)。
 String wmPeriodLabel(WmPeriod period) {

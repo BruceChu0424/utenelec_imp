@@ -13,6 +13,7 @@ enum ExpenseClaimEventType {
   stageApproved('节点审核通过'),
   rejected('审批驳回'),
   paid('已登记付款'),
+  paymentReversed('原付款已反审'),
   abandoned('已放弃报销');
 
   const ExpenseClaimEventType(this.label);
@@ -31,6 +32,7 @@ enum ExpenseClaimEventType {
       'STAGE_APPROVED' => ExpenseClaimEventType.stageApproved,
       'REJECTED' => ExpenseClaimEventType.rejected,
       'PAID' => ExpenseClaimEventType.paid,
+      'PAYMENT_REVERSED' => ExpenseClaimEventType.paymentReversed,
       'ABANDONED' => ExpenseClaimEventType.abandoned,
       _ => ExpenseClaimEventType.edited,
     };

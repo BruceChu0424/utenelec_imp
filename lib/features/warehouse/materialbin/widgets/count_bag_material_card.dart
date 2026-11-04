@@ -4,6 +4,8 @@
 // 搅好未上机的、散料也按过秤公斤记。过秤行按"开口袋过秤 / 搅好未上机 / 散料"分组显示。
 // 输完点对勾或离开输入框即保存 (由页面逐行落库)。
 import 'package:flutter/material.dart';
+import '../../../../shared/formatters/exact_decimal.dart';
+import '../../../../shared/formatters/financial_amount_validation.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 
 import '../../../../core/l10n/gen/app_localizations.dart';
@@ -24,8 +26,16 @@ class WmBagMaterialCard extends StatefulWidget {
     this.weighedLines = const [],
     this.savingKeys = const {},
     this.errors = const {},
+    this.bagInputDraft,
+    this.weighedInputDrafts = const {},
+    this.onBagInputChanged,
+    this.onWeighedInputChanged,
   });
 
+  final Map<String, String>? bagInputDraft;
+  final Map<String, String> weighedInputDrafts;
+  final void Function(String field, String value)? onBagInputChanged;
+  final void Function(String key, String value)? onWeighedInputChanged;
   final WmCountMaterial material;
   final bool enabled;
 
@@ -34,9 +44,9 @@ class WmBagMaterialCard extends StatefulWidget {
 
   /// 过秤行 (含刚加、还没填数的行)。
   final List<WmCountLine> weighedLines;
-  final void Function(double bagCount, double bagNetQty) onSaveBags;
+  final void Function(String bagCount, String bagNetQty) onSaveBags;
   final ValueChanged<String> onAddWeighed;
-  final void Function(WmCountLine line, double qty) onSaveWeighed;
+  final void Function(WmCountLine line, String qty) onSaveWeighed;
   final ValueChanged<WmCountLine> onDeleteWeighed;
   final Set<String> savingKeys;
   final Map<String, String> errors;
@@ -48,6 +58,9 @@ class WmBagMaterialCard extends StatefulWidget {
 class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
   late final TextEditingController _bags;
   late final TextEditingController _net;
+  String? _bagsError;
+  String? _netError;
+  final _quantityErrors = <String, String?>{};
   final _weighed = <String, TextEditingController>{};
 
   @override
@@ -55,13 +68,17 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
     super.initState();
     final line = widget.bagLine;
     _bags = TextEditingController(
-      text: line == null ? '' : wmQty(line.bagCount, maxDecimals: 4),
+      text:
+          widget.bagInputDraft?['bags'] ??
+          (line == null ? '' : wmQty(line.bagCount, maxDecimals: 4)),
     );
     _net = TextEditingController(
-      text: wmQty(
-        line?.bagNetQty ?? widget.material.bulkPackageQty,
-        maxDecimals: 4,
-      ),
+      text:
+          widget.bagInputDraft?['net'] ??
+          wmQty(
+            line?.bagNetQty ?? widget.material.bulkPackageQty,
+            maxDecimals: 4,
+          ),
     );
   }
 
@@ -69,16 +86,34 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
   void didUpdateWidget(covariant WmBagMaterialCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     final line = widget.bagLine;
+    if (widget.bagInputDraft?['bags'] case final String value) {
+      if (_bags.text != value) _bags.text = value;
+    }
+    if (widget.bagInputDraft?['net'] case final String value) {
+      if (_net.text != value) _net.text = value;
+    }
     if (line != null && !identical(line, oldWidget.bagLine)) {
       final bags = wmQty(line.bagCount, maxDecimals: 4);
       final net = wmQty(line.bagNetQty, maxDecimals: 4);
-      if (wmParseQty(_bags.text) != line.bagCount) _bags.text = bags;
-      if (wmParseQty(_net.text) != line.bagNetQty) _net.text = net;
+      if (widget.bagInputDraft?['bags'] == null &&
+          wmParseExactQty(_bags.text) != financeExactDecimal(line.bagCount)) {
+        _bags.text = bags;
+      }
+      if (widget.bagInputDraft?['net'] == null &&
+          wmParseExactQty(_net.text) != financeExactDecimal(line.bagNetQty)) {
+        _net.text = net;
+      }
     }
     for (final l in widget.weighedLines) {
       final controller = _weighed[l.clientLineKey];
+      final draftValue = widget.weighedInputDrafts[l.clientLineKey];
+      if (controller != null && draftValue != null) {
+        if (controller.text != draftValue) controller.text = draftValue;
+        continue;
+      }
       if (controller == null || l.weighedQty == null) continue;
-      if (wmParseQty(controller.text) != l.weighedQty) {
+      if (wmParseExactQty(controller.text) !=
+          financeExactDecimal(l.weighedQty)) {
         controller.text = wmQty(l.weighedQty, maxDecimals: 4);
       }
     }
@@ -104,25 +139,48 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
       _weighed.putIfAbsent(
         line.clientLineKey,
         () => TextEditingController(
-          text: line.weighedQty == null
-              ? ''
-              : wmQty(line.weighedQty, maxDecimals: 4),
+          text:
+              widget.weighedInputDrafts[line.clientLineKey] ??
+              (line.weighedQty == null
+                  ? ''
+                  : wmQty(line.weighedQty, maxDecimals: 4)),
         ),
       );
 
   void _saveBags() {
-    final bags = wmParseQty(_bags.text);
-    final net = wmParseQty(_net.text);
-    if (bags == null || bags < 0 || net == null || net <= 0) return;
+    if (!mounted || !widget.enabled) return;
+    final bags = wmParseExactQty(_bags.text);
+    final net = wmParseExactQty(_net.text);
+    setState(() {
+      _bagsError = validateNonNegativeFinanceAmount(_bags.text, label: '袋数');
+      _netError = validateFinanceAmount(_net.text, label: '每袋净重');
+    });
+    if (_bagsError != null ||
+        _netError != null ||
+        bags == null ||
+        net == null) {
+      return;
+    }
     final line = widget.bagLine;
-    if (line != null && line.bagCount == bags && line.bagNetQty == net) return;
+    if (line != null &&
+        financeExactDecimal(line.bagCount) == bags &&
+        financeExactDecimal(line.bagNetQty) == net) {
+      return;
+    }
     widget.onSaveBags(bags, net);
   }
 
   void _saveWeighed(WmCountLine line) {
-    final qty = wmParseQty(_controllerFor(line).text);
-    if (qty == null || qty < 0) return;
-    if (line.rowVersion != null && line.weighedQty == qty) return;
+    if (!mounted || !widget.enabled) return;
+    final input = _controllerFor(line).text;
+    final qty = wmParseExactQty(input);
+    final error = validateNonNegativeFinanceAmount(input, label: '过秤公斤数');
+    setState(() => _quantityErrors[line.clientLineKey] = error);
+    if (error != null || qty == null) return;
+    if (line.rowVersion != null &&
+        financeExactDecimal(line.weighedQty) == qty) {
+      return;
+    }
     widget.onSaveWeighed(line, qty);
   }
 
@@ -132,6 +190,8 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
     required VoidCallback onSave,
     required String label,
     String? hint,
+    String? error,
+    ValueChanged<String>? onChanged,
     double width = 96,
   }) => SizedBox(
     width: width,
@@ -146,8 +206,14 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         textInputAction: TextInputAction.done,
         decoration: UtenInputDecoration(
-          InputDecoration(isDense: true, labelText: label, hintText: hint),
+          InputDecoration(
+            isDense: true,
+            labelText: label,
+            hintText: hint,
+            errorText: error,
+          ),
         ),
+        onChanged: onChanged,
         onSubmitted: (_) => onSave(),
       ),
     ),
@@ -160,10 +226,11 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
     final material = widget.material;
     final keyBase = material.key.replaceAll('|', '-');
     final bagLine = widget.bagLine;
-    final total = [
-      bagLine?.qtyBase ?? 0,
-      for (final l in widget.weighedLines) l.qtyBase ?? 0,
-    ].fold<double>(0, (sum, v) => sum + v);
+    final total = financeExactSumTexts([
+      financeExactDecimal(bagLine?.qtyBase ?? '0'),
+      for (final l in widget.weighedLines)
+        financeExactDecimal(l.qtyBase ?? '0'),
+    ]);
     final bagKey = bagLine?.clientLineKey;
     final groups = <String?, List<WmCountLine>>{};
     for (final l in widget.weighedLines) {
@@ -197,10 +264,13 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
                     ),
                   ),
                 ),
-                Text(
-                  '合计 ${wmQty(total)} ${l10n.wmKg}',
-                  key: Key('wm-bag-total-$keyBase'),
-                  style: theme.textTheme.bodyMedium,
+                Flexible(
+                  child: Text(
+                    '合计 ${wmQty(total)} ${l10n.wmKg}',
+                    key: Key('wm-bag-total-$keyBase'),
+                    style: theme.textTheme.bodyMedium,
+                    textAlign: TextAlign.end,
+                  ),
                 ),
               ],
             ),
@@ -214,7 +284,10 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
                 _numberField(
                   key: Key('wm-bag-count-$keyBase'),
                   label: '袋数',
+                  error: _bagsError,
                   controller: _bags,
+                  onChanged: (value) =>
+                      widget.onBagInputChanged?.call('bags', value),
                   onSave: _saveBags,
                   width: 80,
                 ),
@@ -222,7 +295,10 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
                 _numberField(
                   key: Key('wm-bag-net-$keyBase'),
                   label: '每袋净重',
+                  error: _netError,
                   controller: _net,
+                  onChanged: (value) =>
+                      widget.onBagInputChanged?.call('net', value),
                   onSave: _saveBags,
                   width: 88,
                 ),
@@ -304,6 +380,11 @@ class _WmBagMaterialCardState extends State<WmBagMaterialCard> {
                     key: Key('wm-weighed-$key'),
                     label: '称得重量',
                     controller: _controllerFor(line),
+                    onChanged: (value) => widget.onWeighedInputChanged?.call(
+                      line.clientLineKey,
+                      value,
+                    ),
+                    error: _quantityErrors[line.clientLineKey],
                     onSave: () => _saveWeighed(line),
                     hint: '称得公斤',
                     width: 140,

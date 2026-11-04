@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // ADR-143 委外「待处理·领料」的状态词表与整格底色。
 //
 // 档位按 ADR-169 锚定（色值用共享 UtenColors.status* 十档，不再自留一份）：
@@ -135,7 +136,7 @@ String subcontractDrawSupplyText(SubcontractDrawMaterial material) {
       .map(
         (source) =>
             '${subcontractDrawSupplyKindLabel(source.kind)} '
-            '${subcontractDrawQty(source.openQty)}'
+            '${subcontractDrawQty(source.quantityText('openQty'))}'
             '${source.docNo.isEmpty ? '' : '(${source.docNo})'}',
       )
       .join('；');
@@ -150,8 +151,5 @@ String subcontractDrawSupplyKindLabel(String kind) =>
       _ => '在途',
     };
 
-/// 数量显示：最多 4 位小数，去掉末尾 0。
-String subcontractDrawQty(double value) => value
-    .toStringAsFixed(4)
-    .replaceFirst(RegExp(r'0+$'), '')
-    .replaceFirst(RegExp(r'\.$'), '');
+/// 保留已记数量的完整有效小数。
+String subcontractDrawQty(Object? value) => exactNumberDisplay(value) ?? '—';

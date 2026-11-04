@@ -58,7 +58,7 @@ class GoodsBomMoveTest {
     private final GoodsBomItemRepository bomRepo = mock(GoodsBomItemRepository.class);
     private final MasterReferenceValidationPort references = mock(MasterReferenceValidationPort.class);
     private final BusinessEventPublisher events = mock(BusinessEventPublisher.class);
-    private final GoodsBomService service = new GoodsBomService(
+    private final GoodsBomService service = new GoodsBomService(org.mockito.Mockito.mock(com.uten.imp.application.port.BusinessNumericInputEvidencePort.class),
             goodsRepo,
             bomRepo,
             mock(ColorRepository.class),

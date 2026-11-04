@@ -61,6 +61,7 @@ public class SupplierListItem {
      */
     @lombok.Setter
     private java.math.BigDecimal lossRate;
+    public String getLossRateExact(){return com.uten.imp.common.util.DecimalText.of(lossRate);}
 
     /**
      * 乐观锁版本(ADR-111)：列表行带上它，批量启停/删除与单行启停直接回传比对，

@@ -9,6 +9,7 @@ import '../../../components/inputs/uten_field_message.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/theme/uten_tokens.dart';
+import '../../../core/utils/china_datetime.dart';
 import '../../../shared/formatters/exact_decimal.dart';
 import '../models/procurement_iqc_rejection.dart';
 
@@ -57,7 +58,7 @@ class _ProcurementIqcActualCreditDialogState
   final _commandId = const Uuid().v4();
   late ProcurementIqcRejectionDetail _detail;
   String? _sourceId, _error;
-  DateTime _date = DateUtils.dateOnly(DateTime.now());
+  DateTime _date = ChinaDateTime.today();
   final List<_CreditCaseDraft> _cases = [];
   ProcurementIqcCreditPreview? _preview;
   ProcurementIqcConfirmCreditCommand? _reviewedCommand;
@@ -67,7 +68,7 @@ class _ProcurementIqcActualCreditDialogState
   bool _applying = false;
   int _generation = 0;
   ProcurementIqcCreditSource? get _source => _detail.creditSources
-      .where((s) => s.sourceApLedgerId == _sourceId)
+      .where((s) => s.selectionKey == _sourceId)
       .firstOrNull;
   bool get _editable => !_busy && !_uncertain;
   bool get _masked => _detail.caseItem.priceMasked;
@@ -79,7 +80,7 @@ class _ProcurementIqcActualCreditDialogState
     super.initState();
     _detail = widget.detail;
     if (_detail.creditSources.length == 1) {
-      _selectSource(_detail.creditSources.single.sourceApLedgerId);
+      _selectSource(_detail.creditSources.single.selectionKey);
     }
     for (final controller in [_reference, _reason, _actual]) {
       _listenText(controller);
@@ -145,8 +146,8 @@ class _ProcurementIqcActualCreditDialogState
   }
 
   static BigInt? _quantity(String? text) {
-    final value = financeExactDecimalUnits(text);
-    return value != null && value.abs() < BigInt.from(10).pow(18)
+    final value = financeExactDecimalUnits(text, scale: 24);
+    return value != null && value.abs() < BigInt.from(10).pow(64)
         ? value
         : null;
   }
@@ -181,7 +182,8 @@ class _ProcurementIqcActualCreditDialogState
         creditDate: _dateText,
         reason: _reason.text,
         actualAmountOriginal: _actual.text.trim(),
-        sourceApLedgerId: _sourceId,
+        sourceApLedgerId: _source?.sourceApLedgerId,
+        sourceCandidateId: _source?.sourceCandidateId,
         allocations: [
           for (final row in _cases.where((c) => c.selected))
             ProcurementIqcCreditAllocationCommand(
@@ -225,7 +227,10 @@ class _ProcurementIqcActualCreditDialogState
       }
       setState(() {
         _preview = preview;
-        _reviewedCommand = command.withBookHash(preview.bookAllocationHash);
+        _reviewedCommand = command.withBookHash(
+          preview.bookAllocationHash,
+          precisionPolicy: preview.precisionPolicy,
+        );
       });
     } on ApiException catch (error) {
       if (mounted) {
@@ -308,10 +313,10 @@ class _ProcurementIqcActualCreditDialogState
       setState(() {
         _detail = next;
         _selectSource(
-          next.creditSources.any((s) => s.sourceApLedgerId == previousSource)
+          next.creditSources.any((s) => s.selectionKey == previousSource)
               ? previousSource
               : next.creditSources.length == 1
-              ? next.creditSources.single.sourceApLedgerId
+              ? next.creditSources.single.selectionKey
               : null,
         );
         for (final row in _cases) {
@@ -339,7 +344,7 @@ class _ProcurementIqcActualCreditDialogState
       context: context,
       initialDate: _date,
       firstDate: DateTime(2000),
-      lastDate: DateUtils.dateOnly(DateTime.now()),
+      lastDate: ChinaDateTime.today(),
     );
     if (picked != null && mounted) {
       _date = picked;
@@ -448,9 +453,9 @@ class _ProcurementIqcActualCreditDialogState
                                   items: [
                                     for (final s in _detail.creditSources)
                                       UtenDropdownItem(
-                                        value: s.sourceApLedgerId,
+                                        value: s.selectionKey,
                                         label:
-                                            '${s.sourceBillNo ?? s.sourceApLedgerId} · 未贷项原币 ${s.remainingAmountOriginal ?? '待核对'}',
+                                            '${s.sourceCandidateId == null ? '' : '暂估来源 · '}${s.sourceBillNo ?? s.sourceApLedgerId ?? s.sourceCandidateId} · 未贷项原币 ${s.remainingAmountOriginal ?? '待核对'}',
                                       ),
                                   ],
                                   onChanged: (value) {
@@ -524,7 +529,7 @@ class _ProcurementIqcActualCreditDialogState
                                                   row.source.creditableBaseQty,
                                                 );
                                             if (q == null || q <= BigInt.zero) {
-                                              return '基本量必须大于零，最多 4 位有效小数';
+                                              return '基本量必须大于零，最多 24 位有效小数';
                                             }
                                             return max == null || q > max
                                                 ? '不能超过该案件当前可贷项基本量'

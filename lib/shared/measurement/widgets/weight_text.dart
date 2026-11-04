@@ -8,7 +8,8 @@
 //   出库「比应发多约35个 (+1.5%)」; 单重未学准时不核对。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
+import '../../../core/formatters/exact_number_text.dart';
+import '../../formatters/exact_decimal.dart';
 
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_status_badge.dart';
@@ -45,40 +46,32 @@ bool isEstimatedWeightSource(String? source) {
 
 /// 千克值 -> 显示文本: null -> 「未称」(或 [unknownText]), 估算加「≈」前缀。
 String formatWeightValue(
-  double? kg, {
+  Object? kg, {
   WeightDisplay display = WeightDisplay.auto,
   bool estimated = false,
   String unknownText = weightUnknownText,
 }) {
-  if (kg == null || !kg.isFinite) return unknownText;
+  if (financeExactDecimal(kg) == null) return unknownText;
   final text = formatWeight(kg, display: display);
   return estimated ? '≈$text' : text;
 }
 
 /// 单重显示 (千克/基本单位): 小于 1 kg 按克 (如 `2.312 g`), 否则千克; 可带「/个」。
-String formatUnitWeight(double? kgPerBase, {String? unitName}) {
-  if (kgPerBase == null || !kgPerBase.isFinite || kgPerBase <= 0) return '—';
-  final String text;
-  if (kgPerBase < 1) {
-    final grams = kgPerBase * 1000;
-    final pattern = grams < 0.01 ? '#,##0.######' : '#,##0.###';
-    text = '${NumberFormat(pattern, 'zh_CN').format(grams)} g';
-  } else {
-    text = '${NumberFormat('#,##0.###', 'zh_CN').format(kgPerBase)} kg';
-  }
+String formatUnitWeight(Object? kgPerBase, {String? unitName}) {
+  final exact = financeExactTrimmed(financeExactDecimal(kgPerBase));
+  if (exact == null || exact == '0' || exact.startsWith('-')) return '—';
+  final grams = exact.split('.').first == '0';
+  final value = grams ? financeExactMultiplyTexts([exact, '1000']) : exact;
+  final text =
+      '${exactNumberDisplay(value, groupThousands: true)} ${grams ? 'g' : 'kg'}';
   final unit = unitName?.trim();
   return unit == null || unit.isEmpty ? text : '$text/$unit';
 }
 
-/// 数量显示: 按件计取整带千分位 (`4,762`), 其余最多 4 位小数。
-String formatWeighQty(double qty, {required bool integer}) {
-  if (!qty.isFinite) return '—';
-  final pattern = integer ? '#,##0' : '#,##0.####';
-  return NumberFormat(
-    pattern,
-    'zh_CN',
-  ).format(integer ? WeightPredictor.roundQty(qty, integer: true) : qty);
-}
+/// Formatting never turns a recorded fractional quantity into a whole count.
+/// Estimators apply their explicit integer definition before calling this view.
+String formatWeighQty(Object qty, {required bool integer}) =>
+    exactNumberDisplay(qty, groupThousands: true) ?? '—';
 
 /// 数量 + 单位: 中文单位紧贴 (`4,762个`), 其它单位空一格 (`12.5 m`)。
 String formatWeighQtyWithUnit(
@@ -94,12 +87,19 @@ String formatWeighQtyWithUnit(
 }
 
 /// 带符号百分比 (`+1.5%` / `-4.8%`)。
-String formatSignedPct(double pct) {
-  final rounded = (pct * 10).roundToDouble() / 10;
-  final body = NumberFormat('0.0', 'zh_CN').format(rounded.abs());
-  if (rounded > 0) return '+$body%';
-  if (rounded < 0) return '-$body%';
-  return '0.0%';
+String formatSignedPct(Object pct) {
+  final exact = financeExactTrimmed(financeExactDecimal(pct));
+  if (exact == null) return '—';
+  final negative = exact.startsWith('-');
+  final body = exactNumberDisplay(
+    negative ? exact.substring(1) : exact,
+    minimumFractionDigits: 1,
+  )!;
+  return '${negative
+      ? '-'
+      : exact == '0'
+      ? ''
+      : '+'}$body%';
 }
 
 /// 单重依据说明 (如「近23次称重(本供应商), 可参考」)。
@@ -135,7 +135,7 @@ String weightCheckShortText(
 }) {
   final diff = check.qtyDiff;
   final amount = formatWeighQtyWithUnit(
-    diff.abs(),
+    WeightPredictor.roundQty(diff.abs(), integer: check.integerQty),
     unitName: unitName,
     integer: check.integerQty,
   );
@@ -214,17 +214,19 @@ class WeightText extends ConsumerWidget {
     required this.kg,
     this.estimated = false,
     this.source,
+    this.inputEvidence,
     this.display,
     this.unknownText = weightUnknownText,
     this.style,
     this.textAlign,
   });
 
-  final double? kg;
+  final Object? kg;
   final bool estimated;
 
   /// 重量来源 (MEASURED/EXACT/SLICE/AVERAGE/ESTIMATE); 给了就悬停显示中文说明。
   final String? source;
+  final String? inputEvidence;
 
   /// 固定显示单位; null = 跟用户偏好。
   final WeightDisplay? display;
@@ -237,7 +239,7 @@ class WeightText extends ConsumerWidget {
     final effective =
         display ?? ref.watch(warehouseWeightUnitsPrefsProvider).display;
     final theme = Theme.of(context);
-    final unknown = kg == null || !kg!.isFinite;
+    final unknown = financeExactDecimal(kg) == null;
     final text = formatWeightValue(
       kg,
       display: effective,
@@ -258,8 +260,12 @@ class WeightText extends ConsumerWidget {
           : style,
     );
     final label = weightSourceLabel(source);
-    if (unknown || label.isEmpty) return child;
-    return Tooltip(message: label, child: child);
+    final explanation = [
+      if (!unknown && label.isNotEmpty) label,
+      if (inputEvidence?.trim().isNotEmpty == true) inputEvidence!,
+    ].join('\n');
+    if (explanation.isEmpty) return child;
+    return Tooltip(message: explanation, child: child);
   }
 }
 
@@ -529,9 +535,12 @@ String formatWeighQtyRange(
   required bool integer,
   String? unitName,
 }) {
-  final lowText = formatWeighQty(estimate.qtyLow, integer: integer);
+  final lowText = formatWeighQty(
+    WeightPredictor.roundQty(estimate.qtyLow, integer: integer),
+    integer: integer,
+  );
   final highText = formatWeighQtyWithUnit(
-    estimate.qtyHigh,
+    WeightPredictor.roundQty(estimate.qtyHigh, integer: integer),
     unitName: unitName,
     integer: integer,
   );

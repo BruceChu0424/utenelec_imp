@@ -74,7 +74,8 @@ final class ActualCostEvidenceMath {
         objects=List.copyOf(result);
         BigDecimal scopeAllocated=sumNullable(objects.stream().map(CostObject::allocatedOutputCostLocal).toList());
         boolean pending=objects.stream().anyMatch(CostObject::pending)||outputPending||outputCount==0;
-        BigDecimal unit=!pending&&outputAmount!=null&&outputQty!=null&&outputQty.signum()>0?outputAmount.divide(outputQty,12,RoundingMode.HALF_UP):null;
+        BigDecimal unit=!pending&&outputAmount!=null&&outputQty!=null&&outputQty.signum()>0
+            ?com.uten.imp.common.finance.BusinessPrecisionContext.divide(outputAmount,outputQty,"stock.actual-cost.unit-value","本次实际成本单位价值",30):null;
         summary=new Summary(sumNullable(objects.stream().map(CostObject::knownInputCostLocal).toList()),outputCount==0?null:outputAmount,
                 scopeAllocated,scopeAllocated==null||outputAmount==null?null:scopeAllocated.subtract(outputAmount),
                 sumNullable(objects.stream().map(CostObject::heldWipLocal).toList()),sumNullable(objects.stream().map(CostObject::pendingReallocationLocal).toList()),

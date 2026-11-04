@@ -60,17 +60,17 @@ public final class MasterColumnSearch {
         if(expression==null) throw new com.uten.imp.common.web.ApiException(com.uten.imp.common.web.ErrorCode.VALIDATION_FAILED,"数值列不支持检索");
         if(!(cb instanceof HibernateCriteriaBuilder hibernate)) throw new IllegalStateException("Numeric master columns require Hibernate Criteria");
         if(domain==Domain.GOODS&&"stockQty".equals(key)) return hibernate.sql(
-                "round("+com.uten.imp.features.master.goods.GoodsStockQuantities.TOTAL_FOR_ID+",2)",java.math.BigDecimal.class,recordId);
+                com.uten.imp.features.master.goods.GoodsStockQuantities.TOTAL_FOR_ID,java.math.BigDecimal.class,recordId);
         String table=switch(domain) { case GOODS->"goods";case CLIENT->"clients";case SUPPLIER->"suppliers";case MOULD->"moulds"; };
         return hibernate.sql("(SELECT "+expression+" FROM "+table+" master WHERE master.id=?)",java.math.BigDecimal.class,recordId);
     }
 
     private static Map<String,String> numericFields(Domain domain) {
         return switch(domain) {
-            case GOODS->Map.of("price","master.price","discount","round(master.zk,2)",
+            case GOODS->Map.of("price","master.price","discount","master.zk",
                     "stockQty","stockQty", "minOrderQty","master.min_order_qty", "orderMultipleQty","master.order_multiple_qty");
-            case CLIENT->Map.of("tday","master.tday::numeric","credit","round(master.credit,2)",
-                    "creditFloor","round(coalesce(master.credit_floor,0),2)");
+            case CLIENT->Map.of("tday","master.tday::numeric","credit","master.credit",
+                    "creditFloor","coalesce(master.credit_floor,0)");
             case SUPPLIER->Map.of("tday","master.tday::numeric","lossRate",
                     "(SELECT supplier_loss.loss_pct FROM v_subcontract_supplier_loss_summary supplier_loss WHERE supplier_loss.supplier_id=master.id)");
             case MOULD->Map.of("tqty","master.tqty");

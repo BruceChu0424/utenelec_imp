@@ -1,3 +1,4 @@
+import '../../core/formatters/exact_number_text.dart';
 import '../formatters/exact_decimal.dart';
 import 'historical_receipt_facts.dart';
 import 'procurement_quantity.dart';
@@ -52,6 +53,7 @@ class InboundExpectationItem {
     required this.goodsCode,
     required this.goodsName,
     required this.unitRate,
+    this.unitRateExact,
     required this.orderedQty,
     required this.acceptedQty,
     required this.remainingQty,
@@ -94,6 +96,8 @@ class InboundExpectationItem {
   final String? baseUnitId;
   final String? baseUnitName;
   final num unitRate;
+  final String? unitRateExact;
+  String get unitRateText => financeExactDecimal(unitRateExact ?? unitRate)!;
 
   /// 订货单价（服务端从订货明细带出；到货登记预填携带、价格列隐藏，审核时服务端权威重算）。
   final num? unitPrice;
@@ -171,6 +175,9 @@ class InboundExpectationItem {
       baseUnitId: _text(json['baseUnitId']),
       baseUnitName: _text(json['baseUnitName']),
       unitRate: _number(json['unitRate']),
+      unitRateExact: financeExactDecimal(
+        json['unitRateExact'] ?? json['unitRate'],
+      ),
       unitPrice: json['unitPrice'] == null ? null : _number(json['unitPrice']),
       orderedQty: _number(json['orderedQty']),
       acceptedQty: _number(json['acceptedQty']),
@@ -339,6 +346,7 @@ class InboundExpectation {
               baseUnitId: item.baseUnitId,
               baseUnitName: item.baseUnitName,
               unitRate: item.unitRate,
+              unitRateExact: item.unitRateText,
               unitPrice: item.unitPrice,
               approvedRemainingQty: item.effectiveRemainingQty,
               approvedRemainingQtyText: item.effectiveRemainingQtyText,
@@ -427,6 +435,7 @@ class ProcurementReceiptPrefillItem {
     required this.goodsCode,
     required this.goodsName,
     required this.unitRate,
+    this.unitRateExact,
     required this.approvedRemainingQty,
     this.lastReceiptWarehouseId,
     this.quantitySemantics,
@@ -483,6 +492,8 @@ class ProcurementReceiptPrefillItem {
   final String? baseUnitId;
   final String? baseUnitName;
   final num unitRate;
+  final String? unitRateExact;
+  String get unitRateText => financeExactDecimal(unitRateExact ?? unitRate)!;
 
   /// 订货单价：到货登记行携带（价格列隐藏不展示），保存随行提交；
   /// 服务端审核时仍按订货明细权威重算，防客户端篡改。
@@ -892,7 +903,7 @@ const String procurementMaxReceivableHint =
     '委外明细不适用，显示「—」。';
 
 String procurementQty(num value) {
-  final fixed = value.toStringAsFixed(4);
+  final fixed = value.toExactString(minimumFractionDigits: 4);
   return fixed.replaceFirst(RegExp(r'\.?0+$'), '');
 }
 

@@ -4,6 +4,7 @@
 // 用量很小的料可以改"直接填公斤"; "本机停机、全空"一键。
 // 每点一下即落库 (由页面逐行保存), 卡片只负责显示与回调; 保存中 / 保存失败逐容器显示。
 import 'package:flutter/material.dart';
+import '../../../../shared/formatters/financial_amount_validation.dart';
 import 'package:uten_imp/components/inputs/uten_input_decoration.dart';
 import '../../../../components/layout/uten_segment_row.dart';
 
@@ -27,8 +28,12 @@ class MachineCountCard extends StatefulWidget {
     required this.onIdle,
     this.savingContainerIds = const {},
     this.errorsByContainer = const {},
+    this.inputDrafts = const {},
+    this.onInputChanged,
   });
 
+  final Map<String, String> inputDrafts;
+  final void Function(String containerId, String value)? onInputChanged;
   final WmCountMachine machine;
   final List<WmCountMaterial> materials;
 
@@ -40,7 +45,7 @@ class MachineCountCard extends StatefulWidget {
   final bool enabled;
   final ValueChanged<String?> onMaterialChanged;
   final void Function(WmCountContainer container, String fillLevel) onFill;
-  final void Function(WmCountContainer container, double qty) onWeighed;
+  final void Function(WmCountContainer container, String qty) onWeighed;
   final VoidCallback onIdle;
   final Set<String> savingContainerIds;
   final Map<String, String> errorsByContainer;
@@ -51,12 +56,20 @@ class MachineCountCard extends StatefulWidget {
 
 class _MachineCountCardState extends State<MachineCountCard> {
   /// 选了"直接填公斤"、还没保存的容器。
+  final _inputErrors = <String, String?>{};
   final _weighing = <String>{};
   final _controllers = <String, TextEditingController>{};
 
   @override
   void didUpdateWidget(covariant MachineCountCard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    for (final entry in widget.inputDrafts.entries) {
+      _weighing.add(entry.key);
+      final controller = _controllers[entry.key];
+      if (controller != null && controller.text != entry.value) {
+        controller.text = entry.value;
+      }
+    }
     // 服务端回来的最新值 (含别人刚改过的) 同步进"直接填公斤"输入框。
     for (final entry in _controllers.entries) {
       final line = widget.linesByContainer[entry.key];
@@ -83,16 +96,22 @@ class _MachineCountCardState extends State<MachineCountCard> {
     return _controllers.putIfAbsent(
       containerId,
       () => TextEditingController(
-        text: line?.fillLevel == WmFillLevel.weighed
-            ? wmQty(line?.weighedQty, maxDecimals: 4)
-            : '',
+        text:
+            widget.inputDrafts[containerId] ??
+            (line?.fillLevel == WmFillLevel.weighed
+                ? wmQty(line?.weighedQty, maxDecimals: 4)
+                : ''),
       ),
     );
   }
 
   void _submitWeighed(WmCountContainer container) {
-    final qty = wmParseQty(_controllerFor(container.containerId).text);
-    if (qty == null || qty < 0) return;
+    if (!mounted || !widget.enabled) return;
+    final input = _controllerFor(container.containerId).text;
+    final qty = wmParseExactQty(input);
+    final error = validateNonNegativeFinanceAmount(input, label: '容器里的公斤数');
+    setState(() => _inputErrors[container.containerId] = error);
+    if (error != null || qty == null) return;
     widget.onWeighed(container, qty);
     setState(() => _weighing.remove(container.containerId));
   }
@@ -183,7 +202,10 @@ class _MachineCountCardState extends State<MachineCountCard> {
     final id = container.containerId;
     final line = widget.linesByContainer[id];
     final level = line?.fillLevel;
-    final weighing = _weighing.contains(id) || level == WmFillLevel.weighed;
+    final weighing =
+        _weighing.contains(id) ||
+        level == WmFillLevel.weighed ||
+        widget.inputDrafts.containsKey(id);
     final saving = widget.savingContainerIds.contains(id);
     final error = widget.errorsByContainer[id];
     final segmentLevel =
@@ -212,11 +234,14 @@ class _MachineCountCardState extends State<MachineCountCard> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             else if (line?.qtyBase != null)
-              Text(
-                '${level == WmFillLevel.weighed ? '' : '≈ '}${wmQty(line!.qtyBase)} ${l10n.wmKg}',
-                key: Key('wm-container-qty-$id'),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              Flexible(
+                child: Text(
+                  '${level == WmFillLevel.weighed ? '' : '≈ '}${wmQty(line!.qtyBase)} ${l10n.wmKg}',
+                  key: Key('wm-container-qty-$id'),
+                  textAlign: TextAlign.end,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
           ],
@@ -286,10 +311,12 @@ class _MachineCountCardState extends State<MachineCountCard> {
                   textInputAction: TextInputAction.done,
                   decoration: UtenInputDecoration(
                     InputDecoration(
+                      errorText: _inputErrors[id],
                       isDense: true,
                       labelText: '称得 (${l10n.wmKg})',
                     ),
                   ),
+                  onChanged: (value) => widget.onInputChanged?.call(id, value),
                   onSubmitted: (_) => _submitWeighed(container),
                 ),
               ),

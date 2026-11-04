@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 // 报销发票登记模型（V608）
 // 文档：docs/04-数据模型/实体字典.md#ExpenseClaimInvoice
 //
@@ -93,8 +94,11 @@ class ExpenseClaimInvoice {
     this.buyerName,
     this.buyerTaxNo,
     this.amountExclTax,
+    this.amountExclTaxExact,
     this.taxAmount,
+    this.taxAmountExact,
     required this.totalAmount,
+    this.totalAmountExact,
     required this.checkState,
     this.verificationRemark,
     this.verifiedAt,
@@ -118,8 +122,17 @@ class ExpenseClaimInvoice {
   final String? buyerName;
   final String? buyerTaxNo;
   final double? amountExclTax;
+  final String? amountExclTaxExact;
+  String? get amountExclTaxText =>
+      financeExactTrimmed(amountExclTaxExact ?? amountExclTax?.toString());
   final double? taxAmount;
+  final String? taxAmountExact;
+  String? get taxAmountText =>
+      financeExactTrimmed(taxAmountExact ?? taxAmount?.toString());
   final double totalAmount;
+  final String? totalAmountExact;
+  String get totalAmountText =>
+      financeExactTrimmed(totalAmountExact ?? totalAmount.toString())!;
   final ExpenseInvoiceCheckState checkState;
   final String? verificationRemark;
   final DateTime? verifiedAt;
@@ -128,6 +141,26 @@ class ExpenseClaimInvoice {
   /// 关联发票影像附件 id
   final String? attachmentId;
   final String? remark;
+
+  String? get reconciliationDifferenceText =>
+      amountExclTaxText == null || taxAmountText == null
+      ? null
+      : financeExactTrimmed(
+          financeExactSumTexts([
+            amountExclTaxText,
+            taxAmountText,
+            financeExactMultiplyTexts([totalAmountText, '-1']),
+          ]),
+        );
+  String get checkStateText {
+    final difference = reconciliationDifferenceText;
+    if (checkState == ExpenseInvoiceCheckState.amountsMatch &&
+        difference != null &&
+        financeAmountUnits(difference) != BigInt.zero) {
+      return '在0.01容差内（差额$difference元）';
+    }
+    return checkState.label;
+  }
 
   factory ExpenseClaimInvoice.fromJson(Map<String, dynamic> json) =>
       ExpenseClaimInvoice(
@@ -143,9 +176,28 @@ class ExpenseClaimInvoice {
         sellerTaxNo: json['sellerTaxNo'] as String?,
         buyerName: json['buyerName'] as String?,
         buyerTaxNo: json['buyerTaxNo'] as String?,
-        amountExclTax: (json['amountExclTax'] as num?)?.toDouble(),
-        taxAmount: (json['taxAmount'] as num?)?.toDouble(),
-        totalAmount: (json['totalAmount'] as num).toDouble(),
+        amountExclTax: double.tryParse(
+          financeExactDecimal(
+                json['amountExclTaxExact'] ?? json['amountExclTax'],
+              ) ??
+              '',
+        ),
+        amountExclTaxExact: financeExactDecimal(
+          json['amountExclTaxExact'] ?? json['amountExclTax'],
+        ),
+        taxAmount: double.tryParse(
+          financeExactDecimal(json['taxAmountExact'] ?? json['taxAmount']) ??
+              '',
+        ),
+        taxAmountExact: financeExactDecimal(
+          json['taxAmountExact'] ?? json['taxAmount'],
+        ),
+        totalAmount: double.parse(
+          financeExactDecimal(json['totalAmountExact'] ?? json['totalAmount'])!,
+        ),
+        totalAmountExact: financeExactDecimal(
+          json['totalAmountExact'] ?? json['totalAmount'],
+        ),
         checkState: ExpenseInvoiceCheckState.fromApi(json['checkState']),
         verificationRemark: json['verificationRemark'] as String?,
         verifiedAt: DateTime.tryParse(json['verifiedAt'] as String? ?? ''),
@@ -172,8 +224,11 @@ class ExpenseClaimInvoiceInput {
     this.buyerName,
     this.buyerTaxNo,
     this.amountExclTax,
+    this.amountExclTaxExact,
     this.taxAmount,
+    this.taxAmountExact,
     required this.totalAmount,
+    this.totalAmountExact,
     this.attachmentId,
     this.remark,
     this.expectedVersion,
@@ -188,8 +243,17 @@ class ExpenseClaimInvoiceInput {
   final String? buyerName;
   final String? buyerTaxNo;
   final double? amountExclTax;
+  final String? amountExclTaxExact;
+  String? get amountExclTaxText =>
+      financeExactTrimmed(amountExclTaxExact ?? amountExclTax?.toString());
   final double? taxAmount;
+  final String? taxAmountExact;
+  String? get taxAmountText =>
+      financeExactTrimmed(taxAmountExact ?? taxAmount?.toString());
   final double totalAmount;
+  final String? totalAmountExact;
+  String get totalAmountText =>
+      financeExactTrimmed(totalAmountExact ?? totalAmount.toString())!;
   final String? attachmentId;
   final String? remark;
   final int? expectedVersion;
@@ -204,9 +268,9 @@ class ExpenseClaimInvoiceInput {
     'sellerTaxNo': sellerTaxNo,
     'buyerName': buyerName,
     'buyerTaxNo': buyerTaxNo,
-    'amountExclTax': amountExclTax,
-    'taxAmount': taxAmount,
-    'totalAmount': totalAmount,
+    'amountExclTax': amountExclTaxText,
+    'taxAmount': taxAmountText,
+    'totalAmount': totalAmountText,
     'attachmentId': attachmentId,
     'remark': remark,
   };
@@ -247,8 +311,11 @@ class RecognizedInvoice {
     this.buyerName,
     this.buyerTaxNo,
     this.amountExclTax,
+    this.amountExclTaxExact,
     this.taxAmount,
+    this.taxAmountExact,
     this.totalAmount,
+    this.totalAmountExact,
     this.itemSummary,
   });
 
@@ -261,35 +328,63 @@ class RecognizedInvoice {
   final String? buyerName;
   final String? buyerTaxNo;
   final double? amountExclTax;
+  final String? amountExclTaxExact;
+  String? get amountExclTaxText =>
+      financeExactTrimmed(amountExclTaxExact ?? amountExclTax?.toString());
   final double? taxAmount;
+  final String? taxAmountExact;
+  String? get taxAmountText =>
+      financeExactTrimmed(taxAmountExact ?? taxAmount?.toString());
   final double? totalAmount;
+  final String? totalAmountExact;
+  String? get totalAmountText =>
+      financeExactTrimmed(totalAmountExact ?? totalAmount?.toString());
   final String? itemSummary;
 
-  factory RecognizedInvoice.fromJson(Map<String, dynamic> json) =>
-      RecognizedInvoice(
-        type: json['invoiceType'] == null
-            ? null
-            : ExpenseInvoiceType.fromApi(json['invoiceType']),
-        invoiceCode: (json['invoiceCode'] as String?)?.trim().isEmpty == true
-            ? null
-            : json['invoiceCode'] as String?,
-        invoiceNo: (json['invoiceNo'] as String?)?.trim().isEmpty == true
-            ? null
-            : json['invoiceNo'] as String?,
-        issueDate:
-            json['issueDate'] is String &&
-                (json['issueDate'] as String).isNotEmpty
-            ? DateTime.tryParse(json['issueDate'] as String)
-            : null,
-        sellerName: json['sellerName'] as String?,
-        sellerTaxNo: json['sellerTaxNo'] as String?,
-        buyerName: json['buyerName'] as String?,
-        buyerTaxNo: json['buyerTaxNo'] as String?,
-        amountExclTax: (json['amountExclTax'] as num?)?.toDouble(),
-        taxAmount: (json['taxAmount'] as num?)?.toDouble(),
-        totalAmount: (json['totalAmount'] as num?)?.toDouble(),
-        itemSummary: json['itemSummary'] as String?,
-      );
+  factory RecognizedInvoice.fromJson(
+    Map<String, dynamic> json,
+  ) => RecognizedInvoice(
+    type: json['invoiceType'] == null
+        ? null
+        : ExpenseInvoiceType.fromApi(json['invoiceType']),
+    invoiceCode: (json['invoiceCode'] as String?)?.trim().isEmpty == true
+        ? null
+        : json['invoiceCode'] as String?,
+    invoiceNo: (json['invoiceNo'] as String?)?.trim().isEmpty == true
+        ? null
+        : json['invoiceNo'] as String?,
+    issueDate:
+        json['issueDate'] is String && (json['issueDate'] as String).isNotEmpty
+        ? DateTime.tryParse(json['issueDate'] as String)
+        : null,
+    sellerName: json['sellerName'] as String?,
+    sellerTaxNo: json['sellerTaxNo'] as String?,
+    buyerName: json['buyerName'] as String?,
+    buyerTaxNo: json['buyerTaxNo'] as String?,
+    amountExclTax: double.tryParse(
+      financeExactDecimal(
+            json['amountExclTaxExact'] ?? json['amountExclTax'],
+          ) ??
+          '',
+    ),
+    amountExclTaxExact: financeExactDecimal(
+      json['amountExclTaxExact'] ?? json['amountExclTax'],
+    ),
+    taxAmount: double.tryParse(
+      financeExactDecimal(json['taxAmountExact'] ?? json['taxAmount']) ?? '',
+    ),
+    taxAmountExact: financeExactDecimal(
+      json['taxAmountExact'] ?? json['taxAmount'],
+    ),
+    totalAmount: double.tryParse(
+      financeExactDecimal(json['totalAmountExact'] ?? json['totalAmount']) ??
+          '',
+    ),
+    totalAmountExact: financeExactDecimal(
+      json['totalAmountExact'] ?? json['totalAmount'],
+    ),
+    itemSummary: json['itemSummary'] as String?,
+  );
 }
 
 String _dateOnly(DateTime value) =>

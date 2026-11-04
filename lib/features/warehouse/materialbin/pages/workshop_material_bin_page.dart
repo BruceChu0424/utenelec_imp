@@ -1,3 +1,4 @@
+import '../widgets/workshop_material_close_retry_dialog.dart';
 import 'package:uten_imp/shared/paging/scoped_paged_read_view_mixin.dart';
 // 车间内料仓页 (/workshop-material/bin?workshopId=, ADR-131 §8.1)。
 //
@@ -665,13 +666,8 @@ class _WorkshopMaterialBinPageState
     if (period == null) return;
     setState(() => _retrying = true);
     try {
-      final status = await _repo.closeRetry(
-        period.id,
-        idempotencyKey: wmIdempotencyKey('close-retry', _nonce, {
-          'period': period.id,
-          'at': DateTime.now().millisecondsSinceEpoch ~/ 60000,
-        }),
-      );
+      final status = await showWmCloseRetryDialog(context, periodId: period.id);
+      if (status == null) return;
       if (!mounted) return;
       setState(() => _closeStatus = status);
       _poller.start();

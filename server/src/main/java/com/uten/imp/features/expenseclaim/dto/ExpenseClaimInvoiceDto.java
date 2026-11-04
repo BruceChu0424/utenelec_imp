@@ -21,4 +21,7 @@ public record ExpenseClaimInvoiceDto(
         String checkState,
         UUID attachmentId,
         String remark, String buyerTaxNo, String verificationRemark, java.time.Instant verifiedAt, String verifiedByName) {
+    public String getAmountExclTaxExact(){return com.uten.imp.common.util.DecimalText.of(amountExclTax);}
+    public String getTaxAmountExact(){return com.uten.imp.common.util.DecimalText.of(taxAmount);}
+    public String getTotalAmountExact(){return com.uten.imp.common.util.DecimalText.of(totalAmount);}
 }

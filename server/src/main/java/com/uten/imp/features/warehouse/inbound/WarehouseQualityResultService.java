@@ -892,13 +892,15 @@ public class WarehouseQualityResultService {
                                         NULLIF(BTRIM(goods.stock_place), '')),
                                event.reason,
                                employee.full_name,
-                               event.occurred_at,inspection.warehouse_id,source_warehouse.name,inspection.quantity_tranche
+                               event.occurred_at,inspection.warehouse_id,source_warehouse.name,inspection.quantity_tranche,
+                               CASE WHEN event.released_weight IS NOT NULL THEN event_stocked.stocked_weight END
                         FROM procurement_inspection_events event
                         JOIN procurement_inspection_items inspection
                           ON inspection.id = event.inspection_item_id
                         LEFT JOIN warehouses source_warehouse ON source_warehouse.id=inspection.warehouse_id
                         LEFT JOIN LATERAL (
-                            SELECT COALESCE(SUM(item.base_qty), 0) AS stocked_qty
+                            SELECT COALESCE(SUM(item.base_qty), 0) AS stocked_qty,
+                              CASE WHEN count(*)=0 THEN 0 WHEN count(item.weight)=count(*) THEN SUM(item.weight) END AS stocked_weight
                             FROM procurement_iqc_stock_in_batch_items item
                             WHERE item.pass_event_id = event.id
                         ) event_stocked ON TRUE
@@ -949,7 +951,7 @@ public class WarehouseQualityResultService {
                 NativeValueConverters.toBigDecimal(row[12]), NativeValueConverters.toBigDecimal(row[13]), NativeValueConverters.toBigDecimal(row[14]),
                 nullableDecimal(row[15]),
                 str(row[16]), str(row[17]), str(row[18]),
-                NativeValueConverters.toOffsetDateTime(row[19]),List.of(),NativeValueConverters.uuid(row[20]),str(row[21]),str(row[22]))).toList();
+                NativeValueConverters.toOffsetDateTime(row[19]),List.of(),NativeValueConverters.uuid(row[20]),str(row[21]),str(row[22]),nullableDecimal(row[23]))).toList();
         Map<UUID, List<PreplanInboundAllocationReadPort.AllocationView>> expected =
                 inboundAllocationRead.expectedForPassEvents(
                         receiptType, receiptId,
@@ -965,7 +967,7 @@ public class WarehouseQualityResultService {
                 slice.placeHint(), slice.releaseNote(), slice.releasedBy(),
                 slice.releasedAt(), expected.getOrDefault(slice.passEventId(), List.of())
                         .stream().map(WarehouseQualityResultService::toAllocation)
-                        .toList(),slice.warehouseId(),slice.warehouseName(),slice.quantityTranche())).toList();
+                        .toList(),slice.warehouseId(),slice.warehouseName(),slice.quantityTranche(),slice.stockedForReleaseWeight())).toList();
     }
 
     private static InboundAllocation toAllocation(

@@ -60,8 +60,8 @@ public class WorkshopMaterialOtherIssueService {
         MaterialInfo material = bins.periodicMaterial(request.goodsId());
         bins.requireColor(request.colorId());
         BigDecimal qty = request.qty();
-        if (qty == null || qty.signum() <= 0 || qty.stripTrailingZeros().scale() > MoneyPolicy.QUANTITY_SCALE) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "公斤数必须大于 0, 最多保留 4 位小数");
+        if (qty == null || qty.signum() <= 0) {
+            throw new ApiException(ErrorCode.VALIDATION_FAILED, "公斤数必须大于 0, 最多保留 24 位小数");
         }
         if (request.reason() == null || !REASONS.contains(request.reason())) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "请选择试模、清机、报废料或其它");

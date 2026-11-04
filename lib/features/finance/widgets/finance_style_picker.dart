@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/auth/read_owner_fence.dart';
+import '../../../shared/models/accounting_expense_purpose.dart';
 import '../../basic_data/models/payment_style_node.dart';
 import '../../basic_data/pages/payment_style_page.dart';
 import '../providers/finance_name_provider.dart';
@@ -22,6 +23,7 @@ class FinanceStylePicker extends ConsumerStatefulWidget {
     this.dense = false,
     this.label,
     this.enabled = true,
+    this.postingPurpose,
   });
 
   final FinanceNameService names;
@@ -31,6 +33,7 @@ class FinanceStylePicker extends ConsumerStatefulWidget {
   final bool dense;
   final String? label;
   final bool enabled;
+  final AccountingExpensePurpose? postingPurpose;
 
   @override
   ConsumerState<FinanceStylePicker> createState() => _FinanceStylePickerState();
@@ -40,10 +43,15 @@ class _FinanceStylePickerState extends ConsumerState<FinanceStylePicker> {
   bool _adding = false;
 
   Future<void> _add() async {
-    if (_adding || !widget.enabled) return;
+    if (_adding ||
+        !widget.enabled ||
+        widget.postingPurpose == AccountingExpensePurpose.manufacturingCost) {
+      return;
+    }
     final current = captureReadOwner(ref);
     final names = widget.names;
     final category = widget.category;
+    final postingPurpose = widget.postingPurpose;
     setState(() => _adding = true);
     try {
       final created = await showPaymentStyleAddDialog(
@@ -58,7 +66,8 @@ class _FinanceStylePickerState extends ConsumerState<FinanceStylePicker> {
           !current() ||
           created == null ||
           !identical(widget.names, names) ||
-          widget.category != category) {
+          widget.category != category ||
+          widget.postingPurpose != postingPurpose) {
         return;
       }
       names.registerCreatedStyle(created);
@@ -76,15 +85,22 @@ class _FinanceStylePickerState extends ConsumerState<FinanceStylePicker> {
     final permissions = ref.watch(currentPermissionsProvider);
     final canCreate =
         permissions.contains(Perm.paymentStyleCreate) &&
-        permissions.contains(Perm.paymentStyleView);
+        permissions.contains(Perm.paymentStyleView) &&
+        widget.postingPurpose != AccountingExpensePurpose.manufacturingCost;
     return ListenableBuilder(
       listenable: widget.names,
       builder: (context, _) {
-        final styles = widget.names.stylesFor(widget.category);
+        final styles =
+            widget.category == 'EXPENSE' && widget.postingPurpose != null
+            ? widget.names.expenseStylesFor(widget.postingPurpose!)
+            : widget.names.stylesFor(widget.category);
         final value = widget.value;
         final label =
             widget.label ?? (widget.category == 'INCOME' ? '收入项目' : '费用项目');
-        final oldName = widget.names.styleName(value, widget.category);
+        final oldName =
+            widget.category == 'EXPENSE' && widget.postingPurpose != null
+            ? widget.names.expenseStyleName(value, widget.postingPurpose!)
+            : widget.names.styleName(value, widget.category);
         return UtenDropdownField(
           dense: widget.dense,
           label: label,

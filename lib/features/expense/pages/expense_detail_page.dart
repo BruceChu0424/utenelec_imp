@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 // 报销详情页（申请人视角；审批人见 expense_approval_detail_page）
 // 文档：docs/03-页面/报销详情页.md
 //
@@ -32,6 +33,7 @@ import '../../../core/theme/uten_tokens.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/rmb_amount.dart';
 import '../../../shared/attachments/attachment_section.dart';
+import '../../finance/widgets/finance_native_original_section.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/providers/authenticated_scope_provider.dart';
 import '../../../shared/auth/permissions.dart';
@@ -48,6 +50,7 @@ import '../widgets/expense_item_columns.dart';
 import '../providers/expense_providers.dart';
 import '../widgets/expense_claim_print.dart';
 import '../widgets/expense_claim_timeline.dart';
+import '../widgets/expense_financial_application_link.dart';
 import '../widgets/expense_approval_progress.dart';
 import '../widgets/expense_invoice_section.dart';
 import '../widgets/expense_submission_revision.dart';
@@ -280,6 +283,11 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
         showBackButton: true,
         actions: [
           detail.maybeWhen(
+            data: (claim) =>
+                ExpenseFinancialApplicationLinkButton(claim: claim),
+            orElse: () => const SizedBox.shrink(),
+          ),
+          detail.maybeWhen(
             data: (claim) => UtenButton(
               key: const Key('expense-detail-print'),
               type: UtenButtonType.tonal,
@@ -341,6 +349,13 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
                               ),
                             ),
                             const SizedBox(height: UtenSpacing.s16),
+                            if (claim.applicationKind != null) ...[
+                              FinanceNativeOriginalSection(
+                                ownerType: 'EXPENSE_CLAIM',
+                                ownerId: claim.id,
+                              ),
+                              const SizedBox(height: UtenSpacing.s16),
+                            ],
                             _attachments(claim),
                             if (claim.status == ExpenseClaimStatus.paid) ...[
                               const SizedBox(height: UtenSpacing.s16),
@@ -628,7 +643,10 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
       rowCount: claim.items.length,
       compact: true,
       entries: [
-        UtenTotalEntry('合计', '${claim.totalAmount.toStringAsFixed(2)} 元'),
+        UtenTotalEntry(
+          '合计',
+          '${financeExactMoneyDisplay(claim.totalAmountText)} 元',
+        ),
       ],
     );
   }
@@ -707,7 +725,7 @@ class _HeroCard extends StatelessWidget {
       primary: [
         UtenSummaryField(
           label: '报销总额',
-          value: '${claim.totalAmount.toStringAsFixed(2)} 元',
+          value: '${financeExactMoneyDisplay(claim.totalAmountText)} 元',
           emphasis: true,
           danger: true,
         ),
@@ -738,7 +756,7 @@ class _HeroCard extends StatelessWidget {
         ),
         UtenSummaryField(
           label: AppLocalizations.of(context).expenseFlowCapital,
-          value: rmbCapital(claim.totalAmount),
+          value: rmbCapital(claim.totalAmountText),
         ),
       ],
       notices: [

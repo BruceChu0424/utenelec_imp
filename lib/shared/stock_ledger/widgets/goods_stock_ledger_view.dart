@@ -1,3 +1,5 @@
+import '../../formatters/quantity_display.dart';
+import '../../formatters/exact_decimal.dart';
 import '../../models/paged_result.dart';
 import '../../auth/read_owner_fence.dart';
 import '../../paging/scoped_paged_read.dart';
@@ -18,7 +20,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../components/layout/uten_refresh_scope.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
 import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/inputs/uten_date_range_button.dart';
@@ -471,7 +472,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
     Widget weightCell(StockLedgerRow r, {required bool inbound}) {
       if (!weightInColumn(r, inbound: inbound)) return const SizedBox.shrink();
       return WeightText(
-        kg: r.weightKgSigned?.abs(),
+        kg: r.weightKgSignedText?.replaceFirst('-', ''),
         source: r.weightSource,
         display: display,
       );
@@ -480,7 +481,7 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
     String weightValue(StockLedgerRow r, {required bool inbound}) {
       if (!weightInColumn(r, inbound: inbound)) return '';
       return formatWeightValue(
-        r.weightKgSigned?.abs(),
+        r.weightKgSignedText?.replaceFirst('-', ''),
         display: display,
         estimated: isEstimatedWeightSource(r.weightSource),
       );
@@ -618,12 +619,12 @@ class _GoodsStockLedgerViewState extends ConsumerState<GoodsStockLedgerView>
         sortable: true,
         info: '按千克检索原台账结存；排序与检索不重算结存。',
         value: (r) => formatWeightValue(
-          r.balanceWeightKgAfter,
+          r.balanceWeightKgAfterText,
           display: display,
           unknownText: '未知',
         ),
         cellBuilder: (_, r) => WeightText(
-          kg: r.balanceWeightKgAfter,
+          kg: r.balanceWeightKgAfterText,
           display: display,
           unknownText: '未知',
         ),
@@ -657,11 +658,11 @@ List<UtenTotalEntry> stockLedgerSummaryEntries(
     return unit.isEmpty || v == null ? text : '$text $unit';
   }
 
-  String balanceWeight(double? kg) =>
+  String balanceWeight(Object? kg) =>
       kg == null ? '重量未知' : formatWeight(kg, display: display);
 
-  String flowWeight(double? kg, int unknownRows) {
-    if (kg == null || kg == 0) {
+  String flowWeight(Object? kg, int unknownRows) {
+    if (kg == null || financeExactTrimmed(financeExactDecimal(kg)) == '0') {
       return unknownRows > 0 ? '$unknownRows 行未称' : '';
     }
     final text = formatWeight(kg, display: display);
@@ -673,22 +674,25 @@ List<UtenTotalEntry> stockLedgerSummaryEntries(
   return [
     UtenTotalEntry(
       '期初结存',
-      join(qty(s.openingQty), balanceWeight(s.openingWeightKg)),
+      join(qty(s.openingQty), balanceWeight(s.openingWeightKgText)),
     ),
     UtenTotalEntry(
       '本期收入',
-      join(qty(s.inQty ?? 0), flowWeight(s.inWeightKg, s.inWeightUnknownRows)),
+      join(
+        qty(s.inQty ?? 0),
+        flowWeight(s.inWeightKgText, s.inWeightUnknownRows),
+      ),
     ),
     UtenTotalEntry(
       '本期发出',
       join(
         qty(s.outQty ?? 0),
-        flowWeight(s.outWeightKg, s.outWeightUnknownRows),
+        flowWeight(s.outWeightKgText, s.outWeightUnknownRows),
       ),
     ),
     UtenTotalEntry(
       '期末结存',
-      join(qty(s.closingQty), balanceWeight(s.closingWeightKg)),
+      join(qty(s.closingQty), balanceWeight(s.closingWeightKgText)),
     ),
     if ((s.internalTransferQty ?? 0) != 0)
       UtenTotalEntry('范围内调拨', qty(s.internalTransferQty)),
@@ -696,14 +700,14 @@ List<UtenTotalEntry> stockLedgerSummaryEntries(
       UtenTotalEntry(
         '重量尾差调整',
         '${s.residualKg! > 0 ? '+' : '-'}'
-            '${formatWeight(s.residualKg!.abs(), display: display)}',
+            '${formatWeight(s.residualKgText?.replaceFirst('-', ''), display: display)}',
       ),
   ];
 }
 
 String? _qty(double? v) {
   if (v == null || !v.isFinite) return null;
-  return NumberFormat('#,##0.####', 'zh_CN').format(v);
+  return formatExactQtyWithUnit(v.toString(), null);
 }
 
 /// 2026-10-10 数量+单位口径：台账数量列内联单位（保留千分位分组），独立

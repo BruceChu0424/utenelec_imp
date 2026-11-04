@@ -50,4 +50,8 @@ public class ReceiptItemDto extends com.uten.imp.common.finance.ProcurementSourc
     public String getUnitRateExact() { return com.uten.imp.common.util.DecimalText.of(unitRate); }
     public String getAmountOriginalExact() { return com.uten.imp.common.util.DecimalText.of(amountOriginal); }
     public String getAmountLocalExact() { return com.uten.imp.common.util.DecimalText.of(amountLocal); }
+    public String getWeightExact(){return com.uten.imp.common.util.DecimalText.of(weight);}
+    public String getGirthQtyExact(){return com.uten.imp.common.util.DecimalText.of(girthQty);}
+
+    public String getReturnedQtyExact(){return com.uten.imp.common.util.DecimalText.of(returnedQty);}
 }

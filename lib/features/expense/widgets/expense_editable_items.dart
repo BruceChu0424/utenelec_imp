@@ -5,7 +5,8 @@ import '../../../components/inputs/uten_dropdown_field.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/layout/uten_editable_grid.dart';
 import '../../../core/utils/china_datetime.dart';
-import '../../../core/utils/rmb_amount.dart';
+import '../../../shared/formatters/exact_decimal.dart';
+import '../../../shared/formatters/financial_amount_validation.dart';
 import '../../../shared/platform_tables/platform_table_binding.dart';
 import '../models/expense_item.dart';
 
@@ -23,7 +24,10 @@ class ExpenseGridRow extends EditableGridRow with AmountRowMixin {
   final description = TextEditingController();
   final category = ValueNotifier<ExpenseCategory>(ExpenseCategory.transport);
   final date = ValueNotifier<DateTime>(ChinaDateTime.today());
-  int? get amountCents => parseExpenseAmountCents(amount.text);
+  String? get amountText => financeExactDecimal(amount.text);
+  BigInt? get amountUnits => validateFinanceAmount(amount.text) == null
+      ? financeAmountUnits(amount.text)
+      : null;
   Iterable<Listenable> get draftListenables => [
     amount,
     description,
@@ -37,7 +41,7 @@ class ExpenseGridRow extends EditableGridRow with AmountRowMixin {
 
   void _recalculate() {
     _clearFlag();
-    recalcAmount(() => (amountCents ?? 0) / 100);
+    recalcAmount(() => double.tryParse(amountText ?? '') ?? 0);
   }
 
   factory ExpenseGridRow.fromItem(ExpenseItem item, {bool persisted = false}) {
@@ -48,7 +52,7 @@ class ExpenseGridRow extends EditableGridRow with AmountRowMixin {
   void applyItem(ExpenseItem item) {
     category.value = item.category;
     date.value = item.date;
-    amount.text = item.amount.toStringAsFixed(2);
+    amount.text = item.amountText;
     description.text = item.description ?? '';
   }
 
@@ -71,15 +75,14 @@ class ExpenseGridRow extends EditableGridRow with AmountRowMixin {
     'id': id,
     'category': category.value.apiValue,
     'date': _date(date.value),
-    'amount': (amountCents ?? 0) / 100,
+    'amount': amount.text,
     'amountText': amount.text,
     'description': description.text,
     'platformFieldDraft': platformFields.exportDraft(),
   };
   ({String column, String message})? get validationError {
-    if (amountCents == null) {
-      return (column: 'amount', message: '请填写有效金额，最多两位小数且大于零');
-    }
+    final amountError = validateFinanceAmount(amount.text);
+    if (amountError != null) return (column: 'amount', message: amountError);
     final today = ChinaDateTime.today();
     if (DateTime.utc(
       date.value.year,
@@ -98,7 +101,8 @@ class ExpenseGridRow extends EditableGridRow with AmountRowMixin {
   ExpenseItem toItem() => ExpenseItem(
     id: id,
     category: category.value,
-    amount: (amountCents ?? 0) / 100,
+    amount: double.tryParse(amountText ?? '') ?? 0,
+    amountExact: amountText,
     date: date.value,
     description: description.text.trim(),
   );
@@ -236,14 +240,14 @@ class ExpenseEditableItems extends StatelessWidget {
         width: 170,
         required: true,
         numeric: true,
-        headerInfo: '人民币金额最多两位小数，按整数分校验与汇总；保存以服务端重新计算为准。',
+        headerInfo: '人民币金额保留原数，支持40位整数、24位有效小数；保存后由服务端按明细核算。',
         textOf: (row) => row.amount.text,
         listenableOf: (row) => row.amount,
         exactValueOf: (row) => row.amount.text,
         exactListenableOf: (row) => row.amount,
         cellBuilder: (_, row) => RequiredCellFrame(
           listenable: row.amount,
-          isEmpty: () => row.amountCents == null,
+          isEmpty: () => row.amountUnits == null,
           child: TextField(
             controller: row.amount,
             enabled: editable,

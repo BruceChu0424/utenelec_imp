@@ -105,6 +105,9 @@ class InventoryPositionPostgresTest {
         try(var in=InventoryPositionPostgresTest.class.getResourceAsStream("/db/migration/V536__production_cost_actual_output_pools_and_withdrawals.sql")){
             db.execute(new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8));
         }
+        try(var in=InventoryPositionPostgresTest.class.getResourceAsStream("/db/migration/V1008__completed_partial_issue_return_identity.sql")){
+            db.execute(new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8));
+        }
         var factory=new LocalContainerEntityManagerFactoryBean();factory.setDataSource(ds);factory.setJpaVendorAdapter(new HibernateJpaVendorAdapter());
         factory.setPackagesToScan("com.uten.imp.features.common.taskclaim");var props=new Properties();props.setProperty("hibernate.hbm2ddl.auto","none");
         factory.setJpaProperties(props);factory.afterPropertiesSet();emf=factory.getObject();em=SharedEntityManagerCreator.createSharedEntityManager(emf);
@@ -120,6 +123,53 @@ class InventoryPositionPostgresTest {
         return List.of("stock_value_pools","stock_value_nodes","stock_value_events","stock_value_position_transfers","stock_value_postings","stock_movements")
                 .stream().map(table->db.queryForObject("SELECT count(*) FROM "+table,Integer.class)).toList();
     }
+
+    @Test void completedPartialIssueReturnsRestoreOnlyTheExactOriginalPoolAncestry(){
+        PoolKey k=key();MovementValue receipt=qualifiedReceipt(k,"3","1050");
+        MovementValue issued=locked(k,()->{EventContext c=context();var r=values.issue(new Issue(c,UUID.randomUUID(),k,bd("0.2"),qty(k),Destination.SUBCONTRACT_WIP,c.sourceItemId()));physical(r,c,k,bd("0.2"),-1);return r;});
+        partialReturn(k,issued,"0.1",false);
+        assertThat(unusedHead(k,receipt)).isFalse();
+        var before=readinessRowCounts();assertThatThrownBy(()->locked(k,()->positions.requireStoresReversible(List.of(new StoreWithdrawal(k,receipt.movementId(),false)))))
+                .isInstanceOf(ApiException.class).hasMessageContaining("原入库之后");assertThat(readinessRowCounts()).isEqualTo(before);
+        partialReturn(k,issued,"0.1",true);
+        assertThat(unusedHead(k,receipt)).isTrue();balance(k,"3","1050");
+        locked(k,()->positions.requireStoresReversible(List.of(new StoreWithdrawal(k,receipt.movementId(),false))));
+        EventContext reverse=context();locked(k,()->{var result=positions.reverseStore(new ReverseStore(reverse,UUID.randomUUID(),k,qty(k),receipt.movementId()));physical(result,reverse,k,bd("3"),-1);return result;});
+        balance(k,"0","0");
+    }
+
+    @Test void incompletePartialIssueReturnCannotBeReplacedByAnotherEqualReceipt(){
+        PoolKey k=key();MovementValue receipt=qualifiedReceipt(k,"3","1050");MovementValue issued=issue(k,"0.2");
+        partialReturn(k,issued,"0.1",false);qualifiedReceipt(k,"0.1","35");
+        balance(k,"3","1050");assertThat(unusedHead(k,receipt)).isFalse();
+        var before=readinessRowCounts();assertThatThrownBy(()->locked(k,()->positions.requireStoresReversible(List.of(new StoreWithdrawal(k,receipt.movementId(),false)))))
+                .isInstanceOf(ApiException.class);assertThat(readinessRowCounts()).isEqualTo(before);
+    }
+
+    @Test void fullPartialIssueReturnDoesNotPermitUnrelatedInterveningStockEvents(){
+        PoolKey k=key();MovementValue receipt=qualifiedReceipt(k,"3","1050");MovementValue issued=issue(k,"0.2");
+        partialReturn(k,issued,"0.2",false);assertThat(unusedHead(k,receipt)).isTrue();
+        issue(k,"0.1");qualifiedReceipt(k,"0.1","35");balance(k,"3","1050");
+        assertThat(unusedHead(k,receipt)).isFalse();
+    }
+
+    @Test void returnedSplitKeepsTheSameUnclosedCostSourceDespiteTwoPendingParentPaths(){
+        PoolKey k=key();var acquired=acquire(k,"2","80","0",true,List.of());var passed=move(k,acquired.positionRootId(),"2",Owner.QUALITY_PASSED);
+        MovementValue receipt=locked(k,()->{EventContext event=context();var value=positions.store(new Store(event,UUID.randomUUID(),k,qty(k),List.of(slice(passed.positionRootId(),"2")),true));physical(value,event,k,bd("2"),1);return value;});
+        var issued=issue(k,"0.5");partialReturn(k,issued,"0.5",false);
+        assertThat(db.queryForObject("SELECT pending_parents FROM stock_value_nodes WHERE id=?",Integer.class,receipt.poolHeadId())).isEqualTo(1);
+        assertThat(db.queryForObject("SELECT node.pending_parents FROM stock_value_nodes node JOIN stock_value_pools pool ON pool.head_node_id=node.id WHERE pool.goods_id=?",Integer.class,k.goodsId())).isEqualTo(2);
+        assertThat(unusedHead(k,receipt)).isTrue();balance(k,"2","80");
+        // Identity proof never changes or finalizes the pending cost evidence.
+        assertThat(receipt.state()).isEqualTo(State.PENDING);
+        assertThat(db.queryForObject("SELECT source_final FROM stock_value_nodes WHERE id=?",Boolean.class,receipt.valueNodeId())).isFalse();
+        issue(k,"0.25");qualifiedReceipt(k,"0.25","10");balance(k,"2","80");assertThat(unusedHead(k,receipt)).isFalse();
+    }
+
+    private static MovementValue qualifiedReceipt(PoolKey k,String quantity,String cost){PositionValue funding=acquire(k,quantity,cost,"0",true,List.of());PositionValue passed=move(k,funding.positionRootId(),quantity,Owner.QUALITY_PASSED);return store(k,List.of(slice(passed.positionRootId(),quantity)));}
+    private static void partialReturn(PoolKey k,MovementValue issued,String quantity,boolean throughStore){locked(k,()->{EventContext c=context();var result=throughStore?positions.store(new Store(c,UUID.randomUUID(),k,qty(k),List.of(new Slice(issued.valueNodeId(),bd(quantity),issued.valueNodeId())))):
+            values.returnIssue(new ReturnIssue(c,UUID.randomUUID(),k,bd(quantity),qty(k),issued.valueNodeId()));physical(result,c,k,bd(quantity),1);return result;});}
+    private static boolean unusedHead(PoolKey k,MovementValue receipt){return db.queryForObject("SELECT fn_stock_value_unused_receipt_head(p.head_node_id,?) FROM stock_value_pools p WHERE p.warehouse_id=? AND p.goods_id=? AND p.color_id IS NOT DISTINCT FROM ?::uuid",Boolean.class,receipt.poolHeadId(),k.warehouseId(),k.goodsId(),k.colorId());}
 
     @Test void multiPartSingleMovementKeepsExactInputsAndLaterCostsReachSoldAndWarehouseParts(){
         PoolKey k=key();PositionValue first=acquire(k,"10","100","0",true,List.of());

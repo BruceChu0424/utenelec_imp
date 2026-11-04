@@ -57,6 +57,7 @@ public class GoodsActualCostQueryService implements GoodsActualCostQueryPort {
                      AND NULLIF(identity.evidence->>'unitId','') IS NOT NULL AND NULLIF(identity.evidence->>'unitName','') IS NOT NULL,false) identity_complete,
                    (snap.value->>'revision')::bigint value_revision,(snap.value->>'quantityBasis')::numeric gross_qty,
                    (snap.value->>'returnedQty')::numeric returned_qty,(snap.value->>'value')::numeric basis_value,
+                   (snap.value->>'bookedNetValue')::numeric booked_net_value,coalesce((snap.value->>'valuePrecisionVersion')::integer,1) value_precision_version,
                    (snap.value->>'pending')::int pending_parents,COALESCE(snap.value->>'valueModel',n.value_model) value_model,
                    CASE WHEN jsonb_exists(snap.value,'exactLower') THEN (snap.value->>'exactLower')::numeric
                         WHEN (snap.value->>'revision')::bigint=1 THEN n.initial_bound_lower ELSE history.after_bound_lower END exact_lower,
@@ -163,8 +164,12 @@ public class GoodsActualCostQueryService implements GoodsActualCostQueryPort {
     static InputLine input(Map<String,Object> row) {
         BigDecimal gross=decimal(row,"gross_qty"),returned=decimal(row,"returned_qty"),basis=decimal(row,"basis_value");
         boolean legacy=!"EXACT_SOURCE_SHARES".equals(text(row,"value_model"));
-        boolean evidenceMissing=gross==null||returned==null||basis==null||row.get("value_revision")==null||row.get("pending_parents")==null;
-        BigDecimal amount=legacy||evidenceMissing?null:basis.subtract(gross.signum()==0?BigDecimal.ZERO:basis.multiply(returned).divide(gross,4,RoundingMode.HALF_UP));
+        boolean evidenceMissing=gross==null||returned==null||basis==null||row.get("value_revision")==null||row.get("pending_parents")==null
+            ||number(row,"value_precision_version")>=2&&row.get("booked_net_value")==null;
+        // New snapshots retain the actual booked net fact. Old v1 snapshots
+        // remain the original ROUND4 proof; they are never repriced by today's policy.
+        BigDecimal amount=legacy||evidenceMissing?null:row.get("booked_net_value")!=null?decimal(row,"booked_net_value")
+            :number(row,"value_precision_version")<=1?basis.subtract(gross.signum()==0?BigDecimal.ZERO:basis.multiply(returned).divide(gross,4,RoundingMode.HALF_UP)):null;
         BigDecimal allocated=decimal(row,"allocated");
         String kind=text(row,"input_kind");
         String quantityBasis="PERIODIC_MATERIAL".equals(kind)?"PERIODIC_ALLOCATION":"CONFIRMED_PROCESSING_FEE".equals(kind)?"FEE_EVIDENCE":"DIRECT_CONSUMPTION";

@@ -35,16 +35,9 @@ import '../../../shared/pricing/line_pricing_controller.dart';
 import '../../../shared/pricing/line_pricing_amount_cell.dart';
 
 /// 「允许超收%」输入解析（ADR-144）：空 = 未填(不允许超收，按 0%)，有效；
-/// 填了须是 0 到 100 的数，提交值按两位小数（服务端 NUMERIC(5,2)）。
-({double? value, bool valid}) parsePurchaseOverReceiptPct(String raw) {
-  final text = raw.trim();
-  if (text.isEmpty) return (value: null, valid: true);
-  final parsed = double.tryParse(text);
-  if (parsed == null || !parsed.isFinite || parsed < 0 || parsed > 100) {
-    return (value: null, valid: false);
-  }
-  return (value: double.parse(parsed.toStringAsFixed(2)), valid: true);
-}
+/// 填了须是 0 到 100 的数，提交保留原数（native 24位有效小数）。
+({String? value, bool valid}) parsePurchaseOverReceiptPct(String raw) =>
+    parseExactPercentage(raw);
 
 /// 采购明细行。货品用 [ValueNotifier]（点选后单元格自动刷新，无需 setState）；
 /// 数量/单价控制器变更 → 自动重算金额（amountNotifier）。

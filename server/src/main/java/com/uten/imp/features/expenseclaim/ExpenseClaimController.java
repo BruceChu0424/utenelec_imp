@@ -150,6 +150,10 @@ public class ExpenseClaimController {
         return recognition.recognize(file);
     }
 
+    @GetMapping("/{id}/original-source")
+    @PreAuthorize("hasAnyAuthority('expense:view','expense:apply','expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive','expense:pay')")
+    public java.util.Map<String,Object> originalSource(@PathVariable UUID id){return service.originalApplicationSource(id);}
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyAuthority('expense:view','expense:apply','expense:approve:department','expense:approve:finance_initial','expense:approve:finance_review','expense:approve:executive','expense:pay')")
     public ExpenseClaimDto detail(@PathVariable UUID id) {

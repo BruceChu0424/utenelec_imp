@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:flutter/material.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../components/feedback/uten_dialog.dart';
@@ -116,7 +117,9 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
       context.appInfo('该行无生效预留可让');
       return;
     }
-    final qtyCtrl = TextEditingController(text: reserved.toStringAsFixed(2));
+    final qtyCtrl = TextEditingController(
+      text: reserved.toExactString(minimumFractionDigits: 2),
+    );
     final reasonCtrl = TextEditingController();
     final input =
         await UtenDialog.showAndWaitForExit<({String qtyText, String reason})>(
@@ -193,7 +196,7 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
             reason: reason,
             yielderOrderNo: r.orderNo,
           ),
-      success: '已让单 ${qty.toStringAsFixed(2)}，库存已回池',
+      success: '已让单 ${qty.toExactString(minimumFractionDigits: 2)}，库存已回池',
       errorFallback: '让单失败，请稍后重试',
     );
     if (!mounted) return;
@@ -277,7 +280,7 @@ class _SalesScarcityPageState extends ConsumerState<SalesScarcityPage> {
         return ListTile(
           title: Text('${r.clientName ?? '—'} · ${r.orderNo ?? '—'}'),
           subtitle: Text(
-            '优先级 ${priorityLabel(r.priority)} · 预留 ${r.reservedQty?.toStringAsFixed(2) ?? '-'}'
+            '优先级 ${priorityLabel(r.priority)} · 预留 ${r.reservedQty?.toExactString(minimumFractionDigits: 2) ?? '-'}'
             ' · 交货 ${r.deliverDate ?? '-'}'
             '${overdue ? ' · 已逾期 ${r.overdueDays} 天' : ''}',
           ),

@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 // 仓库侧「待领任务」轻量读模型：履约工作台公开投影（/operations/workbench/
 // warehouse）的仓库允许清单副本——只含数量/货品/仓库/日期/状态与领料单
 // 深链，不复用 operations_workbench 模型（架构边界：warehouse 不依赖其它 feature）。
@@ -343,7 +344,7 @@ class WarehouseDrawTask {
     if (value == null) return '—';
     return value
         .toDouble()
-        .toStringAsFixed(4)
+        .toExactString(minimumFractionDigits: 4)
         .replaceFirst(RegExp(r'0+$'), '')
         .replaceFirst(RegExp(r'\.$'), '');
   }

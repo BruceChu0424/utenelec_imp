@@ -101,6 +101,8 @@ public class PurchaseReceiptService {
     private final com.uten.imp.common.finance.ProcurementReceiptAmountPreview receiptAmountPreview;
     private final ProcurementIqcReplacementAllocationService iqcReplacementAllocation;
     private final ArApLedgerService arApService;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.ProcurementPayableRecognitionPort firstPayables;
     private final SupplierPaymentTermService paymentTerms;
     private final SupplierPeriodIdentityGuard periodIdentityGuard;
     private final ProductionSupplyTransitionPort productionSupply;
@@ -108,6 +110,8 @@ public class PurchaseReceiptService {
     private final SecurityContextCurrentUser currentUser;
     private final com.uten.imp.common.util.EmployeeNameResolver nameResolver;
     private final EntityManager em;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.BusinessNumericInputEvidencePort numericInputEvidence;
     private final DocNumberService docNumberService;
     private final PurchaseLineUnitPolicy lineUnitPolicy;
     private final ProcurementArrivalControlPort arrivalControl;
@@ -311,6 +315,7 @@ public class PurchaseReceiptService {
     /** Shared transaction kernel; warehouse commands do not need the commercial detail projection. */
     private void approveReceipt(UUID id) {
         tx.bind();
+        if(firstPayables!=null)firstPayables.beginApproval(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("PURCHASE_RECEIPT",id));
         SupplierPeriodIdentityGuard.Identity periodIdentity =
         periodIdentityGuard.requireIdentity(SourceTable.PURCHASE_RECEIPT, id);
         periodIdentityGuard.requireOpenAtBillDate(periodIdentity, "采购收货审核");
@@ -392,8 +397,8 @@ public class PurchaseReceiptService {
         // 立应付（AP, PURCHASE_RECEIPT）。
         LocalDate dueDate = paymentTerms.resolveDueDate(
                 r.getSupplierId(), r.getSettlementMethodId(), r.getBillDate());
-        if(payable.original().signum()!=0||payable.local().signum()!=0){
-            arApService.postArAp(new ArApLedgerService.ArApPostingRequest(
+        {
+            postOrDefer(new ArApLedgerService.ArApPostingRequest(
                 "AP", StockService.SRC_PURCHASE_RECEIPT, r.getId(), r.getBillNo(), r.getBillDate(),
                 null, r.getSupplierId(), r.getCurrencyId(), r.getExchangeRate(),
                 payable.local(), (short) 1, null, payable.original(), dueDate,
@@ -439,6 +444,7 @@ public class PurchaseReceiptService {
         if(r.getStatus()==null||r.getStatus()!=STATUS_APPROVED)throw new ApiException(ErrorCode.BUSINESS,"仅已审核单据可反审");
     }
     private void requireReversibleBusiness(PurchaseReceipt r){UUID id=r.getId();
+        if(firstPayables!=null)firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("PURCHASE_RECEIPT",id));
         var items=itemRepo.findByReceiptIdOrderByLineNoAsc(id);
         if(items.stream().anyMatch(it->it.getReturnedQty()!=null&&it.getReturnedQty().signum()>0||it.getGiftReturnedQty().signum()>0))throw new ApiException(ErrorCode.CONFLICT,"采购收货已有退货记录，请先反审下游退货单");
         var withdrawals=inspectionService.requireResolvedReversibleReadOnly("PURCHASE",id);
@@ -462,7 +468,11 @@ public class PurchaseReceiptService {
             throw new ApiException(ErrorCode.CONFLICT,"原收货缺少可核对的质检/仓库成本来源，请专项核对历史数据");
         }
     }
+    private boolean postOrDefer(com.uten.imp.features.finance.arap.ArApLedgerService.ArApPostingRequest req){
+        return com.uten.imp.common.finance.ProcurementPayablePosting.post(firstPayables,arApService,req);
+    }
     private void requireReversibleArAp(UUID id,String type){
+        if(firstPayables!=null&&firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source(type,id)))return;
         try{arApService.requireReversibleSource(id,type);}
         catch(IllegalStateException denied){throw new ApiException(ErrorCode.CONFLICT,denied.getMessage());}
     }
@@ -471,6 +481,7 @@ public class PurchaseReceiptService {
     private String unapprovalDependencyFacts(UUID id){return String.valueOf(em.createNativeQuery("""
         SELECT jsonb_build_object(
             'lines',(SELECT jsonb_agg(to_jsonb(line) ORDER BY line.id) FROM purchase_receipt_items line WHERE line.receipt_id=:id),
+            'firstPayable',(SELECT to_jsonb(candidate) FROM finance_procurement_payable_candidates candidate WHERE candidate.source_type='PURCHASE_RECEIPT' AND candidate.source_id=:id),
             'arAp',(SELECT jsonb_agg(to_jsonb(ledger) ORDER BY ledger.id) FROM ar_ap_ledger ledger WHERE ledger.source_doc_id=:id),
             'vouchers',(SELECT jsonb_agg(to_jsonb(voucher) ORDER BY voucher.id) FROM gl_vouchers voucher WHERE voucher.source_doc_id=:id),
             'supplierPeriods',(SELECT jsonb_agg(to_jsonb(batch) ORDER BY batch.id) FROM supplier_settlement_batches batch JOIN purchase_receipts doc ON doc.supplier_id=batch.supplier_id AND doc.currency_id=batch.currency_id WHERE doc.id=:id),
@@ -527,7 +538,7 @@ public class PurchaseReceiptService {
                 :new com.uten.imp.common.finance.ProcurementReceiptConsiderationService.Amounts(r.getTotalOriginal(),r.getTotalLocal());
         consideration.reverseReceipt("PURCHASE",id,UUID.randomUUID(),"采购收货红冲");
         if(originalPayable.original().signum()!=0||originalPayable.local().signum()!=0)
-            arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RECEIPT);
+            if(firstPayables==null||!firstPayables.requireReversible(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("PURCHASE_RECEIPT",r.getId())))arApService.reverseArAp(r.getId(), StockService.SRC_PURCHASE_RECEIPT);
         iqcReplacementAllocation.reverseForReceipt(
                 "PURCHASE",r.getId(),"补货采购收货红冲");
         OffsetDateTime now = OffsetDateTime.now();
@@ -558,14 +569,16 @@ public class PurchaseReceiptService {
                 ProcurementArrivalControlPort.PURCHASE, id);
         productionSupply.afterPurchaseReceiptReversed(id);
         procurementValue.receiptReversed("PURCHASE",id,currentUser.requireId());
+        if(firstPayables!=null)firstPayables.sourceReversed(new com.uten.imp.application.port.ProcurementPayableRecognitionPort.Source("PURCHASE_RECEIPT",id));
         return detail(id);
     }
 
     /** 写一笔库存流水（方向由调用方给）。qty 为明细量，baseQty = qty×unit_rate（基本单位）。 */
     private void applyMovement(PurchaseReceipt r, PurchaseReceiptItem it, short direction,
                                OffsetDateTime ts, BigDecimal overrideAmount) {
-        BigDecimal rate = it.getUnitRate() == null ? BigDecimal.ONE : it.getUnitRate();
-        BigDecimal baseQty = it.getQty().multiply(rate);
+        var original=com.uten.imp.common.finance.DocumentUnitConversion.originalMovement(em,StockService.SRC_PURCHASE_RECEIPT,
+                StockService.TYPE_PURCHASE_RECEIPT,r.getId(),it.getId(),it.getGoodsId(),it.getColorId(),r.getWarehouseId(),1);
+        BigDecimal baseQty=original.quantity();
         BigDecimal amt = overrideAmount != null ? overrideAmount : it.getAmountLocal();
         stockService.recordMovement(new StockService.MovementRequest(
                 ts, StockService.TYPE_PURCHASE_RECEIPT, StockService.SRC_PURCHASE_RECEIPT,
@@ -710,10 +723,11 @@ public class PurchaseReceiptService {
             it.setAmountLocal(amounts.local());
 
             it.setOrderItemId(l.getOrderItemId());
-            it.setWeight(l.getWeight());
+            it.setWeight(com.uten.imp.features.stock.weight.DocumentWeightAdoption.adopt(l.getWeight()));
             it.setSourceDocNo(l.getSourceDocNo());
             it.setRemark(l.getRemark());
             itemRepo.save(it);
+            com.uten.imp.features.stock.weight.DocumentWeightAdoption.capture(numericInputEvidence,"PURCHASE_RECEIPT",r.getId(),it.getId(),l.getWeight(),it.getWeight());
             out.add(toItemDto(it, orderRefs));
             autoLine++;
         }
@@ -778,7 +792,7 @@ public class PurchaseReceiptService {
         NonNegativeCommercialSignGuard.requireStoredTotals(
                 "采购收货", receipt.getTotalOriginal(), receipt.getTotalLocal());
         for (PurchaseReceiptItem item : items) {
-            com.uten.imp.common.finance.ProcurementQuantities.of(item.getQuantitySemantics(),item.getQty(),item.getGiftQty(),item.getUnitRate());
+            com.uten.imp.common.finance.ProcurementQuantities.frozen(item.getQuantitySemantics(),item.getQty(),item.getGiftQty(),item.getUnitRate(),item.getChargedBaseQty(),item.getGiftBaseQty());
             if(item.getPrice()!=null && item.getPrice().signum()<0 || item.getAmountOriginal()!=null&&item.getAmountOriginal().signum()<0
                     ||item.getAmountLocal()!=null&&item.getAmountLocal().signum()<0)
                 throw new ApiException(ErrorCode.CONFLICT,"采购收货商业金额异常");
@@ -826,12 +840,14 @@ public class PurchaseReceiptService {
 
 
     private List<ProcurementInspectionPort.ReceivedLine> inspectionLines(PurchaseReceiptItem item) {
-        var q=com.uten.imp.common.finance.ProcurementQuantities.of(item.getQuantitySemantics(),item.getQty(),item.getGiftQty(),item.getUnitRate());
+        var q=com.uten.imp.common.finance.ProcurementQuantities.frozen(item.getQuantitySemantics(),item.getQty(),item.getGiftQty(),item.getUnitRate(),item.getChargedBaseQty(),item.getGiftBaseQty());
         if(!com.uten.imp.common.finance.ProcurementQuantities.isExtraGift(item.getQuantitySemantics()))
             return List.of(new ProcurementInspectionPort.ReceivedLine(item.getId(),item.getGoodsId(),item.getColorId(),item.getUnitId(),
-                item.getUnitRate(),item.getQty(),item.getAmountLocal(),item.getWeight()));
+                item.getUnitRate(),item.getQty(),item.getAmountLocal(),item.getWeight(),"LEGACY",q.chargedBase()));
         List<ProcurementInspectionPort.ReceivedLine> out=new ArrayList<>();
-        BigDecimal chargedWeight=item.getWeight()==null?null:MoneyPolicy.quantity(item.getWeight().multiply(q.charged()).divide(q.physical(),12,java.math.RoundingMode.DOWN));
+        BigDecimal chargedWeight=item.getWeight()==null?null:com.uten.imp.features.stock.weight.WeightMath.prorate(item.getWeight(),q.charged(),q.physical());
+        if(chargedWeight!=null&&(chargedWeight.signum()<0||chargedWeight.compareTo(item.getWeight())>0))
+            throw new com.uten.imp.common.finance.BusinessPrecisionRequiredException("weight.prorate","采购收货重量分摊：所选精度超过原总重量，请增加位数或更改取舍方式",24,"PRECISION_LIMIT",true);
         if(q.charged().signum()>0) out.add(new ProcurementInspectionPort.ReceivedLine(item.getId(),item.getGoodsId(),item.getColorId(),item.getUnitId(),
             item.getUnitRate(),q.charged(),item.getAmountLocal(),chargedWeight,"CHARGED",q.chargedBase()));
         if(q.gift().signum()>0) out.add(new ProcurementInspectionPort.ReceivedLine(item.getId(),item.getGoodsId(),item.getColorId(),item.getUnitId(),
@@ -840,23 +856,30 @@ public class PurchaseReceiptService {
     }
     private void requireGiftCapacity(PurchaseReceipt receipt,List<PurchaseReceiptItem> items) {
         for(var item:items) {
-            var q=com.uten.imp.common.finance.ProcurementQuantities.of(item.getQuantitySemantics(),item.getQty(),item.getGiftQty(),item.getUnitRate());
-            item.setChargedBaseQty(q.chargedBase());item.setGiftBaseQty(q.giftBase());
+            var q=com.uten.imp.common.finance.ProcurementQuantities.frozen(item.getQuantitySemantics(),item.getQty(),item.getGiftQty(),item.getUnitRate(),item.getChargedBaseQty(),item.getGiftBaseQty());
             if(q.gift().signum()==0)continue;
             var rows=com.uten.imp.common.util.NativeQueryResults.objectArrayRows(em.createNativeQuery("""
                 SELECT oi.quantity_semantics,oi.gift_qty,oi.unit_rate,
-                    COALESCE((SELECT SUM(ri.gift_base_qty-ri.gift_returned_qty*ri.unit_rate) FROM purchase_receipt_items ri
+                    COALESCE((SELECT SUM(ri.gift_base_qty-COALESCE((SELECT SUM(ret.gift_base_qty) FROM purchase_return_items ret JOIN purchase_returns ret_doc ON ret_doc.id=ret.return_id
+                            WHERE ret.receipt_item_id=ri.id AND ret_doc.status=1 AND NOT ret.is_deleted AND NOT ret_doc.is_deleted),0)) FROM purchase_receipt_items ri
                         JOIN purchase_receipts rd ON rd.id=ri.receipt_id
                         WHERE ri.order_item_id=oi.id AND rd.id<>:receipt AND rd.status=1
                             AND ri.quantity_semantics='CHARGED_PLUS_GIFT_V1' AND NOT ri.is_deleted AND NOT rd.is_deleted),0),
                     COALESCE((SELECT SUM(ri.gift_qty) FROM purchase_receipt_items ri JOIN purchase_receipts rd ON rd.id=ri.receipt_id
-                        WHERE ri.order_item_id=oi.id AND rd.id<>:receipt AND rd.status=1 AND ri.quantity_semantics='CHARGED_PLUS_GIFT_V1' AND NOT ri.is_deleted AND NOT rd.is_deleted),0)
+                        WHERE ri.order_item_id=oi.id AND rd.id<>:receipt AND rd.status=1 AND ri.quantity_semantics='CHARGED_PLUS_GIFT_V1' AND NOT ri.is_deleted AND NOT rd.is_deleted),0),
+                    to_jsonb(oi)->>'gift_base_qty',
+                    (SELECT count(*) FROM purchase_return_items ret JOIN purchase_returns ret_doc ON ret_doc.id=ret.return_id
+                      JOIN purchase_receipt_items prior_receipt ON prior_receipt.id=ret.receipt_item_id
+                      WHERE prior_receipt.order_item_id=oi.id AND ret_doc.status=1 AND ret.gift_qty>0 AND ret.gift_base_qty IS NULL
+                        AND NOT ret.is_deleted AND NOT ret_doc.is_deleted)
                 FROM purchase_order_items oi WHERE oi.id=:id AND NOT oi.is_deleted FOR UPDATE
                 """).setParameter("receipt",receipt.getId()).setParameter("id",item.getOrderItemId()));
             if(rows.size()!=1 || !com.uten.imp.common.finance.ProcurementQuantities.isExtraGift((String)rows.getFirst()[0]))
                 throw new ApiException(ErrorCode.CONFLICT,"赠品收货须引用已承诺额外赠品的订货明细");
             Object[] row=rows.getFirst();
-            BigDecimal capacity=com.uten.imp.common.finance.MoneyPolicy.quantity(((BigDecimal)row[1]).multiply((BigDecimal)row[2]));
+            if(((Number)row[6]).longValue()!=0)throw new ApiException(ErrorCode.CONFLICT,"来源赠品退回缺少真实冻结基本数量，请先核对原实物记录");
+            BigDecimal capacity=com.uten.imp.common.util.FinancialExactAmount.quantity(row[5]==null?
+                    ((BigDecimal)row[1]).multiply((BigDecimal)row[2]):new BigDecimal(row[5].toString()),"来源订货冻结赠品基本量");
             var releasedGift=iqcReplacementAllocation.releasedGiftCapacity("PURCHASE",item.getOrderItemId());
             if(((BigDecimal)row[3]).subtract(releasedGift.baseQty()).add(q.giftBase()).compareTo(capacity)>0)
                 throw new ApiException(ErrorCode.CONFLICT,"额外赠品超过来源订货的未收赠品数量");
@@ -867,7 +890,10 @@ public class PurchaseReceiptService {
     private BigDecimal giftStockedQty(PurchaseReceiptItem item) {
         if(!com.uten.imp.common.finance.ProcurementQuantities.isExtraGift(item.getQuantitySemantics()))return BigDecimal.ZERO;
         BigDecimal base=(BigDecimal)em.createNativeQuery("SELECT COALESCE(SUM(warehouse_stocked_base_qty),0) FROM procurement_inspection_items WHERE receipt_type='PURCHASE' AND receipt_item_id=:id AND quantity_tranche='GIFT' AND status<>'REVERSED'").setParameter("id",item.getId()).getSingleResult();
-        return base.divide(item.getUnitRate(),4,java.math.RoundingMode.DOWN).min(item.getGiftQty());
+        var quantity=MoneyPolicy.quantityFromBase(base,item.getUnitRate());
+        if(quantity.multiply(item.getUnitRate()).compareTo(base)>0)
+            throw new com.uten.imp.common.finance.BusinessPrecisionRequiredException("quantity.from-base","已入库赠品换算：所选进位超过真实基本数量，请增加位数或更改取舍方式",24,"PRECISION_LIMIT",true);
+        return quantity.min(item.getGiftQty());
     }
 
     private ReceiptItemDto toItemDto(PurchaseReceiptItem it) {

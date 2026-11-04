@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../models/production_workshop_task_stage.dart';
 import 'package:uten_imp/components/inputs/uten_editor_tooltip.dart';
 import 'package:uten_imp/shared/providers/native_facet_options.dart';
@@ -2567,8 +2568,9 @@ class _ProductionWorkshopTasksPageState
     );
   }
 
-  static String _taskQuantity(double value) =>
-      value.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
+  static String _taskQuantity(double value) => value
+      .toExactString(minimumFractionDigits: 4)
+      .replaceFirst(RegExp(r'\.?0+$'), '');
 
   Future<void> _openMaterialUsage(
     ProductionExecutionWorkbenchSegment task,

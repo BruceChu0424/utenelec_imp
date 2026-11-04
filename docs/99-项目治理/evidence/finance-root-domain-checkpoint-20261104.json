@@ -1,0 +1,180 @@
+{
+  "kind": "finance-root-current-domain-checkpoint",
+  "recordedAtUtc": "2026-11-04T15:27:01.273074+00:00",
+  "baseRevision": "8937e02d2f9b4ae1f5a4ff63ad79673cbd3ad149",
+  "integratedMain": "c8eb95cb1",
+  "frozenFinalRevision": null,
+  "finalReady": false,
+  "actualFinalUiVerified": false,
+  "wordGenerated": false,
+  "companyDatabaseWritten": false,
+  "formalPackagesBuiltOrUploaded": false,
+  "scope": "Web and existing Flutter desktop; Win7 explicitly excluded",
+  "sourceSha256": {
+    "server/src/main/resources/db/migration/V1035__shipment_frozen_basic_quantity.sql": "c8ae8ebbad262378940dbcd1246d9fc68a337e8cc5efa13a10fd3eed16cf715a",
+    "server/src/main/resources/db/migration/V1036__expense_original_source_links.sql": "1844caf7d1d4b8f5de4c6f861bdeb7fc9eaa370966d7c9a5ce8463d1c8236687",
+    "server/src/main/resources/db/migration/V1039__short_delivery_exact_figures.sql": "3576e00081d047c993136a9d4a928805a5c6a962af21332a1405a8e52a8ec548",
+    "server/src/main/java/com/uten/imp/features/stock/CustomerShipmentInventoryService.java": "b098ea2004912af72ca3c211042d39ec6043b87fe2d9b5b088433d8e685047fd",
+    "server/src/main/java/com/uten/imp/features/sales/shipment/SalesShipmentService.java": "2195d732e131efedbc3a1aee9d3161c2527f9849a8a2ccdc082b8ca26b740cc1",
+    "server/src/main/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryService.java": "dfaedc733ec43ebabaff5eaa9392590804d3d7b7438cf867857c99f7051e07a7",
+    "server/src/main/java/com/uten/imp/features/subcontract/short_delivery/SubcontractShortDeliveryPolicy.java": "e08001b2d668216d367b9b04f91e66e26a1cfa2a99e1677322eeeb10d222ca07",
+    "server/src/main/java/com/uten/imp/features/subcontract/waste/SubcontractWasteService.java": "749f8873fd51715d7644a1d85fbb4938362fe2cbe297e3529613d78eaf0617ad",
+    "server/src/main/java/com/uten/imp/features/attachment/AttachmentLinkedEvidenceSupport.java": "cf89dc7b8a79c97a0aa8a3ac79940b256e3dd413bb779216d02a2c6aee4e585c",
+    "server/src/main/java/com/uten/imp/features/attachment/AttachmentService.java": "3998976f75d85d6dda480ad3268fce8184285971b862cf65cb51f0a00b6ca798",
+    "lib/shared/models/subcontract_short_delivery.dart": "f1e6641d59e11e1aa89edcb3a7add741269d187d2c9031160f1a2fb847884416",
+    "lib/features/subcontract/pages/subcontract_doc_edit_page.dart": "421fdd6bab39259725eb45947fa807368de3a6212df67ad190fe8f60bfc538ab",
+    "server/src/main/resources/db/migration/V1043__document_report_actual_basic_quantities.sql": "ea75eed7f1c6f395d592aaa59ca7d3572a511c0383bbbab71a9060925dcf6f8c",
+    "server/src/main/java/com/uten/imp/features/subcontract/report/SubcontractReportService.java": "0bbd9dc5f4eb3e691da72c22b26320fd06172645bb9a8652561dd702e3132ee5",
+    "server/src/test/java/com/uten/imp/businesschain/ShortDeliveryExactWorkflowPostgresTest.java": "d0a0bbac82014184c27b5a98fed1ea58aa99ec3a4bd73d945f1d9e56e0a12a88",
+    "lib/shared/drafts/draft_workspace_sources.dart": "e9406ac02855a14ebd048d81998c5927d7e5e8c733c5dace28196f23d4ea10bc",
+    "test/shared/drafts/draft_workspace_sources_test.dart": "b0c17453122d12896895e0c6e0dd1a69392bdfad79e286fbd13c0ef1039f38df",
+    "test/shared/drafts/noncommercial_draft_categories_test.dart": "8fb6834edb6ea28152b17188ae2f3fcc2edef935ad73288d6fb85a0e847c487e",
+    "tool/finance_seed_once.py": "2369164292c66ea85a6ae9ac5d1badb06eb97d4ce160c2e54def78ad31cd6819",
+    "tool/test_finance_seed_once.py": "797ebcd9a8c0ba156cf24fb6a2ef61c72de6ae349e64a5abb9f57f1103a2db0f"
+  },
+  "evidence": [
+    {
+      "name": "current full Java test-compile preflight",
+      "exitCode": 0,
+      "target": "server/target-finance-interfaces-preflight-20261104",
+      "log": "tmp/finance-interactive/all-interfaces-test-compile-v2.log",
+      "finalCandidate": false
+    },
+    {
+      "name": "shipment actual native quantity/weight",
+      "passed": 2,
+      "skipped": 0,
+      "log": "tmp/finance-interactive/shipment-exact-real-v2.log",
+      "snapshot": "975 migrations with explicitly substituted stable cost v9; not live final acceptance"
+    },
+    {
+      "name": "shortdelivery initial actual chain",
+      "passed": 2,
+      "failed": 3,
+      "log": "tmp/finance-interactive/short-delivery-exact-real-v1.log",
+      "failureHandling": "fixture material budget and metadata response fixed; Tiny actual material family remains blocked by V1042 work"
+    },
+    {
+      "name": "shortdelivery ratio and source metadata corrected selected actual chain",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "log": "tmp/finance-interactive/short-delivery-exact-real-v2b.log",
+      "snapshot": "976 with V1039, pre1040 ExpenseClaimService source SHA2187e5dc0ba7a1572be3184f3a0a5e1a7e4cc193f4b817ad7c5d5182502b59f3; Tiny not selected"
+    },
+    {
+      "name": "shortdelivery pure caller suite",
+      "passed": 34,
+      "skipped": 0,
+      "log": "tmp/finance-interactive/short-delivery-unit-v2.log"
+    },
+    {
+      "name": "shortdelivery UI and exact models",
+      "passed": 24,
+      "log": "tmp/finance-interactive/short-delivery-client-tests-v1.log"
+    },
+    {
+      "name": "subcontract optional exact facts and existing callers",
+      "passed": 23,
+      "log": "tmp/finance-interactive/subcontract-optional-tests-v1.log",
+      "warning": "old offscreen tap in one existing test; corrected 11-case detail rerun below, not suppressed"
+    },
+    {
+      "name": "actual visible detail toggle corrected",
+      "passed": 11,
+      "log": "tmp/finance-interactive/subcontract-detail-hit-target-v2.log",
+      "hitTestWarnings": 0
+    },
+    {
+      "name": "ten Root UI ranges static analysis",
+      "issues": 0,
+      "log": "tmp/finance-interactive/root-short-and-optional-analyze-v3.log"
+    },
+    {
+      "name": "attachment references and existing callers plus three weight tests",
+      "passed": 29,
+      "skipped": 0,
+      "log": "tmp/finance-interactive/attachment-linked-evidence-unit-v1.log",
+      "warning": "expected preview timeout negative test; not a production-clean-log claim"
+    },
+    {
+      "name": "finance original headers current-main group",
+      "passed": 29,
+      "failed": 1,
+      "log": "tmp/finance-interactive/finance-main-headers-and-chart-v6.log",
+      "failure": "old expense assertion omitted required postingPurpose column; product create/detail already aligned"
+    },
+    {
+      "name": "finance core headers corrected semantic assertion",
+      "passed": 8,
+      "log": "tmp/finance-interactive/finance-core-headers-v7.log"
+    },
+    {
+      "name": "actual Web Excel trial export",
+      "passed": true,
+      "log": "tmp/finance-interactive/ui20261104a/downloads/trial-readonly-receipt.json",
+      "scope": "9 exact ordered headers; 4 long decimals retained as text",
+      "finalCandidate": false
+    },
+    {
+      "name": "draft original amount and source/layout regression",
+      "passed": 16,
+      "log": "tmp/finance-interactive/draft-exact-values-tests-v1.log",
+      "analysis": "2 files no issues"
+    },
+    {
+      "name": "noncommercial drafts current date and old-input recovery",
+      "passed": 5,
+      "log": "tmp/finance-interactive/noncommercial-drafts-current-v2.log",
+      "note": "preserves category/identity assertions; clearing default date recovers 90-day old input"
+    },
+    {
+      "name": "one-time seed adapter and interruption",
+      "passed": 13,
+      "log": "tmp/finance-interactive/seed-once-current-tests-v2.log",
+      "note": "real local HTTP adapter and process tests; not a company DB execution"
+    },
+    {
+      "name": "all supplied sources offline plan",
+      "files": 20,
+      "steps": 24,
+      "log": "tmp/finance-interactive/seed-source-plan-preflight-v2.log",
+      "accessedApi": false,
+      "realActorOrCurrency": false
+    },
+    {
+      "name": "report original business stages",
+      "passed": 5,
+      "log": "tmp/finance-interactive/report-actual-quantity-pg-v2.log",
+      "note": "after initial IQC semantic correction; supplier-loss branch added later, full Tiny chain pending"
+    },
+    {
+      "name": "whole-target protocol sealed domain",
+      "receipt": "tmp/finance-exact-valuation/whole-current-materialized-receipt.json",
+      "finalJointCandidate": false
+    },
+    {
+      "name": "actual Web native expense entry",
+      "passed": false,
+      "evidence": "tmp/finance-interactive/ui20261104a/screenshots/07b-expense-web-runtime-error.jpg",
+      "failure": "actual dart2js canPop type merge; public fix awaiting v8 real app"
+    },
+    {
+      "name": "actual Windows repeat operation",
+      "passed": false,
+      "log": "tmp/finance-interactive/ui20261104a/windows-third.stderr.log",
+      "failure": "835 incomplete accessibility updates and AX/visual divergence; no matching Application1000 crash evidence"
+    }
+  ],
+  "remaining": [
+    "V1042 actual material quantities and its full exact frontend/read callers",
+    "V1044 StockDoc/FQC frozen physical shares and actual prior adoption",
+    "procurement source revision and remaining fair-coverage/derived reference numeric audit",
+    "V1040 original/native continuation and source PDF actual preview plus actual v8 Web verification",
+    "native accessibility publication and actual complete Windows interaction acceptance",
+    "final same-source 20 requirement/21 workbook sheet/attachments verification",
+    "final script/API compatibility, business-chain impacts and illustrated Word"
+  ],
+  "checkpointOnlyNotFinalSeal": true
+}

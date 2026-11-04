@@ -198,7 +198,7 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         IssueRemainder original=prepareIssueReturn(target,command.originalIssueNodeId(),qty,true);
         Node root=original.root(),remaining=original.remaining();
         BigDecimal through = remaining.from().add(qty);
-        BigDecimal cost = interval(remaining.value(), remaining.from(), through, remaining.qty());
+        BigDecimal cost = frozenInterval(remaining, remaining.from(), through, remaining.qty());
         UUID eventId = UUID.randomUUID();
         Node returned = createDerivedNode(pool,"RETURN_SOURCE",null,null,command.movementId(),root.id(),qty,ZERO,ZERO,cost,
                 pending(remaining),false,true,eventId,List.of(fraction(remaining,remaining.from(),through,remaining.qty())));
@@ -422,8 +422,30 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         Event prior = replay("COST_ADJUST", c, request); if (prior != null) return adjustmentReplay(prior);
         Node source = node(command.sourceCostNodeId(), true);
         requireAdjustable(source);
+        requireNewSourceAdjustmentProof(source);
+        if(exactRevaluationProofInstalled&&!source.sourceFinal()&&command.markFinal())
+            throw invalid("未知原成本不能由一笔追加费用自动核定；请明确核定本来源实际总成本，本次未确认");
         return adjustment("COST_ADJUST", c, request, source, delta,
                 command.markFinal() || source.sourceFinal(), null, source.adjustmentHeadId());
+    }
+
+    @Override @Transactional(propagation=Propagation.MANDATORY)
+    public AdjustmentValue confirmSourceTotal(SourceTotalConfirmation command){
+        transaction();EventContext c=context(command.context());required(command.sourceCostNodeId(),"来源成本节点UUID");
+        requireHeld(node(command.sourceCostNodeId(),false).key());
+        BigDecimal total=sourceAmount(command.confirmedTotalLocal(),"核定取得来源本币总成本",false);
+        Request request=request("COST_ADJUST",c,args("sourceNode",command.sourceCostNodeId(),"inputKind","TOTAL_CONFIRMATION",
+            "confirmedTotalLocal",sourceText(total)));
+        Event prior=replay("COST_ADJUST",c,request);if(prior!=null)return adjustmentReplay(prior);
+        Node source=node(command.sourceCostNodeId(),true);requireAdjustable(source);
+        if(!exactRevaluationProofInstalled)throw conflict("来源总成本核定的精确分摊证明尚未完成，请保留原单及本次输入；本次未确认");
+        BigDecimal knownPart=db.queryForObject("SELECT source_amount_exact FROM stock_value_nodes WHERE id=:id",args("id",source.id()),BigDecimal.class);
+        if(knownPart==null)throw conflict("此历史来源尚未保留可核对的原额，请先完成受控来源核定；本次未确认");
+        // knownPart is the recorded known component, not an assertion that the
+        // previously unknown remainder was zero. The command explicitly verifies
+        // the new total, and its mode/total are retained in the original request.
+        BigDecimal recordedOwnBook=source.value().subtract(assignedProductionValue(source));
+        return adjustment("COST_ADJUST",c,request,source,total.subtract(knownPart),true,null,source.adjustmentHeadId(),total.subtract(recordedOwnBook));
     }
 
     @Override @Transactional(propagation = Propagation.MANDATORY)
@@ -441,18 +463,32 @@ public class InventoryValuationService extends InventoryValueLedger implements I
                 args("id", original.id()), Boolean.class))) throw conflict("原成本调整已反向");
         BigDecimal originalActual=authority.installed?db.queryForObject("SELECT source_delta_exact FROM stock_value_events WHERE id=:id",args("id",original.id()),BigDecimal.class):original.knownValue();
         if(originalActual==null)throw conflict("原调整未保留未裁剪金额依据，不能猜测精确反向额");
-        return adjustment("COST_ADJUST_REVERSE", c, request, source, originalActual.negate(),
+        if(exactRevaluationProofInstalled)
+            return adjustment("COST_ADJUST_REVERSE",c,request,source,originalActual.negate(),
+                original.beforeFinal(),original.id(),original.previousAdjustmentId(),original.knownValue().negate());
+        try(var precision=useFrozenPrecision(exactPrecisionInstalled?db.queryForMap("SELECT * FROM stock_value_events WHERE id=:id",args("id",original.id())):Map.of())) {
+            return adjustment("COST_ADJUST_REVERSE", c, request, source, originalActual.negate(),
                 original.beforeFinal(), original.id(), original.previousAdjustmentId());
+        }
     }
 
     private AdjustmentValue adjustment(String operation, EventContext c, Request request, Node source,
                                        BigDecimal delta, boolean finalValue, UUID reverses, UUID newPreviousHead) {
+        return adjustment(operation,c,request,source,delta,finalValue,reverses,newPreviousHead,null);
+    }
+    private AdjustmentValue adjustment(String operation,EventContext c,Request request,Node source,
+                                       BigDecimal delta,boolean finalValue,UUID reverses,UUID newPreviousHead,BigDecimal bookDeltaOverride){
         BigDecimal actualDelta=delta;ValueAuthorityStore.Change exactChange=authority.sourceChange(source.id(),actualDelta);
-        if(exactChange!=null)delta=projection(exactChange.sourceAfter()).subtract(projection(exactChange.sourceBefore()));
+        if(bookDeltaOverride!=null)delta=bookDeltaOverride;
+        else if(exactChange!=null)delta=sourceProjection(source,exactChange.sourceAfter()).subtract(sourceProjection(source,exactChange.sourceBefore()));
         BigDecimal after = projectedAmount(source.value().add(delta), "来源累计投影", false);
         if(after.compareTo(assignedProductionValue(source))<0)throw conflict("对价冲减超过原资金来源金额，不能扣走已经承接的自有材料成本");
         finalValue=finalValue&&productionScopeAllowsFinal(source);
         UUID eventId = UUID.randomUUID(); int pending = finalValue ? 0 : 1;
+        if(exactRevaluationProofInstalled&&!Boolean.TRUE.equals(db.queryForObject("""
+                SELECT fn_inventory_value_preflight_revaluation(:source,:value,fn_business_precision_snapshot(),2,:restores,:event)
+                """,args("source",source.id(),"value",after,"restores",reverses,"event",eventId),Boolean.class)))
+            throw conflict("本次累计成本目标尚未完成完整核对，请保留原单；本次未确认");
         Node updated = revise(source, after, pending, finalValue, eventId, null,exactChange);
         db.update("UPDATE stock_value_nodes SET adjustment_head_id=:head WHERE id=:id", args("id", source.id(),
                 "head", reverses == null ? eventId : newPreviousHead));
@@ -460,12 +496,12 @@ public class InventoryValuationService extends InventoryValueLedger implements I
                 INSERT INTO stock_value_jobs(event_id,source_node_id,pending_tasks,clearing_remaining_local,status)
                 VALUES (:event,:source,0,:delta,'PENDING')
                 """, args("event", eventId, "source", source.id(), "delta", delta));
-        int count = schedule(updated, eventId);
-        if (count == 0) throw conflict("来源成本缺少已冻结的后继分配关系");
-        db.update("UPDATE stock_value_jobs SET pending_tasks=:count WHERE event_id=:event", args("event", eventId, "count", count));
         insertEvent(eventId, operation, c, request, source.poolId(), null, null, null,
                 delta, source.id(), null, State.PENDING, source.id(), updated.revision(),
                 source.adjustmentHeadId(), reverses, source.sourceFinal(), finalValue,actualDelta);
+        int count = schedule(updated, eventId);
+        if (count == 0) throw conflict("来源成本缺少已冻结的后继分配关系");
+        db.update("UPDATE stock_value_jobs SET pending_tasks=:count WHERE event_id=:event", args("event", eventId, "count", count));
         posting(eventId, null, source.id(), "SOURCE", c.sourceEventId(), delta.negate());
         posting(eventId, null, null, "CLEARING", eventId, delta);
         return new AdjustmentValue(eventId, source.id(), count, false);
@@ -478,6 +514,12 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         requireHeld(input.key());requireHeld(source.key());source=node(source.id(),true);
         if(!Set.of("SOURCE","RETURN_SOURCE").contains(source.kind())||source.movementId()==null||!"COST_WIP".equals(input.ownerKind())
                 ||!c.sourceDocId().equals(input.ownerId()))throw conflict("生产成本分配必须来自本执行段的真实耗用并指向确切产出来源");
+        if(exactPrecisionInstalled&&!exactRevaluationProofInstalled&&delta.signum()!=0){
+            Integer taskVersion=db.queryForObject("SELECT value_precision_version FROM stock_value_production_cost_tasks WHERE id=:id",args("id",eventId),Integer.class);
+            // A pre-transition approved task is an existing frozen fact. A new
+            // allocation must never fall back to the old node's four-place cache.
+            if(!Objects.equals(taskVersion,1))requireNewSourceAdjustmentProof(source);
+        }
         Request request=request("COST_ALLOCATE",c,args("input",input.id(),"output",source.id(),"delta",delta.toPlainString(),"complete",finalValue));
         int pending=source.pending()+(finalValue?0:1)-(source.sourceFinal()?0:1);
         if(pending<0)throw conflict("成品来源的待核组成不一致");
@@ -485,10 +527,10 @@ public class InventoryValuationService extends InventoryValueLedger implements I
                 authority.productionChange(source.id(),eventId,previousTaskId));
         db.update("INSERT INTO stock_value_jobs(event_id,source_node_id,pending_tasks,clearing_remaining_local,status) VALUES (:event,:source,0,:delta,'PENDING')",
                 args("event",eventId,"source",source.id(),"delta",delta));
-        int count=schedule(updated,eventId);if(count==0)throw conflict("成品来源尚未建立确切的库存后继");
-        db.update("UPDATE stock_value_jobs SET pending_tasks=:count WHERE event_id=:event",args("event",eventId,"count",count));
         insertEvent(eventId,"COST_ALLOCATE",c,request,source.poolId(),null,null,null,delta,source.id(),null,State.PENDING,
                 source.id(),updated.revision(),null,null,source.sourceFinal(),finalValue);
+        int count=schedule(updated,eventId);if(count==0)throw conflict("成品来源尚未建立确切的库存后继");
+        db.update("UPDATE stock_value_jobs SET pending_tasks=:count WHERE event_id=:event",args("event",eventId,"count",count));
         posting(eventId,null,input.id(),"COST_WIP",input.ownerId(),delta.negate());
         posting(eventId,null,null,"CLEARING",eventId,delta);
     }
@@ -519,6 +561,9 @@ public class InventoryValuationService extends InventoryValueLedger implements I
         if (rows.size()!=1) throw conflict("成本传播任务不存在"); Map<String,Object> task=rows.getFirst();
         UUID eventId=(UUID)task.get("event_id");
         if ("APPLIED".equals(task.get("status"))) return new PropagationResult(false,true,false,jobComplete(eventId));
+        if(exactRevaluationProofInstalled&&!Boolean.TRUE.equals(db.queryForObject("SELECT fn_inventory_value_can_propagate(:task)",args("task",taskId),Boolean.class)))
+            return new PropagationResult(false,false,true,false);
+        try(var precision=useFrozenPrecision(task)) {
         Edge edge=edge((UUID)task.get("edge_id"), true);
         long revision=((Number)task.get("parent_revision")).longValue();
         if (revision!=edge.lastRevision()+1) {
@@ -565,6 +610,7 @@ public class InventoryValuationService extends InventoryValueLedger implements I
             db.update("UPDATE stock_value_jobs SET status='APPLIED' WHERE event_id=:event",args("event",eventId));
         }
         return new PropagationResult(true,false,false,left==0);
+        }
     }
 
     @Override @Transactional(readOnly = true)

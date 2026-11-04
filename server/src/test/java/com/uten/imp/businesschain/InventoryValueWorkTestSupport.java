@@ -43,9 +43,16 @@ final class InventoryValueWorkTestSupport {
     }
 
     static void drain(InventoryValueWorkService worker, JdbcTemplate jdbc, List<UUID> goodsIds) {
+        drain(worker,jdbc,goodsIds,DRAIN_DEADLINE);
+    }
+
+    /** Large actual batches may opt into a bounded deadline; normal fixtures keep 45 seconds. */
+    static void drain(InventoryValueWorkService worker, JdbcTemplate jdbc, List<UUID> goodsIds, Duration timeout) {
         if (goodsIds.isEmpty()) throw new IllegalArgumentException("A concrete fixture goods scope is required");
+        if(timeout==null)timeout=DRAIN_DEADLINE;
+        if(timeout.isNegative()||timeout.isZero()||timeout.compareTo(Duration.ofMinutes(5))>0)throw new IllegalArgumentException("A positive bounded fixture deadline is required");
         var database = new NamedParameterJdbcTemplate(jdbc);
-        long deadline = System.nanoTime() + DRAIN_DEADLINE.toNanos();
+        long deadline = System.nanoTime() + timeout.toNanos();
         do {
             worker.runBatch();
             // Zero processed tasks only describes this invocation: a different
@@ -60,7 +67,7 @@ final class InventoryValueWorkTestSupport {
             }
         } while (System.nanoTime() < deadline);
         throw new AssertionError("Inventory-value work remained pending for fixture goods after "
-                + DRAIN_DEADLINE.toSeconds() + " seconds: " + goodsIds);
+                + timeout.toSeconds() + " seconds: " + goodsIds);
     }
 
     private static boolean pendingForGoods(NamedParameterJdbcTemplate database, List<UUID> goodsIds) {

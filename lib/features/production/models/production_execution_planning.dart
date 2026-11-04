@@ -1,3 +1,5 @@
+import '../../../core/formatters/exact_number_text.dart';
+
 /// Production planning preview and confirmation contracts.
 ///
 /// These models intentionally live outside the repository so the execution
@@ -57,7 +59,7 @@ String? productionZeroMaterialReasonText(
 }
 
 String _formatProductionDecimal(double value, int scale) {
-  final fixed = value.toStringAsFixed(scale);
+  final fixed = value.toExactString(minimumFractionDigits: scale);
   final withoutTrailingZeros = fixed.replaceFirst(RegExp(r'0+$'), '');
   return withoutTrailingZeros.endsWith('.')
       ? withoutTrailingZeros.substring(0, withoutTrailingZeros.length - 1)

@@ -1,4 +1,5 @@
 import 'package:uten_imp/components/feedback/uten_date_range_picker.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 // 报销单发票登记区（V608）：结构化发票要素表格 + 登记/编辑弹窗（图片识别回填 +
 // 查重即时提示）。DRAFT/REJECTED 且本人可维护（编辑/删除走行菜单）；审批/打款
 // 侧与只读访客仅浏览。防重复报销（财会〔2020〕6 号）由「代码+号码」库级唯一
@@ -30,7 +31,7 @@ import '../../../components/inputs/uten_drop_target.dart';
 import '../../../components/inputs/uten_input_decoration.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/l10n/gen/app_localizations.dart';
-import '../../../core/utils/rmb_amount.dart';
+import '../../../shared/formatters/financial_amount_validation.dart';
 import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../shared/attachments/attachment.dart';
@@ -50,6 +51,7 @@ class ExpenseInvoiceSection extends ConsumerWidget {
     required this.claim,
     required this.editable,
     this.canVerify = false,
+    this.onVerify,
     this.stickyHeaderPinned,
   });
 
@@ -58,6 +60,21 @@ class ExpenseInvoiceSection extends ConsumerWidget {
   /// DRAFT/REJECTED 且本人 → 可登记/编辑/删除。
   final bool editable;
   final bool canVerify;
+  final Future<void> Function(ExpenseClaimInvoice invoice)? onVerify;
+  Future<void> _openVerification(
+    BuildContext context,
+    ExpenseClaimInvoice invoice,
+  ) async {
+    if (onVerify != null) {
+      await onVerify!(invoice);
+      return;
+    }
+    await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _InvoiceVerifyDialog(claim: claim, invoice: invoice),
+    );
+  }
 
   /// 发票要素表的表头吸顶信号（详情页滚动流内表头随页滚走会与数据脱节，
   /// 2026-09-22 全站表格滚动口径）。可空；不传则表头随页滚动（旧行为）。
@@ -68,10 +85,11 @@ class ExpenseInvoiceSection extends ConsumerWidget {
     final theme = Theme.of(context);
     final invoices = claim.invoices;
     final revision = ExpenseSubmissionRevision.fromClaim(claim);
-    final total = invoices.fold<double>(
-      0,
-      (sum, invoice) => sum + invoice.totalAmount,
-    );
+    final total =
+        financeExactSumTexts(
+          invoices.map((invoice) => invoice.totalAmountText),
+        ) ??
+        '0';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -101,7 +119,7 @@ class ExpenseInvoiceSection extends ConsumerWidget {
             if (invoices.isNotEmpty) ...[
               const SizedBox(width: UtenSpacing.s8),
               Text(
-                '价税合计 ${total.toStringAsFixed(2)} 元',
+                '价税合计 ${financeExactMoneyDisplay(total)} 元',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -157,12 +175,7 @@ class ExpenseInvoiceSection extends ConsumerWidget {
             embedded: true,
             stickyHeaderPinned: stickyHeaderPinned,
             onRowTap: canVerify
-                ? (invoice) => showDialog<bool>(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (_) =>
-                        _InvoiceVerifyDialog(claim: claim, invoice: invoice),
-                  )
+                ? (invoice) => _openVerification(context, invoice)
                 : null,
             rowMenuBuilder: editable || canVerify
                 ? (invoice) => _rowMenu(context, ref, invoice)
@@ -181,12 +194,7 @@ class ExpenseInvoiceSection extends ConsumerWidget {
                   icon: invoice.checkState == ExpenseInvoiceCheckState.verified
                       ? Icons.fact_check
                       : Icons.fact_check_outlined,
-                  onPressed: () => showDialog<bool>(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (_) =>
-                        _InvoiceVerifyDialog(claim: claim, invoice: invoice),
-                  ),
+                  onPressed: () => _openVerification(context, invoice),
                   child: Text(
                     '${AppLocalizations.of(context).expenseFlowVerify} #${invoice.lineNo}'
                     '${revision == null ? '' : ' · ${invoice.checkState.label}'}',
@@ -224,12 +232,7 @@ class ExpenseInvoiceSection extends ConsumerWidget {
         UtenMenuItem(
           label: AppLocalizations.of(context).expenseFlowVerify,
           icon: Icons.fact_check_outlined,
-          onTap: () => showDialog<bool>(
-            context: context,
-            barrierDismissible: false,
-            builder: (_) =>
-                _InvoiceVerifyDialog(claim: claim, invoice: invoice),
-          ),
+          onTap: () => _openVerification(context, invoice),
         ),
       if (editable)
         UtenMenuItem(
@@ -312,7 +315,7 @@ final List<MasterColumnDef<ExpenseClaimInvoice>> _columns = [
     width: 90,
     filterFromRows: true,
     facetSearchEnabled: true,
-    value: (invoice) => invoice.checkState.label,
+    value: (invoice) => invoice.checkStateText,
     // 人工查验整格底色（ADR-169 逐页显式映射）：勾稽不符=橙（票面勾稽不符
     // 待审批人复核——风险中间态）/ 已人工查验=绿（查验通过，审批前置条件已
     // 满足）/ 未查验·金额勾稽相符=黄（等人工查验，无异常；金额勾稽相符只是
@@ -385,27 +388,34 @@ final List<MasterColumnDef<ExpenseClaimInvoice>> _columns = [
   ),
   MasterColumnDef(
     key: 'amountExclTax',
+    exactValueOf: (invoice) => invoice.amountExclTaxText,
     label: '金额',
     width: 100,
     type: 'money',
     sortable: true,
-    value: (invoice) => invoice.amountExclTax?.toStringAsFixed(2),
+    value: (invoice) => invoice.amountExclTaxText == null
+        ? null
+        : financeExactMoneyDisplay(invoice.amountExclTaxText),
   ),
   MasterColumnDef(
     key: 'taxAmount',
+    exactValueOf: (invoice) => invoice.taxAmountText,
     label: '税额',
     width: 90,
     type: 'money',
     sortable: true,
-    value: (invoice) => invoice.taxAmount?.toStringAsFixed(2),
+    value: (invoice) => invoice.taxAmountText == null
+        ? null
+        : financeExactMoneyDisplay(invoice.taxAmountText),
   ),
   MasterColumnDef(
     key: 'totalAmount',
+    exactValueOf: (invoice) => invoice.totalAmountText,
     label: '价税合计',
     width: 110,
     type: 'money',
     sortable: true,
-    value: (invoice) => invoice.totalAmount.toStringAsFixed(2),
+    value: (invoice) => financeExactMoneyDisplay(invoice.totalAmountText),
   ),
   MasterColumnDef(
     key: 'verificationRemark',
@@ -414,6 +424,9 @@ final List<MasterColumnDef<ExpenseClaimInvoice>> _columns = [
     value: (invoice) => [
       invoice.verifiedByName,
       invoice.verificationRemark,
+      if (invoice.reconciliationDifferenceText case final difference?
+          when financeAmountUnits(difference) != BigInt.zero)
+        '票面原值差额$difference元（既有核验容差0.01元）',
     ].whereType<String>().join(' · '),
   ),
   MasterColumnDef(
@@ -492,9 +505,15 @@ class _ExpenseInvoiceFormDialogState
       _sellerTaxController.text = existing.sellerTaxNo ?? '';
       _buyerController.text = existing.buyerName ?? '';
       _buyerTaxController.text = existing.buyerTaxNo ?? '';
-      _exclController.text = existing.amountExclTax?.toStringAsFixed(2) ?? '';
-      _taxController.text = existing.taxAmount?.toStringAsFixed(2) ?? '';
-      _totalController.text = existing.totalAmount.toStringAsFixed(2);
+      _exclController.text = existing.amountExclTaxText == null
+          ? ''
+          : financeExactMoneyDisplay(existing.amountExclTaxText);
+      _taxController.text = existing.taxAmountText == null
+          ? ''
+          : financeExactMoneyDisplay(existing.taxAmountText);
+      _totalController.text = financeExactMoneyDisplay(
+        existing.totalAmountText,
+      );
       _remarkController.text = existing.remark ?? '';
       _issueDate = existing.issueDate;
       _attachmentId = existing.attachmentId;
@@ -666,13 +685,19 @@ class _ExpenseInvoiceFormDialogState
           _buyerTaxController.text = recognized.buyerTaxNo!;
         }
         if (recognized.amountExclTax != null) {
-          _exclController.text = recognized.amountExclTax!.toStringAsFixed(2);
+          _exclController.text = financeExactMoneyDisplay(
+            recognized.amountExclTaxText,
+          );
         }
         if (recognized.taxAmount != null) {
-          _taxController.text = recognized.taxAmount!.toStringAsFixed(2);
+          _taxController.text = financeExactMoneyDisplay(
+            recognized.taxAmountText,
+          );
         }
         if (recognized.totalAmount != null) {
-          _totalController.text = recognized.totalAmount!.toStringAsFixed(2);
+          _totalController.text = financeExactMoneyDisplay(
+            recognized.totalAmountText,
+          );
         }
       });
       if (mounted) {
@@ -718,14 +743,22 @@ class _ExpenseInvoiceFormDialogState
     }
     if (_issueDate == null) return l10n.expenseFlowInvoiceDateRequired;
     if (_attachmentId == null) return l10n.expenseFlowOriginalRequired;
-    if (parseExpenseAmountCents(_totalController.text) == null ||
-        (_exclController.text.trim().isNotEmpty &&
-            parseExpenseAmountCents(_exclController.text, allowZero: true) ==
-                null) ||
-        (_taxController.text.trim().isNotEmpty &&
-            parseExpenseAmountCents(_taxController.text, allowZero: true) ==
-                null)) {
-      return l10n.expenseFlowInvoiceAmountInvalid;
+    final totalIssue = validateFinanceAmount(
+      _totalController.text,
+      label: '价税合计',
+    );
+    if (totalIssue != null) return totalIssue;
+    for (final field in [
+      (controller: _exclController, label: '不含税金额'),
+      (controller: _taxController, label: '税额'),
+    ]) {
+      if (field.controller.text.trim().isNotEmpty) {
+        final issue = validateNonNegativeFinanceAmount(
+          field.controller.text,
+          label: field.label,
+        );
+        if (issue != null) return issue;
+      }
     }
     if (_ocrUsed && !_ocrConfirmed) return l10n.expenseFlowOcrConfirmRequired;
     return _duplicateWarning;
@@ -764,8 +797,11 @@ class _ExpenseInvoiceFormDialogState
         buyerName: _blankToNull(_buyerController.text),
         buyerTaxNo: _blankToNull(_buyerTaxController.text),
         amountExclTax: excl,
+        amountExclTaxExact: financeExactDecimal(_exclController.text),
         taxAmount: tax,
+        taxAmountExact: financeExactDecimal(_taxController.text),
         totalAmount: total,
+        totalAmountExact: financeExactDecimal(_totalController.text),
         attachmentId: _attachmentId,
         remark: _blankToNull(_remarkController.text),
       );
@@ -1308,7 +1344,7 @@ class _InvoiceVerifyDialogState extends ConsumerState<_InvoiceVerifyDialog> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    '${widget.invoice.invoiceNo} · ${widget.invoice.totalAmount.toStringAsFixed(2)} 元',
+                    '${widget.invoice.invoiceNo} · ${financeExactMoneyDisplay(widget.invoice.totalAmountText)} 元',
                   ),
                   const SizedBox(height: UtenSpacing.s12),
                   if (_unknown || _readBackState != null)

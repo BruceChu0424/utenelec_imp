@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -655,7 +656,8 @@ class _WeightCoverage extends StatelessWidget {
               minHeight: UtenSpacing.s12,
               borderRadius: UtenRadius.pillAll,
               semanticsLabel: '重量数据覆盖率',
-              semanticsValue: '${(coverage * 100).toStringAsFixed(1)}%',
+              semanticsValue:
+                  '${(coverage * 100).toExactString(minimumFractionDigits: 1)}%',
             ),
             const SizedBox(height: UtenSpacing.s16),
           ],

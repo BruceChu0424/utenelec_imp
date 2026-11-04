@@ -280,14 +280,16 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       EditableGridColumn(
         key: 'remaining',
         exactValueOf: (row) =>
-            (row.draft?.slice.remainingBaseQty ?? row.line.pendingStockBaseQty)
-                .toString(),
+            row.draft?.slice.remainingBaseQtyText ??
+            row.line.pendingStockBaseQtyText,
         label: '合格待入量',
         width: 145,
         numeric: true,
         cellBuilder: (context, row) => Text(
           _qty(
-            row.draft?.slice.remainingBaseQty ?? row.line.pendingStockBaseQty,
+            row.draft?.slice.remainingBaseQtyText ??
+                row.line.pendingStockBaseQtyText ??
+                '待核对',
             row.unitName,
           ),
         ),
@@ -306,7 +308,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       if (editable)
         EditableGridColumn(
           key: 'releasedWeight',
-          exactValueOf: (row) => row.draft?.previewWeightKg?.toString(),
+          exactValueOf: (row) => row.draft?.previewWeightText,
           exactListenableOf: (row) => row.draft?.quantity,
           label: '放行重量',
           width: 120,
@@ -339,34 +341,46 @@ class WarehouseQualityMergedTable extends StatelessWidget {
       ),
       EditableGridColumn(
         key: 'received',
-        exactValueOf: (row) => row.line.receivedBaseQty.toString(),
+        exactValueOf: (row) => row.line.receivedBaseQtyText,
         label: '收货总量',
         width: 112,
         numeric: true,
-        cellBuilder: (context, row) =>
-            Text(_qty(row.line.receivedBaseQty, row.unitName)),
+        cellBuilder: (context, row) => Text(
+          _qty(
+            row.line.receivedBaseQtyText ?? row.line.receivedBaseQty,
+            row.unitName,
+          ),
+        ),
       ),
       EditableGridColumn(
         key: 'passed',
-        exactValueOf: (row) => row.line.passedBaseQty.toString(),
+        exactValueOf: (row) => row.line.passedBaseQtyText,
         label: '合格总量',
         width: 112,
         numeric: true,
-        cellBuilder: (context, row) =>
-            Text(_qty(row.line.passedBaseQty, row.unitName)),
+        cellBuilder: (context, row) => Text(
+          _qty(
+            row.line.passedBaseQtyText ?? row.line.passedBaseQty,
+            row.unitName,
+          ),
+        ),
       ),
       EditableGridColumn(
         key: 'failed',
-        exactValueOf: (row) => row.line.failedBaseQty.toString(),
+        exactValueOf: (row) => row.line.failedBaseQtyText,
         label: '不合格总量',
         width: 116,
         numeric: true,
         cellBuilder: (context, row) {
           final failed = row.line.failedBaseQty;
-          if (failed <= 0) return Text(_qty(failed, row.unitName));
+          if (failed <= 0) {
+            return Text(
+              _qty(row.line.failedBaseQtyText ?? failed, row.unitName),
+            );
+          }
           // 不合格数量 > 0：数字标红加粗（整行另有浅红底色，颜色不是唯一表达）。
           return Text(
-            _qty(failed, row.unitName),
+            _qty(row.line.failedBaseQtyText ?? failed, row.unitName),
             style: Theme.of(context).textTheme.bodyMedium!.copyWith(
               color: UtenColors.error,
               fontWeight: FontWeight.w700,
@@ -565,7 +579,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
           controller: draft.quantity,
           enabled: draft.selected && !saving,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [LengthLimitingTextInputFormatter(24)],
+          inputFormatters: [LengthLimitingTextInputFormatter(4096)],
           errorBuilder: utenTextFieldErrorBuilder,
           decoration: UtenInputDecoration(
             InputDecoration(
@@ -591,9 +605,11 @@ class WarehouseQualityMergedTable extends StatelessWidget {
   String? _releasedWeightText(WarehouseQualityMergedRow row) {
     final draft = row.draft;
     if (draft == null) return null;
-    if (draft.slice.releasedWeight == null) return weightUnknownText;
-    final kg = draft.previewWeightKg;
-    return kg == null ? '—' : formatWeight(kg, display: weightDisplay);
+    if (draft.slice.releasedWeightText == null) return weightUnknownText;
+    final kg = draft.previewWeightText;
+    return kg == null
+        ? draft.previewWeightPendingText
+        : formatWeight(kg, display: weightDisplay);
   }
 
   /// 放行重量(只读)：随本次实收实时重算。
@@ -607,7 +623,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
     return ValueListenableBuilder<TextEditingValue>(
       valueListenable: draft.quantity,
       builder: (context, _, _) {
-        final released = draft.slice.releasedWeight;
+        final released = draft.slice.releasedWeightText;
         return Tooltip(
           message: released == null
               ? '到货时没称重；入库后库存重量由库存账推算(显示「≈」)'
@@ -618,7 +634,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
             key: ValueKey(
               'quality-slice-released-weight-${draft.slice.passEventId}',
             ),
-            style: draft.previewWeightKg == null
+            style: draft.previewWeightText == null
                 ? theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   )
@@ -644,7 +660,7 @@ class WarehouseQualityMergedTable extends StatelessWidget {
     return ValueListenableBuilder<TextEditingValue>(
       valueListenable: draft.quantity,
       builder: (context, _, _) {
-        final requested = draft.previewQuantity;
+        final requested = draft.previewQuantityText ?? '待核对';
         final section = WarehouseInboundAllocationSection(
           id: draft.slice.passEventId,
           goodsLabel: draft.slice.goodsLabel,
@@ -718,5 +734,5 @@ Color? _verdictRowColor(
 
 /// 数量 + 单位 (2026-10-10 内联口径)：品质数量最多 4 位小数，走
 /// [formatQtyWithUnit] 拼单位并放宽到 4 位，不截断原有精度。
-String _qty(double value, String? unit) =>
-    formatQtyWithUnit(value, unit, maxDecimals: 4);
+String _qty(Object value, String? unit) =>
+    formatExactQtyWithUnit(value.toString(), unit);

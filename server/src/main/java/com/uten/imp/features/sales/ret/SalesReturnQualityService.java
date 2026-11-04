@@ -19,7 +19,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -63,7 +62,8 @@ public class SalesReturnQualityService {
         UUID actor = currentUser.requireEmployeeId();
         for (SalesReturnItem item : items) {
             BigDecimal rate = positiveRate(item.getUnitRate());
-            BigDecimal receivedBaseQty = item.getQty().multiply(rate);
+            BigDecimal receivedBaseQty = com.uten.imp.common.util.FinancialExactAmount.quantity((BigDecimal)
+                    em.createNativeQuery("SELECT fn_sales_return_adopt_base(:id)").setParameter("id",item.getId()).getSingleResult(),"原出货实收退货基本量");
             UUID qualityItemId = UUID.randomUUID();
             em.createNativeQuery("""
                     INSERT INTO sales_return_quality_items (
@@ -638,20 +638,7 @@ public class SalesReturnQualityService {
                     ErrorCode.VALIDATION_FAILED,
                     "退货质检处置数量必须大于 0");
         }
-        final BigDecimal normalized;
-        try {
-            normalized = quantity.setScale(4, RoundingMode.UNNECESSARY);
-        } catch (ArithmeticException ex) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "退货质检处置数量最多保留 4 位小数");
-        }
-        if (normalized.precision() - normalized.scale() > 14) {
-            throw new ApiException(
-                    ErrorCode.VALIDATION_FAILED,
-                    "退货质检处置数量整数位最多 14 位");
-        }
-        return normalized;
+        return MoneyPolicy.canonical(com.uten.imp.common.util.FinancialExactAmount.quantity(quantity,"退货质检处置数量"));
     }
 
     /**

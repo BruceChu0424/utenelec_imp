@@ -141,7 +141,7 @@ showSubcontractShortDeliveryAcceptDialog(
                     _CaseSummary(row: row),
                     const SizedBox(height: UtenSpacing.s12),
                     Text(
-                      '结案后剩余 ${formatSubcontractQty(row.shortfallQty, unit)} 不再等待到货，系统会自动做三件事：',
+                      '结案后剩余 ${formatSubcontractQty(row.shortfallQtyValue, unit)} 不再等待到货，系统会自动做三件事：',
                       style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -214,7 +214,7 @@ class _CaseSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final unit = row.unitName;
-    final floor = row.floorQty;
+    final floor = row.floorQtyValue;
     return Container(
       padding: const EdgeInsets.all(UtenSpacing.s12),
       decoration: BoxDecoration(
@@ -232,14 +232,14 @@ class _CaseSummary extends StatelessWidget {
           ),
           const SizedBox(height: UtenSpacing.s4),
           Text(
-            '订 ${formatSubcontractQty(row.orderedQty, unit)}'
-            '，允许损耗 ${formatSubcontractPct(row.allowedLossPct)}'
+            '订 ${formatSubcontractQty(row.orderedQtyValue, unit)}'
+            '，允许损耗 ${formatSubcontractPct(row.allowedLossPctValue)}'
             '${floor == null ? '' : '(最少应到 ${formatSubcontractQty(floor, unit)})'}',
           ),
           Text(
-            '累计回厂 ${formatSubcontractQty(row.deliveredQty, unit)}'
-            '，少 ${formatSubcontractQty(row.shortfallQty, unit)}'
-            '(${formatSubcontractPct(row.shortfallPct)})'
+            '累计回厂 ${formatSubcontractQty(row.deliveredQtyValue, unit)}'
+            '，少 ${formatSubcontractQty(row.shortfallQtyValue, unit)}'
+            '(${formatSubcontractPct(row.shortfallPctValue)})'
             '${row.isSevere ? '，属严重短交' : ''}',
             style: row.isBelowFloor
                 ? TextStyle(

@@ -42,7 +42,7 @@ class ApiMutationReloadSafety {
     try {
       return await command();
     } catch (error) {
-      if (retainUncertainty && !_definiteRejection(error)) _uncertain = true;
+      if (retainUncertainty && !isDefiniteRejection(error)) _uncertain = true;
       rethrow;
     } finally {
       _pending--;
@@ -78,7 +78,22 @@ class ApiMutationReloadSafety {
     });
   }
 
-  static bool _definiteRejection(Object error) {
+  static bool isDefiniteRejection(Object error) {
+    // Precision can be reported after an earlier business transaction committed.
+    // HTTP 422 alone is not proof that it is safe to edit/replay the command.
+    if (error is ApiException && error.code == 'PRECISION_CHOICE_REQUIRED') {
+      return error.httpStatus == 422 && error.details?['notWritten'] == true;
+    }
+    if (error is DioException) {
+      final body = error.response?.data;
+      if (body is Map<Object?, Object?> &&
+          body['code'] == 'PRECISION_CHOICE_REQUIRED') {
+        final details = body['details'];
+        return error.response?.statusCode == 422 &&
+            details is Map<Object?, Object?> &&
+            details['notWritten'] == true;
+      }
+    }
     if (error is ApiException &&
         const {
           'READ_SCOPE_CHANGED',

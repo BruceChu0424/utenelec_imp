@@ -605,7 +605,14 @@ public class SubcontractOrderService implements ProcurementOrderApprovalPort {
             BigDecimal subcontractPrice,
             com.uten.imp.features.purchase.common.ProcurementDefaultPriceContext priceContext,
             BigDecimal allowedLossPct,
-            String allowedLossPctSource) {}
+            String allowedLossPctSource) {
+        @com.fasterxml.jackson.annotation.JsonProperty("exchangeRateExact") public String exchangeRateExact() { return com.uten.imp.common.util.DecimalText.of(exchangeRate); }
+        @com.fasterxml.jackson.annotation.JsonProperty("taxRateExact") public String taxRateExact() { return com.uten.imp.common.util.DecimalText.of(taxRate); }
+        @com.fasterxml.jackson.annotation.JsonProperty("subcontractPriceExact") public String subcontractPriceExact() { return com.uten.imp.common.util.DecimalText.of(subcontractPrice); }
+
+        @com.fasterxml.jackson.annotation.JsonProperty("allowedLossPctExact")
+        public String allowedLossPctExact() { return com.uten.imp.common.util.DecimalText.of(allowedLossPct); }
+    }
 
     @Transactional
     @PreAuthorize("hasAuthority('subcontract_order:edit')")

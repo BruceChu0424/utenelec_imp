@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../core/router/page_navigation_session.dart';
 import '../../../shared/documents/document_unapproval_action.dart';
 import '../../../shared/documents/document_unapproval.dart';
@@ -1518,7 +1519,8 @@ class _ProductionDailyReportDetailPageState
                 label: '实际重量',
                 width: 100,
                 type: 'number',
-                value: (it) => it.weight?.toStringAsFixed(4),
+                value: (it) =>
+                    it.weight?.toExactString(minimumFractionDigits: 4),
               ),
               MasterColumnDef(
                 // 2026-09-25 单号列统一：明细全量加载，就地排序+按值筛选。

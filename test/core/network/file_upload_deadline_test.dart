@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +11,7 @@ import 'package:uten_imp/core/network/network_policy.dart';
 
 class _Capture implements HttpClientAdapter {
   late RequestOptions request;
+  List<int>? wireBytes;
 
   @override
   Future<ResponseBody> fetch(
@@ -18,6 +20,9 @@ class _Capture implements HttpClientAdapter {
     Future<void>? cancelFuture,
   ) async {
     request = options;
+    if (requestStream != null) {
+      wireBytes = await requestStream.expand((bytes) => bytes).toList();
+    }
     return ResponseBody.fromString(
       '{}',
       200,
@@ -102,7 +107,37 @@ void main() {
       const Duration(seconds: 150),
     );
     expect(capture.request.extra[safeRequestRetryDisabledKey], isTrue);
+    expect((capture.request.data as FormData).files.map((entry) => entry.key), [
+      'file',
+    ]);
   });
+  test(
+    'typed JSON parts retain exact decimal strings and original file bytes',
+    () async {
+      await api.postMultipartFile(
+        '/finance/statement-documents/reviews/original/counterpart',
+        Uint8List.fromList([0, 255, 7]),
+        'original.pdf',
+        'application/pdf',
+        jsonParts: {
+          'input': {
+            'documentSha256': 'a' * 64,
+            'signatoryName': '实际签署人',
+            'sourceReference': '原回传确认依据',
+            'amount': '12345678901234567890.123456789012345678901234',
+          },
+        },
+      );
+      final form = capture.request.data as FormData;
+      expect(form.files.map((entry) => entry.key), ['input', 'file']);
+      final wire = latin1.decode(capture.wireBytes!);
+      expect(wire, contains('application/json'));
+      expect(wire, contains('12345678901234567890.123456789012345678901234'));
+      expect(wire, contains(String.fromCharCodes([0, 255, 7])));
+      expect(capture.request.extra[safeRequestRetryDisabledKey], isTrue);
+      expect(capture.request.extra[fileUploadOverallTimeoutKey], isNotNull);
+    },
+  );
 
   test(
     'disabled byte phase limits cannot create an unbounded explicit upload',

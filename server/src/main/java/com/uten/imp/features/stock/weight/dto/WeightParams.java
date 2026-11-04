@@ -66,4 +66,9 @@ public record WeightParams(
         String baseUnitDimension,
         boolean learningEnabled,
         double scaleResKg) {
+        public String getUnitWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(unitWeightKg);}
+        public String getTolerancePctExact(){return com.uten.imp.common.util.DecimalText.of(tolerancePct);}
+        public String getDefaultTareKgExact(){return com.uten.imp.common.util.DecimalText.of(defaultTareKg);}
+        public String getLastTareKgExact(){return com.uten.imp.common.util.DecimalText.of(lastTareKg);}
+        public String getMassFactorKgExact(){return com.uten.imp.common.util.DecimalText.of(massFactorKg);}
 }

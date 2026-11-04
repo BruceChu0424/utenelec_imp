@@ -105,7 +105,10 @@ void main() {
       // 内容派生的幂等键带上行重量片段。
       expect(page, contains(r"'${_weightKeyPart(line)}'"));
       // 精确换算行不带重量 (服务端按数量算 EXACT)。
-      expect(page, contains('_exactKg(line) == null ? line.weight.kg : null'));
+      expect(
+        page,
+        contains('_exactKg(line) == null ? line.weight.kgText : null'),
+      );
     }
     for (final page in [finished]) {
       expect(page, contains("'weight': ?_sentKg(row),"));

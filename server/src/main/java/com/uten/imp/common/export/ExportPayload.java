@@ -7,5 +7,10 @@ import java.util.Map;
  * 导出载荷：列（已映射为 {@link ExportColumn}，剥离报表专属 width）+ 全量行 + 行数。
  * 各报表 {@code export(...)} 循环分页累积后返回，供 {@link XlsxExportService} 生成 .xlsx。
  */
-public record ExportPayload(List<ExportColumn> columns, List<Map<String, Object>> rows, int total) {
+public record ExportPayload(List<ExportColumn> columns, List<Map<String, Object>> rows, int total,ExportTableLayout layout,Map<String,Object> documentMetadata) {
+    public ExportPayload(List<ExportColumn> columns,List<Map<String,Object>> rows,int total){this(columns,rows,total,null,Map.of());}
+    public ExportPayload(List<ExportColumn> columns,List<Map<String,Object>> rows,int total,ExportTableLayout layout){this(columns,rows,total,layout,Map.of());}
+    public ExportPayload {documentMetadata=documentMetadata==null?Map.of():java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(documentMetadata));}
+    public ExportPayload withLayout(ExportTableLayout value){return new ExportPayload(columns,rows,total,value,documentMetadata);}
+    public ExportPayload withDocumentMetadata(Map<String,Object> value){return new ExportPayload(columns,rows,total,layout,value);}
 }

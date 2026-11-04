@@ -71,9 +71,9 @@ void main() {
     expect(find.text('采购单价'), findsNothing);
     expect(find.textContaining('78.0'), findsNothing);
     await pump({Perm.goodsView, Perm.goodsCostView});
-    expect(find.textContaining('78.0 美元/箱'), findsOneWidget);
+    expect(find.textContaining('78 美元/箱'), findsOneWidget);
     expect(find.textContaining('供应商A'), findsOneWidget);
-    expect(find.text('6.0 (计价单位与币种待核对)'), findsOneWidget);
+    expect(find.text('6 (计价单位与币种待核对)'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

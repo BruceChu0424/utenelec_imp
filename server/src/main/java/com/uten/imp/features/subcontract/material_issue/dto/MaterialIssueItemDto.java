@@ -78,4 +78,18 @@ public class MaterialIssueItemDto extends com.uten.imp.common.finance.Procuremen
                 .subtract(returnedQty == null ? BigDecimal.ZERO : returnedQty)
                 .subtract(wastedQty == null ? BigDecimal.ZERO : wastedQty);
     }
+    public String getWeightExact(){return com.uten.imp.common.util.DecimalText.of(weight);}
+    public String getBoxQtyExact(){return com.uten.imp.common.util.DecimalText.of(boxQty);}
+    public String getFrozenUnitQtyExact(){return com.uten.imp.common.util.DecimalText.of(frozenUnitQty);}
+    public String getAtSupplierQtyExact(){return com.uten.imp.common.util.DecimalText.of(atSupplierQty);}
+    public String getConsumedQtyExact(){return com.uten.imp.common.util.DecimalText.of(consumedQty);}
+    public String getReturnedQtyExact(){return com.uten.imp.common.util.DecimalText.of(returnedQty);}
+    public String getWastedQtyExact(){return com.uten.imp.common.util.DecimalText.of(wastedQty);}
+    public String getSupplierEndingExact(){
+        if(atSupplierQty==null||consumedQty==null||returnedQty==null||wastedQty==null)return null;
+        return com.uten.imp.common.util.DecimalText.of(getSupplierEnding());
+    }
+    public String getPriceExact(){return com.uten.imp.common.util.DecimalText.of(price);}
+    public String getAmountOriginalExact(){return com.uten.imp.common.util.DecimalText.of(amountOriginal);}
+    public String getAmountLocalExact(){return com.uten.imp.common.util.DecimalText.of(amountLocal);}
 }

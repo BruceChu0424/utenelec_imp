@@ -58,4 +58,16 @@ class CorsPreflightPolicyTest {
         assertThat(response.getStatus()).isEqualTo(403);
         assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN)).isNull();
     }
+    @Test void explicitPrecisionChoicesCanPreflightOnlyFromAnApprovedOrigin()throws Exception{
+        var properties=new SecurityProperties();properties.setCorsAllowedOrigins(ORIGIN);
+        var source=new SecurityConfig().corsConfigurationSource(properties);
+        for(String origin:new String[]{ORIGIN,"https://untrusted.example.test"}){
+            var request=new MockHttpServletRequest("OPTIONS","/api/finance/payments");
+            request.addHeader(HttpHeaders.ORIGIN,origin);request.addHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD,"POST");
+            request.addHeader(HttpHeaders.ACCESS_CONTROL_REQUEST_HEADERS,"authorization,content-type,x-uten-precision-choices");
+            var response=new MockHttpServletResponse();new DefaultCorsProcessor().processRequest(source.getCorsConfiguration(request),request,response);
+            assertThat(response.getStatus()).isEqualTo(origin.equals(ORIGIN)?200:403);
+            if(origin.equals(ORIGIN))assertThat(response.getHeader(HttpHeaders.ACCESS_CONTROL_ALLOW_HEADERS).toLowerCase(Locale.ROOT)).contains("x-uten-precision-choices");
+        }
+    }
 }

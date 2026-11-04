@@ -84,7 +84,7 @@ class ClientFinancialOwnershipPostgresTest {
     @Test void salesCanEditOwnProfileAndOmittedFinanceIsPreservedWhileTamperingFails() {
         inTx(()->{var req=ordinary();req.setName("客户新名称");clients.update(client,req);return null;});
         assertEquals("客户新名称",value("SELECT name FROM clients WHERE id=:id",client));
-        assertEquals("100.0000",value("SELECT credit_floor::text FROM clients WHERE id=:id",client));
+        assertEquals(0,new BigDecimal("100").compareTo(new BigDecimal(value("SELECT credit_floor::text FROM clients WHERE id=:id",client).toString())));
         for(String field:ClientFinancialPolicy.FINANCIAL_FIELDS) {
             assertThrows(ApiException.class,()->inTx(()->{
                 var req=ordinary();
@@ -107,7 +107,7 @@ class ClientFinancialOwnershipPostgresTest {
         inTx(()->{var req=new ClientSaveRequest();req.setCreditFloor(new BigDecimal("350.25"));req.setInitTotal(new BigDecimal("500"));req.setVersion(em.find(Client.class,client).getVersion());
             var saved=clients.update(client,req);assertTrue(saved.isFinancialWritable());return null;});
         assertEquals("客户原名",value("SELECT name FROM clients WHERE id=:id",client));
-        assertEquals("350.2500",value("SELECT credit_floor::text FROM clients WHERE id=:id",client));
+        assertEquals(0,new BigDecimal("350.25").compareTo(new BigDecimal(value("SELECT credit_floor::text FROM clients WHERE id=:id",client).toString())));
         assertThrows(ApiException.class,()->inTx(()->{var req=new ClientSaveRequest();req.setName("财务越权改名");req.setCreditFloor(BigDecimal.ONE);clients.update(client,req);return null;}));
     }
 

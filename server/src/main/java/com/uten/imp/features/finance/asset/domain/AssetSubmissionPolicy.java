@@ -6,7 +6,6 @@ import com.uten.imp.common.web.ErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -45,9 +44,8 @@ public final class AssetSubmissionPolicy {
             errors.add("残值率必须在 0 到 1 之间");
         } else if (input.amount() != null && input.amount().signum() > 0
                 && input.usefulMonths() != null && input.usefulMonths() > 0
-                && input.amount().multiply(BigDecimal.ONE.subtract(input.salvageRate()))
-                    .divide(BigDecimal.valueOf(input.usefulMonths()), 4, RoundingMode.HALF_UP).signum() <= 0) {
-            errors.add("按 4 位小数算出的月折旧额是 0，请调整金额、残值率或月数");
+                && StraightLineScheduleCalculator.regularAmount(input.amount().multiply(BigDecimal.ONE.subtract(input.salvageRate())),input.usefulMonths()).signum() <= 0) {
+            errors.add("按账面精度算出的月折旧额是 0，请核对金额、残值率或月数");
         }
         reject(errors);
     }
@@ -79,9 +77,8 @@ public final class AssetSubmissionPolicy {
         }
         if (input.amount() != null && input.amount().signum() > 0
                 && input.usefulMonths() != null && input.usefulMonths() > 0
-                && input.amount().divide(BigDecimal.valueOf(input.usefulMonths()), 4, RoundingMode.HALF_UP)
-                    .signum() <= 0) {
-            errors.add("按 4 位小数算出的月摊销额是 0，请调整金额或月数");
+                && StraightLineScheduleCalculator.regularAmount(input.amount(),input.usefulMonths()).signum() <= 0) {
+            errors.add("按账面精度算出的月摊销额是 0，请核对金额或月数");
         }
         reject(errors);
     }

@@ -221,6 +221,40 @@ server {
     # 16 MiB exception exact and streamed; the application enforces per-user
     # limits, a bounded reader and returns 202 immediately (work runs in the
     # background, the client polls GET /api/ai/jobs/{id} through /api/).
+    # Explicit financial source intake; app enforces the bounded profile and permissions.
+    location = /api/finance/template-imports/assets/preview {
+        client_max_body_size 65m;
+        limit_req zone=uten_test_import_ip burst=2 nodelay;
+        limit_conn uten_test_import_conn 1;
+        limit_conn_status 429;
+        proxy_pass http://uten_imp_internal_test_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_request_buffering off;
+        proxy_read_timeout 180s;
+    }
+
+    # Explicit financial source intake; app enforces the bounded profile and permissions.
+    location = /api/finance/template-imports/costs/preview {
+        client_max_body_size 16m;
+        limit_req zone=uten_test_import_ip burst=2 nodelay;
+        limit_conn uten_test_import_conn 1;
+        limit_conn_status 429;
+        proxy_pass http://uten_imp_internal_test_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Request-Id $request_id;
+        proxy_request_buffering off;
+        proxy_read_timeout 180s;
+    }
+
     location = /api/ai/jobs {
         client_max_body_size 16m;
         limit_req zone=uten_test_ai_jobs_ip burst=4 nodelay;

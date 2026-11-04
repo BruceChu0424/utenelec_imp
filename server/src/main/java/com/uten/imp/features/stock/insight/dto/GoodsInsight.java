@@ -58,4 +58,10 @@ public record GoodsInsight(
         @JsonProperty("age181_365") BigDecimal age181_365,
         BigDecimal ageOver365,
         BigDecimal ageUnknown) {
+
+    @com.fasterxml.jackson.annotation.JsonProperty("weightKgExact")
+    public String getWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(weightKg);}
+
+    @com.fasterxml.jackson.annotation.JsonProperty("unitWeightKgExact")
+    public String getUnitWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(unitWeightKg);}
 }

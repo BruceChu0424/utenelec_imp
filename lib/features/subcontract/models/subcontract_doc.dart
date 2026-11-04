@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/models/procurement_order_closure.dart';
 import '../../../shared/documents/imported_document_policy.dart';
 import '../../../shared/models/procurement_source_terms.dart';
@@ -140,7 +141,23 @@ class SubcontractDocListItem {
 }
 
 class SubcontractDocItem {
+  final Map<String, String?> exactCounters;
+  String? counterText(String key) => exactCounters.containsKey(key)
+      ? exactCounters[key]
+      : financeExactDecimal(switch (key) {
+          'atSupplierQty' => atSupplierQty,
+          'consumedQty' => consumedQty,
+          'returnedQty' => returnedQty,
+          'wastedQty' => wastedQty,
+          'receivedQty' => receivedQty,
+          'settledLossQty' => settledLossQty,
+          'frozenUnitQty' => frozenUnitQty,
+          'supplierEnding' => supplierEnding,
+          _ => null,
+        });
+
   const SubcontractDocItem({
+    this.exactCounters = const {},
     this.extraColumns = const [],
     required this.id,
     this.lineNo,
@@ -169,13 +186,19 @@ class SubcontractDocItem {
     this.returnedQty,
     this.wastedQty,
     this.endingQty,
+    this.endingQtyText,
     this.standardQty,
+    this.standardQtyText,
     this.wasteRate,
+    this.wasteRateText,
     this.cause,
     this.weight,
+    this.weightExact,
     this.qtyFromWeight = false,
     this.girthQty,
+    this.girthQtyText,
     this.boxQty,
+    this.boxQtyText,
     this.parentGoodsId,
     this.parentColorId,
     // 链路 *ItemId
@@ -194,6 +217,7 @@ class SubcontractDocItem {
     this.remark,
     this.sourceApplications = const [],
     this.allowedLossPct,
+    this.allowedLossPctExact,
     this.bomMissing = false,
   });
 
@@ -239,16 +263,23 @@ class SubcontractDocItem {
   final double? wastedQty;
   // 损耗特有
   final double? endingQty;
+  final String? endingQtyText;
   final double? standardQty;
+  final String? standardQtyText;
   final double? wasteRate;
+  final String? wasteRateText;
   final String? cause;
   final double? weight;
+  final String? weightExact;
+  String? get weightText => financeExactDecimal(weightExact ?? weight);
 
   /// 委外出仓明细: 数量是按称重推算的 (ADR-135 §3.8, 这行不进单重学习); 其它单据恒为 false。
   final bool qtyFromWeight;
   // 围数（进仓/退货/材料退）/ 胶箱数量（材料出）
   final double? girthQty;
+  final String? girthQtyText;
   final double? boxQty;
+  final String? boxQtyText;
   // BOM 父件（发料/材料退）
   final String? parentGoodsId;
   final String? parentColorId;
@@ -281,6 +312,9 @@ class SubcontractDocItem {
 
   /// 订货明细允许损耗百分比（ADR-098）：保存即冻结到本行；空 = 未设。
   final double? allowedLossPct;
+  final String? allowedLossPctExact;
+  String? get allowedLossPctText =>
+      allowedLossPctExact ?? allowedLossPct?.toString();
 
   /// 委外订货明细：这个委外件还没有维护可发外的直属物料(缺 BOM，ADR-143 §二.3)。
   /// 草稿可以保存，提交财务会被拒绝，等研发完善 BOM。
@@ -289,8 +323,20 @@ class SubcontractDocItem {
   factory SubcontractDocItem.fromJson(
     Map<String, dynamic> json,
   ) => SubcontractDocItem(
+    exactCounters: recordedDecimalFields(json, [
+      'atSupplierQty',
+      'consumedQty',
+      'returnedQty',
+      'wastedQty',
+      'receivedQty',
+      'settledLossQty',
+      'frozenUnitQty',
+      'supplierEnding',
+    ]),
     extraColumns: BusinessColumn.read(json['extraColumns']),
     allowedLossPct: (json['allowedLossPct'] as num?)?.toDouble(),
+    allowedLossPctExact: (json['allowedLossPctExact'] ?? json['allowedLossPct'])
+        ?.toString(),
     bomMissing: json['bomMissing'] == true,
     id: json['id'] as String?,
     lineNo: (json['lineNo'] as num?)?.toInt(),
@@ -322,13 +368,21 @@ class SubcontractDocItem {
     returnedQty: (json['returnedQty'] as num?)?.toDouble(),
     wastedQty: (json['wastedQty'] as num?)?.toDouble(),
     endingQty: (json['endingQty'] as num?)?.toDouble(),
+    endingQtyText: recordedDocumentDecimal(json, 'endingQty'),
     standardQty: (json['standardQty'] as num?)?.toDouble(),
+    standardQtyText: recordedDocumentDecimal(json, 'standardQty'),
     wasteRate: (json['wasteRate'] as num?)?.toDouble(),
+    wasteRateText: recordedDocumentDecimal(json, 'wasteRate'),
     cause: json['cause'] as String?,
-    weight: (json['weight'] as num?)?.toDouble(),
+    weight: double.tryParse(
+      (json['weightExact'] ?? json['weight'])?.toString() ?? '',
+    ),
+    weightExact: financeExactDecimal(json['weightExact'] ?? json['weight']),
     qtyFromWeight: json['qtyFromWeight'] == true,
     girthQty: (json['girthQty'] as num?)?.toDouble(),
+    girthQtyText: recordedDocumentDecimal(json, 'girthQty'),
     boxQty: (json['boxQty'] as num?)?.toDouble(),
+    boxQtyText: recordedDocumentDecimal(json, 'boxQty'),
     parentGoodsId: json['parentGoodsId'] as String?,
     parentColorId: json['parentColorId'] as String?,
     applicationItemId: json['applicationItemId'] as String?,
@@ -432,6 +486,7 @@ class SubcontractDocDetail {
     this.lastDate,
     this.bStyle,
     this.totalWeight,
+    this.totalWeightText,
     this.settlementStyleLegacy,
     this.settlementMethodId,
     this.remark,
@@ -460,6 +515,7 @@ class SubcontractDocDetail {
     this.sourceOrderId,
     this.sourceOrderNo,
     this.deductAmount,
+    this.deductAmountText,
     this.deductPosted,
     this.materials = const [],
   }) : legacyImported = legacyImported || legacyId != null;
@@ -504,6 +560,7 @@ class SubcontractDocDetail {
   final String? lastDate;
   final int? bStyle;
   final double? totalWeight;
+  final String? totalWeightText;
   final int? settlementStyleLegacy; // 结帐方式（进仓/退货；B_PStyle 字典码）
   final String? settlementMethodId;
   final String? remark;
@@ -543,6 +600,7 @@ class SubcontractDocDetail {
 
   /// 损耗建议索赔金额（本币，仅建议，不自动冲应付）/ 历史扣款标记。
   final double? deductAmount;
+  final String? deductAmountText;
   final bool? deductPosted;
 
   /// 委外物料(直属物料)与成品对应关系(2026-10-30 用户口径: 订货单不能只有成品)。
@@ -582,6 +640,7 @@ class SubcontractDocDetail {
         lastDate: json['lastDate'] as String?,
         bStyle: (json['bStyle'] as num?)?.toInt(),
         totalWeight: (json['totalWeight'] as num?)?.toDouble(),
+        totalWeightText: receiptRecordedDecimal(json, 'totalWeight'),
         settlementStyleLegacy: (json['settlementStyleLegacy'] as num?)?.toInt(),
         settlementMethodId: json['settlementMethodId'] as String?,
         remark: json['remark'] as String?,
@@ -610,6 +669,7 @@ class SubcontractDocDetail {
         sourceOrderId: json['sourceOrderId'] as String?,
         sourceOrderNo: json['sourceOrderNo'] as String?,
         deductAmount: (json['deductAmount'] as num?)?.toDouble(),
+        deductAmountText: receiptRecordedDecimal(json, 'deductAmount'),
         deductPosted: json['deductPosted'] as bool?,
         priceAssessment: json['priceAssessment'] is Map<String, dynamic>
             ? json['priceAssessment'] as Map<String, dynamic>

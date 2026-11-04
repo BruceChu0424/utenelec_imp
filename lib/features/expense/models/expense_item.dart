@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 // 报销项（按类别分项）
 // 文档：docs/04-数据模型/实体字典.md#ExpenseItem
 
@@ -60,6 +61,7 @@ class ExpenseItem {
     required this.id,
     required this.category,
     required this.amount,
+    this.amountExact,
     required this.date,
     this.description,
     this.platformFields,
@@ -72,6 +74,9 @@ class ExpenseItem {
 
   /// 金额
   final double amount;
+  final String? amountExact;
+  String get amountText =>
+      financeExactTrimmed(amountExact ?? amount.toString())!;
 
   /// 发生日期
   final DateTime date;
@@ -84,6 +89,7 @@ class ExpenseItem {
     id: id,
     category: category,
     amount: amount,
+    amountExact: amountExact,
     date: date,
     description: description,
     platformFields: fields,
@@ -92,7 +98,10 @@ class ExpenseItem {
   factory ExpenseItem.fromJson(Map<String, dynamic> json) => ExpenseItem(
     id: json['id']?.toString() ?? '',
     category: ExpenseCategory.fromApi(json['category']),
-    amount: (json['amount'] as num).toDouble(),
+    amount: double.parse(
+      financeExactDecimal(json['amountExact'] ?? json['amount'])!,
+    ),
+    amountExact: financeExactDecimal(json['amountExact'] ?? json['amount']),
     date: DateTime.parse(json['date'] as String),
     description: json['description'] as String?,
     platformFields: json['platformFields'] is Map
@@ -102,7 +111,7 @@ class ExpenseItem {
 
   Map<String, dynamic> toCreateJson() => {
     'category': category.apiValue,
-    'amount': amount,
+    'amount': amountText,
     'date': _dateOnly(date),
     'description': description,
     if (platformFields != null) 'platformFields': platformFields,

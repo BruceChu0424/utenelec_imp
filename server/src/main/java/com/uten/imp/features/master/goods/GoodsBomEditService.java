@@ -110,6 +110,7 @@ public class GoodsBomEditService {
         final String requestHash;
         final String stateHash;
         final BomEditPreview preview;
+        final Map<String,com.uten.imp.common.finance.BusinessPrecisionContext.Choice> precision;
         CommitResult result;
 
         Pending(UUID root, Identity identity, String requestHash, String stateHash, BomEditPreview preview) {
@@ -118,6 +119,7 @@ public class GoodsBomEditService {
             this.requestHash = requestHash;
             this.stateHash = stateHash;
             this.preview = preview;
+            this.precision = GoodsBomPreviewPrecision.snapshot();
         }
     }
 
@@ -223,7 +225,7 @@ public class GoodsBomEditService {
             if (!Boolean.TRUE.equals(request.confirmSharedChanges())) {
                 throw conflict("请确认将本次修改同步到这些组件自身及所有引用位置");
             }
-            CommitResult result = transactions.execute(status -> {
+            CommitResult result = GoodsBomPreviewPrecision.confirm(pending.precision, () -> transactions.execute(status -> {
                 Set<UUID> covered = prepare(root, request);
                 if (!pending.stateHash.equals(stateHash(request))) {
                     throw conflict("组装结构、引用范围或相关资料已变化，请重新预览；本次未保存");
@@ -244,7 +246,7 @@ public class GoodsBomEditService {
                 historyPermissions.record(required);
                 return new CommitResult(request.operations().size(), List.copyOf(replay.affected),
                         Map.copyOf(replay.ids));
-            });
+            }));
             pending.result = Objects.requireNonNull(result);
             return result;
         }

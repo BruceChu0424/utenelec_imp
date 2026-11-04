@@ -41,7 +41,7 @@ public class ExpenseClaimAttachmentAccessPolicy implements AttachmentOwnerAccess
     private void readable(ExpenseClaim claim,AuthUser user) {
         var scope=user.getPermissions().contains("expense:view") ? readAccess.scope(user)
                 : new com.uten.imp.security.OwnerVisibility.OwnerScope(false,Set.of(),Set.of());
-        if (!ExpenseClaimReadPolicy.canRead(user,claim,scope) && (readAccess==null || !readAccess.canReadWorkflow(user,claim,scope))) {
+        if (!readAccess.mayRead(user,claim,scope)) {
             throw new ApiException(ErrorCode.NOT_FOUND,"报销单不存在");
         }
     }

@@ -523,7 +523,7 @@ public class FinanceReportController {
 
     private ResponseEntity<byte[]> exportResponse(String report,ExportPayload payload,String password,
             com.uten.imp.common.export.TableColumnProjection projection) {
-        byte[] xlsx = xlsxExport.build(payload.columns(), payload.rows(), projection, "view_finance");
+        byte[] xlsx = xlsxExport.build(payload, projection, "view_finance");
         byte[] downloadBytes = workbookDownload.protect(xlsx, password);
         // 审计：记录 谁 下载了 什么报表/多少行（工作台-系统管理 可查）。
         currentUser.get().ifPresent(u -> audit.logExplicit(u.getId(), u.getLoginAccount(),

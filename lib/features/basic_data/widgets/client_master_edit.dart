@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/l10n/gen/app_localizations.dart';
+import '../../../core/formatters/exact_number_text.dart';
 import '../../../core/ui/action_feedback.dart';
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/models/sales_shipment_policy.dart';
@@ -83,6 +84,7 @@ MasterFieldDef _clientFieldAccess(
     group: field.group,
     options: field.options,
     selectInteger: field.selectInteger,
+    exactDecimal: field.exactDecimal,
     readOnly: field.readOnly || locked,
     onAddNew: field.onAddNew,
     customBuilder: field.customBuilder,
@@ -252,6 +254,7 @@ List<MasterFieldDef> buildClientFields(
             readOnly: legacyCreditSnapshot,
             label: legacyCreditSnapshot ? '旧库 Credit 快照（只读）' : '信用额度',
             type: MasterFieldType.money,
+            exactDecimal: true,
             group: '财务',
             hint: legacyCreditSnapshot ? '仅用于旧库对照，不参与铺底或发货放行计算' : null,
           ),
@@ -260,12 +263,14 @@ List<MasterFieldDef> buildClientFields(
               key: 'initTotal',
               label: '期初应收',
               type: MasterFieldType.money,
+              exactDecimal: true,
               group: '财务',
             ),
             MasterFieldDef(
               key: 'creditFloor',
               label: '铺底额',
               type: MasterFieldType.money,
+              exactDecimal: true,
               group: '财务',
             ),
             MasterFieldDef(
@@ -405,9 +410,10 @@ Future<void> _showClientMasterEditOwned(
     'bank': d.bank ?? '',
     'bankAccount': d.bankAccount ?? '',
     'taxId': d.taxId ?? '',
-    'credit': d.credit?.toString() ?? '',
-    'initTotal': d.initTotal?.toString() ?? '',
-    'creditFloor': d.creditFloor?.toString() ?? '',
+    'credit': d.creditExactText ?? exactNumberText(d.credit) ?? '',
+    'initTotal': d.initTotalExactText ?? exactNumberText(d.initTotal) ?? '',
+    'creditFloor':
+        d.creditFloorExactText ?? exactNumberText(d.creditFloor) ?? '',
     'tday': d.tday?.toString() ?? '',
     'defaultSettlementMethodId': d.defaultSettlementMethodId ?? '',
     'defaultShipmentPolicy': d.defaultShipmentPolicy ?? '',

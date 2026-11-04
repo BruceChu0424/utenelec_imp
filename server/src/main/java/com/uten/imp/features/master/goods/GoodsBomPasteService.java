@@ -381,6 +381,7 @@ public class GoodsBomPasteService {
                     .executeUpdate();
         }
         List<GoodsBomItem> created = new ArrayList<>();
+        List<GoodsBomItem> numericWrites = new ArrayList<>();
         List<BomPasteResult.Target> results = new ArrayList<>();
         for (Goods target : targets) {
             List<Edge> current = existing.getOrDefault(target.getId(), List.of());
@@ -396,10 +397,14 @@ public class GoodsBomPasteService {
                 row.setSortOrder(merge && existingRow != null ? existingRow.getSortOrder() : ++sort);
                 if (existingRow == null) {
                     created.add(row);
+                    numericWrites.add(row);
                     continue;
                 }
                 // 与新建行同一份内容：内容变了整体覆盖(原审核结论作废)，没变只挪排序。
-                if (!existingRow.sameContentAs(row)) existingRow.takeContentFrom(row);
+                if (!existingRow.sameContentAs(row)) {
+                    existingRow.takeContentFrom(row);
+                    numericWrites.add(existingRow);
+                }
                 existingRow.setSortOrder(row.getSortOrder());
             }
             // 替换模式按「原有几个组件被替换、写入几个」报(同一组件原地覆盖也算替换)，与全删再全建同口径。
@@ -407,6 +412,7 @@ public class GoodsBomPasteService {
                     replace ? current.size() : 0, lineComponents.size()));
         }
         // 新行 id 由 Java 端预生成，走 save 会被当成「可能已存在」先查一次再插；这里直接 persist。
+        numericWrites.forEach(bom::capturePreparedNumericInputs);
         created.forEach(em::persist);
         List<String> warnings = new ArrayList<>();
         if (created.stream().anyMatch(row -> GoodsPeriodicMaterialRules.isPeriodic(row.getComponent()))) {

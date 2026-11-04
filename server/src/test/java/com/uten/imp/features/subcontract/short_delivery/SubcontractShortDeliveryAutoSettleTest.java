@@ -103,8 +103,8 @@ class SubcontractShortDeliveryAutoSettleTest {
         assertEquals(ACTOR_USER, accepted[1]);
         assertEquals(ACTOR_EMPLOYEE, accepted[2], "decided_by 与人工接受损耗同款, 三列同非空过 V636 CHECK");
         assertEquals(0, new BigDecimal("50").compareTo((BigDecimal) accepted[3]), "loss_qty = 1000 - 950");
-        assertEquals(0, new BigDecimal("1000").compareTo((BigDecimal) accepted[6]), "原订货数量独立保留");
-        assertEquals(0, new BigDecimal("950").compareTo((BigDecimal) accepted[7]), "实际回厂不加损耗冒充实收");
+        assertEquals(0, new BigDecimal("1000").compareTo((BigDecimal) accepted[5]), "原订货数量独立保留");
+        assertEquals(0, new BigDecimal("950").compareTo((BigDecimal) accepted[6]), "实际回厂不加损耗冒充实收");
         assertEquals(CASE_ID, accepted[accepted.length - 1]);
         String sql = jdbc.acceptedLossSql();
         assertTrue(sql.contains("decision = 'ACCEPT_LOSS'"), sql);

@@ -32,6 +32,7 @@ public class BusinessApplicationController {
             Objects.toString(result.get("applicationNo"),""),null,"行政财务申请");
         return result;
     }
+    @GetMapping("/{id}/original-source") public Map<String,Object> originalSource(@PathVariable UUID id){return service.originalSource(id);}
     @GetMapping("/{id}/prepayment-finance-candidates")
     @PreAuthorize("hasAuthority('application:prepayment:link_finance')")
     public PageResponse<Map<String,Object>> prepaymentFinanceCandidates(@PathVariable UUID id,@RequestParam(defaultValue="1")int page,@RequestParam(defaultValue="24")int size,@RequestParam(required=false)String keyword){return service.prepaymentFinanceCandidates(id,page,size,keyword);}

@@ -1,7 +1,7 @@
 package com.uten.imp.features.warehouse.inbound.dto;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import jakarta.validation.constraints.DecimalMin;
-import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -17,7 +17,7 @@ public record InspectionDispositionRequest(
         @Pattern(regexp = "PASS|FAIL", message = "质检结论仅支持 PASS 或 FAIL")
         String action,
         @DecimalMin(value = "0", inclusive = false)
-        @Digits(integer = 14, fraction = 4) BigDecimal baseQty,
+        @DocumentQuantity BigDecimal baseQty,
         @Size(max = 500) String reason,
         @NotBlank @Size(min = 8, max = 128) String idempotencyKey) {
 }

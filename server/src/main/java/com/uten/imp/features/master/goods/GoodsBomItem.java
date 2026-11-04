@@ -32,6 +32,14 @@ import java.util.Objects;
 @Table(name = "goods_bom_items")
 public class GoodsBomItem extends SoftDeletableEntity {
 
+    public record PendingAmount(BigDecimal quantity,BigDecimal price,BigDecimal original,BigDecimal adopted,
+            java.util.Map<String,com.uten.imp.common.finance.BusinessPrecisionContext.Choice> policy) { }
+    public record PendingPeriodic(BigDecimal quantity,BigDecimal basis,String kind,BigDecimal adopted) { }
+    @jakarta.persistence.Transient @com.fasterxml.jackson.annotation.JsonIgnore
+    private PendingAmount pendingAmount;
+    @jakarta.persistence.Transient @com.fasterxml.jackson.annotation.JsonIgnore
+    private PendingPeriodic pendingPeriodic;
+
     /** 老库 B_BomItem.ID（迁移溯源+重跑幂等）；手工新建的为 null。 */
     @Column(name = "legacy_id", unique = true)
     private Integer legacyId;
@@ -151,6 +159,8 @@ public class GoodsBomItem extends SoftDeletableEntity {
         summary = source.getSummary();
         auditedAt = null;
         auditedBy = null;
+        pendingAmount = source.getPendingAmount();
+        pendingPeriodic = source.getPendingPeriodic();
     }
 
     private static boolean sameNumber(BigDecimal left, BigDecimal right) {

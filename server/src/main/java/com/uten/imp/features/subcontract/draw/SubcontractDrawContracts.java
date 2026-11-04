@@ -61,6 +61,13 @@ public final class SubcontractDrawContracts {
             String planNo,
             List<UUID> applicationItemIds,
             BigDecimal differenceQty) {
+        public String getOrderQtyExact(){return com.uten.imp.common.util.DecimalText.of(orderQty);}
+        public String getDrawnQtyExact(){return com.uten.imp.common.util.DecimalText.of(drawnQty);}
+        public String getPendingQtyExact(){return com.uten.imp.common.util.DecimalText.of(pendingQty);}
+        public String getDrawableQtyExact(){return com.uten.imp.common.util.DecimalText.of(drawableQty);}
+        public String getShortQtyExact(){return com.uten.imp.common.util.DecimalText.of(shortQty);}
+        public String getMaterialQtyExact(){return com.uten.imp.common.util.DecimalText.of(materialQty);}
+
         /** Cumulative finished-item delivery difference in the order's recorded unit. */
         public String getDifferenceQtyExact() {
             return com.uten.imp.common.util.DecimalText.of(differenceQty);
@@ -95,6 +102,8 @@ public final class SubcontractDrawContracts {
 
     /** 物料在途来源: kind ∈ PURCHASE / PRODUCTION / SUBCONTRACT, openQty 为基本单位未到量。 */
     public record DrawSupplySource(String kind, UUID docId, String docNo, BigDecimal openQty) {
+        public String getOpenQtyExact(){return com.uten.imp.common.util.DecimalText.of(openQty);}
+
     }
 
     /**
@@ -122,6 +131,14 @@ public final class SubcontractDrawContracts {
             BigDecimal shortQty,
             String state,
             List<DrawSupplySource> supplySources) {
+        public String getPerUnitQtyExact(){return com.uten.imp.common.util.DecimalText.of(perUnitQty);}
+        public String getRequiredQtyExact(){return com.uten.imp.common.util.DecimalText.of(requiredQty);}
+        public String getSentQtyExact(){return com.uten.imp.common.util.DecimalText.of(sentQty);}
+        public String getPendingQtyExact(){return com.uten.imp.common.util.DecimalText.of(pendingQty);}
+        public String getAvailableQtyExact(){return com.uten.imp.common.util.DecimalText.of(availableQty);}
+        public String getDrawableQtyExact(){return com.uten.imp.common.util.DecimalText.of(drawableQty);}
+        public String getShortQtyExact(){return com.uten.imp.common.util.DecimalText.of(shortQty);}
+
         public DrawTaskMaterial {
             supplySources = List.copyOf(supplySources);
         }
@@ -161,6 +178,8 @@ public final class SubcontractDrawContracts {
 
     /** 批量领料的一项: qty 为 null 时取联合分配后的本批可领。 */
     public record DrawItemRequest(UUID orderItemId, BigDecimal qty) {
+        public String getQtyExact(){return com.uten.imp.common.util.DecimalText.of(qty);}
+
     }
 
     public record DrawPreviewRequest(List<DrawItemRequest> items) {
@@ -182,6 +201,12 @@ public final class SubcontractDrawContracts {
             BigDecimal drawableQty,
             BigDecimal batchDrawableQty,
             BigDecimal qty) {
+        public String getOrderQtyExact(){return com.uten.imp.common.util.DecimalText.of(orderQty);}
+        public String getDrawnQtyExact(){return com.uten.imp.common.util.DecimalText.of(drawnQty);}
+        public String getDrawableQtyExact(){return com.uten.imp.common.util.DecimalText.of(drawableQty);}
+        public String getBatchDrawableQtyExact(){return com.uten.imp.common.util.DecimalText.of(batchDrawableQty);}
+        public String getQtyExact(){return com.uten.imp.common.util.DecimalText.of(qty);}
+
     }
 
     /** 预览物料行: 某仓、某物料本次要领的量; warehouseAvailableQty 为该仓本行此刻可动用量。 */
@@ -199,6 +224,9 @@ public final class SubcontractDrawContracts {
             String unitName,
             BigDecimal qty,
             BigDecimal warehouseAvailableQty) {
+        public String getQtyExact(){return com.uten.imp.common.util.DecimalText.of(qty);}
+        public String getWarehouseAvailableQtyExact(){return com.uten.imp.common.util.DecimalText.of(warehouseAvailableQty);}
+
     }
 
     /** documentCount = 将新建的出仓草稿张数(订货单 × 仓库)。 */

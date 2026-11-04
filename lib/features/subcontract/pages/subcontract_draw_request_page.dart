@@ -26,6 +26,7 @@ import '../../../components/layout/uten_collapsing_header_scroll_view.dart';
 import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/api_mutation_reload_safety.dart';
 import '../../../core/router/nav_helpers.dart';
 import '../../../core/router/route_names.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -33,10 +34,10 @@ import '../../../core/ui/app_notification.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/measurement/document_quantity.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../models/subcontract_draw.dart';
 import '../repositories/subcontract_draw_repository.dart';
-import '../widgets/subcontract_draw_status.dart';
 import 'package:uten_imp/components/layout/uten_page_layout.dart';
 
 class SubcontractDrawRequestPage extends ConsumerStatefulWidget {
@@ -163,7 +164,7 @@ class _SubcontractDrawRequestPageState
             preview.tasks.map(
               (task) => MapEntry(
                 task.orderItemId,
-                TextEditingController(text: subcontractDrawQty(task.qty)),
+                TextEditingController(text: task.commandQtyText ?? ''),
               ),
             ),
           );
@@ -192,12 +193,13 @@ class _SubcontractDrawRequestPageState
   }
 
   /// 某任务输入框的数值；不可解析返回 null。
-  num? _inputOf(String id) => num.tryParse(_quantities[id]?.text.trim() ?? '');
+  String? _inputOf(String id) =>
+      positiveDocumentQuantityText(_quantities[id]?.text.trim() ?? '');
 
   /// 本次真正提交的任务(数量 > 0)。
   List<SubcontractDrawRequestItem> get _submitItems => [
     for (final id in _order)
-      if (_inputOf(id) case final qty? when qty > 0)
+      if (_inputOf(id) case final qty?)
         SubcontractDrawRequestItem(orderItemId: id, qty: qty),
   ];
 
@@ -205,6 +207,9 @@ class _SubcontractDrawRequestPageState
     if (_loading) return '正在加载领料预览';
     if (_saving) return '正在提交领料，请稍候';
     if (_order.isEmpty) return '没有可领料的委外任务，请返回委外任务中心重新选择';
+    if (_order.any((id) => _tasks[id]?.commandQtyText == null)) {
+      return '服务端未返回领料原数量，请刷新核对后提交';
+    }
     if (_submitItems.isEmpty) return '本次没有可领料数量的委外任务，请返回委外任务中心重新选择';
     if (_preview?.lines.isEmpty ?? true) return '本次没有可发出的物料';
     return null;
@@ -216,8 +221,8 @@ class _SubcontractDrawRequestPageState
         ...items,
       ]..sort((a, b) => a.orderItemId.compareTo(b.orderItemId)))
         '${item.orderItemId}:${item.qty}:'
-            '${_tasks[item.orderItemId]?.drawnQty}:'
-            '${_tasks[item.orderItemId]?.drawableQty}',
+            '${_tasks[item.orderItemId]?.quantityText('drawnQty')}:'
+            '${_tasks[item.orderItemId]?.quantityText('drawableQty')}',
     ].join('|');
     return businessIdempotencyKey(
       'subcontract-draw',
@@ -273,13 +278,7 @@ class _SubcontractDrawRequestPageState
       }
     } on ApiException catch (error) {
       if (!mounted) return;
-      final uncertain =
-          error is NetworkException ||
-          error is NetworkTimeoutException ||
-          error.code == 'NETWORK' ||
-          error.code == 'NETWORK_TIMEOUT' ||
-          error.code == 'INTERNAL' ||
-          (error.httpStatus != null && error.httpStatus! >= 500);
+      final uncertain = !ApiMutationReloadSafety.isDefiniteRejection(error);
       if (uncertain) {
         setState(() {
           _saving = false;
@@ -520,28 +519,27 @@ class _SubcontractDrawRequestPageState
         value: (line) => _label(line.colorName),
       ),
       // 2026-10-10 数量+单位口径：单位内联在数量后(如 `12 PCS`)，独立单位列删除；
-      // 领料数量支持 4 位小数，沿用 4 位去尾零。
+      // 原数量文本与单位同列显示，不对已记值取位。
       MasterColumnDef(
         key: 'qty',
         label: '本次领料数量',
         sortable: true,
-        exactValueOf: (line) => line.qty.toString(),
+        exactValueOf: (line) => line.quantityText('qty'),
         width: 130,
         type: 'number',
         value: (line) =>
-            formatQtyWithUnit(line.qty, line.unitName, maxDecimals: 4),
+            formatExactQtyWithUnit(line.quantityText('qty'), line.unitName),
       ),
       MasterColumnDef(
         key: 'warehouseAvailableQty',
         label: '仓库可用',
         sortable: true,
-        exactValueOf: (line) => line.warehouseAvailableQty.toString(),
+        exactValueOf: (line) => line.quantityText('warehouseAvailableQty'),
         width: 120,
         type: 'number',
-        value: (line) => formatQtyWithUnit(
-          line.warehouseAvailableQty,
+        value: (line) => formatExactQtyWithUnit(
+          line.quantityText('warehouseAvailableQty'),
           line.unitName,
-          maxDecimals: 4,
         ),
       ),
       MasterColumnDef(

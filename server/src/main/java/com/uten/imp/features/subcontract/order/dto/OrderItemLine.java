@@ -80,12 +80,12 @@ public class OrderItemLine extends com.uten.imp.common.columns.ExtraColumnReques
     private String remark;
 
     /**
-     * 本行允许损耗百分比(ADR-098)：0 到 100, 最多 2 位小数; 空 = 未设。保存时回写货品主档
+     * 本行允许损耗百分比(ADR-098)：0 到 100, 原数最多 24 位有效小数; 空 = 未设。保存时回写货品主档
      * subcontract_allowed_loss_pct 作为下次预填的记忆。
      */
     @jakarta.validation.constraints.DecimalMin("0.00")
     @jakarta.validation.constraints.DecimalMax("100.00")
-    @jakarta.validation.constraints.Digits(integer = 3, fraction = 2)
+    @com.uten.imp.common.validation.DocumentAmount
     private BigDecimal allowedLossPct;
 
     /**

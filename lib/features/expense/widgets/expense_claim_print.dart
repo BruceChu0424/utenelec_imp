@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 import 'package:uten_imp/core/ui/human_error_message.dart';
 // 公司内部费用报销展示及打印件：A4、多页明细、准确金额及真实流转历史。
 // 电子文件数与纸质张数分开呈现；付款信息只说明系统已登记事实。
@@ -58,7 +59,7 @@ Future<UtenPrintTable> expensePrintItemsTable(
             'category': item.category.apiValue,
             'date': _fmtDate(item.date),
             'description': item.description,
-            'amount': item.amount.toString(),
+            'amount': item.amountText,
             if (claim.abandoned) 'platformFields': item.platformFields,
           },
       ];
@@ -459,7 +460,7 @@ class _PaperSheet extends StatelessWidget {
                     padding: const EdgeInsets.all(6),
                     child: Text(
                       '合计（${claim.items.length} 项）　小写：¥ '
-                      '${claim.totalAmount.toStringAsFixed(2)}',
+                      '${financeExactMoneyDisplay(claim.totalAmountText)}',
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
                         fontFeatures: [FontFeature.tabularFigures()],
@@ -473,7 +474,7 @@ class _PaperSheet extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.all(6),
                     child: Text(
-                      '大写：${rmbCapital(claim.totalAmount)}',
+                      '大写：${rmbCapital(claim.totalAmountText)}',
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
@@ -901,13 +902,13 @@ class _ExpenseClaimPdf {
           _pdfText(font, '合计（${claim.items.length} 项）', bold: true),
           _pdfText(
             font,
-            '小写：¥ ${claim.totalAmount.toStringAsFixed(2)}',
+            '小写：¥ ${financeExactMoneyDisplay(claim.totalAmountText)}',
             bold: true,
           ),
         ],
       ),
       pw.SizedBox(height: 2),
-      _pdfText(font, '大写：${rmbCapital(claim.totalAmount)}', bold: true),
+      _pdfText(font, '大写：${rmbCapital(claim.totalAmountText)}', bold: true),
     ]);
   }
 

@@ -11,7 +11,9 @@ import java.util.Objects;
  *
  * @param sheets 可见工作表(按工作簿顺序)
  */
-public record DocumentGrid(List<Sheet> sheets) {
+public record DocumentGrid(List<Sheet> sheets,boolean hiddenIncluded) {
+
+    public DocumentGrid(List<Sheet> sheets){this(sheets,false);}
 
     public DocumentGrid {
         sheets = List.copyOf(Objects.requireNonNull(sheets, "sheets"));
@@ -146,7 +148,7 @@ public record DocumentGrid(List<Sheet> sheets) {
     }
 
     /** 单元格值类型。 */
-    public enum CellKind { TEXT, NUMBER, DATE, BOOLEAN }
+    public enum CellKind { TEXT, NUMBER, DATE, BOOLEAN, ERROR }
 
     /** 合并区域(闭区间, 从 0 开始)。 */
     public record MergedRange(int firstRow, int lastRow, int firstCol, int lastCol) {

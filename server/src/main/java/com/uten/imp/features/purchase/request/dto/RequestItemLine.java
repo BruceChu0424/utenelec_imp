@@ -1,5 +1,6 @@
 package com.uten.imp.features.purchase.request.dto;
 
+import com.uten.imp.common.validation.DocumentQuantity;
 import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
@@ -16,12 +17,12 @@ public class RequestItemLine extends com.uten.imp.common.platformcolumns.Platfor
     private UUID unitId;
     private BigDecimal unitRate;
     @NotNull
-    @jakarta.validation.constraints.DecimalMin("0.0001")
-    @jakarta.validation.constraints.Digits(integer = 14, fraction = 4)
+    @jakarta.validation.constraints.DecimalMin(value="0",inclusive=false)
+    @DocumentQuantity
     private BigDecimal qty;
     private BigDecimal price;
     @jakarta.validation.constraints.DecimalMin("0")
-    @jakarta.validation.constraints.Digits(integer=14,fraction=4)
+    @DocumentQuantity
     private BigDecimal giftQty;
     private BigDecimal weight;
     private String sourceDocNo;

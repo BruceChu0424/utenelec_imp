@@ -1,3 +1,4 @@
+import '../../../core/formatters/exact_number_text.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
 import '../../../shared/platform_tables/platform_table_binding.dart';
 import 'package:flutter/material.dart';
@@ -651,7 +652,9 @@ class _WorkshopTaskMaterialTableState
   };
 
   String _qty(double value, String? unit) {
-    final text = value.toStringAsFixed(4).replaceFirst(RegExp(r'\.?0+$'), '');
+    final text = value
+        .toExactString(minimumFractionDigits: 4)
+        .replaceFirst(RegExp(r'\.?0+$'), '');
     final suffix = unit ?? widget.unitFallback ?? '';
     return suffix.isEmpty ? text : '$text $suffix';
   }

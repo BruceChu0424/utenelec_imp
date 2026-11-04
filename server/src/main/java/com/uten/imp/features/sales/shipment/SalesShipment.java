@@ -112,6 +112,8 @@ public class SalesShipment extends SoftDeletableEntity {
 
     @Column(name = "approver_id")
     private UUID approverId;
+    @Column(name="warehouse_approver_name_snapshot")
+    private String warehouseApproverNameSnapshot;
 
     /** 仓库确认出库(审核)时间(审核命令写入; 进度时间线读它, 不再反查审计日志)。 */
     @Column(name = "approved_at")
@@ -191,6 +193,8 @@ public class SalesShipment extends SoftDeletableEntity {
 
     @Column(name = "finance_auditor_id")
     private java.util.UUID financeAuditorId;
+    @Column(name = "finance_auditor_name_snapshot")
+    private String financeAuditorNameSnapshot;
 
     @Column(name = "finance_audited_at")
     private java.time.OffsetDateTime financeAuditedAt;

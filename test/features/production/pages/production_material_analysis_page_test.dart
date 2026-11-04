@@ -45,6 +45,8 @@ import 'package:uten_imp/components/inputs/uten_search_bar.dart';
 import 'package:uten_imp/components/inputs/uten_field_hint_icon.dart';
 import 'package:uten_imp/core/network/data_write_revision.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/network/business_precision.dart';
+import 'package:uten_imp/core/network/business_precision_coordinator.dart';
 import 'package:uten_imp/core/ui/app_notification.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/router/page_resume_provider.dart';
@@ -2959,14 +2961,14 @@ void main() {
         tester,
         'material-analysis-bucket-action-buy',
       );
-      await _submitIssuePage(tester);
+      await _submitIssuePage(tester, nativeDraftWork: true);
 
       // 第二分块超时后保留原页、原来源和增量，不重发已完成的第一块。
       expect(
         find.byKey(const Key('material-preparation-order-page')),
         findsOneWidget,
       );
-      await _submitIssuePage(tester);
+      await _submitIssuePage(tester, nativeDraftWork: true);
 
       final writes = harness.requests
           .where(
@@ -5995,6 +5997,103 @@ void main() {
     // 本批覆盖只认 max(已分配 3, exact 0)，安全/在途不混成本批已到：3/16=19%。
     expect(find.text('合格库存保障 3/16(19%)'), findsOneWidget);
   });
+
+  testWidgets(
+    'material finite/repeating allocation uses current choice and survives private draft restart',
+    (tester) async {
+      final source = _aggregateAnalysisJson();
+      final base = Map<String, dynamic>.from(
+        (source['flatMaterials'] as List).first as Map,
+      );
+      source['flatMaterials'] = [
+        for (var i = 1; i <= 3; i++)
+          {
+            ...base,
+            'materialLineId': 'exact-path-$i',
+            'nodeKey': 'exact-node-$i',
+            'actionGroupKey': 'exact-action-$i',
+            'requiredQty': 1,
+            'sourceRequiredQty': 1,
+            'allocatedAvailableQty': 0,
+            'availableQty': 0,
+            'shortageQty': 1,
+            'additionalSupplyRecommendedQty': 1,
+          },
+      ];
+      final storage = MemoryFormDraftStorage();
+      var prompts = 0;
+      final unregister = BusinessPrecisionCoordinator.instance.register((
+        requirement,
+      ) async {
+        prompts++;
+        expect(requirement.key, 'production.material.aggregate-allocation');
+        return const BusinessPrecisionChoice(2, 'DOWN');
+      });
+      addTearDown(unregister);
+      await _pumpPage(
+        tester,
+        size: const Size(1600, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        analysisJson: source,
+        preparationStorage: storage,
+      );
+      final layout = find.byKey(const ValueKey('material-bom-layout-material'));
+      await tester.scrollUntilVisible(
+        layout,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(layout);
+      await tester.pumpAndSettle();
+      final quantity = find.byKey(
+        const ValueKey('material-aggregate-qty-goods-shared-motor||个'),
+      );
+      await tester.enterText(quantity, '4');
+      await tester.pumpAndSettle();
+      expect(prompts, 1);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(ProductionMaterialAnalysisPage)),
+      );
+      final draft = container
+          .read(formDraftsProvider)
+          .singleWhere((d) => d.draftKind == 'material_preparation');
+      expect(((draft.data['groups'] as List).single as Map)['totalText'], '4');
+      expect(
+        ((draft.data[businessPrecisionDraftKey] as Map)['choices']
+            as Map)['production.material.aggregate-allocation'],
+        {'scale': 2, 'rounding': 'DOWN'},
+      );
+      await tester.pumpWidget(const SizedBox());
+      await _pumpPage(
+        tester,
+        size: const Size(1600, 1000),
+        permissions: const {
+          Perm.productionMaterialAnalysisCreate,
+          Perm.productionMaterialAnalysisNotify,
+        },
+        analysisJson: source,
+        preparationStorage: storage,
+        preparationDraftId: draft.id,
+      );
+      await tester.scrollUntilVisible(
+        layout,
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(layout);
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(quantity).controller!.text, '4');
+      expect(
+        prompts,
+        1,
+        reason: 'restored policy belongs to the original operation only',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets(
     'material aggregate view merges shared material across products and keeps per-path selection',
@@ -9305,6 +9404,8 @@ Future<_Harness> _pumpPage(
     {'id': 'warehouse-1', 'name': '主仓'},
   ],
   List<Override> extraOverrides = const [],
+  MemoryFormDraftStorage? preparationStorage,
+  String? preparationDraftId,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -9320,6 +9421,7 @@ Future<_Harness> _pumpPage(
     responseOverride: responseOverride,
   );
   final page = ProductionMaterialAnalysisPage(
+    preparationDraftId: preparationDraftId,
     seed: ProductionMaterialAnalysisSeed(
       analysisId: analysisId,
       warehouseId: 'warehouse-1',
@@ -9401,7 +9503,9 @@ Future<_Harness> _pumpPage(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        formDraftStorageProvider.overrideWithValue(MemoryFormDraftStorage()),
+        formDraftStorageProvider.overrideWithValue(
+          preparationStorage ?? MemoryFormDraftStorage(),
+        ),
         sessionProvider.overrideWith(_TestSession.new),
         authenticatedScopeProvider.overrideWithValue(
           const AuthenticatedScope(userId: 'test-user'),
@@ -9428,7 +9532,12 @@ Future<_Harness> _pumpPage(
         materialAnalysisWarehousePrefsProvider.overrideWith(
           _TestMaterialAnalysisWarehousePrefsNotifier.new,
         ),
-        currentPermissionsProvider.overrideWithValue(permissions),
+        // This harness mounts an already-admitted analysis page directly.
+        // The real route always requires VIEW; action grants remain per-case.
+        currentPermissionsProvider.overrideWithValue({
+          Perm.productionMaterialAnalysisView,
+          ...permissions,
+        }),
         ...extraOverrides,
       ],
       child: router == null
@@ -11621,7 +11730,30 @@ Future<void> _pickCascadeWorkshop(
 /// 2026-09-29 起提交前可能先弹「本次下单是否使用可用数量抵扣？」(skipAutoClaim)：
 /// 所选行有可用余量且选择影响结果时询问。默认「优先使用可用余量」＝旧自动抵扣
 /// 行为，点「继续」放行；没有余量的用例不弹、此处直接跳过。
-Future<void> _continueClaimChoiceDialog(WidgetTester tester) async {
+Future<void> _settlePreparationDraftWork(
+  WidgetTester tester,
+  bool nativeDraftWork,
+) async {
+  if (!nativeDraftWork) {
+    await tester.pumpAndSettle();
+    return;
+  }
+  // Large private drafts use real native compute. Advance fake UI timers and
+  // its native event loop together; a fake-only pump cannot finish that codec.
+  for (var frame = 0; frame < 400; frame++) {
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 5)),
+    );
+    if (frame > 20 && !tester.binding.hasScheduledFrame) return;
+  }
+  fail('备料操作在原生草稿编码后未在有界窗口内结束');
+}
+
+Future<void> _continueClaimChoiceDialog(
+  WidgetTester tester, {
+  bool nativeDraftWork = false,
+}) async {
   final question = find.text('本次下单是否使用可用数量抵扣？');
   if (question.evaluate().isEmpty) return;
   final next = find.descendant(
@@ -11629,21 +11761,22 @@ Future<void> _continueClaimChoiceDialog(WidgetTester tester) async {
     matching: find.text('继续'),
   );
   await tester.ensureVisible(next);
-  await tester.pumpAndSettle();
+  await _settlePreparationDraftWork(tester, nativeDraftWork);
   await tester.tap(next);
-  await tester.pumpAndSettle();
+  await _settlePreparationDraftWork(tester, nativeDraftWork);
 }
 
 Future<void> _submitIssuePage(
   WidgetTester tester, {
   bool confirm = true,
+  bool nativeDraftWork = false,
 }) async {
   final submit = find.byKey(const Key('material-preparation-order-submit'));
   await tester.ensureVisible(submit);
-  await tester.pumpAndSettle();
+  await _settlePreparationDraftWork(tester, nativeDraftWork);
   await tester.tap(submit);
-  await tester.pumpAndSettle();
-  await _continueClaimChoiceDialog(tester);
+  await _settlePreparationDraftWork(tester, nativeDraftWork);
+  await _continueClaimChoiceDialog(tester, nativeDraftWork: nativeDraftWork);
   if (!confirm) return;
   final confirmation = find.descendant(
     of: find.byType(AlertDialog),
@@ -11651,7 +11784,7 @@ Future<void> _submitIssuePage(
   );
   if (confirmation.evaluate().isNotEmpty) {
     await tester.tap(confirmation);
-    await tester.pumpAndSettle();
+    await _settlePreparationDraftWork(tester, nativeDraftWork);
   }
 }
 

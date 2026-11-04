@@ -63,6 +63,8 @@ public interface InventoryValuationPort {
 
     record SourceAdjustment(EventContext context, UUID sourceCostNodeId,
                             BigDecimal deltaLocal, boolean markFinal) {}
+    /** Explicitly verifies this acquisition source's actual TOTAL, not an extra fee on an unknown base. */
+    record SourceTotalConfirmation(EventContext context,UUID sourceCostNodeId,BigDecimal confirmedTotalLocal) {}
 
     /** knownValueLocal is the known component, never proof of a complete cost when PENDING. */
     record MovementValue(UUID eventId, UUID movementId, UUID valueNodeId, UUID poolHeadId,
@@ -86,6 +88,9 @@ public interface InventoryValuationPort {
     MovementValue issue(Issue command);
     MovementValue returnIssue(ReturnIssue command);
     AdjustmentValue adjustSource(SourceAdjustment command);
+    default AdjustmentValue confirmSourceTotal(SourceTotalConfirmation command){
+        throw new UnsupportedOperationException("Source total-cost confirmation is not installed");
+    }
     /** Exact full LIFO reversal; the original propagation must have completed. */
     AdjustmentValue reverseAdjustment(EventContext context, UUID originalAdjustmentEventId);
     List<PropagationWork> pendingWork(int limit);

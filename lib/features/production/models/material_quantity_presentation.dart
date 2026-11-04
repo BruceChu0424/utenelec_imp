@@ -2,22 +2,28 @@ import '../../../shared/formatters/exact_decimal.dart';
 import 'production_exact_quantity.dart';
 import 'production_material_analysis.dart';
 
+// Read-only arithmetic also retains complete products of two 24-place facts.
+BigInt? _presentationUnits(String? text) =>
+    financeExactDecimalUnits(text, scale: 48);
+String _presentationText(BigInt units) =>
+    financeExactDecimalFromUnits(units, scale: 48);
+
 /// Read-only original facts. Legacy large JSON numbers cannot prove their text.
 String? materialPresentationFact(
   Map<String, String> exact,
   String key,
   num? legacy, {
-  int scale = 4,
+  int scale = productionQuantityScale,
 }) => productionExactQuantityText(exact[key] ?? legacy, scale: scale);
 
 String? materialPresentationSum(Iterable<String?> values) {
   var total = BigInt.zero;
   for (final text in values) {
-    final value = financeExactDecimalUnits(text);
+    final value = _presentationUnits(text);
     if (value == null || value.isNegative) return null;
     total += value;
   }
-  return financeExactTrimmed(financeExactDecimalFromUnits(total));
+  return financeExactTrimmed(_presentationText(total));
 }
 
 /// Physical order facts, counted once per action, separate from source demand
@@ -153,7 +159,7 @@ class MaterialQualifiedCoverage {
         'requiredQty',
         row.requiredQty,
       );
-      final units = financeExactDecimalUnits(need);
+      final units = _presentationUnits(need);
       if (units == null) complete = false;
       final targets =
           row.aggregatePreparation?.targetMaterialLineIds ?? const <String>[];
@@ -182,7 +188,7 @@ class MaterialQualifiedCoverage {
     if (selected.isEmpty &&
         sourceRows.any(
           (row) =>
-              (financeExactDecimalUnits(
+              (_presentationUnits(
                     materialPresentationFact(
                       row.quantityFactsExact,
                       'sourceRequiredQty',
@@ -197,14 +203,14 @@ class MaterialQualifiedCoverage {
     materialLineIds = Set.unmodifiable(selected.keys);
     var required = BigInt.zero, covered = BigInt.zero;
     for (final row in selected.values) {
-      final need = financeExactDecimalUnits(
+      final need = _presentationUnits(
         materialPresentationFact(
           row.quantityFactsExact,
           'requiredQty',
           row.requiredQty,
         ),
       );
-      final gap = financeExactDecimalUnits(
+      final gap = _presentationUnits(
         materialPresentationFact(
           row.quantityFactsExact,
           'demandSupplyGapQty',
@@ -219,13 +225,13 @@ class MaterialQualifiedCoverage {
       covered += need - (gap > need ? need : gap);
     }
     requiredText = complete
-        ? financeExactTrimmed(financeExactDecimalFromUnits(required))
+        ? financeExactTrimmed(_presentationText(required))
         : null;
     coveredText = complete
-        ? financeExactTrimmed(financeExactDecimalFromUnits(covered))
+        ? financeExactTrimmed(_presentationText(covered))
         : null;
     gapText = complete
-        ? financeExactTrimmed(financeExactDecimalFromUnits(required - covered))
+        ? financeExactTrimmed(_presentationText(required - covered))
         : null;
     ratio = complete && required > BigInt.zero
         ? covered.toDouble() / required.toDouble()

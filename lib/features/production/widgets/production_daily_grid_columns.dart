@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 // 生产日报明细可编辑表的行模型 + 列定义（UtenEditableGrid 用）。
 //
 // 日报记录非金额生产计量事实：完工申报量及可选实际总重量。
@@ -30,7 +31,7 @@ import '../models/production_daily_report.dart';
 import '../models/production_exact_quantity.dart';
 import '../repositories/production_material_repository.dart';
 
-final _quantityTypingPattern = RegExp(r'^\d*\.?\d{0,4}$');
+final _quantityTypingPattern = RegExp(r'^\d*\.?\d*$');
 
 /// 数量输入保留原文；不合格的按键保留原值，不截断为另一数量。
 final productionQuantityInputFormatter = TextInputFormatter.withFunction(
@@ -104,7 +105,7 @@ class DailyGridRow extends EditableGridRow {
   double? unitRate;
   String? unitRateExact;
   String? get unitRateText =>
-      productionExactQuantityText(unitRateExact ?? unitRate, scale: 6);
+      productionExactQuantityText(unitRateExact ?? unitRate);
   double? orderQty;
   double? maxReportQty;
   String? maxReportQtyExact;
@@ -649,13 +650,13 @@ bool completesProductionTask(DailyGridRow row, Iterable<DailyGridRow> rows) {
 }
 
 /// 不良数的唯一校验口径(格内红框与保存校验共用)：空 = 0 不校验；不小于 0、
-/// 最多 4 位小数；大于 0 时本行必须已选报工工单且完工申报量大于 0。
+/// 最多 24 位小数；大于 0 时本行必须已选报工工单且完工申报量大于 0。
 String? productionReportDefectIssue(DailyGridRow row) {
   final raw = row.defectQty.text.trim();
   if (raw.isEmpty) return null;
   final value = productionExactQuantityUnits(raw);
   if (value == null) {
-    return '不良数请填写不小于 0、最多 4 位小数的数量';
+    return '不良数请填写不小于 0、最多 24 位小数的数量';
   }
   if (value > productionQuantityMaxUnits) return '不良数超过系统计量范围，请核对原输入';
   if (value <= BigInt.zero) return null;
@@ -714,7 +715,7 @@ double? materialUsagePerProduct(ProductionMaterialClearanceRow material) {
 }
 
 /// 按完工申报量自动算本次实际用料(V595)：完工量 × 单耗(或用户手改后的比例)，
-/// 封顶到「本次可登记」上限，四位小数。算不出(无单耗/完工量无效)返回 null。
+/// 封顶到「本次可登记」上限，保留全部有限小数。算不出(无单耗/完工量无效)返回 null。
 double? expectedMaterialUsage({
   required double reportedQty,
   required ProductionMaterialClearanceRow material,
@@ -732,40 +733,86 @@ String? expectedMaterialUsageText({
   required Object? reportedQty,
   required ProductionMaterialClearanceRow material,
   double? ratioOverride,
+  int? precisionScale,
+  String? precisionRounding,
+}) => expectedMaterialUsageCalculation(
+  reportedQty: reportedQty,
+  material: material,
+  ratioOverride: ratioOverride,
+  precisionScale: precisionScale,
+  precisionRounding: precisionRounding,
+).text;
+
+FinanceExactDivision expectedMaterialUsageCalculation({
+  required Object? reportedQty,
+  required ProductionMaterialClearanceRow material,
+  double? ratioOverride,
+  int? precisionScale,
+  String? precisionRounding,
 }) {
-  final qty = productionExactQuantityUnits(reportedQty);
-  final cap = productionExactQuantityUnits(material.availableToSettleQtyText);
-  if (qty == null || qty <= BigInt.zero || cap == null) return null;
-  // Exact package/batch quantities cannot be prorated, even from a prior edit.
-  if (material.requirementMode != 'LINEAR') return null;
-  final forProduct = productionExactQuantityUnits(
+  final qty = productionExactQuantityText(reportedQty);
+  final cap = productionExactQuantityText(material.availableToSettleQtyText);
+  if (qty == null ||
+      productionExactQuantityUnits(qty)! <= BigInt.zero ||
+      cap == null ||
+      material.requirementMode != 'LINEAR') {
+    return const FinanceExactDivision(null);
+  }
+  final forProduct = productionExactQuantityText(
     material.requiredForProductQtyText,
   );
-  final required = productionExactQuantityUnits(material.requiredQtyText);
-  BigInt numerator, denominator;
+  final required = productionExactQuantityText(material.requiredQtyText);
+  String? numerator;
+  var denominator = '1';
   if (ratioOverride != null) {
-    final ratio = productionExactQuantityUnits(ratioOverride, scale: 6);
-    if (ratio == null) return null;
-    numerator = qty * ratio;
-    denominator = BigInt.from(1000000);
+    numerator = financeExactMultiplyTexts([
+      qty,
+      productionExactQuantityText(ratioOverride),
+    ]);
   } else if (forProduct != null &&
-      forProduct > BigInt.zero &&
+      productionExactQuantityUnits(forProduct)! > BigInt.zero &&
       required != null &&
-      required > BigInt.zero) {
-    numerator = qty * required;
+      productionExactQuantityUnits(required)! > BigInt.zero) {
+    numerator = financeExactMultiplyTexts([qty, required]);
     denominator = forProduct;
   } else {
-    final ratio = productionExactQuantityUnits(
-      material.perProductQtyText,
-      scale: 6,
-    );
-    if (ratio == null || ratio <= BigInt.zero) return null;
-    numerator = qty * ratio;
-    denominator = BigInt.from(1000000);
+    numerator = financeExactMultiplyTexts([
+      qty,
+      productionExactQuantityText(material.perProductQtyText),
+    ]);
   }
-  final rounded =
-      (numerator * BigInt.two + denominator) ~/ (denominator * BigInt.two);
-  return productionQuantityTextFromUnits(rounded > cap ? cap : rounded);
+  if (numerator == null) return const FinanceExactDivision(null);
+  // Compare the complete rational against the physical cap before any division.
+  final capProduct = financeExactMultiplyTexts([cap, denominator]);
+  final left = financeExactDecimalUnits(
+    financeExactTrimmed(numerator),
+    scale: productionProductScale,
+  );
+  final right = financeExactDecimalUnits(
+    financeExactTrimmed(capProduct),
+    scale: productionProductScale,
+  );
+  if (left == null || right == null) return const FinanceExactDivision(null);
+  if (left >= right) return FinanceExactDivision(cap);
+  final result = financeExactDivideTexts(
+    numerator,
+    denominator,
+    choiceScale: precisionScale,
+    choiceRounding: precisionRounding,
+  );
+  if (result.text == null) return result;
+  // An explicit HALF_UP may reach but cannot exceed the real physical cap.
+  final chosen = financeExactDecimalUnits(
+    result.text,
+    scale: productionProductScale,
+  )!;
+  final capUnits = financeExactDecimalUnits(
+    cap,
+    scale: productionProductScale,
+  )!;
+  return chosen <= capUnits
+      ? result
+      : const FinanceExactDivision(null, reason: 'PRECISION_LIMIT');
 }
 
 /// 生产日报明细列：货品(点选) / 颜色(只读) / 完工申报量 / 不良数 / 实际重量 /
@@ -1544,7 +1591,7 @@ List<EditableGridColumn<DailyGridRow>> dailyGridColumns({
   ];
 }
 
-/// 数量文本：整数不带小数点，小数最多 4 位且不留尾零(与全站数量显示同口径)。
+/// 数量文本：整数不带小数点，保留全部有限小数且不留尾零(与全站数量显示同口径)。
 String _quantityText(double value) => outputAllocationQuantityText(value);
 
 /// 数量输入格的单位后缀（2026-10-10 数量内联口径）：完工申报量/不良数/去向数量

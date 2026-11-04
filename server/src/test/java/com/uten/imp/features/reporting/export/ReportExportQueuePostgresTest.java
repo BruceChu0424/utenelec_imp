@@ -39,7 +39,7 @@ class ReportExportQueuePostgresTest {
     }
     @AfterAll static void stop() { POSTGRES.stop(); }
     @AfterEach void releaseFixtureJobs() {
-        jdbc.update("UPDATE report_export_jobs SET status='FAILED',finished_at=clock_timestamp(),lease_until=NULL WHERE status IN ('PENDING','RUNNING')");
+        jdbc.update("UPDATE report_export_jobs SET status='FAILED',finished_at=clock_timestamp(),lease_until=NULL WHERE status IN ('PENDING','RUNNING','WAITING_PRECISION')");
     }
     private static UUID insert() {
         var id=UUID.randomUUID();var request=new ReportExportRequest(id,"sales","ORDER/detail",Map.of(),null,null,null);
@@ -47,6 +47,23 @@ class ReportExportQueuePostgresTest {
         return id;
     }
     private static ReportExportRepository.Job claim() { return tx.execute(s -> repository.claim().orElseThrow()); }
+    @Test void rejectedSameKeyChoiceCanChangeOnlyItsPurposeOnTheOriginalUnwrittenJob() throws Exception {
+        UUID id;
+        try(var context=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("ratio",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"DOWN"),"other",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(8,"HALF_UP")))){id=insert();}
+        var running=claim();assertEquals(id,running.id());
+        String rejected="{\"calculationKey\":\"ratio\",\"label\":\"本次来源分摊\",\"maxScale\":24,\"reason\":\"PRECISION_LIMIT\",\"notWritten\":true,\"selectionRejected\":true}";
+        assertEquals(Boolean.TRUE,tx.execute(status->repository.waitForPrecision(running,rejected)));
+        var waiting=repository.find(id).orElseThrow();
+        String unrelated="{\"version\":1,\"choices\":{\"ratio\":{\"scale\":5,\"rounding\":\"DOWN\"},\"other\":{\"scale\":9,\"rounding\":\"HALF_UP\"}}}";
+        assertThrows(org.springframework.dao.DataAccessException.class,()->tx.executeWithoutResult(status->repository.resumePrecision(waiting,UUID.randomUUID(),owner,unrelated)));
+        assertEquals("WAITING_PRECISION",repository.find(id).orElseThrow().status());
+        String corrected="{\"version\":1,\"choices\":{\"ratio\":{\"scale\":5,\"rounding\":\"DOWN\"},\"other\":{\"scale\":8,\"rounding\":\"HALF_UP\"}}}";
+        assertEquals(Boolean.TRUE,tx.execute(status->repository.resumePrecision(waiting,UUID.randomUUID(),owner,corrected)));
+        assertEquals("PENDING",repository.find(id).orElseThrow().status());
+        var next=claim();assertEquals(id,next.id());assertEquals(2,next.attempt());
+        assertThrows(com.uten.imp.common.web.ApiException.class,()->tx.executeWithoutResult(status->repository.resumePrecision(next,UUID.randomUUID(),owner,unrelated)));
+    }
+
     @Test void cancellationRetainsTheWorkerSlotUntilAcknowledgedAndCannotPublish() {
         UUID first=insert(),second=insert();var running=claim();assertEquals(first,running.id());
         tx.executeWithoutResult(s -> repository.cancel(first,owner));
@@ -107,6 +124,59 @@ class ReportExportQueuePostgresTest {
             throw new IllegalStateException("fixture rollback");
         }));
         assertTrue(repository.find(id).isEmpty());
+    }
+    @Test void explicitPrecisionWaitAndSameJobResumeReachJavaAndSqlWithoutMetadataTaint() throws Exception {
+        UUID id=insert();var request=new ReportExportRequest(id,"sales","ORDER/detail",Map.of(),null,null,null);
+        // Keep the exact original request while installing the real transaction binder
+        // on this lightweight JDBC harness (the production binder delegates to TxSessionVars).
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        var current=repository.find(id).orElseThrow();
+        var user=new com.uten.imp.security.AuthUser(owner,UUID.randomUUID(),"precision-owner",Set.of("sales_report:view","sales_report:export"),false,true,false);
+        var users=org.mockito.Mockito.mock(com.uten.imp.security.SecurityContextCurrentUser.class);org.mockito.Mockito.when(users.get()).thenReturn(Optional.of(user));
+        var restorer=org.mockito.Mockito.mock(com.uten.imp.security.SubmitterPrincipalRestorer.class);org.mockito.Mockito.when(restorer.restore(owner,1,1L)).thenReturn(user);
+        var identity=org.mockito.Mockito.mock(ReportExportBuildIdentity.class);org.mockito.Mockito.when(identity.revision()).thenReturn("fixture-build");
+        var readScopes=org.mockito.Mockito.mock(com.uten.imp.security.ReadScopeVersionAuthority.class);org.mockito.Mockito.when(readScopes.scopeFor(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any())).thenReturn("a".repeat(64));
+        org.springframework.beans.factory.ObjectProvider<com.uten.imp.common.export.ExportProjectionAccessGuard> projectionAccess=org.mockito.Mockito.mock();
+        var service=new ReportExportService(repository,users,restorer,mapper,identity,org.mockito.Mockito.mock(com.uten.imp.security.ExportRateLimiter.class),readScopes,projectionAccess,directory.toString());
+        var vars=org.mockito.Mockito.mock(com.uten.imp.security.TxSessionVars.class);org.mockito.Mockito.doAnswer(call->{String policyJson=call.getArgument(0,String.class);jdbc.queryForObject("SELECT set_config('app.business_precision_choices',?,true)",String.class,policyJson);return null;}).when(vars).bindBusinessPrecision(org.mockito.ArgumentMatchers.anyString());
+        org.springframework.beans.factory.ObjectProvider<com.uten.imp.security.TxSessionVars> provider=org.mockito.Mockito.mock();org.mockito.Mockito.when(provider.getObject()).thenReturn(vars);
+        var manager=new DataSourceTransactionManager(dataSource);manager.setTransactionExecutionListeners(List.of(new com.uten.imp.common.finance.BusinessPrecisionTransactionBinder(provider)));
+        var source=org.mockito.Mockito.mock(ReportExportSource.class);
+        org.mockito.Mockito.when(source.read(org.mockito.ArgumentMatchers.any())).thenAnswer(call->{
+            // SQL is first: its safe typed failure must be extracted before the
+            // worker's precision scope closes, after snapshot metadata committed.
+            var sql=jdbc.queryForObject("SELECT fn_business_exact_divide(1,3,'export.ratio','本次导出比率',30)",java.math.BigDecimal.class);
+            var javaResult=com.uten.imp.common.finance.BusinessPrecisionContext.divide(java.math.BigDecimal.ONE,new java.math.BigDecimal("3"),"export.ratio","本次导出比率",30);
+            assertEquals(0,sql.compareTo(javaResult));
+            return new com.uten.imp.common.export.ExportPayload(List.of(new com.uten.imp.common.export.ExportColumn("ratio","原比率","number")),List.of(Map.of("ratio",sql.toPlainString())),1);
+        });
+        var worker=new ReportExportWorker(repository,service,source,restorer,new com.uten.imp.common.export.XlsxExportService(),jdbc,manager);
+        try {
+            var first=claim();org.springframework.test.util.ReflectionTestUtils.invokeMethod(worker,"runWithSlot",first);
+            var waiting=repository.find(id).orElseThrow();assertEquals("WAITING_PRECISION",waiting.status(),waiting.error());assertEquals(current.request(),waiting.request());assertNull(waiting.sha256());assertEquals(0,waiting.bytes());assertFalse(java.nio.file.Files.exists(service.artifact(waiting)));
+            var details=service.get(id).precisionRequirement();assertEquals(true,details.get("notWritten"));assertEquals("export.ratio",details.get("calculationKey"));
+            UUID resume=UUID.randomUUID();var choices=Map.of("export.ratio",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(4,"DOWN"));
+            try(var selected=com.uten.imp.common.finance.BusinessPrecisionContext.use(choices)){
+                var resumed=tx.execute(status->service.resumePrecision(id,new ReportExportService.PrecisionResume(resume,waiting.attempt())));assertEquals(id,resumed.id());assertEquals("PENDING",resumed.status());
+                var replay=tx.execute(status->service.resumePrecision(id,new ReportExportService.PrecisionResume(resume,waiting.attempt())));assertEquals(id,replay.id());
+            }
+            assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM report_export_precision_resumes WHERE job_id=?",Integer.class,id));
+            var second=claim();assertEquals(id,second.id());assertEquals(first.attempt()+1,second.attempt());assertEquals(current.request(),second.request());
+            var outer=Map.of("unrelated",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(8,"HALF_UP"));
+            try(var unrelated=com.uten.imp.common.finance.BusinessPrecisionContext.use(outer)){org.springframework.test.util.ReflectionTestUtils.invokeMethod(worker,"runWithSlot",second);assertEquals(outer,com.uten.imp.common.finance.BusinessPrecisionContext.choices());}
+            var completed=repository.find(id).orElseThrow();assertEquals("SUCCEEDED",completed.status(),completed.error());assertEquals(1,completed.rows());assertNotNull(completed.sha256());
+            try(var input=java.nio.file.Files.newInputStream(service.artifact(completed));var book=new org.apache.poi.xssf.usermodel.XSSFWorkbook(input)){assertEquals("0.3333",new org.apache.poi.ss.usermodel.DataFormatter(java.util.Locale.ROOT).formatCellValue(book.getSheetAt(0).getRow(1).getCell(0)));}
+            assertTrue(com.uten.imp.common.finance.BusinessPrecisionContext.choices().isEmpty());
+            assertThrows(org.springframework.dao.DataAccessException.class,()->tx.execute(status->jdbc.queryForObject("SELECT fn_business_exact_divide(1,3,'export.ratio','本次导出比率',30)",java.math.BigDecimal.class)));
+        } finally {worker.close();}
+    }
+    @Test void waitingPrecisionIsCancellableExpiresAndCannotChangeFrozenPolicyDirectly(){
+        UUID id=insert();var running=claim();String required="{\"calculationKey\":\"ratio\",\"groupKey\":\"ratio\",\"label\":\"本次比例\",\"maxScale\":30,\"reason\":\"NON_TERMINATING\",\"notWritten\":true}";
+        assertEquals(Boolean.TRUE,tx.execute(status->repository.waitForPrecision(running,required)));
+        assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("UPDATE report_export_jobs SET precision_choices='{\"version\":1,\"choices\":{\"ratio\":{\"scale\":2,\"rounding\":\"DOWN\"}}}'::jsonb WHERE id=?",id));
+        tx.executeWithoutResult(status->repository.cancel(id,owner));assertEquals("CANCELLED",repository.find(id).orElseThrow().status());
+        UUID expiring=insert();var next=claim();assertEquals(expiring,next.id());tx.executeWithoutResult(status->repository.waitForPrecision(next,required));jdbc.update("UPDATE report_export_jobs SET expires_at=clock_timestamp()-interval '1 second' WHERE id=?",expiring);
+        assertTrue(repository.expired().stream().anyMatch(job->job.id().equals(expiring)));tx.executeWithoutResult(status->repository.expire(expiring));assertEquals("EXPIRED",repository.find(expiring).orElseThrow().status());
     }
     @Test void workerKeepsOneRealSnapshotAcrossPagesAndDownloadRechecksAuthorization() throws Exception {
         jdbc.execute("CREATE TABLE IF NOT EXISTS b1_export_facts(id integer PRIMARY KEY,qty numeric,note text)");

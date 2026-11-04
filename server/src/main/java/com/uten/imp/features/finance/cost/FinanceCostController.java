@@ -60,33 +60,36 @@ public class FinanceCostController {
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse copperFee(
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) java.util.UUID supplierId,
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.copperFee(keyword, dateFrom, dateTo, page, size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
+        return service.copperFee(keyword,dateFrom,dateTo,page,size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.current(),supplierId);
     }
 
     @GetMapping("/copper-pickling")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse copperPickling(
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) java.util.UUID supplierId,
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.copperPickling(keyword, dateFrom, dateTo, page, size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
+        return service.copperPickling(keyword,dateFrom,dateTo,page,size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.current(),supplierId);
     }
 
     @GetMapping("/plastic")
     @PreAuthorize("hasAuthority('finance_report:view')")
     public ReportTableResponse plastic(
             @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) java.util.UUID binWarehouseId,
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateFrom,
             @RequestParam @DateTimeFormat(iso = ISO.DATE) LocalDate dateTo,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
-        return service.plasticUsage(keyword, dateFrom, dateTo, page, size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.current());
+        return service.plasticUsage(keyword,dateFrom,dateTo,page,size,com.uten.imp.features.finance.report.FinanceReportColumnOptions.current(),binWarehouseId);
     }
 
     @GetMapping("/plastic-detail")

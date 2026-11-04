@@ -127,4 +127,10 @@ public class InstantInventoryRow {
     public String getCNumber() {
         return cNumber;
     }
+
+    @com.fasterxml.jackson.annotation.JsonProperty("weightExact")
+    public String getWeightExact(){return com.uten.imp.common.util.DecimalText.of(weight);}
+
+    @com.fasterxml.jackson.annotation.JsonProperty("unitWeightKgExact")
+    public String getUnitWeightKgExact(){return com.uten.imp.common.util.DecimalText.of(unitWeightKg);}
 }

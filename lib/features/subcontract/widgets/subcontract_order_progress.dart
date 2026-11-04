@@ -1,3 +1,4 @@
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../components/layout/uten_section_header.dart';
 import '../../../components/feedback/uten_workflow_progress.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
@@ -208,7 +209,7 @@ class _SubcontractOrderProgressSectionState
             docs: p.wastes,
             segment: 'wastes',
             trailing: (d) => canViewPrice && (d.deductAmount ?? 0) > 0
-                ? '建议索赔 ${d.deductAmount!.toStringAsFixed(2)}'
+                ? '建议索赔 ${financeExactMoneyDisplay(d.quantityText('deductAmount'))}'
                 : null,
           ),
         ],
@@ -257,7 +258,7 @@ class _SubcontractOrderProgressSectionState
                   ),
                 ),
               Text(
-                '订货 ${_qty(item.orderQty, item.unitName)}',
+                '订货 ${_qty(item.quantityText('orderQty'), item.unitName)}',
                 style: theme.textTheme.bodySmall,
               ),
               if (item.bomMissing) _bomMissingTag(theme),
@@ -383,7 +384,8 @@ class _SubcontractOrderProgressSectionState
                           d.billNo ?? '—',
                           if ((d.warehouseName ?? '').trim().isNotEmpty)
                             d.warehouseName!.trim(),
-                          if (showQty) subcontractDrawQty(d.totalQty ?? 0),
+                          if (showQty)
+                            subcontractDrawQty(d.quantityText('totalQty')),
                           if (d.billDate != null) d.billDate!,
                           if (d.approverName != null) d.approverName!,
                         ].join(' · '),
@@ -446,11 +448,11 @@ class _SubcontractOrderProgressSectionState
               scope: 'view_subcontract',
               recordIdOf: (_) => null,
               factValuesOf: (row) => {
-                'atSupplierQty': row.atSupplierQty.toString(),
-                'consumedQty': row.consumedQty.toString(),
-                'returnedQty': row.returnedQty.toString(),
-                'wastedQty': row.wastedQty.toString(),
-                'supplierEnding': row.supplierEnding.toString(),
+                'atSupplierQty': row.quantityText('atSupplierQty'),
+                'consumedQty': row.quantityText('consumedQty'),
+                'returnedQty': row.quantityText('returnedQty'),
+                'wastedQty': row.quantityText('wastedQty'),
+                'supplierEnding': row.quantityText('supplierEnding'),
               },
             ),
             columns: [
@@ -481,52 +483,66 @@ class _SubcontractOrderProgressSectionState
                 key: 'atSupplierQty',
                 label: '发出',
                 sortable: true,
-                exactValueOf: (row) => row.atSupplierQty.toString(),
+                exactValueOf: (row) => row.quantityText('atSupplierQty'),
                 width: 120,
                 type: 'number',
-                value: (row) =>
-                    formatQtyWithUnit(row.atSupplierQty, row.unitName),
+                value: (row) => formatExactQtyWithUnit(
+                  row.quantityText('atSupplierQty'),
+                  row.unitName,
+                ),
               ),
               MasterColumnDef(
                 key: 'consumedQty',
                 label: '回厂核销',
                 sortable: true,
-                exactValueOf: (row) => row.consumedQty.toString(),
+                exactValueOf: (row) => row.quantityText('consumedQty'),
                 width: 140,
                 type: 'number',
-                value: (row) =>
-                    formatQtyWithUnit(row.consumedQty, row.unitName),
+                value: (row) => formatExactQtyWithUnit(
+                  row.quantityText('consumedQty'),
+                  row.unitName,
+                ),
               ),
               MasterColumnDef(
                 key: 'returnedQty',
                 label: '已退',
                 sortable: true,
-                exactValueOf: (row) => row.returnedQty.toString(),
+                exactValueOf: (row) => row.quantityText('returnedQty'),
                 width: 110,
                 type: 'number',
-                value: (row) =>
-                    formatQtyWithUnit(row.returnedQty, row.unitName),
+                value: (row) => formatExactQtyWithUnit(
+                  row.quantityText('returnedQty'),
+                  row.unitName,
+                ),
               ),
               MasterColumnDef(
                 key: 'wastedQty',
                 label: '损耗',
                 sortable: true,
-                exactValueOf: (row) => row.wastedQty.toString(),
+                exactValueOf: (row) => row.quantityText('wastedQty'),
                 width: 110,
                 type: 'number',
-                value: (row) => formatQtyWithUnit(row.wastedQty, row.unitName),
+                value: (row) => formatExactQtyWithUnit(
+                  row.quantityText('wastedQty'),
+                  row.unitName,
+                ),
               ),
               MasterColumnDef(
                 key: 'supplierEnding',
                 label: '结存',
                 sortable: true,
-                exactValueOf: (row) => row.supplierEnding.toString(),
+                exactValueOf: (row) => row.quantityText('supplierEnding'),
                 width: 120,
                 type: 'number',
-                value: (row) =>
-                    formatQtyWithUnit(row.supplierEnding, row.unitName),
+                value: (row) => formatExactQtyWithUnit(
+                  row.quantityText('supplierEnding'),
+                  row.unitName,
+                ),
                 cellBuilder: (_, row) => Text(
-                  formatQtyWithUnit(row.supplierEnding, row.unitName),
+                  formatExactQtyWithUnit(
+                    row.quantityText('supplierEnding'),
+                    row.unitName,
+                  ),
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
@@ -549,9 +565,17 @@ class _SubcontractOrderProgressSectionState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _kv(theme, '已立加工费应付(本币)', p.apPostedTotal.toStringAsFixed(2)),
+          _kv(
+            theme,
+            '已立加工费应付(本币)',
+            financeExactMoneyDisplay(p.quantityText('apPostedTotal')),
+          ),
           if (p.wasteDeductTotal > 0)
-            _kv(theme, '损耗建议索赔(不计入应付)', p.wasteDeductTotal.toStringAsFixed(2)),
+            _kv(
+              theme,
+              '损耗建议索赔(不计入应付)',
+              financeExactMoneyDisplay(p.quantityText('wasteDeductTotal')),
+            ),
         ],
       ),
     );
@@ -640,16 +664,16 @@ class _SubcontractOrderProgressSectionState
     };
     final quantities = <String>[
       if (receipt.iqcPassedBaseQty != null)
-        '合格 ${subcontractDrawQty(receipt.iqcPassedBaseQty!)}',
+        '合格 ${subcontractDrawQty(receipt.quantityText('iqcPassedBaseQty'))}',
       if (receipt.warehouseStockedBaseQty != null)
-        '已入库 ${subcontractDrawQty(receipt.warehouseStockedBaseQty!)}',
+        '已入库 ${subcontractDrawQty(receipt.quantityText('warehouseStockedBaseQty'))}',
       if (receipt.pendingStockInBaseQty != null)
-        '待入库 ${subcontractDrawQty(receipt.pendingStockInBaseQty!)}',
+        '待入库 ${subcontractDrawQty(receipt.quantityText('pendingStockInBaseQty'))}',
     ];
     return [?_iqcText(receipt.iqcStatus), status, ...quantities].join(' · ');
   }
 
-  static String _qty(double value, String unit) {
+  static String _qty(Object? value, String unit) {
     final trimmed = unit.trim();
     return '${subcontractDrawQty(value)}${trimmed.isEmpty ? '' : ' $trimmed'}';
   }

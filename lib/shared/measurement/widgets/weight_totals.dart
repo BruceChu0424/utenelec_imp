@@ -1,3 +1,4 @@
+import '../../formatters/exact_decimal.dart';
 // 采集表格表尾的重量合计项 (ADR-135 §6.2):
 // 「明细 12 行 · 本次实收 60,000 个 · 实称 125.3 kg (未称 3 行) · 称重偏差 2 行」。
 //
@@ -14,27 +15,31 @@ class WeightTotalsSummary {
     required this.rows,
     required this.weighedRows,
     required this.totalKg,
+    this.totalKgExact,
     this.deviationRows = 0,
   });
 
   /// 逐行千克值 (null = 没称; 0 视为没称) 汇总。
   factory WeightTotalsSummary.of(
-    Iterable<double?> weightsKg, {
+    Iterable<Object?> weightsKg, {
     int deviationRows = 0,
   }) {
     var rows = 0;
     var weighed = 0;
-    var total = 0.0;
-    for (final kg in weightsKg) {
+    final values = <String>[];
+    for (final value in weightsKg) {
       rows++;
-      if (kg == null || !kg.isFinite || kg <= 0) continue;
+      final text = financeExactTrimmed(financeExactDecimal(value));
+      if (text == null || text == '0' || text.startsWith('-')) continue;
       weighed++;
-      total += kg;
+      values.add(text);
     }
+    final total = financeExactTrimmed(financeExactSumTexts(values)) ?? '0';
     return WeightTotalsSummary(
       rows: rows,
       weighedRows: weighed,
-      totalKg: total,
+      totalKg: double.parse(total),
+      totalKgExact: total,
       deviationRows: deviationRows,
     );
   }
@@ -42,6 +47,9 @@ class WeightTotalsSummary {
   final int rows;
   final int weighedRows;
   final double totalKg;
+  final String? totalKgExact;
+  String get totalKgText =>
+      financeExactTrimmed(totalKgExact ?? totalKg.toString())!;
 
   /// 称重偏差 (WARN/ALERT) 的行数。
   final int deviationRows;
@@ -56,7 +64,7 @@ UtenTotalEntry weightTotalEntry(
   WeightDisplay display = WeightDisplay.auto,
 }) {
   if (summary.weighedRows == 0) return UtenTotalEntry(label, '');
-  final total = formatWeight(roundKgLine(summary.totalKg), display: display);
+  final total = formatWeight(summary.totalKgText, display: display);
   final unweighed = summary.unweighedRows;
   return UtenTotalEntry(
     label,

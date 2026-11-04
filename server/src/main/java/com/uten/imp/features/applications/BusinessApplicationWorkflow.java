@@ -3,7 +3,6 @@ package com.uten.imp.features.applications;
 import com.uten.imp.common.web.ApiException;
 import com.uten.imp.common.web.ErrorCode;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.*;
 
 /** One ordered workflow contract; kinds retain their distinct business purpose. */
@@ -68,8 +67,9 @@ public final class BusinessApplicationWorkflow {
     }
     public static BigDecimal amount(String value,boolean travel) {
         try {
-            if(value==null||!value.matches("[0-9]{1,14}(?:\\.[0-9]{1,2})?"))throw invalid("金额请填写最多两位小数的非负数字");
-            BigDecimal amount=new BigDecimal(value).setScale(2,RoundingMode.UNNECESSARY);
+            if(travel && (value==null || value.isBlank())) return null;
+            if(value==null||value.length()>4096||!value.matches("[0-9]+(?:\\.[0-9]+)?"))throw invalid("金额请填写完整的非负数字");
+            BigDecimal amount=com.uten.imp.common.util.FinancialExactAmount.require(new BigDecimal(value),"申请金额");
             if(amount.signum()<0||(!travel&&amount.signum()==0))throw invalid("付款金额必须大于零");
             return amount;
         } catch(NumberFormatException|ArithmeticException ex){throw invalid("金额格式不正确");}

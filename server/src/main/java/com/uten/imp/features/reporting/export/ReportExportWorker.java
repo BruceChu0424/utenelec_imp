@@ -1,6 +1,11 @@
 package com.uten.imp.features.reporting.export;
 
 import com.uten.imp.common.export.*;
+import com.uten.imp.common.finance.BusinessPrecisionContext;
+import com.uten.imp.common.finance.BusinessPrecisionRequiredException;
+import java.util.Map;
+import java.util.function.Consumer;
+import org.springframework.transaction.support.TransactionCallback;
 import com.uten.imp.security.*;
 import jakarta.annotation.PreDestroy;
 import org.springframework.context.annotation.Profile;
@@ -68,7 +73,7 @@ public class ReportExportWorker {
                     cleanupExpired();
                     try {ExportDownloadFiles.reap(service.requireStorage(),java.time.Instant.now());}
                     catch(IOException cleanup) {org.slf4j.LoggerFactory.getLogger(getClass()).warn("Export download cache cleanup failed");}
-                    var job=shortTx.execute(s -> repository.claim());
+                    var job=metadataTx(s -> repository.claim());
                     if(job!=null && job.isPresent()) runWithSlot(job.get());
                     else cleanupIdleFiles();
                 } catch(RuntimeException unavailable) {
@@ -86,7 +91,7 @@ public class ReportExportWorker {
             }
             if(!acquired)return null;
             try {
-                if(Boolean.FALSE.equals(shortTx.execute(s -> repository.hasRunning())))cleanupInterruptedFiles();
+                if(Boolean.FALSE.equals(metadataTx(s -> repository.hasRunning())))cleanupInterruptedFiles();
             } finally {try(var statement=connection.createStatement()){statement.execute("SELECT pg_advisory_unlock(935,2)");}}
             return null;
         });
@@ -123,7 +128,7 @@ public class ReportExportWorker {
                 java.util.UUID id;int attempt;
                 try {id=java.util.UUID.fromString(match.group(1));attempt=Integer.parseInt(match.group(2));}
                 catch(IllegalArgumentException invalid) {continue;}
-                var job=shortTx.execute(s -> repository.find(id));
+                var job=metadataTx(s -> repository.find(id));
                 if(job==null || job.isEmpty())continue;
                 var value=job.get();
                 boolean rejected=Set.of("FAILED","CANCELLED","EXPIRED").contains(value.status())
@@ -138,9 +143,10 @@ public class ReportExportWorker {
         Path destination=service.artifact(job);
         Path part=destination.resolveSibling(destination.getFileName()+".part");
         boolean published=false;
+        Map<String,Object> precisionFailure=null;
         try {
             service.requireCompatibleReader(job);
-            AuthUser principal=shortTx.execute(s -> restorer.restore(job.owner(),job.authVersion(),job.authEpoch()));
+            AuthUser principal=metadataTx(s -> restorer.restore(job.owner(),job.authVersion(),job.authEpoch()));
             var request=service.decode(job.request());
             ReportExportService.authorizeRequest(principal,request);
             var context=SecurityContextHolder.createEmptyContext();
@@ -149,13 +155,14 @@ public class ReportExportWorker {
             long deadline=System.nanoTime()+TimeUnit.MINUTES.toNanos(10);
             checkpoint(job,0,deadline);
             MessageDigest digest=MessageDigest.getInstance("SHA-256");
+            try(var precision=BusinessPrecisionContext.use(service.precision(job))) {
             try(var writer=openWriter(request,job,deadline)) {
                 try(var operation=ExportOperationCheckpoint.open(()->checkpoint(job,writer.rowCount(),deadline))) {
                 readTx.executeWithoutResult(tx -> {
                     jdbc.execute("SET LOCAL statement_timeout='60s'");
                     var snapshot=jdbc.queryForObject("SELECT transaction_timestamp() AS at,txid_current_snapshot()::text AS identity",
                             (r,n) -> new Snapshot(r.getObject("at",OffsetDateTime.class),r.getString("identity")));
-                    shortTx.executeWithoutResult(s -> repository.snapshot(job,snapshot.at(),snapshot.identity()));
+                    metadataWrite(s -> repository.snapshot(job,snapshot.at(),snapshot.identity()));
                     writer.readSource();
                 });
                 }
@@ -184,20 +191,26 @@ public class ReportExportWorker {
                 Files.move(part,destination,StandardCopyOption.ATOMIC_MOVE);
                 long bytes=Files.size(destination);
                 String sha=HexFormat.of().formatHex(digest.digest());
-                published=Boolean.TRUE.equals(shortTx.execute(s -> repository.succeed(job,writer.rowCount(),bytes,sha)));
+                published=Boolean.TRUE.equals(metadataTx(s -> repository.succeed(job,writer.rowCount(),bytes,sha)));
+            }catch(Exception failure){precisionFailure=BusinessPrecisionRequiredException.from(failure).map(BusinessPrecisionRequiredException::details).orElse(null);throw failure;}
             }
         } catch(Exception failure) {
-            var confirmed=shortTx.execute(s -> repository.find(job.id()));
+            var confirmed=metadataTx(s -> repository.find(job.id()));
             if(confirmed!=null && confirmed.isPresent() && "SUCCEEDED".equals(confirmed.get().status())
                     && confirmed.get().attempt()==job.attempt()) {
                 published=true;
                 return;
             }
+            if(precisionFailure!=null&&Boolean.TRUE.equals(precisionFailure.get("notWritten"))&&!Files.exists(destination,LinkOption.NOFOLLOW_LINKS)){
+                String safe=service.encodePrecisionRequirement(precisionFailure);
+                boolean waiting=Boolean.TRUE.equals(metadataTx(tx->repository.waitForPrecision(job,safe)));
+                if(waiting){org.slf4j.LoggerFactory.getLogger(getClass()).info("Export job {} is waiting for an explicit precision choice",job.id());return;}
+            }
             String message=failure instanceof SubmitterPrincipalRestorer.PrincipalChangedException
                     ?"账号或权限已变化，请重新创建导出任务"
                     :failure instanceof com.uten.imp.common.web.ApiException api?api.getMessage()
                     :"导出未完成，请检查任务条件及可用空间后重新创建任务";
-            shortTx.executeWithoutResult(s -> repository.fail(job,message));
+            metadataWrite(s -> repository.fail(job,message));
             org.slf4j.LoggerFactory.getLogger(getClass()).warn("Export job {} failed: {}",job.id(),failure.getClass().getSimpleName());
         } finally {
             SecurityContextHolder.clearContext();
@@ -206,7 +219,7 @@ public class ReportExportWorker {
                 if(!published) {
                     // COMMIT may have succeeded even when its acknowledgement was lost.
                     // Keep an uncertain candidate until an authoritative task read resolves it.
-                    var confirmed=shortTx.execute(s -> repository.find(job.id()));
+                    var confirmed=metadataTx(s -> repository.find(job.id()));
                     if(confirmed!=null && confirmed.isPresent()
                             && Set.of("FAILED","CANCELLED","EXPIRED").contains(confirmed.get().status())
                             && confirmed.get().attempt()==job.attempt())
@@ -215,9 +228,14 @@ public class ReportExportWorker {
             }
             catch(IOException cleanup) { org.slf4j.LoggerFactory.getLogger(getClass()).warn("Export temporary file cleanup failed for {}",job.id()); }
             catch(RuntimeException uncertain) { org.slf4j.LoggerFactory.getLogger(getClass()).warn("Export publication remains uncertain for {}",job.id()); }
-            shortTx.executeWithoutResult(s -> repository.acknowledgeCancellation(job));
+            metadataWrite(s -> repository.acknowledgeCancellation(job));
         }
     }
+    private <T>T metadataTx(TransactionCallback<T> work){
+        try(var ignored=BusinessPrecisionContext.useMetadata()){return shortTx.execute(work);}
+        catch(RuntimeException failure){throw failure;}catch(Exception failure){throw new IllegalStateException("Export metadata context cannot be restored",failure);}
+    }
+    private void metadataWrite(Consumer<TransactionStatus> work){metadataTx(status->{work.accept(status);return null;});}
     private interface TaskWriter extends AutoCloseable {
         int rowCount();void readSource();void finish(OutputStream output)throws IOException;
         @Override void close()throws IOException;
@@ -258,7 +276,7 @@ public class ReportExportWorker {
     private void checkpoint(ReportExportRepository.Job job,int rows,long deadline) {
         if(Thread.currentThread().isInterrupted() || System.nanoTime()>deadline) throw new CancellationException();
         service.requireCurrentAccess(job);
-        shortTx.executeWithoutResult(s -> {
+        metadataWrite(s -> {
             if(!repository.heartbeat(job,rows)) throw new CancellationException();
         });
         try {
@@ -267,12 +285,12 @@ public class ReportExportWorker {
         } catch(IOException error) { throw new UncheckedIOException(error); }
     }
     private void cleanupExpired() {
-        var expired=shortTx.execute(s -> repository.expired());
+        var expired=metadataTx(s -> repository.expired());
         if(expired==null)return;
         for(var job:expired) {
             try {
                 Files.deleteIfExists(service.artifact(job));
-                shortTx.executeWithoutResult(s -> repository.expire(job.id()));
+                metadataWrite(s -> repository.expire(job.id()));
             } catch(IOException failure) {
                 org.slf4j.LoggerFactory.getLogger(getClass()).warn("Expired export file cleanup failed for {}",job.id());
             }

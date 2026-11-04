@@ -7,8 +7,17 @@ import java.util.*;
 @RequiredArgsConstructor
 class AttachmentEvidenceAdapter implements AttachmentEvidencePort {
     private final AttachmentRepository repository;
+    @org.springframework.beans.factory.annotation.Autowired
+    private AttachmentLinkedEvidenceSupport linked;
     @Override public List<Evidence> cleanEvidence(String ownerType,UUID ownerId){
-        return repository.findByOwnerTypeAndOwnerIdAndLifecycleStateOrderByCreatedAtAsc(ownerType,ownerId,AttachmentLifecycleState.CLEAN)
-            .stream().map(a->new Evidence(a.getId(),a.getSha256(),a.getOriginalName())).toList();
+        var result=new LinkedHashMap<UUID,Evidence>();
+        repository.findByOwnerTypeAndOwnerIdAndLifecycleStateOrderByCreatedAtAsc(ownerType,ownerId,AttachmentLifecycleState.CLEAN)
+            .stream().filter(a->a.getDeleteRequestedAt()==null&&a.getSha256()!=null&&!a.getSha256().isBlank())
+            .forEach(a->result.put(a.getId(),new Evidence(a.getId(),a.getSha256(),a.getOriginalName())));
+        if(linked!=null)linked.visibleLinked(ownerType,ownerId).forEach(a->result.putIfAbsent(a.getId(),new Evidence(a.getId(),a.getSha256(),a.getOriginalName())));
+        return List.copyOf(result.values());
+    }
+    @Override public boolean frozenEvidenceReady(List<com.uten.imp.application.port.AttachmentLinkedEvidencePort.Frozen> refs){
+        return refs!=null&&refs.isEmpty()||linked!=null&&linked.ready(refs);
     }
 }

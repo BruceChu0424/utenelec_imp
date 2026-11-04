@@ -1,3 +1,4 @@
+import '../../../shared/formatters/financial_amount_validation.dart';
 import '../../../shared/ai/guided/ai_guided_file_plan.dart';
 import 'expense_item.dart';
 
@@ -20,7 +21,7 @@ ExpenseItem? guidedExpenseItem(AiGuidedFilePlan plan, String id) {
     return null;
   }
   final raw = result.fields['totalAmount'] ?? '';
-  if (!RegExp(r'^\d{1,12}(?:\.\d{1,2})?$').hasMatch(raw)) return null;
+  if (validateFinanceAmount(raw) != null) return null;
   final amount = double.tryParse(raw);
   final date = guidedInvoiceDate(result.fields['issueDate']);
   if (amount == null || !amount.isFinite || amount <= 0 || date == null) {
@@ -33,6 +34,7 @@ ExpenseItem? guidedExpenseItem(AiGuidedFilePlan plan, String id) {
     id: id,
     category: ExpenseCategory.other,
     amount: amount,
+    amountExact: raw,
     date: date,
     description: summary?.substring(
       0,

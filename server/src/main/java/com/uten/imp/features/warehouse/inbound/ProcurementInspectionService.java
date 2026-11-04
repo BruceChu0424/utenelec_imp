@@ -26,7 +26,6 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -414,11 +413,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort, 
         if (qty == null || qty.signum() < 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, label + "不能为空或为负");
         }
-        try {
-            return qty.setScale(4, RoundingMode.UNNECESSARY);
-        } catch (ArithmeticException ex) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, label + "最多保留 4 位小数");
-        }
+        return MoneyPolicy.canonical(com.uten.imp.common.util.FinancialExactAmount.quantity(qty,label));
     }
 
     /**
@@ -1206,11 +1201,7 @@ public class ProcurementInspectionService implements ProcurementInspectionPort, 
         if (qty == null || qty.signum() <= 0) {
             throw new ApiException(ErrorCode.VALIDATION_FAILED, "质检数量必须大于 0");
         }
-        try {
-            return qty.setScale(4, RoundingMode.UNNECESSARY);
-        } catch (ArithmeticException ex) {
-            throw new ApiException(ErrorCode.VALIDATION_FAILED, "质检数量最多保留 4 位小数");
-        }
+        return requireNonNegativeQty(qty,"质检数量");
     }
 
     static String normalizeIdempotencyKey(String key) {
@@ -1250,17 +1241,8 @@ public class ProcurementInspectionService implements ProcurementInspectionPort, 
             throw new ApiException(
                     ErrorCode.CONFLICT, "收货明细实际总重量不得为负数");
         }
-        try {
-            BigDecimal normalized = weight.setScale(4, RoundingMode.UNNECESSARY);
-            if (normalized.precision() - normalized.scale() > 14) {
-                throw new ApiException(
-                        ErrorCode.CONFLICT, "收货明细实际总重量整数位最多 14 位");
-            }
-            return normalized;
-        } catch (ArithmeticException ex) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT, "收货明细实际总重量最多保留 4 位小数");
-        }
+        // This is an already adopted receipt fact, not a new raw measurement.
+        return MoneyPolicy.canonical(com.uten.imp.common.util.FinancialExactAmount.quantity(weight,"收货明细实际总重量"));
     }
 
     private static BigDecimal dec(Object value) {

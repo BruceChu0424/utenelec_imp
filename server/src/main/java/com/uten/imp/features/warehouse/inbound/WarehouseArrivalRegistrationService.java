@@ -1248,13 +1248,7 @@ public class WarehouseArrivalRegistrationService {
         if (items == null) return;
         for (var item : items) {
             if (item == null || item.weight() == null) continue;
-            BigDecimal weight = item.weight();
-            if (weight.signum() < 0 || weight.scale() > 4
-                    || weight.precision() - weight.scale() > 14) {
-                throw new ApiException(
-                        ErrorCode.VALIDATION_FAILED,
-                        "到货明细实际总重量必须为非负数，最多 14 位整数和 4 位小数");
-            }
+            com.uten.imp.features.stock.dto.WeightInput.rawKg(item.weight(),"到货明细实际总重量");
         }
     }
 

@@ -68,6 +68,12 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class FinancePaymentService {
+    @org.springframework.beans.factory.annotation.Autowired private com.uten.imp.application.port.NativeFinancialPostingAccountPort nativePostingAccounts;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.FinanceApplicationControlPort applications;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.SupplierPrepaymentPort prepayments;
+    private com.uten.imp.application.port.SupplierPrepaymentPort prepayments(){if(prepayments==null)throw new ApiException(ErrorCode.CONFLICT,"供应商预付资产来源尚未准备好，原单据已保留");return prepayments;}
     private com.uten.imp.common.history.RetainedRecordReader retainedRecords;
     @org.springframework.beans.factory.annotation.Autowired
     public void setRetainedRecords(com.uten.imp.common.history.RetainedRecordReader reader) { retainedRecords = reader; }
@@ -101,6 +107,7 @@ public class FinancePaymentService {
     private final GlPostingService glPostingService;
     private final AccountFlowLedgerService accountFlowLedger;
     private final SupplierPayableHoldGuard payableHoldGuard;
+    private final com.uten.imp.features.finance.payables.FinanceSupplierSettlementDependencies settlementDependencies;
 
     @Transactional(readOnly = true)
     public PageResponse<FinancePaymentListItem> list(FinancePaymentQueryFilter originalFilter, int page, int size, String sort, String order) {
@@ -285,6 +292,7 @@ public class FinancePaymentService {
     @PreAuthorize("hasAuthority('finance_payment:approve')")
     public FinancePaymentDetail approve(UUID id) {
         tx.bind();
+        var applicationPermit=applications==null?null:applications.nativeExecutionPermit("PAYMENT",id);
         PaymentStyleHierarchyLock.lock(em);
         FinancePayment p = require(id);
 
@@ -309,20 +317,28 @@ public class FinancePaymentService {
             throw new ApiException(ErrorCode.BUSINESS, "付款单需指定付款账户");
         }
         assertNoExistingPosting(p.getId()); // M19：幂等护栏，finance_reconciliations 已存在该单流水则禁止重复审核
-        UUID approver = currentUser.requireEmployeeId(); // 审核=当前登录用户（报表按 approver_id 解析审核员）
-        if (p.getMakerId() != null && p.getMakerId().equals(approver)) {
+        UUID approver = applicationPermit==null?currentUser.requireEmployeeId():applicationPermit.approvedBy();
+        if (applicationPermit==null && p.getMakerId() != null && p.getMakerId().equals(approver)) {
             throw new ApiException(ErrorCode.BUSINESS, "制单人与审核人不可相同(职责分离)");
         }
         glPostingService.lockAutoProjectionPeriod(p.getBillDate());
+        com.uten.imp.application.concurrency.FinanceClassificationLock.lock(em);
+        if(nativePostingAccounts!=null)nativePostingAccounts.lockCashSources("PAYMENT",p.getId());
         if(p.getAmountAuthorityVersion()==BANK_AUTHORITY_VERSION)finalizeBankAuthority(p,true);
         p.setApproverId(approver);
         p.setApproverLegacyId(null);
-        p.setApproverName(nameResolver.nameOf(approver));
+        p.setApproverName(applicationPermit==null?nameResolver.nameOf(approver):applicationPermit.approvedName());
         settlePayment(p);
+        em.flush();
+        if(nativePostingAccounts!=null&&p.getAmountAuthorityVersion()==BANK_AUTHORITY_VERSION)p.setGlApStyleId(nativePostingAccounts.prepareCash("PAYMENT",p.getId()));
         p.setStatus(STATUS_APPROVED);
         p.setCancelDate(OffsetDateTime.now());
         paymentRepo.saveAndFlush(p);
+        settlementDependencies.paymentApproved(p.getId());
+        boolean advance=lineRepo.findByPaymentIdOrderByLineNoAsc(p.getId()).isEmpty();
+        if(advance)prepayments().recognize(p.getId());
         if(p.getAmountAuthorityVersion()==BANK_AUTHORITY_VERSION)glPostingService.postActualBankPayment(p.getId());
+        if(advance)prepayments().posted(p.getId());
         return detail(id);
     }
 
@@ -331,6 +347,7 @@ public class FinancePaymentService {
     @PreAuthorize("hasAuthority('finance_payment:reverse')")
     public FinancePaymentDetail reverse(UUID id) {
         tx.bind();
+        if(applications!=null)applications.requireNativeSettlementAction("PAYMENT",id,"REVERSE");
         PaymentStyleHierarchyLock.lock(em);
         FinancePayment p = require(id);
         com.uten.imp.common.history.ImportedBusinessDocumentPolicy.mutable(em,"finance_payments",p);
@@ -345,7 +362,11 @@ public class FinancePaymentService {
         requireActiveAfterLock(p);
         requireUnapprovalHeader(p);
         requireAuthoritativeAmounts(p, "红冲");
+        settlementDependencies.requirePaymentReversible(p.getId());
+        if(lineRepo.findByPaymentIdOrderByLineNoAsc(id).isEmpty())prepayments().requireReversible(id);
         assertCompletePosting(p.getId(), 1L); // M19：红冲前确认流水完整（付款每单恰 1 行）
+        glPostingService.lockAutoProjectionPeriod(BusinessTime.today());
+        com.uten.imp.application.concurrency.FinanceClassificationLock.lock(em);
         OffsetDateTime reversedAt=OffsetDateTime.now();
         if(p.getAmountAuthorityVersion()==BANK_AUTHORITY_VERSION) {
             glPostingService.reverseActualBankPayment(p.getId(),reversedAt);
@@ -381,8 +402,9 @@ public class FinancePaymentService {
         requireAuthoritativeAmounts(p,"反审");assertCompletePosting(id,1L);
         accountFlowLedger.requireReversible(RECON_SOURCE,id);
         var lines=lineRepo.findByPaymentIdOrderByLineNoAsc(id);
-        if(lines.isEmpty())throw new ApiException(ErrorCode.CONFLICT,"供应商预付链尚未完成，不能自动反审这笔历史付款");
+        if(lines.isEmpty()){if(p.getAmountAuthorityVersion()!=BANK_AUTHORITY_VERSION)throw new ApiException(ErrorCode.CONFLICT,"历史直接付款缺少可核对的预付资产链，不能自动反审");prepayments().requireReversible(id);return;}
         var ledgers=readAppliedLedgers(lines);var floors=LegacyOpeningReversalFloor.load(em,ledgers.values(),"AP");
+        settlementDependencies.requirePaymentReversible(p.getId());
         for(var line:lines){var ledger=ledgers.get(line.getAppliedLedgerId());calculateReversal(p,line,ledger,floors.getOrDefault(ledger.getId(),LegacyOpeningReversalFloor.ZERO));}
     }
     private void requireReversibleGl(FinancePayment p) { UUID id=p.getId();
@@ -400,8 +422,11 @@ public class FinancePaymentService {
                     JOIN finance_payments payment ON batch.supplier_id=payment.supplier_id AND batch.currency_id=payment.currency_id
                     WHERE payment.id=:id),
                 'vouchers',(SELECT jsonb_agg(to_jsonb(voucher) ORDER BY voucher.id) FROM gl_vouchers voucher WHERE voucher.source_doc_id=:id),
-                'offsets',(SELECT jsonb_agg(to_jsonb(offset_row) ORDER BY offset_row.id) FROM customer_open_item_offsets offset_row
-                    WHERE source_ledger_id IN(SELECT id FROM ar_ap_ledger WHERE source_doc_id=:id)))::text
+                'offsets',(SELECT jsonb_agg(to_jsonb(offset_row) ORDER BY offset_row.id) FROM supplier_open_item_offsets offset_row
+                    WHERE source_ledger_id IN(SELECT applied_ledger_id FROM finance_payment_lines WHERE payment_id=:id)
+                       OR target_ledger_id IN(SELECT applied_ledger_id FROM finance_payment_lines WHERE payment_id=:id)),
+                'settlementOrder',(SELECT jsonb_agg(to_jsonb(dependency) ORDER BY dependency.offset_id,dependency.payment_line_id)
+                    FROM finance_supplier_settlement_dependencies dependency JOIN finance_payment_lines line ON line.id=dependency.payment_line_id WHERE line.payment_id=:id))::text
             """).setParameter("id",id).getSingleResult());
     }
 
@@ -410,9 +435,8 @@ public class FinancePaymentService {
     private void settlePayment(FinancePayment p) {
         List<FinancePaymentLine> lines = lineRepo.findByPaymentIdOrderByLineNoAsc(p.getId());
         if (lines.isEmpty()) {
-            throw new ApiException(
-                    ErrorCode.CONFLICT,
-                    "无应付核销明细的直接付款属于供应商预付；供应商预付资产科目、应用、退款和总账链未完成，当前禁止审核");
+            if(p.getAmountAuthorityVersion()!=BANK_AUTHORITY_VERSION)throw new ApiException(ErrorCode.CONFLICT,"历史直接付款缺少真实银行和预付资产来源，不能自动审核");
+            prepayments();postPaymentAccount(p);return;
         }
         Map<UUID, ArApLedger> lockedLedgers = lockAppliedLedgers(lines,true);
         settleAppliedLines(p, lines, lockedLedgers);
@@ -422,23 +446,15 @@ public class FinancePaymentService {
     private void reverseSettlement(FinancePayment p) {
         List<FinancePaymentLine> lines = lineRepo.findByPaymentIdOrderByLineNoAsc(p.getId());
         if (!lines.isEmpty()) {
-            reverseAppliedLines(p, lines, lockAppliedLedgers(lines,false));
+            var locked=lockAppliedLedgers(lines,false);
+            settlementDependencies.requirePaymentReversible(p.getId());
+            reverseAppliedLines(p, lines, locked);
             reverseReconciliation(p.getId(),p.getReversedAt());
             return;
         }
 
-        List<ArApLedger> rows = ledgerRepo.findBySourceForUpdate(
-                p.getId(), SRC_DIRECT_PAYMENT);
-        if (rows.size() != 1) {
-            throw new ApiException(ErrorCode.CONFLICT, "直接付款反立账来源缺失或重复");
-        }
-        OffsetDateTime reversedAt = OffsetDateTime.now();
-        for (ArApLedger ledger : rows) {
-            ledger.setStatus((short) -1);
-            ledger.setDeleted(true);
-            ledger.setDeletedAt(reversedAt);
-            ledgerRepo.save(ledger);
-        }
+        if(p.getAmountAuthorityVersion()!=BANK_AUTHORITY_VERSION)throw new ApiException(ErrorCode.CONFLICT,"历史直接付款没有可核对的预付资产来源，不能自动反审");
+        prepayments().reverse(p.getId(),p.getReversedAt());
         reverseReconciliation(p.getId(),p.getReversedAt());
     }
 
@@ -1142,7 +1158,9 @@ public class FinancePaymentService {
         payment.setAccountAmount(bankDebit);payment.setAccountAmountLocal(bankLocal);
         payment.setBankFeeAccountAmount(fee);payment.setBankFeeLocal(feeLocal);
         payment.setAmountLocal(vendorLocal);payment.setGlAccountStyleId(accountStyle);
-        payment.setGlApStyleId(paymentPostingStyle("AP_CONTROL"));
+        payment.setGlApStyleId((UUID)em.createNativeQuery("SELECT fn_finance_native_cash_counter_style('PAYMENT',:id,:role,:currency,'SUPPLIER',:party,:day)")
+                .setParameter("id",payment.getId()).setParameter("role",lines.isEmpty()?"SUPPLIER_PREPAYMENT_ASSET":"AP_CONTROL")
+                .setParameter("currency",payment.getCurrencyId()).setParameter("party",payment.getSupplierId()).setParameter("day",payment.getBillDate()).getSingleResult());
         payment.setGlBankFeeStyleId(fee.signum()==0?null:paymentPostingStyle("BANK_FEE_EXPENSE"));
         refreshPaymentFxStyle(payment,lines);
         payment.setAmountAuthorityVersion(BANK_AUTHORITY_VERSION);paymentRepo.save(payment);

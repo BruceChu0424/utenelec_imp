@@ -259,6 +259,19 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     return const [Perm.departmentView];
   }
   // 财务
+  if (location == '/finance/applications/settings') {
+    return const [Perm.expenseSettings];
+  }
+  if (location == '/finance/applications' ||
+      location.startsWith('/finance/applications/')) {
+    return const [
+      Perm.financeApplicationView,
+      Perm.financeApplicationApply,
+      Perm.expenseApply,
+      Perm.payrollGenerate,
+      Perm.expenseSettings,
+    ];
+  }
   if (location == '/expense/settings') {
     return const [Perm.expenseSettings];
   }
@@ -497,6 +510,24 @@ List<String>? requiredAnyPermFor(String rawLocation) {
     return const [Perm.stockReportView];
   }
   // 独立称重计数页 (ADR-135)：库存查看即可进；保存抽样的称样权限由页面与后端另行把关。
+  if (location == '/workshop-material/close-retry') {
+    return const [Perm.workshopMaterialCount];
+  }
+  if (location == '/measurement/weigh-count-recovery') {
+    return const [
+      Perm.stockView,
+      Perm.warehouseInboundStockIn,
+      Perm.stockDocEdit,
+      Perm.stockWeightManage,
+    ];
+  }
+  if (location == '/measurement/weight-sample') {
+    return const [
+      Perm.warehouseInboundStockIn,
+      Perm.stockDocEdit,
+      Perm.stockWeightManage,
+    ];
+  }
   if (location == RouteName.warehouseWeighCount) {
     return const [Perm.stockView];
   }

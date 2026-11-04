@@ -67,6 +67,7 @@ import '../../../core/ui/capsule_nav_metrics.dart';
 import '../../../core/utils/china_datetime.dart';
 import '../../../core/utils/idempotency_key.dart';
 import '../../../shared/formatters/quantity_display.dart';
+import '../../../shared/formatters/exact_decimal.dart';
 import '../../../shared/models/department_node.dart';
 import '../../purchase/config/purchase_doc_config.dart';
 import '../../purchase/models/purchase_doc.dart';
@@ -364,16 +365,16 @@ class _InboundArrivalRegistrationPageState
   }
 
   /// 按数量精确换算的重量(货品或行单位是重量单位)；需要实称时为 null。
-  double? _exactKg(_BatchArrivalLine line) => warehouseExactLineKg(
-    lineQty: double.tryParse(line.qty.text.trim()),
+  String? _exactKg(_BatchArrivalLine line) => warehouseExactLineKg(
+    lineQty: line.qty.text.trim(),
     lineMassUnit: _massUnits[line.item.unitId],
-    unitRate: line.unitRate,
+    unitRate: line.item.unitRateText,
     params: _paramsOf(line),
   );
 
   /// 实际随明细提交的重量：精确换算行不带(服务端按数量算)，其余带实称千克。
-  double? _sentKg(_BatchArrivalLine line) =>
-      _exactKg(line) == null ? line.weight.kg : null;
+  String? _sentKg(_BatchArrivalLine line) =>
+      _exactKg(line) == null ? line.weight.kgText : null;
 
   /// 幂等键的行重量片段(没称又没按称重改数量时为空串，键与不称重时一致)。
   String _weightKeyPart(_BatchArrivalLine line) {
@@ -392,32 +393,45 @@ class _InboundArrivalRegistrationPageState
   }
 
   /// 称重计数(到货口径)：默认「只记重量」，「按称重改数量」需显式点。
-  Future<void> _weighCount(BuildContext context, _BatchArrivalLine line) =>
-      warehouseWeighCount(
-        context,
-        request: WeighCountRequest(
-          mode: WeighCountContext.receipt,
-          goodsId: line.goodsId,
-          goodsTitle: warehouseWeighGoodsTitle(
-            line.item.goodsName,
-            line.item.goodsCode,
-            line.item.colorName,
-          ),
-          params: _paramsOf(line),
-          supplierId: line.prefill.supplierId,
-          warehouseId: line.warehouseId,
-          baseUnitName: _baseUnitName(line),
-          lineUnitName: line.item.unitName,
-          unitRate: line.unitRate,
-          currentQty: double.tryParse(line.qty.text.trim()),
-          initialNetKg: line.weight.kg,
-          sampleRemark: '到货登记 ${line.prefill.orderBillNo}',
+  Future<void> _weighCount(BuildContext context, _BatchArrivalLine line) {
+    final warehouse = line.warehouseId;
+    final rate = line.item.unitRateText;
+    return warehouseWeighCount(
+      context,
+      request: WeighCountRequest(
+        mode: WeighCountContext.receipt,
+        goodsId: line.goodsId,
+        goodsTitle: warehouseWeighGoodsTitle(
+          line.item.goodsName,
+          line.item.goodsCode,
+          line.item.colorName,
         ),
-        weight: line.weight,
-        qty: line.qty,
-        cache: _weightCache,
-        refetch: _weightParamsLines(),
-      );
+        params: _paramsOf(line),
+        supplierId: line.prefill.supplierId,
+        warehouseId: line.warehouseId,
+        baseUnitName: _baseUnitName(line),
+        lineUnitName: line.item.unitName,
+        unitRate: line.unitRate,
+        unitRateExact: line.item.unitRateText,
+        currentQty: double.tryParse(line.qty.text.trim()),
+        initialNetKg: line.weight.kg,
+        initialNetKgExact: line.weight.kgText,
+        currentQtyExact: line.qty.text.trim(),
+        sampleRemark: '到货登记 ${line.prefill.orderBillNo}',
+      ),
+      weight: line.weight,
+      qty: line.qty,
+      cache: _weightCache,
+      refetch: _weightParamsLines(),
+      sourceChanges: [_weightCache, line.warehouse],
+      isCurrent: () =>
+          mounted &&
+          formDraftIdentityIsCurrent &&
+          _lines.contains(line) &&
+          line.warehouseId == warehouse &&
+          line.item.unitRateText == rate,
+    );
+  }
 
   @override
   void initState() {
@@ -675,11 +689,12 @@ class _InboundArrivalRegistrationPageState
       .length;
 
   /// 本次实收折成基本量(预计去向按基本量算)。
-  double _lineInputBaseQty(_BatchArrivalLine line) {
-    final input = double.tryParse(line.qty.text.trim()) ?? 0;
-    final rate = line.item.unitRate.toDouble();
-    return input * (rate.isFinite && rate > 0 ? rate : 1);
-  }
+  String _lineInputBaseQty(_BatchArrivalLine line) =>
+      financeExactMultiplyTexts([
+        line.physicalQtyText,
+        line.item.unitRateText,
+      ]) ??
+      '待核对';
 
   /// 预计去向：按本次实收、换算率与本行入库仓重算分析预定(跨仓部分只作预计、转公共库存)。
   /// 真正归属仍由 IQC 合格后的入库事务决定。
@@ -687,7 +702,7 @@ class _InboundArrivalRegistrationPageState
     _BatchArrivalLine line,
   ) => warehouseInboundAllocationForWarehouse(
     line.item.expectedAllocations,
-    double.tryParse(line.qty.text.trim()) ?? 0,
+    line.physicalQtyText ?? '待核对',
     actualWarehouseId: line.warehouseId,
     actualWarehouseName: _warehouseLabel(line.warehouseId) ?? '',
     sameMainWarehouse: (target, actual) => warehousesShareMain(
@@ -695,7 +710,7 @@ class _InboundArrivalRegistrationPageState
       target,
       actual,
     ),
-    unitRate: line.item.unitRate.toDouble(),
+    unitRate: line.item.unitRateText,
   );
 
   String _lineBaseUnitLabel(_BatchArrivalLine line) =>
@@ -1636,7 +1651,7 @@ class _InboundArrivalRegistrationPageState
         width: 240,
         textOf: (line) => warehouseInboundAllocationSummaryText(
           _lineProjectedAllocations(line),
-          (value) => '${inboundQty(value)} ${_lineBaseUnitLabel(line)}',
+          (value) => '${formatQty(value)} ${_lineBaseUnitLabel(line)}',
         ),
         listenableOf: (line) => line.qty,
         cellBuilder: (context, line) =>
@@ -1645,7 +1660,7 @@ class _InboundArrivalRegistrationPageState
               builder: (context, _, _) => WarehouseInboundAllocationSummary(
                 allocations: _lineProjectedAllocations(line),
                 qtyText: (value) =>
-                    '${inboundQty(value)} ${_lineBaseUnitLabel(line)}',
+                    '${formatQty(value)} ${_lineBaseUnitLabel(line)}',
                 onTap: () => showWarehouseInboundAllocationDetails(
                   context,
                   title: '预计去向 · ${line.item.goodsName}',

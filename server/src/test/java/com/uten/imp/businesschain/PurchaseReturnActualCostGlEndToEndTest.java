@@ -93,7 +93,7 @@ class PurchaseReturnActualCostGlEndToEndTest {
         UUID receipt=receipt(f,"10","1");receipts.approve(receipt);passAndStock(f,receipt);
         assertThat(stock(f)).isEqualByComparingTo("11");assertThat(value(f)).isEqualByComparingTo("100");
         UUID source=receipts.detail(receipt).getItems().getFirst().getId();
-        UUID returned=returned(f,source,charged,gift);returns.approve(returned);
+        UUID returned=returned(f,source,charged,gift);explicitCost(4,"HALF_UP",()->returns.approve(returned));
         assertThat(stock(f)).isEqualByComparingTo("10");assertThat(value(f)).isEqualByComparingTo("90.9091");
         assertThat(ap(returned)).isEqualByComparingTo(new BigDecimal(credit).negate());
         assertThat(number("SELECT SUM(post.amount_delta_local) FROM stock_value_postings post JOIN stock_value_events event ON event.id=post.event_id WHERE event.source_doc_id=? AND post.owner_kind='EXTERNAL'",returned)).isEqualByComparingTo("9.0909");
@@ -117,7 +117,7 @@ class PurchaseReturnActualCostGlEndToEndTest {
         UUID receipt=receipt(f,"10","1");receipts.approve(receipt);passAndStock(f,receipt);
         String period=java.time.YearMonth.from(BusinessTime.today()).toString();gl.generate(period);
         UUID previous=db.queryForObject("SELECT id FROM gl_vouchers WHERE source_type='AP_POST' AND source_doc_id=?",UUID.class,receipt);
-        UUID returned=returned(f,receipts.detail(receipt).getItems().getFirst().getId(),"0","1");returns.approve(returned);
+        UUID returned=returned(f,receipts.detail(receipt).getItems().getFirst().getId(),"0","1");explicitCost(4,"HALF_UP",()->returns.approve(returned));
         // The private GL database isolates period-wide regeneration. Explicitly
         // remove the configured role here to prove the missing-role rollback path.
         // Only this isolated test fixture temporarily removes the one required mapping;
@@ -145,8 +145,8 @@ class PurchaseReturnActualCostGlEndToEndTest {
     @Test @Order(4) void partialReturnCostsAndCreditsKeepTheirRemaindersAndReverseToTheOriginalAsset(){
         F f=fixture();harness.seedChartOfAccounts();configureVarianceRole();UUID receipt=receipt(f,"10","1");receipts.approve(receipt);passAndStock(f,receipt);
         UUID source=receipts.detail(receipt).getItems().getFirst().getId();
-        UUID first=returned(f,source,"0.375","0");returns.approve(first);
-        UUID second=returned(f,source,"0.625","0");returns.approve(second);
+        UUID first=returned(f,source,"0.375","0");explicitCost(4,"HALF_UP",()->returns.approve(first));
+        UUID second=returned(f,source,"0.625","0");explicitCost(4,"HALF_UP",()->returns.approve(second));
         assertThat(stock(f)).isEqualByComparingTo("10");assertThat(value(f)).isEqualByComparingTo("90.9091");
         String period=java.time.YearMonth.from(BusinessTime.today()).toString();gl.generate(period);
         assertThat(number("SELECT SUM(entry.direction*entry.amount) FROM gl_entries entry JOIN gl_vouchers voucher ON voucher.id=entry.voucher_id WHERE voucher.source_doc_id IN (?,?,?) AND entry.style_id=system_posting_style_id('INVENTORY_ASSET') AND voucher.status=1 AND NOT voucher.is_deleted",receipt,first,second)).isEqualByComparingTo("90.9091");
@@ -157,7 +157,7 @@ class PurchaseReturnActualCostGlEndToEndTest {
 
     @Test @Order(5) void foreignCommercialCreditUsesFrozenLocalRateWhileInventoryUsesActualLocalIssueCost(){
         F f=fixture(true);harness.seedChartOfAccounts();configureVarianceRole();UUID receipt=receipt(f,"10","1");receipts.approve(receipt);passAndStock(f,receipt);
-        UUID returned=returned(f,receipts.detail(receipt).getItems().getFirst().getId(),"1","0");var approved=returns.approve(returned);
+        UUID returned=returned(f,receipts.detail(receipt).getItems().getFirst().getId(),"1","0");var approved=explicitCost(4,"HALF_UP",()->returns.approve(returned));
         assertThat(approved.getTotalOriginal()).isEqualByComparingTo("10");assertThat(approved.getTotalLocal()).isEqualByComparingTo("62.34567");
         assertThat(value(f)).isEqualByComparingTo("566.7788");String period=java.time.YearMonth.from(BusinessTime.today()).toString();gl.generate(period);
         assertThat(number("SELECT SUM(entry.direction*entry.amount) FROM gl_entries entry JOIN gl_vouchers voucher ON voucher.id=entry.voucher_id WHERE voucher.source_doc_id IN (?,?) AND entry.style_id=system_posting_style_id('INVENTORY_ASSET') AND voucher.status=1 AND NOT voucher.is_deleted",receipt,returned)).isEqualByComparingTo("566.7788");
@@ -211,6 +211,39 @@ class PurchaseReturnActualCostGlEndToEndTest {
         gl.generate(period);assertThat(number("SELECT COUNT(*) FROM gl_vouchers WHERE source_type='PROC_RETURN_VARIANCE' AND source_doc_id=?",returned)).isEqualByComparingTo("1");
         subcontractReturns.reverse(returned);assertThat(number("SELECT amount_local FROM stock_balances WHERE warehouse_id=? AND goods_id=?",w.warehouseId(),w.goodsE())).isEqualByComparingTo("600");
         assertThat(number("SELECT COUNT(*) FROM gl_vouchers WHERE source_type='PROC_RETURN_VARIANCE' AND source_doc_id=?",returned)).isZero();gl.generate(period);
+    }
+
+    @Test @Order(7) void repeatingActualCustodyCostRequiresChoiceAndItsReverseRetainsTheOriginalTwentyFourPlaces(){
+        F f=fixture();harness.seedChartOfAccounts();configureVarianceRole();
+        UUID receipt=receipt(f,"10","1");receipts.approve(receipt);passAndStock(f,receipt);
+        UUID returned=returned(f,receipts.detail(receipt).getItems().getFirst().getId(),"0","1");
+        BigDecimal movements=number("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",returned);
+        Throwable refusal=catchThrowable(()->returns.approve(returned));
+        assertThat(refusal).as("100 / 11 cannot select a decimal policy automatically").isNotNull();
+        var requirement=com.uten.imp.common.finance.BusinessPrecisionRequiredException.from(refusal).orElseThrow(()->new AssertionError("Expected a real precision requirement",refusal));
+        assertThat(requirement.details()).containsEntry("calculationKey","stock.value.interval").containsEntry("notWritten",true);
+        assertThat(number("SELECT count(*) FROM stock_movements WHERE source_doc_id=?",returned)).isEqualByComparingTo(movements);
+        assertThat(number("SELECT count(*) FROM stock_value_events WHERE source_doc_id=?",returned)).isZero();
+        assertThat(stock(f)).isEqualByComparingTo("11");assertThat(value(f)).isEqualByComparingTo("100");
+        explicitCost(24,"DOWN",()->returns.approve(returned));
+        BigDecimal frozen=new BigDecimal("9.090909090909090909090909");
+        assertThat(value(f)).isEqualByComparingTo(new BigDecimal("100").subtract(frozen));
+        assertThat(number("SELECT sum(post.amount_delta_local) FROM stock_value_postings post JOIN stock_value_events event ON event.id=post.event_id WHERE event.source_doc_id=? AND post.owner_kind='EXTERNAL'",returned)).isEqualByComparingTo(frozen);
+        assertThat(ap(returned)).isZero();
+        String proof=db.queryForObject("SELECT event.business_precision_policy::text FROM stock_value_events event WHERE event.source_doc_id=? AND event.operation='ISSUE' LIMIT 1",String.class,returned);
+        assertThat(proof).contains("24","DOWN");
+        String period=java.time.YearMonth.from(BusinessTime.today()).toString();gl.generate(period);
+        assertThat(number("SELECT sum(entry.direction*entry.amount) FROM gl_entries entry JOIN gl_vouchers voucher ON voucher.id=entry.voucher_id WHERE voucher.source_doc_id IN (?,?) AND entry.style_id=system_posting_style_id('INVENTORY_ASSET') AND voucher.status=1 AND NOT voucher.is_deleted",receipt,returned)).isEqualByComparingTo(value(f));
+        explicitCost(0,"HALF_UP",()->returns.reverse(returned));
+        assertThat(stock(f)).isEqualByComparingTo("11");assertThat(value(f)).isEqualByComparingTo("100");
+        assertThat(db.queryForObject("SELECT event.business_precision_policy::text FROM stock_value_events event WHERE event.source_doc_id=? AND event.operation='ISSUE' LIMIT 1",String.class,returned)).isEqualTo(proof);
+        gl.generate(period);
+        assertThat(number("SELECT sum(entry.direction*entry.amount) FROM gl_entries entry JOIN gl_vouchers voucher ON voucher.id=entry.voucher_id WHERE voucher.source_doc_id IN (?,?) AND entry.style_id=system_posting_style_id('INVENTORY_ASSET') AND voucher.status=1 AND NOT voucher.is_deleted",receipt,returned)).isEqualByComparingTo("100");
+    }
+    private static <T> T explicitCost(int scale,String rounding,java.util.function.Supplier<T> action){
+        try(var ignored=com.uten.imp.common.finance.BusinessPrecisionContext.use(Map.of("stock.value.interval",new com.uten.imp.common.finance.BusinessPrecisionContext.Choice(scale,rounding)))){
+            return action.get();
+        }catch(RuntimeException|Error failure){throw failure;}catch(Exception failure){throw new IllegalStateException(failure);}
     }
 
     private void configureVarianceRole(){

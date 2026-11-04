@@ -10,6 +10,16 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class ExpenseClaimReadPolicy {
     private final OwnerVisibility owners;
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.uten.imp.application.port.FinanceApplicationControlPort applications;
+
+    public boolean mayRead(AuthUser user,ExpenseClaim claim,OwnerVisibility.OwnerScope scope){
+        if(applications!=null&&applications.expenseManaged(claim.getId())){
+            if(contains(scope,claim.getApplicantId()))return true;
+            return applications.mayReadExpense(claim.getId(),user);
+        }
+        return canReadWorkflow(user,claim,scope);
+    }
     @org.springframework.beans.factory.annotation.Autowired
     private ExpenseApprovalPolicy approvalPolicy;
     @org.springframework.beans.factory.annotation.Autowired

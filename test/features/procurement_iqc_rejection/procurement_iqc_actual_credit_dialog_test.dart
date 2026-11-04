@@ -9,6 +9,27 @@ import 'package:uten_imp/features/procurement_iqc_rejection/widgets/procurement_
 
 void main() {
   testWidgets(
+    'pending receipt identity and reviewed precision travel together without an AP alias',
+    (tester) async {
+      _view(tester);
+      final gateway = _Actions(detail: _detail(pending: true));
+      await _show(tester, gateway);
+      await _fill(tester, total: '1', first: '1');
+      await _tap(tester, 'iqc-credit-preview');
+      await tester.pumpAndSettle();
+      expect(gateway.previews.single.sourceApLedgerId, isNull);
+      expect(gateway.previews.single.sourceCandidateId, 'candidate-1');
+      await _tap(tester, 'iqc-action-submit');
+      await tester.pumpAndSettle();
+      final confirmed = gateway.confirmations.single;
+      expect(confirmed.sourceApLedgerId, isNull);
+      expect(confirmed.toJson()['sourceCandidateId'], 'candidate-1');
+      expect(confirmed.precisionPolicy, _precisionPolicy);
+      expect(confirmed.toJson()['precisionPolicy'], _precisionPolicy);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'actual 24-place amounts and each case unit survive preview and confirmation',
     (tester) async {
       _view(tester);
@@ -408,6 +429,7 @@ ProcurementIqcRejectionCase _case({int version = 7}) =>
 ProcurementIqcRejectionDetail _detail({
   int version = 7,
   bool twoSources = false,
+  bool pending = false,
 }) => ProcurementIqcRejectionDetail(
   caseItem: _case(version: version),
   resolution: const ProcurementIqcResolution(
@@ -418,8 +440,9 @@ ProcurementIqcRejectionDetail _detail({
   ),
   creditSources: [
     ProcurementIqcCreditSource(
-      sourceApLedgerId: 'ap-1',
-      sourceBillNo: 'AP-ONE',
+      sourceApLedgerId: pending ? null : 'ap-1',
+      sourceCandidateId: pending ? 'candidate-1' : null,
+      sourceBillNo: pending ? 'CJ-PENDING' : 'AP-ONE',
       amountOriginal: '10',
       amountLocal: '70',
       creditedAmountOriginal: '0',
@@ -455,6 +478,7 @@ ProcurementIqcCreditPreview _preview(
   ProcurementIqcConfirmCreditCommand command,
 ) => ProcurementIqcCreditPreview(
   bookAllocationHash: _hash,
+  precisionPolicy: _precisionPolicy,
   amountOriginal: command.actualAmountOriginal,
   amountLocal: '0.000000000000000000000007000001',
   offsetOriginal: command.actualAmountOriginal,
@@ -477,6 +501,12 @@ ProcurementIqcCreditPreview _preview(
       ),
   ],
 );
+const _precisionPolicy = <String, dynamic>{
+  'version': 1,
+  'choices': {
+    'money.book-share': {'scale': 6, 'rounding': 'DOWN'},
+  },
+};
 ProcurementIqcCreditDocument _document(
   String id,
   String reference,

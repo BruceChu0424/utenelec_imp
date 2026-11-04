@@ -34,7 +34,8 @@ class _TestSession extends SessionNotifier {
 }
 
 class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
-  FakeWorkshopMaterialRepository() : super(ApiClient(Dio()));
+  FakeWorkshopMaterialRepository({ApiClient? client})
+    : super(client ?? ApiClient(Dio()));
 
   @override
   Future<List<WmSetting>> taskStatus({
@@ -112,7 +113,7 @@ class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
           int count,
           String prefix,
           int startNo,
-          List<({String name, double capacityQty})> containers,
+          List<({String name, Object capacityQty})> containers,
         })
       >[];
   final machineUpdates = <List<Map<String, dynamic>>>[];
@@ -399,7 +400,7 @@ class FakeWorkshopMaterialRepository extends WorkshopMaterialRepository {
     required int count,
     required String codePrefix,
     required int startNo,
-    required List<({String name, double capacityQty})> containers,
+    required List<({String name, Object capacityQty})> containers,
     required String idempotencyKey,
   }) async {
     createMachineCalls.add((

@@ -1,5 +1,7 @@
 package com.uten.imp.features.subcontract.material_issue.dto;
 
+import com.uten.imp.common.validation.DocumentQuantity;
+
 import com.uten.imp.common.finance.ServerDerivedAmounts;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -30,7 +32,7 @@ public class MaterialIssueItemLine extends com.uten.imp.common.platformcolumns.P
     private BigDecimal unitRate;
 
     @NotNull
-    private BigDecimal qty;
+    @DocumentQuantity private BigDecimal qty;
 
     /** 无 Price；空。 */
     private BigDecimal price;
@@ -49,7 +51,7 @@ public class MaterialIssueItemLine extends com.uten.imp.common.platformcolumns.P
      * 按重量计的货品/单位由服务端按数量换算, 这里填的丢弃。
      */
     @DecimalMin(value = "0", inclusive = true)
-    @Digits(integer = 14, fraction = 4)
+    @Digits(integer = 40, fraction = 48)
     private BigDecimal weight;
 
     /** 数量是按称重推算的(称重计数「按称重改数量」): 为真时本行不进单重核对观测。空 = 否。 */

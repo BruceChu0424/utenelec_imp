@@ -68,6 +68,7 @@ enum BadgeEntry {
 
   /// 财务报销: 待审批 + 待付款。
   expenseFinance(BadgeModule.finance),
+  financeApplications(BadgeModule.finance),
 
   /// 钱流草稿(收款/付款/费用/其它收入/银行转账)。
   financeDrafts(BadgeModule.finance),

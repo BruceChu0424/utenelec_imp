@@ -164,6 +164,26 @@ void _visibleIds(Iterable<String> visible, Iterable<String> hidden) {
 
 void main() {
   testWidgets(
+    'typing then clicking a text suggestion shares the grid Search action',
+    (tester) async {
+      final rows = UtenEditableGridController<_Row>(initial: _rows());
+      addTearDown(rows.dispose);
+      await _pump(tester, _page(rows));
+      await _open(tester, '货品名称');
+      await tester.enterText(_input, '双联');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('双联开关面板（1）'));
+      await tester.pumpAndSettle();
+      _visibleIds(['a'], ['b', 'c', 'd']);
+      expect(_input, findsNothing);
+      expect(
+        tester.widget<GridHeaderFilterCell>(_header('货品名称')).search,
+        '双联开关面板',
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
     'filtered delete and insert operate on the owning source row rather than its visible position',
     (tester) async {
       final rows = UtenEditableGridController<_Row>(initial: _rows());

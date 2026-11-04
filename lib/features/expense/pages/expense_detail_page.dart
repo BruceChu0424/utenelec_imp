@@ -17,6 +17,7 @@ import '../../../core/utils/china_datetime.dart';
 import '../../../components/buttons/uten_button.dart';
 import '../../../components/data_display/uten_detail_summary_card.dart';
 import '../../../components/data_display/uten_status_badge.dart';
+import '../../../components/data_display/uten_totals_summary_bar.dart';
 import '../../../components/feedback/uten_busy_overlay.dart';
 import '../../../components/feedback/uten_empty.dart';
 import '../../../components/layout/uten_app_bar.dart';
@@ -408,24 +409,11 @@ class _ExpenseDetailPageState extends ConsumerState<ExpenseDetailPage> {
   }
 
   Widget _itemsSummary(ExpenseClaim claim) {
-    return Wrap(
-      alignment: WrapAlignment.end,
-      spacing: UtenSpacing.s8,
-      children: [
-        Text(
-          '共 ${claim.items.length} 项 · 合计 ',
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-        Text(
-          '${claim.totalAmount.toStringAsFixed(2)} 元',
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: Theme.of(context).colorScheme.primary,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
+    return UtenTotalsSummaryBar(
+      rowCount: claim.items.length,
+      compact: true,
+      entries: [
+        UtenTotalEntry('合计', '${claim.totalAmount.toStringAsFixed(2)} 元'),
       ],
     );
   }

@@ -151,7 +151,7 @@ Map<String, dynamic> financeEntryRequest(
   final fee = financeAmountUnits(
     terms.fee.text.trim().isEmpty ? '0' : terms.fee.text.trim(),
   );
-  if (fee == null || fee < BigInt.zero) fail('总费用不能为负数，最多 24 位小数', 'entryFee');
+  if (fee == null || fee < BigInt.zero) fail('结算费用不能为负数，最多 24 位小数', 'entryFee');
   final amountUnits = financeAmountUnits(amount)!;
   final feeMode = fee == BigInt.zero
       ? 'NONE'
@@ -174,7 +174,7 @@ Map<String, dynamic> financeEntryRequest(
   if (same && actual != expected) {
     fail('同币种实际金额与货款、费用不一致，请核对', 'entryAccountAmount');
   }
-  if (config.isSupplier && fee >= actual) fail('总费用须小于实际扣款', 'entryFee');
+  if (config.isSupplier && fee >= actual) fail('结算费用须小于实际扣款', 'entryFee');
   body.addAll({
     'createIdempotencyKey': commandKey,
     'accountCurrencyId': accountCurrency,
@@ -208,7 +208,7 @@ Map<String, dynamic> financeEntryRequest(
   }
   final legacyOther =
       financeAmountUnits(terms.legacyOtherFee ?? '0') ?? BigInt.zero;
-  if (legacyOther > fee) fail('恢复草稿的费用拆分超过总费用，请核对', 'entryFee');
+  if (legacyOther > fee) fail('恢复草稿的费用拆分超过结算费用，请核对', 'entryFee');
   body.addAll({
     'receiptKind': terms.receiptKind,
     if (prepayment) 'salesOrderId': terms.salesOrderId,

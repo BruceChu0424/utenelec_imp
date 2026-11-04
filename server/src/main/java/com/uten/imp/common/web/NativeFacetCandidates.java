@@ -80,6 +80,16 @@ public final class NativeFacetCandidates {
             }catch(RuntimeException error){failed=true;throw error;}
         }
         /** Empty authority inputs may return an empty map without creating any query. */
+        public void completeRecords(Map<String,Long> counts) {
+            if(closed||failed||items!=null)throw new IllegalStateException("Candidate scope already completed");
+            var selected=counts.entrySet().stream()
+                    .filter(entry->entry.getKey()!=null&&!entry.getKey().isBlank()&&KeywordSearch.matches(keyword,entry.getKey()))
+                    .sorted(Map.Entry.comparingByKey()).skip(offset).limit((long)size+1)
+                    .map(entry->NativeFacets.bucket(entry.getKey(),entry.getValue())).toList();
+            hasMore=selected.size()>size;items=List.copyOf(selected.subList(0,Math.min(size,selected.size())));
+        }
+
+        /** Empty authority inputs may return an empty map without creating any query. */
         public Page result(Object originalBody,String readScopeVersion) {
             if(closed||failed)throw new IllegalStateException("Candidate query scope is closed or failed");
             if(items==null) {

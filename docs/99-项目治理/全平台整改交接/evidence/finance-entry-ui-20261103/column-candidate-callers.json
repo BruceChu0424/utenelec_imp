@@ -1,0 +1,200 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-11-03",
+  "classification": "frontend + shared query contract; no migration or business calculation changes",
+  "sourceBranch": "uimp/finance-entry-ui-20261103",
+  "status": "implemented; final verification complete",
+  "sharedEntrypoints": [
+    "lib/components/layout/uten_table_header_menu.dart::utenColumnCandidateAppliesSearch",
+    "lib/components/layout/uten_grid_header_filter_cell.dart::_selectCandidate",
+    "lib/features/basic_data/widgets/master_data_table_view.dart::_FilterCellState._selectCandidate",
+    "lib/features/finance/providers/finance_report_facet_options.dart",
+    "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportColumnCandidates.java",
+    "server/src/main/java/com/uten/imp/features/finance/report/FinanceProjectedReportTable.java",
+    "server/src/main/java/com/uten/imp/common/web/NativeFacetCandidates.java"
+  ],
+  "callers": [
+    {
+      "path": "lib/features/finance/pages/finance_report_table_page.dart",
+      "business": "detail/summary/recon/cost/gl/customer-prepayment dynamic report cards",
+      "state": "migrated"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_statement_page.dart",
+      "business": "statement/flow, statement/detail, statement/annual",
+      "state": "migrated"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "business": "account/statement and bank/detail/summary",
+      "state": "migrated; original billNo candidate service and account authorities preserved"
+    },
+    {
+      "path": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
+      "business": "ar-ap/overview",
+      "state": "migrated"
+    },
+    {
+      "path": "lib/components/layout/uten_editable_grid.dart",
+      "business": "all grid header text suggestion selections via GridHeaderFilterCell",
+      "state": "shared component migration"
+    },
+    {
+      "path": "lib/features/basic_data/widgets/master_data_table_view.dart",
+      "business": "all read table header text suggestion selections; owner chooses explicit complete-report keyword suggestion contract",
+      "state": "shared component migration"
+    }
+  ],
+  "reportKeysWithOwningLoader": [
+    "account/statement",
+    "ar-ap/detail",
+    "ar-ap/order-plan",
+    "ar-ap/overview",
+    "ar-ap/summary",
+    "bank/detail",
+    "bank/summary",
+    "cost/copper-fee",
+    "cost/copper-pickling",
+    "cost/plastic",
+    "cost/plastic-detail",
+    "cost/product",
+    "cost/sales-summary",
+    "customer-prepayment/events",
+    "expense/detail",
+    "expense/summary",
+    "fa/amortization-schedule",
+    "fa/depreciation-schedule",
+    "fee-offset/detail",
+    "gl/admin-expense",
+    "gl/balance-sheet",
+    "gl/manufacturing-expense",
+    "gl/operating-pl",
+    "gl/profit-annual",
+    "gl/profit-monthly",
+    "gl/sales-expense",
+    "gl/trial-balance",
+    "income/detail",
+    "income/summary",
+    "payment/detail",
+    "payment/summary",
+    "receipt/detail",
+    "receipt/summary",
+    "statement/annual",
+    "statement/customer-prepayments",
+    "statement/detail",
+    "statement/flow",
+    "statements/client",
+    "statements/other-receivable",
+    "statements/subcontract",
+    "statements/supplier"
+  ],
+  "candidateContract": {
+    "route": "POST /api/finance/reports/column-candidates",
+    "transport": "existing NativeFacet body-only form read, exact route allow-list generated into Dart; no business-write revision",
+    "parameters": [
+      "report",
+      "column",
+      "original report filters and date/owner/query parameters",
+      "__facetField=value",
+      "__facetKeyword",
+      "__facetPage>=1",
+      "__facetSize<=100"
+    ],
+    "response": [
+      "field=value",
+      "items {value,label,count}",
+      "page",
+      "size",
+      "hasMore",
+      "readScopeVersion"
+    ],
+    "source": "complete authorized owning report projection after business aggregation/window calculation and before row pagination; no current-page extraction and no 1000-bucket preview cap",
+    "filterScope": "remove only the candidate column exact/search condition; preserve all other original filters, account/party/date/company and owner scope",
+    "columnAuthority": "declared visible text column only; hidden/internal, unknown, numeric/date and owner-excluded placeholders rejected",
+    "permissions": "report:view + original company or owner policy; account/statement preserves account:view + account:balance:view + account:flow:view without adding finance report/company scope",
+    "publication": "existing native read proof freshly rechecked before response; client reader epoch/API/query revision invalidates old responses",
+    "selection": "typed same-value text candidate uses Search; explicit full-report text suggestions use Search even with initially empty input; same original row keyword route preserves backend authority",
+    "retainedDifferences": [
+      "ID != display reference facets retain exact raw value",
+      "currencyCode ID dictionaries retain exact currency identity",
+      "GL side/category, statement type/originalStatus and account entryKind/billNo retain exact finite/original facet contracts",
+      "numeric/date query grammar and validation unchanged"
+    ],
+    "loading": "initial candidate/retry/more button phases use UtenBusyOverlay; typing stays responsive and discards stale responses; financial report query uses existing foreground loading overlay"
+  },
+  "departmentAndAccountPickers": {
+    "departmentRootCause": "picker default flatLevelColors=false differed from management true; common department tree now defaults true, preserving selection predicates/company root/confirmation",
+    "departmentConsumers": "all UtenDepartmentTreeView consumers, including showUtenDepartmentPickerPanel and UtenDepartmentPicker finance batch/grid/assets; existing management true declarations remain compatible",
+    "accountRootCause": "search padded 16 but table was flush; both use same zoom-aware UtenPanelSpacing.inset(s16)",
+    "accountCallers": [
+      "FinanceDocEditPage::_pickAccount",
+      "FinanceDocBatchEntry::_pickAccount"
+    ],
+    "tests": {
+      "department-account-tests.log": "43 passed",
+      "account-picker-visual-tests.log": "2 passed (390/1200)",
+      "department-picker-visual-tests.log": "1 passed (real finance editor narrow department picker)"
+    },
+    "screenshots": [
+      "build/ui-audit/finance-account-picker-390.png",
+      "build/ui-audit/finance-account-picker-1200.png",
+      "build/ui-audit/finance-department-picker-390.png",
+      "build/ui-audit/finance-department-selected-390.png",
+      "build/ui-audit/finance-client-statement-candidates.png",
+      "build/ui-audit/finance-client-statement-candidate-selected.png"
+    ]
+  },
+  "verification": {
+    "header-candidate-tests.log": "42 passed before explicit empty-input opt-in/all financial caller follow-up",
+    "candidate-keyboard-tests.log": "1 passed (Tab focus + Enter suggestion activation)",
+    "finance-candidate-all-callers-tests.log": "62 passed (final complete caller/header/grid scope)",
+    "column-candidate-backend-isolated-tests.log": "initial 57 executed: 54 passed; two obsolete registry-size assertions and one incorrect GL fixture code were corrected in the exact follow-up; production code unchanged",
+    "historicalFailures": [
+      "column-candidate-backend-tests.log: shared target concurrent javac class-file race; retained; not a product verdict",
+      "column-candidate-permission-tests.log: own follow-up stopped to remove shared target compilation race; isolated sequential rerun is authoritative",
+      "column-candidate-final-policy-stale-bytecode-tests.log: added account-only case exposed bytecode parsed before a concurrent source edit; final 7 owning classes precisely recompiled, then final 38 policy tests passed; source and bytecode mtimes alone are not accepted proof"
+    ],
+    "notEstablished": [
+      "full project CI",
+      "production server interaction",
+      "Win7 real target machine acceptance",
+      "formal delivery/deployment"
+    ],
+    "finance-report-busy-callers-tests.log": "29 passed after adding foreground busy overlay to account/statement/overview report reads",
+    "finance-candidate-lifecycle-tests.log": "54 passed (party selectors, reader epoch, stale results, repeated report identity and loading shell)",
+    "column-candidate-visual-tests.log": "3 passed; candidate popup + result and 390/1200 account panels reviewed",
+    "column-candidate-analyze.log": "10 files; no issues",
+    "column-candidate-final-analyze.log": "6 final follow-up files; no issues",
+    "column-candidate-backend-followup-tests.log": "9 passed: all 5 real PostgreSQL owning report candidates (1001 distinct values across eleven 100-item pages), registry and read-only policy",
+    "column-candidate-transport-tests.log": "57 passed; generated 22-route exact read-only transport, scope identity, invalid payload and cancellation/reload fences",
+    "column-candidate-final-policy-tests.log": "38 passed on final source classes: original report/account permissions, original candidate MVC/read proof, new route/marker/illegal GL code, hidden/nontext validation, same-column-vs-other filters and account-only empty-account handling",
+    "generatedRoutes": "python tool/generate_native_facet_paths.py --check passed",
+    "completeRowLifecycle": "all retained original date, party/owner and currency contracts; no truncated page extraction, old response publication or business calculation changes",
+    "column-candidate-final-source-compile.log": "7 final owning Java sources compiled with Java 21, -parameters and the same Lombok processor into the isolated verified target; exit 0, no output",
+    "backendUniqueCurrentTestsPassed": 58,
+    "backendUniqueCurrentTestsInterpretation": "58 distinct cases passed across corrected independent batches; not one single 58-case invocation. The 5 real PostgreSQL candidate cases and original 8 export cases remain separate source/projection evidence; the final 38-case policy invocation used freshly compiled final source."
+  },
+  "wpf": {
+    "relatedWorkItems": [
+      "W7-BIZ-019",
+      "W7-BIZ-043",
+      "W7-BIZ-044",
+      "W7-BIZ-063",
+      "W7-BIZ-064"
+    ],
+    "state": "unmigrated actual business editors/pickers; no fake WPF write entry opened; root owns final ledger evidence"
+  },
+  "sourceProofSha256": {
+    "server/src/main/java/com/uten/imp/common/report/NativeFacetRoutes.java": "aaebd4a3c9cf350a461e489619dc6f9eebc047bc76546fd61d43551e53627e4a",
+    "server/src/main/java/com/uten/imp/common/web/NativeFacetCandidates.java": "b34a0e4dec8b9e9ae189c4df2ed6f2ddbff1f238db788ee27ef00b9f66836d78",
+    "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportColumnCandidates.java": "6b85687aa78d79e85721151e5e0b500c2ac28ac3041399ea1509d0366ec2345c",
+    "server/src/main/java/com/uten/imp/features/finance/report/FinanceProjectedReportTable.java": "680c8ea9122ca3921308f3d2534e05e6017691795f0a005590d6ec6f91076b26",
+    "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportService.java": "264fa293514d764fdfb53bc65c22a1c1351177efd6def83776397c66c9436bd2",
+    "server/src/main/java/com/uten/imp/features/finance/report/FinanceReportController.java": "17e6d50ef35fd4e42fa3b5b145a546ab1057adda0086dc195a2b363b482eb61f",
+    "server/src/main/java/com/uten/imp/features/finance/gl/GlReportService.java": "6d31ecba44efe3ff7902269bcafb8bcff6e2618fcafe1f1bc910de8db7804d31",
+    "lib/features/finance/providers/finance_report_facet_options.dart": "64f44dd29ccf1b3b512e747c59e1b1ed5870b6ae5c8eb1bd7f00f633fc6341ac",
+    "lib/components/layout/uten_table_header_menu.dart": "fbeaa0dbc00b8979ca89507c0ddf5dcb09be3e0730d27e43bc6ea250b029b38e",
+    "lib/components/layout/uten_grid_header_filter_cell.dart": "19417bd14e926e74419acda1d4dc74d66951bd97627c460be6352a153290bf07",
+    "lib/features/basic_data/widgets/master_data_table_view.dart": "fe68edb3dfecdb8a14ff28bf137e949315d4e4e6fdcd8ccb8c09eedd894769d4"
+  }
+}

@@ -520,14 +520,6 @@ class _SubcontractShortDeliveryPageState
                 )
               : null,
         ),
-        if (_seg == SubcontractShortDeliverySegment.history) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          UtenHistoryTimeFilter(
-            key: const Key('subcontract-short-delivery-history-time'),
-            value: _historyTime,
-            onChanged: _onHistoryTime,
-          ),
-        ],
       ],
     );
     // 2026-09-22 全站表格滚动口径：上滑先收分段/说明（表头随之顶到视口顶），
@@ -539,7 +531,13 @@ class _SubcontractShortDeliveryPageState
       ),
       body: Builder(
         builder: (context) => _historyBlocked
-            ? const UtenHistoryTimePlaceholder()
+            ? UtenHistoryTimePlaceholder(
+                controls: UtenHistoryTimeFilter(
+                  key: const Key('subcontract-short-delivery-history-time'),
+                  value: _historyTime,
+                  onChanged: _onHistoryTime,
+                ),
+              )
             : _buildTable(),
       ),
     );
@@ -553,6 +551,14 @@ class _SubcontractShortDeliveryPageState
     final openSeg =
         pendingSeg || _seg == SubcontractShortDeliverySegment.tolerant;
     return MasterDataTableView<SubcontractShortDeliveryCase>(
+      toolbarLeadingActions: [
+        if (_seg == SubcontractShortDeliverySegment.history)
+          UtenHistoryTimeFilter(
+            key: const Key('subcontract-short-delivery-history-time'),
+            value: _historyTime,
+            onChanged: _onHistoryTime,
+          ),
+      ],
       rowsController: _readingRows,
       expensiveRowMounts: false,
       tableKey:

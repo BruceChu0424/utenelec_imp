@@ -35,6 +35,7 @@ class GoodsProductionTraceView extends ConsumerStatefulWidget {
     this.onTraceSubject,
     this.direction,
     this.showDirectionSelector = true,
+    this.toolbarActions = const [],
   }) : subject = null,
        dateFrom = null,
        dateTo = null;
@@ -48,6 +49,7 @@ class GoodsProductionTraceView extends ConsumerStatefulWidget {
     this.onTraceSubject,
     this.direction,
     this.showDirectionSelector = true,
+    this.toolbarActions = const [],
   }) : goodsId = null;
 
   final String? goodsId;
@@ -60,6 +62,7 @@ class GoodsProductionTraceView extends ConsumerStatefulWidget {
   /// The embedded goods-ledger view continues to own its direction by default.
   final String? direction;
   final bool showDirectionSelector;
+  final List<Widget> toolbarActions;
 
   @override
   ConsumerState<GoodsProductionTraceView> createState() => _TraceState();
@@ -335,6 +338,7 @@ class _TraceState extends ConsumerState<GoodsProductionTraceView>
             tableKey: 'goods.production_trace.$_direction',
             key: ValueKey(('goods-production-trace', _direction, _readEpoch)),
             primary: true,
+            toolbarActions: widget.toolbarActions,
             columns: _columns(),
             items: _data?.items ?? const [],
             rowKeyOf: (row) => row.id,

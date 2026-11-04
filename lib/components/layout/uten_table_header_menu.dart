@@ -5,6 +5,19 @@ import 'package:flutter/material.dart';
 import '../../core/theme/uten_tokens.dart';
 import '../inputs/uten_dropdown_scroll_scope.dart';
 
+/// Typed text suggestions commit through the same keyword action as Search.
+/// Reference facets keep their original ID/value action when the label differs.
+bool utenColumnCandidateAppliesSearch({
+  required bool supportsSearch,
+  required String query,
+  required String value,
+  required String display,
+  bool alwaysSearch = false,
+}) =>
+    supportsSearch &&
+    (alwaysSearch || query.trim().isNotEmpty) &&
+    value == display;
+
 /// Shared header-menu geometry for read tables and editable grids. Recompute on
 /// every overlay layout, including window resize, zoom and keyboard changes.
 class UtenTableHeaderMenu extends StatefulWidget {

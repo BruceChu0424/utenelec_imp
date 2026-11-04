@@ -57,6 +57,14 @@ public class FinanceReportController {
     private final AuditService audit;
     private final SecurityContextCurrentUser currentUser;
 
+    /** Typed header candidates retain the same owning report access and full filter projection. */
+    @PostMapping("/column-candidates")
+    @PreAuthorize("hasAuthority('finance_report:view') or (#report == 'account/statement' and hasAuthority('account:view') and hasAuthority('account:balance:view') and hasAuthority('account:flow:view'))")
+    public Map<String,Object> columnCandidates(@RequestParam String report,@RequestParam String column,
+                                               @RequestParam Map<String,String> parameters) {
+        return service.columnCandidates(report,column,parameters);
+    }
+
     // ======================== ① 应收应付 Z / A·C / B·D ========================
 
     /** Z 应收应付总览（前端左分类树+右表）。displayMode: ALL/ANY/AR_ONLY/AP_ONLY。 */

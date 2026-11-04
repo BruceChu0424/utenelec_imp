@@ -28,6 +28,7 @@ import '../../../shared/pricing/line_pricing_controller.dart';
 import '../providers/finance_name_provider.dart';
 import 'ar_ap_picker_dialog.dart';
 import 'finance_entry_l10n.dart';
+import 'finance_style_picker.dart';
 import '../../../shared/widgets/uten_department_picker.dart';
 
 /// 钱流明细行（3 模式超集）。控制器/通知器在行内持有，跨重建存活。
@@ -521,8 +522,8 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'amount',
-      label: '本次分配收款(原币)',
-      width: 180,
+      label: '本次收款金额',
+      width: 220,
       numeric: true,
       frozenTextOf: (row) => row.amount.text,
       listenableOf: (row) => row.amount,
@@ -539,7 +540,7 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
           controller: row.amount,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const UtenInputDecoration(
-            InputDecoration(isDense: true, labelText: '本次分配收款(原币)'),
+            InputDecoration(isDense: true, labelText: '本次收款金额'),
           ),
         ),
       ),
@@ -604,19 +605,7 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
           ),
         ),
       ),
-    EditableGridColumn<FinanceGridRow>(
-      key: 'remark',
-      label: '备注',
-      width: 180,
-      textOf: (r) => r.remark.text,
-      listenableOf: (r) => r.remark,
-      cellBuilder: (context, row) => TextField(
-        controller: row.remark,
-        decoration: const UtenInputDecoration(
-          InputDecoration(isDense: true, labelText: '备注'),
-        ),
-      ),
-    ),
+    financeRemarkColumn(),
   ];
   if (showReconciliation) return columns;
   // Only presentation changes: rows retain source UUIDs, reconciliation
@@ -633,6 +622,23 @@ List<EditableGridColumn<FinanceGridRow>> _receiptSettleColumns(
   };
   return columns.where((column) => entryKeys.contains(column.key)).toList();
 }
+
+/// The trailing editable remark uses the same controller and presentation in
+/// single-document, grouped-entry and review grids.
+EditableGridColumn<FinanceGridRow> financeRemarkColumn() =>
+    EditableGridColumn<FinanceGridRow>(
+      key: 'remark',
+      label: '备注',
+      width: 180,
+      textOf: (row) => row.remark.text,
+      listenableOf: (row) => row.remark,
+      cellBuilder: (context, row) => TextField(
+        controller: row.remark,
+        decoration: const UtenInputDecoration(
+          InputDecoration(isDense: true, labelText: '备注'),
+        ),
+      ),
+    );
 
 String _money(double? value) => value == null ? '—' : value.toStringAsFixed(2);
 
@@ -657,8 +663,8 @@ List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'amount',
-      label: '本次付款(原币)',
-      width: 140,
+      label: '本次付款金额',
+      width: 180,
       numeric: true,
       frozenTextOf: (row) => row.amount.text,
       listenableOf: (row) => row.amount,
@@ -670,7 +676,7 @@ List<EditableGridColumn<FinanceGridRow>> _settleColumns() {
           controller: row.amount,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const UtenInputDecoration(
-            InputDecoration(isDense: true, labelText: '本次付款(原币)'),
+            InputDecoration(isDense: true, labelText: '本次付款金额'),
           ),
         ),
       ),
@@ -704,25 +710,16 @@ List<EditableGridColumn<FinanceGridRow>> _allocateColumns(
       textOf: (row) => styleLabelOf(row),
       listenableOf: (row) => row.styleIdNotifier,
       chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
-      cellBuilder: (context, row) {
-        final styles = names.stylesFor(cat);
-        return UtenDropdownField(
-          // dense：与同行数量/单价等输入格同高（2026-10-06 表格控件统一口径）。
+      cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+        valueListenable: row.styleIdNotifier,
+        builder: (context, value, _) => FinanceStylePicker(
+          names: names,
+          category: cat,
           dense: true,
-          label: type == FinanceDocType.expense ? '费用项目' : '收入项目',
-          value: row.styleId,
-          items: [
-            for (final s in styles)
-              UtenDropdownItem(value: s.id, label: s.name ?? s.id),
-            // 孤儿值兜底：当前 id 不在字典时补一条。
-            if (row.styleId != null &&
-                row.styleId!.isNotEmpty &&
-                !styles.any((s) => s.id == row.styleId))
-              UtenDropdownItem(value: row.styleId, label: row.styleId!),
-          ],
-          onChanged: (v) => row.styleId = v,
-        );
-      },
+          value: value,
+          onChanged: (value) => row.styleId = value,
+        ),
+      ),
     ),
     EditableGridColumn<FinanceGridRow>(
       key: 'department',
@@ -860,20 +857,22 @@ List<EditableGridColumn<FinanceGridRow>> _transferColumns(
           : (names.accountEntries[row.inAccountId] ?? row.inAccountId!),
       listenableOf: (row) => row.inAccountIdNotifier,
       chromeWidth: UtenEditableGridCellSpec.dropdownChevronWidth,
-      cellBuilder: (context, row) => UtenDropdownField(
-        // dense：与同行金额输入格同高（2026-10-06 表格控件统一口径）。
-        dense: true,
-        label: '转入账户',
-        value: row.inAccountId,
-        items: [
-          for (final e in names.accountEntries.entries)
-            UtenDropdownItem(value: e.key, label: e.value),
-          if (row.inAccountId != null &&
-              row.inAccountId!.isNotEmpty &&
-              !names.accountEntries.containsKey(row.inAccountId))
-            UtenDropdownItem(value: row.inAccountId, label: row.inAccountId!),
-        ],
-        onChanged: (v) => row.inAccountId = v,
+      cellBuilder: (context, row) => ValueListenableBuilder<String?>(
+        valueListenable: row.inAccountIdNotifier,
+        builder: (context, value, _) => UtenDropdownField(
+          dense: true,
+          label: '转入账户',
+          value: value,
+          items: [
+            for (final e in names.accountEntries.entries)
+              UtenDropdownItem(value: e.key, label: e.value),
+            if (value != null &&
+                value.isNotEmpty &&
+                !names.accountEntries.containsKey(value))
+              UtenDropdownItem(value: value, label: value),
+          ],
+          onChanged: (value) => row.inAccountId = value,
+        ),
       ),
     ),
     EditableGridColumn<FinanceGridRow>(

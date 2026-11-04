@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/buttons/uten_export_button.dart';
 import 'package:uten_imp/components/layout/uten_split_view.dart';
 import 'package:uten_imp/core/network/api_client.dart';
+import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
 import 'package:uten_imp/core/theme/dark_theme.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
 import 'package:uten_imp/features/basic_data/models/product_category_node.dart';
@@ -77,10 +78,19 @@ void main() {
         child: RepaintBoundary(
           key: _captureKey,
           child: MaterialApp(
+            locale: capture ? const Locale('zh') : null,
+            supportedLocales: capture
+                ? AppLocalizations.supportedLocales
+                : const [Locale('en')],
+            localizationsDelegates: capture
+                ? AppLocalizations.localizationsDelegates
+                : null,
             debugShowCheckedModeBanner: false,
             theme: capture
                 ? auditScreenshotTheme(
-                    dark ? buildDarkTheme() : buildLightTheme(),
+                    (dark ? buildDarkTheme() : buildLightTheme()).copyWith(
+                      platform: TargetPlatform.windows,
+                    ),
                   )
                 : dark
                 ? buildDarkTheme()

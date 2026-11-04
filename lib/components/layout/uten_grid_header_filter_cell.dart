@@ -148,6 +148,20 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
     _close();
   }
 
+  void _selectCandidate(GridHeaderFilterBucket bucket) {
+    if (utenColumnCandidateAppliesSearch(
+      supportsSearch: widget.onSearch != null && !widget.numericSearch,
+      query: _searchCtl?.text ?? '',
+      value: bucket.value,
+      display: bucket.display,
+    )) {
+      _searchCtl?.text = bucket.display;
+      _submit();
+    } else {
+      _select(bucket.value);
+    }
+  }
+
   void _submit() {
     if (!_current) return;
     final value = _searchCtl?.value;
@@ -503,7 +517,7 @@ class _GridHeaderFilterCellState extends State<GridHeaderFilterCell> {
                     isSelected: _sanitized == b.value,
                     onTap: () {
                       if (version == _menuVersion) {
-                        _select(b.value);
+                        _selectCandidate(b);
                       }
                     },
                     theme: theme,

@@ -22,9 +22,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`clients/windows_legacy/progress/evidence/account-page-balance-20261103.json`。
+证据：`clients/windows_legacy/progress/evidence/account-page-balance-20261103.json`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 账户资料页布局与当前余额编辑增量：Web/Flutter桌面共用AccountPage；余额改动须有account:view、account:balance:view及account:balance:adjust，经共享余额核对入口提交不可变调整批次，不使用普通主档PUT覆盖余额。WPF账户列表、详情及编辑仍未迁移，不开放写入口，不据本轮Flutter/服务端结果标完成。后续须接入expectedBalance并发、按操作者隔离幂等、服务端业务日、原因/确认、原币精度、外币显式localDelta、未知提交及历史/汇总刷新合同。见账户资料设计与余额编辑20261103证据及治理记录。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 账户资料页布局与当前余额编辑增量：Web/Flutter桌面共用AccountPage；余额改动须有account:view、account:balance:view及account:balance:adjust，经共享余额核对入口提交不可变调整批次，不使用普通主档PUT覆盖余额。WPF账户列表、详情及编辑仍未迁移，不开放写入口，不据本轮Flutter/服务端结果标完成。后续须接入expectedBalance并发、按操作者隔离幂等、服务端业务日、原因/确认、原币精度、外币显式localDelta、未知提交及历史/汇总刷新合同。见账户资料设计与余额编辑20261103证据及治理记录。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。。
 
 ## W7-BIZ-019
 
@@ -381,9 +381,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：尚未登记，不得推定通过。
+证据：`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`。
 
-接续/限制：尚未迁移；先做动作/合同审计。。
+接续/限制：尚未迁移；先做动作/合同审计。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 本任务WPF同责业务仍未迁移或未完成原DoD，不开放占位写入口，不据Flutter/后端验证提升完成状态。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。。
 
 ## W7-BIZ-034
 
@@ -477,9 +477,9 @@
 8. 当前源码x86与x64合同及调用方检查通过；在Win7 SP1两架构验证完整适用流程，并确认Win10相关回归。
 9. 更新该页、相关FLOW链和证据记录；只有全部适用条件满足或有证据的N/A才可完成。
 
-证据：`docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md`；`docs/99-项目治理/Win7兼容版/09-本机草稿与单位首批写入接续.md`；`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`；`clients/windows_legacy/progress/evidence/biz037-flow001-upd009-20261030.json`；`clients/windows_legacy/progress/evidence/goods-currency-selection-20261103.json`；`clients/windows_legacy/progress/evidence/date-range-entry-20261103.json`。
+证据：`docs/99-项目治理/Win7兼容版/02-业务流程迁移与验收矩阵.md`；`docs/99-项目治理/Win7兼容版/09-本机草稿与单位首批写入接续.md`；`clients/windows_legacy/progress/evidence/unit-business-installer-20261028.json`；`clients/windows_legacy/progress/evidence/biz037-flow001-upd009-20261030.json`；`clients/windows_legacy/progress/evidence/goods-currency-selection-20261103.json`；`clients/windows_legacy/progress/evidence/date-range-entry-20261103.json`；`clients/windows_legacy/progress/evidence/finance-entry-ui-20261103.json`。
 
-接续/限制：本轮>32种persisted平台列已修复：ProjectBounded有界投影(添加列优先+UUID稳定顺序)+OverflowedDefinitionIds显式溢出，读取验证只覆盖可见预算、全部持久化cells/定义/整行写保全保留，表尾与表头设置显式提示修复入口，输出不再暂停；单行>32字段仍按服务端合同拒绝。columns 46→55双架构runner绿；28动作Win7目标机终验仍待。；2026-11-03：单位详情/编辑/历史/打印/导出在目的窗口准备成功后，通过公共TableSelection清除行、单元格和跨页已选索引，返回不恢复旧选中；菜单、表头工具及批量写确认保留既有语义，草稿/未知提交不变。实际打开并关闭UnitDetailWindow验证通过，x86/x64全部native UI fixtures通过；完整模块DoD及Win7真机状态不变。见 E-GOODS-CURRENCY-SELECTION-20261103。；2026-11-03：单位修改历史开始/结束文本框改为单一选择日期卡片，卡内最右红圆白X可清除；默认中国壁钟最近一个日历月（月末clamp），保留开放区间和服务端dateFrom/dateTo权威。选择/清除作废旧读取且保留其他筛选；x86/x64各37公共日期与10历史UI检查通过。完整单位模块DoD及Win7真机状态不变。见 E-DATE-RANGE-ENTRY-20261103。。
+接续/限制：本轮>32种persisted平台列已修复：ProjectBounded有界投影(添加列优先+UUID稳定顺序)+OverflowedDefinitionIds显式溢出，读取验证只覆盖可见预算、全部持久化cells/定义/整行写保全保留，表尾与表头设置显式提示修复入口，输出不再暂停；单行>32字段仍按服务端合同拒绝。columns 46→55双架构runner绿；28动作Win7目标机终验仍待。；2026-11-03：单位详情/编辑/历史/打印/导出在目的窗口准备成功后，通过公共TableSelection清除行、单元格和跨页已选索引，返回不恢复旧选中；菜单、表头工具及批量写确认保留既有语义，草稿/未知提交不变。实际打开并关闭UnitDetailWindow验证通过，x86/x64全部native UI fixtures通过；完整模块DoD及Win7真机状态不变。见 E-GOODS-CURRENCY-SELECTION-20261103。；2026-11-03：单位修改历史开始/结束文本框改为单一选择日期卡片，卡内最右红圆白X可清除；默认中国壁钟最近一个日历月（月末clamp），保留开放区间和服务端dateFrom/dateTo权威。选择/清除作废旧读取且保留其他筛选；x86/x64各37公共日期与10历史UI检查通过。完整单位模块DoD及Win7真机状态不变。见 E-DATE-RANGE-ENTRY-20261103。；2026-11-03 财务录入与公共表格增量：费用/收入项目同源新增及即时回显、备注末列、正常字号汇总、完整查询文本候选、表格工具栏日期及历史门控。来源、权限、精确金额、草稿及未知提交保留；完整调用清单见finance-entry-ui-20261103证据。 WPF已有单位修改历史日期同步同排40高按钮，范围仅留提示；本机x86/x64各dates37/history UI13通过。 完整ERP、Win7目标机与正式分发未验收；原状态、负责人、DoD及历史证据保留。。
 
 ## W7-BIZ-038
 

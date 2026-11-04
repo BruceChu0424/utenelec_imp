@@ -59,7 +59,7 @@ namespace Uten.Legacy.Desktop.Features.Units
             AddChoice("修改范围", sourceType, new[] { "RECORD", "EXTENSION" }, UnitHistoryContract.SourceLabel);
             var dateEntry = new Grid();
             dateEntry.ColumnDefinitions.Add(new ColumnDefinition()); dateEntry.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            dateRange.BorderThickness = new Thickness(0); dateRange.HorizontalContentAlignment = HorizontalAlignment.Left;
+            dateRange.HorizontalContentAlignment = HorizontalAlignment.Left;
             dateRange.Click += (sender, args) => ChooseDates(); dateEntry.Children.Add(dateRange);
             clearDate.Content = "×"; clearDate.ToolTip = "清除日期";
             clearDate.Style = (Style)FindResource("Uten.CaptionButton"); clearDate.Background = (Brush)FindResource("Uten.Caption.Close");
@@ -70,11 +70,19 @@ namespace Uten.Legacy.Desktop.Features.Units
                 dateFrom = dateTo = null; UpdateDateEntry(); InvalidateFilters(); cursors.Clear(); cursors.Add(null);
             };
             Grid.SetColumn(clearDate, 1); dateEntry.Children.Add(clearDate);
-            var dateCard = UtenSurfaces.Wrap(dateEntry, UtenSurfaceRole.Card);
+            var dateCard = UtenSurfaces.Wrap(dateEntry, UtenSurfaceRole.Card, outlined: false);
             dateCard.VerticalAlignment = VerticalAlignment.Bottom; dateCard.Margin = new Thickness(0, 0, Space("S8"), Space("S8"));
-            filters.Children.Add(dateCard); UpdateDateEntry();
+            UpdateDateEntry();
             AddFilter("摘要关键词", summaryKeyword, 170);
             Body.Children.Add(filters);
+
+            var tableActions = new WrapPanel { Margin = new Thickness(0, 0, 0, Space("S8")) };
+            dateCard.Margin = new Thickness(0, 0, Space("S8"), 0);
+            tableActions.Children.Add(dateCard);
+            refresh = new Button { Content = "查询 / 刷新" };
+            refresh.SetResourceReference(StyleProperty, "Uten.PrimaryButton");
+            refresh.Click += (sender, args) => { cursors.Clear(); cursors.Add(null); _ = LoadPageAsync(); };
+            tableActions.Children.Add(refresh); Body.Children.Add(tableActions);
 
             revisions.Columns.Add(Column("编号", "RecordCode", 105)); revisions.Columns.Add(Column("单位", "RecordName", 130));
             revisions.Columns.Add(Column("动作", "ActionLabel", 90)); revisions.Columns.Add(Column("范围", "SourceLabel", 100));
@@ -88,7 +96,6 @@ namespace Uten.Legacy.Desktop.Features.Units
             detail.Margin = new Thickness(0, Space("S8"), 0, Space("S12")); Body.Children.Add(detail);
             changes.Columns.Add(Column("字段", "Label", 170)); changes.Columns.Add(DiffColumn("修改前", "BeforeValue"));
             changes.Columns.Add(DiffColumn("修改后", "AfterValue")); Body.Children.Add(UtenSurfaces.Wrap(changes, UtenSurfaceRole.Table));
-            refresh = ActionButton("查询 / 刷新", () => { cursors.Clear(); cursors.Add(null); _ = LoadPageAsync(); });
             before = ActionButton("恢复到修改前", () => { _ = RestoreAsync(true); });
             after = ActionButton("恢复到修改后", () => { _ = RestoreAsync(false); }, primary: true);
 
@@ -149,7 +156,7 @@ namespace Uten.Legacy.Desktop.Features.Units
         private void UpdateDateEntry()
         {
             string value = (DateText(dateFrom) ?? "不限") + " 至 " + (DateText(dateTo) ?? "不限");
-            dateRange.Content = dateFrom.HasValue || dateTo.HasValue ? "选择日期 " + value : "选择日期";
+            dateRange.Content = "选择日期";
             dateRange.ToolTip = value; clearDate.Visibility = dateFrom.HasValue || dateTo.HasValue ? Visibility.Visible : Visibility.Collapsed;
         }
         private static string Empty(string value) { return String.IsNullOrWhiteSpace(value) ? null : value; }

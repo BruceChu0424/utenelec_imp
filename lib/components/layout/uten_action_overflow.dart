@@ -13,6 +13,7 @@ import '../print/uten_print_preview.dart';
 import 'uten_app_bar_action_scope.dart';
 import 'uten_fit_or_compact.dart';
 import 'uten_anchored_popup.dart';
+import 'uten_table_action_scope.dart';
 
 /// Uten's compact action dropdown. The original controls (including async
 /// progress, disabled explanations and permissions) move as one retained
@@ -33,6 +34,7 @@ class UtenActionOverflow extends StatefulWidget {
   /// Only known action controls participate; opaque page widgets stay outside.
   static bool isAction(Widget source) {
     if (source is KeyedSubtree) return isAction(source.child);
+    if (source is UtenTableActionScope) return isAction(source.child);
     if (source is Padding && source.child != null) {
       return isAction(source.child!);
     }
@@ -197,6 +199,12 @@ class _UtenActionOverflowState extends State<UtenActionOverflow> {
     if (!menu) return source;
     if (source is KeyedSubtree) {
       return KeyedSubtree(key: source.key, child: _present(source.child, menu));
+    }
+    if (source is UtenTableActionScope) {
+      return UtenTableActionScope(
+        key: source.key,
+        child: _present(source.child, menu),
+      );
     }
     if (source is Padding) {
       return Padding(

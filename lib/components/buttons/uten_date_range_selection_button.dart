@@ -184,13 +184,16 @@ class _UtenDateRangeSelectionButtonState
           Flexible(
             child: requiredLabel(text, theme, required: widget.required),
           ),
-          UtenFieldHintIcon(
-            info: [
-              _summary,
-              if (widget.info?.isNotEmpty ?? false) widget.info!,
-            ].join('\n\n'),
-            errorMessage: widget.errorMessage,
-            dense: true,
+          SizedBox(
+            height: UtenControlMetrics.standardHeight - UtenSpacing.s16,
+            child: UtenFieldHintIcon(
+              info: [
+                _summary,
+                if (widget.info?.isNotEmpty ?? false) widget.info!,
+              ].join('\n\n'),
+              errorMessage: widget.errorMessage,
+              dense: true,
+            ),
           ),
         ],
       ),

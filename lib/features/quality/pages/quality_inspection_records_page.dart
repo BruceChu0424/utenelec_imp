@@ -546,7 +546,6 @@ class _QualityInspectionRecordsPageState
     // 全平台统一筛选工具条：检验域分段 + 胶囊搜索框（尾挂总数文案）；
     // 决定日期筛选保留在工具条下一行。
     final theme = Theme.of(context);
-    final range = _dateRange;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -568,18 +567,6 @@ class _QualityInspectionRecordsPageState
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-        ),
-        const SizedBox(height: UtenFilterRow.rowGap),
-        UtenDateRangeButton(
-          key: const Key('quality-inspection-record-date-filter'),
-          range: range == null
-              ? null
-              : DateTimeRange(start: range.start, end: range.end),
-          firstDate: DateTime.utc(2020),
-          lastDate: ChinaDateTime.today(),
-          helpText: '选择检验决定日期范围',
-          onChanged: _applyDateRange,
-          onClear: _clearDateRange,
         ),
       ],
     );
@@ -608,6 +595,19 @@ class _QualityInspectionRecordsPageState
       'inspectorName',
     },
     items: data.items,
+    toolbarActions: [
+      UtenDateRangeButton(
+        key: const Key('quality-inspection-record-date-filter'),
+        range: _dateRange == null
+            ? null
+            : DateTimeRange(start: _dateRange!.start, end: _dateRange!.end),
+        firstDate: DateTime.utc(2020),
+        lastDate: ChinaDateTime.today(),
+        helpText: '选择检验决定日期范围',
+        onChanged: _applyDateRange,
+        onClear: _clearDateRange,
+      ),
+    ],
     // 表头筛选固定枚举桶（2026-09-16，count=0 表示不强调计数）：
     // 检验结果四态；检验类型仅 IQC（PURCHASE/SUBCONTRACT，FQC 恒为生产成品）；
     // 当前效力三档（与 effectLabel 展示口径一致）；不良处置仅 FQC（IQC 恒无处置码）。

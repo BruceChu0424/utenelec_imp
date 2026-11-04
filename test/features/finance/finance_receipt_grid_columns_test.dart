@@ -61,7 +61,7 @@ void main() {
       await tester.tap(
         find.byWidgetPredicate(
           (widget) =>
-              widget is GridHeaderFilterCell && widget.label == '本次付款(原币)',
+              widget is GridHeaderFilterCell && widget.label == '本次付款金额',
         ),
       );
       await tester.pumpAndSettle();
@@ -105,10 +105,7 @@ void main() {
         (widget) =>
             widget is TextField && identical(widget.controller, row.amount),
       );
-      expect(
-        tester.widget<TextField>(input).decoration?.hintText,
-        '本次分配收款(原币)',
-      );
+      expect(tester.widget<TextField>(input).decoration?.hintText, '本次收款金额');
       expect(row.amount.text, isEmpty);
       await tester.enterText(input, '90071992547409.123456');
       await tester.pump();

@@ -209,6 +209,14 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                     children: [
                       // 大类行：待排产/进行中/历史记录 + 页级搜索；默认不选。
                       UtenFilterToolbar<String>(
+                        trailing: segment == 'history'
+                            ? UtenHistoryTimeFilter(
+                                key: const Key('production-board-history-time'),
+                                value: _historyTime,
+                                onChanged: (value) =>
+                                    setState(() => _historyTime = value),
+                              )
+                            : null,
                         segmentsKey: const Key('production-board-segments'),
                         segments: [
                           UtenFilterSegment(
@@ -258,15 +266,6 @@ class _ProductionBoardPageState extends ConsumerState<ProductionBoardPage> {
                         onSearchChanged: (v) =>
                             setState(() => _keyword = v.trim()),
                       ),
-                      if (segment == 'history') ...[
-                        const SizedBox(height: UtenSpacing.s8),
-                        UtenHistoryTimeFilter(
-                          key: const Key('production-board-history-time'),
-                          value: _historyTime,
-                          onChanged: (value) =>
-                              setState(() => _historyTime = value),
-                        ),
-                      ],
                     ],
                   ),
                 ),

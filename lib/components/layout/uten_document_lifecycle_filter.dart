@@ -44,6 +44,13 @@ class UtenDocumentLifecycleFilter extends StatelessWidget {
   final String? searchValue;
   final ValueChanged<String>? onSearchChanged;
 
+  Widget? get historyToolbarAction => history
+      ? UtenHistoryTimeFilter(
+          value: historyTime,
+          onChanged: onHistoryTimeChanged,
+        )
+      : null;
+
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -85,11 +92,6 @@ class UtenDocumentLifecycleFilter extends StatelessWidget {
           ],
           selected: {status},
           onSelectionChanged: onHistoryStatusChanged,
-        ),
-        const SizedBox(height: UtenSpacing.s8),
-        UtenHistoryTimeFilter(
-          value: historyTime,
-          onChanged: onHistoryTimeChanged,
         ),
       ],
     ],

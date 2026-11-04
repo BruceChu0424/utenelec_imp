@@ -732,21 +732,6 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      UtenDateRangeSelectionButton(
-                        from: _from,
-                        to: _to,
-                        allowOpenRange: true,
-                        enabled: !_loading,
-                        helpText: '选择实际成本日期范围',
-                        onClear: () => setState(() {
-                          _from = null;
-                          _to = null;
-                        }),
-                        onChanged: (start, end) => setState(() {
-                          _from = start;
-                          _to = end;
-                        }),
-                      ),
                       SizedBox(
                         width: width,
                         child: UtenDropdownField(
@@ -846,6 +831,21 @@ class _GoodsCostActualPanelState extends ConsumerState<GoodsCostActualPanel> {
         isLoading: _loading,
         emptyMessage: _l.costNoActual,
         toolbarLeadingActions: [
+          UtenDateRangeSelectionButton(
+            from: _from,
+            to: _to,
+            allowOpenRange: true,
+            enabled: !_loading,
+            helpText: '选择实际成本日期范围',
+            onClear: () => setState(() {
+              _from = null;
+              _to = null;
+            }),
+            onChanged: (start, end) => setState(() {
+              _from = start;
+              _to = end;
+            }),
+          ),
           for (final (index, label) in [
             (0, _l.costActualKnown),
             (1, _l.costActualOutput),

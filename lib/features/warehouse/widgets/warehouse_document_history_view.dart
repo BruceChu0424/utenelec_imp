@@ -35,6 +35,7 @@ class WarehouseDocumentHistoryView extends ConsumerStatefulWidget {
     this.refreshTick = 0,
     this.embedded = false,
     this.externalHeader,
+    this.toolbarLeadingActions = const [],
     this.dateFrom,
     this.dateTo,
   });
@@ -53,6 +54,7 @@ class WarehouseDocumentHistoryView extends ConsumerStatefulWidget {
   /// 宿主（任务中心大类行/小类行/复合分段行）：挂进折叠头随页滚走
   /// （2026-09-24 用户口径「表格完全置顶」）。
   final Widget? externalHeader;
+  final List<Widget> toolbarLeadingActions;
 
   /// 业务日期范围（yyyy-MM-dd；「历史单据」时间门控模式下由
   /// WarehouseHistoryGate 下发，变化即重拉）。
@@ -332,6 +334,7 @@ class _WarehouseDocumentHistoryViewState
         ],
       ),
       body: MasterDataTableView<WarehouseDocumentHistorySummary>(
+        toolbarLeadingActions: widget.toolbarLeadingActions,
         rowsController: _readingRows,
         expensiveRowMounts: false,
         requiredLeadingColumnKeys: const ['status', 'billNo'],

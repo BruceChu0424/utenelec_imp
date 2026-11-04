@@ -58,7 +58,7 @@
 
 ## W7-BIZ-131 · lib/features/quality/pages/quality_inspection_records_page.dart
 
-模块 `quality`；1320 行；SHA256 `9c899278b0a79967caee109c85c14cccfc55702d269c04a2d39c9547b3548fef`。
+模块 `quality`；1320 行；SHA256 `b2069105bce48cd2c9a9b9c45fec0f253668833ecf2936416d8d480ec7b02c1b`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
@@ -68,7 +68,7 @@
 | 权限 | procurement_inspection:view @139；定义 lib/shared/auth/permissions.dart:293<br>production_quality_inspection:view @142；定义 lib/shared/auth/permissions.dart:418 |
 | 接口常量 | 未静态确认；不能当作不存在 |
 | 仓库调用 | lib/features/quality/repositories/quality_inspection_record_repository.dart；接口：/procurement/inspection/records、/procurement/inspection/records/{recordId}、/production/quality-inspections/records、/production/quality-inspections/records/{recordId} |
-| 动作处理 | update @98 [action-like-invocation] 提示 ['update']；_readingRows.update(const []);<br>addPostFrameCallback @132 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load(page: 1));<br>copyWith @567 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>UtenCloseButton @933 [action-like-invocation] 提示 ['close']；UtenCloseButton(onPressed: () => Navigator.of(context).pop()),<br>copyWith @990 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @1001 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @1184 [action-like-invocation] 提示 ['copy']；).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700), |
+| 动作处理 | update @98 [action-like-invocation] 提示 ['update']；_readingRows.update(const []);<br>addPostFrameCallback @132 [action-like-invocation] 提示 ['post']；WidgetsBinding.instance.addPostFrameCallback((_) => _load(page: 1));<br>copyWith @566 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>UtenCloseButton @933 [action-like-invocation] 提示 ['close']；UtenCloseButton(onPressed: () => Navigator.of(context).pop()),<br>copyWith @990 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.titleSmall?.copyWith(<br>copyWith @1001 [action-like-invocation] 提示 ['copy']；style: theme.textTheme.bodySmall?.copyWith(<br>copyWith @1184 [action-like-invocation] 提示 ['copy']；).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700), |
 | 控制器候选（人工核实） | server/src/main/java/com/uten/imp/features/production/quality/ProductionFqcInspectionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/production/quality/ProductionFqcRecordController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementInspectionController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence<br>server/src/main/java/com/uten/imp/features/warehouse/inbound/ProcurementInspectionRecordController.java；需人工核实；依据 declared controller-prefix vs direct page/repository endpoint evidence |
 | 审计限制 | 存在委托组件/provider；页面内操作和权限引用不是完整链路清单，需沿导入继续审查。 |
 

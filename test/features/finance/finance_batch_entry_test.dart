@@ -94,6 +94,7 @@ void main() {
         final env = await _open(tester, type);
         final table = _table(tester);
         expect(table.selectable, isTrue);
+        expect(table.columns.last.key, 'remark');
         expect(
           table.columns.map((column) => column.key),
           containsAll([
@@ -106,7 +107,25 @@ void main() {
         if (type == FinanceDocType.payment || type == FinanceDocType.receipt) {
           expect(
             table.columns.map((column) => column.key),
-            containsAll(['entryParty', 'entryFee', 'entryBankReference']),
+            containsAll(['entryParty', 'entrySettings', 'entryBankReference']),
+          );
+          expect(
+            table.columns.map((column) => column.key),
+            isNot(contains('entryFee')),
+          );
+          expect(
+            table.columns.map((column) => column.key),
+            isNot(contains('entryAccountAmount')),
+          );
+          expect(
+            table.columns
+                .singleWhere((column) => column.key == 'entryBalance')
+                .label,
+            '未结金额',
+          );
+          expect(
+            table.columns.singleWhere((column) => column.key == 'amount').label,
+            type == FinanceDocType.receipt ? '本次收款金额' : '本次付款金额',
           );
           expect(find.text('请先引用已入账的应付；暂不支持给供应商预付'), findsNothing);
         }
@@ -118,6 +137,85 @@ void main() {
       },
     );
   }
+
+  for (final type in [FinanceDocType.receipt, FinanceDocType.payment]) {
+    testWidgets(
+      '${type.name} settlement settings preserve cancel and calculate same-currency bank facts',
+      (tester) async {
+        final env = await _open(tester, type);
+        final row = _table(tester).controller.rows.single;
+        _payment(row, 'party-A', 'ledger-1', '1000');
+        row.entry.fee.text = '10';
+        row.remark.text = '保留备注';
+        await tester.pumpAndSettle();
+        final revealing = _table(
+          tester,
+        ).controller.revealError(row, columnKey: 'entrySettings');
+        await tester.pumpAndSettle();
+        await revealing;
+        await tester.tap(find.text('设置').first);
+        await tester.pumpAndSettle();
+        final feeField = find.byKey(
+          const ValueKey('finance-entry-settlement-fee'),
+        );
+        final actualField = find.byKey(
+          const ValueKey('finance-entry-settlement-account-amount'),
+        );
+        expect(tester.widget<TextField>(feeField).controller!.text, '10');
+        await tester.enterText(feeField, '999');
+        await tester.tap(find.byTooltip('关闭').last);
+        await tester.pumpAndSettle();
+        expect(row.entry.fee.text, '10');
+        await tester.tap(find.text('设置').first);
+        await tester.pumpAndSettle();
+        expect(tester.widget<TextField>(feeField).controller!.text, '10');
+        expect(tester.widget<TextField>(actualField).controller!.text, isEmpty);
+        await tester.enterText(feeField, '10.000000000000000000000001');
+        await tester.tap(find.text('保存设置'));
+        await tester.pumpAndSettle();
+        expect(row.entry.fee.text, '10.000000000000000000000001');
+        expect(row.remark.text, '保留备注');
+        await tester.tap(find.text('保存'));
+        await tester.pumpAndSettle();
+        final doc = Map<String, dynamic>.from(
+          (env.api.bodies.single['documents'] as List).single as Map,
+        );
+        expect(
+          doc['accountAmount'],
+          type == FinanceDocType.receipt
+              ? '989.999999999999999999999999'
+              : '1010.000000000000000000000001',
+        );
+        expect(doc['bankFeeAccountAmount'], '10.000000000000000000000001');
+        expect(((doc['items'] as List).single as Map)['remark'], '保留备注');
+        expect(tester.takeException(), isNull);
+        await env.close(tester);
+      },
+    );
+  }
+
+  testWidgets(
+    'project selected last refreshes grouping totals on the next frame',
+    (tester) async {
+      final env = await _open(tester, FinanceDocType.expense);
+      final row = _table(tester).controller.rows.single;
+      row.entry.accountId = 'account-cny';
+      row.entry.currencyId = 'cny';
+      row.exchangeRate.text = '1';
+      row.amount.text = '100.000000000000000000000001';
+      row.entry.touch();
+      await tester.pumpAndSettle();
+      expect(find.text('0 张单据'), findsOneWidget);
+      row.styleId = 'style';
+      await tester.pump();
+      expect(find.text('1 张单据'), findsOneWidget);
+      expect(find.text('待填写: '), findsNothing);
+      expect(row.amount.text, '100.000000000000000000000001');
+      expect(env.api.bodies, isEmpty);
+      expect(tester.takeException(), isNull);
+      await env.close(tester);
+    },
+  );
 
   testWidgets(
     'row reference imports its hidden supplier and preserves entered bank reference',
@@ -208,7 +306,8 @@ void main() {
       _payment(third, 'supplier-B', 'ledger-3', '30');
       rows.addRows([second, third]);
       await tester.pumpAndSettle();
-      expect(find.text('预计生成 2 张单据'), findsOneWidget);
+      expect(find.text('预计生成: '), findsOneWidget);
+      expect(find.text('2 张单据'), findsOneWidget);
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
       expect(env.api.bodies, hasLength(1));
@@ -319,19 +418,24 @@ void main() {
     if (Platform.environment['UTEN_CAPTURE_FINANCE_ENTRY'] == 'true') {
       await loadAuditScreenshotFonts(tester);
     }
-    for (final layout in [
-      (const Size(1600, 1000), 1.0),
-      (const Size(390, 844), 1.0),
-      (const Size(1600, 1000), 1.5),
+    for (final scenario in [
+      for (final type in FinanceDocType.values)
+        for (final layout in [
+          (const Size(1600, 1000), 1.0),
+          (const Size(390, 844), 1.0),
+          (const Size(1600, 1000), 1.5),
+        ])
+          (type, layout.$1, layout.$2),
     ]) {
-      final size = layout.$1;
+      final type = scenario.$1;
+      final size = scenario.$2;
       final capture = GlobalKey();
       final env = await _open(
         tester,
-        FinanceDocType.payment,
+        type,
         size: size,
         capture: capture,
-        zoom: layout.$2,
+        zoom: scenario.$3,
       );
       _payment(
         _table(tester).controller[0],
@@ -342,6 +446,21 @@ void main() {
       await env.container.read(financeNameServiceProvider).loadSupplierNames([
         'supplier-A',
       ]);
+      final row = _table(tester).controller.rows.single;
+      if (type == FinanceDocType.expense ||
+          type == FinanceDocType.otherIncome) {
+        row.entry.partyId = null;
+        row.appliedLedgerId = null;
+        row.styleId = 'style';
+        row.qty.text = '100';
+        row.price.text = '12.005';
+      } else if (type == FinanceDocType.bankTransfer) {
+        row.entry.partyId = null;
+        row.appliedLedgerId = null;
+        row.inAccountId = 'account-cny';
+        row.occurDate = '2026-11-03';
+      }
+      row.entry.touch();
       await tester.pumpAndSettle();
       expect(find.text('保存').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -349,7 +468,7 @@ void main() {
         await saveAuditScreenshot(
           tester,
           capture,
-          'finance-entry-${size.width.toInt()}${layout.$2 == 1 ? '' : '-zoom150'}',
+          'finance-entry-${type.name}-${size.width.toInt()}${scenario.$3 == 1 ? '' : '-zoom150'}',
         );
       }
       await env.close(tester);
@@ -574,7 +693,9 @@ class _Api extends ApiClient {
       return [
         {
           'id': 'style',
-          'name': '办公费用',
+          'code': 'E001',
+          'name': query?['category'] == 'INCOME' ? '其他收入' : '办公费用',
+          'category': query?['category'] ?? 'EXPENSE',
           'status': '使用',
           'children': <dynamic>[],
         },

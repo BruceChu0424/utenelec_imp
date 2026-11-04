@@ -24,6 +24,90 @@ import 'package:uten_imp/shared/auth/permissions.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 
 void main() {
+  if (Platform.environment['UTEN_CAPTURE_FINANCE_HEADER'] == 'true') {
+    testWidgets('client statement candidate visual', (tester) async {
+      final capture = GlobalKey();
+      await _pump(tester, 'recon', capture: capture);
+      tester
+          .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
+          .onSelectionChanged!(4);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('客户名称'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '优腾',
+      );
+      await tester.pump(const Duration(milliseconds: 251));
+      await tester.pumpAndSettle();
+      await saveAuditScreenshot(
+        tester,
+        capture,
+        'finance-client-statement-candidates',
+      );
+      await tester.tap(find.text('优腾远端客户 (12)'));
+      await tester.pumpAndSettle();
+      await saveAuditScreenshot(
+        tester,
+        capture,
+        'finance-client-statement-candidate-selected',
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+  testWidgets(
+    'clicking an initial full-report text suggestion also commits Search',
+    (tester) async {
+      final api = await _pump(tester, 'recon');
+      tester
+          .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
+          .onSelectionChanged!(4);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('客户名称'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('优腾远端客户 (12)'));
+      await tester.pumpAndSettle();
+      expect(
+        api.requests.last.$2,
+        containsPair('f.search.clientName', '优腾远端客户'),
+      );
+      expect(api.requests.last.$2.containsKey('f.clientName'), isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'client statement candidates read the full report and click applies a keyword',
+    (tester) async {
+      final api = await _pump(tester, 'recon');
+      tester
+          .widget<UtenFilterToolbar<int>>(find.byType(UtenFilterToolbar<int>))
+          .onSelectionChanged!(4);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('客户名称'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('uten-column-keyword-input')),
+        '优腾',
+      );
+      await tester.pump(const Duration(milliseconds: 251));
+      await tester.pumpAndSettle();
+      expect(
+        api.candidateRequests.last,
+        containsPair('report', 'statements/client'),
+      );
+      expect(api.candidateRequests.last, containsPair('column', 'clientName'));
+      expect(api.candidateRequests.last, containsPair('__facetKeyword', '优腾'));
+      expect(find.text('优腾远端客户 (12)'), findsOneWidget);
+      await tester.tap(find.text('优腾远端客户 (12)'));
+      await tester.pumpAndSettle();
+      expect(
+        api.requests.last.$2,
+        containsPair('f.search.clientName', '优腾远端客户'),
+      );
+      expect(api.requests.last.$2.containsKey('f.clientName'), isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
   testWidgets(
     'client statement shares customer names with search, paging, print and export',
     (tester) async {
@@ -137,8 +221,8 @@ void main() {
       );
       expect(find.textContaining('search.expectedOriginal:'), findsNothing);
       expect(
-        find.textContaining('未发运待收原币: >=90071992547409.1234'),
-        findsOneWidget,
+        table().filters,
+        containsPair('search.expectedOriginal', '>=90071992547409.1234'),
       );
       expect(
         api.requests.last.$2,
@@ -382,7 +466,10 @@ Future<_HeaderApi> _pump(
       child: RepaintBoundary(
         key: capture,
         child: MaterialApp(
-          theme: capture == null ? null : buildLightTheme(),
+          debugShowCheckedModeBanner: false,
+          theme: capture == null
+              ? null
+              : auditScreenshotTheme(buildLightTheme()),
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           locale: const Locale('zh'),
@@ -462,6 +549,25 @@ class _GlPrefs extends FinanceGlReportPrefsNotifier {
 class _HeaderApi extends ApiClient {
   _HeaderApi() : super(Dio());
   final requests = <(String, Map<String, dynamic>)>[];
+  final candidateRequests = <Map<String, dynamic>>[];
+  @override
+  Future<Map<String, dynamic>> postForm(
+    String path, {
+    required Map<String, dynamic> body,
+  }) async {
+    candidateRequests.add(Map.of(body));
+    return {
+      'field': 'value',
+      'page': body['__facetPage'],
+      'size': body['__facetSize'],
+      'items': [
+        {'value': '优腾远端客户', 'label': '优腾远端客户', 'count': 12},
+      ],
+      'hasMore': false,
+      'readScopeVersion': 'scope-1',
+    };
+  }
+
   bool rejectHeaders = false;
   bool serverTotals = false;
   Completer<Map<String, dynamic>>? delayedClient;

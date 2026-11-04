@@ -1969,8 +1969,10 @@ void main() {
       await tester.tap(find.byKey(const Key('where-used-filters')));
       await tester.pumpAndSettle();
       await selectFilterSegment(tester, '自定义');
+      await tester.tap(find.byKey(const Key('where-used-filter-apply')));
       await tester.pumpAndSettle();
       expect(find.byType(UtenDateRangeButton), findsOneWidget);
+      final before = api.reportCalls;
       await tester.tap(
         find.descendant(
           of: find.byKey(const Key('where-used-select-dates')),
@@ -1986,18 +1988,41 @@ void main() {
         end: DateTime(today.year, today.month, today.day),
       ));
       await tester.pumpAndSettle();
-      final before = api.reportCalls;
-      tester
-          .widget<FilledButton>(
-            find.byKey(const Key('where-used-filter-apply')),
-          )
-          .onPressed!();
-      await tester.pumpAndSettle();
       expect(api.reportCalls, before + 1);
       expect(api.lastQuery?['dateFrom'], ChinaDateTime.formatDate(today));
       expect(api.lastQuery?['dateTo'], ChinaDateTime.formatDate(today));
     },
   );
+  testWidgets(
+    'actual trace keeps the shared date action in its table toolbar',
+    (tester) async {
+      final api = _WhereUsedApi();
+      await _pumpSimplePage(
+        tester,
+        api,
+        size: const Size(1400, 900),
+        permissions: _actualPermissions,
+      );
+      await _selectMaterial(tester);
+      await selectFilterSegment(tester, '实际追溯');
+      await tester.pumpAndSettle();
+      expect(api.traceCalls, 1);
+      final date = find.byKey(const Key('where-used-select-dates'));
+      expect(date, findsOneWidget);
+      await tester.ensureVisible(date);
+      await tester.tap(find.text('选择日期').hitTestable());
+      await tester.pumpAndSettle();
+      Navigator.of(
+        tester.element(find.byType(UtenDateRangePickerDialog)),
+      ).pop((start: DateTime(2026, 10), end: DateTime(2026, 10, 2)));
+      await tester.pumpAndSettle();
+      expect(api.traceCalls, 2);
+      expect(api.traceQueries.last['dateFrom'], '2026-10-01');
+      expect(api.traceQueries.last['dateTo'], '2026-10-02');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   for (final superAdmin in [false, true]) {
     testWidgets(
       'where-used-only cannot read goods through row navigation (admin=$superAdmin)',

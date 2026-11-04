@@ -94,7 +94,8 @@ void main() {
         findsNothing,
       );
       expect(find.text('请先引用已入账的应付；暂不支持给供应商预付'), findsOneWidget);
-      expect(find.textContaining('参考本币 ¥720.00'), findsOneWidget);
+      expect(find.text('折算金额（人民币）: '), findsOneWidget);
+      expect(find.text('720.00'), findsOneWidget);
 
       final grid = tester.widget<UtenEditableGrid<FinanceGridRow>>(
         _financeGrid(),
@@ -396,7 +397,7 @@ void main() {
     );
     final columns = {for (final column in table.columns) column.key: column};
     final item = table.items.single;
-    expect(columns['amountOriginal']?.label, '本次付款(原币)');
+    expect(columns['amountOriginal']?.label, '本次付款金额');
     expect(columns['amountOriginal']?.value(item), '50.00');
     expect(columns['amountLocal']?.label, '付款本币');
     expect(columns['amountLocal']?.value(item), '360.00');

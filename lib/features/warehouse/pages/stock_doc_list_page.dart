@@ -661,29 +661,34 @@ class _StockDocListPageState extends ConsumerState<StockDocListPage>
                           _reload(1);
                         },
                       ),
-                      if (seg?.history == true) ...[
-                        Padding(
-                          padding: const EdgeInsets.only(
-                            bottom: UtenSpacing.s8,
-                          ),
-                          child: UtenHistoryTimeFilter(
-                            key: Key(
-                              'stock-doc-history-time-${widget.docType.code}',
-                            ),
-                            value: _historyTime,
-                            onChanged: _onHistoryTime,
-                          ),
-                        ),
-                      ],
+
                       const SizedBox(height: UtenSpacing.s8),
                     ],
                   ),
                   body: seg == null
                       ? const UtenFilterPlaceholder()
                       : seg.history && _historyTime.isNone
-                      ? const UtenHistoryTimePlaceholder()
+                      ? UtenHistoryTimePlaceholder(
+                          controls: UtenHistoryTimeFilter(
+                            key: Key(
+                              'stock-doc-history-time-${widget.docType.code}',
+                            ),
+                            value: _historyTime,
+                            onChanged: _onHistoryTime,
+                          ),
+                        )
                       : _withFormDraftRows(
                           MasterDataTableView<StockDocListItem>(
+                            toolbarLeadingActions: [
+                              if (seg.history)
+                                UtenHistoryTimeFilter(
+                                  key: Key(
+                                    'stock-doc-history-time-${widget.docType.code}',
+                                  ),
+                                  value: _historyTime,
+                                  onChanged: _onHistoryTime,
+                                ),
+                            ],
                             rowsController: _tableRows,
                             bottomContentPadding: _canCreate
                                 ? UtenFloatingActionGroup.scrollClearance

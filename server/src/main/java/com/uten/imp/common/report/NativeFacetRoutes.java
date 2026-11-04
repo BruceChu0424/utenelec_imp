@@ -11,6 +11,7 @@ public final class NativeFacetRoutes {
     public static Set<String> paths() { return ROUTES.keySet(); }
     private static Map<String,Route> routes() {
         Map<String,Route> routes = new LinkedHashMap<>();
+        add(routes,"/api/finance/reports/column-candidates","finance","value");
         add(routes,"/api/finance/reports/account/statement/facets","native_feature","billNo");
         add(routes,"/api/finance/payables/facets","native_feature","sourceDocNo");
         add(routes,"/api/finance/subcontract-loss-claims/facets","native_feature","wasteBillNo");

@@ -1978,14 +1978,6 @@ class _SubcontractDecompositionPageState
             onSelectionChanged: _selectException,
           ),
         ],
-        if (seg?.history == true) ...[
-          const SizedBox(height: UtenSpacing.s8),
-          UtenHistoryTimeFilter(
-            key: const Key('subcontract-decomposition-history-time'),
-            value: _historyTime,
-            onChanged: _onHistoryTime,
-          ),
-        ],
       ],
     );
 
@@ -2013,7 +2005,13 @@ class _SubcontractDecompositionPageState
             );
           }
           if (seg.history && _historyTime.isNone) {
-            return const UtenHistoryTimePlaceholder();
+            return UtenHistoryTimePlaceholder(
+              controls: UtenHistoryTimeFilter(
+                key: const Key('subcontract-decomposition-history-time'),
+                value: _historyTime,
+                onChanged: _onHistoryTime,
+              ),
+            );
           }
           return _buildTable(data);
         },
@@ -2031,6 +2029,14 @@ class _SubcontractDecompositionPageState
         _hasDecomposePermissions &&
         data.capabilities.canCreateSubcontractOrder;
     return MasterDataTableView<OperationsWorkbenchTask>(
+      toolbarLeadingActions: [
+        if (_seg?.history == true)
+          UtenHistoryTimeFilter(
+            key: const Key('subcontract-decomposition-history-time'),
+            value: _historyTime,
+            onChanged: _onHistoryTime,
+          ),
+      ],
       expensiveRowMounts: false,
       rowsController: _taskRows,
       tableKey:

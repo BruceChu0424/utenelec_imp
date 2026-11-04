@@ -4,11 +4,11 @@
 
 ## W7-BIZ-087 · lib/features/operations_workbench/pages/operations_workbench_page.dart
 
-模块 `operations_workbench`；1989 行；SHA256 `753b3304414279256d1f80d5d7cd7a0dba81deebd9437f3d000561f83e4ad242`。
+模块 `operations_workbench`；1989 行；SHA256 `4ae636305f39d5459f6b97a14f17ea5e022e45aad25ccd137dd1b18a12e3b22b`。
 
 | 审计项 | 静态来源/线索 |
 |---|---|
-| 页面/状态类 | _WorkbenchSeg @80 (supporting-class)<br>OperationsWorkbenchPage @95 (page-class)<br>_OperationsWorkbenchPageState @124 (state-class)<br>_SelectionPrimaryAction @1525 (supporting-class)<br>_DesktopTaskTable @1558 (supporting-class) |
+| 页面/状态类 | _WorkbenchSeg @80 (supporting-class)<br>OperationsWorkbenchPage @95 (page-class)<br>_OperationsWorkbenchPageState @124 (state-class)<br>_SelectionPrimaryAction @1522 (supporting-class)<br>_DesktopTaskTable @1555 (supporting-class) |
 | 真实路由绑定 | /operations/workbench/warehouse；router @1086；builder ['OperationsWorkbenchPage']；redirect None<br>/operations/workbench/purchase；router @1093；builder ['OperationsWorkbenchPage']；redirect None |
 | 重定向/别名候选 | 未静态确认；不能当作不存在 |
 | 权限 | purchase_order:submit_finance @1132；定义 lib/shared/auth/permissions.dart:151<br>subcontract_order:submit_finance @1133；定义 lib/shared/auth/permissions.dart:396<br>purchase_report:export @1895；定义 lib/shared/auth/permissions.dart:576 |

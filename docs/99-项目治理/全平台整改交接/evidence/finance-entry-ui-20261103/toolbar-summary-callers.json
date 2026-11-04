@@ -1,0 +1,1286 @@
+{
+  "schemaVersion": 1,
+  "task": "finance-entry-ui-20261103",
+  "classification": "frontend presentation + interaction; no change to financial authority or precision",
+  "platforms": {
+    "web": "Shared Dart implementation",
+    "flutterDesktop": "Shared Dart implementation",
+    "wpfLegacy": "Only implemented equivalent date consumer is UnitRecordHistoryWindow; no finance entry/report or sales editable-grid consumers migrated"
+  },
+  "commonEntrances": {
+    "totals": "lib/components/data_display/uten_totals_summary_bar.dart: UtenTotalsSummaryBar + UtenTotalEntryView, bodyLarge 16; no density shrink; tabular numeric figures",
+    "editFooter": "lib/components/layout/uten_editable_grid.dart: left add-one/add-many, right footer; narrow/large-font wraps below; no ellipsis",
+    "toolbar": "lib/components/layout/uten_table_action_scope.dart: actions only; UtenButton medium/standard40; touch target and expanded text retained; no cell scope",
+    "date": "lib/components/buttons/uten_date_range_selection_button.dart: choose label only, date facts in tooltip/semantics",
+    "reportErrorShell": "Six report pages always use ReportMetadataReuse.loadingData for missing metadata; keep original error/loading and no stale facts; date action remains mounted",
+    "actualTrace": "WhereUsedReportPage._dateRangeAction passed to GoodsProductionTraceView.toolbarActions in actual mode and directly to relationship table"
+  },
+  "dateSymbolAudit": [
+    {
+      "file": "lib/shared/history/record_history_page.dart",
+      "line": 405,
+      "symbol": "showUtenDateRangePicker",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/shared/stock_inventory/instant_inventory_period_button.dart",
+      "line": 12,
+      "symbol": "InstantInventoryPeriodButton",
+      "status": "public-implementation-or-adapter",
+      "reason": "Shared calendar/closed-range/wall-date adapter; caller owns business date semantics."
+    },
+    {
+      "file": "lib/shared/stock_inventory/instant_inventory_period_button.dart",
+      "line": 24,
+      "symbol": "UtenDateRangeButton",
+      "status": "public-implementation-or-adapter",
+      "reason": "Shared calendar/closed-range/wall-date adapter; caller owns business date semantics."
+    },
+    {
+      "file": "lib/shared/stock_ledger/widgets/goods_stock_ledger_view.dart",
+      "line": 277,
+      "symbol": "showUtenDateRangePicker",
+      "status": "already-table-toolbar-retained",
+      "reason": "Already located in table toolbar; common action scope now supplies standard geometry."
+    },
+    {
+      "file": "lib/shared/stock_ledger/widgets/goods_stock_ledger_view.dart",
+      "line": 385,
+      "symbol": "UtenDateRangeButton",
+      "status": "already-table-toolbar-retained",
+      "reason": "Already located in table toolbar; common action scope now supplies standard geometry."
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_quality_result_detail_page.dart",
+      "line": 1304,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "line": 531,
+      "symbol": "UtenDateRangeButton",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+      "line": 1372,
+      "symbol": "UtenDateRangeButton",
+      "status": "already-table-toolbar-retained",
+      "reason": "Already located in table toolbar; common action scope now supplies standard geometry."
+    },
+    {
+      "file": "lib/features/visitor/pages/visitor_apply_page.dart",
+      "line": 79,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "line": 514,
+      "symbol": "UtenDateRangeButton",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/stock/pages/instant_inventory_page.dart",
+      "line": 985,
+      "symbol": "InstantInventoryPeriodButton",
+      "status": "already-table-toolbar-retained",
+      "reason": "Already located in table toolbar; common action scope now supplies standard geometry."
+    },
+    {
+      "file": "lib/features/sales/pages/sales_report_page.dart",
+      "line": 541,
+      "symbol": "UtenDateRangeButton",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "line": 407,
+      "symbol": "showUtenDateRangePicker",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "line": 599,
+      "symbol": "UtenDateRangeButton",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_report_page.dart",
+      "line": 253,
+      "symbol": "UtenDateRangeButton",
+      "status": "business-difference-retained",
+      "reason": "Card/list workspace period control, not a table toolbar."
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "line": 500,
+      "symbol": "UtenDateRangeButton",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/production/pages/production_board_page.dart",
+      "line": 1746,
+      "symbol": "UtenDateRangeSelectionButton",
+      "status": "business-difference-retained",
+      "reason": "Card/list workspace period control, not a table toolbar."
+    },
+    {
+      "file": "lib/features/production/pages/production_report_page.dart",
+      "line": 526,
+      "symbol": "UtenDateRangeButton",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/production/pages/where_used_report_page.dart",
+      "line": 1519,
+      "symbol": "UtenDateRangeButton",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/production/widgets/material_manual_demand_editor.dart",
+      "line": 589,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/production/widgets/production_execution_segments_card.dart",
+      "line": 540,
+      "symbol": "UtenDateRangeSelectionButton",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/procurement_iqc_rejection/widgets/procurement_iqc_actual_credit_dialog.dart",
+      "line": 338,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/procurement_iqc_rejection/widgets/procurement_iqc_rejection_action_dialog.dart",
+      "line": 90,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/hr_task/pages/hr_task_list_page.dart",
+      "line": 930,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/hr_task/widgets/hr_task_widgets.dart",
+      "line": 602,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "line": 566,
+      "symbol": "FinanceDateRangeFilter",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
+      "line": 794,
+      "symbol": "FinanceDateRangeFilter",
+      "status": "already-table-toolbar-retained",
+      "reason": "Already located in table toolbar; common action scope now supplies standard geometry."
+    },
+    {
+      "file": "lib/features/finance/pages/finance_doc_edit_page.dart",
+      "line": 2130,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/finance/pages/finance_report_table_page.dart",
+      "line": 756,
+      "symbol": "FinanceDateRangeFilter",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/finance/pages/finance_statement_page.dart",
+      "line": 656,
+      "symbol": "FinanceDateRangeFilter",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+      "line": 1080,
+      "symbol": "UtenDateRangeSelectionButton",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_date_range_filter.dart",
+      "line": 10,
+      "symbol": "FinanceDateRangeFilter",
+      "status": "public-implementation-or-adapter",
+      "reason": "Shared calendar/closed-range/wall-date adapter; caller owns business date semantics."
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_date_range_filter.dart",
+      "line": 30,
+      "symbol": "UtenDateRangeSelectionButton",
+      "status": "public-implementation-or-adapter",
+      "reason": "Shared calendar/closed-range/wall-date adapter; caller owns business date semantics."
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_grid_columns.dart",
+      "line": 899,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/finance/widgets/inventory_cost_posting_dialog.dart",
+      "line": 688,
+      "symbol": "UtenDateRangeSelectionButton",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "line": 1128,
+      "symbol": "FinanceDateRangeFilter",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "line": 1139,
+      "symbol": "FinanceDateRangeFilter",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/finance/payables/widgets/subcontract_loss_claim_actions.dart",
+      "line": 202,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/finance/payables/widgets/subcontract_loss_claim_actions.dart",
+      "line": 821,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/finance/payables/widgets/supplier_credit_apply_panel.dart",
+      "line": 225,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/finance/payables/widgets/supplier_settlement_actions.dart",
+      "line": 199,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/expense/pages/expense_approval_detail_page.dart",
+      "line": 577,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/expense/pages/expense_item_dialog.dart",
+      "line": 277,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/expense/widgets/expense_invoice_section.dart",
+      "line": 698,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/employee/pages/employee_detail_page.dart",
+      "line": 1147,
+      "symbol": "UtenDateRangeSelectionButton",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/employee/pages/employee_detail_page.dart",
+      "line": 1858,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/employee/pages/employee_edit_page.dart",
+      "line": 296,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/employee/pages/employee_offboarding_workflow_page.dart",
+      "line": 565,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/employee/pages/employee_onboarding_page.dart",
+      "line": 1155,
+      "symbol": "UtenDateRangeSelectionButton",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/employee/widgets/employee_transfer_dialog.dart",
+      "line": 70,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/basic_data/pages/account_detail_page.dart",
+      "line": 1122,
+      "symbol": "UtenDateRangeSelectionButton",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/basic_data/widgets/goods_cost_actual_panel.dart",
+      "line": 834,
+      "symbol": "UtenDateRangeSelectionButton",
+      "status": "table-toolbar-migrated",
+      "reason": "Date entry lives in the table action toolbar; selected date remains in header/tooltip/accessible semantics; no duplicate result row."
+    },
+    {
+      "file": "lib/features/basic_data/widgets/warehouse_inventory_panel.dart",
+      "line": 495,
+      "symbol": "InstantInventoryPeriodButton",
+      "status": "already-table-toolbar-retained",
+      "reason": "Already located in table toolbar; common action scope now supplies standard geometry."
+    },
+    {
+      "file": "lib/features/admin/pages/admin_audit_log_page.dart",
+      "line": 1351,
+      "symbol": "showUtenDateRangePicker",
+      "status": "business-difference-retained",
+      "reason": "Personnel plus date scope is an authorization/query prerequisite; no table column can replace the unapplied scope editor."
+    },
+    {
+      "file": "lib/features/admin/widgets/admin_data_handover_panel.dart",
+      "line": 532,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/features/admin/widgets/audit_query_scope.dart",
+      "line": 292,
+      "symbol": "UtenDateRangeButton",
+      "status": "business-difference-retained",
+      "reason": "Personnel plus date scope is an authorization/query prerequisite; no table column can replace the unapplied scope editor."
+    },
+    {
+      "file": "lib/features/admin/widgets/server_update_schedule_dialog.dart",
+      "line": 106,
+      "symbol": "showUtenDatePicker",
+      "status": "business-difference-retained",
+      "reason": "Document/employee/asset/task/settlement single date or business-period input; changing its placement into query toolbar would change the business form."
+    },
+    {
+      "file": "lib/components/buttons/uten_date_range_selection_button.dart",
+      "line": 18,
+      "symbol": "UtenDateRangeSelectionButton",
+      "status": "public-implementation-or-adapter",
+      "reason": "Shared calendar/closed-range/wall-date adapter; caller owns business date semantics."
+    },
+    {
+      "file": "lib/components/buttons/uten_date_range_selection_button.dart",
+      "line": 107,
+      "symbol": "showUtenDateRangeSelectionPicker",
+      "status": "public-implementation-or-adapter",
+      "reason": "Shared calendar/closed-range/wall-date adapter; caller owns business date semantics."
+    },
+    {
+      "file": "lib/components/feedback/uten_date_range_picker.dart",
+      "line": 46,
+      "symbol": "showUtenDateRangePicker",
+      "status": "public-implementation-or-adapter",
+      "reason": "Shared calendar/closed-range/wall-date adapter; caller owns business date semantics."
+    },
+    {
+      "file": "lib/components/feedback/uten_date_range_picker.dart",
+      "line": 65,
+      "symbol": "showUtenDateRangeSelectionPicker",
+      "status": "public-implementation-or-adapter",
+      "reason": "Shared calendar/closed-range/wall-date adapter; caller owns business date semantics."
+    },
+    {
+      "file": "lib/components/feedback/uten_date_range_picker.dart",
+      "line": 95,
+      "symbol": "showUtenDatePicker",
+      "status": "public-implementation-or-adapter",
+      "reason": "Shared calendar/closed-range/wall-date adapter; caller owns business date semantics."
+    },
+    {
+      "file": "lib/components/inputs/uten_date_field.dart",
+      "line": 176,
+      "symbol": "showUtenDatePicker",
+      "status": "public-implementation-or-adapter",
+      "reason": "Shared calendar/closed-range/wall-date adapter; caller owns business date semantics."
+    },
+    {
+      "file": "lib/components/inputs/uten_date_range_button.dart",
+      "line": 9,
+      "symbol": "UtenDateRangeButton",
+      "status": "public-implementation-or-adapter",
+      "reason": "Shared calendar/closed-range/wall-date adapter; caller owns business date semantics."
+    },
+    {
+      "file": "lib/components/inputs/uten_date_range_button.dart",
+      "line": 33,
+      "symbol": "UtenDateRangeSelectionButton",
+      "status": "public-implementation-or-adapter",
+      "reason": "Shared calendar/closed-range/wall-date adapter; caller owns business date semantics."
+    },
+    {
+      "file": "lib/components/layout/uten_history_time_filter.dart",
+      "line": 90,
+      "symbol": "showUtenDateRangePicker",
+      "status": "public-implementation-or-adapter",
+      "reason": "Shared calendar/closed-range/wall-date adapter; caller owns business date semantics."
+    }
+  ],
+  "summaryCallers": [
+    {
+      "file": "lib/shared/report/report_total.dart",
+      "line": 257,
+      "symbol": "reportTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/shared/report/report_total.dart",
+      "line": 271,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/shared/widgets/editable_grid_totals_bar.dart",
+      "line": 16,
+      "symbol": "EditableGridTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/shared/widgets/editable_grid_totals_bar.dart",
+      "line": 112,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/shared/widgets/historical_receipt_totals.dart",
+      "line": 27,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/shared/stock_ledger/widgets/goods_stock_inventory_overview.dart",
+      "line": 80,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/shared/stock_ledger/widgets/goods_stock_ledger_view.dart",
+      "line": 422,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/warehouse/pages/inbound_arrival_registration_page.dart",
+      "line": 1409,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/warehouse/pages/production_finished_arrival_registration_page.dart",
+      "line": 996,
+      "symbol": "inboundTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/warehouse/pages/stock_doc_detail_page.dart",
+      "line": 1620,
+      "symbol": "OutboundWeightSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/warehouse/pages/stock_doc_edit_page.dart",
+      "line": 1527,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_insight_page.dart",
+      "line": 1060,
+      "symbol": "reportTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "line": 588,
+      "symbol": "reportTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_sales_outbound_batch_page.dart",
+      "line": 963,
+      "symbol": "OutboundWeightSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_sales_outbound_detail_page.dart",
+      "line": 543,
+      "symbol": "OutboundWeightSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/warehouse/widgets/inbound_registration_widgets.dart",
+      "line": 370,
+      "symbol": "inboundTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/warehouse/widgets/inbound_registration_widgets.dart",
+      "line": 379,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/warehouse/widgets/outbound_weight_columns.dart",
+      "line": 349,
+      "symbol": "OutboundWeightSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/warehouse/widgets/outbound_weight_columns.dart",
+      "line": 374,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/warehouse/widgets/production_draw_detail_table.dart",
+      "line": 323,
+      "symbol": "OutboundWeightSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/warehouse/widgets/subcontract_outbound_detail_table.dart",
+      "line": 480,
+      "symbol": "OutboundWeightSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_doc_detail_page.dart",
+      "line": 1588,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
+      "line": 1133,
+      "symbol": "EditableGridTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
+      "line": 1173,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
+      "line": 1185,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "line": 572,
+      "symbol": "reportTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/stock/pages/instant_inventory_page.dart",
+      "line": 1079,
+      "symbol": "InstantInventorySummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/stock/widgets/instant_inventory_summary_bar.dart",
+      "line": 10,
+      "symbol": "InstantInventorySummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/sales/pages/sales_doc_detail_page.dart",
+      "line": 2634,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/sales/pages/sales_doc_edit_page.dart",
+      "line": 4607,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/sales/pages/sales_report_page.dart",
+      "line": 597,
+      "symbol": "reportTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/sales/pages/sales_report_page.dart",
+      "line": 996,
+      "symbol": "reportTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "line": 1148,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_doc_detail_page.dart",
+      "line": 2187,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_doc_edit_page.dart",
+      "line": 1365,
+      "symbol": "EditableGridTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_order_edit_page.dart",
+      "line": 2085,
+      "symbol": "EditableGridTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "line": 558,
+      "symbol": "reportTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/production/pages/production_analysis_sales_order_page.dart",
+      "line": 220,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/production/pages/production_plan_edit_page.dart",
+      "line": 968,
+      "symbol": "EditableGridTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/production/pages/production_report_page.dart",
+      "line": 582,
+      "symbol": "reportTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/production/widgets/material_manual_demand_editor.dart",
+      "line": 762,
+      "symbol": "EditableGridTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "line": 669,
+      "symbol": "reportTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/finance/pages/finance_doc_batch_entry.dart",
+      "line": 852,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/finance/pages/finance_doc_detail_page.dart",
+      "line": 1075,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/finance/pages/finance_doc_edit_page.dart",
+      "line": 2938,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/finance/pages/finance_doc_edit_page.dart",
+      "line": 2974,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/finance/pages/finance_procurement_approval_review_page.dart",
+      "line": 1782,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/finance/pages/finance_quote_review_page.dart",
+      "line": 1869,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/finance/pages/finance_report_table_page.dart",
+      "line": 836,
+      "symbol": "reportTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/finance/pages/finance_sales_order_review_page.dart",
+      "line": 1496,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/finance/pages/finance_statement_page.dart",
+      "line": 698,
+      "symbol": "reportTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_receipt_totals.dart",
+      "line": 24,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/expense/pages/expense_approval_detail_page.dart",
+      "line": 527,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/expense/pages/expense_detail_page.dart",
+      "line": 412,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/expense/widgets/expense_submission_revision.dart",
+      "line": 383,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/basic_data/widgets/goods_cost_actual_panel.dart",
+      "line": 615,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/basic_data/widgets/goods_cost_actual_panel.dart",
+      "line": 938,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/basic_data/widgets/goods_cost_tab.dart",
+      "line": 1121,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/features/basic_data/widgets/warehouse_inventory_panel.dart",
+      "line": 612,
+      "symbol": "reportTotalsBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    },
+    {
+      "file": "lib/components/data_display/uten_totals_summary_bar.dart",
+      "line": 12,
+      "symbol": "UtenTotalsSummaryBar",
+      "status": "shared-bodyLarge-typography",
+      "preserved": "Caller owns rows/count, currency, unit, exact decimal, estimation/unknown and server total semantics."
+    }
+  ],
+  "customSummaryMigrations": [
+    {
+      "file": "lib/features/expense/pages/expense_detail_page.dart",
+      "before": "Private Wrap bodySmall + titleMedium",
+      "after": "UtenTotalsSummaryBar(rowCount, entries)"
+    },
+    {
+      "file": "lib/features/expense/pages/expense_approval_detail_page.dart",
+      "before": "Private Wrap bodySmall + titleMedium",
+      "after": "UtenTotalsSummaryBar(rowCount, entries)"
+    },
+    {
+      "file": "lib/features/expense/widgets/expense_submission_revision.dart",
+      "before": "Plain combined current-row-count/amount Text",
+      "after": "UtenTotalsSummaryBar(rowCount, entries)"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_doc_edit_page.dart",
+      "before": "Private totalWeight/rowCount Align Text for non-money documents",
+      "after": "UtenTotalsSummaryBar; money documents keep EditableGridTotalsBar"
+    },
+    {
+      "file": "lib/features/stock/widgets/instant_inventory_summary_bar.dart",
+      "before": "Private rich text bodySmall weight summary",
+      "after": "UtenTotalEntryView; existing details action retained"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_doc_batch_entry.dart",
+      "before": "Private inline Wrap near add-row buttons",
+      "after": "UtenTotalsSummaryBar in grid.footer, rowCount and grouped currencies; changes listen to _entryDraftRevision plus finance names for next-frame completeness"
+    }
+  ],
+  "duplicateHeaderFilterChipsRemoved": [
+    "finance_report_table_page",
+    "purchase_report_table_page",
+    "sales_report_page",
+    "subcontract_report_table_page",
+    "warehouse_report_table_page",
+    "production_report_page"
+  ],
+  "preservedGlobalFilters": [
+    "Prepayment report client chooser (no matching column prerequisite)",
+    "Statement party, annual year, account selection",
+    "Source/mode/authorization prerequisites",
+    "Audit query personnel and explicit time scope"
+  ],
+  "historyTimeFilterAudit": {
+    "source": "docs/99-项目治理/全平台整改交接/evidence/finance-entry-ui-20261103/history-toolbar-callers.json",
+    "audit": {
+      "status": "complete-source-and-targeted-regressions",
+      "classification": "frontend presentation/interaction; Web and Flutter targets share Dart implementation; no WPF historical business migration added",
+      "commonEntrances": [
+        "lib/components/layout/uten_history_time_filter.dart: UtenHistoryTimeFilter and UtenHistoryTimePlaceholder.controls",
+        "lib/components/layout/uten_document_lifecycle_filter.dart: historyToolbarAction",
+        "lib/features/warehouse/widgets/warehouse_history_gate.dart: explicit builder(value,timeAction)",
+        "lib/components/layout/uten_table_action_scope.dart: medium/standard40 only for toolbar controls"
+      ],
+      "contract": {
+        "labels": "Only choose-date/all actions are visible; date facts are in the adjacent accessible hint.",
+        "dimensions": "Normal Uten button geometry; date and all share normal toolbar height; no text shrinking.",
+        "values": "none (no request), all (unbounded), range (China wall dates); default recent month retained.",
+        "fallback": "Unselected-time placeholders receive the same controls explicitly; no dead-end gate.",
+        "isolation": "Actions are passed explicitly to owning table adapters; no page-wide inherited injection into unrelated tables or dialogs.",
+        "removed": "Removed separate date-only header rows in table consumers. Existing non-table category rows retained."
+      },
+      "tableCallerCount": 16,
+      "tableCallers": [
+        {
+          "file": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+          "symbol": "StockDocListPage",
+          "scope": "all configured StockDocType history tables",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            682
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        },
+        {
+          "file": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+          "symbol": "WarehouseQualityResultsPage",
+          "scope": "purchase/subcontract physical quality history",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            712
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        },
+        {
+          "file": "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart",
+          "symbol": "WarehouseSalesOutboundWorkbench",
+          "scope": "sales-outbound history",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            514
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        },
+        {
+          "file": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+          "symbol": "WarehouseStockDocSegment",
+          "scope": "all configured stock-document history segments",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            788
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        },
+        {
+          "file": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+          "symbol": "SubcontractBusinessListPage",
+          "scope": "all configured subcontract business document types",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            1098
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        },
+        {
+          "file": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+          "symbol": "SubcontractDecompositionPage._buildTable",
+          "scope": "completed/history workbench; pending task table has no history date contract",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            2032
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        },
+        {
+          "file": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+          "symbol": "SubcontractShortDeliveryPage",
+          "scope": "short-delivery history",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            554
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        },
+        {
+          "file": "lib/features/sales/pages/sales_doc_list_page.dart",
+          "symbol": "SalesDocListPage",
+          "scope": "all configured sales document types",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            1280
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        },
+        {
+          "file": "lib/features/sales/pages/sales_order_progress_page.dart",
+          "symbol": "SalesOrderProgressPage",
+          "scope": "sales-order progress history",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            748
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        },
+        {
+          "file": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+          "symbol": "PurchaseDocListPage",
+          "scope": "all configured purchase document types",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            967
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        },
+        {
+          "file": "lib/features/production/pages/production_workshop_tasks_page.dart",
+          "symbol": "ProductionWorkshopTasksPage",
+          "scope": "completed/cancelled/revoked workshop task history",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            3020
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        },
+        {
+          "file": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+          "symbol": "OperationsWorkbenchPage -> _DesktopTaskTable.historyTimeAction",
+          "scope": "four department workbench history views",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            1448,
+            1636
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        },
+        {
+          "file": "lib/features/finance/pages/finance_doc_list_page.dart",
+          "symbol": "FinanceDocListPage -> UtenDocumentLifecycleFilter.historyToolbarAction",
+          "scope": "receipt/payment/expense/otherIncome/bankTransfer history",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            710
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        },
+        {
+          "file": "lib/features/production/pages/production_plan_list_page.dart",
+          "symbol": "ProductionPlanListPage -> UtenDocumentLifecycleFilter.historyToolbarAction",
+          "scope": "production-plan history",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            589
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        },
+        {
+          "file": "lib/features/production/pages/production_daily_report_list_page.dart",
+          "symbol": "ProductionDailyReportListPage -> UtenDocumentLifecycleFilter.historyToolbarAction",
+          "scope": "production-daily-report history",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            407
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        },
+        {
+          "file": "lib/features/warehouse/widgets/warehouse_document_history_view.dart",
+          "symbol": "WarehouseTaskCenterPage -> WarehouseHistoryGate.builder(value,timeAction) -> WarehouseDocumentHistoryView.toolbarLeadingActions",
+          "scope": "subcontract finished-goods return physical history",
+          "status": "table-toolbar-migrated",
+          "sourceLines": [
+            337
+          ],
+          "entry": "MasterDataTableView.toolbarLeadingActions",
+          "authority": "existing value/onChanged and read gate retained; no backend predicate changes"
+        }
+      ],
+      "nonTableDifferences": [
+        {
+          "file": "lib/features/production/pages/production_board_page.dart",
+          "status": "card-list-category-action-row",
+          "entry": "UtenFilterToolbar.trailing",
+          "reason": "Production history panel is a card list; same controls use its existing category action row rather than an invented table toolbar."
+        },
+        {
+          "file": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
+          "status": "card-list-category-action-row",
+          "entry": "UtenFilterToolbar.trailing",
+          "reason": "Supplier-return task cards retain their existing category row; no separate date-only row."
+        }
+      ],
+      "verification": [
+        {
+          "kind": "focused-analyze",
+          "result": "passed, no issues",
+          "files": 24
+        },
+        {
+          "kind": "first-component-and-lifecycle-run",
+          "result": "33 passed",
+          "tests": [
+            "test/components/uten_history_time_filter_semantics_test.dart",
+            "test/components/uten_app_bar_action_lifecycle_test.dart",
+            "test/features/warehouse/warehouse_history_gate_header_test.dart",
+            "test/features/operations_workbench/workbench_filter_loading_responsiveness_test.dart"
+          ]
+        },
+        {
+          "kind": "new-toolbar-and-response-regression-run",
+          "result": "42 passed",
+          "tests": [
+            "test/components/uten_history_time_filter_semantics_test.dart",
+            "test/components/uten_responsive_surface_test.dart",
+            "test/features/operations_workbench/workbench_filter_loading_responsiveness_test.dart",
+            "test/features/subcontract/subcontract_table_loading_responsiveness_test.dart",
+            "test/features/warehouse/category_table_loading_responsiveness_test.dart"
+          ]
+        },
+        {
+          "kind": "remaining-caller-regression-run",
+          "result": "60 passed",
+          "tests": [
+            "test/features/warehouse/warehouse_quality_results_page_test.dart",
+            "test/features/warehouse/warehouse_document_history_page_test.dart",
+            "test/features/warehouse/stock_doc_list_column_filters_test.dart",
+            "test/features/subcontract/subcontract_business_categories_test.dart",
+            "test/features/sales/pages/sales_doc_list_draft_segment_test.dart",
+            "test/features/sales/pages/sales_doc_status_clear_test.dart",
+            "test/features/purchase/purchase_doc_list_column_filters_test.dart",
+            "test/features/production/pages/production_plan_list_column_filters_test.dart",
+            "test/features/production/pages/production_daily_report_list_column_filters_test.dart",
+            "test/features/production/pages/production_board_simplification_test.dart"
+          ]
+        }
+      ],
+      "evidenceLimits": "Commands are separate runs with overlapping shared tests, not a sum of unique test counts. Widget interaction uses simulated APIs. This is not production UAT, Win7 target-machine acceptance, release CI, or formal packaging evidence."
+    }
+  },
+  "wpf": {
+    "taskIds": [
+      "W7-BIZ-037",
+      "W7-UI-003"
+    ],
+    "implementedFiles": [
+      "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitRecordHistoryWindow.cs",
+      "clients/windows_legacy/Uten.Legacy.Desktop/Features/Units/UnitHistoryContractChecks.cs"
+    ],
+    "change": "Choose-date and query buttons share table-top action row and generated standard geometry; date text fixed to choose label; range preserved in tooltip",
+    "checkedAbsent": "No other new UtenDateRangeDialog consumer exists under Desktop, and finance entry/report/native sales table consumers remain unmigrated",
+    "checks": {
+      "x86": "dates=37/history UI=13 passed",
+      "x64": "dates=37/history UI=13 passed"
+    },
+    "limits": "Development-host native UI fixture, not Win7 target machine or full ERP acceptance"
+  },
+  "evidence": {
+    "summaryTests": {
+      "log": "build/summary-tests.log",
+      "passed": 21
+    },
+    "toolbarAnalyze": "build/date-final-analyze.log; final whole-change analysis owned by primary agent",
+    "oldFailures": "build/date-toolbar-tests.log retained: two legacy tests referenced retired preset or old modal date location; repaired rerun passed in build/date-toolbar-repaired-tests.log",
+    "screenshots": {
+      "reviewed": [
+        "output/finance-redesign/previews/reports-statement-1920-1.0.png",
+        "output/finance-redesign/previews/reports-statement-360-1.5.png",
+        "output/finance-redesign/previews/reports-purchase-report-1920-1.0.png",
+        "output/finance-redesign/previews/reports-purchase-report-360-1.5.png",
+        "build/ui-audit/instant-inventory-period-desktop.png",
+        "build/ui-audit/instant-inventory-period-compact.png",
+        "build/windows-wpf/tests/x64/unit-record-history-narrow-fixture.png"
+      ],
+      "method": "Real bundled Chinese font, mocked source/API; rendered native WPF fixture on development Windows host; no production UAT implied."
+    },
+    "wpfLogs": [
+      "build/wpf-toolbar-build-x86.log",
+      "build/wpf-toolbar-build-x64.log",
+      "build/wpf-toolbar-tests-x86.log",
+      "build/wpf-toolbar-tests-x64.log"
+    ],
+    "wpfScreenshots": [
+      "build/windows-wpf/tests/x86/unit-record-history-fixture.png",
+      "build/windows-wpf/tests/x64/unit-record-history-fixture.png",
+      "build/windows-wpf/tests/x64/unit-record-history-narrow-fixture.png"
+    ],
+    "toolbarLayoutAndRecoveryTests": {
+      "log": "build/toolbar-layout-capture-tests.log",
+      "passed": 15,
+      "notes": "Seven page layout/capture cases at desktop/tablet/360 large-text/landscape, one financial date-to-query regression, six initial no-metadata failure-to-date-change-to-success cases, one toolbar geometry/isolation case."
+    },
+    "inventoryCaptureTests": {
+      "log": "build/inventory-toolbar-capture-tests.log",
+      "passed": 1,
+      "notes": "1600 desktop and 390 two-times text, real bundled Chinese font and Windows theme; date selection/clear and category navigation preserved."
+    },
+    "actualModeRecovery": {
+      "log": "build/toolbar-recovery-tests.log",
+      "passedActualTrace": 1,
+      "notes": "Actual production trace date toolbar updates authoritative from/to parameters; original log contains an Android-fixture geometry failure, final desktop geometry/capture group subsequently passed."
+    },
+    "completeCallerRegression": {
+      "log": "build/toolbar-summary-final-tests.log",
+      "passed": 138,
+      "skipped": 3,
+      "failures": 0,
+      "notes": "Three optional material-trace screenshot/golden captures skipped; actual trace same-day/custom-period interactions, server authority, cancellation, owner changes, all normal caller regressions passed. Separate real-font screenshot runs listed above passed."
+    }
+  },
+  "dateAuditCounts": {
+    "initialSymbolMatchesClassified": 66,
+    "sharedSummaryMatchesClassified": 60,
+    "historyTimeFilterAdditionalTableCallers": 16,
+    "historyCardListDifferencesRetained": 2
+  }
+}

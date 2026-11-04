@@ -1214,16 +1214,7 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                           },
                         ),
                       // 历史记录段时间行。
-                      if (_isHistory) ...[
-                        const SizedBox(height: UtenSpacing.s8),
-                        UtenHistoryTimeFilter(
-                          key: Key(
-                            'sales-doc-history-time-${_cfg.type.pathSegment}',
-                          ),
-                          value: _historyTime,
-                          onChanged: _onHistoryTime,
-                        ),
-                      ],
+
                       // 可发货置顶（订货单工作台小项）：有预留单排前 + 交货日升序。
                       if (_isOrder &&
                           !_isDraftStage &&
@@ -1267,7 +1258,15 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
             ),
             body: !_shouldLoad
                 ? (_isHistory
-                      ? const UtenHistoryTimePlaceholder()
+                      ? UtenHistoryTimePlaceholder(
+                          controls: UtenHistoryTimeFilter(
+                            key: Key(
+                              'sales-doc-history-time-${_cfg.type.pathSegment}',
+                            ),
+                            value: _historyTime,
+                            onChanged: _onHistoryTime,
+                          ),
+                        )
                       : UtenFilterPlaceholder(
                           message: _isOrder
                               ? '在上方选择分类后开始浏览'
@@ -1278,6 +1277,16 @@ class _SalesDocListPageState extends ConsumerState<SalesDocListPage>
                         ))
                 : _withDraftCategory(
                     MasterDataTableView<SalesDocListItem>(
+                      toolbarLeadingActions: [
+                        if (_isHistory)
+                          UtenHistoryTimeFilter(
+                            key: Key(
+                              'sales-doc-history-time-${_cfg.type.pathSegment}',
+                            ),
+                            value: _historyTime,
+                            onChanged: _onHistoryTime,
+                          ),
+                      ],
                       rowsController: _tableRows,
                       bottomContentPadding:
                           UtenFloatingActionGroup.scrollClearance,

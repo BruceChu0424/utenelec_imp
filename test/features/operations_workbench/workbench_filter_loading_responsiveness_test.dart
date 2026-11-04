@@ -34,6 +34,13 @@ void main() {
         await selectFilterSegment(tester, '历史记录');
         await tester.pump(const Duration(milliseconds: 16));
         expect(find.byType(UtenHistoryTimeFilter), findsOneWidget);
+        expect(
+          find.ancestor(
+            of: find.byType(UtenHistoryTimeFilter),
+            matching: find.byType(MasterDataTableView<OperationsWorkbenchTask>),
+          ),
+          findsOneWidget,
+        );
         expect(_table(tester).isLoading, isTrue);
         expect(find.text('需求日期'), findsOneWidget);
         final tableElement = tester.element(
@@ -107,6 +114,13 @@ void main() {
         gateway.reads.single.result.completeError(NetworkException('任务读取暂时失败'));
         await tester.pumpAndSettle();
         expect(find.byType(UtenHistoryTimeFilter), findsOneWidget);
+        expect(
+          find.ancestor(
+            of: find.byType(UtenHistoryTimeFilter),
+            matching: find.byType(MasterDataTableView<OperationsWorkbenchTask>),
+          ),
+          findsOneWidget,
+        );
         expect(find.text('需求日期'), findsOneWidget);
         await expectTableReadFailureDetails(tester, '任务读取暂时失败');
         expect(find.text('当前筛选下没有任务'), findsNothing);

@@ -42,27 +42,6 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
       ),
     ),
   );
-  EditableGridColumn<FinanceGridRow> number(
-    String key,
-    String label,
-    TextEditingController Function(FinanceGridRow) controller, {
-    bool required = false,
-  }) => EditableGridColumn<FinanceGridRow>(
-    key: key,
-    label: label,
-    width: 155,
-    numeric: true,
-    required: required,
-    textOf: (row) => controller(row).text,
-    listenableOf: controller,
-    cellBuilder: (_, row) => TextField(
-      controller: controller(row),
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      decoration: UtenInputDecoration(
-        InputDecoration(isDense: true, labelText: label),
-      ),
-    ),
-  );
   final details = financeGridColumns(
     config.itemMode,
     context: context,
@@ -204,8 +183,9 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
       ),
       EditableGridColumn<FinanceGridRow>(
         key: 'entryBalance',
-        label: '未结原币',
-        width: 130,
+        label: '未结金额',
+        headerInfo: '引用单据币种下尚未结清的金额。',
+        width: 160,
         numeric: true,
         textOf: (row) => row.balanceOriginalText ?? '',
         listenableOf: (row) => row.entry,
@@ -213,17 +193,12 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
       ),
     ],
     for (final column in details)
-      if (config.isAllocate || config.isTransfer
-          ? !{'exchangeRate', 'amountLocal'}.contains(column.key)
-          : {'amount', 'remark'}.contains(column.key))
+      if (column.key != 'remark' &&
+          (config.isAllocate || config.isTransfer
+              ? !{'exchangeRate', 'amountLocal'}.contains(column.key)
+              : column.key == 'amount'))
         column,
     if (config.isSettle) ...[
-      number('entryFee', '总费用', (row) => row.entry.fee),
-      number(
-        'entryAccountAmount',
-        config.isClient ? '实际入账（账户币种）' : '实际扣款（账户币种）',
-        (row) => row.entry.accountAmount,
-      ),
       EditableGridColumn<FinanceGridRow>(
         key: 'entryBankReference',
         label: '流水号（选填）',
@@ -255,5 +230,10 @@ List<EditableGridColumn<FinanceGridRow>> financeEntryColumns({
         ),
       ),
     ],
+    // Keep the same trailing remark column for all five document types.
+    if (details.any((column) => column.key == 'remark'))
+      ...details.where((column) => column.key == 'remark')
+    else
+      financeRemarkColumn(),
   ];
 }

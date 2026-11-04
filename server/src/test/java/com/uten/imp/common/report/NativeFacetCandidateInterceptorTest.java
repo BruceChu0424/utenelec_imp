@@ -10,15 +10,25 @@ class NativeFacetCandidateInterceptorTest {
         var request=new MockHttpServletRequest("POST",path);request.setContentType("application/x-www-form-urlencoded;charset=UTF-8");
         request.setParameter("__facetField",field);request.setParameter("__facetPage","1");request.setParameter("__facetSize","100");return request;
     }
-    @Test void completeRegistryHasTwentyOneExactRoutesAndThirtyThreeOriginalFields() {
-        assertThat(NativeFacetRoutes.paths()).hasSize(21);
-        assertThat(NativeFacetRoutes.paths().stream().mapToInt(path->NativeFacetRoutes.find(path).fields().size()).sum()).isEqualTo(33);
+    @Test void completeRegistryHasTwentyTwoExactRoutesAndThirtyFourOriginalFields() {
+        assertThat(NativeFacetRoutes.paths()).hasSize(22);
+        assertThat(NativeFacetRoutes.paths().stream().mapToInt(path->NativeFacetRoutes.find(path).fields().size()).sum()).isEqualTo(34);
         for(String path:NativeFacetRoutes.paths())for(String field:NativeFacetRoutes.find(path).fields()) {
             var request=request(path,field);assertThat(interceptor.preHandle(request,new MockHttpServletResponse(),this)).isTrue();
             assertThat(NativeFacetCandidates.active()).isTrue();interceptor.afterCompletion(request,new MockHttpServletResponse(),this,new RuntimeException());
             assertThat(NativeFacetCandidates.active()).isFalse();
         }
         assertThat(NativeFacetRoutes.find("/api/finance/payables/facets/extra")).isNull();
+        var report=NativeFacetRoutes.find("/api/finance/reports/column-candidates");
+        assertThat(report.profile()).isEqualTo("finance");
+        assertThat(report.fields()).containsExactly("value");
+        assertThat(NativeFacetRoutes.find("/api/finance/reports/column-candidates-save")).isNull();
+        assertThatThrownBy(()->interceptor.preHandle(request("/api/finance/reports/column-candidates","clientName"),new MockHttpServletResponse(),this)).isInstanceOf(ApiException.class);
+        try(var candidates=com.uten.imp.features.finance.report.FinanceReportColumnCandidates.open("code")) {
+            assertThatThrownBy(()->candidates.requireVisibleText(java.util.List.of(
+                    com.uten.imp.features.finance.report.ReportColumn.text("styleCode","科目编码",90)),java.util.Set.of()))
+                    .isInstanceOf(ApiException.class);
+        }
     }
     @Test void rejectsUrlBodiesUnknownFieldsDuplicateParametersOverflowAndOversizeBeforeOpeningScope() {
         var response=new MockHttpServletResponse();

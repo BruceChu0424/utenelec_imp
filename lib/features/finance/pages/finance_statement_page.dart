@@ -15,6 +15,8 @@ import '../../../shared/providers/master_party_options.dart';
 // 关键字不持久化。
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import '../../../components/feedback/uten_busy_overlay.dart';
+import '../providers/finance_report_facet_options.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../shared/providers/export_context_epoch_provider.dart';
 
@@ -401,16 +403,22 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
           onPressed: () => backTo(context, defaultPath: RouteName.finance),
         ),
       ),
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: UtenCollapsingHeaderScrollView(
-              collapsingHeader: _buildFilterPane(theme),
-              body: _buildTable(),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: UtenContentContainer.wide(
+              child: Padding(
+                padding: const EdgeInsets.only(top: UtenSpacing.s8),
+                child: UtenCollapsingHeaderScrollView(
+                  collapsingHeader: _buildFilterPane(theme),
+                  body: _buildTable(),
+                ),
+              ),
             ),
           ),
-        ),
+          if (_loading)
+            const UtenBusyOverlay(title: '正在查询报表', showDoNotLeaveHint: false),
+        ],
       ),
     );
   }
@@ -521,18 +529,6 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
                       },
                     ),
                   ],
-                )
-              else
-                FinanceDateRangeFilter(
-                  from: _from,
-                  to: _to,
-                  onChanged: (from, to) {
-                    setState(() {
-                      _from = from!;
-                      _to = to!;
-                    });
-                    return _persistAndReload();
-                  },
                 ),
             ],
           ),
@@ -596,6 +592,10 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
                 ? 72
                 : (c.width ?? 120).toDouble(),
             type: c.key == 'ym' ? 'date' : c.type,
+            facetCandidatesUseKeyword:
+                c.key != 'currencyCode' &&
+                c.key != 'originalStatus' &&
+                c.key != 'type',
             columnSearchEnabled:
                 data.columnSearchKeys.contains(c.key) &&
                 (!_originalAmounts.contains(c.key) || _hasCurrency),
@@ -628,11 +628,42 @@ class _FinanceStatementPageState extends ConsumerState<FinanceStatementPage> {
           'features.finance.pages.finance_statement_page.FinanceStatementPageState._buildTable.1',
       columns: columns,
       serverColumnSearchKeys: data.columnSearchKeys,
+      facetPageLoaders: financeReportFacetLoaders(
+        ref,
+        report: _exportReport,
+        query: _exportQuery,
+        fields: [
+          for (final column in columns)
+            if (column.type == 'text' &&
+                data.columnSearchKeys.contains(column.key) &&
+                column.key != 'currencyCode' &&
+                column.key != 'originalStatus' &&
+                column.key != 'type')
+              column.key,
+        ],
+      ),
+      facetSearchScope: financeReportFacetScope(
+        ref,
+        report: _exportReport,
+        query: _exportQuery,
+      ),
       headerFilterScopeDescription: _view == _StmtView.annual
           ? '按完整月份汇总后筛选；发生额合计覆盖筛选月份，期初期末不相加'
           : '先按原始入账顺序计算完整余额，再筛选和排序；原币发生额按币种分别合计',
       items: data.rows,
       toolbarActions: [
+        if (_view != _StmtView.annual)
+          FinanceDateRangeFilter(
+            from: _from,
+            to: _to,
+            onChanged: (from, to) {
+              setState(() {
+                _from = from!;
+                _to = to!;
+              });
+              return _persistAndReload();
+            },
+          ),
         // 对帐单需先选往来单位；未选时按钮仍显，点击后后端返回空表（partyStatement* 空结构）。
         UtenPrintPreviewButton(
           title: '往来对帐单 · $_viewLabel',

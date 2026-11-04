@@ -7,6 +7,17 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class NativeFacetCandidatesTest {
+    @Test void completeComputedRecordsUseTheSameKeywordAndBoundedPageContract() {
+        var counts=new java.util.LinkedHashMap<String,Long>();
+        for(int i=0;i<1005;i++)counts.put(String.format("客户%04d",i),2L);
+        try(var scope=NativeFacetCandidates.open("value","客户",11,100)) {
+            scope.completeRecords(counts);
+            var result=scope.result(Map.of(),"current");
+            assertThat(result.items()).hasSize(5);assertThat(result.hasMore()).isFalse();
+            assertThat(result.items().getFirst().get("value")).isEqualTo("客户1000");
+        }
+        assertThat(NativeFacetCandidates.active()).isFalse();
+    }
     @Test void usesOnlySelectedOriginalGroupedSqlAndCopiesBoundFiltersBeforeBoundedLiteralSearch() {
         EntityManager em=mock(EntityManager.class);Query original=mock(Query.class),paged=mock(Query.class),other=mock(Query.class);
         String sql="SELECT bill_no,COUNT(DISTINCT source_id) FROM facts WHERE owner_id=:owners GROUP BY bill_no ORDER BY 1";

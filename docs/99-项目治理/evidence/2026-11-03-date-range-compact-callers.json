@@ -1,0 +1,751 @@
+{
+  "baselineCommit": "8937e02d2",
+  "branch": "uimp/date-range-compact-20261103",
+  "classification": "frontend presentation and interaction; backend unchanged",
+  "platforms": [
+    "Web / flutter",
+    "Windows supported / flutter",
+    "WPF native candidate / wpf_legacy x86+x64"
+  ],
+  "publicEntries": [
+    "clients/windows_legacy/Uten.Legacy.Desktop/Controls/UtenDateRangeButton.cs",
+    "lib/components/buttons/uten_date_range_selection_button.dart",
+    "lib/components/feedback/uten_date_range_tooltip.dart",
+    "lib/components/inputs/uten_date_range_button.dart",
+    "lib/components/layout/uten_document_lifecycle_filter.dart",
+    "lib/components/layout/uten_history_time_filter.dart",
+    "lib/core/utils/date_range_display.dart",
+    "lib/features/finance/widgets/finance_date_range_filter.dart",
+    "lib/shared/stock_inventory/instant_inventory_period_button.dart"
+  ],
+  "flutterCallers": [
+    {
+      "file": "lib/components/buttons/uten_date_range_selection_button.dart",
+      "role": "public entry or adapter",
+      "calls": [
+        {
+          "line": 18,
+          "entry": "UtenDateRangeSelectionButton"
+        }
+      ],
+      "sourceSha256": "daaf5266f845b07ea39fd1e924b5941817d9362f0457f8397338769c22f89055",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/components/inputs/uten_date_range_button.dart",
+      "role": "public entry or adapter",
+      "calls": [
+        {
+          "line": 9,
+          "entry": "UtenDateRangeButton"
+        },
+        {
+          "line": 33,
+          "entry": "UtenDateRangeSelectionButton"
+        }
+      ],
+      "sourceSha256": "780ebaaec3ea5363308e9ba7bbd3af62c2dc6c622cb52588b43d7bff4b1f12d4",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/components/layout/uten_document_lifecycle_filter.dart",
+      "role": "public entry or adapter",
+      "calls": [
+        {
+          "line": 12,
+          "entry": "UtenDocumentLifecycleFilter"
+        },
+        {
+          "line": 90,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "4f8c8873ac78b8524a411f7ee605814b29ec1eb26a4c4b076e61c21017e31a6c",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/components/layout/uten_history_time_filter.dart",
+      "role": "public entry or adapter",
+      "calls": [
+        {
+          "line": 70,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "16815c2fbc891286bd81e29160e9f53932b88ac69b40f7244b2a03bb66f51a90",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/admin/widgets/audit_query_scope.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 292,
+          "entry": "UtenDateRangeButton"
+        }
+      ],
+      "sourceSha256": "caeaa9af6d8e2269c105dba0bcef0bddbb2596be78bb6513c70e143bb4f11b95",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/basic_data/pages/account_detail_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 1226,
+          "entry": "UtenDateRangeSelectionButton"
+        }
+      ],
+      "sourceSha256": "1b875fc01edf7c854865a0afb45094522e0bbc533d75ce5f903294710d421903",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/basic_data/widgets/goods_cost_actual_panel.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 735,
+          "entry": "UtenDateRangeSelectionButton"
+        }
+      ],
+      "sourceSha256": "0847b45dc55189280e62d9be2425b4faf9105f86ea90e0fa52578f1480e02b70",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/basic_data/widgets/warehouse_inventory_panel.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 495,
+          "entry": "InstantInventoryPeriodButton"
+        }
+      ],
+      "sourceSha256": "f70432cbf6eb8fbcf0ddd7dc9048b345ee0bf5f3f8c80b65d8991fe50e59cb5c",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/employee/pages/employee_detail_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 1147,
+          "entry": "UtenDateRangeSelectionButton"
+        }
+      ],
+      "sourceSha256": "a64f06f43fc613f8b52b5bb539f8bde77876746d85dcef0f968c6fb30e965fa6",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/employee/pages/employee_onboarding_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 1155,
+          "entry": "UtenDateRangeSelectionButton"
+        }
+      ],
+      "sourceSha256": "2548df0f97d8ea641f2964f196a9959052e6416ca7d870ae111660d337fd8fa4",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_account_flow_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 476,
+          "entry": "FinanceDateRangeFilter"
+        }
+      ],
+      "sourceSha256": "b6fb629e6ba2322db679345747b547ad20332febdfa275389b0cb1bb9dc98f3d",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_ar_ap_overview_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 786,
+          "entry": "FinanceDateRangeFilter"
+        }
+      ],
+      "sourceSha256": "11ce5c7c89711e4a94ef2a200af9ca9de58415ae864654f0c65b5e2086276279",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_doc_list_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 429,
+          "entry": "UtenDocumentLifecycleFilter"
+        }
+      ],
+      "sourceSha256": "4ef507d26bc6a3e8214c468c11de4c2dfaafc889916dee144ad0d10873c1b917",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_report_table_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 633,
+          "entry": "FinanceDateRangeFilter"
+        }
+      ],
+      "sourceSha256": "11fbde39039a4595f7b7a82cbe5c057bac9732eb41684b7e331704e88d6308d2",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/finance/pages/finance_statement_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 526,
+          "entry": "FinanceDateRangeFilter"
+        }
+      ],
+      "sourceSha256": "cd41ddae9e4634ce409aa0222dc8b451110f28f3094075e58cf64db77a1d6649",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/finance/payables/pages/finance_payables_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 1130,
+          "entry": "FinanceDateRangeFilter"
+        },
+        {
+          "line": 1141,
+          "entry": "FinanceDateRangeFilter"
+        }
+      ],
+      "sourceSha256": "04fb0fc46582ce204b2c8677ccdce2ca1b790941a16ef2491ce3d768895425c5",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_asset_form_v2.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 1080,
+          "entry": "UtenDateRangeSelectionButton"
+        }
+      ],
+      "sourceSha256": "e1ff439a1af5ae91ab914f88b1d501ef517ec5d7ed9623f33659f53dc20aa415",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/finance/widgets/finance_date_range_filter.dart",
+      "role": "public entry or adapter",
+      "calls": [
+        {
+          "line": 10,
+          "entry": "FinanceDateRangeFilter"
+        },
+        {
+          "line": 30,
+          "entry": "UtenDateRangeSelectionButton"
+        }
+      ],
+      "sourceSha256": "4a3d2a0c6de58759cc92a1d9d4715a27d88831096a9e3fdc7afd51975a46b4ae",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/finance/widgets/inventory_cost_posting_dialog.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 591,
+          "entry": "UtenDateRangeSelectionButton"
+        }
+      ],
+      "sourceSha256": "c09f24c2890f1021ef3357e2afbd19ac55484b6a8ec54216936ece69aaaffb9e",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/operations_workbench/pages/operations_workbench_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 1403,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "753b3304414279256d1f80d5d7cd7a0dba81deebd9437f3d000561f83e4ad242",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/production/pages/production_board_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 263,
+          "entry": "UtenHistoryTimeFilter"
+        },
+        {
+          "line": 1747,
+          "entry": "UtenDateRangeSelectionButton"
+        }
+      ],
+      "sourceSha256": "739c7412ecb608323a1aaf94109092d6bd17ec15d0e3b7c1e4c30e5de6435610",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/production/pages/production_daily_report_list_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 284,
+          "entry": "UtenDocumentLifecycleFilter"
+        }
+      ],
+      "sourceSha256": "083584194ffcb686ad19e4297de064fc3417477ff6954383b2ecef306732e7e8",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/production/pages/production_plan_list_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 290,
+          "entry": "UtenDocumentLifecycleFilter"
+        }
+      ],
+      "sourceSha256": "5b6c1a54d57b05e6abc499cfd22d6d6f1b52c39b28a9c6a6b48c0e08a2c7734e",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/production/pages/production_report_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 490,
+          "entry": "UtenDateRangeButton"
+        }
+      ],
+      "sourceSha256": "af23389a4fcbf96dd424bb2c3dafc178d71e1dddff89e4ee7e07bd693487c17f",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/production/pages/production_workshop_tasks_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 2997,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "7f7b1d6d7f9f7826d5372c8b137dcad0c063ed8f00275d94c6e5e7489f359834",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/production/pages/where_used_report_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 1184,
+          "entry": "UtenDateRangeButton"
+        }
+      ],
+      "sourceSha256": "5869b2353a1c24a9dba8b10ed4965026a0f0a3f6c5324020a73793cc53d0db8e",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/production/widgets/production_execution_segments_card.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 540,
+          "entry": "UtenDateRangeSelectionButton"
+        }
+      ],
+      "sourceSha256": "759b1e20f468051e9e56185df12531eac231072308b8a41b1607c16375708085",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_doc_list_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 956,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "4b309888775a9e0f3bef9991bcf992fcf8499d00bfc344ec4c49c37a91ec91fb",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_report_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 253,
+          "entry": "UtenDateRangeButton"
+        }
+      ],
+      "sourceSha256": "a908f6915d01c83a7bde8c6e33e967212aa22b8e09983712a6e3ff4fe449b0e2",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/purchase/pages/purchase_report_table_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 458,
+          "entry": "UtenDateRangeButton"
+        }
+      ],
+      "sourceSha256": "0f30226d21af9067ae0b9c328b4f3efb48bde8f3845a03fb1aa38bbf693f9bfd",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/quality/pages/quality_inspection_records_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 573,
+          "entry": "UtenDateRangeButton"
+        }
+      ],
+      "sourceSha256": "9c899278b0a79967caee109c85c14cccfc55702d269c04a2d39c9547b3548fef",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_doc_list_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 1219,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "12486bf8d7057e4c32bc54d8bae66ebfa7e1a8206c351254b42eb765940895ab",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_order_progress_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 715,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "f86e23485f2434e9582ca1dcb11bf25fc40adfa595721be7e154398286043af1",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/sales/pages/sales_report_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 519,
+          "entry": "UtenDateRangeButton"
+        }
+      ],
+      "sourceSha256": "c4426ef59c564551195143709704f2e435d351f8799b64bcf2c4de03c57c228e",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/stock/pages/instant_inventory_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 985,
+          "entry": "InstantInventoryPeriodButton"
+        }
+      ],
+      "sourceSha256": "1fedeb1218b9b8e57ab3f6d71284136d2c8fd7f598651b6d3764bf852c82431a",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_business_list_pages.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 1081,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "c94acfcb488946fa0d2a47d6ce292dfc525f1096f98403cf65173a7e2a789dbf",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_decomposition_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 1983,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "7430e82db50b70f96a11813b07a2fd2ac30575ccf908ac0885f12aaa52a09383",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_report_table_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 484,
+          "entry": "UtenDateRangeButton"
+        }
+      ],
+      "sourceSha256": "4d1e178be589c0794190fa2481f9cb0faf8109a6d63b624b34df46786174e7c5",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/subcontract/pages/subcontract_short_delivery_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 525,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "0c2c5227c9ff4ab8f78ecc85965ebc85117f56f100bbe9f48e484643010b517a",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/warehouse/pages/procurement_return_task_pages.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 440,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "d530bea6781508dc5b95927ba698f52c32cf4248b8a1db585782c564ffa5de8b",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/warehouse/pages/stock_doc_list_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 669,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "095486e89a3cf91059b4fea1b97d0b22e34dffa58d1144d16fcb433991abc1ee",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_quality_results_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 1000,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "52e2ee07cdce38c27fb6f3c73f81a8654114288eae89c0960ec9d38e2eba79fb",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/warehouse/pages/warehouse_report_table_page.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 460,
+          "entry": "UtenDateRangeButton"
+        }
+      ],
+      "sourceSha256": "196aa2dbb98e0fe8eef04b23e4521e2c6990ddaa843516e7a8c86e72e9e21251",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_history_gate.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 49,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "657539243f38763ab5e193cbf0810e3aaa818bbf53b782a3ecd69f6de8cac388",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_sales_outbound_workbench.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 490,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "72fda84acb2a36541bc84ecefb65d14f97bfc85b9391cabb5370cf0ba3f37a59",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_stock_doc_segment.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 741,
+          "entry": "UtenHistoryTimeFilter"
+        }
+      ],
+      "sourceSha256": "bee427c8b060869230a1186183910b0cf4be2bcaee98763bcbc79acd6130cfb8",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/features/warehouse/widgets/warehouse_task_records_view.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 1372,
+          "entry": "UtenDateRangeButton"
+        }
+      ],
+      "sourceSha256": "80556f5324fb2885454aedc254ae1f7e04b6a6e311eb2d930e675f655f12e735",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/shared/stock_inventory/instant_inventory_period_button.dart",
+      "role": "public entry or adapter",
+      "calls": [
+        {
+          "line": 12,
+          "entry": "InstantInventoryPeriodButton"
+        },
+        {
+          "line": 24,
+          "entry": "UtenDateRangeButton"
+        }
+      ],
+      "sourceSha256": "20acbc468021d5e9afad5208a9e38ac5fdf51b452cfacbc3fb2dcc1ba856f289",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    },
+    {
+      "file": "lib/shared/stock_ledger/widgets/goods_stock_ledger_view.dart",
+      "role": "consumer",
+      "calls": [
+        {
+          "line": 385,
+          "entry": "UtenDateRangeButton"
+        }
+      ],
+      "sourceSha256": "48feea94af5cf4ee11a256f0768b866ec798747d052fbfb97bbe756024efc74a",
+      "implementation": "connected to shared date presentation",
+      "verification": "public contract and selected caller regressions; full page and permission UAT not claimed"
+    }
+  ],
+  "necessaryDifferences": [
+    "Wall dates and original query conversions remain owned by callers.",
+    "Open endpoints, required ranges, domain labels, error and help text preserved.",
+    "Column header date filter states retain precise dates; single-date/month fields and read-only facts are outside range-button scope.",
+    "Recent refers only to intervals ending on the current China business date; historical and future intervals use inclusive day count."
+  ],
+  "wpf": {
+    "portedConsumers": [
+      "UnitRecordHistoryWindow"
+    ],
+    "unportedConsumers": "All other Flutter business consumers listed here still require native page migration; no completion status or write capability added.",
+    "evidence": "clients/windows_legacy/progress/evidence/date-range-compact-20261103.json",
+    "targetPcAcceptance": false,
+    "fullErpAcceptance": false
+  },
+  "validation": {
+    "sharedFixture": "contracts/date-range-selection/v1.json displayCases (12)",
+    "analysis": "build/date-range-analyze.log: no issues found",
+    "visuals": [
+      "build/date-picker-review/entry-card.png",
+      "build/date-picker-review/tooltip.png"
+    ],
+    "productionDeployed": false,
+    "formalPackagesCreated": false,
+    "finalRegression": {
+      "log": "build/date-range-final-regression.log",
+      "exitCode": 0,
+      "passed": 139,
+      "skipped": 1,
+      "skipReason": "Existing inventory UI capture test requires UI_CAPTURE=true; separate real-font date captures were run with UI_CAPTURE=true.",
+      "files": [
+        "test/core/utils/date_range_display_test.dart",
+        "test/core/utils/date_range_defaults_test.dart",
+        "test/components/buttons/uten_date_range_selection_button_test.dart",
+        "test/components/feedback/uten_date_range_picker_test.dart",
+        "test/components/feedback/uten_date_range_tooltip_test.dart",
+        "test/components/uten_history_time_filter_semantics_test.dart",
+        "test/components/feedback/uten_date_picker_visual_review_test.dart",
+        "test/components/layout/uten_segment_row_disabled_test.dart",
+        "test/components/layout/uten_filter_toolbar_autoselect_test.dart",
+        "test/components/uten_filter_toolbar_count_form_test.dart",
+        "test/features/finance/finance_date_range_filter_test.dart",
+        "test/features/basic_data/account_detail_permissions_test.dart",
+        "test/features/report/report_table_loading_shell_test.dart",
+        "test/features/stock/instant_inventory_page_test.dart",
+        "test/shared/stock_ledger/goods_stock_ledger_date_range_test.dart",
+        "test/features/production/pages/production_board_subplan_navigation_test.dart"
+      ],
+      "commandPrefix": "flutter test --no-pub --reporter expanded"
+    },
+    "earlierRuns": [
+      {
+        "result": "One new height test initially asserted a desktop 40px role while the fixture used compact viewport settings. After setting actual view dimensions and locale, the complete final regression passed.",
+        "log": "build/date-range-core-tests.log"
+      },
+      {
+        "result": "New historical hover test initially lacked locale delegates; corrected and superseded by final regression. Caller tests had no failures.",
+        "log": "Tool output only; no saved initial caller log."
+      },
+      {
+        "result": "Real-font date visual captures and category component regressions passed; 28 tests at that point. Later enhanced history tests were included in final regression.",
+        "command": "flutter test --no-pub test/components/uten_history_time_filter_semantics_test.dart test/components/feedback/uten_date_picker_visual_review_test.dart test/components/layout/uten_segment_row_disabled_test.dart test/components/layout/uten_filter_toolbar_autoselect_test.dart test/components/uten_filter_toolbar_count_form_test.dart --dart-define=UI_CAPTURE=true"
+      }
+    ],
+    "evidenceScope": "Real widget pointer/keyboard/touch, selected real caller fixtures and native WPF UI tests; not production server, complete end-user business UAT, Win7 target-PC acceptance or release CI.",
+    "dependencies": "Offline cache resolution used for local tests; generated pubspec.lock changes excluded; main worktree original lock preserved."
+  }
+}

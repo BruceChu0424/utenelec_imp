@@ -1144,7 +1144,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         ),
         MasterColumnDef(
           key: 'amountOriginal',
-          label: _cfg.isClient ? '本次分配收款(原币)' : '本次付款金额',
+          label: _cfg.isClient ? '本次收款金额' : '本次付款金额',
           width: _cfg.isClient ? 180 : 130,
           type: 'money',
           value: (it) => financeExactMoneyDisplay(it.amountOriginalText),
@@ -1224,7 +1224,7 @@ class _FinanceDocDetailPageState extends ConsumerState<FinanceDocDetailPage>
         ),
         MasterColumnDef(
           key: 'amountOriginal',
-          label: '本次付款(原币)',
+          label: '本次付款金额',
           width: 110,
           type: 'money',
           value: (it) => financeExactMoneyDisplay(it.amountOriginalText),

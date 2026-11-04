@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uten_imp/components/buttons/uten_date_range_selection_button.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/shared/providers/shared_providers.dart';
 import 'package:uten_imp/core/network/server_selection.dart';
@@ -92,7 +93,14 @@ void main() {
     expect(find.text('客户预收流水'), findsWidgets);
     expect(find.byType(ClientPickerField), findsOneWidget);
     expect(find.byType(FinanceDateRangeFilter), findsOneWidget);
-    expect(find.textContaining('日期:'), findsOneWidget);
+    final dates = tester.widget<UtenDateRangeSelectionButton>(
+      find.descendant(
+        of: find.byType(FinanceDateRangeFilter),
+        matching: find.byType(UtenDateRangeSelectionButton),
+      ),
+    );
+    expect(dates.from, isNotNull);
+    expect(dates.to, isNotNull);
     expect(find.text('搜索'), findsNothing);
     expect(find.text('记账日期'), findsOneWidget);
     expect(find.text('资金单号'), findsOneWidget);

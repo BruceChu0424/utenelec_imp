@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../components/buttons/uten_button.dart';
 
 import '../../../components/layout/uten_app_bar.dart';
+import '../../../components/layout/uten_content_container.dart';
 import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 import '../../../core/theme/uten_tokens.dart';
@@ -154,15 +155,16 @@ class _ApprovalCenterPageState extends ConsumerState<ApprovalCenterPage> {
     final summaryLoaded = ref.watch(
       badgeSummaryProvider.select((value) => value.loaded),
     );
+    // 与任务中心「默认不选、点击后加载」范式一致：计数到位后只自动选中
+    // 真有待办/在办的分类；红黄皆无保持未选（占位引导态），不再兜底选第一组。
     if (_group != 'history' && !groups.contains(_group) && summaryLoaded) {
       _group =
           groups.where((key) => count(key) > 0).firstOrNull ??
-          groups.where((key) => inProgress(key) > 0).firstOrNull ??
-          groups.firstOrNull;
+          groups.where((key) => inProgress(key) > 0).firstOrNull;
     }
     final group = (_group == 'history' || groups.contains(_group))
         ? _group
-        : groups.firstOrNull;
+        : null;
     final history = group == 'history';
     final historyKind = groups.contains(_historyKind)
         ? _historyKind
@@ -206,6 +208,32 @@ class _ApprovalCenterPageState extends ConsumerState<ApprovalCenterPage> {
         historyOnly: history,
       );
     }
+    final categoryBar = UtenFilterToolbar<String>(
+      segmentsKey: const Key('approval-center-categories'),
+      segments: [
+        for (final key in groups)
+          UtenFilterSegment(
+            value: key,
+            label: label(key),
+            count: count(key),
+            inProgressCount: inProgress(key),
+            countForm: UtenSegmentCountForm.actionable,
+          ),
+        if (groups.isNotEmpty)
+          const UtenFilterSegment(value: 'history', label: '历史记录'),
+      ],
+      selected: group == null ? const <String>{} : {group},
+      onSelectionChanged: (value) => setState(() => _group = value),
+    );
+    final historyBar = UtenFilterToolbar<String>(
+      autoSelectBadge: false,
+      segments: [
+        for (final key in groups)
+          UtenFilterSegment(value: key, label: label(key)),
+      ],
+      selected: historyKind == null ? const <String>{} : {historyKind},
+      onSelectionChanged: (value) => setState(() => _historyKind = value),
+    );
     return Scaffold(
       appBar: UtenAppBar(
         title: _finance
@@ -225,50 +253,52 @@ class _ApprovalCenterPageState extends ConsumerState<ApprovalCenterPage> {
         ],
         info: '只显示当前授权范围内的单据。审批结果、驳回原因与每次修订均保留记录。',
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              UtenSpacing.s16,
-              UtenSpacing.s12,
-              UtenSpacing.s16,
-              UtenSpacing.s8,
-            ),
-            child: UtenFilterToolbar<String>(
-              segmentsKey: const Key('approval-center-categories'),
-              segments: [
-                for (final key in groups)
-                  UtenFilterSegment(
-                    value: key,
-                    label: label(key),
-                    count: count(key),
-                    inProgressCount: inProgress(key),
-                    countForm: UtenSegmentCountForm.actionable,
+      // 布局对齐任务中心范式（仓库任务中心/财务业务审核中心）：页面容器统一
+      // 提供 gutter（父分类行与正文同缘、随窗口取 16/24），父行与子分类行之间
+      // 用统一 rowGap，不再手写 16px 缩进与页面自加的水平边距。
+      body: SafeArea(
+        child: groups.isEmpty
+            ? Center(
+                child: Text(
+                  '暂无已授权的审批任务，请联系管理员开通。',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              )
+            : UtenContentContainer.wide(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: UtenSpacing.s16,
                   ),
-                if (groups.isNotEmpty)
-                  const UtenFilterSegment(value: 'history', label: '历史记录'),
-              ],
-              selected: {?group},
-              onSelectionChanged: (value) => setState(() => _group = value),
-            ),
-          ),
-          if (history)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: UtenSpacing.s16),
-              child: UtenFilterToolbar<String>(
-                autoSelectBadge: false,
-                segments: [
-                  for (final key in groups)
-                    UtenFilterSegment(value: key, label: label(key)),
-                ],
-                selected: {?historyKind},
-                onSelectionChanged: (value) =>
-                    setState(() => _historyKind = value),
+                  // 未选分类 = 引导占位（子分类不出现、不发请求）；有待办的
+                  // 分类由上方自动选中逻辑/用户点击进入正文。
+                  child: group == null
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            categoryBar,
+                            const SizedBox(height: UtenSpacing.s8),
+                            const Expanded(
+                              child: UtenFilterPlaceholder(
+                                message: '在上方选择分类后开始审批',
+                                description: '分段右侧数字徽章为该分类的待办数量',
+                              ),
+                            ),
+                          ],
+                        )
+                      : Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            categoryBar,
+                            const SizedBox(height: UtenFilterRow.rowGap),
+                            if (history) ...[
+                              historyBar,
+                              const SizedBox(height: UtenFilterRow.rowGap),
+                            ],
+                            Expanded(child: content),
+                          ],
+                        ),
+                ),
               ),
-            ),
-          Expanded(child: content),
-        ],
       ),
     );
   }

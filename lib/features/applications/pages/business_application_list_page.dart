@@ -16,16 +16,26 @@ import '../../../components/layout/uten_filter_toolbar.dart';
 import '../../../components/layout/uten_floating_action_group.dart';
 import '../../../core/theme/uten_tokens.dart';
 import '../../../core/router/page_resume_provider.dart';
+import '../../../core/router/route_access_policy.dart';
+import '../../../core/router/route_names.dart';
 import '../../../core/ui/app_notification.dart';
+import '../../../shared/badges/badge_registry.dart';
 import '../../../shared/providers/master_name_provider.dart'
     show masterDataSessionKeyProvider;
 import '../../../shared/auth/permissions.dart';
 import '../../../shared/providers/session_provider.dart';
 import '../../../shared/models/paged_result.dart';
 import '../../basic_data/widgets/master_data_table_view.dart';
+import '../../expense/pages/expense_list_page.dart';
+import '../../expense/providers/expense_providers.dart';
 import '../models/business_application.dart';
 import '../providers/business_application_providers.dart';
 import '../repositories/business_application_repository.dart';
+
+/// 前端伪分类：「报销申请」段（2026-11-04 我的申请改版）。
+/// 报销与业务申请是两条独立数据链（不同单据/工作流，服务端各自权威），此段只做
+/// 入口整合——选中后嵌入报销列表内容体，绝不把 EXPENSE 当 kind 发给业务申请接口。
+const String kExpenseSegmentKind = 'EXPENSE';
 
 typedef BusinessApplicationQuery = ({
   String queue,
@@ -182,7 +192,11 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
               ? 'history'
               : 'pending')
         : 'mine',
-    kind: _posting ? 'PREPAYMENT' : _kind,
+    kind: _posting
+        ? 'PREPAYMENT'
+        : _kind == kExpenseSegmentKind
+        ? null
+        : _kind,
     status: widget.approval ? null : _status,
     stage: widget.stage,
     departmentCode: widget.departmentCode,
@@ -220,11 +234,50 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
     if (mounted) await _refresh();
   }
 
+  /// 报销分类的刷新：与报销列表页「返回即刷新」同一组动作。
+  Future<void> _refreshExpense() async {
+    ref.read(expenseListProvider.notifier).refresh();
+    ref.invalidate(expenseMineFacetsProvider);
+    await refreshBadges(ref);
+  }
+
+  /// 报销分类的「新建报销」悬浮按钮；口径与报销列表页一致——
+  /// 无申请权限不显示；草稿段由表格批量动作组提供入口，悬浮按钮让位。
+  Widget? _expenseFloatingAction() {
+    if (!ref.watch(currentPermissionsProvider).contains(Perm.expenseApply)) {
+      return null;
+    }
+    final draftTableReady =
+        ref.watch(expenseFilterProvider) == ExpenseFilter.draft &&
+        ref.watch(expenseListProvider).hasValue;
+    if (draftTableReady) return null;
+    return UtenFloatingActionGroup(
+      children: [
+        UtenButton(
+          size: UtenButtonSize.large,
+          icon: Icons.add_rounded,
+          onPressed: () => context.push(RouteName.expenseNew),
+          child: const Text('新建报销'),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.watch(masterDataSessionKeyProvider);
     ref.watch(exportContextEpochProvider);
     final permissions = ref.watch(currentPermissionsProvider);
+    // 「报销申请」段（2026-11-04 我的申请改版）：仅我的记录页提供，入口权限与
+    // 原「我的报销」卡同口径（/expense → expenseApply）；审批中心不并入报销。
+    final viewingExpense = !widget.approval && _kind == kExpenseSegmentKind;
+    final canViewExpense =
+        !widget.approval &&
+        locationAllowedFor(
+          permissions,
+          ref.watch(isSuperAdminProvider),
+          RouteName.expense,
+        );
     final canHandle =
         Perm.applicationApprovalPermissions.any(permissions.contains) &&
         !ref.watch(sessionProvider).impersonationReadOnly;
@@ -270,14 +323,18 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
       _refresh,
     );
     final query = _query;
-    final result = _retainedPage.resolveFor(ref, (
-      query.scope,
-      query.queue,
-      query.kind,
-      query.status,
-      query.stage,
-      query.departmentCode,
-    ), businessApplicationListProvider(query));
+    // 报销段挂的是另一条数据链：不订阅业务申请列表（避免无谓请求），
+    // 切回申请分类时 scope 未变、缓存仍在，照常复用。
+    final result = viewingExpense
+        ? null
+        : _retainedPage.resolveFor(ref, (
+            query.scope,
+            query.queue,
+            query.kind,
+            query.status,
+            query.stage,
+            query.departmentCode,
+          ), businessApplicationListProvider(query));
     final localDraftCount = !widget.approval
         ? ref.watch(formDraftCategoryCountProvider(_formDraftScope))
         : 0;
@@ -363,6 +420,54 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
       );
     }
 
+    // 申请视图构建器：仅非报销分类时求值（此时 result 非空）。
+    Widget applicationsView() {
+      final applications = result!;
+      return _withLocalDrafts(
+        MasterDataTableView<BusinessApplication>(
+          key: ValueKey((_query.scope, widget.stage, widget.departmentCode)),
+          paginationScope: (
+            _query.scope,
+            _kind,
+            _status,
+            _history,
+            widget.stage,
+            widget.departmentCode,
+          ),
+          tableKey:
+              'applications.${widget.approval ? 'approval' : 'mine'}.${widget.stage ?? 'all'}',
+          columns: _columns,
+          items: applications.value?.items ?? const [],
+          facets: const {},
+          nullCounts: const {},
+          filters: const {},
+          onFilterChanged: (_, _) {},
+          primary: true,
+          isLoading: applications.isLoading && !applications.hasValue,
+          isRefreshing: applications.isLoading && applications.hasValue,
+          error: applications.hasError && !applications.hasValue
+              ? '申请读取失败，请刷新重试'
+              : null,
+          refreshError: applications.hasError && applications.hasValue
+              ? '申请更新失败，请刷新重试'
+              : null,
+          onRetry: _refresh,
+          onRowTap: _open,
+          currentPage: applications.value?.page ?? _page,
+          totalPages: applications.value?.totalPages ?? 1,
+          onPageChange: (value) => setState(() => _page = value),
+          emptyMessage: widget.approval
+              ? (_posting
+                    ? '暂无待入账供应商预付'
+                    : _history
+                    ? '暂无已处理的申请'
+                    : '暂无待审核申请')
+              : '暂无申请',
+          bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
+        ),
+      );
+    }
+
     final content = Stack(
       children: [
         Column(
@@ -387,6 +492,20 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
                             : kindMine(e.key).$2,
                         countForm: UtenSegmentCountForm.actionable,
                       ),
+                    // 报销入口徽章与原 hub「我的报销」卡同口径：红=本人待办
+                    // （草稿+待修订），黄=已提交流转中；来源徽章汇总单一数据源。
+                    if (canViewExpense)
+                      UtenFilterSegment(
+                        value: kExpenseSegmentKind,
+                        label: '报销申请',
+                        count: ref.watch(
+                          badgeEntryTodoProvider(BadgeEntry.expenseMine),
+                        ),
+                        inProgressCount: ref.watch(
+                          badgeEntryInProgressProvider(BadgeEntry.expenseMine),
+                        ),
+                        countForm: UtenSegmentCountForm.actionable,
+                      ),
                   ],
                   selected: {_kind ?? 'ALL'},
                   onSelectionChanged: (value) => setState(() {
@@ -397,127 +516,94 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
                   autoSelectBadge: false,
                 ),
               ),
-            UtenFilterToolbar<String>(
-              segmentsKey: const Key('application-status-filter'),
-              trailing: widget.embedded
-                  ? UtenRefreshButton(onRefresh: _refresh, busy: _refreshing)
-                  : null,
-              segments: widget.approval
-                  ? [
-                      if (!widget.historyOnly)
-                        UtenFilterSegment(
-                          value: 'pending',
-                          label: '待审核',
-                          count: canHandle
-                              ? scopedPending()
-                              : (!_history ? result.value?.total : null),
-                          countForm: canHandle
-                              ? UtenSegmentCountForm.actionable
-                              : UtenSegmentCountForm.browsing,
-                        ),
-                      if (canSeePosting && !widget.historyOnly)
-                        UtenFilterSegment(
-                          value: 'prepayment-posting',
-                          label: '预付待入账',
-                          count: number('prepaymentPostingTodoCount'),
-                          inProgressCount: number(
-                            'prepaymentPostingInProgressCount',
+            if (!viewingExpense)
+              UtenFilterToolbar<String>(
+                segmentsKey: const Key('application-status-filter'),
+                trailing: widget.embedded
+                    ? UtenRefreshButton(onRefresh: _refresh, busy: _refreshing)
+                    : null,
+                segments: widget.approval
+                    ? [
+                        if (!widget.historyOnly)
+                          UtenFilterSegment(
+                            value: 'pending',
+                            label: '待审核',
+                            count: canHandle
+                                ? scopedPending()
+                                : (!_history ? result?.value?.total : null),
+                            countForm: canHandle
+                                ? UtenSegmentCountForm.actionable
+                                : UtenSegmentCountForm.browsing,
                           ),
+                        if (canSeePosting && !widget.historyOnly)
+                          UtenFilterSegment(
+                            value: 'prepayment-posting',
+                            label: '预付待入账',
+                            count: number('prepaymentPostingTodoCount'),
+                            inProgressCount: number(
+                              'prepaymentPostingInProgressCount',
+                            ),
+                            countForm: UtenSegmentCountForm.actionable,
+                          ),
+                        const UtenFilterSegment(
+                          value: 'history',
+                          label: '历史记录',
+                        ),
+                      ]
+                    : [
+                        UtenFilterSegment(
+                          value: 'DRAFT',
+                          label: '草稿',
+                          count: mine('DRAFT'),
                           countForm: UtenSegmentCountForm.actionable,
                         ),
-                      const UtenFilterSegment(value: 'history', label: '历史记录'),
-                    ]
-                  : [
-                      UtenFilterSegment(
-                        value: 'DRAFT',
-                        label: '草稿',
-                        count: mine('DRAFT'),
-                        countForm: UtenSegmentCountForm.actionable,
-                      ),
-                      UtenFilterSegment(
-                        value: 'ACTION_REQUIRED',
-                        label: '待处理',
-                        count: mine('ACTION_REQUIRED'),
-                        countForm: UtenSegmentCountForm.actionable,
-                      ),
-                      UtenFilterSegment(
-                        value: 'PROCESSING',
-                        label: '处理中',
-                        count: mine('PROCESSING'),
-                        countForm: UtenSegmentCountForm.inProgress,
-                      ),
-                      const UtenFilterSegment(value: 'FINISHED', label: '历史记录'),
-                    ],
-              selected: {
-                widget.approval
-                    ? (_posting
-                          ? 'prepayment-posting'
-                          : _history
-                          ? 'history'
-                          : 'pending')
-                    : _status,
-              },
-              onSelectionChanged: (value) => setState(() {
-                if (widget.approval) {
-                  _history = value == 'history';
-                  _posting = value == 'prepayment-posting';
-                  _queueChosen = true;
-                } else {
-                  _status = value;
-                }
-                _page = 1;
-              }),
-              autoSelectBadge: false,
-            ),
+                        UtenFilterSegment(
+                          value: 'ACTION_REQUIRED',
+                          label: '待处理',
+                          count: mine('ACTION_REQUIRED'),
+                          countForm: UtenSegmentCountForm.actionable,
+                        ),
+                        UtenFilterSegment(
+                          value: 'PROCESSING',
+                          label: '处理中',
+                          count: mine('PROCESSING'),
+                          countForm: UtenSegmentCountForm.inProgress,
+                        ),
+                        const UtenFilterSegment(
+                          value: 'FINISHED',
+                          label: '历史记录',
+                        ),
+                      ],
+                selected: {
+                  widget.approval
+                      ? (_posting
+                            ? 'prepayment-posting'
+                            : _history
+                            ? 'history'
+                            : 'pending')
+                      : _status,
+                },
+                onSelectionChanged: (value) => setState(() {
+                  if (widget.approval) {
+                    _history = value == 'history';
+                    _posting = value == 'prepayment-posting';
+                    _queueChosen = true;
+                  } else {
+                    _status = value;
+                  }
+                  _page = 1;
+                }),
+                autoSelectBadge: false,
+              ),
             const SizedBox(height: UtenSpacing.s8),
             Expanded(
-              child: _withLocalDrafts(
-                MasterDataTableView<BusinessApplication>(
-                  key: ValueKey((
-                    _query.scope,
-                    widget.stage,
-                    widget.departmentCode,
-                  )),
-                  paginationScope: (
-                    _query.scope,
-                    _kind,
-                    _status,
-                    _history,
-                    widget.stage,
-                    widget.departmentCode,
-                  ),
-                  tableKey:
-                      'applications.${widget.approval ? 'approval' : 'mine'}.${widget.stage ?? 'all'}',
-                  columns: _columns,
-                  items: result.value?.items ?? const [],
-                  facets: const {},
-                  nullCounts: const {},
-                  filters: const {},
-                  onFilterChanged: (_, _) {},
-                  primary: true,
-                  isLoading: result.isLoading && !result.hasValue,
-                  isRefreshing: result.isLoading && result.hasValue,
-                  error: result.hasError && !result.hasValue
-                      ? '申请读取失败，请刷新重试'
-                      : null,
-                  refreshError: result.hasError && result.hasValue
-                      ? '申请更新失败，请刷新重试'
-                      : null,
-                  onRetry: _refresh,
-                  onRowTap: _open,
-                  currentPage: result.value?.page ?? _page,
-                  totalPages: result.value?.totalPages ?? 1,
-                  onPageChange: (value) => setState(() => _page = value),
-                  emptyMessage: widget.approval
-                      ? (_posting
-                            ? '暂无待入账供应商预付'
-                            : _history
-                            ? '暂无已处理的申请'
-                            : '暂无待审核申请')
-                      : '暂无申请',
-                  bottomContentPadding: UtenFloatingActionGroup.scrollClearance,
-                ),
-              ),
+              child: viewingExpense
+                  ? const ExpenseListPage(
+                      key: Key('applications-mine-expense-embedded'),
+                      embedded: true,
+                      resumeLocation: '/applications/mine',
+                    )
+                  : applicationsView(),
             ),
           ],
         ),
@@ -530,22 +616,33 @@ class _ApplicationsPageState extends ConsumerState<_ApplicationsPage> {
       appBar: UtenAppBar(
         title: widget.approval ? '申请审批' : '我的申请记录',
         showBackButton: true,
-        actions: [UtenRefreshButton(onRefresh: _refresh, busy: _refreshing)],
+        actions: [
+          UtenRefreshButton(
+            onRefresh: viewingExpense ? _refreshExpense : _refresh,
+            busy: viewingExpense
+                ? ref.watch(expenseListProvider).isLoading
+                : _refreshing,
+          ),
+        ],
       ),
       body: UtenContentContainer.wide(child: content),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
-      floatingActionButton: !widget.approval && createKind != null
-          ? UtenFloatingActionGroup(
-              children: [
-                UtenButton(
-                  size: UtenButtonSize.large,
-                  icon: Icons.add,
-                  onPressed: () =>
-                      context.push('/applications/new?kind=$createKind'),
-                  child: const Text('新建申请'),
-                ),
-              ],
-            )
+      floatingActionButton: !widget.approval
+          ? (viewingExpense
+                ? _expenseFloatingAction()
+                : createKind != null
+                ? UtenFloatingActionGroup(
+                    children: [
+                      UtenButton(
+                        size: UtenButtonSize.large,
+                        icon: Icons.add,
+                        onPressed: () =>
+                            context.push('/applications/new?kind=$createKind'),
+                        child: const Text('新建申请'),
+                      ),
+                    ],
+                  )
+                : null)
           : null,
     );
   }

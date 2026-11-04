@@ -258,7 +258,9 @@ class _ExpenseApprovalListPageState
     final theme = Theme.of(context);
 
     Widget body = Padding(
-      padding: const EdgeInsets.only(top: UtenSpacing.s8),
+      // 嵌入审批中心时顶部间距由父分类行的统一 rowGap 提供，避免双层间距叠加；
+      // 独立页保留自身顶部间距。
+      padding: EdgeInsets.only(top: widget.embedded ? 0 : UtenSpacing.s8),
       child: UtenCollapsingHeaderScrollView(
         // 两队列都是「确实在等本页用户动手」→ actionable 红徽章
         // （docs/00-项目准则/14-徽章与计数口径.md §二）。

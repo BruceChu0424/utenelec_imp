@@ -52,7 +52,19 @@ import '../repositories/expense_repository.dart';
 import '../../../components/feedback/uten_segment_badge_label.dart';
 
 class ExpenseListPage extends ConsumerStatefulWidget {
-  const ExpenseListPage({super.key});
+  const ExpenseListPage({
+    super.key,
+    this.embedded = false,
+    this.resumeLocation,
+  });
+
+  /// 嵌入模式（2026-11-04 我的申请改版）：只渲染内容体（报销分段 + 表格），
+  /// 不带 Scaffold/AppBar/FAB，由宿主页（申请记录页「报销申请」分类段）承载。
+  /// 宿主页负责「新建报销」悬浮按钮；草稿段的批量动作组仍在表格内自带。
+  final bool embedded;
+
+  /// 嵌入模式下「返回即刷新」登记的落点（宿主页路由）；独立页仍用 /expense。
+  final String? resumeLocation;
 
   @override
   ConsumerState<ExpenseListPage> createState() => _ExpenseListPageState();
@@ -111,7 +123,7 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
 
   @override
   Widget build(BuildContext context) {
-    ref.onPageResume(RouteName.expense, () {
+    ref.onPageResume(widget.resumeLocation ?? RouteName.expense, () {
       ref.read(expenseListProvider.notifier).refresh();
       ref.invalidate(expenseMineFacetsProvider);
       refreshBadges(ref);
@@ -172,9 +184,146 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
     final mineFacets = ref.watch(expenseMineFacetsProvider);
     // 草稿表格已有右下角批量组，新建并入同组；其他分类和加载/错误态
     // 由 Scaffold 提供唯一入口，避免页面浮动组遮住表格批量删除。
+    // 嵌入模式下没有 Scaffold，非草稿段的「新建报销」悬浮按钮由宿主页提供。
     final createInDraftTable =
         canApply && filter == ExpenseFilter.draft && list.hasValue;
 
+    final content = Padding(
+      padding: const EdgeInsets.only(top: UtenSpacing.s8),
+      child: UtenCollapsingHeaderScrollView(
+        // 默认只查询本人待办与进行中；已付款单据从历史单据查阅。
+        // 三形态各就各位(ADR-100): 草稿 / 待修订是本人要动手的活 -> 红;
+        // 「处理中」已经交出去、在审批人或出纳手上滚着 -> 黄;
+        // 历史单据不挂待办数。
+        // 2026-09-24 对齐物料分析页：页面头移入滚走区，body 只剩表格。
+        collapsingHeader: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            UtenFilterToolbar<ExpenseFilter>(
+              segmentsKey: const Key('expense-list-segments'),
+              segments: [
+                UtenFilterSegment(
+                  value: ExpenseFilter.draft,
+                  label: '草稿',
+                  count:
+                      counts.draftCount +
+                      ref.watch(
+                        formDraftCategoryCountProvider(_formDraftScope),
+                      ),
+                  countForm: UtenSegmentCountForm.actionable,
+                ),
+                const UtenFilterSegment(
+                  value: ExpenseFilter.all,
+                  label: '待办与进行中',
+                ),
+                UtenFilterSegment(
+                  value: ExpenseFilter.rejected,
+                  label: '待修订',
+                  count: counts.actionRequiredCount,
+                  countForm: UtenSegmentCountForm.actionable,
+                ),
+                UtenFilterSegment(
+                  value: ExpenseFilter.processing,
+                  label: '处理中',
+                  count: processingCount,
+                  countForm: UtenSegmentCountForm.inProgress,
+                ),
+                const UtenFilterSegment(
+                  value: ExpenseFilter.finished,
+                  label: '历史单据',
+                ),
+              ],
+              selected: {filter},
+              onSelectionChanged: (value) {
+                clearDraftSelection();
+                ref.read(expenseFilterProvider.notifier).state = value;
+                // 分段换了口径，表头状态筛选随之失效。
+                ref.read(expenseStatusFilterProvider.notifier).state = null;
+              },
+            ),
+          ],
+        ),
+        body: _withFormDraftRows(
+          MasterDataTableView<ExpenseClaim>(
+            expensiveRowMounts: false,
+            tableKey:
+                'features.expense.pages.expense_list_page.ExpenseListPageState.build.3',
+            key: const Key('expense-list-table'),
+            bottomContentPadding: canApply
+                ? UtenFloatingActionGroup.scrollClearance
+                : 0,
+            // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
+            primary: true,
+            columns: _columns,
+            items: page.items,
+            rowsController: _tableRows,
+            paginationScope: paginationScope,
+            isLoading: list.isLoading && !list.hasValue,
+            loadingMore: list.isLoading && list.hasValue,
+            error: list.hasError
+                ? (humanErrorMessage(list.error!) ?? '加载更多没有成功，请重试')
+                : null,
+            onRetry: () => ref.read(expenseListProvider.notifier).retry(),
+            facets: {
+              'status': _statusFacets(filter),
+              // 类别是固定枚举（明细项级别），前端硬编码桶；value=类别码。
+              'category': _categoryFacets(),
+              // 报销单号桶来自服务端（facets?queue=mine，2026-09-25 单号列统一）。
+              'claimNo': mineFacets.value?['claimNo'] ?? const [],
+            },
+            nullCounts: const {},
+            filters: {
+              'status': statusFilter?.name,
+              'category': categoryFilter,
+              'claimNo': claimNoFilter,
+            },
+            onFilterChanged: (key, value) {
+              clearDraftSelection();
+              _onFilterChanged(ref, key, value);
+            },
+            // 2026-09-25 单号列统一：表头排序走服务端白名单（claimNo）。
+            sortColumn: sortColumn,
+            sortAscending: sortAscending,
+            onSortChange: (column, ascending) {
+              clearDraftSelection();
+              ref.read(expenseSortColumnProvider.notifier).state = column;
+              ref.read(expenseSortAscendingProvider.notifier).state = ascending;
+            },
+            // 双击行进入报销详情。
+            onRowTap: (claim) => context.push(
+              claim.abandoned
+                  ? RoutePath.expenseHistoryDetail(claim.id)
+                  : RoutePath.expenseDetail(claim.id),
+            ),
+            selectable: canApply && filter == ExpenseFilter.draft,
+            idOf: (claim) =>
+                !draftDeleteBusy && _isOwnDraft(claim) ? claim.id : null,
+            rowKeyOf: (claim) => claim.id,
+            selectedIds: selectedDraftIds,
+            onSelectedIdsChanged: draftDeleteBusy ? null : selectDraftIds,
+            batchActionsBuilder: (_, _) => [
+              buildDraftDeleteButton(
+                documentLabel: '报销单',
+                delete: (id) => _deleteDraft(
+                  id,
+                  _tableRows.items
+                      .firstWhere((claim) => claim.id == id)
+                      .version,
+                ),
+                reload: () => ref.read(expenseListProvider.notifier).refresh(),
+              ),
+              if (canApply) _createAction(),
+            ],
+            emptyMessage: '暂无报销单',
+            currentPage: page.page,
+            totalPages: page.totalPages,
+            onPageChange: (p) =>
+                ref.read(expenseListProvider.notifier).goToPage(p),
+          ),
+        ),
+      ),
+    );
+    if (widget.embedded) return content;
     return Scaffold(
       appBar: UtenAppBar(
         title: '我的报销',
@@ -192,148 +341,7 @@ class _ExpenseListPageState extends ConsumerState<ExpenseListPage>
       floatingActionButton: canApply && !createInDraftTable
           ? UtenFloatingActionGroup(children: [_createAction()])
           : null,
-      body: SafeArea(
-        child: UtenContentContainer.wide(
-          child: Padding(
-            padding: const EdgeInsets.only(top: UtenSpacing.s8),
-            child: UtenCollapsingHeaderScrollView(
-              // 默认只查询本人待办与进行中；已付款单据从历史单据查阅。
-              // 三形态各就各位(ADR-100): 草稿 / 待修订是本人要动手的活 -> 红;
-              // 「处理中」已经交出去、在审批人或出纳手上滚着 -> 黄;
-              // 历史单据不挂待办数。
-              // 2026-09-24 对齐物料分析页：页面头移入滚走区，body 只剩表格。
-              collapsingHeader: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  UtenFilterToolbar<ExpenseFilter>(
-                    segmentsKey: const Key('expense-list-segments'),
-                    segments: [
-                      UtenFilterSegment(
-                        value: ExpenseFilter.draft,
-                        label: '草稿',
-                        count:
-                            counts.draftCount +
-                            ref.watch(
-                              formDraftCategoryCountProvider(_formDraftScope),
-                            ),
-                        countForm: UtenSegmentCountForm.actionable,
-                      ),
-                      const UtenFilterSegment(
-                        value: ExpenseFilter.all,
-                        label: '待办与进行中',
-                      ),
-                      UtenFilterSegment(
-                        value: ExpenseFilter.rejected,
-                        label: '待修订',
-                        count: counts.actionRequiredCount,
-                        countForm: UtenSegmentCountForm.actionable,
-                      ),
-                      UtenFilterSegment(
-                        value: ExpenseFilter.processing,
-                        label: '处理中',
-                        count: processingCount,
-                        countForm: UtenSegmentCountForm.inProgress,
-                      ),
-                      const UtenFilterSegment(
-                        value: ExpenseFilter.finished,
-                        label: '历史单据',
-                      ),
-                    ],
-                    selected: {filter},
-                    onSelectionChanged: (value) {
-                      clearDraftSelection();
-                      ref.read(expenseFilterProvider.notifier).state = value;
-                      // 分段换了口径，表头状态筛选随之失效。
-                      ref.read(expenseStatusFilterProvider.notifier).state =
-                          null;
-                    },
-                  ),
-                ],
-              ),
-              body: _withFormDraftRows(
-                MasterDataTableView<ExpenseClaim>(
-                  expensiveRowMounts: false,
-                  tableKey:
-                      'features.expense.pages.expense_list_page.ExpenseListPageState.build.3',
-                  key: const Key('expense-list-table'),
-                  bottomContentPadding: canApply
-                      ? UtenFloatingActionGroup.scrollClearance
-                      : 0,
-                  // primary:true → 表体参与「分类条折叠 → 表格内滚」联动。
-                  primary: true,
-                  columns: _columns,
-                  items: page.items,
-                  rowsController: _tableRows,
-                  paginationScope: paginationScope,
-                  isLoading: list.isLoading && !list.hasValue,
-                  loadingMore: list.isLoading && list.hasValue,
-                  error: list.hasError
-                      ? (humanErrorMessage(list.error!) ?? '加载更多没有成功，请重试')
-                      : null,
-                  onRetry: () => ref.read(expenseListProvider.notifier).retry(),
-                  facets: {
-                    'status': _statusFacets(filter),
-                    // 类别是固定枚举（明细项级别），前端硬编码桶；value=类别码。
-                    'category': _categoryFacets(),
-                    // 报销单号桶来自服务端（facets?queue=mine，2026-09-25 单号列统一）。
-                    'claimNo': mineFacets.value?['claimNo'] ?? const [],
-                  },
-                  nullCounts: const {},
-                  filters: {
-                    'status': statusFilter?.name,
-                    'category': categoryFilter,
-                    'claimNo': claimNoFilter,
-                  },
-                  onFilterChanged: (key, value) {
-                    clearDraftSelection();
-                    _onFilterChanged(ref, key, value);
-                  },
-                  // 2026-09-25 单号列统一：表头排序走服务端白名单（claimNo）。
-                  sortColumn: sortColumn,
-                  sortAscending: sortAscending,
-                  onSortChange: (column, ascending) {
-                    clearDraftSelection();
-                    ref.read(expenseSortColumnProvider.notifier).state = column;
-                    ref.read(expenseSortAscendingProvider.notifier).state =
-                        ascending;
-                  },
-                  // 双击行进入报销详情。
-                  onRowTap: (claim) => context.push(
-                    claim.abandoned
-                        ? RoutePath.expenseHistoryDetail(claim.id)
-                        : RoutePath.expenseDetail(claim.id),
-                  ),
-                  selectable: canApply && filter == ExpenseFilter.draft,
-                  idOf: (claim) =>
-                      !draftDeleteBusy && _isOwnDraft(claim) ? claim.id : null,
-                  rowKeyOf: (claim) => claim.id,
-                  selectedIds: selectedDraftIds,
-                  onSelectedIdsChanged: draftDeleteBusy ? null : selectDraftIds,
-                  batchActionsBuilder: (_, _) => [
-                    buildDraftDeleteButton(
-                      documentLabel: '报销单',
-                      delete: (id) => _deleteDraft(
-                        id,
-                        _tableRows.items
-                            .firstWhere((claim) => claim.id == id)
-                            .version,
-                      ),
-                      reload: () =>
-                          ref.read(expenseListProvider.notifier).refresh(),
-                    ),
-                    if (canApply) _createAction(),
-                  ],
-                  emptyMessage: '暂无报销单',
-                  currentPage: page.page,
-                  totalPages: page.totalPages,
-                  onPageChange: (p) =>
-                      ref.read(expenseListProvider.notifier).goToPage(p),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+      body: SafeArea(child: UtenContentContainer.wide(child: content)),
     );
   }
 }

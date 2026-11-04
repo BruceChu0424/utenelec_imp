@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uten_imp/components/layout/uten_filter_toolbar.dart';
 import 'package:uten_imp/core/l10n/gen/app_localizations.dart';
+import 'package:uten_imp/core/theme/uten_tokens.dart';
 import 'package:uten_imp/core/network/api_client.dart';
 import 'package:uten_imp/core/network/server_config.dart';
 import 'package:uten_imp/core/theme/light_theme.dart';
@@ -348,6 +349,7 @@ Future<GoRouter> _pump(
   Size size, {
   Set<String>? permissions,
   double textScale = 1,
+  bool zeroApprovalTasks = false,
 }) async {
   SharedPreferences.setMockInitialValues({});
   final preferences = await SharedPreferences.getInstance();
@@ -437,8 +439,10 @@ Future<GoRouter> _pump(
               BadgeEntry.applicationMine: (3, 3 + api.personalPosting),
             },
             facts: {
-              'expense.departmentPendingByCode.DEPT_SALES': 1,
-              'application.departmentPendingByCode.DEPT_SALES': 3,
+              'expense.departmentPendingByCode.DEPT_SALES':
+                  zeroApprovalTasks ? 0 : 1,
+              'application.departmentPendingByCode.DEPT_SALES':
+                  zeroApprovalTasks ? 0 : 3,
               'expense.draftCount': 2,
               'expense.processingCount': 1,
               'application.mineDraftCount': 2,
@@ -565,6 +569,116 @@ void main() {
           'manual-prepayment-posting',
         );
       }
+    },
+  );
+
+  testWidgets(
+    'approval center stays on guidance placeholder until a category is chosen',
+    (tester) async {
+      // 无任何待办/在办时进页面：不再兜底选中第一组，保持任务中心
+      // 「默认不选、点击后加载」范式——子分类不出现、列表请求不发。
+      final api = _Api();
+      await _pump(
+        tester,
+        api,
+        '/approvals/DEPT_SALES',
+        const Size(1440, 1000),
+        zeroApprovalTasks: true,
+      );
+      expect(find.byType(UtenFilterPlaceholder), findsOneWidget);
+      expect(
+        find.byKey(const Key('expense-approval-segments')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('application-kind-filter')), findsNothing);
+      expect(
+        api.queries.where((q) => q.path == '/expense-claims/pending'),
+        isEmpty,
+      );
+      expect(
+        api.queries.where((q) => q.path == '/business-applications/pending'),
+        isEmpty,
+      );
+      if (_capture) {
+        await saveAuditScreenshot(tester, _captureKey, 'approval-center-placeholder');
+      }
+      // 点击父分类后子分类行才出现并加载对应队列。
+      final main = tester.widget<UtenFilterToolbar<String>>(
+        find.byWidgetPredicate(
+          (w) =>
+              w is UtenFilterToolbar<String> &&
+              w.segmentsKey == const Key('approval-center-categories'),
+        ),
+      );
+      main.onSelectionChanged!('expense');
+      await tester.pumpAndSettle();
+      expect(find.byType(UtenFilterPlaceholder), findsNothing);
+      expect(
+        find.byKey(const Key('expense-approval-segments')),
+        findsOneWidget,
+      );
+      expect(
+        api.queries.where((q) => q.path == '/expense-claims/pending'),
+        isNotEmpty,
+      );
+      expect(tester.takeException(), isNull);
+      if (_capture) {
+        await saveAuditScreenshot(tester, _captureKey, 'approval-center-clicked');
+      }
+    },
+  );
+
+  testWidgets(
+    'approval center auto-loads the first category with pending tasks',
+    (tester) async {
+      // 有待办分类时自动选中（红徽章优先），与任务中心 autoSelectBadge 同口径。
+      final api = _Api();
+      await _pump(tester, api, '/approvals/DEPT_SALES', const Size(1440, 1000));
+      final main = tester.widget<UtenFilterToolbar<String>>(
+        find.byWidgetPredicate(
+          (w) =>
+              w is UtenFilterToolbar<String> &&
+              w.segmentsKey == const Key('approval-center-categories'),
+        ),
+      );
+      expect(main.selected, {'expense'});
+      expect(
+        find.byKey(const Key('expense-approval-segments')),
+        findsOneWidget,
+      );
+      expect(
+        api.queries.where((q) => q.path == '/expense-claims/pending'),
+        isNotEmpty,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'parent and child category rows share the container edge and rowGap',
+    (tester) async {
+      // 父分类行与子分类行同一左缘（页面容器 gutter，不再有 16px 手写缩进），
+      // 行间距为任务中心统一 UtenFilterRow.rowGap（不再出现 8+8 双层叠加）。
+      final api = _Api();
+      await _pump(
+        tester,
+        api,
+        '/approvals/DEPT_SALES?group=expense',
+        const Size(1440, 1000),
+      );
+      final parent = tester.renderObject(
+        find.byKey(const Key('approval-center-categories')),
+      ) as RenderBox;
+      final child = tester.renderObject(
+        find.byKey(const Key('expense-approval-segments')),
+      ) as RenderBox;
+      final parentTopLeft = parent.localToGlobal(Offset.zero);
+      final childTopLeft = child.localToGlobal(Offset.zero);
+      expect(childTopLeft.dx, parentTopLeft.dx,
+          reason: '子分类行应与父分类行同左缘');
+      final gap = childTopLeft.dy - (parentTopLeft.dy + parent.size.height);
+      expect(gap, UtenFilterRow.rowGap, reason: '父/子分类行间距应为统一 rowGap');
+      expect(tester.takeException(), isNull);
     },
   );
 

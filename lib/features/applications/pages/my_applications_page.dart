@@ -55,13 +55,9 @@ class MyApplicationsPage extends ConsumerWidget {
         location: '/applications/new?kind=SUPPLIER_PAYMENT',
       ),
     ].where((entry) => canOpen(entry.location)).toList();
+    // 2026-11-04 我的申请改版：报销不再单独设「我的报销」卡，报销记录并入
+    // 「申请记录」页分类栏的「报销申请」段（红黄徽章随段迁移）。
     final records = <({String label, IconData icon, String location})>[
-      if (canOpen('/expense'))
-        (
-          label: '我的报销',
-          icon: Icons.receipt_long_outlined,
-          location: '/expense',
-        ),
       if (canOpen('/applications/mine'))
         (
           label: '申请记录',
@@ -77,16 +73,11 @@ class MyApplicationsPage extends ConsumerWidget {
       spacing: UtenSpacing.s12,
       itemBuilder: (context, index, width) {
         final entry = values[index];
-        final expense = entry.location == '/expense';
         final records = entry.location == '/applications/mine';
-        final int todo = expense
-            ? ref.watch(badgeEntryTodoProvider(BadgeEntry.expenseMine))
-            : records
+        final int todo = records
             ? ref.watch(badgeEntryTodoProvider(BadgeEntry.applicationMine))
             : 0;
-        final processing = expense
-            ? fact(BadgeFact.expenseProcessing)
-            : records
+        final processing = records
             ? fact('application.mineProcessingCount')
             : 0;
         return UtenHubCard(

@@ -606,7 +606,11 @@ class _SalesManagerReviewPageState extends ConsumerState<SalesManagerReviewPage>
         body: Stack(
           children: [
             Padding(
-              padding: const EdgeInsets.all(UtenSpacing.s16),
+              // 嵌入审批中心时水平边距由页面容器统一提供（父分类行与正文同缘），
+              // 顶部间距走父行统一 rowGap；独立页保留四周 16。
+              padding: widget.embedded
+                  ? const EdgeInsets.only(bottom: UtenSpacing.s16)
+                  : const EdgeInsets.all(UtenSpacing.s16),
               child: UtenCollapsingHeaderScrollView(
                 collapsingHeader: Column(
                   children: [
